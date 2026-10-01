@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::agent::timeline::{Content, ordinary};
+use crate::agent::timeline::{self, Content};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{AgentTimelinePage, AgentTimelinePromotedContent};
 
@@ -63,7 +63,9 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 
 		for (index, item) in references {
 			let resolved = exact_item(&history, &page.thread_id, &turn, &item)
-				.and_then(|item| ordinary(&serde_json::json!({"turnId":turn,"item":item})))
+				.and_then(|item| {
+					timeline::ordinary(&serde_json::json!({"turnId":turn,"item":item}))
+				})
 				.and_then(project);
 
 			if let Content::Promotion { resolved: target, .. } = &mut page.entries[index].content {

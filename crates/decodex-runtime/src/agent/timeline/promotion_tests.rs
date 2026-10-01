@@ -1,13 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use serde_json::Value;
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 use crate::{
-	agent::timeline::promotions::*,
+	agent::timeline::{self, Content, promotions},
 	agent_usage_estimate::{Source, SourceKey},
 };
+use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
-use decodex_protocol::{AgentTimelineEntry, AgentTimelineResult};
+use decodex_protocol::{AgentTimelineEntry, AgentTimelinePage, AgentTimelineResult};
 
 fn page() -> AgentTimelinePage {
 	super::super::project("thread", &serde_json::json!({"data":[
@@ -27,7 +29,7 @@ fn exact_reference_rejects_ambiguous_turns_items_and_wrong_thread() {
 		serde_json::json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[item,item]}]}}),
 		serde_json::json!({"thread":{"id":"thread","turns":[{"id":"other-turn","items":[item]}]}}),
 	] {
-		assert!(exact_item(&history, "thread", "old-turn", "message").is_none());
+		assert!(promotions::exact_item(&history, "thread", "old-turn", "message").is_none());
 	}
 }
 
@@ -64,7 +66,7 @@ async fn off_page_references_share_one_native_read_and_keep_exact_media_indices(
 	});
 	let mut page = page();
 
-	enrich(&client, &mut page).await;
+	promotions::enrich(&client, &mut page).await;
 
 	server.await.unwrap();
 
@@ -102,13 +104,13 @@ async fn loaded_reference_does_not_need_transport_and_failure_preserves_referenc
 
 	page.entries.push(AgentTimelineEntry {
 		position: 7,
-		content: ordinary(
+		content: timeline::ordinary(
 			&serde_json::json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":"Loaded"}}),
 		)
 		.unwrap(),
 	});
 
-	enrich(&client, &mut page).await;
+	promotions::enrich(&client, &mut page).await;
 
 	assert!(
 		matches!(&page.entries[0].content, Content::Promotion { resolved: Some(content), .. } if content.text=="Loaded")
@@ -131,14 +133,14 @@ async fn duplicate_loaded_identity_never_selects_an_arbitrary_message() {
 	for (position, text) in [(7, "First"), (8, "Second"), (9, "Third")] {
 		page.entries.push(AgentTimelineEntry {
 			position,
-			content: ordinary(
+			content: timeline::ordinary(
 				&serde_json::json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":text}}),
 			)
 			.unwrap(),
 		});
 	}
 
-	enrich(&client, &mut page).await;
+	promotions::enrich(&client, &mut page).await;
 
 	assert!(matches!(&page.entries[0].content, Content::Promotion { resolved: None, .. }));
 }

@@ -1,4 +1,5 @@
 //! Resolve exact native media and keep each byte chunk bound to the same source and content.
+#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt as _;
 use std::{fs::OpenOptions, future::Future, io::Read, path::Path, time::Duration};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -152,7 +153,6 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, AgentMed
 }
 
 fn local_media_sync(path: &str) -> std::result::Result<(String, Vec<u8>), AgentMediaResult> {
-	#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt;
 	// The admitted Codex child runs on this service host (account_launch/agent_process).
 	// Native fs/readFile returns an unbounded base64 frame; fs/getMetadata has no size.
 	// Read only the path recovered from the exact native item, never a UI-supplied path.

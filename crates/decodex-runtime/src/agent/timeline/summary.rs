@@ -73,7 +73,7 @@ mod tests {
 		atomic::{AtomicUsize, Ordering},
 	};
 
-	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
 
 	use crate::{
 		agent::timeline::summary::{AgentTimelineResult, Content, Source, Value},
@@ -91,58 +91,7 @@ mod tests {
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let stage = Arc::new(AtomicUsize::new(0));
 			let observed = stage.clone();
-			let server = tokio::spawn(async move {
-				let (reader, mut writer) = io::split(remote);
-				let mut lines = BufReader::new(reader).lines();
-				let mut methods = Vec::new();
-
-				while let Some(line) = lines.next_line().await.expect("fixture request") {
-					let request: Value = serde_json::from_str(&line).expect("request JSON");
-					let method = request["method"].as_str().expect("method");
-
-					methods.push(method.to_owned());
-
-					let mut response = match method {
-						"thread/read" =>
-							serde_json::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
-						"thread/timeline/list" =>
-							serde_json::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
-						"thread/turns/list" => {
-							assert_eq!(
-								request["params"],
-								serde_json::json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
-							);
-
-							observed.store(1, Ordering::Release);
-
-							if case == "both_fail" {
-								serde_json::json!({"error":{"code":-32_603,"message":"summary unavailable"}})
-							} else {
-								serde_json::json!({"result":{"data":[
-                                {"id":"new","itemsView":"summary","items":[{"id":"answer","type":"agentMessage","text":"Final reply"}]},
-                                {"id":"old","itemsView":"summary","items":[{"id":"prompt","type":"userMessage","content":[{"type":"text","text":"Question"}]}]}
-                            ],"nextCursor":"must-not-use"}})
-							}
-						},
-						other => panic!("unexpected write or request: {other}"),
-					};
-
-					response["id"] = request["id"].clone();
-
-					writer
-						.write_all(format!("{response}\n").as_bytes())
-						.await
-						.expect("fixture reply");
-
-					if method == "thread/turns/list"
-						|| (case == "older" && method == "thread/timeline/list")
-					{
-						break;
-					}
-				}
-
-				methods
-			});
+			let server = tokio::spawn(serve_summary(remote, observed, case));
 			let result = super::super::read(
 				None,
 				|| {
@@ -211,5 +160,59 @@ mod tests {
 
 			assert_eq!(methods.len(), if case == "older" { 2 } else { 4 });
 		}
+	}
+
+	async fn serve_summary(
+		remote: DuplexStream,
+		observed: Arc<AtomicUsize>,
+		case: &str,
+	) -> Vec<String> {
+		let (reader, mut writer) = io::split(remote);
+		let mut lines = BufReader::new(reader).lines();
+		let mut methods = Vec::new();
+
+		while let Some(line) = lines.next_line().await.expect("fixture request") {
+			let request: Value = serde_json::from_str(&line).expect("request JSON");
+			let method = request["method"].as_str().expect("method");
+
+			methods.push(method.to_owned());
+
+			let mut response = match method {
+				"thread/read" =>
+					serde_json::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
+				"thread/timeline/list" =>
+					serde_json::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
+				"thread/turns/list" => {
+					assert_eq!(
+						request["params"],
+						serde_json::json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
+					);
+
+					observed.store(1, Ordering::Release);
+
+					if case == "both_fail" {
+						serde_json::json!({"error":{"code":-32_603,"message":"summary unavailable"}})
+					} else {
+						serde_json::json!({"result":{"data":[
+                                {"id":"new","itemsView":"summary","items":[{"id":"answer","type":"agentMessage","text":"Final reply"}]},
+                                {"id":"old","itemsView":"summary","items":[{"id":"prompt","type":"userMessage","content":[{"type":"text","text":"Question"}]}]}
+                            ],"nextCursor":"must-not-use"}})
+					}
+				},
+				other => panic!("unexpected write or request: {other}"),
+			};
+
+			response["id"] = request["id"].clone();
+
+			writer.write_all(format!("{response}\n").as_bytes()).await.expect("fixture reply");
+
+			if method == "thread/turns/list"
+				|| (case == "older" && method == "thread/timeline/list")
+			{
+				break;
+			}
+		}
+
+		methods
 	}
 }
