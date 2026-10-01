@@ -863,7 +863,6 @@ impl ConversationRuntime {
 			.await
 	}
 
-	#[allow(clippy::too_many_lines)]
 	async fn establish_first_session(
 		&self,
 		command: CreateConversation,
@@ -924,6 +923,17 @@ impl ConversationRuntime {
 				);
 			},
 		};
+
+		self.prepare_initial_session(command, conversation_revision, decision, plan).await
+	}
+
+	async fn prepare_initial_session(
+		&self,
+		command: CreateConversation,
+		conversation_revision: i64,
+		decision: PersistedDecisionProvenance,
+		plan: ContinuationPlanEffect,
+	) -> ConversationOutcome {
 		let consumer = decision.consumer.clone();
 		let turn_id = match &consumer {
 			ExecutionConsumer::ConversationTurn {
@@ -979,6 +989,40 @@ impl ConversationRuntime {
 			Ok(value) => value,
 			Err(_) => return ConversationOutcome::Conflict,
 		};
+
+		self.admit_initial_turn(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			history_item_id,
+		)
+		.await
+	}
+
+	async fn admit_initial_turn(
+		&self,
+		context: InitialSessionEstablishment,
+		history_item_id: HistoryItemId,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 
 		match self
 			.inner
@@ -1050,6 +1094,35 @@ impl ConversationRuntime {
 			},
 		};
 
+		self.prepare_initial_process(InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		})
+		.await
+	}
+
+	async fn prepare_initial_process(
+		&self,
+		context: InitialSessionEstablishment,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
@@ -1103,6 +1176,44 @@ impl ConversationRuntime {
 			selected_account_id: selected_account_id.clone(),
 			process_generation_id: generation_id,
 		};
+
+		self.admit_initial_process(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			created,
+			process_request,
+			establishment,
+		)
+		.await
+	}
+
+	async fn admit_initial_process(
+		&self,
+		context: InitialSessionEstablishment,
+		created: ConversationReadback,
+		process_request: PrepareConversationProcessGeneration,
+		establishment: ReconcileConversationThreadEstablishment,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let admission = match self
 			.inner
 			.store
@@ -1164,6 +1275,44 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
+		self.prepare_initial_thread(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			created,
+			establishment,
+		)
+		.await
+	}
+
+	async fn prepare_initial_thread(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		created: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let spawned = ConversationReadback {
 			process_generation_id: Some(process.generation_id().clone()),
 			..created.clone()
@@ -1210,6 +1359,46 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
+		self.fence_initial_thread(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			spawned,
+			establishment,
+			prepared,
+		)
+		.await
+	}
+
+	async fn fence_initial_thread(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		spawned: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		prepared: PreparedThreadStart,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let fence_key = scoped_key("thread-fence", &command.operation_key);
 		let fence = FenceRuntimeSessionThreadStart {
 			conversation_id: command.conversation_id.clone(),
@@ -1246,6 +1435,48 @@ impl ConversationRuntime {
 						.await;
 				},
 			};
+
+		self.validate_initial_fence(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			spawned,
+			establishment,
+			prepared,
+			authority,
+		)
+		.await
+	}
+
+	async fn validate_initial_fence(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		spawned: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		prepared: PreparedThreadStart,
+		authority: FreshRuntimeSessionThreadStart,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let fence_readback = authority.readback();
 
 		if fence_readback.conversation_id != command.conversation_id
@@ -1283,6 +1514,48 @@ impl ConversationRuntime {
 			active_turn_id: Some(command.turn_id.clone()),
 			state: ConversationLocalState::Establishing,
 		};
+
+		self.start_initial_thread(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			fenced,
+			establishment,
+			prepared,
+			authority,
+		)
+		.await
+	}
+
+	async fn start_initial_thread(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		fenced: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		prepared: PreparedThreadStart,
+		authority: FreshRuntimeSessionThreadStart,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let established = match self.start_thread(&process, prepared, authority).await {
 			Ok(established) => established,
 			Err(_) => {
@@ -1308,6 +1581,45 @@ impl ConversationRuntime {
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadStart).await;
 		}
 
+		self.bind_initial_thread(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			fenced,
+			establishment,
+			established,
+		)
+		.await
+	}
+
+	async fn bind_initial_thread(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		fenced: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		established: EstablishedOrdinaryThread,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision,
+		} = context;
 		let binding_key = scoped_key("thread-bind", &command.operation_key);
 		let binding = match self
 			.inner
@@ -1364,6 +1676,43 @@ impl ConversationRuntime {
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 
+		self.install_initial_thread(
+			InitialSessionEstablishment {
+				command,
+				conversation_revision,
+				decision,
+				plan,
+				session,
+				working_directory,
+				runtime_session_id,
+				selected_account_id,
+				selected_account_revision,
+			},
+			process,
+			established,
+			binding,
+		)
+		.await
+	}
+
+	async fn install_initial_thread(
+		&self,
+		context: InitialSessionEstablishment,
+		process: FencedProcess,
+		established: EstablishedOrdinaryThread,
+		binding: RuntimeSessionThreadBindingReadback,
+	) -> ConversationOutcome {
+		let InitialSessionEstablishment {
+			command,
+			conversation_revision,
+			decision,
+			plan,
+			session,
+			working_directory,
+			runtime_session_id,
+			selected_account_id,
+			selected_account_revision: _,
+		} = context;
 		let local = LocalSession {
 			execution_overrides: None,
 			operation_key: command.operation_key.clone(),
@@ -6022,6 +6371,18 @@ struct ExistingSessionPlanningInput<'a> {
 	consumer: ExecutionConsumer,
 	message_bytes: usize,
 	expected: ExistingSessionExpectation<'a>,
+}
+
+struct InitialSessionEstablishment {
+	command: InitialConversationExecution,
+	conversation_revision: i64,
+	decision: PersistedDecisionProvenance,
+	plan: ContinuationPlanEffect,
+	session: StoredRuntimeSession,
+	working_directory: String,
+	runtime_session_id: RuntimeSessionId,
+	selected_account_id: AccountId,
+	selected_account_revision: i64,
 }
 
 struct FallbackEstablishment {
