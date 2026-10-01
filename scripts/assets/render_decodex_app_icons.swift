@@ -76,8 +76,10 @@ try preview.write(to: appIconGenerated.appendingPathComponent("app-icon-default-
 try preview.write(to: appIconGenerated.appendingPathComponent("app-icon-flat.png"))
 try Data(contentsOf: root.appendingPathComponent("assets/app-icon/liquid-glass/\(variant)/StatusBarIcon.png")).write(to: trayIconGenerated.appendingPathComponent("tray-icon-template.png"))
 // Review the compiled fallback at Dock sizes on two backgrounds.
+guard let icon = NSImage(contentsOf: compiled) else {
+    throw NSError(domain: "DecodexIconRender", code: 4)
+}
 let review = try bitmap(size: 768) { _ in
-    let icon = NSImage(contentsOf: compiled)!
     for (row, background) in [NSColor(calibratedWhite: 0.94, alpha: 1),
                               NSColor(calibratedWhite: 0.10, alpha: 1)].enumerated() {
         let bottom = CGFloat(1 - row) * 384

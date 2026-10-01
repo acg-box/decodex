@@ -4,6 +4,12 @@
 // replace photographic contour tracing. RGB paint contains no lighting.
 import AppKit
 import Foundation
+func required<T>(_ value: T?, _ operation: String) throws -> T {
+    guard let value else {
+        throw NSError(domain: "DecodexIconBuild", code: 1, userInfo: [NSLocalizedDescriptionKey: operation])
+    }
+    return value
+}
 func circle(_ x:CGFloat,_ y:CGFloat,_ r:CGFloat)->CGPath { CGPath(ellipseIn:CGRect(x:x-r,y:y-r,width:r*2,height:r*2),transform:nil) }
 let frame=CGPath(rect:CGRect(x:-2_048,y:-2_048,width:5_120,height:5_120),transform:nil)
 func expand(_ shape:CGPath,_ amount:CGFloat)->CGPath { shape.union(shape.copy(strokingWithWidth:amount*2,lineCap:.round,lineJoin:.round,miterLimit:10)) }
@@ -81,10 +87,10 @@ for (index,name) in names.enumerated() {
     let markBounds=bolt.boundingBoxOfPath.union(cursor.boundingBoxOfPath)
     var markTransform=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY-12)
         .scaledBy(x:0.86,y:0.86).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
-    let insetBolt=bolt.copy(using:&markTransform)!
-    let insetCursor=cursor.copy(using:&markTransform)!
+    let insetBolt=try required(bolt.copy(using:&markTransform), "Could not transform icon geometry")
+    let insetCursor=try required(cursor.copy(using:&markTransform), "Could not transform icon geometry")
     var pixelFit=CGAffineTransform(translationX:markBounds.midX-12,y:markBounds.midY+33).scaledBy(x:0.88,y:0.72).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
-    let pixelBolt=bolt.copy(using:&pixelFit)!,pixelCursor=cursor.copy(using:&pixelFit)!
+    let pixelBolt=try required(bolt.copy(using:&pixelFit), "Could not transform icon geometry"),pixelCursor=try required(cursor.copy(using:&pixelFit), "Could not transform icon geometry")
     // Approved Dock contour: soften the left shoulder and use a circular right cap.
     // Keep the menu bar optical geometry independent at its small display size.
     let dockCloud=CGMutablePath()
@@ -153,7 +159,7 @@ for (index,name) in names.enumerated() {
             specialization("tinted",["kind":"neutral","opacity":0.26])
         ]
 
-        pixelGroup["layers"]=groups.dropFirst().flatMap { $0["layers"] as! [[String:Any]] }
+        pixelGroup["layers"]=try groups.dropFirst().flatMap { try required($0["layers"] as? [[String:Any]], "Icon group has invalid layers") }
         groups=[pixelGroup,groups[0]]
     }
     if index==2 { groups.reverse() }
@@ -174,12 +180,12 @@ for (index,name) in names.enumerated() {
         var frameFit=CGAffineTransform(translationX:iconBounds.minX,y:iconBounds.minY)
             .scaledBy(x:iconBounds.width/thinBounds.width,y:iconBounds.height/thinBounds.height)
             .translatedBy(x:-thinBounds.minX,y:-thinBounds.minY)
-        let menuFrame=thinFrame.copy(using:&frameFit)!
+        let menuFrame=try required(thinFrame.copy(using:&frameFit), "Could not transform icon geometry")
         let source=expand(bolt,3),sourceBounds=source.boundingBoxOfPath
         var fit=CGAffineTransform(translationX:352,y:440)
             .scaledBy(x:132/sourceBounds.width,y:160/sourceBounds.height)
             .translatedBy(x:-sourceBounds.minX,y:-sourceBounds.minY)
-        let menuBolt=source.copy(using:&fit)!
+        let menuBolt=try required(source.copy(using:&fit), "Could not transform icon geometry")
         let menuCursor=CGPath(roundedRect:CGRect(x:540,y:544,width:132,height:56),cornerWidth:28,cornerHeight:28,transform:nil)
         // About 1.84 pixels of geometric separation on a 22-pixel template.
         for (a,b) in [(menuFrame,menuBolt),(menuFrame,menuCursor),(menuBolt,menuCursor)] {
@@ -190,33 +196,33 @@ for (index,name) in names.enumerated() {
         // Use the same 15 cells as Dock. Only paint and small-size glyph fit differ.
         let b=bolt.boundingBoxOfPath
         var fit=CGAffineTransform(translationX:330,y:460).scaledBy(x:145/b.width,y:190/b.height).translatedBy(x:-b.minX,y:-b.minY)
-        let menuBolt=bolt.copy(using:&fit)!
+        let menuBolt=try required(bolt.copy(using:&fit), "Could not transform icon geometry")
         let menuCursor=CGPath(roundedRect:CGRect(x:530,y:570,width:140,height:80),cornerWidth:40,cornerHeight:40,transform:nil)
         menuShapes=[pixels.reduce(rounded) { $0.union($1) }.subtracting(menuBolt).subtracting(menuCursor)]
 
     } else {
         var fit=CGAffineTransform(translationX:markBounds.midX,y:markBounds.midY)
             .scaledBy(x:1.10,y:1.10).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
-        let menuBolt=expand(bolt,7).copy(using:&fit)!
-        let menuCursor=expand(cursor,7).copy(using:&fit)!
+        let menuBolt=try required(expand(bolt,7).copy(using:&fit), "Could not transform icon geometry")
+        let menuCursor=try required(expand(cursor,7).copy(using:&fit), "Could not transform icon geometry")
         menuShapes=[flat.subtracting(menuBolt).subtracting(menuCursor)]
     }
     let bounds=iconBounds
-    let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1_024,pixelsHigh:1_024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+    let rep=try required(NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1_024,pixelsHigh:1_024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0), "Could not allocate icon bitmap")
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
-    let context=NSGraphicsContext.current!.cgContext
+    let context=try required(NSGraphicsContext.current, "Could not create icon graphics context").cgContext
     let scale=850/max(bounds.width,bounds.height)
     context.translateBy(x:512,y:512);context.scaleBy(x:scale,y:-scale);context.translateBy(x:-bounds.midX,y:-bounds.midY)
     context.setFillColor(NSColor.black.cgColor)
     for shape in menuShapes {context.addPath(shape);context.fillPath()}
     NSGraphicsContext.restoreGraphicsState()
-    try rep.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent("StatusBarIcon.png"))
+    try required(rep.representation(using:.png,properties:[:]), "Could not encode icon PNG").write(to:directory.appendingPathComponent("StatusBarIcon.png"))
     // Export menu-sized representations directly instead of resampling the
     // 1024px image at runtime. No detached cell is omitted or repositioned.
     for edge in [22,44] {
-        let small=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:edge,pixelsHigh:edge,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        let small=try required(NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:edge,pixelsHigh:edge,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0), "Could not allocate icon bitmap")
         NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:small)
-        let c=NSGraphicsContext.current!.cgContext
+        let c=try required(NSGraphicsContext.current, "Could not create icon graphics context").cgContext
         let factor=CGFloat(edge)/1_024,fitScale=scale*factor
         c.saveGState();c.translateBy(x:CGFloat(edge)/2,y:CGFloat(edge)/2)
         c.scaleBy(x:fitScale,y:-fitScale);c.translateBy(x:-bounds.midX,y:-bounds.midY)
@@ -225,7 +231,7 @@ for (index,name) in names.enumerated() {
         c.restoreGState()
         NSGraphicsContext.restoreGraphicsState()
         small.size=NSSize(width:22,height:22)
-        try small.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent(edge==22 ? "StatusBarIcon-22.png" : "StatusBarIcon-22@2x.png"))
+        try required(small.representation(using:.png,properties:[:]), "Could not encode icon PNG").write(to:directory.appendingPathComponent(edge==22 ? "StatusBarIcon-22.png" : "StatusBarIcon-22@2x.png"))
     }
     print(name)
 }
