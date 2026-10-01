@@ -246,12 +246,15 @@ fn server_presentation(info: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		sync::oneshot,
+	};
+
 	use crate::agent_integrations::{
 		self, AgentAppInventory, AgentIntegrationsResult, AgentMcpInventory, AgentPluginInventory,
 		AppServerClient, ClientError, Value,
 	};
-
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[test]
 	fn initialized_server_presentation_uses_public_fields_without_fetching_icons() {
@@ -346,12 +349,12 @@ mod tests {
 			"apps_unsupported",
 			"apps_unavailable",
 		] {
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
-			let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+			let (finish, finished) = oneshot::channel::<()>();
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let mut metadata = 0;
 
