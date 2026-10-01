@@ -2,7 +2,7 @@
 use rusqlite::Connection;
 use serde_json::{self, Value};
 use tokio::{
-	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
 	sync::mpsc,
 };
 
@@ -13,6 +13,8 @@ use crate::{
 };
 use decodex_codex::app_server_client::{ClientError, ServerEvent};
 use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
+
+use mpsc::UnboundedSender;
 
 #[tokio::test]
 async fn disconnected_voice_tails_survive_reopen_without_replay() {
@@ -182,10 +184,7 @@ async fn check_disconnected_tails(
 	assert!(server.await.expect_err("cancelled fixture server").is_cancelled());
 }
 
-async fn serve_voice_transcript_fixture(
-	remote: tokio::io::DuplexStream,
-	sent: mpsc::UnboundedSender<Value>,
-) {
+async fn serve_voice_transcript_fixture(remote: DuplexStream, sent: UnboundedSender<Value>) {
 	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 

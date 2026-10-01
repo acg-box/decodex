@@ -4,7 +4,7 @@ use std::{env, fs, sync::Mutex};
 use tokio::{net::TcpListener, time};
 
 use crate::account_launch::agent_process::native_tests::reviewer::*;
-use decodex_codex::{guardian, guardian::ReviewStatus};
+use decodex_codex::guardian::{self, ReviewStatus};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Guardian image evidence"]

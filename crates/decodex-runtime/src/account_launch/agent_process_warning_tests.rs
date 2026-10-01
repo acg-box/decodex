@@ -1,6 +1,7 @@
 //! Native warning transport, current owner persistence and user-visible history.
 use std::{
 	env, fs,
+	path::{Path, PathBuf},
 	sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
@@ -16,13 +17,28 @@ use crate::{
 };
 use decodex_codex::app_server_client::ServerEvent;
 
+fn prepare_warning_fixture(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+	let home = root.join("home");
+	let project = root.join("project");
+
+	fs::create_dir(&home).expect("Create warning fixture home");
+	fs::create_dir(&project).expect("Create warning fixture project");
+
+	let home = home.canonicalize().expect("Resolve warning fixture home");
+	let project = project.canonicalize().expect("Resolve warning fixture project");
+	let source = home.join("AGENTS.md");
+
+	fs::write(&source, "Keep the fixture local.").expect("Write warning fixture instructions");
+
+	(home, project, source)
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native global instruction failure"]
 async fn installed_native_warning_crosses_bridge_owner_history_and_reopen() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let temporary = tempfile::tempdir().unwrap();
 	let (home, project, source) = prepare_warning_fixture(temporary.path());
-
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
@@ -164,22 +180,4 @@ async fn installed_native_warning_crosses_bridge_owner_history_and_reopen() {
 	.unwrap();
 
 	backend.abort();
-}
-
-fn prepare_warning_fixture(
-	root: &std::path::Path,
-) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
-	let home = root.join("home");
-	let project = root.join("project");
-
-	fs::create_dir(&home).expect("Create warning fixture home");
-	fs::create_dir(&project).expect("Create warning fixture project");
-
-	let home = home.canonicalize().expect("Resolve warning fixture home");
-	let project = project.canonicalize().expect("Resolve warning fixture project");
-	let source = home.join("AGENTS.md");
-
-	fs::write(&source, "Keep the fixture local.").expect("Write warning fixture instructions");
-
-	(home, project, source)
 }

@@ -8,15 +8,16 @@ use std::{
 	time::Duration,
 };
 
-use crate::account_launch::agent_process::native_tests::{
-	NativeSession,
-	reviewer::store::{OwnedReviewer, SqliteStore},
-	serve_fixture,
-};
 use serde_json::{self, Value};
 use tokio::{net::TcpListener, time};
 
-use crate::agent_models::{self, Change};
+use crate::{
+	account_launch::agent_process::native_tests::{
+		self, NativeSession,
+		reviewer::store::{OwnedReviewer, SqliteStore},
+	},
+	agent_models::{self, Change},
+};
 use decodex_codex::app_server_client::{NativeTaskModelSettings, ServerEvent};
 use decodex_protocol::{AgentModelSelectionState, ConversationReasoningEffort};
 
@@ -34,7 +35,7 @@ async fn qualify(plan: bool) {
 	let address = listener.local_addr().expect("native task model fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

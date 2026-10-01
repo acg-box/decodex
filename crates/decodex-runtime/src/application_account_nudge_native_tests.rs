@@ -3,8 +3,8 @@
 #[path = "application_account_nudge_socket_tests.rs"] mod socket;
 
 use std::{
-	env, fs,
-	fs::OpenOptions,
+	env,
+	fs::{self, OpenOptions},
 	io::Write as _,
 	os::unix::fs::OpenOptionsExt as _,
 	path::{Path, PathBuf},
@@ -17,8 +17,9 @@ use serde_json::json;
 use tokio::{sync::Notify, task, time};
 
 use crate::{
-	account_launch,
-	account_launch::{AttestedAppServerProfile, RunnerCapacity, process::native_control_tests},
+	account_launch::{
+		self, AttestedAppServerProfile, RunnerCapacity, process::native_control_tests,
+	},
 	account_observation::AccountObservationService,
 	account_service::{
 		AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,

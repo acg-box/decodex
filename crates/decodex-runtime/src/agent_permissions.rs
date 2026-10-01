@@ -188,6 +188,10 @@ fn outcome(value: &str) -> Option<decodex_protocol::AgentPermissionOutcome> {
 	}
 }
 
+fn review_token(identity: &serde_json::Value) -> String {
+	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
 async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let k = &source.key;
 
@@ -319,8 +323,4 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			last_outcome,
 		},
 	})
-}
-
-fn review_token(identity: &serde_json::Value) -> String {
-	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
