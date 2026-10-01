@@ -2,9 +2,8 @@
 use gpui::{AnyElement, KeyDownEvent, Task};
 
 use crate::settings_surface::{
-	BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
-	SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, div, px, rgb, rgba,
-	switch_knob, ui_theme,
+	self, BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
+	SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, ui_theme,
 };
 
 #[derive(Default)]
@@ -68,7 +67,7 @@ impl SettingsSurface {
 
 	pub(super) fn power_control(&self, cx: &mut Context<Self>) -> AnyElement {
 		if !cfg!(target_os = "macos") {
-			return div().into_any_element();
+			return settings_surface::div().into_any_element();
 		}
 
 		let enabled = self.power.enabled.unwrap_or(false);
@@ -77,35 +76,52 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.px_0()
 			.child(
-				div().flex_1().flex().flex_col().gap(px(3.)).child("Prevent system sleep").child(
-					div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child(
-						"Applies to this Mac on power and battery, even after quitting Decodex.",
+				settings_surface::div()
+					.flex_1()
+					.flex()
+					.flex_col()
+					.gap(settings_surface::px(3.))
+					.child("Prevent system sleep")
+					.child(
+						settings_surface::div()
+							.text_size(settings_surface::px(11.))
+							.text_color(settings_surface::rgb(TEXT_MUTED))
+							.child(
+								"Applies to this Mac on power and battery, even after quitting Decodex.",
+							),
 					),
-				),
 			)
 			.child(
-				div()
+				settings_surface::div()
 					.id("prevent-system-sleep")
 					.debug_selector(|| "prevent-system-sleep".into())
 					.role(Role::Switch)
 					.aria_label("Prevent system sleep")
 					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 					.tab_index(if interactive { 0 } else { -1 })
-					.w(px(36.))
-					.h(px(20.))
-					.p(px(2.))
+					.w(settings_surface::px(36.))
+					.h(settings_surface::px(20.))
+					.p(settings_surface::px(2.))
 					.flex()
 					.items_center()
 					.rounded_full()
 					.border_1()
-					.border_color(rgb(if enabled { BLUE } else { LINE }))
-					.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+					.border_color(settings_surface::rgb(if enabled { BLUE } else { LINE }))
+					.bg(if enabled {
+						settings_surface::rgba(0x8baaf730)
+					} else {
+						settings_surface::rgba(0xffffff0c)
+					})
 					.opacity(if interactive { 1. } else { 0.58 })
 					.when(interactive, |toggle| {
 						toggle
 							.cursor_pointer()
 							.hover(move |d| {
-								d.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+								d.border_color(settings_surface::rgb(if enabled {
+									BLUE
+								} else {
+									TEXT_MUTED
+								}))
 							})
 							.on_click(
 								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
@@ -117,14 +133,13 @@ impl SettingsSurface {
 								}
 							}))
 					})
-					.child(switch_knob(
+					.child(settings_surface::switch_knob(
 						"power-sleep-knob",
 						enabled,
-						div().size(px(14.)).rounded_full().bg(rgb(if enabled {
-							BLUE
-						} else {
-							TEXT_MUTED
-						})),
+						settings_surface::div()
+							.size(settings_surface::px(14.))
+							.rounded_full()
+							.bg(settings_surface::rgb(if enabled { BLUE } else { TEXT_MUTED })),
 					)),
 			)
 			.into_any_element()
@@ -209,16 +224,16 @@ fn set(_: bool) -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings_surface::power::*;
+	use crate::settings_surface::power;
 
 	#[test]
 	fn reads_only_the_global_sleep_policy() {
 		assert_eq!(
-			parse_sleep_disabled("System-wide power settings:\n SleepDisabled\t1\n sleep 0"),
+			power::parse_sleep_disabled("System-wide power settings:\n SleepDisabled\t1\n sleep 0"),
 			Ok(true)
 		);
-		assert_eq!(parse_sleep_disabled("SleepDisabled 0\n sleep 1"), Ok(false));
-		assert!(parse_sleep_disabled("sleep 0 (prevented by ChatGPT)").is_err());
-		assert!(parse_sleep_disabled("SleepDisabled unknown").is_err());
+		assert_eq!(power::parse_sleep_disabled("SleepDisabled 0\n sleep 1"), Ok(false));
+		assert!(power::parse_sleep_disabled("sleep 0 (prevented by ChatGPT)").is_err());
+		assert!(power::parse_sleep_disabled("SleepDisabled unknown").is_err());
 	}
 }

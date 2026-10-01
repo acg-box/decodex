@@ -7,9 +7,8 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window, div,
-	prelude::{InteractiveElement, ParentElement, Styled},
-	px, rgb, rgba,
+	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window,
+	prelude::{InteractiveElement as _, ParentElement as _, Styled as _},
 };
 use libc::{c_char, time_t, tm};
 
@@ -76,43 +75,43 @@ impl RenderOnce for QuotaMeter {
 
 		let color = if observed.is_some() { quota_color(value) } else { WB_TEXT_FAINT };
 
-		div()
+		gpui::div()
 			.flex_1()
 			.min_w_0()
 			.flex()
 			.items_center()
-			.gap(px(4.))
+			.gap(gpui::px(4.))
 			.font_family(FONT_FAMILY)
-			.text_size(px(10.))
-			.text_color(rgb(WB_TEXT_FAINT))
-			.child(div().w(px(15.)).flex_none().child(self.label))
+			.text_size(gpui::px(10.))
+			.text_color(gpui::rgb(WB_TEXT_FAINT))
+			.child(gpui::div().w(gpui::px(15.)).flex_none().child(self.label))
 			.child(
-				div()
-					.h(px(3.))
+				gpui::div()
+					.h(gpui::px(3.))
 					.flex_1()
 					.min_w_0()
 					.rounded_full()
-					.bg(rgba(0xffffff0c))
+					.bg(gpui::rgba(0xffffff0c))
 					.opacity(if observed.is_some() { 1. } else { 0. })
 					.child(
-						div()
+						gpui::div()
 							.h_full()
 							.w(gpui::relative(value / 100.))
 							.rounded_full()
-							.bg(rgb(color)),
+							.bg(gpui::rgb(color)),
 					),
 			)
 			.child(
-				div()
-					.w(px(28.))
+				gpui::div()
+					.w(gpui::px(28.))
 					.flex_none()
 					.text_right()
-					.text_color(rgb(color))
+					.text_color(gpui::rgb(color))
 					.child(observed.map(|_| format!("{value:.0}%")).unwrap_or_else(|| "—".into())),
 			)
 			.child(
-				div()
-					.w(px(80.))
+				gpui::div()
+					.w(gpui::px(80.))
 					.flex_none()
 					.text_right()
 					.whitespace_nowrap()
@@ -140,6 +139,7 @@ pub(super) fn local_date_time(seconds: i64) -> Option<String> {
 	let seconds: time_t = seconds;
 	let mut local = MaybeUninit::<tm>::uninit();
 	let mut output = [0 as c_char; 64];
+
 	// libc applies the host time zone, including the offset at the reset date.
 	unsafe {
 		if libc::localtime_r(&seconds, local.as_mut_ptr()).is_null() {
@@ -199,7 +199,10 @@ fn reset_time(micros: i64) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::quota_meter::*;
+	use std::time::{Duration, Instant};
+
+	use crate::shell::quota_meter::{self, FILL_DURATION, ResetFill};
+	use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto, EntityRevision};
 	#[test]
 	fn quota_bands_match_the_menu_bar_contract() {
 		let cases: serde_json::Value = serde_json::from_str(include_str!(
@@ -209,7 +212,7 @@ mod tests {
 
 		for case in cases.as_array().unwrap() {
 			assert_eq!(
-				quota_tone(case["remaining"].as_f64().unwrap() as f32),
+				quota_meter::quota_tone(case["remaining"].as_f64().unwrap() as f32),
 				case["tone"].as_str().unwrap()
 			);
 		}
@@ -228,14 +231,15 @@ mod tests {
 	#[test]
 	fn percentage_and_bar_value_fill_smoothly_without_overshoot() {
 		for start in [0., 36., 72., 100.] {
-			assert_eq!(fill_value(start, Duration::ZERO), start);
+			assert_eq!(quota_meter::fill_value(start, Duration::ZERO), start);
 
-			let samples: Vec<_> =
-				(0..=100).map(|step| fill_value(start, Duration::from_millis(step * 10))).collect();
+			let samples: Vec<_> = (0..=100)
+				.map(|step| quota_meter::fill_value(start, Duration::from_millis(step * 10)))
+				.collect();
 
 			assert!(samples.windows(2).all(|pair| pair[0] <= pair[1]));
 			assert!(samples.iter().all(|value| *value >= start && *value <= 100.));
-			assert_eq!(fill_value(start, FILL_DURATION), 100.);
+			assert_eq!(quota_meter::fill_value(start, FILL_DURATION), 100.);
 		}
 	}
 	#[test]
@@ -251,7 +255,7 @@ mod tests {
 		assert_eq!(fill.remaining(quota(0, 11), started, false), Some(36.));
 		assert_eq!(fill.remaining(quota(64, 1), started + FILL_DURATION, false), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started + FILL_DURATION, false), None);
-		assert_eq!(remaining(quota(1, 11)), Some(99.));
+		assert_eq!(quota_meter::remaining(quota(1, 11)), Some(99.));
 		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
 
