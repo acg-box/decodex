@@ -408,6 +408,13 @@ mod tests {
 		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 	};
 
+	const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
+	const OPERATION_ONE: &str = "20000000-0000-4000-8000-000000000001";
+	const OPERATION_TWO: &str = "20000000-0000-4000-8000-000000000002";
+	const OPERATION_THREE: &str = "20000000-0000-4000-8000-000000000003";
+	const DIGEST_ONE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+	const DIGEST_TWO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
 	pub(crate) async fn bound_agent_store(path: &Path) -> SqliteStore {
 		let store = SqliteStore::open_test(path).unwrap();
 
@@ -432,13 +439,6 @@ mod tests {
 
 		store
 	}
-
-	const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
-	const OPERATION_ONE: &str = "20000000-0000-4000-8000-000000000001";
-	const OPERATION_TWO: &str = "20000000-0000-4000-8000-000000000002";
-	const OPERATION_THREE: &str = "20000000-0000-4000-8000-000000000003";
-	const DIGEST_ONE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-	const DIGEST_TWO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 	fn fixture_key(version: u64, digest: &str, operation: &str) -> CredentialKey {
 		CredentialKey {
@@ -620,90 +620,78 @@ mod tests {
 		assert_eq!(store.read_credential(ACCOUNT).expect("read rotated").key, second);
 	}
 
+	#[test]
+	fn foreign_keys_reject_an_unowned_execution_edge() {
+		let directory = tempfile::tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let result = store.with_connection(|connection| {
+			connection
+				.execute(
+					"INSERT INTO turns (
+					   turn_id, conversation_id, sequence, role, possible_side_effects,
+					   status, revision, created_at_micros, updated_at_micros
+					 ) VALUES (
+					   '30000000-0000-4000-8000-000000000001',
+					   '40000000-0000-4000-8000-000000000001',
+					   1, 'user', 'none', 'active', 1, 1, 1
+					 )",
+					[],
+				)
+				.map(|_| ())
+				.map_err(error::sqlite_error)
+		});
+
+		assert_eq!(result, Err(DatabaseError::Unavailable));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn database_and_wal_files_are_owner_private_and_symlink_open_is_rejected() {
+		let directory = tempfile::tempdir().expect("temporary directory");
+
+		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+			.expect("private temporary directory");
+
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+
+		assert_eq!(path.metadata().expect("database metadata").mode() & 0o777, 0o600);
+
+		store
+			.with_connection(|connection| {
+				connection.execute_batch("BEGIN IMMEDIATE; COMMIT;").map_err(error::sqlite_error)
+			})
+			.expect("touch WAL");
+
+		let wal = path.with_file_name("decodex.sqlite3-wal");
+
+		if wal.exists() {
+			assert_eq!(wal.metadata().expect("WAL metadata").mode() & 0o077, 0);
+		}
+
+		drop(store);
+
+		let link = directory.path().join("linked.sqlite3");
+
+		unix::fs::symlink(&path, &link).expect("create symlink");
+
+		assert!(
+			Connection::open_with_flags(
+				&link,
+				rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+					| rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+			)
+			.is_err()
+		);
+	}
+
 	#[tokio::test]
-	#[allow(clippy::too_many_lines)] // One full persistence-and-reopen contract is easier to audit together.
 	async fn account_lifecycle_routing_receipts_and_restart_are_durable() {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
-		let (account_id, operation_id, provider, binding) = account_fixture();
-
-		assert!(
-			store
-				.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
-					build_identity: "codex-test-build".to_owned(),
-					executable_sha256: DIGEST_ONE.to_owned(),
-					schema_sha256: DIGEST_TWO.to_owned(),
-					callback_profile_sha256: DIGEST_ONE.to_owned(),
-					login_chatgpt_auth_tokens: true,
-					refresh_callback: true,
-				})
-				.await
-				.expect("attest capability")
-		);
-
-		let prepared = store
-			.prepare_account_operation(&AccountOperationPreparation {
-				operation_id: operation_id.clone(),
-				account_id: account_id.clone(),
-				kind: AccountOperationKind::Enroll,
-				display_label: Some("Primary".to_owned()),
-				enabled: Some(true),
-				expected_account_revision: None,
-				expected: None,
-				target: Some(binding.clone()),
-				provider,
-			})
-			.await
-			.expect("prepare account operation");
-
-		assert!(matches!(
-			prepared,
-			AccountLifecycleMutationOutcome::Applied(ref mutation)
-				if mutation.account_revision == 0
-					&& mutation.phase == AccountOperationPhase::Prepared
-		));
-
-		store
-			.create_credential(CredentialRecord {
-				key: fixture_key(1, DIGEST_ONE, OPERATION_ONE),
-				payload: Zeroizing::new(b"opaque-test-bundle".to_vec()),
-			})
-			.expect("write exact credential");
-
-		let applied = store
-			.advance_account_operation(
-				&operation_id,
-				AccountOperationPhase::Prepared,
-				AccountOperationPhase::StoreApplied,
-				None,
-			)
-			.await
-			.expect("record credential effect");
-
-		assert!(matches!(
-			applied,
-			AccountLifecycleMutationOutcome::Applied(ref mutation)
-				if mutation.phase == AccountOperationPhase::StoreApplied
-		));
-
-		let committed = store
-			.advance_account_operation(
-				&operation_id,
-				AccountOperationPhase::StoreApplied,
-				AccountOperationPhase::Committed,
-				None,
-			)
-			.await
-			.expect("commit account registry");
-
-		assert!(matches!(
-			committed,
-			AccountLifecycleMutationOutcome::Applied(ref mutation)
-				if mutation.account_revision == 1
-					&& mutation.phase == AccountOperationPhase::Committed
-		));
-
+		let account_id = enroll_lifecycle_fixture(&store).await;
 		let (accounts, routing) =
 			store.read_account_registry_snapshot(512).await.expect("read account registry");
 
@@ -754,57 +742,7 @@ mod tests {
 			.await
 			.expect("observe quota fact");
 
-		let command = CommandIdentity::new("account-command-one", b"enable primary")
-			.expect("command identity");
-		let lease = match store
-			.reserve_account_command(
-				&command,
-				AccountCommandKind::SetEnabled,
-				account_id.as_str(),
-				Some(1),
-			)
-			.await
-			.expect("reserve command")
-		{
-			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
-				panic!("new command replayed")
-			},
-		};
-		let response = serde_json::json!({ "status": "ok", "revision": 1 });
-
-		store.complete_account_command(lease, &response).await.expect("complete command");
-
-		match store
-			.reserve_account_command(
-				&command,
-				AccountCommandKind::SetEnabled,
-				account_id.as_str(),
-				Some(1),
-			)
-			.await
-			.expect("replay command")
-		{
-			AccountCommandReceiptClaim::Replayed(actual) => assert_eq!(actual, response),
-			AccountCommandReceiptClaim::Owned(_) | AccountCommandReceiptClaim::Pending(_) => {
-				panic!("completed command was reclaimed")
-			},
-		}
-
-		let conflicting = CommandIdentity::new("account-command-one", b"disable primary")
-			.expect("conflicting command identity");
-
-		assert!(matches!(
-			store
-				.reserve_account_command(
-					&conflicting,
-					AccountCommandKind::SetEnabled,
-					account_id.as_str(),
-					Some(1),
-				)
-				.await,
-			Err(StoreError::IdempotencyConflict)
-		));
+		verify_account_command_replay(&store, &account_id).await;
 
 		let diagnostic_command = CommandIdentity::new("route-read-failure", b"route").unwrap();
 		let AccountCommandReceiptClaim::Owned(lease) = store
@@ -888,11 +826,242 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[allow(clippy::too_many_lines)] // One complete persisted takeover regression is easier to audit than split fixture phases.
 	async fn verified_reauthentication_can_replace_a_targetless_ambiguous_refresh() {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let (account_id, provider, current, ambiguous_id) = seed_ambiguous_refresh(&store).await;
+		let reauthentication_id =
+			AccountOperationId::new(OPERATION_THREE).expect("reauthentication operation");
+		let target = CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(2).expect("successor credential version"),
+			fingerprint: CredentialFingerprint::new(DIGEST_TWO).expect("target fingerprint"),
+			provider: provider.clone(),
+			writer_operation_id: reauthentication_id.clone(),
+		};
+		let prepared = store
+			.prepare_account_reauthentication_takeover(
+				&AccountOperationPreparation {
+					operation_id: reauthentication_id.clone(),
+					account_id,
+					kind: AccountOperationKind::Refresh,
+					display_label: None,
+					enabled: None,
+					expected_account_revision: Some(1),
+					expected: Some(current),
+					target: Some(target.clone()),
+					provider,
+				},
+				&ambiguous_id,
+			)
+			.await
+			.expect("prepare verified reauthentication");
+
+		assert!(matches!(
+			prepared,
+			AccountLifecycleMutationOutcome::Applied(ref mutation)
+				if mutation.phase == AccountOperationPhase::Prepared
+		));
+
+		let ambiguity_before_effect = store
+			.read_account_operation(&ambiguous_id)
+			.await
+			.expect("read pre-effect ambiguity")
+			.expect("pre-effect ambiguity remains durable");
+
+		assert!(ambiguity_before_effect.superseded_by_operation_id.is_none());
+		assert!(
+			store
+				.read_account_registry(None, 512)
+				.await
+				.expect("read pre-effect account")
+				.pop()
+				.expect("pre-effect account remains present")
+				.unsettled_operation
+				.is_some()
+		);
+
+		commit_reauthentication_fixture(&store, &reauthentication_id).await;
+
+		let ambiguity = store
+			.read_account_operation(&ambiguous_id)
+			.await
+			.expect("read ambiguity")
+			.expect("ambiguity remains durable");
+
+		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
+		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
+		assert_eq!(ambiguity.target, None);
+		assert_eq!(ambiguity.superseded_by_operation_id, Some(reauthentication_id.clone()));
+
+		let takeover = store
+			.read_account_operation(&reauthentication_id)
+			.await
+			.expect("read takeover")
+			.expect("takeover remains durable");
+
+		assert_eq!(takeover.recovery_operation_id, Some(ambiguous_id));
+		assert_eq!(takeover.target, Some(target.clone()));
+
+		let account = store
+			.read_account_registry(None, 512)
+			.await
+			.expect("read settled account")
+			.pop()
+			.expect("account remains present");
+
+		assert_eq!(account.revision, 2);
+		assert_eq!(account.credential, Some(target));
+		assert!(account.unsettled_operation.is_none());
+		assert!(
+			store
+				.read_unsettled_account_operations(512)
+				.await
+				.expect("read unsettled operations")
+				.is_empty()
+		);
+	}
+
+	async fn enroll_lifecycle_fixture(store: &SqliteStore) -> AccountId {
+		let (account_id, operation_id, provider, binding) = account_fixture();
+
+		assert!(
+			store
+				.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
+					build_identity: "codex-test-build".to_owned(),
+					executable_sha256: DIGEST_ONE.to_owned(),
+					schema_sha256: DIGEST_TWO.to_owned(),
+					callback_profile_sha256: DIGEST_ONE.to_owned(),
+					login_chatgpt_auth_tokens: true,
+					refresh_callback: true,
+				})
+				.await
+				.expect("attest capability")
+		);
+
+		let prepared = store
+			.prepare_account_operation(&AccountOperationPreparation {
+				operation_id: operation_id.clone(),
+				account_id: account_id.clone(),
+				kind: AccountOperationKind::Enroll,
+				display_label: Some("Primary".to_owned()),
+				enabled: Some(true),
+				expected_account_revision: None,
+				expected: None,
+				target: Some(binding.clone()),
+				provider,
+			})
+			.await
+			.expect("prepare account operation");
+
+		assert!(matches!(
+			prepared,
+			AccountLifecycleMutationOutcome::Applied(ref mutation)
+				if mutation.account_revision == 0
+					&& mutation.phase == AccountOperationPhase::Prepared
+		));
+
+		store
+			.create_credential(CredentialRecord {
+				key: fixture_key(1, DIGEST_ONE, OPERATION_ONE),
+				payload: Zeroizing::new(b"opaque-test-bundle".to_vec()),
+			})
+			.expect("write exact credential");
+
+		let applied = store
+			.advance_account_operation(
+				&operation_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record credential effect");
+
+		assert!(matches!(
+			applied,
+			AccountLifecycleMutationOutcome::Applied(ref mutation)
+				if mutation.phase == AccountOperationPhase::StoreApplied
+		));
+
+		let committed = store
+			.advance_account_operation(
+				&operation_id,
+				AccountOperationPhase::StoreApplied,
+				AccountOperationPhase::Committed,
+				None,
+			)
+			.await
+			.expect("commit account registry");
+
+		assert!(matches!(
+			committed,
+			AccountLifecycleMutationOutcome::Applied(ref mutation)
+				if mutation.account_revision == 1
+					&& mutation.phase == AccountOperationPhase::Committed
+		));
+
+		account_id
+	}
+
+	async fn verify_account_command_replay(store: &SqliteStore, account_id: &AccountId) {
+		let command = CommandIdentity::new("account-command-one", b"enable primary")
+			.expect("command identity");
+		let lease = match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::SetEnabled,
+				account_id.as_str(),
+				Some(1),
+			)
+			.await
+			.expect("reserve command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("new command replayed")
+			},
+		};
+		let response = serde_json::json!({ "status": "ok", "revision": 1 });
+
+		store.complete_account_command(lease, &response).await.expect("complete command");
+
+		match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::SetEnabled,
+				account_id.as_str(),
+				Some(1),
+			)
+			.await
+			.expect("replay command")
+		{
+			AccountCommandReceiptClaim::Replayed(actual) => assert_eq!(actual, response),
+			AccountCommandReceiptClaim::Owned(_) | AccountCommandReceiptClaim::Pending(_) => {
+				panic!("completed command was reclaimed")
+			},
+		}
+
+		let conflicting = CommandIdentity::new("account-command-one", b"disable primary")
+			.expect("conflicting command identity");
+
+		assert!(matches!(
+			store
+				.reserve_account_command(
+					&conflicting,
+					AccountCommandKind::SetEnabled,
+					account_id.as_str(),
+					Some(1),
+				)
+				.await,
+			Err(StoreError::IdempotencyConflict)
+		));
+	}
+
+	async fn seed_ambiguous_refresh(
+		store: &SqliteStore,
+	) -> (AccountId, ProviderIdentity, CredentialBinding, AccountOperationId) {
 		let (account_id, enrollment_id, provider, current) = account_fixture();
 
 		store
@@ -969,57 +1138,13 @@ mod tests {
 			.await
 			.expect("preserve ambiguous provider effect");
 
-		let reauthentication_id =
-			AccountOperationId::new(OPERATION_THREE).expect("reauthentication operation");
-		let target = CredentialBinding {
-			schema_version: CredentialStoreSchemaVersion::V1,
-			version: CredentialVersion::new(2).expect("successor credential version"),
-			fingerprint: CredentialFingerprint::new(DIGEST_TWO).expect("target fingerprint"),
-			provider: provider.clone(),
-			writer_operation_id: reauthentication_id.clone(),
-		};
-		let prepared = store
-			.prepare_account_reauthentication_takeover(
-				&AccountOperationPreparation {
-					operation_id: reauthentication_id.clone(),
-					account_id,
-					kind: AccountOperationKind::Refresh,
-					display_label: None,
-					enabled: None,
-					expected_account_revision: Some(1),
-					expected: Some(current),
-					target: Some(target.clone()),
-					provider,
-				},
-				&ambiguous_id,
-			)
-			.await
-			.expect("prepare verified reauthentication");
+		(account_id, provider, current, ambiguous_id)
+	}
 
-		assert!(matches!(
-			prepared,
-			AccountLifecycleMutationOutcome::Applied(ref mutation)
-				if mutation.phase == AccountOperationPhase::Prepared
-		));
-
-		let ambiguity_before_effect = store
-			.read_account_operation(&ambiguous_id)
-			.await
-			.expect("read pre-effect ambiguity")
-			.expect("pre-effect ambiguity remains durable");
-
-		assert!(ambiguity_before_effect.superseded_by_operation_id.is_none());
-		assert!(
-			store
-				.read_account_registry(None, 512)
-				.await
-				.expect("read pre-effect account")
-				.pop()
-				.expect("pre-effect account remains present")
-				.unsettled_operation
-				.is_some()
-		);
-
+	async fn commit_reauthentication_fixture(
+		store: &SqliteStore,
+		reauthentication_id: &AccountOperationId,
+	) {
 		store
 			.rotate_credential(
 				&fixture_key(1, DIGEST_ONE, OPERATION_ONE),
@@ -1031,7 +1156,7 @@ mod tests {
 			.expect("replace exact current credential");
 		store
 			.advance_account_operation(
-				&reauthentication_id,
+				reauthentication_id,
 				AccountOperationPhase::Prepared,
 				AccountOperationPhase::StoreApplied,
 				None,
@@ -1040,116 +1165,12 @@ mod tests {
 			.expect("record verified credential effect");
 		store
 			.advance_account_operation(
-				&reauthentication_id,
+				reauthentication_id,
 				AccountOperationPhase::StoreApplied,
 				AccountOperationPhase::Committed,
 				None,
 			)
 			.await
 			.expect("commit verified reauthentication");
-
-		let ambiguity = store
-			.read_account_operation(&ambiguous_id)
-			.await
-			.expect("read ambiguity")
-			.expect("ambiguity remains durable");
-
-		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
-		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
-		assert_eq!(ambiguity.target, None);
-		assert_eq!(ambiguity.superseded_by_operation_id, Some(reauthentication_id.clone()));
-
-		let takeover = store
-			.read_account_operation(&reauthentication_id)
-			.await
-			.expect("read takeover")
-			.expect("takeover remains durable");
-
-		assert_eq!(takeover.recovery_operation_id, Some(ambiguous_id));
-		assert_eq!(takeover.target, Some(target.clone()));
-
-		let account = store
-			.read_account_registry(None, 512)
-			.await
-			.expect("read settled account")
-			.pop()
-			.expect("account remains present");
-
-		assert_eq!(account.revision, 2);
-		assert_eq!(account.credential, Some(target));
-		assert!(account.unsettled_operation.is_none());
-		assert!(
-			store
-				.read_unsettled_account_operations(512)
-				.await
-				.expect("read unsettled operations")
-				.is_empty()
-		);
-	}
-
-	#[test]
-	fn foreign_keys_reject_an_unowned_execution_edge() {
-		let directory = tempfile::tempdir().expect("temporary directory");
-		let path = directory.path().join("decodex.sqlite3");
-		let store = SqliteStore::open_test(&path).expect("initialize store");
-		let result = store.with_connection(|connection| {
-			connection
-				.execute(
-					"INSERT INTO turns (
-					   turn_id, conversation_id, sequence, role, possible_side_effects,
-					   status, revision, created_at_micros, updated_at_micros
-					 ) VALUES (
-					   '30000000-0000-4000-8000-000000000001',
-					   '40000000-0000-4000-8000-000000000001',
-					   1, 'user', 'none', 'active', 1, 1, 1
-					 )",
-					[],
-				)
-				.map(|_| ())
-				.map_err(error::sqlite_error)
-		});
-
-		assert_eq!(result, Err(DatabaseError::Unavailable));
-	}
-
-	#[cfg(unix)]
-	#[test]
-	fn database_and_wal_files_are_owner_private_and_symlink_open_is_rejected() {
-		let directory = tempfile::tempdir().expect("temporary directory");
-
-		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
-			.expect("private temporary directory");
-
-		let path = directory.path().join("decodex.sqlite3");
-		let store = SqliteStore::open_test(&path).expect("initialize store");
-
-		assert_eq!(path.metadata().expect("database metadata").mode() & 0o777, 0o600);
-
-		store
-			.with_connection(|connection| {
-				connection.execute_batch("BEGIN IMMEDIATE; COMMIT;").map_err(error::sqlite_error)
-			})
-			.expect("touch WAL");
-
-		let wal = path.with_file_name("decodex.sqlite3-wal");
-
-		if wal.exists() {
-			assert_eq!(wal.metadata().expect("WAL metadata").mode() & 0o077, 0);
-		}
-
-		drop(store);
-
-		let link = directory.path().join("linked.sqlite3");
-
-		unix::fs::symlink(&path, &link).expect("create symlink");
-
-		assert!(
-			Connection::open_with_flags(
-				&link,
-				rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-					| rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
-			)
-			.is_err()
-		);
 	}
 }
