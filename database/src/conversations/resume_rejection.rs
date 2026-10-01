@@ -3,8 +3,8 @@ use decodex_core::{ConversationId, HistoryItemId, RuntimeSessionId, TurnId};
 use rusqlite::{TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
-use super::{incompatible, read_receipt, sql_error, touch_conversation, write_receipt};
-use crate::{CommandIdentity, SqliteStore, StoreError, unix_micros};
+use super::{incompatible, read_receipt, touch_conversation, write_receipt};
+use crate::{CommandIdentity, SqliteStore, StoreError, account_lifecycle, unix_micros};
 
 /// Closed, non-sensitive cause established by the native resume response.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -89,14 +89,14 @@ impl SqliteStore {
 
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(receipt) = read_receipt(&transaction, &command, "reject_conversation_resume", request.turn_id.as_str())? {
 				if receipt != request.history_item_id.as_str() {
 					return Err(incompatible("resume rejection receipt"));
 				}
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(());
 			}
@@ -112,7 +112,7 @@ impl SqliteStore {
 				 AND NOT EXISTS (SELECT 1 FROM provider_attempts WHERE turn_id = ?1)
 				 AND NOT EXISTS (SELECT 1 FROM history_items WHERE turn_id = ?1 AND status = 'streaming')",
 				params![request.turn_id.as_str(), request.conversation_id.as_str(), request.runtime_session_id.as_str(), request.expected_session_revision, request.thread_id, now],
-			).map_err(sql_error)?;
+			).map_err(account_lifecycle::sql_error)?;
 
 			if changed != 1 {
 				return Err(incompatible("resume rejection no longer owns an unsent turn"));
@@ -126,12 +126,12 @@ impl SqliteStore {
 				 VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items WHERE conversation_id = ?2),
 				 'status', 'user', 'failed', 'text/plain', ?4, ?5, 1, ?6, ?6)",
 				params![request.history_item_id.as_str(), request.conversation_id.as_str(), request.turn_id.as_str(), request.reason.diagnostic(), metadata, now],
-			).map_err(sql_error)?;
+			).map_err(account_lifecycle::sql_error)?;
 
 			touch_conversation(&transaction, &request.conversation_id, now)?;
 			write_receipt(&transaction, &command, "reject_conversation_resume", request.turn_id.as_str(), request.history_item_id.as_str(), now)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(())
 		}).await

@@ -1,6 +1,5 @@
 //! Source-bound native response observations, separate from requested execution settings.
-use super::sql_error;
-use crate::{SqliteStore, StoreError, unix_micros};
+use crate::{SqliteStore, StoreError, account_lifecycle, unix_micros};
 use decodex_core::{ProcessGenerationId, RuntimeSessionId};
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -72,7 +71,7 @@ impl SqliteStore {
 			.map_err(|_| StoreError::InvalidInput("invalid native settings encoding"))?;
 
 		self.run(move |connection| {
-            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(account_lifecycle::sql_error)?;
             let owner: Option<(String,i64,String)> = tx.query_row(
                 "SELECT p.account_id,p.account_revision,s.conversation_id FROM runtime_sessions s
                  JOIN conversations c USING(conversation_id)
@@ -84,12 +83,12 @@ impl SqliteStore {
                    AND p.account_id=s.account_id AND a.revision=p.account_revision",
                 params![input.runtime_session_id.as_str(),input.expected_session_revision,input.codex_thread_id,input.process_generation_id.as_str(),input.expected_process_revision],
                 |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
-            ).optional().map_err(sql_error)?;
+            ).optional().map_err(account_lifecycle::sql_error)?;
             let Some((account,revision,conversation)) = owner else { return Ok(false); };
             let prior: Option<(String,i64,String,String,i64)> = tx.query_row(
                 "SELECT process_generation_id,response_id,response_sha256,settings_json,observed_at_micros FROM conversation_native_settings WHERE runtime_session_id=?1",
                 [input.runtime_session_id.as_str()], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
-            ).optional().map_err(sql_error)?;
+            ).optional().map_err(account_lifecycle::sql_error)?;
 
             if let Some((generation,id,digest,json,_)) = &prior {
                 if generation == input.process_generation_id.as_str() {
@@ -97,7 +96,7 @@ impl SqliteStore {
                         return Ok(*id == input.response_id && digest == &input.response_sha256 && json == &settings);
                     }
                 } else {
-                    let dead: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations p JOIN process_generation_death_evidence d ON d.generation_id=p.generation_id AND d.evidence_id=p.death_evidence_id WHERE p.generation_id=?1 AND p.state='dead')", [generation], |r|r.get(0)).map_err(sql_error)?;
+                    let dead: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations p JOIN process_generation_death_evidence d ON d.generation_id=p.generation_id AND d.evidence_id=p.death_evidence_id WHERE p.generation_id=?1 AND p.state='dead')", [generation], |r|r.get(0)).map_err(account_lifecycle::sql_error)?;
 
                     if !dead { return Ok(false); }
                 }
@@ -108,9 +107,9 @@ impl SqliteStore {
             tx.execute("INSERT INTO conversation_native_settings(runtime_session_id,codex_thread_id,process_generation_id,process_generation_revision,account_id,account_revision,response_id,response_sha256,settings_json,observed_at_micros)
                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
                 ON CONFLICT(runtime_session_id) DO UPDATE SET codex_thread_id=excluded.codex_thread_id,process_generation_id=excluded.process_generation_id,process_generation_revision=excluded.process_generation_revision,account_id=excluded.account_id,account_revision=excluded.account_revision,response_id=excluded.response_id,response_sha256=excluded.response_sha256,settings_json=excluded.settings_json,observed_at_micros=excluded.observed_at_micros",
-                params![input.runtime_session_id.as_str(),input.codex_thread_id,input.process_generation_id.as_str(),input.expected_process_revision,account,revision,input.response_id,input.response_sha256,settings,now]).map_err(sql_error)?;
-            tx.execute("UPDATE conversations SET updated_at_micros=MAX(updated_at_micros+1,?2) WHERE conversation_id=?1", params![conversation,now]).map_err(sql_error)?;
-            tx.commit().map_err(sql_error)?;
+                params![input.runtime_session_id.as_str(),input.codex_thread_id,input.process_generation_id.as_str(),input.expected_process_revision,account,revision,input.response_id,input.response_sha256,settings,now]).map_err(account_lifecycle::sql_error)?;
+            tx.execute("UPDATE conversations SET updated_at_micros=MAX(updated_at_micros+1,?2) WHERE conversation_id=?1", params![conversation,now]).map_err(account_lifecycle::sql_error)?;
+            tx.commit().map_err(account_lifecycle::sql_error)?;
 
             Ok(true)
         }).await
@@ -136,7 +135,7 @@ pub(super) fn read(
          FROM conversation_native_settings n JOIN runtime_sessions s USING(runtime_session_id)
          WHERE n.runtime_session_id=?1 AND n.codex_thread_id=?2 AND s.codex_thread_id=n.codex_thread_id AND s.account_id=n.account_id",
         params![session,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
-    ).optional().map_err(sql_error)?;
+    ).optional().map_err(account_lifecycle::sql_error)?;
 
 	row.map(|(json, time, generation, account, revision)| {
 		let settings: ConversationNativeSettings = serde_json::from_str(&json)
