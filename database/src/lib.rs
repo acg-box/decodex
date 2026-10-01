@@ -222,12 +222,14 @@ impl SqliteStore {
 	fn open_verified(path: PathBuf, guard: File) -> Result<Self, DatabaseError> {
 		let before = guard.metadata().map_err(|_| DatabaseError::UnsafePath)?;
 		let sqlite_path = path.canonicalize().map_err(|_| DatabaseError::UnsafePath)?;
-		let mut connection = open_connection(&sqlite_path)?;
+		let connection = open_connection(&sqlite_path)?;
 		let after = path.metadata().map_err(|_| DatabaseError::UnsafePath)?;
 
 		if before.dev() != after.dev() || before.ino() != after.ino() || after.nlink() != 1 {
 			return Err(DatabaseError::UnsafePath);
 		}
+
+		let mut connection = connection;
 
 		migrations::configure(&connection)?;
 		migrations::migrate(&mut connection)?;
