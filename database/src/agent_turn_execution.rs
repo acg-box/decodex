@@ -1,9 +1,10 @@
 //! Requested execution selection bound to one acknowledged native turn.
-use crate::{SqliteStore, StoreError, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, params};
+use rusqlite::{Connection, OptionalExtension as _};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+use crate::{SqliteStore, StoreError, error};
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// Requested settings acknowledged for one exact native turn, not inference telemetry.
 pub struct AgentTurnExecution {
@@ -12,7 +13,6 @@ pub struct AgentTurnExecution {
 	/// Requested effort; null is known unset.
 	pub effort: Option<String>,
 }
-
 impl AgentTurnExecution {
 	pub(crate) fn validate(&self) -> Result<(), StoreError> {
 		let valid = |s: &str, max| {
@@ -27,21 +27,6 @@ impl AgentTurnExecution {
 	}
 }
 
-pub(crate) fn record(
-	connection: &rusqlite::Connection,
-	work: &str,
-	thread: &str,
-	turn: &str,
-	execution: &AgentTurnExecution,
-) -> Result<(), StoreError> {
-	let payload = serde_json::json!({"threadId":thread,"turnId":turn,"execution":execution});
-	let source = serde_json::json!(["turn_execution", work, thread, turn]).to_string();
-
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'turn_execution',?3,?4,'resolved','Requested selection acknowledged; not inference telemetry.',?4)",params![source,work,payload.to_string(),unix_micros()?]).map_err(sqlite_error)?;
-
-	Ok(())
-}
-
 impl SqliteStore {
 	/// Read the requested selection for an exact work/thread/turn. Missing ACK is not evidence.
 	pub async fn agent_turn_execution(
@@ -51,7 +36,7 @@ impl SqliteStore {
 		turn: String,
 	) -> Result<Option<AgentTurnExecution>, StoreError> {
 		self.run(move |connection| {
-			let raw: Option<String> = connection.query_row("SELECT json_extract(e.payload,'$.execution') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE e.work_item_id=?1 AND w.codex_thread_id=?2 AND e.event_kind='turn_execution' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.turnId')=?3",params![work,thread,turn],|r|r.get(0)).optional().map_err(sqlite_error)?;
+			let raw: Option<String> = connection.query_row("SELECT json_extract(e.payload,'$.execution') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE e.work_item_id=?1 AND w.codex_thread_id=?2 AND e.event_kind='turn_execution' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.turnId')=?3",rusqlite::params![work,thread,turn],|r|r.get(0)).optional().map_err(error::sqlite_error)?;
 
 			raw.map(|s| {
 				let value: AgentTurnExecution = serde_json::from_str(&s).map_err(|_|StoreError::InvalidInput("invalid saved turn execution"))?;
@@ -60,4 +45,19 @@ impl SqliteStore {
 			}).transpose()
 		}).await
 	}
+}
+
+pub(crate) fn record(
+	connection: &Connection,
+	work: &str,
+	thread: &str,
+	turn: &str,
+	execution: &AgentTurnExecution,
+) -> Result<(), StoreError> {
+	let payload = serde_json::json!({"threadId":thread,"turnId":turn,"execution":execution});
+	let source = serde_json::json!(["turn_execution", work, thread, turn]).to_string();
+
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'turn_execution',?3,?4,'resolved','Requested selection acknowledged; not inference telemetry.',?4)",rusqlite::params![source,work,payload.to_string(),crate::unix_micros()?]).map_err(error::sqlite_error)?;
+
+	Ok(())
 }

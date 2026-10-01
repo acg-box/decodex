@@ -1,6 +1,8 @@
 //! Public summary parts share the bounded live-output owner, never the raw reasoning payload.
-use crate::{SqliteStore, StoreError, error::sqlite_error};
-use rusqlite::{OptionalExtension as _, params};
+use rusqlite::{OptionalExtension as _, TransactionBehavior};
+use serde_json::Value;
+
+use crate::{SqliteStore, StoreError, agent_process, error};
 
 pub enum AgentReasoningSummaryChange {
 	VoiceHandoff,
@@ -22,37 +24,37 @@ impl SqliteStore {
 		}
 
 		let changed = self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'", params![thread,turn], |row|row.get(0)).optional().map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'", rusqlite::params![thread,turn], |row|row.get(0)).optional().map_err(error::sqlite_error)?;
 			let Some(work) = work else { return Ok(false); };
 
-			if !crate::agent_process::owns_work(&tx, &work, generation.as_deref())? { return Ok(false); }
+			if !agent_process::owns_work(&tx, &work, generation.as_deref())? { return Ok(false); }
 
 			let voice_source = serde_json::json!(["reasoning_voice_handoff",work,turn]).to_string();
 
 			if matches!(change, AgentReasoningSummaryChange::VoiceHandoff) {
 				let now = crate::unix_micros()?;
-				let typed = tx.prepare("SELECT item_id FROM agent_live_output WHERE work_id=?1 AND turn_id=?2 AND kind='reasoningSummary'").map_err(sqlite_error)?
-					.query_map(params![work,turn], |row|row.get::<_, String>(0)).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+				let typed = tx.prepare("SELECT item_id FROM agent_live_output WHERE work_id=?1 AND turn_id=?2 AND kind='reasoningSummary'").map_err(error::sqlite_error)?
+					.query_map(rusqlite::params![work,turn], |row|row.get::<_, String>(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
 				let payload = serde_json::json!({"typedItemIds":typed}).to_string();
 
-				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'reasoning_voice_handoff',?5,?3,'resolved','Native voice provenance',?3,?2,?4) ON CONFLICT(source_event_id) DO NOTHING",params![voice_source,work,now,turn,payload]).map_err(sqlite_error)?;
-				tx.commit().map_err(sqlite_error)?;
+				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'reasoning_voice_handoff',?5,?3,'resolved','Native voice provenance',?3,?2,?4) ON CONFLICT(source_event_id) DO NOTHING",rusqlite::params![voice_source,work,now,turn,payload]).map_err(error::sqlite_error)?;
+				tx.commit().map_err(error::sqlite_error)?;
 
 				return Ok(true);
 			}
 
-			let prior: Option<(String, bool, bool, Option<String>)> = tx.query_row("SELECT kind,completed,truncated,summary_parts FROM agent_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional().map_err(sqlite_error)?;
+			let prior: Option<(String, bool, bool, Option<String>)> = tx.query_row("SELECT kind,completed,truncated,summary_parts FROM agent_live_output WHERE work_id=?1 AND turn_id=?2 AND item_id=?3", rusqlite::params![work,turn,item], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional().map_err(error::sqlite_error)?;
 
 			if prior.as_ref().is_some_and(|(kind, _, _, _)| kind != "reasoningSummary") {
 				return Err(StoreError::InvalidInput("live output kind changed"));
 			}
 			if prior.is_none() {
-				let delegated: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)", [voice_source], |row|row.get(0)).map_err(sqlite_error)?;
+				let delegated: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)", [voice_source], |row|row.get(0)).map_err(error::sqlite_error)?;
 
 				if delegated { return Ok(false); }
 
-				let count: i64 = tx.query_row("SELECT count(*) FROM agent_live_output WHERE work_id=?1 AND turn_id=?2", params![work,turn], |row|row.get(0)).map_err(sqlite_error)?;
+				let count: i64 = tx.query_row("SELECT count(*) FROM agent_live_output WHERE work_id=?1 AND turn_id=?2", rusqlite::params![work,turn], |row|row.get(0)).map_err(error::sqlite_error)?;
 
 				if count >= 32 { return Ok(false); }
 			}
@@ -63,8 +65,8 @@ impl SqliteStore {
 				AgentReasoningSummaryChange::Delta { index, text } => {
 					if prior.as_ref().is_some_and(|(_, completed, _, _)| *completed) { return Ok(false); }
 					if index >= 32 {
-						tx.execute("INSERT INTO agent_live_output(work_id,turn_id,item_id,kind,truncated,summary_parts) VALUES(?1,?2,?3,'reasoningSummary',1,'[]') ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET truncated=1",params![work,turn,item]).map_err(sqlite_error)?;
-						tx.commit().map_err(sqlite_error)?;
+						tx.execute("INSERT INTO agent_live_output(work_id,turn_id,item_id,kind,truncated,summary_parts) VALUES(?1,?2,?3,'reasoningSummary',1,'[]') ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET truncated=1",rusqlite::params![work,turn,item]).map_err(error::sqlite_error)?;
+						tx.commit().map_err(error::sqlite_error)?;
 
 						return Ok(true);
 					}
@@ -83,7 +85,7 @@ impl SqliteStore {
 
 			parts.truncate(32);
 
-			let mut remaining = 65536usize.saturating_sub(parts.len().saturating_sub(1) * 2);
+			let mut remaining = 65_536_usize.saturating_sub(parts.len().saturating_sub(1) * 2);
 
 			for part in &mut parts {
 				let end = part.floor_char_boundary(remaining.min(part.len()));
@@ -98,9 +100,9 @@ impl SqliteStore {
 			let text = parts.join("\n\n");
 			let parts = serde_json::to_string(&parts).map_err(|_| StoreError::InvalidInput("invalid summary parts"))?;
 
-			tx.execute("DELETE FROM agent_live_output WHERE work_id=?1 AND turn_id<>?2", params![work,turn]).map_err(sqlite_error)?;
-			tx.execute("INSERT INTO agent_live_output(work_id,turn_id,item_id,text,truncated,kind,completed,summary_parts) VALUES(?1,?2,?3,?4,?5,'reasoningSummary',?6,?7) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated,completed=excluded.completed,summary_parts=excluded.summary_parts", params![work,turn,item,text,truncated,completed,parts]).map_err(sqlite_error)?;
-			tx.commit().map_err(sqlite_error)?;
+			tx.execute("DELETE FROM agent_live_output WHERE work_id=?1 AND turn_id<>?2", rusqlite::params![work,turn]).map_err(error::sqlite_error)?;
+			tx.execute("INSERT INTO agent_live_output(work_id,turn_id,item_id,text,truncated,kind,completed,summary_parts) VALUES(?1,?2,?3,?4,?5,'reasoningSummary',?6,?7) ON CONFLICT(work_id,turn_id,item_id) DO UPDATE SET text=excluded.text,truncated=excluded.truncated,completed=excluded.completed,summary_parts=excluded.summary_parts", rusqlite::params![work,turn,item,text,truncated,completed,parts]).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(true)
 		}).await?;
@@ -126,15 +128,15 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			let mut statement = connection.prepare("SELECT e.payload FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE e.source_event_id=?1 AND w.id=?2 AND w.codex_thread_id=?3").map_err(sqlite_error)?;
+			let mut statement = connection.prepare("SELECT e.payload FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE e.source_event_id=?1 AND w.id=?2 AND w.codex_thread_id=?3").map_err(error::sqlite_error)?;
 			let mut result = Vec::new();
 
 			for turn in turns {
 				let source = serde_json::json!(["reasoning_voice_handoff",work,turn]).to_string();
-				let payload: Option<String> = statement.query_row(params![source,work,thread], |row|row.get(0)).optional().map_err(sqlite_error)?;
+				let payload: Option<String> = statement.query_row(rusqlite::params![source,work,thread], |row|row.get(0)).optional().map_err(error::sqlite_error)?;
 
 				if let Some(payload) = payload {
-					let value: serde_json::Value = serde_json::from_str(&payload).map_err(|_| StoreError::InvalidInput("invalid reasoning provenance"))?;
+					let value: Value = serde_json::from_str(&payload).map_err(|_| StoreError::InvalidInput("invalid reasoning provenance"))?;
 					let typed = value["typedItemIds"].as_array().into_iter().flatten().filter_map(|id|id.as_str().map(str::to_owned)).collect();
 
 					result.push((turn,typed));
