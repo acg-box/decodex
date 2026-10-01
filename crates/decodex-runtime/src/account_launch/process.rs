@@ -17,22 +17,23 @@ mod provisioned_cli;
 pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
 
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
-
 #[cfg(test)] use std::sync::atomic::AtomicU32;
-
 use std::{
 	cell::UnsafeCell,
-	collections::BTreeSet,
+	collections::{BTreeSet, VecDeque},
 	env,
 	ffi::{OsStr, OsString},
 	fmt::{Debug, Display, Formatter},
 	fs::{self, File, Metadata},
 	io::{self, ErrorKind, Read, Write},
 	mem::{self, MaybeUninit},
-	os::unix::{
-		ffi::OsStrExt as _,
-		fs::{FileExt as _, MetadataExt as _, PermissionsExt as _},
-		process::CommandExt as _,
+	os::{
+		fd::AsRawFd,
+		unix::{
+			ffi::OsStrExt as _,
+			fs::{FileExt as _, MetadataExt as _, PermissionsExt as _},
+			process::CommandExt as _,
+		},
 	},
 	panic::{self, AssertUnwindSafe},
 	path::{Path, PathBuf},
@@ -48,23 +49,19 @@ use std::{
 };
 
 use libc::{EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM};
-
 #[cfg(target_os = "linux")]
 use libc::{
 	F_ADD_SEALS, F_GET_SEALS, F_SEAL_EXEC, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
 	MFD_ALLOW_SEALING, MFD_CLOEXEC, MFD_EXEC,
 };
-
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-
+use serde::{
+	Deserialize, Serialize,
+	de::{DeserializeOwned, IgnoredAny},
+};
 use serde_json::{self};
-
 use sha2::{Digest as _, Sha256};
-
 use tempfile::{NamedTempFile, TempDir};
-
 use zeroize::{Zeroize as _, Zeroizing};
-
 #[cfg(target_os = "macos")]
 use {
 	libc::UF_IMMUTABLE,
@@ -74,26 +71,28 @@ use {
 };
 
 #[cfg(test)] use crate::account_launch::RunnerCapacity;
-
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
 	AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE,
 	spawn_private_stdio_suspended, spawn_private_stdio_suspended_at, spawn_suspended,
 };
-
-use crate::account_launch::{
-	RunnerPermit,
-	protocol::{
-		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
-		ExactThreadStateListParams, InitializeCapabilities, InitializeParams, InitializeResponse,
-		JsonRpcResponse, MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse,
-		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
-		exact_thread_facts,
+use crate::{
+	StoredCredential,
+	account_launch::{
+		RunnerPermit,
+		protocol::{
+			AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
+			ExactThreadStateListParams, InitializeCapabilities, InitializeParams,
+			InitializeResponse, JsonRpcError, JsonRpcResponse, MAX_APP_SERVER_FRAME_BYTES,
+			ProtocolThread, SensitiveString, ThreadArchiveParams, ThreadArchiveResponse,
+			ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+			exact_thread_facts,
+		},
 	},
+	native_config_warning,
+	process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError},
 };
-
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
-
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
 	CapabilityProfile, ConversationMessageDelta, ConversationThreadResumeRequest,
@@ -103,31 +102,24 @@ use decodex_codex::{
 	ExactTurnId, LiveMethodOutcome, LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS,
 	MAX_EXACT_THREAD_READ_ITEMS, MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES,
 	MethodObservation, NormalizedEvent, ThreadSummary, TurnStatus, UnavailableReason,
+	app_server_client::{self, AppServerClient, NativeDispatchRefusal, ServerEvent},
 	decode_conversation_thread_resume_response, decode_conversation_thread_start_response,
 	decode_conversation_turn_interrupt_response, decode_conversation_turn_start_response,
 	normalize_event, project_conversation_message_delta,
-	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
+	schema::{ACCOUNT_REFRESH_CALLBACK_METHOD, GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
-
 use decodex_core::{
-	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
-	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, TurnId,
+	AccountId, CredentialStoreSchemaVersion, ProcessBootIdentity, ProcessControlKind,
+	ProcessExecutionAuthorization, ProcessGenerationAccountBinding, ProcessGenerationId,
+	ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId,
+	TurnId,
 };
-
 use decodex_database::{
 	BindRuntimeSessionThread, CodexAccountCapabilityAttestation,
 	FreshConversationProcessGeneration, FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
 	SuccessfulRuntimeSessionThreadStart,
 };
-
 use decodex_protocol::MAX_CONVERSATION_WORKING_DIRECTORY_BYTES;
-
-use crate::process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError};
-
-use crate::native_config_warning;
-
-use decodex_codex::app_server_client;
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
@@ -248,7 +240,7 @@ pub(crate) struct AccountBinding {
 	personal_access_token: Option<Zeroizing<String>>,
 }
 impl AccountBinding {
-	pub(super) fn codex_home(&self) -> &std::path::Path {
+	pub(super) fn codex_home(&self) -> &Path {
 		&self.expected_codex_home
 	}
 
@@ -284,7 +276,7 @@ impl AccountBinding {
 	/// Bind a PAT only from the exact stored credential selected by the account owner.
 	pub(crate) fn with_credential(
 		mut self,
-		stored: &crate::StoredCredential,
+		stored: &StoredCredential,
 	) -> Result<Self, SupervisionError> {
 		if &self.process_binding()?.credential != stored.binding() {
 			return Err(SupervisionError::InvalidBinding);
@@ -451,8 +443,7 @@ impl AttestedAppServerProfile {
 		{
 			return Err(SupervisionError::LaunchCapabilityUnavailable.into());
 		}
-		if (process_binding.credential.schema_version
-			== decodex_core::CredentialStoreSchemaVersion::V2)
+		if (process_binding.credential.schema_version == CredentialStoreSchemaVersion::V2)
 			!= binding.personal_access_token.is_some()
 		{
 			return Err(SupervisionError::InvalidBinding.into());
@@ -635,13 +626,8 @@ impl AttestedProcessChild {
 	/// The supervisor retains this child, its process group, and its account authority.
 	pub(crate) fn retain_agent_connection(
 		&mut self,
-	) -> Result<
-		(
-			decodex_codex::app_server_client::AppServerClient,
-			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
-		),
-		ConversationProcessError,
-	> {
+	) -> Result<(AppServerClient, tokio::sync::mpsc::Receiver<ServerEvent>), ConversationProcessError>
+	{
 		if !self.generated.supports_standalone_tool_output() {
 			return Err(ConversationProcessError::Incompatible);
 		}
@@ -652,13 +638,8 @@ impl AttestedProcessChild {
 	/// Transfer initialized account-control I/O without requiring conversation tool features.
 	pub(crate) fn retain_account_control_connection(
 		&mut self,
-	) -> Result<
-		(
-			decodex_codex::app_server_client::AppServerClient,
-			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
-		),
-		ConversationProcessError,
-	> {
+	) -> Result<(AppServerClient, tokio::sync::mpsc::Receiver<ServerEvent>), ConversationProcessError>
+	{
 		self.require_ordinary_turns_initialized()?;
 
 		if !self.process.abandoned_request_ids.is_empty() {
@@ -1322,7 +1303,7 @@ impl CredentialProjection<'_> {
 		#[serde(rename_all = "camelCase")]
 		struct Status {
 			auth_method: Option<String>,
-			auth_token: Option<serde::de::IgnoredAny>,
+			auth_token: Option<IgnoredAny>,
 		}
 
 		let status: Status = self
@@ -1656,7 +1637,7 @@ impl StdoutPump {
 		protocol_limit_exceeded: Arc<AtomicBool>,
 	) -> Result<Self, SupervisionError>
 	where
-		R: Read + std::os::fd::AsRawFd + Send + 'static,
+		R: Read + AsRawFd + Send + 'static,
 	{
 		Self::start_inner(reader, sender, protocol_limit_exceeded, None)
 	}
@@ -1681,7 +1662,7 @@ impl StdoutPump {
 		buffered: Option<Arc<AtomicBool>>,
 	) -> Result<Self, SupervisionError>
 	where
-		R: Read + std::os::fd::AsRawFd + Send + 'static,
+		R: Read + AsRawFd + Send + 'static,
 	{
 		set_nonblocking(reader.as_raw_fd())?;
 
@@ -1756,7 +1737,7 @@ pub(super) struct SupervisedProcess {
 	agent_retained: bool,
 	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
 	config_warnings: Vec<serde_json::Value>,
-	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
+	deferred_conversation_events: VecDeque<ConversationProcessEvent>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -2306,9 +2287,7 @@ impl SupervisedProcess {
 		method: &str,
 		line: &[u8],
 	) -> Result<(), ProbeError> {
-		if method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD
-			|| binding.personal_access_token.is_some()
-		{
+		if method != ACCOUNT_REFRESH_CALLBACK_METHOD || binding.personal_access_token.is_some() {
 			return Self::write_bound_json(
 				stdin,
 				&OutboundRpcError {
@@ -2325,7 +2304,7 @@ impl SupervisedProcess {
 			serde_json::from_slice(line).map_err(|_| SupervisionError::InvalidProtocol)?;
 
 		if request.id != id
-			|| request.method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD
+			|| request.method != ACCOUNT_REFRESH_CALLBACK_METHOD
 			|| request.params.reason != "unauthorized"
 			|| request.params.previous_account_id.as_ref().is_some_and(|value| {
 				value.is_empty() || value.len() > 512 || value.chars().any(char::is_control)
@@ -2532,7 +2511,7 @@ impl SupervisedProcess {
 
 	fn resolve_exact_thread_archived_state(
 		&mut self,
-		thread: &crate::account_launch::protocol::ProtocolThread,
+		thread: &ProtocolThread,
 		thread_id: &ExactThreadId,
 		timeout: Duration,
 	) -> Result<bool, ExactReconciliationError> {
@@ -2548,7 +2527,7 @@ impl SupervisedProcess {
 
 	fn exact_thread_is_listed(
 		&mut self,
-		thread: &crate::account_launch::protocol::ProtocolThread,
+		thread: &ProtocolThread,
 		thread_id: &ExactThreadId,
 		archived: bool,
 		timeout: Duration,
@@ -2603,11 +2582,10 @@ impl SupervisedProcess {
 				None => return Ok(false),
 			};
 
-			if cursor.as_ref().is_some_and(
-				|previous: &crate::account_launch::protocol::SensitiveString| {
-					previous.as_str() == next.as_str()
-				},
-			) {
+			if cursor
+				.as_ref()
+				.is_some_and(|previous: &SensitiveString| previous.as_str() == next.as_str())
+			{
 				return Err(ExactReconciliationError::InvalidResult);
 			}
 
@@ -4261,7 +4239,7 @@ pub(crate) async fn spawn_admitted_agent_process(
 }
 
 pub(super) fn project_exact_submitted_turn(
-	thread: &crate::account_launch::protocol::ProtocolThread,
+	thread: &ProtocolThread,
 	client_user_message_id: &str,
 ) -> Result<Option<ExactSubmittedTurnReadback>, ExactReconciliationError> {
 	TurnId::new(client_user_message_id.to_owned())
@@ -4372,16 +4350,15 @@ fn validated_working_directory(command: &AppServerCommand) -> Result<String, Pro
 }
 
 fn conversation_rejection_reason(
-	error: &super::protocol::JsonRpcError,
+	error: &JsonRpcError,
 	resume_thread_id: Option<&str>,
 ) -> ConversationRejectionReason {
 	let message = error.message();
 
 	if let Some(refusal) = app_server_client::classify_dispatch_refusal(error.code, message) {
 		return match refusal {
-			decodex_codex::app_server_client::NativeDispatchRefusal::ServerDraining =>
-				ConversationRejectionReason::ServerDraining,
-			decodex_codex::app_server_client::NativeDispatchRefusal::ManagedProviderChanged =>
+			NativeDispatchRefusal::ServerDraining => ConversationRejectionReason::ServerDraining,
+			NativeDispatchRefusal::ManagedProviderChanged =>
 				ConversationRejectionReason::ManagedProviderChanged,
 		};
 	}
@@ -4452,7 +4429,7 @@ fn decode_conversation_process_event(
 			// the exact native identity, including when metadata queries collect events.
 			let frame: serde_json::Value = serde_json::from_slice(bytes)
 				.map_err(|_| ConversationProcessError::Incompatible)?;
-			let turn_id = decodex_codex::ExactTurnId::new(
+			let turn_id = ExactTurnId::new(
 				frame["params"]["turn"]["id"]
 					.as_str()
 					.ok_or(ConversationProcessError::Incompatible)?,
@@ -4537,7 +4514,7 @@ fn finish_attested_protocol_spawn<R>(
 	protocol_limit_exceeded: Arc<AtomicBool>,
 ) -> (ProcessGroupOwner, Box<dyn Write + Send>)
 where
-	R: Read + std::os::fd::AsRawFd + Send + 'static,
+	R: Read + AsRawFd + Send + 'static,
 {
 	// Creation has already occurred. A missing pump is a channel-readiness failure;
 	// return the child so its supervisor can retain it until positive exit evidence.

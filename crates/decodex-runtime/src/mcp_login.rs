@@ -298,13 +298,18 @@ fn project(session: &Session, request: &McpLoginRequest) -> McpLoginStatus {
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
 	use crate::mcp_login::{
 		self, AppServerClient, Duration, Instant, McpAuthorizationUrl, McpLoginGateway,
 		McpLoginPhase, McpLoginRequest, McpLoginStatus, ProcessGenerationId, ServerEvent, Session,
 		Source, WireText,
 	};
 	use decodex_protocol::EntityId;
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
 	fn generation() -> ProcessGenerationId {
 		ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap()
 	}
@@ -320,11 +325,11 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn sign_in_is_once_only_and_completion_requires_exact_native_scope() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let request: serde_json::Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -338,7 +343,7 @@ mod tests {
 			writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize?state=private-test"}})).as_bytes()).await.unwrap();
 
 			assert!(
-				tokio::time::timeout(Duration::from_millis(100), lines.next_line()).await.is_err(),
+				time::timeout(Duration::from_millis(100), lines.next_line()).await.is_err(),
 				"no duplicate native sign-in request"
 			);
 		});
@@ -459,11 +464,11 @@ mod tests {
 			("npm:@scope/package.name", "npm__scope_package_name"),
 			("local:local:foo", "local:foo"),
 		] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let request: serde_json::Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -483,9 +488,7 @@ mod tests {
 					.unwrap();
 
 				assert!(
-					tokio::time::timeout(Duration::from_millis(100), lines.next_line())
-						.await
-						.is_err(),
+					time::timeout(Duration::from_millis(100), lines.next_line()).await.is_err(),
 					"no replay for alias or status reads"
 				);
 			});

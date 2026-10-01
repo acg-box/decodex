@@ -61,25 +61,27 @@ impl RuntimeSkillRoots {
 
 #[cfg(test)]
 mod tests {
-	use crate::agent_skill_roots::{AppServerClient, OsStr, RuntimeSkillRoots};
+	use std::env;
+
 	use serde_json::{self, Value};
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::agent_skill_roots::{AppServerClient, OsStr, RuntimeSkillRoots};
 
 	#[tokio::test]
 	async fn runtime_skill_roots_are_explicit_and_reapplied_to_each_connection() {
 		let paths =
-			std::env::join_paths(["/runtime/shared skills", "/runtime/team", "/runtime/team"])
-				.unwrap();
+			env::join_paths(["/runtime/shared skills", "/runtime/team", "/runtime/team"]).unwrap();
 		let roots = RuntimeSkillRoots::parse(Some(&paths)).unwrap();
 
 		assert!(RuntimeSkillRoots::parse(Some(OsStr::new("relative"))).is_err());
 
 		for refused in [false, true] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (r, w) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
+				let (r, mut w) = io::split(remote);
 				let mut lines = BufReader::new(r).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
