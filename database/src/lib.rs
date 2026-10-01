@@ -79,7 +79,7 @@ pub use self::{
 	agent_dispatch_rejection::AgentDispatchRefusal,
 	agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt},
 	agent_guardian::{AgentGuardianObservation, AgentGuardianReview},
-	agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookOwner, AgentHookReceipt},
+	agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookReceipt},
 	agent_live_settings::{
 		AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentLiveSettingsReceipt,
 	},

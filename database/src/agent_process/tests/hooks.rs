@@ -2,7 +2,7 @@
 use std::path::Path;
 
 use crate::{
-	AgentHookAttempt, AgentHookObservation, AgentHookOwner, EnqueueAgentEvent, SqliteStore,
+	AgentConfigOwner, AgentHookAttempt, AgentHookObservation, EnqueueAgentEvent, SqliteStore,
 	agent_process::tests::{self, DIGEST, OTHER_DIGEST},
 };
 use decodex_core::{
@@ -20,8 +20,8 @@ pub(super) fn identity(n: u32) -> ProcessIdentity {
 	)
 	.unwrap()
 }
-pub(super) fn owner(n: u8) -> AgentHookOwner {
-	AgentHookOwner {
+pub(super) fn owner(n: u8) -> AgentConfigOwner {
+	AgentConfigOwner {
 		work: if n == 1 { "root" } else { "second-root" }.into(),
 		thread: format!("thread-{n}"),
 		generation: tests::generation_id(n).as_str().into(),
