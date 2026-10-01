@@ -3,6 +3,13 @@ import Foundation
 /// Service-only transport. Its token comes from the retained native app-server connection.
 /// URLSession owns networking; this class never opens a microphone or starts an agent turn.
 final class DictationStream: @unchecked Sendable {
+    private static let endpoint: URL = {
+        guard let url = URL(string: "wss://chatgpt.com/backend-api/dictation/stream") else {
+            preconditionFailure("The dictation endpoint URL must be valid.")
+        }
+        return url
+    }()
+
     private let queue = DispatchQueue(label: "box.acg.decodex.dictation")
     private let session: URLSession
     private let socket: URLSessionWebSocketTask
@@ -20,7 +27,7 @@ final class DictationStream: @unchecked Sendable {
         configuration.timeoutIntervalForRequest = 20
         configuration.timeoutIntervalForResource = 300
         session = URLSession(configuration: configuration)
-        socket = session.webSocketTask(with: URL(string: "wss://chatgpt.com/backend-api/dictation/stream")!, protocols: ["chatgpt-dictation", "openai-bearer." + token, "codex-desktop"])
+        socket = session.webSocketTask(with: Self.endpoint, protocols: ["chatgpt-dictation", "openai-bearer." + token, "codex-desktop"])
         socket.maximumMessageSize = 131_072
         socket.resume()
         queue.async { [self] in

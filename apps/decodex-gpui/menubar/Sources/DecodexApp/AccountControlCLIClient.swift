@@ -263,7 +263,12 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 }
 
 struct AccountReauthenticationPrompt: Equatable, Sendable {
-	static let verificationURL = URL(string: "https://auth.openai.com/codex/device")!
+	static let verificationURL: URL = {
+		guard let url = URL(string: "https://auth.openai.com/codex/device") else {
+			preconditionFailure("The device verification URL must be valid.")
+		}
+		return url
+	}()
 
 	let verificationURL: URL
 	let userCode: String
