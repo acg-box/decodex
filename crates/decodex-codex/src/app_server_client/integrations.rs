@@ -11,9 +11,10 @@ impl AppServerClient {
 		thread: &str,
 		force_refresh: bool,
 	) -> Result<Vec<Value>, ClientError> {
-		if thread.is_empty() || thread.len() > 4096 || thread.chars().any(char::is_control) {
+		if thread.is_empty() || thread.len() > 4_096 || thread.chars().any(char::is_control) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let response = tokio::time::timeout(
 			std::time::Duration::from_secs(30),
 			self.request("app/installed", json!({"threadId":thread,"forceRefresh":force_refresh})),
@@ -22,13 +23,15 @@ impl AppServerClient {
 		.map_err(|_| ClientError::Io)??;
 		let rows = response["apps"].as_array().ok_or(ClientError::InvalidFrame)?;
 		let mut ids = HashSet::new();
+
 		for row in rows {
 			let id = row["id"]
 				.as_str()
 				.filter(|id| {
-					!id.is_empty() && id.len() <= 4096 && !id.chars().any(char::is_control)
+					!id.is_empty() && id.len() <= 4_096 && !id.chars().any(char::is_control)
 				})
 				.ok_or(ClientError::InvalidFrame)?;
+
 			if !ids.insert(id)
 				|| !row["enabled"].is_boolean()
 				|| !row["callable"].is_boolean()
@@ -38,6 +41,7 @@ impl AppServerClient {
 				return Err(ClientError::InvalidFrame);
 			}
 		}
+
 		Ok(rows.clone())
 	}
 
@@ -46,12 +50,14 @@ impl AppServerClient {
 		if thread.is_empty() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		tokio::time::timeout(std::time::Duration::from_secs(30), async {
 			let mut rows = Vec::new();
 			let mut names = HashSet::new();
 			let mut cursors = HashSet::new();
 			let mut cursor: Option<String> = None;
 			let mut budget = MAX_FRAME_BYTES;
+
 			for _ in 0..128 {
 				let page = self
 					.request(
@@ -59,15 +65,19 @@ impl AppServerClient {
 						json!({"threadId":thread,"detail":"full","limit":100,"cursor":cursor}),
 					)
 					.await?;
+
 				budget = budget
 					.checked_sub(page.to_string().len())
 					.ok_or(ClientError::CapacityExceeded)?;
+
 				let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
+
 				for row in data {
 					let name = row["name"]
 						.as_str()
 						.filter(|name| !name.is_empty())
 						.ok_or(ClientError::InvalidFrame)?;
+
 					if !names.insert(name.to_owned())
 						|| !row["tools"].is_object()
 						|| !row["authStatus"].is_string()
@@ -76,23 +86,27 @@ impl AppServerClient {
 					{
 						return Err(ClientError::InvalidFrame);
 					}
+
 					for key in ["runtimeStatus", "toolsError", "pluginId"] {
 						if !row[key].is_null() && !row[key].is_string() {
 							return Err(ClientError::InvalidFrame);
 						}
 					}
+
 					rows.push(row.clone());
 				}
+
 				match page.get("nextCursor") {
 					Some(Value::Null) => return Ok(rows),
 					Some(Value::String(next))
 						if !next.is_empty()
-							&& next.len() <= 4096
+							&& next.len() <= 4_096
 							&& cursors.insert(next.clone()) =>
 						cursor = Some(next.clone()),
 					_ => return Err(ClientError::InvalidFrame),
 				}
 			}
+
 			Err(ClientError::CapacityExceeded)
 		})
 		.await
@@ -105,17 +119,20 @@ impl AppServerClient {
 		if !std::path::Path::new(cwd).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let result = tokio::time::timeout(
 			std::time::Duration::from_secs(30),
 			self.request("plugin/installed", json!({"cwds":[cwd]})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if !result["marketplaces"].is_array()
 			|| result.get("marketplaceLoadErrors").is_some_and(|errors| !errors.is_array())
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(result)
 	}
 }
@@ -129,12 +146,13 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn discovery_keeps_failure_distinct_from_empty_and_uses_exact_scope() {
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
+
 			for (method, response, cursor) in [
 				(
 					"mcpServerStatus/list",
@@ -154,7 +172,9 @@ mod tests {
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], method);
+
 				if method == "mcpServerStatus/list" {
 					assert_eq!(request["params"]["threadId"], "exact-thread");
 					assert_eq!(request["params"]["cursor"], cursor);
@@ -162,6 +182,7 @@ mod tests {
 				} else {
 					assert_eq!(request["params"], json!({"cwds":["/repo"]}));
 				}
+
 				writer
 					.write_all(
 						format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes(),
@@ -171,25 +192,31 @@ mod tests {
 			}
 		});
 		let statuses = client.mcp_server_statuses("exact-thread").await.unwrap();
+
 		assert_eq!(statuses.len(), 2);
 		assert_eq!(statuses[0]["toolsError"], "Discovery failed");
 		assert!(statuses[1]["toolsError"].is_null());
 		assert_eq!(statuses[0]["runtimeStatus"], "authenticationRequired");
+
 		let plugins = client.installed_plugins_for_directory("/repo").await.unwrap();
+
 		assert_eq!(plugins["marketplaceLoadErrors"].as_array().unwrap().len(), 1);
+
 		server.await.unwrap();
 	}
 	#[tokio::test]
 	async fn repeated_cursor_is_not_a_successful_partial_inventory() {
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
+
 			for _ in 0..2 {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				writer
 					.write_all(
 						format!(
@@ -202,14 +229,15 @@ mod tests {
 					.unwrap();
 			}
 		});
+
 		assert!(matches!(
 			client.mcp_server_statuses("thread").await,
 			Err(ClientError::InvalidFrame)
 		));
+
 		server.await.unwrap();
 	}
 }
-
 #[cfg(test)]
 #[path = "installed_apps_tests.rs"]
 mod installed_apps_tests;

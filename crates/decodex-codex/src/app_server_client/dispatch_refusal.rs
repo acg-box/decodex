@@ -12,9 +12,10 @@ pub enum NativeDispatchRefusal {
 /// Classify only fixed native invalid-request messages, never substrings or private data.
 /// This is not authority to retry or to discard effects from earlier requests.
 pub fn classify_dispatch_refusal(code: i64, message: &str) -> Option<NativeDispatchRefusal> {
-	if code != -32600 {
+	if code != -32_600 {
 		return None;
 	}
+
 	match message {
 		"Server is draining; retry after reconnecting" =>
 			Some(NativeDispatchRefusal::ServerDraining),
@@ -36,10 +37,10 @@ mod tests {
 				NativeDispatchRefusal::ManagedProviderChanged,
 			),
 		] {
-			assert_eq!(classify_dispatch_refusal(-32600, message), Some(expected));
-			assert_eq!(classify_dispatch_refusal(-32603, message), None);
-			assert_eq!(classify_dispatch_refusal(-32600, &format!("{message} ")), None);
-			assert_eq!(classify_dispatch_refusal(-32600, &format!("prefix: {message}")), None);
+			assert_eq!(classify_dispatch_refusal(-32_600, message), Some(expected));
+			assert_eq!(classify_dispatch_refusal(-32_603, message), None);
+			assert_eq!(classify_dispatch_refusal(-32_600, &format!("{message} ")), None);
+			assert_eq!(classify_dispatch_refusal(-32_600, &format!("prefix: {message}")), None);
 		}
 	}
 }

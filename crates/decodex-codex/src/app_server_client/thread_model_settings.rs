@@ -1,6 +1,8 @@
 //! Read configured thread settings without resuming or dispatching work.
 use super::{AppServerClient, ClientError, HistoryGuard};
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::{Value, json};
 
 /// Native configured settings, not the model used by an individual turn.
@@ -14,30 +16,6 @@ pub struct NativeThreadModelSettings {
 	/// Native effort spelling, including future levels. Null means unset or unavailable.
 	pub reasoning_effort: Option<String>,
 }
-
-fn valid(value: &str, limit: usize) -> bool {
-	!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
-}
-
-fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSettings>, ClientError> {
-	let thread = value.get("thread").ok_or(ClientError::InvalidFrame)?;
-	if thread["id"].as_str() != Some(expected) {
-		return Err(ClientError::InvalidFrame);
-	}
-	if thread.get("model").is_none() || thread.get("reasoningEffort").is_none() {
-		return Ok(None);
-	}
-	let settings: NativeThreadModelSettings =
-		serde_json::from_value(thread.clone()).map_err(|_| ClientError::InvalidFrame)?;
-	if settings.model_provider.as_deref().is_some_and(|v| !valid(v, 512))
-		|| settings.model.as_deref().is_some_and(|v| !valid(v, 512))
-		|| settings.reasoning_effort.as_deref().is_some_and(|v| !valid(v, 128))
-	{
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok(Some(settings))
-}
-
 impl NativeThreadModelSettings {
 	/// Project one exact thread/read response. Missing fields mean unsupported metadata.
 	/// Callers must independently verify process and account ownership of the read.
@@ -48,6 +26,7 @@ impl NativeThreadModelSettings {
 		if !valid(expected_thread, 512) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		project(value, expected_thread)
 	}
 }
@@ -63,6 +42,7 @@ impl AppServerClient {
 		if !valid(thread, 512) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let response = tokio::time::timeout(
 			std::time::Duration::from_secs(8),
 			self.request_with_history(
@@ -73,8 +53,36 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		NativeThreadModelSettings::from_read_response(response, thread)
 	}
+}
+
+fn valid(value: &str, limit: usize) -> bool {
+	!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
+}
+
+fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSettings>, ClientError> {
+	let thread = value.get("thread").ok_or(ClientError::InvalidFrame)?;
+
+	if thread["id"].as_str() != Some(expected) {
+		return Err(ClientError::InvalidFrame);
+	}
+	if thread.get("model").is_none() || thread.get("reasoningEffort").is_none() {
+		return Ok(None);
+	}
+
+	let settings: NativeThreadModelSettings =
+		serde_json::from_value(thread.clone()).map_err(|_| ClientError::InvalidFrame)?;
+
+	if settings.model_provider.as_deref().is_some_and(|v| !valid(v, 512))
+		|| settings.model.as_deref().is_some_and(|v| !valid(v, 512))
+		|| settings.reasoning_effort.as_deref().is_some_and(|v| !valid(v, 128))
+	{
+		return Err(ClientError::InvalidFrame);
+	}
+
+	Ok(Some(settings))
 }
 
 #[cfg(test)]
@@ -91,12 +99,15 @@ mod tests {
 				project(json!({"thread":{"id":"t","model":model,"reasoningEffort":effort}}), "t")
 					.unwrap()
 					.unwrap();
+
 			assert_eq!(
 				serde_json::to_value(settings).unwrap(),
 				json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
 			);
 		}
+
 		assert!(project(json!({"thread":{"id":"t"}}), "t").unwrap().is_none());
+
 		for thread in [
 			json!({"id":"other"}),
 			json!({"id":"t","model":42,"reasoningEffort":null}),
@@ -115,6 +126,7 @@ mod tests {
 			)
 			.unwrap()
 			.unwrap();
+
 			assert_eq!(value.model_provider.as_deref(), provider.as_str());
 		}
 		for provider in [json!(""), json!("\n"), json!(42), json!("x".repeat(513))] {
@@ -130,7 +142,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn settings_read_uses_only_exact_thread_read() {
-		let (local, remote) = tokio::io::duplex(4096);
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let guard = client.history_guard(0).unwrap();
@@ -139,13 +151,17 @@ mod tests {
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "thread/read");
 			assert_eq!(request["params"], json!({"threadId":"t","includeTurns":false}));
+
 			w.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"t","model":"configured","reasoningEffort":null,"turns":[]}}})).as_bytes()).await.unwrap();
 		});
 		let settings = client.thread_model_settings("t", guard).await.unwrap().unwrap();
+
 		assert_eq!(settings.model.as_deref(), Some("configured"));
 		assert_eq!(settings.reasoning_effort, None);
+
 		server.await.unwrap();
 	}
 }

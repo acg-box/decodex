@@ -11,21 +11,22 @@ pub struct InitializeCapabilities {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	extensions: Option<Value>,
 }
-impl Default for InitializeCapabilities {
-	fn default() -> Self {
-		Self {
-			experimental_api: true,
-			opt_out_notification_methods: &["rawResponseItem/completed"],
-			extensions: None,
-		}
-	}
-}
 impl InitializeCapabilities {
 	/// Declare the native form route consumed by the retained Agent.
 	pub fn for_agent() -> Self {
 		Self {
 			extensions: Some(json!({"openai/form":{},"openai/standard-form-input":{}})),
 			..Self::default()
+		}
+	}
+}
+
+impl Default for InitializeCapabilities {
+	fn default() -> Self {
+		Self {
+			experimental_api: true,
+			opt_out_notification_methods: &["rawResponseItem/completed"],
+			extensions: None,
 		}
 	}
 }
@@ -37,11 +38,14 @@ mod tests {
 	#[test]
 	fn only_agent_advertises_the_supported_form_extension() {
 		let ordinary = serde_json::to_value(InitializeCapabilities::default()).unwrap();
+
 		assert_eq!(
 			ordinary,
 			json!({"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]})
 		);
+
 		let mut agent = serde_json::to_value(InitializeCapabilities::for_agent()).unwrap();
+
 		assert_eq!(
 			agent.as_object_mut().unwrap().remove("extensions"),
 			Some(json!({"openai/form":{},"openai/standard-form-input":{}}))

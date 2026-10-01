@@ -1,7 +1,10 @@
 //! Native resource associations. These are not model input uploads.
 use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::{Value, json};
+
 use std::collections::HashSet;
 
 /// A resource owned by the native thread store, with an opaque application payload.
@@ -20,16 +23,6 @@ pub struct ThreadAttachment {
 	pub created_at: i64,
 }
 
-/// Whether this call created a resource or located its existing association.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ThreadAttachmentAddOutcome {
-	/// A new association was persisted.
-	Created,
-	/// The identity already existed; its original payload is returned unchanged.
-	Existing,
-}
-
 /// Native add receipt. A receipt is not implied by a submitted request.
 #[derive(Clone, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,29 +33,14 @@ pub struct ThreadAttachmentAddResult {
 	pub attachment: ThreadAttachment,
 }
 
-fn identity(kind: &str, key: &str) -> Result<(), ClientError> {
-	if kind.trim().is_empty() || key.trim().is_empty() || kind.len() > 256 || key.len() > 256 {
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok(())
-}
-
-fn thread_id(thread: &str) -> Result<(), ClientError> {
-	if thread.is_empty() || thread.len() > 4096 {
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok(())
-}
-
-fn validate(attachment: &ThreadAttachment) -> Result<(), ClientError> {
-	identity(&attachment.attachment_type, &attachment.identity_key)?;
-	if attachment.id.is_empty() || attachment.id.len() > 4096 {
-		return Err(ClientError::InvalidFrame);
-	}
-	if attachment.payload.to_string().len() > 64 * 1024 {
-		return Err(ClientError::CapacityExceeded);
-	}
-	Ok(())
+/// Whether this call created a resource or located its existing association.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ThreadAttachmentAddOutcome {
+	/// A new association was persisted.
+	Created,
+	/// The identity already existed; its original payload is returned unchanged.
+	Existing,
 }
 
 impl AppServerClient {
@@ -73,6 +51,7 @@ impl AppServerClient {
 		thread: &str,
 	) -> Result<Vec<ThreadAttachment>, ClientError> {
 		thread_id(thread)?;
+
 		tokio::time::timeout(std::time::Duration::from_secs(30), async {
 			let mut attachments = Vec::new();
 			let mut cursor: Option<String> = None;
@@ -80,6 +59,7 @@ impl AppServerClient {
 			let mut ids = HashSet::new();
 			let mut identities = HashSet::new();
 			let mut budget = MAX_FRAME_BYTES;
+
 			for _ in 0..128 {
 				let page = self
 					.request(
@@ -87,17 +67,23 @@ impl AppServerClient {
 						json!({"threadId":thread,"cursor":cursor,"limit":100}),
 					)
 					.await?;
+
 				budget = budget
 					.checked_sub(page.to_string().len())
 					.ok_or(ClientError::CapacityExceeded)?;
+
 				let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
+
 				if data.len() > 100 {
 					return Err(ClientError::InvalidFrame);
 				}
+
 				for value in data {
 					let attachment: ThreadAttachment = serde_json::from_value(value.clone())
 						.map_err(|_| ClientError::InvalidFrame)?;
+
 					validate(&attachment)?;
+
 					if !ids.insert(attachment.id.clone())
 						|| !identities.insert((
 							attachment.attachment_type.clone(),
@@ -105,18 +91,21 @@ impl AppServerClient {
 						)) {
 						return Err(ClientError::InvalidFrame);
 					}
+
 					attachments.push(attachment);
 				}
+
 				match page.get("nextCursor") {
 					Some(Value::Null) => return Ok(attachments),
 					Some(Value::String(next))
 						if !next.is_empty()
-							&& next.len() <= 4096
+							&& next.len() <= 4_096
 							&& cursors.insert(next.clone()) =>
 						cursor = Some(next.clone()),
 					_ => return Err(ClientError::InvalidFrame),
 				}
 			}
+
 			Err(ClientError::CapacityExceeded)
 		})
 		.await
@@ -133,9 +122,11 @@ impl AppServerClient {
 	) -> Result<ThreadAttachmentAddResult, ClientError> {
 		thread_id(thread)?;
 		identity(kind, key)?;
-		if payload.to_string().len() > 64 * 1024 {
+
+		if payload.to_string().len() > 64 * 1_024 {
 			return Err(ClientError::CapacityExceeded);
 		}
+
 		let response = tokio::time::timeout(
 			std::time::Duration::from_secs(30),
 			self.request(
@@ -147,7 +138,9 @@ impl AppServerClient {
 		.map_err(|_| ClientError::Io)??;
 		let receipt: ThreadAttachmentAddResult =
 			serde_json::from_value(response).map_err(|_| ClientError::InvalidFrame)?;
+
 		validate(&receipt.attachment)?;
+
 		if receipt.attachment.attachment_type != kind
 			|| receipt.attachment.identity_key != key
 			|| (receipt.outcome == ThreadAttachmentAddOutcome::Created
@@ -155,6 +148,7 @@ impl AppServerClient {
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(receipt)
 	}
 
@@ -167,6 +161,7 @@ impl AppServerClient {
 	) -> Result<(), ClientError> {
 		thread_id(thread)?;
 		identity(kind, key)?;
+
 		let response = tokio::time::timeout(
 			std::time::Duration::from_secs(30),
 			self.request(
@@ -176,11 +171,42 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if response != json!({}) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(())
 	}
+}
+
+fn identity(kind: &str, key: &str) -> Result<(), ClientError> {
+	if kind.trim().is_empty() || key.trim().is_empty() || kind.len() > 256 || key.len() > 256 {
+		return Err(ClientError::InvalidFrame);
+	}
+
+	Ok(())
+}
+
+fn thread_id(thread: &str) -> Result<(), ClientError> {
+	if thread.is_empty() || thread.len() > 4_096 {
+		return Err(ClientError::InvalidFrame);
+	}
+
+	Ok(())
+}
+
+fn validate(attachment: &ThreadAttachment) -> Result<(), ClientError> {
+	identity(&attachment.attachment_type, &attachment.identity_key)?;
+
+	if attachment.id.is_empty() || attachment.id.len() > 4_096 {
+		return Err(ClientError::InvalidFrame);
+	}
+	if attachment.payload.to_string().len() > 64 * 1_024 {
+		return Err(ClientError::CapacityExceeded);
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]
@@ -193,22 +219,27 @@ mod tests {
 	}
 
 	fn fixture(replies: Vec<Value>) -> (AppServerClient, tokio::task::JoinHandle<Vec<Value>>) {
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut requests = Vec::new();
+
 			for mut reply in replies {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				reply["id"] = request["id"].clone();
+
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 				requests.push(request);
 			}
+
 			requests
 		});
+
 		(client, server)
 	}
 
@@ -221,8 +252,10 @@ mod tests {
 			json!({"result":{}}),
 		]);
 		let rows = client.thread_attachments("thread/exact").await.unwrap();
+
 		assert_eq!(rows.len(), 2);
 		assert_eq!(rows[1].id, "b");
+
 		let receipt = client
 			.add_thread_attachment(
 				"thread/exact",
@@ -232,15 +265,20 @@ mod tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(receipt.outcome, ThreadAttachmentAddOutcome::Existing);
 		assert_eq!(receipt.attachment.payload, json!({"title":"Original"}));
+
 		client.remove_thread_attachment("thread/exact", "example.resource", "one").await.unwrap();
+
 		let requests = server.await.unwrap();
+
 		assert_eq!(requests.len(), 4);
 		assert_eq!(requests[0]["method"], "thread/attachment/list");
 		assert_eq!(requests[1]["params"]["cursor"], "opaque/next");
 		assert_eq!(requests[2]["method"], "thread/attachment/add");
 		assert_eq!(requests[3]["method"], "thread/attachment/remove");
+
 		for request in requests {
 			assert_eq!(request["params"]["threadId"], "thread/exact");
 		}
@@ -257,6 +295,7 @@ mod tests {
 				json!({"result":{"data":[attachment("a","one")],"nextCursor":"again"}}),
 				json!({"result":second}),
 			]);
+
 			assert!(matches!(
 				client.thread_attachments("thread").await,
 				Err(ClientError::InvalidFrame)
@@ -268,14 +307,17 @@ mod tests {
 	#[tokio::test]
 	async fn unsupported_store_is_not_empty_and_mutations_do_not_retry() {
 		let (client, server) =
-			fixture(vec![json!({"error":{"code":-32601,"message":"unsupported store"}})]);
+			fixture(vec![json!({"error":{"code":-32_601,"message":"unsupported store"}})]);
+
 		assert!(
-			matches!(client.thread_attachments("thread").await,Err(ClientError::Remote(error)) if error.code == -32601)
+			matches!(client.thread_attachments("thread").await,Err(ClientError::Remote(error)) if error.code == -32_601)
 		);
 		assert_eq!(server.await.unwrap().len(), 1);
+
 		let (client, server) = fixture(vec![
 			json!({"result":{"outcome":"created","attachment":attachment("a","wrong-key")}}),
 		]);
+
 		assert!(matches!(
 			client.add_thread_attachment("thread", "example.resource", "one", json!({})).await,
 			Err(ClientError::InvalidFrame)

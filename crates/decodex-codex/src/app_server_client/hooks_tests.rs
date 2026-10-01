@@ -12,18 +12,24 @@ fn review() -> HookSettingsReview {
 #[test]
 fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 	let review = review();
+
 	validate_inventory(&review.inventory).unwrap();
+
 	let key = review.inventory["hooks"][0]["key"].as_str().unwrap();
 	let params = review.change(key, HookSettingsChange::Trust).unwrap();
+
 	assert_eq!(params["edits"][0]["value"], "hash-one");
 	assert!(is_hook_settings_write(&params));
+
 	for (field, value) in [
 		("filePath", json!("/other")),
 		("reloadUserConfig", json!(false)),
 		("expectedVersion", Value::Null),
 	] {
 		let mut invalid = params.clone();
+
 		invalid[field] = value;
+
 		assert!(!is_hook_settings_write(&invalid));
 	}
 	for path in [
@@ -33,14 +39,22 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 		"hooks.state.\"key\".enabled.extra",
 	] {
 		let mut invalid = params.clone();
+
 		invalid["edits"][0]["keyPath"] = json!(path);
+
 		assert!(!is_hook_settings_write(&invalid));
 	}
+
 	let mut managed = review.clone();
+
 	managed.inventory["hooks"][0]["isManaged"] = json!(true);
+
 	assert!(managed.change(key, HookSettingsChange::Enabled(false)).is_err());
+
 	let mut duplicate = review.inventory.clone();
+
 	duplicate["hooks"].as_array_mut().unwrap().push(review.inventory["hooks"][0].clone());
+
 	assert!(validate_inventory(&duplicate).is_err());
 	assert_eq!(review.inventory["warnings"], json!(["partial"]));
 }
@@ -48,7 +62,7 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 #[tokio::test]
 async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 	for status in [Some("okOverridden"), None] {
-		let (local, remote) = tokio::io::duplex(8192);
+		let (local, remote) = tokio::io::duplex(8_192);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let guard = client.thread_settings_guard("task").unwrap();
@@ -64,11 +78,14 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "config/batchWrite");
 			assert_eq!(request["params"]["expectedVersion"], "version-one");
 			assert_eq!(request["params"]["edits"][0]["value"], false);
+
 			if let Some(status) = status {
 				w.write_all(format!("{}\n",json!({"id":request["id"],"result":{"status":status,"version":"two","filePath":"/home/config.toml"}})).as_bytes()).await.unwrap();
+
 				assert!(
 					tokio::time::timeout(std::time::Duration::from_millis(50), lines.next_line())
 						.await
@@ -77,33 +94,41 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 			}
 		});
 		let result = client.write_hook_settings(params, guard).await;
+
 		if status.is_some() {
 			assert_eq!(result.unwrap(), HookSettingsWrite::Overridden);
 		} else {
 			assert!(result.is_err());
 		}
+
 		backend.await.unwrap();
 	}
 }
 
 #[tokio::test]
 async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
-	let (local, remote) = tokio::io::duplex(16384);
+	let (local, remote) = tokio::io::duplex(16_384);
 	let (r, w) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let server = tokio::spawn(async move {
 		let (r, mut w) = tokio::io::split(remote);
 		let mut lines = BufReader::new(r).lines();
 		let read: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 		assert_eq!(read["method"], "config/read");
+
 		let layers = json!([{"name":{"type":"user","profile":"work","file":"/home/work.config.toml"},"version":"profile-version","config":{"hooks":{"state":{"selected":{"enabled":false}}}}},{"name":{"type":"user","file":"/home/config.toml"},"version":"base-version","config":{"hooks":{"state":{"selected":{"enabled":true}}}}}]);
+
 		w.write_all(
 			format!("{}\n", json!({"id":read["id"],"result":{"layers":layers}})).as_bytes(),
 		)
 		.await
 		.unwrap();
+
 		let list: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 		assert_eq!(list["method"], "hooks/list");
+
 		w.write_all(
 			format!("{}\n", json!({"id":list["id"],"result":{"data":[review().inventory]}}))
 				.as_bytes(),
@@ -112,9 +137,11 @@ async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
 		.unwrap();
 	});
 	let result = client.hook_settings("/repo").await.unwrap();
+
 	assert_eq!(result.config_file(), "/home/work.config.toml");
 	assert_eq!(result.config_version(), "profile-version");
 	assert_eq!(result.saved_hook("selected").unwrap()["enabled"], false);
 	assert!(result.saved_hook("absent").is_none());
+
 	server.await.unwrap();
 }

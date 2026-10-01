@@ -20,7 +20,6 @@ pub struct TokenUsageBreakdown {
 	/// Reasoning output, a provider-reported subtotal.
 	pub reasoning_output_tokens: u64,
 }
-
 impl TokenUsageBreakdown {
 	pub(crate) fn is_valid(&self) -> bool {
 		[
@@ -47,7 +46,6 @@ pub struct ThreadTokenUsage {
 	/// Reported context capacity. Missing capacity is unknown.
 	pub model_context_window: Option<u64>,
 }
-
 impl ThreadTokenUsage {
 	/// Validate the signed-integer bounds of the official protocol.
 	pub fn is_valid(&self) -> bool {
@@ -64,17 +62,22 @@ mod tests {
 
 	#[test]
 	fn native_usage_preserves_distinct_totals_and_unknown_context() {
-		let counts = json!({"totalTokens":1200,"inputTokens":1000,"cachedInputTokens":500,
+		let counts = json!({"totalTokens":1_200,"inputTokens":1_000,"cachedInputTokens":500,
 			"outputTokens":200,"reasoningOutputTokens":100});
 		let mut value = json!({"total":counts,"last":counts,"modelContextWindow":null});
-		value["total"]["totalTokens"] = json!(9000);
+
+		value["total"]["totalTokens"] = json!(9_000);
+
 		let usage: ThreadTokenUsage = serde_json::from_value(value.clone()).unwrap();
+
 		assert!(usage.is_valid());
-		assert_eq!(usage.total.total_tokens, 9000);
-		assert_eq!(usage.last.total_tokens, 1200);
+		assert_eq!(usage.total.total_tokens, 9_000);
+		assert_eq!(usage.last.total_tokens, 1_200);
 		assert_eq!(usage.last.cache_write_input_tokens, 0);
 		assert_eq!(usage.model_context_window, None);
+
 		value["last"]["inputTokens"] = json!(-1);
+
 		assert!(serde_json::from_value::<ThreadTokenUsage>(value).is_err());
 	}
 }

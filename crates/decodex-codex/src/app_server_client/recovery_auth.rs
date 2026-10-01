@@ -1,5 +1,6 @@
 //! Read process authentication metadata without requesting exported credentials.
 use super::{AppServerClient, ClientError, HistoryGuard};
+
 use serde_json::{Value, json};
 
 /// Whether this native process can consume a ChatGPT account's recovery banner.
@@ -14,10 +15,37 @@ pub enum NativeRecoveryAuth {
 	Unavailable,
 }
 
+impl AppServerClient {
+	/// Read metadata once on the exact process. Never request a token or forced refresh.
+	/// The caller must also revalidate account binding and native task/provider settings.
+	pub async fn native_recovery_auth(
+		&self,
+		guard: HistoryGuard,
+	) -> Result<NativeRecoveryAuth, ClientError> {
+		let response = tokio::time::timeout(
+			std::time::Duration::from_secs(8),
+			self.request_with_history(
+				"getAuthStatus",
+				json!({"includeToken":false,"refreshToken":false}),
+				guard.clone(),
+			),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+
+		if !guard.is_live() {
+			return Err(ClientError::StaleHistory);
+		}
+
+		Ok(project(&response))
+	}
+}
+
 fn project(value: &Value) -> NativeRecoveryAuth {
 	if value.get("authToken").is_some_and(|token| !token.is_null()) {
 		return NativeRecoveryAuth::Unavailable;
 	}
+
 	match value["requiresOpenaiAuth"].as_bool() {
 		Some(false) => NativeRecoveryAuth::Inapplicable,
 		Some(true) => match value.get("authMethod") {
@@ -38,30 +66,6 @@ fn project(value: &Value) -> NativeRecoveryAuth {
 			_ => NativeRecoveryAuth::Unavailable,
 		},
 		None => NativeRecoveryAuth::Unavailable,
-	}
-}
-
-impl AppServerClient {
-	/// Read metadata once on the exact process. Never request a token or forced refresh.
-	/// The caller must also revalidate account binding and native task/provider settings.
-	pub async fn native_recovery_auth(
-		&self,
-		guard: HistoryGuard,
-	) -> Result<NativeRecoveryAuth, ClientError> {
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
-			self.request_with_history(
-				"getAuthStatus",
-				json!({"includeToken":false,"refreshToken":false}),
-				guard.clone(),
-			),
-		)
-		.await
-		.map_err(|_| ClientError::Io)??;
-		if !guard.is_live() {
-			return Err(ClientError::StaleHistory);
-		}
-		Ok(project(&response))
 	}
 }
 
@@ -106,7 +110,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn auth_metadata_read_does_not_request_tokens_refresh_or_mutation() {
-		let (local, remote) = tokio::io::duplex(4096);
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let (release, released) = tokio::sync::oneshot::channel::<()>();
@@ -115,10 +119,14 @@ mod tests {
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "getAuthStatus");
 			assert_eq!(request["params"], json!({"includeToken":false,"refreshToken":false}));
+
 			w.write_all(format!("{}\n",json!({"id":request["id"],"result":{"authMethod":"chatgptAuthTokens","authToken":null,"requiresOpenaiAuth":true}})).as_bytes()).await.unwrap();
+
 			let _ = released.await;
+
 			assert!(
 				tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
 					.await
@@ -126,7 +134,9 @@ mod tests {
 			);
 		});
 		let guard = client.thread_settings_guard("thread").unwrap();
+
 		assert_eq!(client.native_recovery_auth(guard).await.unwrap(), NativeRecoveryAuth::ChatGpt);
+
 		release.send(()).unwrap();
 		server.await.unwrap();
 	}

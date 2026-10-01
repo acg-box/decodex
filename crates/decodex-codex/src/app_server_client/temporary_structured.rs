@@ -1,11 +1,14 @@
 //! Isolated native structured requests for task recaps. The runtime owns event routing.
 use super::{AppServerClient, ClientError, ServerEvent};
+
 use serde_json::{Value, json};
+
 use std::{collections::BTreeSet, path::Path, time::Duration};
+
 use tokio::sync::{mpsc, watch};
 
 const DEADLINE: Duration = Duration::from_secs(30);
-const MAX_RESPONSE: usize = 8 * 1024;
+const MAX_RESPONSE: usize = 8 * 1_024;
 
 /// Existing task settings used to start a tool-isolated ephemeral thread.
 pub struct TemporaryStructuredOptions {
@@ -27,6 +30,96 @@ pub struct TemporaryStructuredThread {
 	client: AppServerClient,
 	id: String,
 }
+impl TemporaryStructuredThread {
+	/// Exact identity for the runtime's temporary-thread event route.
+	pub fn id(&self) -> &str {
+		&self.id
+	}
+
+	async fn detach(&self) -> Result<(), ClientError> {
+		let response = tokio::time::timeout(
+			DEADLINE,
+			self.client.request("thread/unsubscribe", json!({"threadId":self.id})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+
+		match response["status"].as_str() {
+			Some("unsubscribed" | "notSubscribed" | "notLoaded") => Ok(()),
+			_ => Err(ClientError::InvalidFrame),
+		}
+	}
+
+	/// Cancel a late thread start before submitting inference.
+	pub async fn cancel(self) -> Result<(), ClientError> {
+		self.detach().await
+	}
+
+	/// Collect only the selected temporary turn; interrupt failures and detach on exit.
+	/// The runtime must register its event route before calling this method and keep it
+	/// alive until cleanup returns. Dropping the cancellation sender also cancels work.
+	pub async fn run(
+		self,
+		prompt: String,
+		output_schema: Value,
+		effort: Option<String>,
+		mut events: mpsc::Receiver<ServerEvent>,
+		mut cancellation: watch::Receiver<bool>,
+	) -> Result<String, ClientError> {
+		let mut turn_id = None;
+		let result = tokio::time::timeout(DEADLINE, async {
+			if *cancellation.borrow() || cancellation.has_changed().is_err() {
+				return Err(ClientError::Closed);
+			}
+
+			let mut params = json!({"threadId":self.id,"input":[{"type":"text","text":prompt}],
+				"outputSchema":output_schema});
+
+			if let Some(effort) = effort {
+				params["effort"] = json!(effort);
+			}
+			// Do not drop turn/start on cancellation: the returned ID owns interruption.
+			let started = self.client.turn_start(params).await?;
+			let id = started["turn"]["id"]
+				.as_str()
+				.filter(|id| !id.is_empty())
+				.ok_or(ClientError::InvalidFrame)?
+				.to_owned();
+
+			turn_id = Some(id.clone());
+
+			if *cancellation.borrow() || cancellation.has_changed().is_err() {
+				return Err(ClientError::Closed);
+			}
+
+			tokio::select! {
+				biased;
+
+				_ = cancellation.changed() => Err(ClientError::Closed),
+				result = collect(&mut events, &self.id, &id) => result,
+			}
+		})
+		.await
+		.unwrap_or(Err(ClientError::Io));
+
+		if result.is_err()
+			&& let Some(turn) = turn_id
+		{
+			let _ = tokio::time::timeout(
+				DEADLINE,
+				self.client.turn_interrupt(json!({"threadId":self.id,"turnId":turn})),
+			)
+			.await;
+		}
+
+		let detached = self.detach().await;
+
+		match result {
+			Ok(value) => detached.map(|()| value),
+			Err(error) => Err(error),
+		}
+	}
+}
 
 impl AppServerClient {
 	/// Start an ephemeral thread with tools disabled, then verify native permissions.
@@ -41,6 +134,7 @@ impl AppServerClient {
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let config = tokio::time::timeout(
 			DEADLINE,
 			self.request("config/read", json!({"cwd":options.cwd,"includeLayers":false})),
@@ -53,6 +147,7 @@ impl AppServerClient {
 			"cwd":options.cwd,"approvalPolicy":"never","runtimeWorkspaceRoots":[],
 			"ephemeral":true,"threadSource":"system","environments":[],
 			"dynamicTools":[],"selectedCapabilityRoots":[],"config":config});
+
 		if let Some(profile) = &profile {
 			params["permissions"] = json!(profile);
 		} else {
@@ -60,6 +155,7 @@ impl AppServerClient {
 			// Managed profile defaults take precedence over the legacy sandbox override.
 			params["config"]["default_permissions"] = json!(":read-only");
 		}
+
 		let response = tokio::time::timeout(DEADLINE, self.thread_start(params))
 			.await
 			.map_err(|_| ClientError::Io)??;
@@ -73,10 +169,13 @@ impl AppServerClient {
 			Some(profile) => response["activePermissionProfile"]["id"] == profile,
 			None => response["sandbox"]["type"] == "readOnly",
 		};
+
 		if !permission_matches || response["thread"]["ephemeral"] != true {
 			let _ = thread.detach().await;
+
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(thread)
 	}
 }
@@ -85,14 +184,18 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 	if !effective.is_object() {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	let mut names: BTreeSet<_> = known.iter().cloned().collect();
+
 	match &effective["mcp_servers"] {
 		Value::Null => {},
 		Value::Object(servers) => names.extend(servers.keys().cloned()),
 		_ => return Err(ClientError::InvalidFrame),
 	}
+
 	let mut config = json!({"web_search":"disabled","mcp_servers": names.into_iter()
 		.map(|name|(name,json!({"enabled":false}))).collect::<serde_json::Map<_,_>>()});
+
 	for key in [
 		"agents.enabled",
 		"features.apps",
@@ -124,88 +227,8 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 	] {
 		config[key] = json!(false);
 	}
+
 	Ok(config)
-}
-
-impl TemporaryStructuredThread {
-	/// Exact identity for the runtime's temporary-thread event route.
-	pub fn id(&self) -> &str {
-		&self.id
-	}
-
-	async fn detach(&self) -> Result<(), ClientError> {
-		let response = tokio::time::timeout(
-			DEADLINE,
-			self.client.request("thread/unsubscribe", json!({"threadId":self.id})),
-		)
-		.await
-		.map_err(|_| ClientError::Io)??;
-		match response["status"].as_str() {
-			Some("unsubscribed" | "notSubscribed" | "notLoaded") => Ok(()),
-			_ => Err(ClientError::InvalidFrame),
-		}
-	}
-
-	/// Cancel a late thread start before submitting inference.
-	pub async fn cancel(self) -> Result<(), ClientError> {
-		self.detach().await
-	}
-
-	/// Collect only the selected temporary turn; interrupt failures and detach on exit.
-	/// The runtime must register its event route before calling this method and keep it
-	/// alive until cleanup returns. Dropping the cancellation sender also cancels work.
-	pub async fn run(
-		self,
-		prompt: String,
-		output_schema: Value,
-		effort: Option<String>,
-		mut events: mpsc::Receiver<ServerEvent>,
-		mut cancellation: watch::Receiver<bool>,
-	) -> Result<String, ClientError> {
-		let mut turn_id = None;
-		let result = tokio::time::timeout(DEADLINE, async {
-			if *cancellation.borrow() || cancellation.has_changed().is_err() {
-				return Err(ClientError::Closed);
-			}
-			let mut params = json!({"threadId":self.id,"input":[{"type":"text","text":prompt}],
-				"outputSchema":output_schema});
-			if let Some(effort) = effort {
-				params["effort"] = json!(effort);
-			}
-			// Do not drop turn/start on cancellation: the returned ID owns interruption.
-			let started = self.client.turn_start(params).await?;
-			let id = started["turn"]["id"]
-				.as_str()
-				.filter(|id| !id.is_empty())
-				.ok_or(ClientError::InvalidFrame)?
-				.to_owned();
-			turn_id = Some(id.clone());
-			if *cancellation.borrow() || cancellation.has_changed().is_err() {
-				return Err(ClientError::Closed);
-			}
-			tokio::select! {
-				biased;
-				_ = cancellation.changed() => Err(ClientError::Closed),
-				result = collect(&mut events, &self.id, &id) => result,
-			}
-		})
-		.await
-		.unwrap_or(Err(ClientError::Io));
-		if result.is_err()
-			&& let Some(turn) = turn_id
-		{
-			let _ = tokio::time::timeout(
-				DEADLINE,
-				self.client.turn_interrupt(json!({"threadId":self.id,"turnId":turn})),
-			)
-			.await;
-		}
-		let detached = self.detach().await;
-		match result {
-			Ok(value) => detached.map(|()| value),
-			Err(error) => Err(error),
-		}
-	}
 }
 
 async fn collect(
@@ -214,6 +237,7 @@ async fn collect(
 	turn: &str,
 ) -> Result<String, ClientError> {
 	let mut output = None;
+
 	while let Some(event) = events.recv().await {
 		match event {
 			ServerEvent::Closed(error) => return Err(error),
@@ -225,9 +249,11 @@ async fn collect(
 					&& params["item"]["type"] == "agentMessage"
 				{
 					let text = params["item"]["text"].as_str().ok_or(ClientError::InvalidFrame)?;
+
 					if text.len() > MAX_RESPONSE {
 						return Err(ClientError::FrameTooLarge);
 					}
+
 					output = Some(text.to_owned());
 				} else if method == "turn/completed" && params["turn"]["id"] == turn {
 					return if params["turn"]["status"] == "completed" {
@@ -239,6 +265,7 @@ async fn collect(
 			_ => {},
 		}
 	}
+
 	Err(ClientError::Closed)
 }
 

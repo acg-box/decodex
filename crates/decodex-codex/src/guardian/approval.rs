@@ -1,59 +1,11 @@
 //! Explicit public-to-core action conversion for the native denial approval RPC.
 use super::{GuardianReview, ReviewStatus, decode_review};
+
 use serde::Deserialize;
+
 use serde_json::{Value, json};
+
 use std::num::NonZeroUsize;
-
-/// Convert an observed denial without discarding unknown approval-relevant data.
-/// This only builds a payload; the caller must bind it to a saved observation and
-/// an explicit user decision. RPC success is submission, not action execution.
-pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
-	let review = decode_review("item/autoApprovalReview/completed", &observation.event)?;
-	if review.status != ReviewStatus::Denied {
-		return None;
-	}
-	let event = &review.event;
-	if !known_keys(
-		event,
-		&[
-			"threadId",
-			"turnId",
-			"reviewId",
-			"targetItemId",
-			"startedAtMs",
-			"completedAtMs",
-			"decisionSource",
-			"review",
-			"action",
-		],
-	) || !known_keys(
-		&event["review"],
-		&["status", "riskLevel", "userAuthorization", "rationale"],
-	) {
-		return None;
-	}
-	let action: Action = serde_json::from_value(event["action"].clone()).ok()?;
-	let converted = json!({
-		"id":review.review_id,"target_item_id":review.target_item_id,
-		"turn_id":review.turn_id,"started_at_ms":review.started_at_ms,
-		"completed_at_ms":review.completed_at_ms,"status":"denied",
-		"risk_level":event["review"]["riskLevel"],
-		"user_authorization":event["review"]["userAuthorization"],
-		"rationale":event["review"]["rationale"],"decision_source":"agent",
-		"action":action.into_core()?
-	});
-	// Check the complete native frame before the service reserves a submission.
-	crate::app_server_client::AppServerClient::preflight_request(
-		"thread/approveGuardianDeniedAction",
-		&json!({"threadId":review.thread_id,"event":&converted}),
-	)
-	.ok()?;
-	Some(converted)
-}
-
-fn known_keys(value: &Value, allowed: &[&str]) -> bool {
-	value.as_object().is_some_and(|map| map.keys().all(|key| allowed.contains(&key.as_str())))
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,7 +85,6 @@ enum Action {
 		permissions: Permissions,
 	},
 }
-
 impl Action {
 	fn into_core(self) -> Option<Value> {
 		Some(match self {
@@ -143,6 +94,7 @@ impl Action {
 				if !std::path::Path::new(&cwd).is_absolute() {
 					return None;
 				}
+
 				json!({"type":"execve","source":source.core(),"program":program,"argv":argv,"cwd":cwd})
 			},
 			Self::WriteStdin { approval_id, process_id, stdin, cwd } =>
@@ -159,71 +111,6 @@ impl Action {
 	}
 }
 
-// Decodex's native app-server runs on the same POSIX host. Normalize components
-// like upstream LegacyAppPathString -> PathUri, preserving literal percent signs,
-// non-ASCII text and separators. Do not guess at ambiguous or foreign spellings.
-fn native_path_uri(path: &str) -> Option<String> {
-	let tail = path.strip_prefix('/')?;
-	if path.contains('\0') {
-		return None;
-	}
-	let mut parts = Vec::new();
-	let mut trailing = false;
-	for part in tail.split('/') {
-		match part {
-			"" => trailing = true,
-			"." => trailing = false,
-			".." => {
-				parts.pop();
-				trailing = false;
-			},
-			part => {
-				parts.push(part);
-				trailing = false;
-			},
-		}
-	}
-	// Upstream uses an opaque fallback for POSIX paths that resemble a drive.
-	// They are not losslessly representable by the ordinary conversion here.
-	if parts.first().is_some_and(|part| {
-		let bytes = part.as_bytes();
-		bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-	}) {
-		return None;
-	}
-	if trailing {
-		parts.push("");
-	}
-	let mut uri = url::Url::parse("file:///").ok()?;
-	uri.path_segments_mut().ok()?.clear().extend(parts);
-	Some(uri.to_string())
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Permissions {
-	network: Option<Network>,
-	file_system: Option<FileSystem>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Network {
-	enabled: Option<bool>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct FileSystem {
-	read: Option<Vec<String>>,
-	write: Option<Vec<String>>,
-	entries: Option<Vec<Entry>>,
-	glob_scan_max_depth: Option<NonZeroUsize>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Entry {
-	path: PermissionPath,
-	access: Access,
-}
 #[derive(Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Access {
@@ -231,6 +118,7 @@ enum Access {
 	Write,
 	Deny,
 }
+
 #[derive(Deserialize, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum PermissionPath {
@@ -238,6 +126,7 @@ enum PermissionPath {
 	GlobPattern { pattern: String },
 	Special { value: SpecialPath },
 }
+
 #[derive(Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum SpecialPath {
@@ -255,6 +144,12 @@ enum SpecialPath {
 	},
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Permissions {
+	network: Option<Network>,
+	file_system: Option<FileSystem>,
+}
 impl Permissions {
 	fn into_core(self) -> Option<Value> {
 		let filesystem = self.file_system.map(|fs| {
@@ -272,24 +167,155 @@ impl Permissions {
 					.collect()
 			});
 			let mut output = Vec::with_capacity(entries.len());
+
 			for entry in entries {
 				if let PermissionPath::Path { path } = &entry.path {
 					// Core RawFileSystemPath uses the native string, not a file URI.
 					// Validate the supported host path but retain its exact spelling.
 					native_path_uri(path)?;
 				}
+
 				output.push(json!({"path":entry.path,"access":entry.access}));
 			}
+
 			Some(json!({"entries":output,"glob_scan_max_depth":fs.glob_scan_max_depth}))
 		});
 		let filesystem = match filesystem {
 			Some(value) => Some(value?),
 			None => None,
 		};
+
 		Some(
 			json!({"network":self.network.map(|n|json!({"enabled":n.enabled})),"file_system":filesystem}),
 		)
 	}
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Network {
+	enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FileSystem {
+	read: Option<Vec<String>>,
+	write: Option<Vec<String>>,
+	entries: Option<Vec<Entry>>,
+	glob_scan_max_depth: Option<NonZeroUsize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Entry {
+	path: PermissionPath,
+	access: Access,
+}
+
+/// Convert an observed denial without discarding unknown approval-relevant data.
+/// This only builds a payload; the caller must bind it to a saved observation and
+/// an explicit user decision. RPC success is submission, not action execution.
+pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
+	let review = decode_review("item/autoApprovalReview/completed", &observation.event)?;
+
+	if review.status != ReviewStatus::Denied {
+		return None;
+	}
+
+	let event = &review.event;
+
+	if !known_keys(
+		event,
+		&[
+			"threadId",
+			"turnId",
+			"reviewId",
+			"targetItemId",
+			"startedAtMs",
+			"completedAtMs",
+			"decisionSource",
+			"review",
+			"action",
+		],
+	) || !known_keys(
+		&event["review"],
+		&["status", "riskLevel", "userAuthorization", "rationale"],
+	) {
+		return None;
+	}
+
+	let action: Action = serde_json::from_value(event["action"].clone()).ok()?;
+	let converted = json!({
+		"id":review.review_id,"target_item_id":review.target_item_id,
+		"turn_id":review.turn_id,"started_at_ms":review.started_at_ms,
+		"completed_at_ms":review.completed_at_ms,"status":"denied",
+		"risk_level":event["review"]["riskLevel"],
+		"user_authorization":event["review"]["userAuthorization"],
+		"rationale":event["review"]["rationale"],"decision_source":"agent",
+		"action":action.into_core()?
+	});
+	// Check the complete native frame before the service reserves a submission.
+	crate::app_server_client::AppServerClient::preflight_request(
+		"thread/approveGuardianDeniedAction",
+		&json!({"threadId":review.thread_id,"event":&converted}),
+	)
+	.ok()?;
+
+	Some(converted)
+}
+
+fn known_keys(value: &Value, allowed: &[&str]) -> bool {
+	value.as_object().is_some_and(|map| map.keys().all(|key| allowed.contains(&key.as_str())))
+}
+
+// Decodex's native app-server runs on the same POSIX host. Normalize components
+// like upstream LegacyAppPathString -> PathUri, preserving literal percent signs,
+// non-ASCII text and separators. Do not guess at ambiguous or foreign spellings.
+fn native_path_uri(path: &str) -> Option<String> {
+	let tail = path.strip_prefix('/')?;
+
+	if path.contains('\0') {
+		return None;
+	}
+
+	let mut parts = Vec::new();
+	let mut trailing = false;
+
+	for part in tail.split('/') {
+		match part {
+			"" => trailing = true,
+			"." => trailing = false,
+			".." => {
+				parts.pop();
+
+				trailing = false;
+			},
+			part => {
+				parts.push(part);
+
+				trailing = false;
+			},
+		}
+	}
+	// Upstream uses an opaque fallback for POSIX paths that resemble a drive.
+	// They are not losslessly representable by the ordinary conversion here.
+	if parts.first().is_some_and(|part| {
+		let bytes = part.as_bytes();
+
+		bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+	}) {
+		return None;
+	}
+	if trailing {
+		parts.push("");
+	}
+
+	let mut uri = url::Url::parse("file:///").ok()?;
+
+	uri.path_segments_mut().ok()?.clear().extend(parts);
+
+	Some(uri.to_string())
 }
 
 #[cfg(test)]
@@ -299,13 +325,17 @@ mod tests {
 	fn a_retained_review_that_cannot_fit_its_approval_frame_is_not_submittable() {
 		let mut event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
 		let overhead = serde_json::to_vec(&event).unwrap().len();
+
 		event["action"]["command"] =
 			json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
+
 		let observed = decode_review("item/autoApprovalReview/completed", &event).unwrap();
+
 		assert!(core_denial_event(&observed).is_none());
 	}
 	fn convert(action: Value) -> Option<Value> {
 		let event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
+
 		core_denial_event(&decode_review("item/autoApprovalReview/completed", &event)?)
 	}
 	#[test]
@@ -340,8 +370,10 @@ mod tests {
 				json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
 			),
 		];
+
 		for (input, expected) in cases {
 			let result = convert(input).unwrap();
+
 			assert_eq!(result["action"], expected);
 			assert_eq!(result["status"], "denied");
 			assert_eq!(result["rationale"], "exact rationale");
@@ -359,16 +391,21 @@ mod tests {
 		]);
 		let mut action = json!({"type":"requestPermissions","reason":null,"permissions":{"fileSystem":{"read":["/ignored"],"write":["/also-ignored"],"entries":entries,"globScanMaxDepth":3}}});
 		let core = convert(action.clone()).unwrap();
+
 		assert_eq!(
 			core["action"]["permissions"]["file_system"],
 			json!({"entries":entries,"glob_scan_max_depth":3})
 		);
+
 		action["permissions"]["fileSystem"]["entries"] = json!([]);
+
 		assert_eq!(
 			convert(action.clone()).unwrap()["action"]["permissions"]["file_system"]["entries"],
 			json!([])
 		);
+
 		action["permissions"]["fileSystem"]["globScanMaxDepth"] = json!(0);
+
 		assert!(convert(action).is_none());
 	}
 
@@ -382,6 +419,7 @@ mod tests {
 		] {
 			assert!(convert(action).is_none());
 		}
+
 		assert_eq!(native_path_uri("/tmp/a/.././b//"), Some("file:///tmp/b/".into()));
 		assert_eq!(native_path_uri("/C:/tmp"), None);
 		assert_eq!(native_path_uri("/tmp/\0"), None);

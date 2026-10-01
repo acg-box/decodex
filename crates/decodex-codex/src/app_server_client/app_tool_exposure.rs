@@ -3,8 +3,11 @@ use super::{
 	AppServerClient, ClientError, HistoryGuard, Outbound,
 	app_link_settings::{quoted_key, required_string, take_quoted_key, valid_identity},
 };
+
 use serde_json::{Value, json};
+
 use std::{path::Path, time::Duration};
+
 use tokio::sync::mpsc;
 
 /// A reviewed connector preference, separate from connected-account approval settings.
@@ -20,13 +23,6 @@ pub struct AppToolExposureSettings {
 	/// Writable user-layer omissions. None inherits; an empty list explicitly clears omissions.
 	pub preference: Option<Vec<String>>,
 }
-
-impl std::fmt::Debug for AppToolExposureSettings {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("AppToolExposureSettings([private native connector scope])")
-	}
-}
-
 impl AppToolExposureSettings {
 	/// Native writable file identity for shared configuration arbitration.
 	pub fn config_file(&self) -> &str {
@@ -41,9 +37,17 @@ impl AppToolExposureSettings {
 	/// Bind the reviewed preference to its native scope, version and effective configuration.
 	pub fn fingerprint(&self) -> String {
 		use sha2::{Digest as _, Sha256};
+
 		let facts =
 			json!([self.cwd, self.app, self.file, self.version, self.effective, self.preference]);
+
 		Sha256::digest(facts.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+	}
+}
+
+impl std::fmt::Debug for AppToolExposureSettings {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("AppToolExposureSettings([private native connector scope])")
 	}
 }
 
@@ -67,6 +71,7 @@ impl AppServerClient {
 		if !Path::new(cwd).is_absolute() || !valid_identity(app) || app == "_default" {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let value = tokio::time::timeout(
 			Duration::from_secs(15),
 			self.request("config/read", json!({"cwd":cwd,"includeLayers":true})),
@@ -77,13 +82,17 @@ impl AppServerClient {
 			.as_array()
 			.and_then(|layers| layers.iter().find(|layer| layer["name"]["type"] == "user"))
 			.ok_or(ClientError::InvalidFrame)?;
+
 		if !user["disabledReason"].is_null() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let file = required_string(&user["name"]["file"])?;
+
 		if !Path::new(&file).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(AppToolExposureSettings {
 			connection: self.outbound.clone(),
 			cwd: cwd.into(),
@@ -109,6 +118,7 @@ impl AppServerClient {
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
 			"edits":[{"keyPath":format!("apps.{}.omit_tools_from",quoted_key(&observed.app)),"value":preference,"mergeStrategy":"replace"}]});
 		let receipt = tokio::time::timeout(
@@ -122,11 +132,55 @@ impl AppServerClient {
 			Some("okOverridden") => true,
 			_ => return Err(ClientError::InvalidFrame),
 		};
+
 		if receipt["filePath"] != observed.file || required_string(&receipt["version"]).is_err() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let settings = self.app_tool_exposure(&observed.cwd, &observed.app).await?;
+
 		Ok(AppToolExposureWrite { overridden, settings })
+	}
+}
+
+/// Admit only a versioned connector exposure edit through the retained process bridge.
+pub fn is_app_tool_exposure_write(params: &Value) -> bool {
+	if !params.as_object().is_some_and(|p| p.len() == 4)
+		|| params["reloadUserConfig"] != true
+		|| !params["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute())
+		|| required_string(&params["expectedVersion"]).is_err()
+	{
+		return false;
+	}
+
+	let Some(edits) = params["edits"].as_array().filter(|e| e.len() == 1) else {
+		return false;
+	};
+	let edit = &edits[0];
+
+	if !edit.as_object().is_some_and(|e| e.len() == 3) || edit["mergeStrategy"] != "replace" {
+		return false;
+	}
+
+	let Some(path) = edit["keyPath"].as_str().and_then(|p| p.strip_prefix("apps.")) else {
+		return false;
+	};
+	let Some((app, field)) = take_quoted_key(path) else {
+		return false;
+	};
+
+	if !valid_identity(&app) || app == "_default" || field != ".omit_tools_from" {
+		return false;
+	}
+
+	match edit.get("value") {
+		Some(Value::Null) => true,
+		Some(Value::Array(values)) => values
+			.iter()
+			.map(|v| v.as_str().map(str::to_owned))
+			.collect::<Option<Vec<_>>>()
+			.is_some_and(|v| valid_preference(Some(&v))),
+		_ => false,
 	}
 }
 
@@ -134,7 +188,9 @@ fn omissions(config: &Value, app: &str) -> Result<Option<Vec<String>>, ClientErr
 	if !config.is_object() {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	let mut scope = config;
+
 	for key in ["apps", app] {
 		match scope.get(key) {
 			None | Some(Value::Null) => return Ok(None),
@@ -142,14 +198,17 @@ fn omissions(config: &Value, app: &str) -> Result<Option<Vec<String>>, ClientErr
 			_ => return Err(ClientError::InvalidFrame),
 		}
 	}
+
 	match scope.get("omit_tools_from") {
 		None | Some(Value::Null) => Ok(None),
 		Some(Value::Array(values)) if values.len() <= 16 => {
 			// Preserve future values for display. Never silently discard an unknown restriction.
 			let values = values.iter().map(required_string).collect::<Result<Vec<_>, _>>()?;
+
 			if values.iter().collect::<std::collections::HashSet<_>>().len() != values.len() {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			Ok(Some(values))
 		},
 		_ => Err(ClientError::InvalidFrame),
@@ -162,42 +221,6 @@ fn valid_preference(values: Option<&[String]>) -> bool {
 			&& values.iter().all(|v| matches!(v.as_str(), "code_mode" | "deferred" | "direct"))
 			&& values.iter().collect::<std::collections::HashSet<_>>().len() == values.len()
 	})
-}
-
-/// Admit only a versioned connector exposure edit through the retained process bridge.
-pub fn is_app_tool_exposure_write(params: &Value) -> bool {
-	if !params.as_object().is_some_and(|p| p.len() == 4)
-		|| params["reloadUserConfig"] != true
-		|| !params["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute())
-		|| required_string(&params["expectedVersion"]).is_err()
-	{
-		return false;
-	}
-	let Some(edits) = params["edits"].as_array().filter(|e| e.len() == 1) else {
-		return false;
-	};
-	let edit = &edits[0];
-	if !edit.as_object().is_some_and(|e| e.len() == 3) || edit["mergeStrategy"] != "replace" {
-		return false;
-	}
-	let Some(path) = edit["keyPath"].as_str().and_then(|p| p.strip_prefix("apps.")) else {
-		return false;
-	};
-	let Some((app, field)) = take_quoted_key(path) else {
-		return false;
-	};
-	if !valid_identity(&app) || app == "_default" || field != ".omit_tools_from" {
-		return false;
-	}
-	match edit.get("value") {
-		Some(Value::Null) => true,
-		Some(Value::Array(values)) => values
-			.iter()
-			.map(|v| v.as_str().map(str::to_owned))
-			.collect::<Option<Vec<_>>>()
-			.is_some_and(|v| valid_preference(Some(&v))),
-		_ => false,
-	}
 }
 
 #[cfg(test)]

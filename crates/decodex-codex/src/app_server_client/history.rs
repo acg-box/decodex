@@ -1,7 +1,9 @@
 //! Read one exact turn through the native history pages without hydrating the whole thread.
 
 use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+
 use serde_json::{Value, json};
+
 use std::collections::HashSet;
 
 const MAX_PAGES: usize = 128;
@@ -20,13 +22,16 @@ impl AppServerClient {
 		if !(1..=20).contains(&limit)
 			|| thread.is_empty()
 			|| thread.len() > 512
-			|| cursor.is_some_and(|value| value.is_empty() || value.len() > 4096)
+			|| cursor.is_some_and(|value| value.is_empty() || value.len() > 4_096)
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		tokio::time::timeout(std::time::Duration::from_secs(20), async {
 			let metadata = self.thread_read(json!({"threadId":thread})).await?;
+
 			validate_thread(&metadata, thread)?;
+
 			let page = self
 				.request(
 					"thread/turns/list",
@@ -37,18 +42,24 @@ impl AppServerClient {
 				)
 				.await?;
 			let mut budget = MAX_FRAME_BYTES;
+
 			charge(&metadata, &mut budget)?;
 			charge(&page, &mut budget)?;
+
 			let turns = data(&page)?;
+
 			if turns.len() > limit as usize {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			let mut ids = HashSet::new();
+
 			for turn in turns {
 				let id = turn["id"]
 					.as_str()
 					.filter(|id| !id.is_empty() && id.len() <= 512)
 					.ok_or(ClientError::InvalidFrame)?;
+
 				if !ids.insert(id)
 					|| !turn["items"].is_array()
 					|| turn.get("itemsView").is_some_and(|view| view.as_str() != Some("full"))
@@ -56,12 +67,14 @@ impl AppServerClient {
 					return Err(ClientError::InvalidFrame);
 				}
 			}
+
 			match page.get("nextCursor") {
 				Some(Value::Null) => {},
 				Some(Value::String(next))
-					if !next.is_empty() && next.len() <= 4096 && Some(next.as_str()) != cursor => {},
+					if !next.is_empty() && next.len() <= 4_096 && Some(next.as_str()) != cursor => {},
 				_ => return Err(ClientError::InvalidFrame),
 			}
+
 			Ok(json!({"thread":metadata["thread"],"turns":turns,"nextCursor":page["nextCursor"]}))
 		})
 		.await
@@ -90,8 +103,10 @@ impl AppServerClient {
 		if [thread, turn].iter().any(|id| id.is_empty() || id.len() > 512) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		tokio::time::timeout(std::time::Duration::from_secs(20), async {
 			let mut budget = MAX_FRAME_BYTES;
+
 			self.read_turn_items(thread, turn, &mut budget).await
 		})
 		.await
@@ -119,16 +134,19 @@ impl AppServerClient {
 		tokio::time::timeout(std::time::Duration::from_secs(60), async {
 			let mut turns = self.turn_headers(thread, None, false).await?;
 			let mut budget = MAX_FRAME_BYTES;
+
 			for turn in &mut turns {
 				if !turn["items"].is_array()
 					|| turn.get("itemsView").is_some_and(|view| view != "full")
 				{
 					let id = turn["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+
 					turn["items"] = self.read_turn_items(thread, id, &mut budget).await?;
 				} else {
 					charge(turn, &mut budget)?;
 				}
 			}
+
 			super::transcript::render(&turns)
 		})
 		.await
@@ -143,6 +161,7 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		Ok(turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned))
 	}
 
@@ -153,6 +172,7 @@ impl AppServerClient {
 		latest: bool,
 	) -> Result<Vec<Value>, ClientError> {
 		let history = self.read_history_metadata(thread).await?;
+
 		match history.pointer("/thread/historyMode").and_then(Value::as_str) {
 			None | Some("legacy") => {
 				let turns = history
@@ -160,18 +180,22 @@ impl AppServerClient {
 					.and_then(Value::as_array)
 					.ok_or(ClientError::InvalidFrame)?;
 				let mut ids = HashSet::new();
+
 				for turn in turns {
 					let id = turn["id"]
 						.as_str()
 						.filter(|id| !id.is_empty())
 						.ok_or(ClientError::InvalidFrame)?;
+
 					if !ids.insert(id) {
 						return Err(ClientError::InvalidFrame);
 					}
 				}
+
 				if latest {
 					return Ok(turns.last().cloned().into_iter().collect());
 				}
+
 				let start = match baseline {
 					Some(id) =>
 						turns
@@ -181,6 +205,7 @@ impl AppServerClient {
 							+ 1,
 					None => 0,
 				};
+
 				Ok(turns[start..].to_vec())
 			},
 			Some("paginated") => {
@@ -188,31 +213,41 @@ impl AppServerClient {
 				let mut budget = MAX_FRAME_BYTES;
 				let mut turns = Vec::new();
 				let mut ids = HashSet::new();
+
 				loop {
 					let page = self.request("thread/turns/list", json!({"threadId":thread,"cursor":pages.cursor,"limit":if latest {1} else {PAGE_SIZE},"sortDirection":"desc","itemsView":"notLoaded"})).await?;
+
 					charge(&page, &mut budget)?;
+
 					for turn in data(&page)? {
 						let id = turn["id"]
 							.as_str()
 							.filter(|id| !id.is_empty())
 							.ok_or(ClientError::InvalidFrame)?;
+
 						if !ids.insert(id.to_owned()) {
 							return Err(ClientError::InvalidFrame);
 						}
 						if Some(id) == baseline {
 							turns.reverse();
+
 							return Ok(turns);
 						}
+
 						turns.push(turn.clone());
+
 						if latest {
 							return Ok(turns);
 						}
 					}
+
 					if !pages.advance(&page)? {
 						if baseline.is_some() {
 							return Err(ClientError::InvalidFrame);
 						}
+
 						turns.reverse();
+
 						return Ok(turns);
 					}
 				}
@@ -225,27 +260,35 @@ impl AppServerClient {
 	/// Consumers must choose pagination from the returned response, not the first snapshot.
 	async fn read_history_metadata(&self, thread: &str) -> Result<Value, ClientError> {
 		let mut history = self.thread_read(json!({"threadId":thread})).await?;
+
 		validate_thread(&history, thread)?;
+
 		let mode = history.pointer("/thread/historyMode");
+
 		if mode.is_none() || mode == Some(&json!("legacy")) {
 			history = self.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
+
 			validate_thread(&history, thread)?;
 		}
+
 		Ok(history)
 	}
 
 	async fn read_turn_history(&self, thread: &str, turn: &str) -> Result<Value, ClientError> {
 		let mut history = self.read_history_metadata(thread).await?;
 		let mode = history.pointer("/thread/historyMode");
+
 		if mode.is_none() || mode == Some(&json!("legacy")) {
 			return Ok(history);
 		}
 		if mode != Some(&json!("paginated")) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let mut budget = MAX_FRAME_BYTES;
 		let mut pages = Pages::default();
 		let mut selected = None;
+
 		loop {
 			let page = self
 				.request(
@@ -256,29 +299,38 @@ impl AppServerClient {
 					}),
 				)
 				.await?;
+
 			charge(&page, &mut budget)?;
+
 			let entries = data(&page)?;
+
 			for entry in entries {
 				let id = entry["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+
 				if id == turn {
 					if selected.is_some() {
 						return Err(ClientError::InvalidFrame);
 					}
+
 					selected = Some(entry.clone());
 				}
 			}
+
 			if selected.is_some() || !pages.advance(&page)? {
 				break;
 			}
 		}
+
 		history["thread"]["turns"] = match selected {
 			Some(mut selected) => {
 				selected["items"] = self.read_turn_items(thread, turn, &mut budget).await?;
 				selected["itemsView"] = json!("full");
+
 				json!([selected])
 			},
 			None => json!([]),
 		};
+
 		Ok(history)
 	}
 
@@ -291,6 +343,7 @@ impl AppServerClient {
 		let mut pages = Pages::default();
 		let mut items = Vec::new();
 		let mut ids = HashSet::new();
+
 		loop {
 			let page = self
 				.request(
@@ -301,18 +354,24 @@ impl AppServerClient {
 					}),
 				)
 				.await?;
+
 			charge(&page, budget)?;
+
 			for entry in data(&page)? {
 				if entry["turnId"].as_str() != Some(turn) {
 					return Err(ClientError::InvalidFrame);
 				}
+
 				let item = &entry["item"];
 				let id = item["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+
 				if !ids.insert(id.to_owned()) {
 					return Err(ClientError::InvalidFrame);
 				}
+
 				items.push(item.clone());
 			}
+
 			if !pages.advance(&page)? {
 				return Ok(Value::Array(items));
 			}
@@ -320,28 +379,11 @@ impl AppServerClient {
 	}
 }
 
-fn validate_thread(history: &Value, thread: &str) -> Result<(), ClientError> {
-	if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok(())
-}
-
-fn data(page: &Value) -> Result<&Vec<Value>, ClientError> {
-	page["data"].as_array().ok_or(ClientError::InvalidFrame)
-}
-
-fn charge(page: &Value, budget: &mut usize) -> Result<(), ClientError> {
-	*budget = budget.checked_sub(page.to_string().len()).ok_or(ClientError::CapacityExceeded)?;
-	Ok(())
-}
-
 #[derive(Default)]
 struct Pages {
 	cursor: Option<String>,
 	seen: HashSet<String>,
 }
-
 impl Pages {
 	fn advance(&mut self, page: &Value) -> Result<bool, ClientError> {
 		match page.get("nextCursor") {
@@ -353,7 +395,9 @@ impl Pages {
 				if self.seen.len() >= MAX_PAGES {
 					return Err(ClientError::CapacityExceeded);
 				}
+
 				self.cursor = Some(next.clone());
+
 				Ok(true)
 			},
 			_ => Err(ClientError::InvalidFrame),
@@ -361,10 +405,58 @@ impl Pages {
 	}
 }
 
+fn validate_thread(history: &Value, thread: &str) -> Result<(), ClientError> {
+	if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+		return Err(ClientError::InvalidFrame);
+	}
+
+	Ok(())
+}
+
+fn data(page: &Value) -> Result<&Vec<Value>, ClientError> {
+	page["data"].as_array().ok_or(ClientError::InvalidFrame)
+}
+
+fn charge(page: &Value, budget: &mut usize) -> Result<(), ClientError> {
+	*budget = budget.checked_sub(page.to_string().len()).ok_or(ClientError::CapacityExceeded)?;
+
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+	fn metadata() -> Value {
+		json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
+	}
+
+	fn turn_page() -> Value {
+		json!({"data":[{"id":"target","status":"completed","items":[],"itemsView":"notLoaded"}],"nextCursor":null})
+	}
+
+	#[test]
+	fn malformed_and_unbounded_pages_never_look_complete() {
+		let mut pages = Pages::default();
+
+		assert!(pages.advance(&json!({})).is_err());
+		assert!(pages.advance(&json!({"nextCursor":42})).is_err());
+
+		for index in 0..MAX_PAGES - 1 {
+			assert!(pages.advance(&json!({"nextCursor":index.to_string()})).unwrap());
+		}
+
+		assert!(matches!(
+			pages.advance(&json!({"nextCursor":"last"})),
+			Err(ClientError::CapacityExceeded)
+		));
+		assert!(matches!(
+			charge(&json!({"data":["large"]}), &mut 1),
+			Err(ClientError::CapacityExceeded)
+		));
+	}
 
 	async fn read(pages: Vec<(&'static str, Value)>) -> (Result<Value, ClientError>, Vec<Value>) {
 		run(pages, None).await
@@ -374,17 +466,20 @@ mod tests {
 		pages: Vec<(&'static str, Value)>,
 		mode: Option<Option<&str>>,
 	) -> (Result<Value, ClientError>, Vec<Value>) {
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut requests = Vec::new();
+
 			for (method, response) in pages.into_iter().map(|(m, r)| (m.to_owned(), r)) {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], method);
+
 				writer
 					.write_all(
 						format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes(),
@@ -393,6 +488,7 @@ mod tests {
 					.unwrap();
 				requests.push(request);
 			}
+
 			requests
 		});
 		let result = match mode {
@@ -406,6 +502,7 @@ mod tests {
 			Some(baseline) =>
 				client.thread_turns_since("thread/opaque", baseline).await.map(Value::Array),
 		};
+
 		(
 			result,
 			tokio::time::timeout(std::time::Duration::from_secs(2), server)
@@ -430,11 +527,13 @@ mod tests {
 		let question = text.find("First question").expect("exported first question");
 		let first_answer = text.find("First answer").expect("exported first answer");
 		let last_answer = text.find("Last answer").expect("exported last answer");
+
 		assert!(question < first_answer);
 		assert!(first_answer < last_answer);
 		assert_eq!(requests[2]["params"]["cursor"], "older");
 		assert_eq!(requests[4]["params"]["cursor"], "next");
 	}
+
 	#[tokio::test]
 	async fn markdown_export_preserves_legacy_full_history() {
 		let header = json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[]}});
@@ -444,6 +543,7 @@ mod tests {
 			Some(Some("__export_test__")),
 		)
 		.await;
+
 		assert!(result.unwrap().as_str().unwrap().contains("Legacy **Markdown**"));
 		assert_eq!(requests[1]["params"]["includeTurns"], true);
 	}
@@ -463,6 +563,7 @@ mod tests {
 		)
 		.await;
 		let page = result.unwrap();
+
 		assert_eq!(page["turns"], turns);
 		assert_eq!(page["nextCursor"], "older");
 		assert_eq!(requests.len(), 2);
@@ -476,6 +577,7 @@ mod tests {
 	#[tokio::test]
 	async fn task_page_rejects_incomplete_or_ambiguous_native_pages() {
 		let full = json!({"id":"one","items":[],"itemsView":"full"});
+
 		for page in [
 			json!({"data":[full.clone(),full.clone()],"nextCursor":null}),
 			json!({"data":[{"id":"one","items":[],"itemsView":"notLoaded"}],"nextCursor":null}),
@@ -489,6 +591,7 @@ mod tests {
 				Some(Some("__page_test__")),
 			)
 			.await;
+
 			assert!(matches!(result, Err(ClientError::InvalidFrame)));
 		}
 	}
@@ -500,6 +603,7 @@ mod tests {
 			Some(Some("__page_test__")),
 		)
 		.await;
+
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
 		assert_eq!(requests.len(), 1);
 	}
@@ -523,18 +627,11 @@ mod tests {
         ]).await;
 		let history = result.unwrap();
 		let items = history["thread"]["turns"][0]["items"].as_array().unwrap();
+
 		assert_eq!(items.len(), 2);
 		assert_eq!(items[0]["content"], content);
 		assert_eq!(items[1], output);
 		assert_eq!(requests[3]["params"]["cursor"], "next-images");
-	}
-
-	fn metadata() -> Value {
-		json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
-	}
-
-	fn turn_page() -> Value {
-		json!({"data":[{"id":"target","status":"completed","items":[],"itemsView":"notLoaded"}],"nextCursor":null})
 	}
 
 	#[tokio::test]
@@ -547,6 +644,7 @@ mod tests {
 			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"two","type":"agentMessage","text":"done","phase":"final_answer","delivery":"async"}}],"nextCursor":null})),
 		]).await;
 		let history = result.unwrap();
+
 		assert_eq!(history["thread"]["turns"].as_array().unwrap().len(), 1);
 		assert_eq!(history["thread"]["turns"][0]["itemsView"], "full");
 		assert_eq!(history["thread"]["turns"][0]["items"][1]["text"], "done");
@@ -564,6 +662,7 @@ mod tests {
 			("thread/turns/list", json!({"data":[{"id":"other"}],"nextCursor":null})),
 		])
 		.await;
+
 		assert_eq!(result.unwrap()["thread"]["turns"], json!([]));
 	}
 
@@ -576,7 +675,9 @@ mod tests {
 			("thread/turns/list", page),
 		])
 		.await;
+
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
+
 		let (result, _) = read(vec![
 			("thread/read", metadata()),
 			("thread/turns/list", turn_page()),
@@ -586,6 +687,7 @@ mod tests {
 			),
 		])
 		.await;
+
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
 	}
 
@@ -598,8 +700,10 @@ mod tests {
 			("thread/turns/list", turn_page()),
 			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"answer","type":"agentMessage","text":"preserved"}}],"nextCursor":null})),
 		]).await;
+
 		assert_eq!(result.unwrap()["thread"]["turns"][0]["items"][0]["text"], "preserved");
 		assert_eq!(requests[1]["params"]["includeTurns"], true);
+
 		let (result, _) = run(
 			vec![
 				("thread/read", legacy.clone()),
@@ -609,13 +713,17 @@ mod tests {
 			Some(None),
 		)
 		.await;
+
 		assert_eq!(result.unwrap()[0]["id"], "target");
+
 		for mode in ["future-format", "paginated"] {
 			let response = json!({"thread":{"id":"other","historyMode":mode,"turns":[]}});
 			let (result, _) =
 				read(vec![("thread/read", legacy.clone()), ("thread/read", response)]).await;
+
 			assert!(matches!(result, Err(ClientError::InvalidFrame)));
 		}
+
 		let (result, _) = read(vec![
 			("thread/read", legacy),
 			(
@@ -624,6 +732,7 @@ mod tests {
 			),
 		])
 		.await;
+
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
 	}
 
@@ -632,9 +741,12 @@ mod tests {
 		let history = json!({"thread":{"id":"thread/opaque","turns":[{"id":"target"}]}});
 		let (result, requests) =
 			read(vec![("thread/read", history.clone()), ("thread/read", history.clone())]).await;
+
 		assert_eq!(result.unwrap(), history);
 		assert_eq!(requests[1]["params"]["includeTurns"], true);
+
 		let (result, _) = read(vec![("thread/read", json!({"thread":{"id":"other"}}))]).await;
+
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
 	}
 
@@ -656,6 +768,7 @@ mod tests {
 		)
 		.await;
 		let turns = result.unwrap();
+
 		assert_eq!(turns[0]["id"], "middle");
 		assert_eq!(turns[1]["id"], "newest");
 		assert_eq!(turns.as_array().unwrap().len(), 2);
@@ -673,6 +786,7 @@ mod tests {
 				Some(Some("missing")),
 			)
 			.await;
+
 			assert!(matches!(result, Err(ClientError::InvalidFrame)));
 		}
 	}
@@ -690,7 +804,9 @@ mod tests {
 			Some(None),
 		)
 		.await;
+
 		assert_eq!(result.unwrap(), json!([{"id":"one"},{"id":"two"}]));
+
 		let legacy =
 			json!({"thread":{"id":"thread/opaque","turns":[{"id":"baseline"},{"id":"new"}]}});
 		let (result, _) = run(
@@ -698,6 +814,7 @@ mod tests {
 			Some(Some("baseline")),
 		)
 		.await;
+
 		assert_eq!(result.unwrap(), json!([{"id":"new"}]));
 	}
 
@@ -714,28 +831,11 @@ mod tests {
 				Some(Some("__latest_test__")),
 			)
 			.await;
+
 			assert_eq!(result.unwrap(), expected);
 			assert_eq!(requests[1]["params"]["limit"], 1);
 			assert_eq!(requests[1]["params"]["itemsView"], "notLoaded");
 			assert!(requests.iter().all(|r| r["params"].get("includeTurns").is_none()));
 		}
-	}
-
-	#[test]
-	fn malformed_and_unbounded_pages_never_look_complete() {
-		let mut pages = Pages::default();
-		assert!(pages.advance(&json!({})).is_err());
-		assert!(pages.advance(&json!({"nextCursor":42})).is_err());
-		for index in 0..MAX_PAGES - 1 {
-			assert!(pages.advance(&json!({"nextCursor":index.to_string()})).unwrap());
-		}
-		assert!(matches!(
-			pages.advance(&json!({"nextCursor":"last"})),
-			Err(ClientError::CapacityExceeded)
-		));
-		assert!(matches!(
-			charge(&json!({"data":["large"]}), &mut 1),
-			Err(ClientError::CapacityExceeded)
-		));
 	}
 }

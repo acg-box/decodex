@@ -42,7 +42,7 @@ impl AppServerClient {
 		.await;
 		let value = match result {
 			Ok(Ok(value)) => value,
-			Ok(Err(ClientError::Remote(error))) if error.code == -32601 =>
+			Ok(Err(ClientError::Remote(error))) if error.code == -32_601 =>
 				return AccountNudgeOutcome::Unsupported,
 			_ => return AccountNudgeOutcome::Uncertain,
 		};
@@ -52,11 +52,13 @@ impl AppServerClient {
 			Sent,
 			CooldownActive,
 		}
+
 		#[derive(Deserialize)]
 		#[serde(deny_unknown_fields)]
 		struct Response {
 			status: Status,
 		}
+
 		match serde_json::from_value::<Response>(value) {
 			Ok(Response { status: Status::Sent }) => AccountNudgeOutcome::Sent,
 			Ok(Response { status: Status::CooldownActive }) => AccountNudgeOutcome::CooldownActive,
@@ -89,16 +91,16 @@ mod tests {
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"error":{"code":-32601,"message":"unsupported"}}),
+				json!({"error":{"code":-32_601,"message":"unsupported"}}),
 				AccountNudgeOutcome::Unsupported,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"error":{"code":-32603,"message":"delivery unknown"}}),
+				json!({"error":{"code":-32_603,"message":"delivery unknown"}}),
 				AccountNudgeOutcome::Uncertain,
 			),
 		] {
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
@@ -106,10 +108,14 @@ mod tests {
 				let mut lines = BufReader::new(reader).lines();
 				let request: serde_json::Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "account/sendAddCreditsNudgeEmail");
 				assert_eq!(request["params"], json!({"creditType":credit_type}));
+
 				let mut reply = response;
+
 				reply["id"] = request["id"].clone();
+
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 				// Any subsequent bytes would be an unauthorized replay of this attempt.
 				assert!(
@@ -118,24 +124,29 @@ mod tests {
 						.is_err()
 				);
 			});
+
 			assert_eq!(client.send_account_nudge(credit_type).await, expected);
+
 			server.await.unwrap();
 			client.close();
 		}
 	}
 	#[tokio::test]
 	async fn connection_loss_after_request_is_uncertain() {
-		let (local, remote) = tokio::io::duplex(4096);
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let mut lines = BufReader::new(remote).lines();
+
 			assert!(lines.next_line().await.unwrap().is_some());
 		});
+
 		assert_eq!(
 			client.send_account_nudge(AccountNudgeCreditType::UsageLimit).await,
 			AccountNudgeOutcome::Uncertain
 		);
+
 		server.await.unwrap();
 	}
 }

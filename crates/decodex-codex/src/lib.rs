@@ -24,24 +24,25 @@
 //! use decodex_codex::RunnerCapacity;
 //! ```
 
+pub mod app_server_client;
+pub mod guardian;
 #[doc(hidden)] pub mod protocol;
 #[doc(hidden)] pub mod schema;
 
-pub mod app_server_client;
-
 mod account_api;
+mod account_api_banner;
 mod capability;
 mod conversation;
 mod event;
-pub mod guardian;
 mod response_usage;
 mod usage;
 
 pub use response_usage::{ResponseUsage, ResponseUsageMetadata, decode_response_usage};
-mod account_api_banner;
+
 pub use account_api_banner::{
 	AccountApiBanner, AccountApiBannerAction, AccountApiBannerCta, AccountApiBannerState,
 };
+
 pub use usage::{ThreadTokenUsage, TokenUsageBreakdown};
 
 pub use self::{

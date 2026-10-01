@@ -1,6 +1,8 @@
 //! Task-local ordinary model recovery. Native mode and permission policy remain authoritative.
 use super::{AppServerClient, ClientError, HistoryGuard};
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::Value;
 
 /// One bounded model/effort update with explicit or preserved tier for an owned native task.
@@ -14,7 +16,6 @@ pub struct ThreadModelRecoveryUpdate {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	service_tier: Option<String>,
 }
-
 impl ThreadModelRecoveryUpdate {
 	/// Construct a task-local update without permissions, collaboration mode, or global defaults.
 	pub fn new(
@@ -29,6 +30,7 @@ impl ThreadModelRecoveryUpdate {
 			effort: effort.into(),
 			service_tier: Some(service_tier.into()),
 		};
+
 		if update.valid() { Ok(update) } else { Err(ClientError::InvalidFrame) }
 	}
 
@@ -44,6 +46,7 @@ impl ThreadModelRecoveryUpdate {
 			effort: effort.into(),
 			service_tier: None,
 		};
+
 		if update.valid() { Ok(update) } else { Err(ClientError::InvalidFrame) }
 	}
 
@@ -51,19 +54,13 @@ impl ThreadModelRecoveryUpdate {
 		fn text(value: &str, limit: usize) -> bool {
 			!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
 		}
+
 		text(&self.thread_id, 512)
 			&& text(&self.model, 256)
 			&& self.model != "gpt-reserve"
 			&& text(&self.effort, 128)
 			&& self.service_tier.as_deref().is_none_or(|tier| text(tier, 128))
 	}
-}
-
-/// Admit model and effort with an optional explicit tier; omission preserves the native tier.
-pub fn is_thread_model_recovery_update(value: &Value) -> bool {
-	!value.get("serviceTier").is_some_and(Value::is_null)
-		&& serde_json::from_value::<ThreadModelRecoveryUpdate>(value.clone())
-			.is_ok_and(|update| update.valid())
 }
 
 /// Native acknowledgment that a task-local settings change was queued.
@@ -83,6 +80,7 @@ impl AppServerClient {
 		if !update.valid() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let params = serde_json::to_value(update).map_err(|_| ClientError::InvalidFrame)?;
 		let response = tokio::time::timeout(
 			std::time::Duration::from_secs(8),
@@ -90,12 +88,20 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if response.as_object().is_some_and(|object| object.is_empty()) {
 			Ok(ThreadModelRecoveryQueued)
 		} else {
 			Err(ClientError::InvalidFrame)
 		}
 	}
+}
+
+/// Admit model and effort with an optional explicit tier; omission preserves the native tier.
+pub fn is_thread_model_recovery_update(value: &Value) -> bool {
+	!value.get("serviceTier").is_some_and(Value::is_null)
+		&& serde_json::from_value::<ThreadModelRecoveryUpdate>(value.clone())
+			.is_ok_and(|update| update.valid())
 }
 
 #[cfg(test)]
@@ -107,7 +113,9 @@ mod tests {
 	#[test]
 	fn recovery_update_cannot_replace_task_policy_or_enter_reserve() {
 		let good = json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"});
+
 		assert!(is_thread_model_recovery_update(&good));
+
 		for (field, value) in [
 			("model", json!("gpt-reserve")),
 			("model", json!("")),
@@ -121,12 +129,16 @@ mod tests {
 			("disabledPluginIds", json!([])),
 		] {
 			let mut bad = good.clone();
+
 			bad[field] = value;
+
 			assert!(!is_thread_model_recovery_update(&bad));
 		}
 		for key in ["model", "effort", "threadId"] {
 			let mut missing = good.clone();
+
 			missing.as_object_mut().unwrap().remove(key);
+
 			assert!(!is_thread_model_recovery_update(&missing));
 		}
 	}
@@ -137,6 +149,7 @@ mod tests {
 			ThreadModelRecoveryUpdate::preserving_service_tier("thread", "replacement", "medium")
 				.unwrap();
 		let wire = serde_json::to_value(update).unwrap();
+
 		assert_eq!(wire, json!({"threadId":"thread","model":"replacement","effort":"medium"}));
 		assert!(is_thread_model_recovery_update(&wire));
 	}
@@ -147,10 +160,10 @@ mod tests {
 			json!({"result":{}}),
 			json!({"result":{"applied":true}}),
 			json!({"result":null}),
-			json!({"error":{"code":-32601,"message":"unsupported"}}),
+			json!({"error":{"code":-32_601,"message":"unsupported"}}),
 		] {
 			let expected = response == json!({"result":{}});
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let guard = client.history_guard(0).unwrap();
@@ -159,14 +172,19 @@ mod tests {
 				let mut lines = BufReader::new(reader).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "thread/settings/update");
 				assert_eq!(
 					request["params"],
 					json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"})
 				);
+
 				let mut response = response;
+
 				response["id"] = request["id"].clone();
+
 				writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+
 				assert!(
 					tokio::time::timeout(std::time::Duration::from_millis(25), lines.next_line())
 						.await
@@ -176,7 +194,9 @@ mod tests {
 			let update =
 				ThreadModelRecoveryUpdate::new("thread", "replacement", "medium", "default")
 					.unwrap();
+
 			assert_eq!(client.queue_thread_model_recovery(&update, guard).await.is_ok(), expected);
+
 			server.await.unwrap();
 			client.close();
 		}

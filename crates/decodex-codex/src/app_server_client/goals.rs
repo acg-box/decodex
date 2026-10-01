@@ -1,6 +1,8 @@
 //! Native goal observations, independent of application-owned coordination goals.
 use super::{AppServerClient, ClientError, HistoryGuard};
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::{Value, json};
 
 /// Native scheduler state; a token limit is distinct from account usage limits.
@@ -56,6 +58,7 @@ pub struct NativeGoalUpdate {
 impl NativeGoalUpdate {
 	fn params(&self, thread: &str) -> Value {
 		let mut params = json!({"threadId":thread});
+
 		if let Some(objective) = &self.objective {
 			params["objective"] = json!(objective);
 		}
@@ -65,12 +68,86 @@ impl NativeGoalUpdate {
 		if let Some(budget) = self.token_budget {
 			params["tokenBudget"] = json!(budget);
 		}
+
 		params
 	}
 }
+
+impl AppServerClient {
+	/// Keep long objective text in the native attachment layout, without truncation.
+	pub async fn materialize_goal_objective(
+		&self,
+		text: &str,
+		guard: HistoryGuard,
+	) -> Result<String, ClientError> {
+		if text.trim().is_empty() || text.len() > 64 * 1_024 {
+			return Err(ClientError::InvalidFrame);
+		}
+		if text.chars().count() <= 4_000 {
+			return Ok(text.into());
+		}
+
+		let home = self.native_home.get().ok_or(ClientError::InvalidFrame)?;
+		let id = decodex_core::AccountOperationId::generate().map_err(|_| ClientError::Io)?;
+		let directory = home.join("attachments").join(id.as_str());
+		let path = directory.join("goal-objective.md");
+		let path = path.to_str().ok_or(ClientError::InvalidFrame)?;
+		let reference = format!("Read the Codex goal objective file at {path} before continuing.");
+
+		if reference.chars().count() > 4_000 {
+			return Err(ClientError::InvalidFrame);
+		}
+
+		self.request_with_history(
+			"fs/createDirectory",
+			json!({"path":directory,"recursive":true}),
+			guard.clone(),
+		)
+		.await?;
+
+		use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+		self.request_with_history(
+			"fs/writeFile",
+			json!({"path":path,"dataBase64":STANDARD.encode(text)}),
+			guard,
+		)
+		.await?;
+
+		Ok(reference)
+	}
+
+	/// Apply one caller-authorized goal edit once, using the current native connection guard.
+	/// Native policy remains authoritative for configured budget limits and scheduling.
+	pub async fn update_thread_goal(
+		&self,
+		thread: &str,
+		edit: &NativeGoalUpdate,
+		guard: HistoryGuard,
+	) -> Result<NativeThreadGoal, ClientError> {
+		let params = edit.params(thread);
+
+		if !is_native_goal_update(&params) {
+			return Err(ClientError::InvalidFrame);
+		}
+
+		let result = self.request_with_history("thread/goal/set", params, guard).await?;
+
+		project_goal(&result, thread)?.ok_or(ClientError::InvalidFrame)
+	}
+
+	/// Read the exact native goal without changing its status or starting model work.
+	pub async fn thread_goal(&self, thread: &str) -> Result<Option<NativeThreadGoal>, ClientError> {
+		let response = self.request("thread/goal/get", json!({"threadId":thread})).await?;
+
+		project_goal(&response, thread)
+	}
+}
+
 /// Permit only an explicit native goal edit, not unrelated native configuration.
 pub fn is_native_goal_update(params: &Value) -> bool {
 	let Some(object) = params.as_object() else { return false };
+
 	(2..=4).contains(&object.len())
 		&& object
 			.keys()
@@ -94,16 +171,20 @@ pub fn is_goal_attachment_write(method: &str, params: &Value) -> bool {
 	let Some(path) = params["path"].as_str().map(std::path::Path::new) else {
 		return false;
 	};
+
 	if !path.is_absolute()
 		|| path.components().any(|c| matches!(c, std::path::Component::ParentDir))
 	{
 		return false;
 	}
+
 	let directory = if method == "fs/writeFile" {
 		if path.file_name().and_then(|s| s.to_str()) != Some("goal-objective.md") {
 			return false;
 		}
+
 		let Some(parent) = path.parent() else { return false };
+
 		parent
 	} else {
 		path
@@ -114,85 +195,28 @@ pub fn is_goal_attachment_write(method: &str, params: &Value) -> bool {
 		.is_some_and(|id| decodex_core::AccountOperationId::new(id).is_ok())
 		&& directory.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
 			== Some("attachments");
+
 	valid_directory
 		&& match method {
 			"fs/createDirectory" =>
 				params.as_object().is_some_and(|p| p.len() == 2) && params["recursive"] == true,
 			"fs/writeFile" =>
 				params.as_object().is_some_and(|p| p.len() == 2)
-					&& params["dataBase64"].as_str().is_some_and(|s| s.len() <= 128 * 1024),
+					&& params["dataBase64"].as_str().is_some_and(|s| s.len() <= 128 * 1_024),
 			_ => false,
 		}
 }
 
-impl AppServerClient {
-	/// Keep long objective text in the native attachment layout, without truncation.
-	pub async fn materialize_goal_objective(
-		&self,
-		text: &str,
-		guard: HistoryGuard,
-	) -> Result<String, ClientError> {
-		if text.trim().is_empty() || text.len() > 64 * 1024 {
-			return Err(ClientError::InvalidFrame);
-		}
-		if text.chars().count() <= 4000 {
-			return Ok(text.into());
-		}
-		let home = self.native_home.get().ok_or(ClientError::InvalidFrame)?;
-		let id = decodex_core::AccountOperationId::generate().map_err(|_| ClientError::Io)?;
-		let directory = home.join("attachments").join(id.as_str());
-		let path = directory.join("goal-objective.md");
-		let path = path.to_str().ok_or(ClientError::InvalidFrame)?;
-		let reference = format!("Read the Codex goal objective file at {path} before continuing.");
-		if reference.chars().count() > 4000 {
-			return Err(ClientError::InvalidFrame);
-		}
-		self.request_with_history(
-			"fs/createDirectory",
-			json!({"path":directory,"recursive":true}),
-			guard.clone(),
-		)
-		.await?;
-		use base64::{Engine as _, engine::general_purpose::STANDARD};
-		self.request_with_history(
-			"fs/writeFile",
-			json!({"path":path,"dataBase64":STANDARD.encode(text)}),
-			guard,
-		)
-		.await?;
-		Ok(reference)
-	}
-
-	/// Apply one caller-authorized goal edit once, using the current native connection guard.
-	/// Native policy remains authoritative for configured budget limits and scheduling.
-	pub async fn update_thread_goal(
-		&self,
-		thread: &str,
-		edit: &NativeGoalUpdate,
-		guard: HistoryGuard,
-	) -> Result<NativeThreadGoal, ClientError> {
-		let params = edit.params(thread);
-		if !is_native_goal_update(&params) {
-			return Err(ClientError::InvalidFrame);
-		}
-		let result = self.request_with_history("thread/goal/set", params, guard).await?;
-		project_goal(&result, thread)?.ok_or(ClientError::InvalidFrame)
-	}
-
-	/// Read the exact native goal without changing its status or starting model work.
-	pub async fn thread_goal(&self, thread: &str) -> Result<Option<NativeThreadGoal>, ClientError> {
-		let response = self.request("thread/goal/get", json!({"threadId":thread})).await?;
-		project_goal(&response, thread)
-	}
-}
-
 fn project_goal(response: &Value, thread: &str) -> Result<Option<NativeThreadGoal>, ClientError> {
 	let raw = response.get("goal").ok_or(ClientError::InvalidFrame)?;
+
 	if raw.is_null() {
 		return Ok(None);
 	}
+
 	let goal: NativeThreadGoal =
 		serde_json::from_value(raw.clone()).map_err(|_| ClientError::InvalidFrame)?;
+
 	if goal.thread_id != thread
 		|| goal.tokens_used < 0
 		|| goal.time_used_seconds < 0
@@ -200,6 +224,7 @@ fn project_goal(response: &Value, thread: &str) -> Result<Option<NativeThreadGoa
 	{
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(Some(goal))
 }
 
@@ -212,9 +237,12 @@ mod tests {
 	async fn native_goal_reads_distinguish_absence_limits_and_malformed_receipts() {
 		let base = json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});
 		let mut cases = vec![(json!({"goal":null}), true), (json!({}), false)];
+
 		for status in ["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"] {
 			let mut goal = base.clone();
+
 			goal["status"] = json!(status);
+
 			cases.push((json!({"goal":goal}), true));
 		}
 		for (key, value) in [
@@ -225,11 +253,13 @@ mod tests {
 			("status", json!("future")),
 		] {
 			let mut goal = base.clone();
+
 			goal[key] = value;
+
 			cases.push((json!({"goal":goal}), false));
 		}
 		for (result, valid) in cases {
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
@@ -238,8 +268,10 @@ mod tests {
 					&BufReader::new(reader).lines().next_line().await.unwrap().unwrap(),
 				)
 				.unwrap();
+
 				assert_eq!(request["method"], "thread/goal/get");
 				assert_eq!(request["params"], json!({"threadId":"thread"}));
+
 				writer
 					.write_all(
 						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
@@ -247,12 +279,13 @@ mod tests {
 					.await
 					.unwrap();
 			});
+
 			assert_eq!(client.thread_goal("thread").await.is_ok(), valid);
+
 			server.await.unwrap();
 		}
 	}
 }
-
 #[cfg(test)]
 mod edit_tests {
 	use super::*;
@@ -260,11 +293,13 @@ mod edit_tests {
 	#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated paused native goals"]
 	async fn installed_native_goal_edits_preserve_pause_and_distinguish_budget_reset() {
 		let home = tempfile::tempdir().unwrap();
+
 		std::fs::write(
 			home.path().join("config.toml"),
 			"model=\"gpt-5.6-sol\"\n[goals]\nmax_goal_token_budget=100\n[features]\ngoals=true\n",
 		)
 		.unwrap();
+
 		let (client, mut child) = super::super::app_link_settings::tests::native(home.path()).await;
 		let started = client
 			.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
@@ -284,9 +319,11 @@ mod edit_tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(created.status, NativeThreadGoalStatus::Paused);
 		assert_eq!(created.token_budget, Some(75));
-		let text = "目标".repeat(2000);
+
+		let text = "目标".repeat(2_000);
 		let edited = client
 			.update_thread_goal(
 				thread,
@@ -298,9 +335,11 @@ mod edit_tests {
 				ClientError::Remote(error) => panic!("Native fixture: {}", error.message),
 				other => panic!("{other:?}"),
 			});
+
 		assert_eq!(edited.objective, text);
 		assert_eq!(edited.status, NativeThreadGoalStatus::Paused);
 		assert_eq!(edited.token_budget, Some(75));
+
 		let removed = client
 			.update_thread_goal(
 				thread,
@@ -309,6 +348,7 @@ mod edit_tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(removed.token_budget, Some(100));
 		assert_eq!(removed.objective, text);
 		assert_eq!(removed.status, NativeThreadGoalStatus::Paused);
@@ -323,6 +363,7 @@ mod edit_tests {
 			Err(ClientError::Remote(_))
 		));
 		assert_eq!(client.thread_goal(thread).await.unwrap().unwrap().token_budget, Some(100));
+
 		let long_text = "Long goal objective line.\n".repeat(700);
 		let reference = client.materialize_goal_objective(&long_text, guard()).await.unwrap();
 		let file = reference
@@ -330,11 +371,13 @@ mod edit_tests {
 			.unwrap()
 			.strip_suffix(" before continuing.")
 			.unwrap();
+
 		assert!(
 			std::path::Path::new(file)
 				.starts_with(home.path().canonicalize().unwrap().join("attachments"))
 		);
 		assert_eq!(std::fs::read_to_string(file).unwrap(), long_text);
+
 		let edited = client
 			.update_thread_goal(
 				thread,
@@ -343,8 +386,10 @@ mod edit_tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(edited.objective, reference);
 		assert_eq!(edited.status, NativeThreadGoalStatus::Paused);
+
 		child.kill().await.unwrap();
 		child.wait().await.unwrap();
 	}

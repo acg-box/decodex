@@ -48,29 +48,36 @@ impl AppServerClient {
 		thread: &str,
 	) -> Result<Option<ThreadUsageEstimate>, ClientError> {
 		let response = self.request("account/usage/read", json!({"threadId":thread})).await?;
+
 		if !response.is_object() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let Some(raw) = response.get("threadUsage").filter(|value| !value.is_null()) else {
 			return Ok(None);
 		};
+
 		decode(raw, thread).map(Some)
 	}
 }
 
 fn decode(raw: &Value, thread: &str) -> Result<ThreadUsageEstimate, ClientError> {
-	if serde_json::to_vec(raw).map_err(|_| ClientError::InvalidFrame)?.len() > 65536 {
+	if serde_json::to_vec(raw).map_err(|_| ClientError::InvalidFrame)?.len() > 65_536 {
 		return Err(ClientError::CapacityExceeded);
 	}
+
 	let result: ThreadUsageEstimate =
 		serde_json::from_value(raw.clone()).map_err(|_| ClientError::InvalidFrame)?;
+
 	if result.groups.len() > 128 {
 		return Err(ClientError::CapacityExceeded);
 	}
 	if result.thread_id != thread {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	let valid = |value: u64| value <= i64::MAX as u64;
+
 	if !valid(result.estimated_usage_credits_micros)
 		|| !result.estimated_usage_usd_micros.is_none_or(valid)
 		|| result.groups.iter().any(|group| {
@@ -88,76 +95,19 @@ fn decode(raw: &Value, thread: &str) -> Result<ThreadUsageEstimate, ClientError>
 				|| [&group.model, &group.reasoning_effort, &group.speed]
 					.into_iter()
 					.flatten()
-					.any(|v| v.len() > 4096)
+					.any(|v| v.len() > 4_096)
 		}) {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-	#[tokio::test]
-	async fn native_thread_usage_retains_precision_unknowns_and_exact_identity() {
-		for (returned, accepted) in [("thread", true), ("another-thread", false)] {
-			let (local, remote) = tokio::io::duplex(65536);
-			let (read, write) = tokio::io::split(local);
-			let (client, _events) = AppServerClient::from_io(read, write);
-			let task = tokio::spawn(async move {
-				let (read, mut write) = tokio::io::split(remote);
-				let request: Value = serde_json::from_str(
-					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
-				)
-				.unwrap();
-				assert_eq!(request["method"], "account/usage/read");
-				assert_eq!(request["params"], json!({"threadId":"thread"}));
-				write.write_all(format!("{}\n",json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9007199254740993u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
-			});
-			let result = client.thread_usage_estimate("thread").await;
-			task.await.unwrap();
-			if accepted {
-				let usage = result.unwrap().unwrap();
-				assert_eq!(usage.estimated_usage_credits_micros, 9007199254740993);
-				assert_eq!(usage.estimated_usage_usd_micros, None);
-				assert_eq!(usage.groups[0].input_tokens, Some(0));
-				assert_eq!(usage.groups[0].cached_input_tokens, None);
-			} else {
-				assert!(matches!(result, Err(ClientError::InvalidFrame)));
-			}
-		}
-	}
-	#[tokio::test]
-	async fn native_thread_usage_keeps_missing_null_and_failure_distinct() {
-		for (result, absent) in
-			[(json!({}), true), (json!({"threadUsage":null}), true), (json!([]), false)]
-		{
-			let (local, remote) = tokio::io::duplex(4096);
-			let (read, write) = tokio::io::split(local);
-			let (client, _events) = AppServerClient::from_io(read, write);
-			let task = tokio::spawn(async move {
-				let (read, mut write) = tokio::io::split(remote);
-				let request: Value = serde_json::from_str(
-					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
-				)
-				.unwrap();
-				write
-					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
-					)
-					.await
-					.unwrap();
-			});
-			let response = client.thread_usage_estimate("thread").await;
-			task.await.unwrap();
-			if absent {
-				assert!(response.unwrap().is_none());
-			} else {
-				assert!(matches!(response, Err(ClientError::InvalidFrame)));
-			}
-		}
-	}
 
 	#[test]
 	fn thread_usage_rejects_negative_and_out_of_range_estimates() {
@@ -169,6 +119,75 @@ mod tests {
 				)
 				.is_err()
 			);
+		}
+	}
+
+	#[tokio::test]
+	async fn native_thread_usage_retains_precision_unknowns_and_exact_identity() {
+		for (returned, accepted) in [("thread", true), ("another-thread", false)] {
+			let (local, remote) = tokio::io::duplex(65_536);
+			let (read, write) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(read, write);
+			let task = tokio::spawn(async move {
+				let (read, mut write) = tokio::io::split(remote);
+				let request: Value = serde_json::from_str(
+					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
+				)
+				.unwrap();
+
+				assert_eq!(request["method"], "account/usage/read");
+				assert_eq!(request["params"], json!({"threadId":"thread"}));
+
+				write.write_all(format!("{}\n",json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
+			});
+			let result = client.thread_usage_estimate("thread").await;
+
+			task.await.unwrap();
+
+			if accepted {
+				let usage = result.unwrap().unwrap();
+
+				assert_eq!(usage.estimated_usage_credits_micros, 9_007_199_254_740_993);
+				assert_eq!(usage.estimated_usage_usd_micros, None);
+				assert_eq!(usage.groups[0].input_tokens, Some(0));
+				assert_eq!(usage.groups[0].cached_input_tokens, None);
+			} else {
+				assert!(matches!(result, Err(ClientError::InvalidFrame)));
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn native_thread_usage_keeps_missing_null_and_failure_distinct() {
+		for (result, absent) in
+			[(json!({}), true), (json!({"threadUsage":null}), true), (json!([]), false)]
+		{
+			let (local, remote) = tokio::io::duplex(4_096);
+			let (read, write) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(read, write);
+			let task = tokio::spawn(async move {
+				let (read, mut write) = tokio::io::split(remote);
+				let request: Value = serde_json::from_str(
+					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
+				)
+				.unwrap();
+
+				write
+					.write_all(
+						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					)
+					.await
+					.unwrap();
+			});
+			let response = client.thread_usage_estimate("thread").await;
+
+			task.await.unwrap();
+
+			if absent {
+				assert!(response.unwrap().is_none());
+			} else {
+				assert!(matches!(response, Err(ClientError::InvalidFrame)));
+			}
 		}
 	}
 }

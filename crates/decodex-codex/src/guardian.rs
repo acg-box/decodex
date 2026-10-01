@@ -4,12 +4,13 @@
 //! core event format, and dropping unknown action fields could change what the
 //! user approves. Decoding this observation never authorizes that conversion.
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
 mod approval;
 
 pub use approval::core_denial_event;
+
+use serde::{Deserialize, Serialize};
+
+use serde_json::Value;
 
 /// Maximum retained public review, including its action and explanation.
 pub const MAX_REVIEW_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
@@ -83,11 +84,14 @@ pub fn decode_review(method: &str, params: &Value) -> Option<GuardianReview> {
 		"item/autoApprovalReview/completed" => true,
 		_ => return None,
 	};
+
 	if serde_json::to_vec(params).ok()?.len() > MAX_REVIEW_BYTES {
 		return None;
 	}
+
 	let event: Envelope = serde_json::from_value(params.clone()).ok()?;
 	let valid_id = |id: &str| !id.trim().is_empty() && id.len() <= 512;
+
 	if !valid_id(&event.thread_id)
 		|| !valid_id(&event.turn_id)
 		|| !valid_id(&event.review_id)
@@ -145,13 +149,19 @@ mod tests {
 	fn retains_complete_large_native_action_and_denial_conversion() {
 		let command = "界".repeat(100_000) + " exact-required-suffix";
 		let mut event = denial();
+
 		event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
-		event["review"]["rationale"] = json!("Complete findings. ".repeat(6000));
-		assert!(event.to_string().len() > 256 * 1024);
+		event["review"]["rationale"] = json!("Complete findings. ".repeat(6_000));
+
+		assert!(event.to_string().len() > 256 * 1_024);
 		assert!(event.to_string().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
+
 		let observed = decode_review(COMPLETED, &event).expect("complete native review");
+
 		assert_eq!(observed.event, event);
+
 		let converted = core_denial_event(&observed).expect("complete supported command action");
+
 		assert_eq!(converted["action"]["command"], command);
 	}
 
@@ -159,13 +169,19 @@ mod tests {
 	fn retains_network_without_target_and_distinct_reviews_for_one_item() {
 		let mut event = denial();
 		let first = decode_review(COMPLETED, &event).unwrap();
+
 		assert_eq!(first.target_item_id, None);
 		assert_eq!(first.event, event);
+
 		event["targetItemId"] = json!("command");
 		event["reviewId"] = json!("execve-1");
+
 		let first = decode_review(COMPLETED, &event).unwrap();
+
 		event["reviewId"] = json!("execve-2");
+
 		let second = decode_review(COMPLETED, &event).unwrap();
+
 		assert_eq!(first.target_item_id, second.target_item_id);
 		assert_ne!(first.review_id, second.review_id);
 	}
@@ -174,15 +190,21 @@ mod tests {
 	fn validates_lifecycle_without_inferring_success_or_clock_order() {
 		for status in ["approved", "denied", "timedOut", "aborted"] {
 			let mut event = denial();
+
 			event["review"]["status"] = json!(status);
 			event["completedAtMs"] = json!(199);
+
 			assert!(decode_review(COMPLETED, &event).is_some());
 			assert!(decode_review(STARTED, &event).is_none());
 		}
+
 		let mut event = denial();
+
 		event["review"]["status"] = json!("inProgress");
+
 		event.as_object_mut().unwrap().remove("completedAtMs");
 		event.as_object_mut().unwrap().remove("decisionSource");
+
 		assert!(decode_review(STARTED, &event).is_some());
 		assert!(decode_review(COMPLETED, &event).is_none());
 		assert!(decode_review("autoApprovalReview/strictReviewRequired", &event).is_none());
@@ -201,7 +223,9 @@ mod tests {
 			"action",
 		] {
 			let mut event = denial();
+
 			event.as_object_mut().unwrap().remove(field);
+
 			assert!(decode_review(COMPLETED, &event).is_none(), "{field}");
 		}
 		for (pointer, value) in [
@@ -216,19 +240,26 @@ mod tests {
 			("/action/type", json!(null)),
 		] {
 			let mut event = denial();
+
 			*event.pointer_mut(pointer).unwrap() = value;
+
 			assert!(decode_review(COMPLETED, &event).is_none(), "{pointer}");
 		}
+
 		let mut event = denial();
+
 		event["future"] = json!("x".repeat(MAX_REVIEW_BYTES));
+
 		assert!(decode_review(COMPLETED, &event).is_none());
 	}
 
 	#[test]
 	fn preserves_unknown_action_and_fields_without_authorizing_them() {
 		let mut event = denial();
+
 		event["action"] = json!({"type":"futureAction","payload":{"camelCase":"exact"}});
 		event["futureAttribution"] = json!({"plugin":"native"});
+
 		assert_eq!(decode_review(COMPLETED, &event).unwrap().event, event);
 	}
 }
