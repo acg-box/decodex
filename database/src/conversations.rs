@@ -6,31 +6,33 @@ mod initial_model_source;
 mod native_settings;
 mod resume_rejection;
 
-pub use initial_model_source::{
-	InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
+pub use self::{
+	initial_model_source::{
+		InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
+	},
+	native_settings::{
+		ConversationNativeSettings, ConversationNativeSettingsObservation,
+		RecordConversationNativeSettings,
+	},
+	resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection},
 };
-pub use native_settings::{
-	ConversationNativeSettings, ConversationNativeSettingsObservation,
-	RecordConversationNativeSettings,
-};
-pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
 
-use decodex_core::{
-	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
-	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
-	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProcessGenerationId, ProgramId,
-	ProviderAttemptId, ProviderEvidenceId, ProviderRequestId, ProviderRequestKey,
-	ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
-	WorkItemId, WorkItemState, contains_credential_material,
+use std::fmt::{self, Debug, Formatter};
+
+use rusqlite::{
+	Connection, Error, OptionalExtension as _, Row, Transaction, TransactionBehavior, types::Type,
 };
-use rusqlite::{OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-use crate::{
-	CommandIdentity, SqliteStore, StoreError,
-	account_lifecycle::{random_uuid_v4, sql_error},
-	unix_micros,
+use crate::{CommandIdentity, SqliteStore, StoreError, account_lifecycle, program_cycles};
+use decodex_core::{
+	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
+	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
+	MAX_INLINE_HISTORY_BYTES, MAX_PROVIDER_THREAD_ID_BYTES, PossibleSideEffects,
+	ProcessGenerationId, ProgramId, ProviderAttemptId, ProviderEvidenceId, ProviderRequestId,
+	ProviderRequestKey, ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState,
+	ServiceTier, TurnId, TurnRole, TurnStatus, WorkItemId, WorkItemState,
 };
 
 const MAX_PAGE_SIZE: u16 = 100;
@@ -47,7 +49,7 @@ pub struct CreateConversationRecord {
 	pub model: String,
 	pub reasoning_effort: Option<String>,
 	pub fast: bool,
-	pub service_tier: Option<decodex_core::ServiceTier>,
+	pub service_tier: Option<ServiceTier>,
 	/// Account observation that supplied the initial model choices, if available.
 	pub initial_model_source: Option<InitialModelSource>,
 }
@@ -60,7 +62,7 @@ pub struct ConversationRequest {
 	pub model: String,
 	pub reasoning_effort: Option<String>,
 	pub fast: bool,
-	pub service_tier: Option<decodex_core::ServiceTier>,
+	pub service_tier: Option<ServiceTier>,
 	/// Account observation that supplied the initial model choices, if available.
 	pub initial_model_source: Option<InitialModelSource>,
 }
@@ -197,8 +199,8 @@ pub struct ConversationAssistantPrefixReadback {
 	pub text: String,
 	pub next_ordinal: i32,
 }
-impl std::fmt::Debug for ConversationAssistantPrefixReadback {
-	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for ConversationAssistantPrefixReadback {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
 		formatter
 			.debug_struct("ConversationAssistantPrefixReadback")
 			.field("turn_id", &self.turn_id)
@@ -481,7 +483,7 @@ impl SqliteStore {
 		let conversation_id = conversation_id.clone();
 
 		self.run(move |connection| {
-			let transaction = connection.transaction().map_err(sql_error)?;
+			let transaction = connection.transaction().map_err(account_lifecycle::sql_error)?;
 			let receipt = read_receipt(
 				&transaction,
 				&command,
@@ -493,7 +495,7 @@ impl SqliteStore {
 			})
 			.transpose()?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(receipt)
 		})
@@ -513,7 +515,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) = read_receipt(
 				&transaction,
@@ -523,9 +525,9 @@ impl SqliteStore {
 			)? {
 				let source = transaction.query_row(
                     "SELECT model_source_account_id, model_source_account_revision FROM quick_task_requests WHERE conversation_id = ?1",
-                    params![create.conversation_id.as_str()],
+                    rusqlite::params![create.conversation_id.as_str()],
                     |row| initial_model_source::from_row(row, 0),
-                ).map_err(sql_error)?;
+                ).map_err(account_lifecycle::sql_error)?;
 
                 if source != create.initial_model_source {
                     return Err(StoreError::IdempotencyConflict);
@@ -534,7 +536,7 @@ impl SqliteStore {
 				let stored: StoredConversation = serde_json::from_str(&response)
 					.map_err(|_| incompatible("Conversation receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(stored);
 			}
@@ -542,10 +544,10 @@ impl SqliteStore {
 			let exists: bool = transaction
 				.query_row(
 					"SELECT EXISTS (SELECT 1 FROM conversations WHERE conversation_id = ?1)",
-					params![create.conversation_id.as_str()],
+					rusqlite::params![create.conversation_id.as_str()],
 					|row| row.get(0),
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if exists {
 				return Err(StoreError::RevisionConflict {
@@ -555,17 +557,17 @@ impl SqliteStore {
 				});
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
-			let initial_turn_id = random_uuid_v4()?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
+			let initial_turn_id = account_lifecycle::random_uuid_v4()?;
 
 			transaction
 				.execute(
 					"INSERT INTO conversations (
 				   conversation_id, kind, state, title, revision, created_at_micros, updated_at_micros
 				 ) VALUES (?1, 'ordinary_task', 'active', ?2, 1, ?3, ?3)",
-					params![create.conversation_id.as_str(), create.title, now],
+					rusqlite::params![create.conversation_id.as_str(), create.title, now],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			transaction
 				.execute(
 					"INSERT INTO quick_task_requests (
@@ -573,7 +575,7 @@ impl SqliteStore {
 					 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier,
                      model_source_account_id, model_source_account_revision
 				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-					params![
+					rusqlite::params![
 						create.conversation_id.as_str(),
 						command.key,
 						initial_turn_id,
@@ -588,7 +590,7 @@ impl SqliteStore {
                         create.initial_model_source.as_ref().map(|source| source.account_revision),
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			let stored = StoredConversation {
 				conversation_id: create.conversation_id,
@@ -606,7 +608,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(stored)
 		})
@@ -626,7 +628,7 @@ impl SqliteStore {
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
-					params![conversation_id.as_str()],
+					rusqlite::params![conversation_id.as_str()],
 					|row| {
 						Ok(ConversationRequest {
                             initial_model_source: initial_model_source::from_row(row, 6)?,
@@ -635,12 +637,12 @@ impl SqliteStore {
 							model: row.get(2)?,
 							reasoning_effort: row.get(3)?,
 							fast: row.get(4)?,
-							service_tier: row.get::<_, Option<String>>(5)?.map(decodex_core::ServiceTier::new).transpose().map_err(|error| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error)))?,
+							service_tier: row.get::<_, Option<String>>(5)?.map(ServiceTier::new).transpose().map_err(|error| Error::FromSqlConversionFailure(5, Type::Text, Box::new(error)))?,
 						})
 					},
 				)
 				.optional()
-				.map_err(sql_error)
+				.map_err(account_lifecycle::sql_error)
 		})
 		.await
 	}
@@ -676,9 +678,9 @@ impl SqliteStore {
 				   AND t.role = 'user' AND t.status = 'active' AND p.state = 'unknown'
 				 ORDER BY t.sequence DESC, p.created_at_micros DESC LIMIT 2",
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let selected = statement
-				.query_map(params![conversation_id.as_str()], |row| {
+				.query_map(rusqlite::params![conversation_id.as_str()], |row| {
 					Ok((
 						row.get::<_, i64>(0)?,
 						row.get::<_, String>(1)?,
@@ -697,8 +699,9 @@ impl SqliteStore {
 						row.get::<_, bool>(14)?,
 					))
 				})
-				.map_err(sql_error)?;
-			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
+			let mut rows =
+				selected.collect::<Result<Vec<_>, _>>().map_err(account_lifecycle::sql_error)?;
 
 			if rows.len() > 1 {
 				return Err(incompatible("unknown Conversation attempt authority"));
@@ -768,9 +771,9 @@ impl SqliteStore {
 				   AND e.provider_thread_id = s.codex_thread_id AND e.provider_turn_id IS NOT NULL
 				 ORDER BY t.sequence DESC, p.created_at_micros DESC LIMIT 2",
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let selected = statement
-				.query_map(params![conversation_id.as_str()], |row| {
+				.query_map(rusqlite::params![conversation_id.as_str()], |row| {
 					Ok((
 						row.get::<_, i64>(0)?,
 						row.get::<_, String>(1)?,
@@ -786,8 +789,9 @@ impl SqliteStore {
 						row.get::<_, String>(11)?,
 					))
 				})
-				.map_err(sql_error)?;
-			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
+			let mut rows =
+				selected.collect::<Result<Vec<_>, _>>().map_err(account_lifecycle::sql_error)?;
 
 			if rows.len() > 1 {
 				return Err(incompatible("pending Conversation terminalization authority"));
@@ -848,7 +852,7 @@ impl SqliteStore {
 						"SELECT turn_id, revision FROM turns
 						 WHERE conversation_id = ?1 AND runtime_session_id = ?2 AND sequence = ?3
 						   AND role = 'assistant' AND status = 'active'",
-						params![
+						rusqlite::params![
 							conversation_id.as_str(),
 							runtime_session_id.as_str(),
 							assistant_sequence,
@@ -856,7 +860,7 @@ impl SqliteStore {
 						|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 					)
 					.optional()
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let Some((turn_id, turn_revision)) = turn else {
 					return Ok(None);
 				};
@@ -866,10 +870,10 @@ impl SqliteStore {
 						 WHERE conversation_id = ?1 AND turn_id = ?2
 						 ORDER BY sequence LIMIT ?3",
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let selected = statement
 					.query_map(
-						params![
+						rusqlite::params![
 							conversation_id.as_str(),
 							turn_id,
 							i64::try_from(MAX_CONTEXT_RECENT_ITEMS + 1).unwrap_or(i64::MAX),
@@ -882,8 +886,10 @@ impl SqliteStore {
 							))
 						},
 					)
-					.map_err(sql_error)?;
-				let items = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
+				let items = selected
+					.collect::<Result<Vec<_>, _>>()
+					.map_err(account_lifecycle::sql_error)?;
 
 				if items.is_empty()
 					|| items.len() > MAX_CONTEXT_RECENT_ITEMS
@@ -953,7 +959,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) = read_receipt(
 				&transaction,
@@ -964,7 +970,7 @@ impl SqliteStore {
 				let archived = serde_json::from_str(&response)
 					.map_err(|_| incompatible("Conversation archive receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ArchiveConversationOutcome::Replayed(archived));
 			}
@@ -983,7 +989,10 @@ impl SqliteStore {
 					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
 					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
 					   AND s.runtime_session_id = ?2 AND s.state = 'active'",
-					params![request.conversation_id.as_str(), request.runtime_session_id.as_str()],
+					rusqlite::params![
+						request.conversation_id.as_str(),
+						request.runtime_session_id.as_str()
+					],
 					|row| {
 						Ok((
 							row.get::<_, i64>(0)?,
@@ -994,7 +1003,7 @@ impl SqliteStore {
 					},
 				)
 				.optional()
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let Some((conversation_revision, session_revision, active_turn, active_attempt)) =
 				authority
 			else {
@@ -1009,31 +1018,31 @@ impl SqliteStore {
 				return Ok(ArchiveConversationOutcome::Rejected);
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
 				.execute(
 					"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
 					 updated_at_micros = ?3, ended_at_micros = ?3
 					 WHERE runtime_session_id = ?1 AND revision = ?2 AND state = 'active'",
-					params![
+					rusqlite::params![
 						request.runtime_session_id.as_str(),
 						request.expected_runtime_session_revision,
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let conversation_changed = transaction
 				.execute(
 					"UPDATE conversations SET state = 'archived', revision = revision + 1,
 					 updated_at_micros = ?3 WHERE conversation_id = ?1 AND revision = ?2
 					 AND state = 'active'",
-					params![
+					rusqlite::params![
 						request.conversation_id.as_str(),
 						request.expected_conversation_revision,
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if session_changed != 1 || conversation_changed != 1 {
 				return Ok(ArchiveConversationOutcome::Rejected);
@@ -1054,7 +1063,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ArchiveConversationOutcome::Applied(archived))
 		})
@@ -1083,7 +1092,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) = read_receipt(
 				&transaction,
@@ -1095,12 +1104,12 @@ impl SqliteStore {
 					.parse::<i64>()
 					.map_err(|_| incompatible("stranded Conversation Turn receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision });
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
 					"UPDATE turns SET status = 'failed', revision = revision + 1,
@@ -1126,7 +1135,7 @@ impl SqliteStore {
 					     SELECT 1 FROM history_items AS h
 					     WHERE h.turn_id = ?1 AND h.status = 'streaming'
 					   )",
-					params![
+					rusqlite::params![
 						request.turn_id.as_str(),
 						request.conversation_id.as_str(),
 						request.runtime_session_id.as_str(),
@@ -1136,7 +1145,7 @@ impl SqliteStore {
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if changed != 1 {
 				return Ok(ReconcileStrandedConversationTurnOutcome::Rejected);
@@ -1146,9 +1155,9 @@ impl SqliteStore {
 				.execute(
 					"UPDATE conversations SET updated_at_micros = ?2
 					 WHERE conversation_id = ?1 AND state = 'active' AND updated_at_micros <= ?2",
-					params![request.conversation_id.as_str(), now],
+					rusqlite::params![request.conversation_id.as_str(), now],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			let turn_revision = request.expected_turn_revision + 1;
 
@@ -1161,7 +1170,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ReconcileStrandedConversationTurnOutcome::Applied { turn_revision })
 		})
@@ -1193,7 +1202,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) = read_receipt(
 				&transaction,
@@ -1204,7 +1213,7 @@ impl SqliteStore {
 				let recovered = serde_json::from_str(&response)
 					.map_err(|_| incompatible("unknown Conversation recovery receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(RecoverUnknownConversationTurnOutcome::Replayed(recovered));
 			}
@@ -1215,21 +1224,21 @@ impl SqliteStore {
 				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
 					"UPDATE turns SET status = 'failed', revision = revision + 1,
 					 updated_at_micros = ?4, completed_at_micros = ?4
 					 WHERE turn_id = ?1 AND revision = ?2 AND status = 'active'
 					   AND conversation_id = ?3",
-					params![
+					rusqlite::params![
 						request.user_turn_id.as_str(),
 						request.expected_user_turn_revision,
 						request.conversation_id.as_str(),
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if changed != 1 {
 				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
@@ -1239,10 +1248,10 @@ impl SqliteStore {
 				.query_row(
 					"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items
 					 WHERE conversation_id = ?1",
-					params![request.conversation_id.as_str()],
+					rusqlite::params![request.conversation_id.as_str()],
 					|row| row.get(0),
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			transaction
 				.execute(
@@ -1252,7 +1261,7 @@ impl SqliteStore {
 					 created_at_micros, updated_at_micros
 					 ) VALUES (?1, ?2, ?3, ?4, 'status', 'user', 'completed',
 					 'text/plain', ?5, NULL, ?6, 1, ?7, ?7)",
-					params![
+					rusqlite::params![
 						request.history_item_id.as_str(),
 						request.conversation_id.as_str(),
 						request.user_turn_id.as_str(),
@@ -1262,7 +1271,7 @@ impl SqliteStore {
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			touch_conversation(&transaction, &request.conversation_id, now)?;
 
@@ -1280,7 +1289,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(RecoverUnknownConversationTurnOutcome::Applied(recovered))
 		})
@@ -1307,7 +1316,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) = read_receipt(
 				&transaction,
@@ -1318,12 +1327,12 @@ impl SqliteStore {
 				let archived = serde_json::from_str(&response)
 					.map_err(|_| incompatible("local Conversation archive receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ArchiveLocalConversationOutcome::Replayed(archived));
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
 				.execute(
 					"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
@@ -1346,7 +1355,7 @@ impl SqliteStore {
 					     SELECT 1 FROM process_generations AS p
 					     WHERE p.runtime_session_id = ?1 AND p.state <> 'dead'
 					   )",
-					params![
+					rusqlite::params![
 						request.runtime_session_id.as_str(),
 						request.conversation_id.as_str(),
 						request.expected_conversation_revision,
@@ -1354,19 +1363,19 @@ impl SqliteStore {
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let conversation_changed = transaction
 				.execute(
 					"UPDATE conversations SET state = 'archived', revision = revision + 1,
 					 updated_at_micros = ?3 WHERE conversation_id = ?1 AND revision = ?2
 					 AND state = 'active'",
-					params![
+					rusqlite::params![
 						request.conversation_id.as_str(),
 						request.expected_conversation_revision,
 						now,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if session_changed != 1 || conversation_changed != 1 {
 				return Ok(ArchiveLocalConversationOutcome::Rejected);
@@ -1387,7 +1396,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ArchiveLocalConversationOutcome::Applied(archived))
 		})
@@ -1412,7 +1421,7 @@ impl SqliteStore {
 
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let request_sha = digest(&[
 				request.source_conversation_id.as_str(),
 				&request.expected_source_revision.to_string(),
@@ -1421,13 +1430,13 @@ impl SqliteStore {
 			if let Some((stored_sha, successor_id)) = transaction.query_row(
 				"SELECT request_sha256, successor_conversation_id
 				 FROM conversation_routing_successors WHERE idempotency_key = ?1",
-				params![key], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-			).optional().map_err(sql_error)? {
+				rusqlite::params![key], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+			).optional().map_err(account_lifecycle::sql_error)? {
 				if stored_sha != request_sha { return Err(StoreError::IdempotencyConflict); }
 
 				let successor = read_routing_successor(&transaction, &request.source_conversation_id, &successor_id)?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ConversationRoutingSuccessorOutcome::Replayed(successor));
 			}
@@ -1441,13 +1450,13 @@ impl SqliteStore {
 				 JOIN routing_decisions AS d ON d.conversation_id = c.conversation_id
 				  AND d.authority_shape = 'conversation_account_registry'
 				 WHERE c.conversation_id = ?1 AND c.state = 'active'",
-				params![request.source_conversation_id.as_str()],
+				rusqlite::params![request.source_conversation_id.as_str()],
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
 					row.get::<_, String>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, bool>(5)?,
 					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?, row.get::<_, Option<String>>(9)?,
 				)),
-			).optional().map_err(sql_error)?;
+			).optional().map_err(account_lifecycle::sql_error)?;
 			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision, service_tier)) = source else {
 				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
@@ -1460,42 +1469,42 @@ impl SqliteStore {
 				});
 			}
 
-			let successor_id = random_uuid_v4()?;
-			let initial_turn_id = random_uuid_v4()?;
-			let now = unix_micros().map_err(StoreError::from)?;
+			let successor_id = account_lifecycle::random_uuid_v4()?;
+			let initial_turn_id = account_lifecycle::random_uuid_v4()?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction.execute(
 				"UPDATE conversations SET state = 'archived', revision = revision + 1,
 				 updated_at_micros = ?2 WHERE conversation_id = ?1 AND revision = ?3",
-				params![request.source_conversation_id.as_str(), now, revision],
-			).map_err(sql_error)?;
+				rusqlite::params![request.source_conversation_id.as_str(), now, revision],
+			).map_err(account_lifecycle::sql_error)?;
 			transaction.execute(
 				"INSERT INTO conversations (conversation_id, kind, state, title, revision, created_at_micros, updated_at_micros)
 				 VALUES (?1, 'ordinary_task', 'active', ?2, 1, ?3, ?3)",
-				params![successor_id, title, now],
-			).map_err(sql_error)?;
+				rusqlite::params![successor_id, title, now],
+			).map_err(account_lifecycle::sql_error)?;
 			transaction.execute(
 				"INSERT INTO quick_task_requests (
 				 conversation_id, operation_key, correlation_id, causation_id, initial_turn_id,
 				 message, working_directory, model, reasoning_effort, fast, created_at_micros, service_tier
 				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
-			).map_err(sql_error)?;
+				rusqlite::params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now, service_tier],
+			).map_err(account_lifecycle::sql_error)?;
 			transaction.execute(
 				"UPDATE quick_task_requests SET
 				   (model_source_account_id, model_source_account_revision) = (
 				     SELECT model_source_account_id, model_source_account_revision
 				     FROM quick_task_requests WHERE conversation_id = ?1
 				   ) WHERE conversation_id = ?2",
-				params![request.source_conversation_id.as_str(), successor_id],
-			).map_err(sql_error)?;
+				rusqlite::params![request.source_conversation_id.as_str(), successor_id],
+			).map_err(account_lifecycle::sql_error)?;
 			transaction.execute(
 				"INSERT INTO conversation_routing_successors (
 				 source_conversation_id, successor_conversation_id, source_routing_decision_id,
 				 idempotency_key, request_sha256, created_at_micros
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-				params![request.source_conversation_id.as_str(), successor_id, routing_decision_id, key, request_sha, now],
-			).map_err(sql_error)?;
+				rusqlite::params![request.source_conversation_id.as_str(), successor_id, routing_decision_id, key, request_sha, now],
+			).map_err(account_lifecycle::sql_error)?;
 
 			let successor = ConversationRoutingSuccessor {
 				source_conversation_id: request.source_conversation_id,
@@ -1506,7 +1515,7 @@ impl SqliteStore {
 				source_routing_decision_id: routing_decision_id,
 			};
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ConversationRoutingSuccessorOutcome::Fresh(successor))
 		}).await
@@ -1528,7 +1537,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let request_sha = initial_admission_digest(&request, &payload);
 
 			if let Some(response) = read_runtime_receipt(
@@ -1542,7 +1551,7 @@ impl SqliteStore {
 					serde_json::from_str(&response)
 						.map_err(|_| incompatible("initial admission receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(InitialConversationTurnAdmissionOutcome::Replayed(admission));
 			}
@@ -1561,7 +1570,7 @@ impl SqliteStore {
 				   AND (q.model_source_account_id IS NULL OR
 				        (q.model_source_account_id = s.account_id
 				         AND q.model_source_account_revision = s.account_revision))",
-					params![
+					rusqlite::params![
 						request.continuation_plan_id,
 						request.message.conversation_id.as_str(),
 						request.message.turn_id.as_str(),
@@ -1571,7 +1580,7 @@ impl SqliteStore {
 					|row| row.get::<_, String>(0),
 				)
 				.optional()
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let Some(routing_decision_id) = authority else {
 				return Ok(InitialConversationTurnAdmissionOutcome::Rejected {
 					rejection: InitialConversationTurnAdmissionRejection::AuthorityUnavailable,
@@ -1588,7 +1597,7 @@ impl SqliteStore {
 				});
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			insert_turn(&transaction, &request.message, now)?;
 			insert_history(&transaction, &request.message, &payload, now)?;
@@ -1617,7 +1626,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(InitialConversationTurnAdmissionOutcome::Fresh(admission))
 		})
@@ -1641,7 +1650,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let request_sha = terminalization_digest(&request);
 
 			if let Some(response) = read_runtime_receipt(
@@ -1654,7 +1663,7 @@ impl SqliteStore {
 				let readback: ConversationTerminalizationReadback = serde_json::from_str(&response)
 					.map_err(|_| incompatible("terminalization receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ConversationTerminalizationOutcome::Replayed(readback));
 			}
@@ -1674,7 +1683,7 @@ impl SqliteStore {
 				     AND e.evidence_id = ?7 AND e.provider_thread_id = ?8
 				     AND e.provider_turn_id = ?9
 				 )",
-					params![
+					rusqlite::params![
 						request.provider_attempt_id.as_str(),
 						request.conversation_id.as_str(),
 						request.user_turn_id.as_str(),
@@ -1687,7 +1696,7 @@ impl SqliteStore {
 					],
 					|row| row.get(0),
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let session_matches: bool = transaction
 				.query_row(
 					"SELECT EXISTS (
@@ -1696,7 +1705,7 @@ impl SqliteStore {
 				     AND s.revision = ?3 AND s.state = 'active' AND s.codex_thread_id = ?4
 				     AND c.revision = ?5 AND c.state = 'active'
 				 )",
-					params![
+					rusqlite::params![
 						request.runtime_session_id.as_str(),
 						request.conversation_id.as_str(),
 						request.expected_runtime_session_revision,
@@ -1705,7 +1714,7 @@ impl SqliteStore {
 					],
 					|row| row.get(0),
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let user_matches = turn_matches(
 				&transaction,
 				&request.user_turn_id,
@@ -1730,7 +1739,7 @@ impl SqliteStore {
 				return Ok(ConversationTerminalizationOutcome::Rejected);
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let turn_state = match request.provider_outcome {
 				ProviderTerminalOutcome::Succeeded => "completed",
 				ProviderTerminalOutcome::FailedDefinitive
@@ -1741,25 +1750,25 @@ impl SqliteStore {
 				.execute(
 					"UPDATE turns SET status = ?2, revision = revision + 1,
 				 updated_at_micros = ?3, completed_at_micros = ?3 WHERE turn_id = ?1",
-					params![request.user_turn_id.as_str(), turn_state, now],
+					rusqlite::params![request.user_turn_id.as_str(), turn_state, now],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some((assistant_turn_id, _)) = request.assistant_turn.as_ref() {
 				transaction
 					.execute(
 						"UPDATE turns SET status = ?2, revision = revision + 1,
 					 updated_at_micros = ?3, completed_at_micros = ?3 WHERE turn_id = ?1",
-						params![assistant_turn_id.as_str(), turn_state, now],
+						rusqlite::params![assistant_turn_id.as_str(), turn_state, now],
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 			}
 
 			transaction.execute(
 				"UPDATE runtime_sessions SET has_acknowledged_turn = 1, last_known_turn_id = ?2,
 				 revision = revision + 1, updated_at_micros = ?3 WHERE runtime_session_id = ?1",
-				params![request.runtime_session_id.as_str(), request.provider_turn_id, now],
-			).map_err(sql_error)?;
+				rusqlite::params![request.runtime_session_id.as_str(), request.provider_turn_id, now],
+			).map_err(account_lifecycle::sql_error)?;
 
 			touch_conversation(&transaction, &request.conversation_id, now)?;
 
@@ -1784,7 +1793,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ConversationTerminalizationOutcome::Applied(readback))
 		})
@@ -1811,7 +1820,7 @@ impl SqliteStore {
 
 		self.run(move |connection| {
 			// Keep lifecycle, source binding and native observation on one WAL snapshot.
-			let transaction = connection.transaction().map_err(sql_error)?;
+			let transaction = connection.transaction().map_err(account_lifecycle::sql_error)?;
 			let connection = &transaction;
 			let mut rows = Vec::new();
 
@@ -1820,7 +1829,7 @@ impl SqliteStore {
 					.query_row(
 						"SELECT conversation_id, state, revision, updated_at_micros
 					 FROM conversations WHERE conversation_id = ?1 AND kind = 'ordinary_task'",
-						params![id.as_str()],
+						rusqlite::params![id.as_str()],
 						|row| {
 							Ok((
 								row.get::<_, String>(0)?,
@@ -1831,7 +1840,7 @@ impl SqliteStore {
 						},
 					)
 					.optional()
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 
 				if let Some(row) = row {
 					rows.push(row);
@@ -1849,10 +1858,10 @@ impl SqliteStore {
 					     OR (updated_at_micros = ?1 AND conversation_id < ?2))
 					 ORDER BY updated_at_micros DESC, conversation_id DESC LIMIT ?3",
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let selected = statement
 					.query_map(
-						params![after_time, after_id, i64::try_from(limit).unwrap_or(65)],
+						rusqlite::params![after_time, after_id, i64::try_from(limit).unwrap_or(65)],
 						|row| {
 							Ok((
 								row.get::<_, String>(0)?,
@@ -1862,10 +1871,10 @@ impl SqliteStore {
 							))
 						},
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 
 				for row in selected {
-					rows.push(row.map_err(sql_error)?);
+					rows.push(row.map_err(account_lifecycle::sql_error)?);
 				}
 			}
 
@@ -1874,7 +1883,7 @@ impl SqliteStore {
 				.map(|row| conversation_projection(connection, row))
 				.collect::<Result<Vec<_>, _>>()?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(projections)
 		})
@@ -1899,10 +1908,10 @@ impl SqliteStore {
 				let exists: bool = connection
 					.query_row(
 						"SELECT EXISTS (SELECT 1 FROM conversations WHERE conversation_id = ?1)",
-						params![conversation_id.as_str()],
+						rusqlite::params![conversation_id.as_str()],
 						|row| row.get(0),
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 
 				if !exists {
 					return Err(StoreError::InvalidInput("Conversation does not exist"));
@@ -1917,17 +1926,21 @@ impl SqliteStore {
 				 WHERE h.conversation_id = ?1 AND h.sequence > ?2
 				 ORDER BY h.sequence LIMIT ?3",
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let rows = statement
 					.query_map(
-						params![conversation_id.as_str(), after_sequence, i64::from(page_size) + 1],
+						rusqlite::params![
+							conversation_id.as_str(),
+							after_sequence,
+							i64::from(page_size) + 1
+						],
 						read_history_row,
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let mut entries = Vec::new();
 
 				for row in rows {
-					entries.push(row.map_err(sql_error)?);
+					entries.push(row.map_err(account_lifecycle::sql_error)?);
 				}
 
 				Ok(entries)
@@ -2005,17 +2018,21 @@ impl SqliteStore {
 				   ORDER BY h.sequence DESC LIMIT ?3
 				 ) ORDER BY sequence",
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let rows = statement
 					.query_map(
-						params![conversation_id.as_str(), excluded_turn_id, i64::from(limit),],
+						rusqlite::params![
+							conversation_id.as_str(),
+							excluded_turn_id,
+							i64::from(limit),
+						],
 						read_history_row,
 					)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 				let mut entries = Vec::new();
 
 				for row in rows {
-					entries.push(row.map_err(sql_error)?);
+					entries.push(row.map_err(account_lifecycle::sql_error)?);
 				}
 
 				Ok(entries)
@@ -2097,7 +2114,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT sequence, status, revision, role, possible_side_effects
 				 FROM turns WHERE turn_id = ?1 AND conversation_id = ?2 AND runtime_session_id = ?3",
-					params![
+					rusqlite::params![
 						turn_id.as_str(),
 						conversation_id.as_str(),
 						runtime_session_id.as_str()
@@ -2113,7 +2130,7 @@ impl SqliteStore {
 					},
 				)
 				.optional()
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let Some((sequence, status, revision, role, side_effects)) = row else {
 				return Ok(None);
 			};
@@ -2147,7 +2164,7 @@ impl SqliteStore {
 			.run(move |connection| {
 				let transaction = connection
 					.transaction_with_behavior(TransactionBehavior::Immediate)
-					.map_err(sql_error)?;
+					.map_err(account_lifecycle::sql_error)?;
 
 				if let Some(response) = read_receipt(
 					&transaction,
@@ -2166,12 +2183,12 @@ impl SqliteStore {
 						read_history_entry(&transaction, mutation.history_item_id.as_str())?
 							.ok_or_else(|| incompatible("history receipt row"))?;
 
-					transaction.commit().map_err(sql_error)?;
+					transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 					return Ok((entry, false));
 				}
 
-				let now = unix_micros().map_err(StoreError::from)?;
+				let now = crate::unix_micros().map_err(StoreError::from)?;
 
 				match mutation.expected_revision {
 					None => {
@@ -2199,7 +2216,7 @@ impl SqliteStore {
 						 revision = revision + 1, updated_at_micros = ?7
 						 WHERE history_item_id = ?1 AND conversation_id = ?8 AND turn_id = ?9
 						   AND revision = ?10",
-								params![
+								rusqlite::params![
 									mutation.history_item_id.as_str(),
 									item_status_text(mutation.status),
 									mutation.media_type.as_str(),
@@ -2212,7 +2229,7 @@ impl SqliteStore {
 									expected,
 								],
 							)
-							.map_err(sql_error)?;
+							.map_err(account_lifecycle::sql_error)?;
 
 						if changed != 1 {
 							return Err(StoreError::RevisionConflict {
@@ -2244,7 +2261,7 @@ impl SqliteStore {
 					now,
 				)?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				Ok((entry, true))
 			})
@@ -2272,19 +2289,19 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if let Some(response) =
 				read_receipt(&transaction, &command, "transition_turn", turn_id.as_str())?
 			{
 				let revision = response.parse::<i64>().map_err(|_| incompatible("Turn receipt"))?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(revision);
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
 					"UPDATE turns SET status = ?2, revision = revision + 1, updated_at_micros = ?3,
@@ -2293,9 +2310,14 @@ impl SqliteStore {
 				 AND NOT EXISTS (
 				   SELECT 1 FROM history_items WHERE turn_id = ?1 AND status = 'streaming'
 				 )",
-					params![turn_id.as_str(), turn_status_text(status), now, expected_revision],
+					rusqlite::params![
+						turn_id.as_str(),
+						turn_status_text(status),
+						now,
+						expected_revision
+					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			if changed != 1 {
 				return Err(StoreError::RevisionConflict {
@@ -2316,7 +2338,7 @@ impl SqliteStore {
 				now,
 			)?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(revision)
 		})
@@ -2356,7 +2378,7 @@ fn unknown_recovery_authority(
 			     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
 			   )
 			 )",
-			params![
+			rusqlite::params![
 				request.conversation_id.as_str(),
 				request.expected_conversation_revision,
 				request.runtime_session_id.as_str(),
@@ -2369,7 +2391,7 @@ fn unknown_recovery_authority(
 			],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)
+		.map_err(account_lifecycle::sql_error)
 }
 
 fn validate_conversation_conversation(create: &CreateConversationRecord) -> Result<(), StoreError> {
@@ -2437,7 +2459,7 @@ fn validate_terminalization(request: &TerminalizeConversationTurn) -> Result<(),
 		|| request.expected_provider_attempt_revision <= 0
 		|| request.assistant_turn.as_ref().is_some_and(|(_, revision)| *revision <= 0)
 		|| request.provider_thread_id.is_empty()
-		|| request.provider_thread_id.len() > decodex_core::MAX_PROVIDER_THREAD_ID_BYTES
+		|| request.provider_thread_id.len() > MAX_PROVIDER_THREAD_ID_BYTES
 		|| request.provider_turn_id.is_empty()
 		|| request.provider_turn_id.len() > 256
 	{
@@ -2491,7 +2513,7 @@ fn insert_turn(
 		 turn_id, conversation_id, runtime_session_id, sequence, role, possible_side_effects,
 		 status, revision, created_at_micros, updated_at_micros
 		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', 1, ?7, ?7)",
-			params![
+			rusqlite::params![
 				mutation.turn_id.as_str(),
 				mutation.conversation_id.as_str(),
 				mutation.runtime_session_id.as_str(),
@@ -2501,7 +2523,7 @@ fn insert_turn(
 				now,
 			],
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	Ok(())
 }
@@ -2515,10 +2537,10 @@ fn insert_history(
 	let sequence: i64 = transaction
 		.query_row(
 			"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items WHERE conversation_id = ?1",
-			params![mutation.conversation_id.as_str()],
+			rusqlite::params![mutation.conversation_id.as_str()],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	transaction
 		.execute(
@@ -2527,7 +2549,7 @@ fn insert_history(
 		 media_type, inline_text, blob_sha256, metadata_json, revision,
 		 created_at_micros, updated_at_micros
 		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12)",
-			params![
+			rusqlite::params![
 				mutation.history_item_id.as_str(),
 				mutation.conversation_id.as_str(),
 				mutation.turn_id.as_str(),
@@ -2542,7 +2564,7 @@ fn insert_history(
 				now,
 			],
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	Ok(())
 }
@@ -2554,12 +2576,12 @@ fn read_turn(
 	transaction.query_row(
 		"SELECT conversation_id, runtime_session_id, sequence, role, possible_side_effects, status, revision
 		 FROM turns WHERE turn_id = ?1",
-		params![turn_id.as_str()],
+		rusqlite::params![turn_id.as_str()],
 		|row| Ok(StoredTurnShape {
 			conversation_id: row.get(0)?, runtime_session_id: row.get(1)?, sequence: row.get(2)?,
 			role: row.get(3)?, possible_side_effects: row.get(4)?, status: row.get(5)?, revision: row.get(6)?,
 		}),
-	).optional().map_err(sql_error)
+	).optional().map_err(account_lifecycle::sql_error)
 }
 
 fn validate_existing_turn(
@@ -2587,10 +2609,10 @@ fn history_exists(
 	transaction
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM history_items WHERE history_item_id = ?1)",
-			params![history_item_id.as_str()],
+			rusqlite::params![history_item_id.as_str()],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)
+		.map_err(account_lifecycle::sql_error)
 }
 
 fn read_history_entry(
@@ -2604,35 +2626,32 @@ fn read_history_entry(
 		 h.media_type, h.metadata_json, h.revision, h.sequence
 		 FROM history_items AS h JOIN turns AS t USING (turn_id)
 		 WHERE h.history_item_id = ?1",
-			params![history_item_id],
+			rusqlite::params![history_item_id],
 			read_history_row,
 		)
 		.optional()
-		.map_err(sql_error)
+		.map_err(account_lifecycle::sql_error)
 }
 
-fn read_history_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
+fn read_history_row(row: &Row<'_>) -> rusqlite::Result<HistoryEntry> {
 	let blob_hash = row
 		.get::<_, Option<String>>(8)?
-		.map(|value| BlobHash::parse(&value).map_err(|_| rusqlite::Error::InvalidQuery))
+		.map(|value| BlobHash::parse(&value).map_err(|_| Error::InvalidQuery))
 		.transpose()?;
-	let media_type = HistoryMediaType::new(row.get::<_, String>(9)?)
-		.map_err(|_| rusqlite::Error::InvalidQuery)?;
+	let media_type =
+		HistoryMediaType::new(row.get::<_, String>(9)?).map_err(|_| Error::InvalidQuery)?;
 	let metadata = serde_json::from_str::<HistoryMetadata>(&row.get::<_, String>(10)?)
-		.map_err(|_| rusqlite::Error::InvalidQuery)?;
+		.map_err(|_| Error::InvalidQuery)?;
 
 	Ok(HistoryEntry {
 		history_item_id: row.get(0)?,
 		turn_id: row.get(1)?,
 		runtime_session_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-		turn_role: parse_turn_role(&row.get::<_, String>(3)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+		turn_role: parse_turn_role(&row.get::<_, String>(3)?).map_err(|_| Error::InvalidQuery)?,
 		possible_side_effects: parse_side_effect(&row.get::<_, String>(4)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		kind: parse_history_kind(&row.get::<_, String>(5)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		status: parse_item_status(&row.get::<_, String>(6)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+			.map_err(|_| Error::InvalidQuery)?,
+		kind: parse_history_kind(&row.get::<_, String>(5)?).map_err(|_| Error::InvalidQuery)?,
+		status: parse_item_status(&row.get::<_, String>(6)?).map_err(|_| Error::InvalidQuery)?,
 		inline_text: row.get(7)?,
 		blob_hash,
 		blob_byte_length: None,
@@ -2683,8 +2702,8 @@ fn touch_conversation(
 ) -> Result<(), StoreError> {
 	let changed = transaction.execute(
 		"UPDATE conversations SET updated_at_micros = ?2 WHERE conversation_id = ?1 AND state = 'active'",
-		params![id.as_str(), now],
-	).map_err(sql_error)?;
+		rusqlite::params![id.as_str(), now],
+	).map_err(account_lifecycle::sql_error)?;
 
 	if changed != 1 {
 		return Err(incompatible("Conversation activity owner"));
@@ -2713,7 +2732,7 @@ fn read_runtime_receipt(
 		.query_row(
 			"SELECT request_sha256, operation, entity_id, response_json
 		 FROM runtime_command_receipts WHERE idempotency_key = ?1",
-			params![key],
+			rusqlite::params![key],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -2724,7 +2743,7 @@ fn read_runtime_receipt(
 			},
 		)
 		.optional()
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let Some((stored_sha, stored_operation, stored_entity, response)) = row else {
 		return Ok(None);
 	};
@@ -2769,9 +2788,16 @@ fn write_runtime_receipt(
 			"INSERT INTO runtime_command_receipts (
 		 idempotency_key, request_sha256, operation, entity_id, response_json, completed_at_micros
 		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-			params![key, request_sha, operation, entity_id, response_json, completed_at_micros],
+			rusqlite::params![
+				key,
+				request_sha,
+				operation,
+				entity_id,
+				response_json,
+				completed_at_micros
+			],
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	Ok(())
 }
@@ -2788,10 +2814,10 @@ fn read_routing_successor(
 		 JOIN conversations AS s ON s.conversation_id = r.source_conversation_id
 		 JOIN conversations AS n ON n.conversation_id = r.successor_conversation_id
 		 WHERE r.source_conversation_id = ?1 AND r.successor_conversation_id = ?2",
-			params![source_id.as_str(), successor_id],
+			rusqlite::params![source_id.as_str(), successor_id],
 			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	Ok(ConversationRoutingSuccessor {
 		source_conversation_id: source_id.clone(),
@@ -2805,7 +2831,7 @@ fn read_routing_successor(
 
 #[allow(clippy::too_many_lines)] // Keep the complete projection read and invariant checks together.
 fn conversation_projection(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	row: (String, String, i64, i64),
 ) -> Result<OrdinaryTaskConversationProjection, StoreError> {
 	let conversation_id = ConversationId::new(row.0)
@@ -2818,11 +2844,11 @@ fn conversation_projection(
 			 FROM conversation_routing_successors AS r
 			 JOIN conversations AS c ON c.conversation_id = r.successor_conversation_id
 			 WHERE r.source_conversation_id = ?1",
-				params![conversation_id.as_str()],
+				rusqlite::params![conversation_id.as_str()],
 				|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 			)
 			.optional()
-			.map_err(sql_error)?;
+			.map_err(account_lifecycle::sql_error)?;
 
 		return match successor {
 			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
@@ -2851,7 +2877,7 @@ fn conversation_projection(
 			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
 			 LEFT JOIN program_work_items AS item USING (work_item_id)
 			 WHERE c.conversation_id = ?1",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -2866,7 +2892,7 @@ fn conversation_projection(
 				))
 			},
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let program_work_item = match (
 		presentation.2,
 		presentation.3,
@@ -2890,7 +2916,8 @@ fn conversation_projection(
 				.map_err(|_| incompatible("Program WorkItem binding identity"))?,
 			title,
 			instructions,
-			state: crate::program_cycles::parse_work_item_state_sql(&state).map_err(sql_error)?,
+			state: program_cycles::parse_work_item_state_sql(&state)
+				.map_err(account_lifecycle::sql_error)?,
 			revision: u64::try_from(revision)
 				.ok()
 				.filter(|revision| *revision > 0)
@@ -2907,7 +2934,7 @@ fn conversation_projection(
 		.query_row(
 			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
 		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -2919,54 +2946,54 @@ fn conversation_projection(
 			},
 		)
 		.optional()
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let route = connection
 		.query_row(
 			"SELECT routing_decision_id, decision_kind, quota_classification
 		 FROM routing_decisions WHERE conversation_id = ?1
 		 ORDER BY created_at_micros DESC LIMIT 1",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| {
 				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
 			},
 		)
 		.optional()
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let active_turn = connection
 		.query_row(
 			"SELECT turn_id, revision FROM turns
 		 WHERE conversation_id = ?1 AND role = 'user' AND status = 'active'
 		 ORDER BY sequence DESC LIMIT 1",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 		)
 		.optional()
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let has_admitted_user_turn: bool = connection
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM turns WHERE conversation_id = ?1 AND role = 'user')",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let has_active_provider_attempt: bool = connection
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM provider_attempts WHERE conversation_id = ?1
 		 AND state IN ('prepared', 'dispatch_authorized'))",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let has_unknown_provider_attempt: bool = connection
 		.query_row(
 			"SELECT EXISTS (
 		 SELECT 1 FROM provider_attempts AS p JOIN turns AS t ON t.turn_id = p.turn_id
 		 WHERE p.conversation_id = ?1 AND p.state = 'unknown' AND t.status = 'active'
 		 )",
-			params![conversation_id.as_str()],
+			rusqlite::params![conversation_id.as_str()],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let (
 		runtime_session_id,
 		runtime_session_revision,
@@ -2986,8 +3013,8 @@ fn conversation_projection(
 	let routing_decision_id = route.as_ref().map(|value| value.0.clone());
 	let model_source_review_required: bool = connection.query_row(
         "SELECT COALESCE((SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1), 0)",
-        params![conversation_id.as_str()], |row| row.get(0),
-    ).map_err(sql_error)?;
+        rusqlite::params![conversation_id.as_str()], |row| row.get(0),
+    ).map_err(account_lifecycle::sql_error)?;
 	let pre_session_state = if runtime_session_id.is_some() {
 		None
 	} else {
@@ -3053,7 +3080,7 @@ fn safe_display_title(value: &str, fallback: &str) -> String {
 
 	if value.is_empty()
 		|| value.chars().any(char::is_control)
-		|| contains_credential_material(&value)
+		|| decodex_core::contains_credential_material(&value)
 	{
 		return fallback.to_owned();
 	}
@@ -3089,7 +3116,7 @@ fn turn_matches(
 		 SELECT 1 FROM turns WHERE turn_id = ?1 AND conversation_id = ?2
 		 AND runtime_session_id = ?3 AND revision = ?4 AND role = ?5 AND status = 'active'
 		 )",
-			params![
+			rusqlite::params![
 				turn_id.as_str(),
 				conversation_id.as_str(),
 				runtime_session_id.as_str(),
@@ -3098,7 +3125,7 @@ fn turn_matches(
 			],
 			|row| row.get(0),
 		)
-		.map_err(sql_error)
+		.map_err(account_lifecycle::sql_error)
 }
 
 fn initial_admission_digest(request: &AdmitInitialConversationTurn, payload: &Payload) -> String {
@@ -3291,7 +3318,6 @@ fn incompatible(reason: &'static str) -> StoreError {
 #[cfg(test)]
 #[path = "conversations/snapshot_tests.rs"]
 mod snapshot_tests;
-
 #[cfg(test)]
 mod archive_tests {
 	use decodex_core::{
