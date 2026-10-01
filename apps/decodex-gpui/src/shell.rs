@@ -18,11 +18,10 @@ pub(crate) use status::{
 	count_preference as notification_count_preference, question_notice_preference,
 };
 
-use crate::ui_motion::{self, SmoothControl};
-
-use agent_surface::AgentSurface;
-
 use std::{
+	array,
+	cell::RefCell,
+	collections::{HashMap, HashSet},
 	future::Future,
 	pin::Pin,
 	sync::{
@@ -34,21 +33,14 @@ use std::{
 };
 
 use gpui::{
-	Animation, AnimationExt, AnyElement, App, BoxShadow, ClipboardItem, Context, Entity,
-	FocusHandle, Focusable, FontWeight, Global, Hsla, KeyBinding, MouseButton, Render, Role,
-	SharedString, Subscription, Task, WeakEntity, Window, WindowControlArea, WindowHandle, actions,
-	div, ease_in_out, prelude::*, px, rgb, rgba,
+	Animation, AnimationExt, AnyElement, App, AsyncApp, Bounds, BoxShadow, ClipboardItem, Context,
+	CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Global, Hsla,
+	KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString, Stateful, Subscription,
+	Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds,
+	WindowControlArea, WindowHandle, WindowOptions, accesskit::Toggled, actions, div, ease_in_out,
+	prelude::*, px, rgb, rgba,
 };
-
-use decodex_protocol::{
-	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
-	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
-	AccountObservedStateDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
-	AccountSelectionModeDto, AppServerCapability, ClientFailure, ConversationRecoveryAction,
-	ConversationState, ConversationSummary, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole,
-	IdempotencyKey,
-};
+use tokio::{runtime::Builder, time};
 
 use crate::{
 	account_login::AccountLoginController,
@@ -67,14 +59,33 @@ use crate::{
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
 	settings_surface::{SettingsCategory, SettingsSurface},
-	ui_theme::{self, window_material},
+	ui_loading,
+	ui_motion::{self, SmoothControl},
+	ui_theme::{
+		self, ACCENT, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_SIZE, CANVAS, CHROME_CONTROL_SIZE,
+		COMPOSER_MATERIAL, CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY,
+		GREEN, HEADING_SIZE, MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP,
+		SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL,
+		SURFACE_OVERLAY_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED,
+		window_material,
+	},
 };
-
-use std::array;
-
-use tokio::time;
-
-use crate::ui_loading;
+use account_feedback::AccountFeedback;
+use account_identity::Emails;
+use agent_surface::AgentSurface;
+#[cfg(test)] use decodex_protocol::Cursor;
+use decodex_protocol::{
+	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
+	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
+	AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
+	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountSelectionModeDto,
+	AppServerCapability, ClientFailure, ClientProfile, ConversationNativeSettings,
+	ConversationRecoveryAction, ConversationState, ConversationSummary, DesktopOrdinaryDraft,
+	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, EntityRevision, HistoryItemDto,
+	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
+	NativeProcessDiagnostics, WireText,
+};
+use quota_meter::ResetFill;
 
 actions!(
 	decodex_shell,
@@ -107,19 +118,18 @@ actions!(
 );
 
 // Match the gap below floating controls to their inset from the window edge.
-const WINDOW_CONTROLS_CLEARANCE: f32 =
-	ui_theme::CONTROL_MARGIN * 2.0 + ui_theme::CONTROL_GROUP_HEIGHT;
+const WINDOW_CONTROLS_CLEARANCE: f32 = CONTROL_MARGIN * 2.0 + CONTROL_GROUP_HEIGHT;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
-const WB_CANVAS: u32 = ui_theme::CANVAS;
-const WB_TEXT: u32 = ui_theme::TEXT;
-const WB_TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
-const WB_TEXT_FAINT: u32 = ui_theme::TEXT_FAINT;
-const WB_ACCENT: u32 = ui_theme::ACCENT;
-const WB_BLUE: u32 = ui_theme::BLUE;
-const WB_GREEN: u32 = ui_theme::GREEN;
-const WB_AMBER: u32 = ui_theme::AMBER;
+const WB_CANVAS: u32 = CANVAS;
+const WB_TEXT: u32 = TEXT;
+const WB_TEXT_MUTED: u32 = TEXT_MUTED;
+const WB_TEXT_FAINT: u32 = TEXT_FAINT;
+const WB_ACCENT: u32 = ACCENT;
+const WB_BLUE: u32 = BLUE;
+const WB_GREEN: u32 = GREEN;
+const WB_AMBER: u32 = AMBER;
 const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
 	DoctorComponent::Configuration,
 	DoctorComponent::ProductStore,
@@ -145,7 +155,7 @@ const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
-	ordinary_last: Option<decodex_protocol::DesktopOrdinaryDraft>,
+	ordinary_last: Option<DesktopOrdinaryDraft>,
 	ordinary_owner: Option<EntityId>,
 	ordinary_syncing: bool,
 	reset_cards: reset_cards::ResetCardsPanel,
@@ -177,10 +187,9 @@ pub(crate) struct Shell {
 	pending_account_logout: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
-	expanded_accounts: std::collections::HashSet<EntityId>,
-	account_activity:
-		std::collections::HashMap<EntityId, (AccountProfileSnapshot, std::time::Instant)>,
-	account_emails: account_identity::Emails,
+	expanded_accounts: HashSet<EntityId>,
+	account_activity: HashMap<EntityId, (AccountProfileSnapshot, std::time::Instant)>,
+	account_emails: Emails,
 	desktop_settings: DesktopSettingsController,
 	desktop_settings_snapshot: DesktopSettingsSnapshot,
 	accounts_controller: AccountsController,
@@ -201,7 +210,7 @@ pub(crate) struct Shell {
 	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
-	dismissed_notifications: std::cell::RefCell<std::collections::HashSet<(String, String)>>,
+	dismissed_notifications: RefCell<HashSet<(String, String)>>,
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_status: native_status::NativeStatus,
 }
@@ -220,7 +229,7 @@ impl Shell {
 
 	pub(crate) fn with_agent_profile(
 		mut self,
-		profile: Option<decodex_protocol::ClientProfile>,
+		profile: Option<ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
 		self.account_emails = Default::default();
@@ -834,9 +843,7 @@ impl Shell {
 
 		if !visible {
 			cx.spawn(async move |shell, cx| {
-				cx.background_executor()
-					.timer(ui_theme::MOTION_PANEL + Duration::from_millis(24))
-					.await;
+				cx.background_executor().timer(MOTION_PANEL + Duration::from_millis(24)).await;
 
 				let _ = shell.update(cx, |shell, cx| {
 					if !shell.left_sidebar_visible
@@ -867,9 +874,7 @@ impl Shell {
 
 		if !visible {
 			cx.spawn(async move |shell, cx| {
-				cx.background_executor()
-					.timer(ui_theme::MOTION_PANEL + Duration::from_millis(24))
-					.await;
+				cx.background_executor().timer(MOTION_PANEL + Duration::from_millis(24)).await;
 
 				let _ = shell.update(cx, |shell, cx| {
 					if !shell.inspector_visible && shell.inspector_motion_generation == generation {
@@ -907,12 +912,7 @@ impl Shell {
 		cx.stop_propagation();
 	}
 
-	fn interrupt_reply(
-		&mut self,
-		event: &gpui::KeyDownEvent,
-		_: &mut Window,
-		cx: &mut Context<Self>,
-	) {
+	fn interrupt_reply(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
 		if event.keystroke.key != "escape" || event.is_held {
 			return;
 		}
@@ -1179,7 +1179,7 @@ impl Shell {
 	fn start_account_reauthentication(
 		&mut self,
 		account_id: EntityId,
-		expected_revision: decodex_protocol::EntityRevision,
+		expected_revision: EntityRevision,
 		recovery_operation_id: Option<EntityId>,
 		cx: &mut Context<Self>,
 	) {
@@ -1229,7 +1229,7 @@ impl Shell {
 		self.account_login_updates = Some(receiver);
 		self.account_login_cancellation = Some(cancellation);
 		self.account_login_task = Some(cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
+			let runtime = Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.expect("build the bounded account-login runtime");
@@ -1769,7 +1769,7 @@ impl Render for Shell {
 			.id("decodex-shell")
 			.role(Role::Application)
 			.aria_label("Decodex operational shell")
-			.font_family(ui_theme::FONT_FAMILY)
+			.font_family(FONT_FAMILY)
 			.text_size(px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
@@ -1836,7 +1836,7 @@ impl Render for Shell {
 			.min_h(px(720.0))
 			.flex()
 			.flex_col()
-			.bg(rgba(ui_theme::SHELL_MATERIAL))
+			.bg(rgba(SHELL_MATERIAL))
 			.text_color(rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
@@ -1939,9 +1939,9 @@ impl Render for SettingsWindow {
 			.id("settings-window")
 			.size_full()
 			.flex()
-			.font_family(ui_theme::FONT_FAMILY)
+			.font_family(FONT_FAMILY)
 			.text_color(rgb(WB_TEXT))
-			.bg(rgba(ui_theme::SHELL_MATERIAL))
+			.bg(rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
 			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
@@ -1986,7 +1986,7 @@ impl Render for RefreshTooltip {
 			.rounded(px(6.0))
 			.border_1()
 			.border_color(rgba(0xffffff14))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+			.bg(rgba(SURFACE_OVERLAY_MATERIAL))
 			.text_size(px(11.0))
 			.text_color(rgb(WB_TEXT))
 			.child("Refresh health")
@@ -2020,7 +2020,7 @@ struct HealthPresentation {
 #[derive(Clone)]
 struct AccountDrag {
 	id: EntityId,
-	revision: Option<decodex_protocol::EntityRevision>,
+	revision: Option<EntityRevision>,
 	label: SharedString,
 }
 impl Render for AccountDrag {
@@ -2041,9 +2041,9 @@ struct AccountRowPresentation {
 	feedback: Option<(String, u32)>,
 	controls_busy: bool,
 	email: Option<String>,
-	reset_fill: Option<quota_meter::ResetFill>,
+	reset_fill: Option<ResetFill>,
 	index: usize,
-	routing_revision: Option<decodex_protocol::EntityRevision>,
+	routing_revision: Option<EntityRevision>,
 	fixed: bool,
 	can_manage: bool,
 	can_route: bool,
@@ -2200,7 +2200,7 @@ pub(crate) fn retain_lifecycle(
 
 	let shell = shell.downgrade();
 	let background = cx.background_executor().spawn(async move {
-		let runtime = tokio::runtime::Builder::new_current_thread()
+		let runtime = Builder::new_current_thread()
 			.enable_all()
 			.build()
 			.expect("build the bounded client runtime");
@@ -2493,21 +2493,15 @@ fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) 
 
 #[test]
 fn online_cursor_progress_does_not_invalidate_the_conversation() {
-	let online = |generation, cursor| ConnectionView::Online {
-		generation,
-		applied: Some(decodex_protocol::Cursor(cursor)),
-	};
+	let online =
+		|generation, cursor| ConnectionView::Online { generation, applied: Some(Cursor(cursor)) };
 
 	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
 	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));
 	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
 }
 
-fn publish_views(
-	shell: &WeakEntity<Shell>,
-	views: &Receiver<ConnectionView>,
-	cx: &mut gpui::AsyncApp,
-) {
+fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx: &mut AsyncApp) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
 			if connection_requires_recovery(shell.connection, view) {
@@ -2623,10 +2617,10 @@ fn floating_window_controls(
 		.role(Role::Navigation)
 		.aria_label("Window controls")
 		.absolute()
-		.top(px(ui_theme::CONTROL_MARGIN))
-		.left(px(ui_theme::CONTROL_MARGIN))
-		.right(px(ui_theme::CONTROL_MARGIN))
-		.h(px(ui_theme::CONTROL_GROUP_HEIGHT))
+		.top(px(CONTROL_MARGIN))
+		.left(px(CONTROL_MARGIN))
+		.right(px(CONTROL_MARGIN))
+		.h(px(CONTROL_GROUP_HEIGHT))
 		.flex()
 		.items_center()
 		.justify_between()
@@ -2662,14 +2656,14 @@ fn floating_window_controls(
 		.into_any_element()
 }
 
-fn tooltip_surface(text: SharedString, color: u32) -> gpui::Div {
+fn tooltip_surface(text: SharedString, color: u32) -> Div {
 	div()
 		.px_2()
 		.py_1()
 		.rounded(px(6.0))
 		.border_1()
 		.border_color(rgba(0xffffff14))
-		.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+		.bg(rgba(SURFACE_OVERLAY_MATERIAL))
 		.text_size(px(11.0))
 		.text_color(rgb(color))
 		.child(text)
@@ -2713,7 +2707,7 @@ fn topbar_controls(
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.on_action(cx.listener(Shell::activate_destination))
-				.size(px(ui_theme::CHROME_CONTROL_SIZE))
+				.size(px(CHROME_CONTROL_SIZE))
 				.flex()
 				.items_center()
 				.justify_center()
@@ -2745,7 +2739,7 @@ fn topbar_controls(
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgba(0x8baaf780)))
 				.on_mouse_down(MouseButton::Left, |_, window, cx| {
 					window.prevent_default();
@@ -2782,7 +2776,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.aria_label(label)
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
-		.size(px(ui_theme::CHROME_CONTROL_SIZE))
+		.size(px(CHROME_CONTROL_SIZE))
 		.rounded(px(5.0))
 		.flex()
 		.items_center()
@@ -2809,7 +2803,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				});
 			}
 		}))
-		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if enabled
 				&& !event.is_held
 				&& ["enter", "space"].contains(&event.keystroke.key.as_str())
@@ -3129,7 +3123,7 @@ fn refresh_control(
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		})
 		.text_size(px(11.0))
@@ -3155,7 +3149,7 @@ fn destination_header(
 		.gap_1()
 		.child(
 			div()
-				.text_size(px(ui_theme::HEADING_SIZE))
+				.text_size(px(HEADING_SIZE))
 				.font_weight(FontWeight::SEMIBOLD)
 				.text_color(rgb(WB_TEXT))
 				.child(selected.label()),
@@ -3200,10 +3194,10 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 				.rounded(px(14.0))
 				.border_1()
 				.border_color(rgba(0xffffff10))
-				.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
+				.bg(rgba(SURFACE_RAISED_MATERIAL))
 				.child(
 					div()
-						.font_family(ui_theme::FONT_FAMILY)
+						.font_family(FONT_FAMILY)
 						.text_size(px(11.0))
 						.text_color(rgb(WB_ACCENT))
 						.child("PLANNED SURFACE"),
@@ -3227,7 +3221,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.pt_3()
 						.border_t_1()
 						.border_color(rgba(0xffffff0d))
-						.font_family(ui_theme::FONT_FAMILY)
+						.font_family(FONT_FAMILY)
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(
@@ -3334,15 +3328,15 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.flex_1()
 		.min_h_0()
-		.px(px(ui_theme::SETTINGS_INSET))
-		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
-		.pb(px(ui_theme::SETTINGS_INSET))
+		.px(px(SETTINGS_INSET))
+		.pt(px(SETTINGS_GROUP_GAP))
+		.pb(px(SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(
 			div()
 				.w_full()
-				.max_w(px(ui_theme::SETTINGS_WIDTH))
+				.max_w(px(SETTINGS_WIDTH))
 				.min_h_0()
 				.flex()
 				.flex_col()
@@ -3366,11 +3360,11 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.map(account_rejection_label)
 								.map(str::to_owned)
 								.or_else(|| shell.account_status.as_ref().map(ToString::to_string))
-								.map(|text| account_feedback::AccountFeedback {
+								.map(|text| AccountFeedback {
 									id: "account-global-warning".into(),
 									selector: "account-global-warning".into(),
 									text,
-									color: ui_theme::AMBER,
+									color: AMBER,
 								}),
 						),
 				)
@@ -3420,7 +3414,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									.child("No accounts added")
 									.child(
 										div()
-											.font_family(ui_theme::FONT_FAMILY)
+											.font_family(FONT_FAMILY)
 											.text_size(px(11.0))
 											.text_color(rgb(WB_TEXT_FAINT))
 											.child("Sign in above to add your first account."),
@@ -3457,7 +3451,7 @@ fn account_mode_button(
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
 		})
 		.child(label)
@@ -3504,7 +3498,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.gap_1()
 				.child(
 					div()
-						.font_family(ui_theme::FONT_FAMILY)
+						.font_family(FONT_FAMILY)
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT))
 						.child("Add account"),
@@ -3593,7 +3587,7 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.text_ellipsis()
-				.font_family(ui_theme::FONT_FAMILY)
+				.font_family(FONT_FAMILY)
 				.text_size(px(11.0))
 				.text_color(rgb(WB_TEXT_FAINT))
 				.child(url),
@@ -3602,10 +3596,10 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 }
 
 fn account_login_button(
-	id: impl Into<gpui::ElementId>,
+	id: impl Into<ElementId>,
 	label: impl Into<SharedString>,
 	enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
 	let label = label.into();
 
 	div()
@@ -3627,7 +3621,7 @@ fn account_login_button(
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 		})
 		.child(label)
 }
@@ -3654,7 +3648,7 @@ fn account_login_status_label(status: &AccountLoginStatus) -> String {
 
 fn account_login_start(
 	method: AccountLoginMethod,
-	existing: Option<(EntityId, decodex_protocol::EntityRevision, Option<EntityId>)>,
+	existing: Option<(EntityId, EntityRevision, Option<EntityId>)>,
 ) -> Result<AccountLoginStart, SharedString> {
 	let next_entity = || {
 		canonical_uuid_v4()
@@ -3694,8 +3688,8 @@ fn account_login_start(
 
 fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
 	account.unsettled_operation.as_ref().and_then(|operation| {
-		(operation.kind == decodex_protocol::AccountOperationKindDto::Refresh
-			&& operation.phase == decodex_protocol::AccountOperationPhaseDto::RecoveryRequired
+		(operation.kind == AccountOperationKindDto::Refresh
+			&& operation.phase == AccountOperationPhaseDto::RecoveryRequired
 			&& operation.recovery_code.as_ref().is_some_and(|code| {
 				matches!(
 					code.as_str(),
@@ -3721,7 +3715,7 @@ fn account_readiness_status(account: &AccountDto) -> &'static str {
 		.unsettled_operation
 		.as_ref()
 		.and_then(|operation| operation.recovery_code.as_ref())
-		.map(decodex_protocol::WireText::as_str)
+		.map(WireText::as_str)
 	{
 		Some("provider_refresh_rejected") => "Refresh rejected · re-login",
 		Some("provider_refresh_ambiguous" | "provider_refresh_outcome_unknown") =>
@@ -3833,7 +3827,7 @@ fn account_pool_summary(
 										.bg(rgba(crate::ui_theme::HOVER_FILL))
 										.text_color(rgb(WB_TEXT))
 								})
-								.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+								.active(|element| element.bg(rgba(PRESSED_FILL)))
 						})
 						.child(workspace_symbols::icon(if fixed {
 							workspace_symbols::Symbol::AccountRouteActive
@@ -3877,7 +3871,7 @@ fn account_reorder_handle(
 		style.opacity(1.)
 	})
 	.focus(|style| style.opacity(1.))
-	.cursor(gpui::CursorStyle::OpenHand)
+	.cursor(CursorStyle::OpenHand)
 	.on_click(|_, _, cx| cx.stop_propagation())
 	.on_drag(
 		AccountDrag {
@@ -3887,7 +3881,7 @@ fn account_reorder_handle(
 		},
 		|drag, _, _, cx| cx.new(|_| drag.clone()),
 	)
-	.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+	.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 		if event.keystroke.modifiers.alt && ["up", "down"].contains(&event.keystroke.key.as_str()) {
 			s.move_account(&keyboard, if event.keystroke.key == "up" { -1 } else { 1 }, cx);
 			cx.stop_propagation();
@@ -3920,11 +3914,7 @@ fn account_power_control(
 	)
 	.when(busy, |button| button.opacity(1.0))
 	.role(Role::Switch)
-	.aria_toggled(if enabled {
-		gpui::accesskit::Toggled::True
-	} else {
-		gpui::accesskit::Toggled::False
-	})
+	.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 	.flex_none()
 	.on_click(cx.listener(move |s, _, _, cx| {
 		cx.stop_propagation();
@@ -3933,7 +3923,7 @@ fn account_power_control(
 			s.set_account_enabled(&id, !enabled, cx);
 		}
 	}))
-	.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+	.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 		if interactive && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 			cx.stop_propagation();
 			s.set_account_enabled(&key_id, !enabled, cx);
@@ -3960,16 +3950,14 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap(px(2.))
-		.children(presentation.feedback.as_ref().map(|(text, color)| {
-			account_feedback::AccountFeedback {
-				id: format!("account-feedback-{}", account.account_id.as_str()).into(),
-				selector: format!(
-					"{}-{index}",
-					if needs_login { "account-login-warning" } else { "account-warning" }
-				),
-				text: text.clone(),
-				color: *color,
-			}
+		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
+			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
+			selector: format!(
+				"{}-{index}",
+				if needs_login { "account-login-warning" } else { "account-warning" }
+			),
+			text: text.clone(),
+			color: *color,
 		}))
 		.child(
 			div()
@@ -4034,7 +4022,7 @@ fn account_icon_action(
 	label: &'static str,
 	symbol: workspace_symbols::Symbol,
 	enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
 	account_row_action(id, index, label, "", enabled)
 		.debug_selector(move || format!("{id}-{index}"))
 		.w(px(24.))
@@ -4061,7 +4049,7 @@ fn account_row_action(
 	aria_label: &'static str,
 	label: &'static str,
 	enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Stateful<Div> {
 	div()
 		.id((id, index))
 		.role(Role::Button)
@@ -4072,7 +4060,7 @@ fn account_row_action(
 		.items_center()
 		.justify_center()
 		.rounded(px(6.0))
-		.font_family(ui_theme::FONT_FAMILY)
+		.font_family(FONT_FAMILY)
 		.text_size(px(11.0))
 		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.5 })
@@ -4290,7 +4278,7 @@ fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 		.flex_col()
 		.border_r_1()
 		.border_color(rgba(0xffffff0d))
-		.bg(rgba(ui_theme::SIDEBAR_MATERIAL))
+		.bg(rgba(SIDEBAR_MATERIAL))
 		.child(conversation_sessions_header(shell, cx))
 		.child(
 			div()
@@ -4337,7 +4325,7 @@ fn animated_horizontal_panel_slot(
 		.child(panel)
 		.with_animation(
 			animation_id,
-			Animation::new(ui_theme::MOTION_PANEL).with_easing(ease_in_out),
+			Animation::new(MOTION_PANEL).with_easing(ease_in_out),
 			move |slot, delta| {
 				let progress = if visible { delta } else { 1.0 - delta };
 				let width = px(full_width * progress);
@@ -4398,7 +4386,7 @@ fn inspector_tab(
 		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
 		.cursor_pointer()
 		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+		.active(|element| element.bg(rgba(PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			shell.inspector_tab = tab;
@@ -4423,7 +4411,7 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 			div()
 				.min_w_0()
 				.flex_1()
-				.font_family(ui_theme::FONT_FAMILY)
+				.font_family(FONT_FAMILY)
 				.text_color(rgb(WB_TEXT_MUTED))
 				.text_right()
 				.overflow_hidden()
@@ -4435,7 +4423,7 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 }
 
 fn conversation_native_settings_inspector(
-	settings: Option<&decodex_protocol::ConversationNativeSettings>,
+	settings: Option<&ConversationNativeSettings>,
 ) -> AnyElement {
 	let Some(settings) = settings else {
 		return div()
@@ -4702,7 +4690,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex_col()
 		.border_l_1()
 		.border_color(rgba(0xffffff0f))
-		.bg(rgba(ui_theme::SIDEBAR_MATERIAL))
+		.bg(rgba(SIDEBAR_MATERIAL))
 		.child(
 			div()
 				.h(px(44.0))
@@ -4756,7 +4744,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.hover(|element| {
 							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+						.active(|element| element.bg(rgba(PRESSED_FILL)))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Agent, cx);
@@ -4834,7 +4822,7 @@ fn conversation_transcript(
 				.text_color(rgb(WB_TEXT_FAINT))
 				.child(
 					div()
-						.font_family(ui_theme::FONT_FAMILY)
+						.font_family(FONT_FAMILY)
 						.text_size(px(11.0))
 						.text_color(rgb(if status == HistoryItemStatusDto::Failed {
 							WB_AMBER
@@ -5034,7 +5022,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.rounded(px(11.0))
 				.border_1()
 				.border_color(rgba(0xffffff16))
-				.bg(rgba(ui_theme::COMPOSER_MATERIAL))
+				.bg(rgba(COMPOSER_MATERIAL))
 				.shadow(vec![
 					BoxShadow::new(px(0.0), px(10.0), Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.22 })
 						.blur_radius(px(28.0))
@@ -5082,7 +5070,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.when(composer_len > 0, |element| {
 									element.child(
 										div()
-											.font_family(ui_theme::FONT_FAMILY)
+											.font_family(FONT_FAMILY)
 											.text_size(px(11.0))
 											.text_color(rgb(WB_TEXT_FAINT))
 											.child(format!("{composer_len}/{MAX_COMPOSER_BYTES}")),
@@ -5281,7 +5269,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.min_h_0()
 						.flex()
 						.flex_col()
-						.bg(rgba(ui_theme::CONTENT_MATERIAL))
+						.bg(rgba(CONTENT_MATERIAL))
 						.child(
 							div()
 								.h(px(44.0))
@@ -5333,7 +5321,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
-fn native_process_summary(value: Option<&decodex_protocol::NativeProcessDiagnostics>) -> String {
+fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 	use decodex_protocol::NativeProcessDiagnostics as Native;
 
 	let memory = |value: Option<u64>| {
@@ -5363,7 +5351,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
 	let content = div()
 		.w_full()
-		.max_w(px(ui_theme::SETTINGS_WIDTH))
+		.max_w(px(SETTINGS_WIDTH))
 		.child(
 			div()
 				.id("health-query-status")
@@ -5460,9 +5448,9 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 		.flex_1()
 		.min_h_0()
 		.overflow_y_scroll()
-		.px(px(ui_theme::SETTINGS_INSET))
-		.pt(px(ui_theme::SETTINGS_GROUP_GAP))
-		.pb(px(ui_theme::SETTINGS_INSET))
+		.px(px(SETTINGS_INSET))
+		.pt(px(SETTINGS_GROUP_GAP))
+		.pb(px(SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(content)
@@ -5483,7 +5471,7 @@ fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
 		.border_t_1()
 		.border_color(rgba(0xffffff0d))
 		.bg(rgba(0x00000016))
-		.font_family(ui_theme::FONT_FAMILY)
+		.font_family(FONT_FAMILY)
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_FAINT))
 		.child(div().size(px(6.0)).rounded_full().bg(rgb(presentation.color)))
@@ -5549,7 +5537,7 @@ fn destination_content(
 		.h_full()
 		.flex()
 		.flex_col()
-		.bg(rgba(ui_theme::CONTENT_MATERIAL))
+		.bg(rgba(CONTENT_MATERIAL))
 		.child(destination_header(selected, &shell.health, refresh_focus, window, cx))
 		.child(content)
 		.child(connection_status(presentation))
@@ -5572,14 +5560,14 @@ fn settings_navigation(
 		.flex()
 		.flex_col()
 		.gap(px(3.0))
-		.text_size(px(ui_theme::BODY_SIZE))
+		.text_size(px(BODY_SIZE))
 		.pr(px(16.))
-		.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
+		.bg(rgba(AGENT_SIDEBAR_MATERIAL))
 		.child(
 			div()
 				.px_2()
-				.pt(px(ui_theme::SETTINGS_TOP))
-				.pb(px(ui_theme::SETTINGS_GROUP_GAP))
+				.pt(px(SETTINGS_TOP))
+				.pb(px(SETTINGS_GROUP_GAP))
 				.text_size(px(13.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
@@ -5599,7 +5587,7 @@ fn settings_navigation(
 
 		navigation = navigation.child(
 			div()
-				.id(gpui::SharedString::from(format!("settings-section-{label}")))
+				.id(SharedString::from(format!("settings-section-{label}")))
 				.role(Role::Tab)
 				.aria_label(label)
 				.aria_selected(active)
@@ -5624,13 +5612,9 @@ fn settings_navigation(
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT)))
+				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(TEXT)))
 				.hover(move |row| {
-					row.bg(rgba(if active {
-						ui_theme::SELECTED_HOVER_FILL
-					} else {
-						ui_theme::HOVER_FILL
-					}))
+					row.bg(rgba(if active { SELECTED_HOVER_FILL } else { ui_theme::HOVER_FILL }))
 				})
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
@@ -5666,7 +5650,7 @@ fn settings_workspace_content(
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
+		.bg(rgba(AGENT_SIDEBAR_MATERIAL))
 		.pt(px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
@@ -5680,7 +5664,7 @@ fn settings_workspace_content(
 				ui_theme::settings_header_inset().child(
 					div()
 						.w_full()
-						.max_w(px(ui_theme::SETTINGS_WIDTH))
+						.max_w(px(SETTINGS_WIDTH))
 						.flex()
 						.items_center()
 						.justify_between()
@@ -5732,17 +5716,17 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 		.into_iter()
 		.filter_map(|w| w.downcast::<Shell>())
 		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
-	let bounds = gpui::Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
+	let bounds = Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
 
 	match cx.open_window(
-		gpui::WindowOptions {
-			titlebar: Some(gpui::TitlebarOptions {
+		WindowOptions {
+			titlebar: Some(TitlebarOptions {
 				title: Some("Decodex Settings".into()),
 				appears_transparent: true,
 				..Default::default()
 			}),
-			window_background: gpui::WindowBackgroundAppearance::Blurred,
-			window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+			window_background: WindowBackgroundAppearance::Blurred,
+			window_bounds: Some(WindowBounds::Windowed(bounds)),
 			window_min_size: Some(gpui::size(px(860.), px(480.))),
 			// Install the accessibility adapter before the first key-window notification.
 			focus: false,
@@ -5869,7 +5853,7 @@ fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElemen
 			element
 				.cursor_pointer()
 				.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)))
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.interrupt_conversation(window, cx);
@@ -5927,7 +5911,7 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.border_1()
 		.border_color(rgba(0xffffff10))
 		.bg(rgba(0x00000018))
-		.font_family(ui_theme::FONT_FAMILY)
+		.font_family(FONT_FAMILY)
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
@@ -5953,7 +5937,7 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.border_1()
 		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
 		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
-		.font_family(ui_theme::FONT_FAMILY)
+		.font_family(FONT_FAMILY)
 		.text_size(px(11.0))
 		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
 		.cursor_pointer()
@@ -5983,7 +5967,7 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.border_1()
 		.border_color(rgba(0xffffff10))
 		.bg(rgba(0x00000018))
-		.font_family(ui_theme::FONT_FAMILY)
+		.font_family(FONT_FAMILY)
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
@@ -6017,7 +6001,7 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 			cx.stop_propagation();
 		})
 		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+		.active(|element| element.bg(rgba(PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
@@ -6049,7 +6033,7 @@ fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> 
 			cx.stop_propagation();
 		})
 		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+		.active(|element| element.bg(rgba(PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
@@ -6090,7 +6074,7 @@ fn account_pool_header(
 					)
 					.child(
 						div()
-							.font_family(ui_theme::FONT_FAMILY)
+							.font_family(FONT_FAMILY)
 							.text_size(px(11.0))
 							.text_color(rgb(WB_TEXT_FAINT))
 							.child(format!("{available} of {count} available")),
@@ -6163,7 +6147,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 								.flex()
 								.items_center()
 								.gap_2()
-								.font_family(ui_theme::FONT_FAMILY)
+								.font_family(FONT_FAMILY)
 								.text_size(px(10.5))
 								.text_color(rgb(WB_TEXT_FAINT))
 								.child(account_readiness_status(account)),
@@ -6213,7 +6197,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 				.cursor_pointer()
 				.on_click(cx.listener(move |shell, _, window, cx| {
@@ -6253,7 +6237,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.child(
 					div()
 						.pl(px(13.0))
-						.font_family(ui_theme::FONT_FAMILY)
+						.font_family(FONT_FAMILY)
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_FAINT))
 						.child(format!("{} · {short_id}", conversation_state_label(state))),
@@ -6344,7 +6328,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 						.hover(|element| {
 							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+						.active(|element| element.bg(rgba(PRESSED_FILL)))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.cursor_pointer()
 						.on_click(cx.listener(|shell, _, window, cx| {
@@ -6383,7 +6367,7 @@ fn conversation_refresh_button(
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.refresh_conversation(window, cx);
 				}))
@@ -6411,7 +6395,7 @@ fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> An
 				.hover(|element| {
 					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+				.active(|element| element.bg(rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.archive_conversation(window, cx);
 				}))

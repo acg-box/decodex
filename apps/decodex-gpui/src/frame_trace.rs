@@ -5,7 +5,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{profiler, profiler::FrameTimingCollector};
+use gpui::profiler::{self, FrameTimingCollector};
 
 pub(crate) fn start() {
 	let Some(path) = env::var_os("DECODEX_FRAME_TRACE") else { return };

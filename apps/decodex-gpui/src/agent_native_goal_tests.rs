@@ -1,9 +1,7 @@
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 

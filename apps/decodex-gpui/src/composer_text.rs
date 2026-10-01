@@ -3,7 +3,7 @@ use core::panic::Location;
 use std::mem;
 
 use cursor::{Preference, Shape};
-use gpui::TextAlign;
+use gpui::{AvailableSpace, TextAlign};
 use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE};
 
 use crate::composer_input::*;
@@ -47,7 +47,7 @@ impl Element for ComposerTextElement {
 		(
 			window.request_measured_layout(style, move |known, available, window, cx| {
 				let width = known.width.unwrap_or_else(|| match available.width {
-					gpui::AvailableSpace::Definite(width) => width,
+					AvailableSpace::Definite(width) => width,
 					_ => px(500.0),
 				});
 				let input = input.read(cx);

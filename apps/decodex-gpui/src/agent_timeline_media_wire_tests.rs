@@ -8,7 +8,8 @@ use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::native_timeline::{
-	media::*, wire_test_support, wire_test_support::SERVER,
+	media::*,
+	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
 	AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelinePage, CURRENT_VERSION,

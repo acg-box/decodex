@@ -1,11 +1,14 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
-use crate::shell::agent_surface::*;
+use std::f32::consts::FRAC_PI_2;
 
-use crate::ui_scroll::SmoothScrollArea;
+use gpui::{AnyElement, Div, FontWeight, KeyDownEvent, PathBuilder, Stateful};
+use ui_theme::{
+	CAPTION_SIZE, HOVER_FILL, PANEL_HEADER_HEIGHT, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
+	TREE_ROW_HEIGHT,
+};
+use workspace_size::Panel;
 
-use gpui::AnyElement;
-
-use crate::ui_motion;
+use crate::{shell::agent_surface::*, ui_motion, ui_scroll::SmoothScrollArea};
 
 pub(super) const DISCLOSURE: f32 = 18.;
 
@@ -42,9 +45,7 @@ impl AgentSurface {
 
 		div()
 			.id("agent-panel-focus")
-			.capture_any_mouse_down(
-				cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Right)),
-			)
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Right)))
 			.size_full()
 			.text_size(px(12.0))
 			.min_w_0()
@@ -53,16 +54,13 @@ impl AgentSurface {
 			.px(px(INSET))
 			.child(
 				div()
-					.h(px(ui_theme::PANEL_HEADER_HEIGHT))
+					.h(px(PANEL_HEADER_HEIGHT))
 					.flex_none()
 					.px(px(ROW_INSET))
 					.flex()
 					.items_center()
 					.child(
-						div()
-							.text_size(px(13.0))
-							.font_weight(gpui::FontWeight::SEMIBOLD)
-							.child("Agents"),
+						div().text_size(px(13.0)).font_weight(FontWeight::SEMIBOLD).child("Agents"),
 					),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
@@ -97,7 +95,7 @@ impl AgentSurface {
 			.justify_center()
 			.rounded(px(4.))
 			.cursor_pointer()
-			.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
+			.hover(|s| s.text_color(rgb(TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if !s.agent_tree_collapsed.remove(&click_id) {
 					s.agent_tree_collapsed.insert(click_id.clone());
@@ -105,7 +103,7 @@ impl AgentSurface {
 
 				cx.notify();
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					if !s.agent_tree_collapsed.remove(&key_id) {
 						s.agent_tree_collapsed.insert(key_id.clone());
@@ -155,7 +153,7 @@ impl AgentSurface {
 			)))
 			.child(
 				div()
-					.text_size(px(ui_theme::CAPTION_SIZE))
+					.text_size(px(CAPTION_SIZE))
 					.flex_none()
 					.text_color(rgb(color))
 					.child(format!("L{depth} · {status}")),
@@ -186,7 +184,7 @@ impl AgentSurface {
 				.child(row)
 				.child(ui_motion::reveal(
 					SharedString::from(format!("agent-children-{}", work.id)),
-					if expanded { count as f32 * ui_theme::TREE_ROW_HEIGHT } else { 0.0 },
+					if expanded { count as f32 * TREE_ROW_HEIGHT } else { 0.0 },
 					false,
 					nested,
 				))
@@ -196,12 +194,12 @@ impl AgentSurface {
 	}
 }
 
-pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> gpui::Stateful<gpui::Div> {
+pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {
 	div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id.clone())
 		.relative()
-		.h(px(ui_theme::TREE_ROW_HEIGHT))
+		.h(px(TREE_ROW_HEIGHT))
 		.flex_none()
 		.min_w_0()
 		.pl(px(ROW_INSET + depth as f32 * INDENT))
@@ -211,19 +209,13 @@ pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> gpui::Statef
 		.gap(px(4.))
 		.rounded(px(5.))
 		.when(selected, |row| row.bg(rgba(0xffffff0b)))
-		.hover(move |row| {
-			row.bg(rgba(if selected {
-				ui_theme::SELECTED_HOVER_FILL
-			} else {
-				ui_theme::HOVER_FILL
-			}))
-		})
+		.hover(move |row| row.bg(rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL })))
 		.when(depth > 0, |row| {
 			row.child(
 				div()
 					.absolute()
 					.left(px(ROW_INSET + (depth - 1) as f32 * INDENT + DISCLOSURE / 2.))
-					.top(px(ui_theme::TREE_ROW_HEIGHT / 2.))
+					.top(px(TREE_ROW_HEIGHT / 2.))
 					.w(px(5.))
 					.h(px(1.))
 					.bg(rgba(0xffffff18)),
@@ -231,13 +223,13 @@ pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> gpui::Statef
 		})
 }
 
-pub(super) fn tree_children(depth: usize) -> gpui::Div {
+pub(super) fn tree_children(depth: usize) -> Div {
 	div().relative().w_full().flex().flex_col().child(
 		div()
 			.absolute()
 			.left(px(ROW_INSET + depth as f32 * INDENT + DISCLOSURE / 2.))
 			.top_0()
-			.bottom(px(ui_theme::TREE_ROW_HEIGHT / 2.))
+			.bottom(px(TREE_ROW_HEIGHT / 2.))
 			.w(px(1.))
 			.bg(rgba(0xffffff18)),
 	)
@@ -249,7 +241,7 @@ fn chevron(id: String, expanded: bool) -> impl IntoElement {
 		move |bounds, _, window, cx| {
 			let angle = ui_motion::value(
 				SharedString::from(id.clone()),
-				if expanded { std::f32::consts::FRAC_PI_2 } else { 0. },
+				if expanded { FRAC_PI_2 } else { 0. },
 				window,
 				cx,
 			);
@@ -261,14 +253,14 @@ fn chevron(id: String, expanded: bool) -> impl IntoElement {
 						px(x * angle.sin() + y * angle.cos()),
 					)
 			};
-			let mut path = gpui::PathBuilder::stroke(px(1.2));
+			let mut path = PathBuilder::stroke(px(1.2));
 
 			path.move_to(point(-1.5, -3.));
 			path.line_to(point(1.5, 0.));
 			path.line_to(point(-1.5, 3.));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(ui_theme::TEXT_MUTED));
+				window.paint_path(path, rgb(TEXT_MUTED));
 			}
 		},
 	)

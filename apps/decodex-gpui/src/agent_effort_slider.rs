@@ -1,15 +1,15 @@
 //! Discrete reasoning slider. Values come from the selected model's capabilities.
-use crate::shell::agent_surface::composer::controls::{
-	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
-	StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme::TEXT,
+use gpui::{
+	AnyElement, App, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+	RenderOnce, Window, canvas, relative,
 };
 
-use gpui::{MouseButton, canvas, relative};
-
-use crate::ui_motion;
-
-use gpui::{
-	AnyElement, App, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, RenderOnce, Window,
+use crate::{
+	shell::agent_surface::composer::controls::{
+		AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
+		StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme::TEXT,
+	},
+	ui_motion,
 };
 
 impl AgentSurface {

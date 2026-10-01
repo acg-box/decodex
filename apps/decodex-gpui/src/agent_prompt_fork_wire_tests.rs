@@ -1,10 +1,8 @@
 //! Recovery must retain unresolved intent and never create another branch.
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 	time::{Duration, Instant},
 };
 

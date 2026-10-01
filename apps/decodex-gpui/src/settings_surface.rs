@@ -5,25 +5,31 @@
 
 #[path = "settings_power.rs"] mod power;
 
-use crate::{
-	ui_motion::{SmoothControl, switch_knob},
-	ui_scroll::SmoothScrollArea,
-};
-
 use gpui::{
-	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
+	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
+	accesskit::Toggled, div, prelude::*, px, rgb, rgba,
 };
+use ui_theme::window_material::GlassStyle;
 
 use crate::{
+	composer_input::cursor::{Preference, Shape},
 	desktop_settings::{
 		DesktopSettingsCommandState, DesktopSettingsController, DesktopSettingsInputError,
 		DesktopSettingsLoadState, DesktopSettingsSnapshot,
 	},
 	native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost},
-	ui_theme,
+	panel_preferences::PanelDefaults,
+	ui_loading,
+	ui_motion::{SmoothControl, switch_knob},
+	ui_scroll::SmoothScrollArea,
+	ui_theme::{
+		self, BODY_LINE_HEIGHT, BODY_SIZE, HOVER_FILL, LINE_STRONG, SETTINGS_GROUP_GAP,
+		SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH,
+	},
 };
+use power::PowerSettings;
 
-const LINE: u32 = ui_theme::LINE_STRONG;
+const LINE: u32 = LINE_STRONG;
 const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const BLUE: u32 = ui_theme::BLUE;
@@ -60,7 +66,7 @@ enum DesktopPreference {
 
 pub(crate) struct SettingsSurface {
 	pub(crate) category: SettingsCategory,
-	power: power::PowerSettings,
+	power: PowerSettings,
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
 	detail: SharedString,
@@ -229,7 +235,7 @@ impl SettingsSurface {
 		notices
 	}
 
-	fn toggle_menubar(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_menubar(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
@@ -248,7 +254,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle_activation(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_activation(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
@@ -262,7 +268,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle_recap(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_recap(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else { return };
 
 		if let Err(error) = self.controller.set_auto_recap(!settings.auto_recap) {
@@ -274,12 +280,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle_launch_at_login(
-		&mut self,
-		_: &gpui::ClickEvent,
-		_: &mut Window,
-		cx: &mut Context<Self>,
-	) {
+	fn toggle_launch_at_login(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let enabled = !self.launch_at_login.is_requested();
 
 		match self.menu_bar.set_launch_at_login(enabled) {
@@ -301,7 +302,7 @@ impl SettingsSurface {
 
 	pub(crate) fn open_login_items_settings(
 		&mut self,
-		_: &gpui::ClickEvent,
+		_: &ClickEvent,
 		_: &mut Window,
 		cx: &mut Context<Self>,
 	) {
@@ -312,7 +313,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> AnyElement {
 		if self.snapshot.settings.is_none() {
 			return div()
 				.id(match preference {
@@ -329,7 +330,7 @@ impl SettingsSurface {
 						DesktopSettingsLoadState::NeverRequested
 							| DesktopSettingsLoadState::Loading
 					) {
-						crate::ui_loading::loading("").into_any_element()
+						ui_loading::loading("").into_any_element()
 					} else {
 						div().text_color(rgb(TEXT_MUTED)).child("—").into_any_element()
 					},
@@ -489,7 +490,7 @@ impl SettingsSurface {
 
 					cx.refresh_windows();
 				}))
-				.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 						preference(Some(!enabled));
 
@@ -511,8 +512,6 @@ impl SettingsSurface {
 	}
 
 	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		use crate::panel_preferences::PanelDefaults;
-
 		let current = PanelDefaults::configured();
 
 		div().flex().flex_col().children(
@@ -533,7 +532,7 @@ impl SettingsSurface {
 								.into_iter()
 								.map(|(delta, label)| {
 									div()
-										.id(gpui::SharedString::from(format!(
+										.id(SharedString::from(format!(
 											"panel-default-{sidebar}-{delta}"
 										)))
 										.role(Role::Button)
@@ -548,7 +547,7 @@ impl SettingsSurface {
 										.justify_center()
 										.rounded(px(7.))
 										.cursor_pointer()
-										.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+										.hover(|s| s.bg(rgba(HOVER_FILL)))
 										.on_click(cx.listener(move |_, _, _, cx| {
 											let mut pref = PanelDefaults::configured();
 
@@ -565,7 +564,7 @@ impl SettingsSurface {
 											pref.select(cx);
 										}))
 										.on_key_down(cx.listener(
-											move |_, event: &gpui::KeyDownEvent, _, cx| {
+											move |_, event: &KeyDownEvent, _, cx| {
 												if !["enter", "space"]
 													.contains(&event.keystroke.key.as_str())
 												{
@@ -599,8 +598,6 @@ impl SettingsSurface {
 	}
 
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		use crate::composer_input::cursor::{Preference, Shape};
-
 		let current = Preference::configured();
 		let choices = [
 			(
@@ -625,7 +622,7 @@ impl SettingsSurface {
 				div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
 					values.into_iter().map(|(label, value)| {
 						div()
-							.id(gpui::SharedString::from(format!("{title}-{label}")))
+							.id(SharedString::from(format!("{title}-{label}")))
 							.role(Role::Button)
 							.aria_label(format!("{title}: {label}"))
 							.aria_toggled(if value == current {
@@ -642,20 +639,18 @@ impl SettingsSurface {
 							.text_size(px(11.))
 							.cursor_pointer()
 							.when(value == current, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+							.hover(|d| d.bg(rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();
 							}))
-							.on_key_down(cx.listener(
-								move |_, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										value.select(cx);
-										cx.notify();
-										cx.stop_propagation();
-									}
-								},
-							))
+							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									value.select(cx);
+									cx.notify();
+									cx.stop_propagation();
+								}
+							}))
 							.child(label)
 							.smooth()
 					}),
@@ -665,8 +660,6 @@ impl SettingsSurface {
 	}
 
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		use ui_theme::window_material::GlassStyle;
-
 		let style = GlassStyle::configured();
 
 		ui_theme::settings_row().px_0().child(div().flex_1().child("Glass appearance")).child(
@@ -692,20 +685,18 @@ impl SettingsSurface {
 							.text_size(px(11.))
 							.cursor_pointer()
 							.when(value == style, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+							.hover(|d| d.bg(rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();
 							}))
-							.on_key_down(cx.listener(
-								move |_, event: &gpui::KeyDownEvent, _, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										value.select(cx);
-										cx.notify();
-										cx.stop_propagation();
-									}
-								},
-							))
+							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									value.select(cx);
+									cx.notify();
+									cx.stop_propagation();
+								}
+							}))
 							.child(label)
 							.smooth()
 					},
@@ -716,7 +707,7 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
-	pub(crate) fn quota_control(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(crate) fn quota_control(&self, cx: &mut Context<Self>) -> AnyElement {
 		div()
 			.flex_none()
 			.flex()
@@ -734,7 +725,7 @@ impl SettingsSurface {
 			.into_any_element()
 	}
 
-	fn category_content(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		let group = || div().flex().flex_col().gap(px(2.));
 
 		match self.category {
@@ -820,8 +811,8 @@ impl Render for SettingsSurface {
 			.size_full()
 			.min_w_0()
 			.min_h_0()
-			.text_size(px(ui_theme::BODY_SIZE))
-			.line_height(px(ui_theme::BODY_LINE_HEIGHT))
+			.text_size(px(BODY_SIZE))
+			.line_height(px(BODY_LINE_HEIGHT))
 			.text_color(rgb(TEXT))
 			.child(
 				div()
@@ -829,20 +820,20 @@ impl Render for SettingsSurface {
 					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
-					.px(px(ui_theme::SETTINGS_INSET))
-					.pt(px(ui_theme::SETTINGS_TOP))
-					.pb(px(ui_theme::SETTINGS_INSET))
+					.px(px(SETTINGS_INSET))
+					.pt(px(SETTINGS_TOP))
+					.pb(px(SETTINGS_INSET))
 					.flex()
 					.justify_center()
 					.items_start()
 					.child(
 						div()
 							.w_full()
-							.max_w(px(ui_theme::SETTINGS_WIDTH))
+							.max_w(px(SETTINGS_WIDTH))
 							.flex_none()
 							.flex()
 							.flex_col()
-							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
+							.gap(px(SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					)
@@ -854,7 +845,7 @@ impl Render for SettingsSurface {
 fn settings_group_title(label: &'static str) -> impl IntoElement {
 	div()
 		.text_size(px(11.))
-		.font_weight(gpui::FontWeight::MEDIUM)
+		.font_weight(FontWeight::MEDIUM)
 		.text_color(rgb(TEXT_MUTED))
 		.mb(px(4.))
 		.child(label)
@@ -927,9 +918,11 @@ fn quote_attribution() -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use gpui::{TestAppContext, size};
+	use gpui::{self, TestAppContext};
 
 	use crate::settings_surface::*;
+
+	use ui_theme::window_material::GlassStyle;
 
 	#[gpui::test]
 	fn refresh_reads_external_login_item_changes(cx: &mut TestAppContext) {
@@ -1026,7 +1019,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(800.), px(700.)));
+			window.resize(gpui::size(px(800.), px(700.)));
 			window.draw(cx).clear();
 		});
 
@@ -1075,8 +1068,6 @@ mod tests {
 
 	#[gpui::test]
 	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
-		use ui_theme::window_material::GlassStyle;
-
 		let controller = DesktopSettingsController::production();
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			let mut settings = SettingsSurface::new(controller, cx);
@@ -1087,7 +1078,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(800.), px(600.)));
+			window.resize(gpui::size(px(800.), px(600.)));
 			window.draw(cx).clear();
 		});
 
@@ -1110,7 +1101,7 @@ mod tests {
 		let (_settings, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_490.0), px(1_055.0)));
+			window.resize(gpui::size(px(1_490.0), px(1_055.0)));
 			window.draw(cx).clear();
 		});
 	}

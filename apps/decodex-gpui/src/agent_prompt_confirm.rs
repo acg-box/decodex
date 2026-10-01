@@ -1,10 +1,11 @@
 //! Explicit history confirmation waits for the existing local draft writer.
-use std::{fs, fs::File, path::Path, time::Duration};
-
-use tokio::sync::{
-	oneshot,
-	oneshot::{Receiver, Sender, error::RecvError},
+use std::{
+	fs::{self, File},
+	path::Path,
+	time::Duration,
 };
+
+use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
 use crate::shell::agent_surface::prompt_edit::*;
 use decodex_protocol::{AgentExecutionOverrides, ClientFailure, PromptForkIntent};

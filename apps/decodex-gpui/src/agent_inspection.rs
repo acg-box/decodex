@@ -1,4 +1,8 @@
 //! Compact conversation inspection, independent of transcript layout.
+use gpui::{AnyElement, Div, MouseDownEvent};
+use reqwest::Url;
+use serde_json::Value;
+
 use crate::{
 	shell::agent_surface::{
 		self, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder, FontWeight,
@@ -6,15 +10,9 @@ use crate::{
 		Styled, graph, markdown, ui_theme::TEXT,
 	},
 	ui_loading,
+	ui_theme::HOVER_FILL,
 };
-
 use decodex_protocol::AgentResourcesResult;
-
-use gpui::{AnyElement, Div, MouseDownEvent};
-use reqwest::Url;
-use serde_json::Value;
-
-use crate::ui_theme::HOVER_FILL;
 
 impl AgentSurface {
 	pub(super) fn inspection_card(
