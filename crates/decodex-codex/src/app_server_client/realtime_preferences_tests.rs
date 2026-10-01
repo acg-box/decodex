@@ -1,18 +1,20 @@
 use std::{env, fs, process::Stdio};
 
 use tokio::{
-	io,
+	io::{self, AsyncBufReadExt as _, BufReader},
 	process::{Child, Command},
 };
 
-use crate::app_server_client::realtime_preferences::*;
+use crate::app_server_client::realtime_preferences::{
+	self, AppServerClient, ClientError, NativeVoiceSettings, Path, Value,
+};
 
 #[test]
 fn voice_write_bridge_accepts_only_one_conditional_preference() {
 	let valid = serde_json::json!({"filePath":"/tmp/config.toml","expectedVersion":"v1","reloadUserConfig":false,
 		"edits":[{"keyPath":"realtime.voice","value":"juniper","mergeStrategy":"replace"}]});
 
-	assert!(is_realtime_voice_write(&valid));
+	assert!(realtime_preferences::is_realtime_voice_write(&valid));
 
 	for (pointer, value) in [
 		("/reloadUserConfig", serde_json::json!(true)),
@@ -26,14 +28,14 @@ fn voice_write_bridge_accepts_only_one_conditional_preference() {
 
 		*changed.pointer_mut(pointer).unwrap() = value;
 
-		assert!(!is_realtime_voice_write(&changed));
+		assert!(!realtime_preferences::is_realtime_voice_write(&changed));
 	}
 
 	let mut extra = valid.clone();
 
 	extra["edits"].as_array_mut().unwrap().push(valid["edits"][0].clone());
 
-	assert!(!is_realtime_voice_write(&extra));
+	assert!(!realtime_preferences::is_realtime_voice_write(&extra));
 }
 
 async fn native(home: &Path) -> (AppServerClient, Child) {
@@ -138,8 +140,6 @@ async fn native_voice_preferences_survive_restart_and_preserve_project_override(
 
 #[tokio::test]
 async fn lost_voice_write_reply_does_not_repeat_the_native_edit() {
-	use tokio::io::{AsyncBufReadExt as _, BufReader};
-
 	let (local, remote) = io::duplex(8_192);
 	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
@@ -158,7 +158,7 @@ async fn lost_voice_write_reply_does_not_repeat_the_native_edit() {
 		let request: Value = serde_json::from_str(&line).unwrap();
 
 		assert_eq!(request["method"], "config/batchWrite");
-		assert!(is_realtime_voice_write(&request["params"]));
+		assert!(realtime_preferences::is_realtime_voice_write(&request["params"]));
 		assert_eq!(request["params"]["expectedVersion"], "reviewed-version");
 		// Disconnect after the write may have reached disk; no receipt is available.
 	});

@@ -8,7 +8,10 @@ use tokio::{
 };
 
 use crate::app_server_client::{
-	self, PendingReply, PermissionHydration, RequestId, ServerEvent, ServerRequests, permissions::*,
+	self, PendingReply, PermissionHydration, RequestId, ServerEvent, ServerRequests,
+	permissions::{
+		self, AppServerClient, ClientError, NativeTaskPermissions, ThreadPermissionSelection, Value,
+	},
 };
 
 #[test]
@@ -17,14 +20,14 @@ fn selection_cannot_carry_unrelated_policy_or_configuration() {
 		serde_json::to_value(ThreadPermissionSelection::new("opaque thread", "scoped").unwrap())
 			.unwrap();
 
-	assert!(is_thread_permission_selection(&wire));
+	assert!(permissions::is_thread_permission_selection(&wire));
 
 	for key in ["model", "config", "sandbox", "cwd", "approvalPolicy", "approvalsReviewer"] {
 		let mut bad = wire.clone();
 
 		bad[key] = serde_json::json!("unexpected");
 
-		assert!(!is_thread_permission_selection(&bad));
+		assert!(!permissions::is_thread_permission_selection(&bad));
 	}
 
 	assert!(ThreadPermissionSelection::new("thread", " ").is_err());
@@ -77,12 +80,12 @@ fn permission_facts(profile: &str) -> Value {
 #[test]
 fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	let requests = ServerRequests::default();
-	let (events, mut receiver) = mpsc::channel(8);
-	let mut pending = HashMap::new();
 	let publish = |facts: Value| {
 		serde_json::json!({"method":"thread/settings/updated",
 		"params":{"threadId":"task", "threadSettings":facts}})
 	};
+	let (events, mut receiver) = mpsc::channel(8);
+	let mut pending = HashMap::new();
 
 	app_server_client::dispatch(publish(permission_facts("old")), &mut pending, &events, &requests)
 		.unwrap();
@@ -129,11 +132,11 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 					guard: requests.thread_settings_guard("task").unwrap(),
 				}
 			};
+			let facts = if malformed { serde_json::json!({}) } else { permission_facts("new") };
 			let mut pending = HashMap::from([(
 				RequestId::Number(1),
 				PendingReply { reply, permissions: Some(hydration) },
 			)]);
-			let facts = if malformed { serde_json::json!({}) } else { permission_facts("new") };
 
 			app_server_client::dispatch(serde_json::json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
 
@@ -222,9 +225,9 @@ fn permission_cache_is_bounded_and_connection_close_revokes_authority() {
 fn idle_permission_facts_return_only_after_exact_turn_completion_without_reviving_old_guards() {
 	for update in ["unchanged", "changed", "malformed"] {
 		let requests = ServerRequests::default();
+		let publish = |facts: Value| serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
 		let (events, _receiver) = mpsc::channel(8);
 		let mut pending = HashMap::new();
-		let publish = |facts: Value| serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
 
 		app_server_client::dispatch(
 			publish(permission_facts("old")),

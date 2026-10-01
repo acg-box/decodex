@@ -2,6 +2,7 @@
 use std::{path::Path, time::Duration};
 
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use tokio::{sync::mpsc::Sender, time};
 
 use crate::app_server_client::{AppServerClient, ClientError, Outbound, realtime_settings};
@@ -23,8 +24,6 @@ pub struct NativeVoiceSettings {
 impl NativeVoiceSettings {
 	/// Bind a displayed selection to its native directory, version and effective settings.
 	pub fn fingerprint(&self) -> String {
-		use sha2::{Digest as _, Sha256};
-
 		let value = serde_json::json!([
 			self.cwd,
 			self.file,

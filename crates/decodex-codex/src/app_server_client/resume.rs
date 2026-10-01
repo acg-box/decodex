@@ -35,16 +35,20 @@ fn closing(error: &ClientError, thread: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::app_server_client::resume::{self, AppServerClient, ClientError, Duration, Value};
 	use serde_json;
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
+	use crate::app_server_client::resume::{self, AppServerClient, ClientError, Duration, Value};
 
 	#[tokio::test]
 	async fn pending_resume_allows_peer_metadata_and_does_not_retry_removed_thread() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
-		let (r, mut w) = tokio::io::split(remote);
+		let (r, mut w) = io::split(remote);
 		let mut lines = BufReader::new(r).lines();
 		let resuming = client.clone();
 		let resume = tokio::spawn(async move {
@@ -60,7 +64,7 @@ mod tests {
 			peer.request("thread/name/set", serde_json::json!({"threadId":"peer","name":"Renamed"}))
 				.await
 		});
-		let next = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
+		let next = time::timeout(Duration::from_secs(2), lines.next_line())
 			.await
 			.unwrap()
 			.unwrap()
@@ -74,7 +78,7 @@ mod tests {
 			.await
 			.unwrap();
 
-		tokio::time::timeout(Duration::from_secs(2), update).await.unwrap().unwrap().unwrap();
+		time::timeout(Duration::from_secs(2), update).await.unwrap().unwrap().unwrap();
 
 		assert!(!resume.is_finished(), "peer response must not complete the pending resume");
 
@@ -91,20 +95,20 @@ mod tests {
 		assert!(
 			matches!(resume.await.unwrap(), Err(ClientError::Remote(error)) if error.code == -32_600)
 		);
-		assert!(tokio::time::timeout(Duration::from_millis(50), lines.next_line()).await.is_err());
+		assert!(time::timeout(Duration::from_millis(50), lines.next_line()).await.is_err());
 
 		client.shutdown().await.unwrap();
 	}
 
 	#[tokio::test]
 	async fn closing_resume_retries_exact_params_without_submitting_input() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let params = serde_json::json!({"threadId":"exact-thread","excludeTurns":true});
 		let expected = params.clone();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 
 			for attempt in 0..2 {
@@ -141,11 +145,11 @@ mod tests {
 			(-32_600, "thread exact-thread already has an active writer"),
 			(0, ""),
 		] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (r, w) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
+				let (r, mut w) = io::split(remote);
 				let mut lines = BufReader::new(r).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -164,11 +168,7 @@ mod tests {
 				.await
 				.unwrap();
 
-				assert!(
-					tokio::time::timeout(Duration::from_millis(50), lines.next_line())
-						.await
-						.is_err()
-				);
+				assert!(time::timeout(Duration::from_millis(50), lines.next_line()).await.is_err());
 			});
 			let result = client.thread_resume(serde_json::json!({"threadId":"exact-thread"})).await;
 
@@ -185,11 +185,11 @@ mod tests {
 	#[tokio::test]
 	async fn closing_retry_is_bounded_and_stops_after_revert() {
 		for reverted in [false, true] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (r, w) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
+				let (r, mut w) = io::split(remote);
 				let mut lines = BufReader::new(r).lines();
 
 				for _ in 0..if reverted { 1 } else { 5 } {
@@ -206,7 +206,7 @@ mod tests {
 				}
 
 				assert!(
-					tokio::time::timeout(
+					time::timeout(
 						Duration::from_millis(if reverted { 1_200 } else { 50 }),
 						lines.next_line()
 					)

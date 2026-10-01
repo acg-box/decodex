@@ -116,6 +116,7 @@ pub fn decode_review(method: &str, params: &Value) -> Option<GuardianReview> {
 	{
 		return None;
 	}
+
 	// Do not compare wall-clock timestamps: the system clock can move during a review.
 	Some(GuardianReview {
 		thread_id: event.thread_id,

@@ -1,6 +1,6 @@
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use crate::app_server_client::integrations::*;
+use crate::app_server_client::integrations::{AppServerClient, Value};
 
 #[tokio::test]
 async fn installed_state_preserves_disabled_and_non_callable_apps() {

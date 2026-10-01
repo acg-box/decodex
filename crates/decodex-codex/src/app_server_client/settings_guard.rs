@@ -135,16 +135,20 @@ mod tests {
 }
 #[cfg(test)]
 mod transport_tests {
-	use crate::app_server_client::{AppServerClient, ClientError};
 	use serde_json::{self, Value};
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
+	use crate::app_server_client::{AppServerClient, ClientError};
 
 	#[tokio::test]
 	async fn queued_settings_notification_prevents_retry_write_without_owner_processing() {
-		let (local, remote) = tokio::io::duplex(8_192);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(8_192);
+		let (reader, writer) = io::split(local);
 		let (client, mut events) = AppServerClient::from_io(reader, writer);
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 		let guard = client.thread_settings_guard("task").unwrap();
 		let other = client.thread_settings_guard("other").unwrap();
@@ -178,14 +182,14 @@ mod transport_tests {
 			Err(ClientError::StaleHistory)
 		));
 		assert!(
-			tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
-				.await
-				.is_err()
+			time::timeout(std::time::Duration::from_millis(20), lines.next_line()).await.is_err()
 		);
 	}
 }
 #[cfg(test)]
 mod combined_tests {
+	use tokio::io;
+
 	use crate::app_server_client::{AppServerClient, ServerEvent, server_requests::ServerRequests};
 
 	#[test]
@@ -236,8 +240,8 @@ mod combined_tests {
 
 	#[tokio::test]
 	async fn closed_connection_cannot_combine_guards() {
-		let (io, _remote) = tokio::io::duplex(128);
-		let (reader, writer) = tokio::io::split(io);
+		let (io, _remote) = io::duplex(128);
+		let (reader, writer) = io::split(io);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let guard = client.question_guard(0).unwrap();
 

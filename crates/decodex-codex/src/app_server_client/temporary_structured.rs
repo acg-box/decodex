@@ -80,6 +80,7 @@ impl TemporaryStructuredThread {
 			if let Some(effort) = effort {
 				params["effort"] = serde_json::json!(effort);
 			}
+
 			// Do not drop turn/start on cancellation: the returned ID owns interruption.
 			let started = self.client.turn_start(params).await?;
 			let id = started["turn"]["id"]

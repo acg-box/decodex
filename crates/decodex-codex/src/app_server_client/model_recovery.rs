@@ -108,11 +108,15 @@ pub fn is_thread_model_recovery_update(value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use serde_json;
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
 	use crate::app_server_client::model_recovery::{
 		self, AppServerClient, ThreadModelRecoveryUpdate, Value,
 	};
-	use serde_json;
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[test]
 	fn recovery_update_cannot_replace_task_policy_or_enter_reserve() {
@@ -170,12 +174,12 @@ mod tests {
 			serde_json::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 		] {
 			let expected = response == serde_json::json!({"result":{}});
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let guard = client.history_guard(0).unwrap();
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -193,7 +197,7 @@ mod tests {
 				writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
 
 				assert!(
-					tokio::time::timeout(std::time::Duration::from_millis(25), lines.next_line())
+					time::timeout(std::time::Duration::from_millis(25), lines.next_line())
 						.await
 						.is_err()
 				);

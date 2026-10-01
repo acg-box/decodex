@@ -1,6 +1,7 @@
 //! Native goal observations, independent of application-owned coordination goals.
 use std::path::Path;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -106,9 +107,6 @@ impl AppServerClient {
 			guard.clone(),
 		)
 		.await?;
-
-		use base64::{Engine as _, engine::general_purpose::STANDARD};
-
 		self.request_with_history(
 			"fs/writeFile",
 			serde_json::json!({"path":path,"dataBase64":STANDARD.encode(text)}),

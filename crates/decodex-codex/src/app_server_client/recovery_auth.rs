@@ -74,10 +74,16 @@ fn project(value: &Value) -> NativeRecoveryAuth {
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		sync::oneshot,
+		time,
+	};
+
 	use crate::app_server_client::recovery_auth::{
 		self, AppServerClient, NativeRecoveryAuth, Value,
 	};
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
 	#[test]
 	fn native_auth_never_infers_chatgpt_from_provider_name_or_partial_metadata() {
 		for kind in ["chatgpt", "chatgptAuthTokens"] {
@@ -121,12 +127,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn auth_metadata_read_does_not_request_tokens_refresh_or_mutation() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
-		let (release, released) = tokio::sync::oneshot::channel::<()>();
+		let (release, released) = oneshot::channel::<()>();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -142,7 +148,7 @@ mod tests {
 			let _ = released.await;
 
 			assert!(
-				tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
+				time::timeout(std::time::Duration::from_millis(20), lines.next_line())
 					.await
 					.is_err()
 			);

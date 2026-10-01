@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{
 	app_server_client::AppServerClient,
-	guardian::{GuardianReview, ReviewStatus, decode_review},
+	guardian::{self, GuardianReview, ReviewStatus},
 };
 
 #[derive(Deserialize)]
@@ -220,7 +220,7 @@ struct Entry {
 /// This only builds a payload; the caller must bind it to a saved observation and
 /// an explicit user decision. RPC success is submission, not action execution.
 pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
-	let review = decode_review("item/autoApprovalReview/completed", &observation.event)?;
+	let review = guardian::decode_review("item/autoApprovalReview/completed", &observation.event)?;
 
 	if review.status != ReviewStatus::Denied {
 		return None;
@@ -258,6 +258,7 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 		"rationale":event["review"]["rationale"],"decision_source":"agent",
 		"action":action.into_core()?
 	});
+
 	// Check the complete native frame before the service reserves a submission.
 	AppServerClient::preflight_request(
 		"thread/approveGuardianDeniedAction",
@@ -301,6 +302,7 @@ fn native_path_uri(path: &str) -> Option<String> {
 			},
 		}
 	}
+
 	// Upstream uses an opaque fallback for POSIX paths that resemble a drive.
 	// They are not losslessly representable by the ordinary conversion here.
 	if parts.first().is_some_and(|part| {
@@ -323,7 +325,10 @@ fn native_path_uri(path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::guardian::approval::{self, Value};
+	use crate::{
+		guardian,
+		guardian::approval::{self, Value},
+	};
 	#[test]
 	fn a_retained_review_that_cannot_fit_its_approval_frame_is_not_submittable() {
 		let mut event = serde_json::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
@@ -333,14 +338,14 @@ mod tests {
 			serde_json::json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
 
 		let observed =
-			approval::decode_review("item/autoApprovalReview/completed", &event).unwrap();
+			guardian::decode_review("item/autoApprovalReview/completed", &event).unwrap();
 
 		assert!(approval::core_denial_event(&observed).is_none());
 	}
 	fn convert(action: Value) -> Option<Value> {
 		let event = serde_json::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
 
-		approval::core_denial_event(&approval::decode_review(
+		approval::core_denial_event(&guardian::decode_review(
 			"item/autoApprovalReview/completed",
 			&event,
 		)?)

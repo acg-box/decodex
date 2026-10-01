@@ -187,19 +187,17 @@ fn scalar(s: &str, limit: usize) -> bool {
 }
 
 fn action(value: &str) -> Option<AccountApiBannerAction> {
-	use AccountApiBannerAction as A;
-
 	Some(match value {
-		"add_credits" | "buy_credits" => A::AddCredits,
-		"buy_reset" => A::BuyReset,
-		"reset_usage" => A::ResetUsage,
-		"view_usage" | "request_increase_usage_settings" => A::ViewUsage,
-		"view_workspace_usage" | "increase_spend_cap" => A::ViewWorkspaceUsage,
-		"notify_owner" | "contact_owner" => A::NotifyOwner,
-		"request_increase" => A::RequestIncrease,
-		"open_plus_pricing_web" => A::PlusPricing,
-		"open_pro_pricing_web" => A::ProPricing,
-		"open_pricing_dialog" => A::Pricing,
+		"add_credits" | "buy_credits" => AccountApiBannerAction::AddCredits,
+		"buy_reset" => AccountApiBannerAction::BuyReset,
+		"reset_usage" => AccountApiBannerAction::ResetUsage,
+		"view_usage" | "request_increase_usage_settings" => AccountApiBannerAction::ViewUsage,
+		"view_workspace_usage" | "increase_spend_cap" => AccountApiBannerAction::ViewWorkspaceUsage,
+		"notify_owner" | "contact_owner" => AccountApiBannerAction::NotifyOwner,
+		"request_increase" => AccountApiBannerAction::RequestIncrease,
+		"open_plus_pricing_web" => AccountApiBannerAction::PlusPricing,
+		"open_pro_pricing_web" => AccountApiBannerAction::ProPricing,
+		"open_pricing_dialog" => AccountApiBannerAction::Pricing,
 		_ => return None,
 	})
 }

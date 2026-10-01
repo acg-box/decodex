@@ -1,5 +1,11 @@
-use crate::app_server_client::prompt_edit::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::oneshot,
+};
+
+use crate::app_server_client::prompt_edit::{
+	AppServerClient, ClientError, PromptEditCandidate, Value,
+};
 
 fn user(id: &str, content: Value) -> Value {
 	serde_json::json!({"type":"userMessage","id":id,"content":content})
@@ -15,14 +21,14 @@ async fn read(
 	changed: bool,
 	reverted: bool,
 ) -> (Result<Option<PromptEditCandidate>, ClientError>, Vec<Value>, bool) {
-	let (local, remote) = tokio::io::duplex(64 * 1_024);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(64 * 1_024);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
-	let (done, mut stop) = tokio::sync::oneshot::channel();
+	let (done, mut stop) = oneshot::channel();
 	let mode = mode.to_owned();
 	let status = status.to_owned();
 	let server = tokio::spawn(async move {
-		let (r, mut w) = tokio::io::split(remote);
+		let (r, mut w) = io::split(remote);
 		let mut lines = BufReader::new(r).lines();
 		let mut requests = Vec::new();
 

@@ -118,6 +118,7 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		#[derive(Deserialize)]
 		#[serde(deny_unknown_fields)]
 		struct Receipt {
