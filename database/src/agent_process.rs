@@ -1,17 +1,15 @@
 //! Agent process admission and safe account rotation without replacing conversations.
 
-use decodex_core::{
-	AccountId, ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
 	DatabaseError, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
-	ProcessGenerationRejection, SqliteStore, StoreError,
-	account_lifecycle::sql_error,
-	process_generations::{empty_mutation, prepare_bound_generation, read_generation},
-	unix_micros,
+	ProcessGenerationRejection, SqliteStore, StoreError, account_lifecycle, process_generations,
+};
+use decodex_core::{
+	AccountId, ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
 };
 
 /// Latest durable process admission for one Agent root.
@@ -32,17 +30,17 @@ impl SqliteStore {
 		generation: Option<String>,
 	) -> Result<bool, StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction().map_err(sql_error)?;
+			let transaction = connection.transaction().map_err(account_lifecycle::sql_error)?;
 			let bound: bool = transaction
 				.query_row(
 					"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
-					params![work, thread],
+					rusqlite::params![work, thread],
 					|row| row.get(0),
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let owned = bound && owns_work(&transaction, &work, generation.as_deref())?;
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(owned)
 		})
@@ -55,9 +53,8 @@ impl SqliteStore {
 		root_id: &str,
 		config_json: &str,
 	) -> Result<(), StoreError> {
-		if config_json.len() > 16384
-			|| !serde_json::from_str::<serde_json::Value>(config_json)
-				.is_ok_and(|value| value.is_object())
+		if config_json.len() > 16_384
+			|| !serde_json::from_str::<Value>(config_json).is_ok_and(|value| value.is_object())
 		{
 			return Err(StoreError::InvalidInput(
 				"Agent root settings must be a bounded JSON object",
@@ -67,13 +64,13 @@ impl SqliteStore {
 		let (root_id, config_json) = (root_id.to_owned(), config_json.to_owned());
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
-			let current: Option<String> = transaction.query_row("SELECT config_json FROM agent_root_settings WHERE root_id = ?1", [&root_id], |row| row.get(0)).optional().map_err(sql_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(account_lifecycle::sql_error)?;
+			let current: Option<String> = transaction.query_row("SELECT config_json FROM agent_root_settings WHERE root_id = ?1", [&root_id], |row| row.get(0)).optional().map_err(account_lifecycle::sql_error)?;
 
 			if let Some(current) = current { return if current == config_json { Ok(()) } else { Err(StoreError::IdempotencyConflict) }; }
 
-			transaction.execute("INSERT INTO agent_root_settings (root_id, config_json, created_at_micros) VALUES (?1, ?2, ?3)", params![root_id, config_json, unix_micros()?]).map_err(sql_error)?;
-			transaction.commit().map_err(sql_error)?;
+			transaction.execute("INSERT INTO agent_root_settings (root_id, config_json, created_at_micros) VALUES (?1, ?2, ?3)", rusqlite::params![root_id, config_json, crate::unix_micros()?]).map_err(account_lifecycle::sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(())
 		}).await
@@ -93,7 +90,7 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.optional()
-				.map_err(sql_error)
+				.map_err(account_lifecycle::sql_error)
 		})
 		.await
 	}
@@ -105,7 +102,7 @@ impl SqliteStore {
 		let root_id = root_id.to_owned();
 
 		self.run(move |connection| {
-			let row = connection.query_row("SELECT root_id, account_id, operation_key, generation_id FROM agent_process_bindings WHERE root_id = ?1 ORDER BY created_at_micros DESC, rowid DESC LIMIT 1", [&root_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))).optional().map_err(sql_error)?;
+			let row = connection.query_row("SELECT root_id, account_id, operation_key, generation_id FROM agent_process_bindings WHERE root_id = ?1 ORDER BY created_at_micros DESC, rowid DESC LIMIT 1", [&root_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))).optional().map_err(account_lifecycle::sql_error)?;
 
 			row.map(|(root_id, account_id, operation_key, generation_id)| Ok(AgentProcessBinding {
 				root_id, account_id: AccountId::new(account_id).map_err(|_| DatabaseError::Corrupt)?, operation_key,
@@ -136,47 +133,76 @@ impl SqliteStore {
 			(intent.clone(), binding.clone(), root_id.to_owned(), operation_key.to_owned());
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
-			let root_exists: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND kind = 'goal' AND parent_goal_id IS NULL)", [&root_id], |row| row.get(0)).map_err(sql_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(account_lifecycle::sql_error)?;
+			let root_exists: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND kind = 'goal' AND parent_goal_id IS NULL)", [&root_id], |row| row.get(0)).map_err(account_lifecycle::sql_error)?;
 
 			if !root_exists { return Err(StoreError::InvalidInput("Agent process requires a root goal")); }
 
-			let previous: Option<(String, String)> = transaction.query_row("SELECT generation_id, request_sha256 FROM agent_process_bindings WHERE operation_key = ?1", [&operation_key], |row| Ok((row.get(0)?, row.get(1)?))).optional().map_err(sql_error)?;
+			let previous: Option<(String, String)> = transaction.query_row("SELECT generation_id, request_sha256 FROM agent_process_bindings WHERE operation_key = ?1", [&operation_key], |row| Ok((row.get(0)?, row.get(1)?))).optional().map_err(account_lifecycle::sql_error)?;
 
 			if let Some((generation_id, recorded_digest)) = previous {
 				if recorded_digest != digest { return Ok(rejected(ProcessGenerationRejection::IdentityConflict)); }
 
-				let generation = read_generation(&transaction, &generation_id)?.ok_or(DatabaseError::Corrupt)?;
+				let generation = process_generations::read_generation(&transaction, &generation_id)?.ok_or(DatabaseError::Corrupt)?;
 
 				return Ok(PrepareProcessGenerationOutcome::Replayed(ProcessGenerationMutation { revision: generation.revision, state: generation.state, recorded_at_micros: generation.updated_at_micros }));
 			}
 
-			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id WHERE b.root_id = ?1 AND b.account_id <> ?2 AND g.state <> 'dead')", params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(sql_error)?;
-            let changing_account: bool = transaction.query_row("SELECT coalesce((SELECT account_id <> ?2 FROM agent_process_bindings WHERE root_id=?1 ORDER BY created_at_micros DESC,rowid DESC LIMIT 1),0)",params![root_id,intent.account_id.as_str()],|row|row.get(0)).map_err(sql_error)?;
+			let affinity_conflict: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id WHERE b.root_id = ?1 AND b.account_id <> ?2 AND g.state <> 'dead')", rusqlite::params![root_id, intent.account_id.as_str()], |row| row.get(0)).map_err(account_lifecycle::sql_error)?;
+            let changing_account: bool = transaction.query_row("SELECT coalesce((SELECT account_id <> ?2 FROM agent_process_bindings WHERE root_id=?1 ORDER BY created_at_micros DESC,rowid DESC LIMIT 1),0)",rusqlite::params![root_id,intent.account_id.as_str()],|row|row.get(0)).map_err(account_lifecycle::sql_error)?;
 
             if changing_account {
-                let busy: bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT ?1 UNION SELECT w.id FROM agent_work_items w JOIN family f ON w.parent_goal_id=f.id) SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id IN (SELECT id FROM family) AND (dispatch_state <> 'idle' OR EXISTS(SELECT 1 FROM agent_inbox_events a WHERE a.work_item_id=agent_work_items.id AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))))",[&root_id],|row|row.get(0)).map_err(sql_error)?;
+                let busy: bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT ?1 UNION SELECT w.id FROM agent_work_items w JOIN family f ON w.parent_goal_id=f.id) SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id IN (SELECT id FROM family) AND (dispatch_state <> 'idle' OR EXISTS(SELECT 1 FROM agent_inbox_events a WHERE a.work_item_id=agent_work_items.id AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))))",[&root_id],|row|row.get(0)).map_err(account_lifecycle::sql_error)?;
 
                 if busy { return Ok(rejected(ProcessGenerationRejection::IdentityConflict)); }
             }
-			if affinity_conflict || read_generation(&transaction, intent.generation_id.as_str())?.is_some() {
+			if affinity_conflict || process_generations::read_generation(&transaction, intent.generation_id.as_str())?.is_some() {
 				return Ok(rejected(ProcessGenerationRejection::IdentityConflict));
 			}
 
-			let outcome = prepare_bound_generation(&transaction, &intent, &binding, None, None)?;
+			let outcome = process_generations::prepare_bound_generation(&transaction, &intent, &binding, None, None)?;
 
 			if !matches!(outcome, PrepareProcessGenerationOutcome::Fresh(_)) { return Ok(outcome); }
 
-			transaction.execute("INSERT INTO agent_process_bindings (operation_key, root_id, account_id, generation_id, request_sha256, created_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![operation_key, root_id, intent.account_id.as_str(), intent.generation_id.as_str(), digest, unix_micros()?]).map_err(sql_error)?;
-			transaction.commit().map_err(sql_error)?;
+			transaction.execute("INSERT INTO agent_process_bindings (operation_key, root_id, account_id, generation_id, request_sha256, created_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", rusqlite::params![operation_key, root_id, intent.account_id.as_str(), intent.generation_id.as_str(), digest, crate::unix_micros()?]).map_err(account_lifecycle::sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(outcome)
 		}).await
 	}
 }
 
+pub(crate) fn owns_work(
+	connection: &Connection,
+	work: &str,
+	generation: Option<&str>,
+) -> Result<bool, StoreError> {
+	if let Some(generation) = generation {
+		// An acknowledged user fork keeps its source process owner. Ordinary subordinate
+		// managers remain outside this traversal; a mere role or pending fork is not authority.
+		connection.query_row("WITH RECURSIVE owned(id,root_id) AS (
+			SELECT b.root_id,b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
+			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
+			UNION SELECT w.id,owned.root_id FROM agent_work_items w JOIN owned ON w.parent_goal_id=owned.id
+			WHERE NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=w.id)
+				OR EXISTS(SELECT 1 FROM agent_inbox_events a JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation'
+					WHERE a.event_kind='thread_fork_attempt' AND o.event_kind='thread_fork_observation' AND o.disposition_note='forked'
+					AND json_extract(a.payload,'$.target_work')=w.id AND json_extract(o.payload,'$.thread')=w.codex_thread_id))
+			SELECT EXISTS(SELECT 1 FROM owned WHERE id=?2)", rusqlite::params![generation,work], |r|r.get(0)).map_err(account_lifecycle::sql_error)
+	} else {
+		// Direct coordinator transports have no durable process host. They cannot
+		// bypass ownership once any native process admission exists in this store.
+		connection
+			.query_row("SELECT NOT EXISTS(SELECT 1 FROM agent_process_bindings)", [], |r| r.get(0))
+			.map_err(account_lifecycle::sql_error)
+	}
+}
+
 fn rejected(rejection: ProcessGenerationRejection) -> PrepareProcessGenerationOutcome {
-	PrepareProcessGenerationOutcome::Rejected { rejection, actual: empty_mutation() }
+	PrepareProcessGenerationOutcome::Rejected {
+		rejection,
+		actual: process_generations::empty_mutation(),
+	}
 }
 
 fn admission_digest(
@@ -211,32 +237,6 @@ fn admission_digest(
 	Ok(Sha256::digest(encoded).iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-pub(crate) fn owns_work(
-	connection: &rusqlite::Connection,
-	work: &str,
-	generation: Option<&str>,
-) -> Result<bool, StoreError> {
-	if let Some(generation) = generation {
-		// An acknowledged user fork keeps its source process owner. Ordinary subordinate
-		// managers remain outside this traversal; a mere role or pending fork is not authority.
-		connection.query_row("WITH RECURSIVE owned(id,root_id) AS (
-			SELECT b.root_id,b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
-			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
-			UNION SELECT w.id,owned.root_id FROM agent_work_items w JOIN owned ON w.parent_goal_id=owned.id
-			WHERE NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=w.id)
-				OR EXISTS(SELECT 1 FROM agent_inbox_events a JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation'
-					WHERE a.event_kind='thread_fork_attempt' AND o.event_kind='thread_fork_observation' AND o.disposition_note='forked'
-					AND json_extract(a.payload,'$.target_work')=w.id AND json_extract(o.payload,'$.thread')=w.codex_thread_id))
-			SELECT EXISTS(SELECT 1 FROM owned WHERE id=?2)", params![generation,work], |r|r.get(0)).map_err(sql_error)
-	} else {
-		// Direct coordinator transports have no durable process host. They cannot
-		// bypass ownership once any native process admission exists in this store.
-		connection
-			.query_row("SELECT NOT EXISTS(SELECT 1 FROM agent_process_bindings)", [], |r| r.get(0))
-			.map_err(sql_error)
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	mod app_settings;
@@ -253,17 +253,18 @@ mod tests {
 	mod plugins;
 	mod prompt_edit;
 	mod response_usage;
-	use super::*;
 	use crate::{
 		AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
-		CodexAccountCapabilityAttestation,
+		CodexAccountCapabilityAttestation, PrepareProcessGenerationOutcome,
+		ProcessGenerationRejection, SqliteStore, StoreError,
 	};
 	use decodex_core::{
-		AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 		CredentialStoreSchemaVersion, CredentialVersion, ProcessBootIdentity, ProcessControlKind,
 		ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
-		ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessIsolationKind,
-		ProcessRunnerIdentity, ProviderIdentity,
+		ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
+		ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity,
+		ProviderIdentity,
 	};
 
 	const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -341,9 +342,9 @@ mod tests {
 		store.with_connection(|connection| {
 			for number in [1, 2] {
 				connection.execute("INSERT INTO account_identities VALUES (?1, 1)", [account_id(number).as_str()]).map_err(crate::error::sqlite_error)?;
-				connection.execute("INSERT INTO account_operations (operation_id, account_id, kind, phase, provider, provider_account_id, requested_display_label, requested_enabled, created_at_micros, updated_at_micros, completed_at_micros) VALUES (?1, ?2, 'enroll', 'committed', 'chatgpt', ?3, 'Fixture', 1, 1, 1, 1)", params![operation_id(number).as_str(), account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
-				connection.execute("INSERT INTO accounts VALUES (?1, 'Fixture', 1, 'available', 1, 'chatgpt', ?2, 'exact', 1, 1, NULL)", params![account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
-				connection.execute("INSERT INTO account_credentials VALUES (?1, 1, 1, ?2, ?3, 'chatgpt', ?4, X'01020304', 1)", params![account_id(number).as_str(), DIGEST, operation_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO account_operations (operation_id, account_id, kind, phase, provider, provider_account_id, requested_display_label, requested_enabled, created_at_micros, updated_at_micros, completed_at_micros) VALUES (?1, ?2, 'enroll', 'committed', 'chatgpt', ?3, 'Fixture', 1, 1, 1, 1)", rusqlite::params![operation_id(number).as_str(), account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO accounts VALUES (?1, 'Fixture', 1, 'available', 1, 'chatgpt', ?2, 'exact', 1, 1, NULL)", rusqlite::params![account_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
+				connection.execute("INSERT INTO account_credentials VALUES (?1, 1, 1, ?2, ?3, 'chatgpt', ?4, X'01020304', 1)", rusqlite::params![account_id(number).as_str(), DIGEST, operation_id(number).as_str(), format!("provider-{number}")]).map_err(crate::error::sqlite_error)?;
 			}
 
 			Ok(())
@@ -726,7 +727,7 @@ mod tests {
 		seed(&store).await;
 
 		store.with_connection(|connection| {
-            connection.execute("INSERT INTO account_operations(operation_id,account_id,kind,phase,provider,provider_account_id,recovery_code,created_at_micros,updated_at_micros) VALUES(?1,?2,'refresh','recovery_required','chatgpt','provider-2','fixture',1,1)",params![operation_id(9).as_str(),account_id(2).as_str()]).map_err(crate::error::sqlite_error)?;
+            connection.execute("INSERT INTO account_operations(operation_id,account_id,kind,phase,provider,provider_account_id,recovery_code,created_at_micros,updated_at_micros) VALUES(?1,?2,'refresh','recovery_required','chatgpt','provider-2','fixture',1,1)",rusqlite::params![operation_id(9).as_str(),account_id(2).as_str()]).map_err(crate::error::sqlite_error)?;
 
             Ok(())
         }).unwrap();
@@ -752,13 +753,13 @@ mod tests {
 				connection
 					.execute(
 						"UPDATE account_operations SET superseded_by_operation_id=?1 WHERE operation_id=?2",
-						params![operation_id(2).as_str(), operation_id(9).as_str()],
+						rusqlite::params![operation_id(2).as_str(), operation_id(9).as_str()],
 					)
 					.map_err(crate::error::sqlite_error)?;
 				connection
 					.execute(
 						"UPDATE account_operations SET recovery_operation_id=?1 WHERE operation_id=?2",
-						params![operation_id(9).as_str(), operation_id(2).as_str()],
+						rusqlite::params![operation_id(9).as_str(), operation_id(2).as_str()],
 					)
 					.map_err(crate::error::sqlite_error)?;
 
