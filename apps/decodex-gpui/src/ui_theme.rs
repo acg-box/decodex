@@ -10,7 +10,10 @@ pub(crate) mod native_glass_panel;
 
 use std::time::Duration;
 
-use gpui::{self, Div, IntoElement, Styled};
+use gpui::{
+	self, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Role,
+	StatefulInteractiveElement as _, Styled as _,
+};
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
@@ -79,14 +82,10 @@ pub(crate) fn floating_group() -> Div {
 }
 
 pub(crate) fn settings_header_inset() -> Div {
-	use gpui::Styled;
-
 	gpui::div().px(gpui::px(SETTINGS_INSET)).pt(gpui::px(SETTINGS_TOP)).flex().justify_center()
 }
 
 pub(crate) fn settings_row() -> Div {
-	use gpui::Styled;
-
 	gpui::div()
 		.w_full()
 		.min_h(gpui::px(44.0))
@@ -98,12 +97,6 @@ pub(crate) fn settings_row() -> Div {
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
-	use gpui::{
-		FontWeight, Role,
-		prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
-		rgb,
-	};
-
 	gpui::div()
 		.id(title)
 		.role(Role::Heading)
@@ -111,6 +104,6 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.aria_label(title)
 		.text_size(gpui::px(HEADING_SIZE))
 		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(rgb(TEXT))
+		.text_color(gpui::rgb(TEXT))
 		.child(title)
 }
