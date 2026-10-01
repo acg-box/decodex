@@ -148,17 +148,7 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 
 		terminal(&mut agent, &mut session.events, &store).await;
 
-		let mut histories = Vec::new();
-
-		for work in ["agent", "worker"] {
-			let thread =
-				store.get_agent_work_item(work.into()).await.unwrap().codex_thread_id.unwrap();
-			let items = timeline(&session.client, &thread, &store, work).await;
-
-			assert_tool_authority(work, &items);
-
-			histories.push((work.to_owned(), thread, items));
-		}
+		let histories = checked_histories(&session.client, &store).await;
 
 		assert_eq!(requests.load(Ordering::Acquire), 6);
 
@@ -268,4 +258,27 @@ async fn timeline(
 	}
 
 	page["data"].as_array().expect("timeline items").clone()
+}
+
+async fn checked_histories(
+	client: &AppServerClient,
+	store: &SqliteStore,
+) -> Vec<(String, String, Vec<Value>)> {
+	let mut histories = Vec::new();
+
+	for work in ["agent", "worker"] {
+		let thread = store
+			.get_agent_work_item(work.into())
+			.await
+			.expect("read fixture work")
+			.codex_thread_id
+			.expect("fixture native thread");
+		let items = timeline(client, &thread, store, work).await;
+
+		assert_tool_authority(work, &items);
+
+		histories.push((work.to_owned(), thread, items));
+	}
+
+	histories
 }
