@@ -33,8 +33,6 @@ struct InlineAccountFeedback: View {
 }
 
 struct ResetCardAccountRow: View {
-	private static let confirmationWindowSeconds = 5
-
 	let state: ResetCardAccountState
 	let store: ResetCardStore
 	let showsEmail: Bool
@@ -467,7 +465,7 @@ struct ResetCardAccountRow: View {
 			Text(normalCardChipTitle(target))
 				.hidden()
 
-			Text("Confirm · \(Self.confirmationWindowSeconds)s")
+			Text("Confirm · \(ResetCardUseConfirmation.windowSeconds)s")
 				.hidden()
 
 			HStack(spacing: PanelSpacing.micro) {
@@ -504,7 +502,7 @@ struct ResetCardAccountRow: View {
 			let seconds =
 				confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
-				: Self.confirmationWindowSeconds
+				: ResetCardUseConfirmation.windowSeconds
 			return "Confirm · \(seconds)s"
 		}
 
@@ -584,14 +582,13 @@ struct ResetCardAccountRow: View {
 	private func runConfirmationCountdown(
 		for attempt: ResetCardUseAttempt?
 	) async {
-		guard let attempt else {
+		guard let attempt, confirmation.isArmed(attempt), let deadline = confirmation.deadline else {
 			confirmationSecondsRemaining = 0
 			return
 		}
 
 		let clock = ContinuousClock()
-		let deadline = clock.now.advanced(by: .seconds(Self.confirmationWindowSeconds))
-		confirmationSecondsRemaining = Self.confirmationWindowSeconds
+		confirmationSecondsRemaining = Self.roundedUpSeconds(clock.now.duration(to: deadline))
 
 		while clock.now < deadline {
 			let nextWake = min(clock.now.advanced(by: .seconds(1)), deadline)
