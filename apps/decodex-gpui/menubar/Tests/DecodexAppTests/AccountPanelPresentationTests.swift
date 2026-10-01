@@ -694,6 +694,39 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(rows.subviews.allSatisfy { $0.layer?.animation(forKey: AccountRowsView.animationKey) == nil })
 	}
 
+	func testAccountReorderUsesCurrentAccountsAfterMembershipOrOrderChanges() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = ResetCardStore(
+			client: FullAccountPanelClient(),
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
+				journalURL: directory.appendingPathComponent("pending.json")),
+			startupRetryDelays: []
+		)
+		await store.refresh()
+		let original = Array(store.accounts.prefix(3))
+		let order = original.map(\.id)
+		var interaction = AccountReorderInteraction(
+			accountID: order[0], baseOrder: order,
+			visualOrder: [order[1], order[0], order[2]], frames: [:], draggedOffsetY: 0
+		)
+		XCTAssertEqual(interaction.presentedAccounts(original).map(\.id), order)
+		XCTAssertTrue(interaction.isCurrent(for: order))
+		let added = original + [store.accounts[3]]
+		XCTAssertFalse(interaction.isCurrent(for: added.map(\.id)))
+		XCTAssertEqual(interaction.presentedAccounts(added).map(\.id), added.map(\.id))
+		let removed = Array(original.dropFirst())
+		XCTAssertFalse(interaction.isCurrent(for: removed.map(\.id)))
+		XCTAssertEqual(interaction.presentedAccounts(removed).map(\.id), removed.map(\.id))
+		let reordered = Array(original.reversed())
+		XCTAssertFalse(interaction.isCurrent(for: reordered.map(\.id)))
+		XCTAssertEqual(interaction.presentedAccounts(reordered).map(\.id), reordered.map(\.id))
+		interaction.isSettling = true
+		let committed = [original[1], original[0], original[2]]
+		XCTAssertTrue(interaction.isCurrent(for: committed.map(\.id)))
+		XCTAssertEqual(interaction.presentedAccounts(committed).map(\.id), order)
+	}
+
 	func testFullAccountPanelShowsSixCompactRowsWithoutOverflowOnCurrentDisplay() async throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
