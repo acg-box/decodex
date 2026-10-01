@@ -5,7 +5,7 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	ffi::{CStr, CString},
 	fs::{self, File},
-	io,
+	io::{self, Error},
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, RawFd},
 		unix::ffi::OsStrExt as _,
@@ -19,7 +19,13 @@ use serde::{Deserialize, Serialize};
 
 use sha2::{Digest as _, Sha256};
 
-use std::str;
+use std::{mem::MaybeUninit, str};
+
+use libc::{
+	AT_FDCWD, EAGAIN, EEXIST, EINTR, ENOENT, EWOULDBLOCK, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
+	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDWR, S_IFDIR, S_IFMT, S_IFREG,
+	S_ISVTX, c_uint, mode_t, off_t, stat, uid_t,
+};
 
 const CACHE_DIRECTORY_NAME: &CStr = c"history-page-cache-v1";
 const LOCK_NAME: &CStr = c"lock";
@@ -29,8 +35,8 @@ const PAGES_DIRECTORY_NAME: &CStr = c"pages";
 const PAGE_STAGE_NAME: &CStr = c".page.next";
 const CACHE_SCHEMA_ID: &str = "decodex.gpui.history-page-cache/1";
 const CACHE_SCHEMA_GENERATION: u32 = 1;
-const PRIVATE_DIRECTORY_MODE: libc::mode_t = 0o700;
-const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
+const PRIVATE_DIRECTORY_MODE: mode_t = 0o700;
+const PRIVATE_FILE_MODE: mode_t = 0o600;
 #[cfg(target_vendor = "apple")]
 const ANCESTOR_DIRECTORY_ACCESS: libc::c_int = libc::O_SEARCH;
 #[cfg(not(target_vendor = "apple"))]
@@ -579,9 +585,7 @@ impl HistoryPageCache {
 impl Drop for HistoryPageCache {
 	fn drop(&mut self) {
 		loop {
-			if unsafe { libc::flock(self.lock.as_raw_fd(), libc::LOCK_UN) } == 0
-				|| errno() != libc::EINTR
-			{
+			if unsafe { libc::flock(self.lock.as_raw_fd(), LOCK_UN) } == 0 || errno() != EINTR {
 				break;
 			}
 		}
@@ -1337,7 +1341,7 @@ fn stage_index(root: &File, bytes: &[u8], faults: &impl FaultInjector) -> Result
 
 fn create_new_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> {
 	let file = create_file_at(parent.as_raw_fd(), name).map_err(|error| {
-		if error.raw_os_error() == Some(libc::EEXIST) {
+		if error.raw_os_error() == Some(EEXIST) {
 			CacheFailure::new(CacheDiagnostic::Integrity)
 		} else {
 			io_failure()
@@ -1398,7 +1402,7 @@ fn validated_directory_names(
 		if entry.is_null() {
 			let error = errno();
 
-			if error == libc::EINTR {
+			if error == EINTR {
 				continue;
 			}
 			if error != 0 {
@@ -1507,9 +1511,9 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 
 	let mut components = resolved_components.peekable();
 	let mut directory = if components.peek().is_some() {
-		open_search_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?
+		open_search_directory_at(AT_FDCWD, c"/").map_err(|_| io_failure())?
 	} else {
-		open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?
+		open_directory_at(AT_FDCWD, c"/").map_err(|_| io_failure())?
 	};
 
 	validate_ancestor_directory(&directory)?;
@@ -1536,7 +1540,7 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> {
 	let (directory, created) = match open_directory_at(parent.as_raw_fd(), name) {
 		Ok(directory) => (directory, false),
-		Err(error) if error.raw_os_error() == Some(libc::ENOENT) => {
+		Err(error) if error.raw_os_error() == Some(ENOENT) => {
 			create_directory_at(parent.as_raw_fd(), name)?;
 
 			(open_directory_at(parent.as_raw_fd(), name).map_err(|_| io_failure())?, true)
@@ -1556,8 +1560,8 @@ fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, Cache
 fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> {
 	let file = match create_file_at(parent.as_raw_fd(), name) {
 		Ok(file) => file,
-		Err(error) if error.raw_os_error() == Some(libc::EEXIST) =>
-			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR).map_err(|_| io_failure())?,
+		Err(error) if error.raw_os_error() == Some(EEXIST) =>
+			open_file_at(parent.as_raw_fd(), name, O_RDWR).map_err(|_| io_failure())?,
 		Err(_) => return Err(io_failure()),
 	};
 
@@ -1570,7 +1574,7 @@ fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailu
 fn open_optional_file_at(parent: &File, name: &CStr) -> Result<Option<File>, CacheFailure> {
 	match open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY) {
 		Ok(file) => Ok(Some(file)),
-		Err(error) if error.raw_os_error() == Some(libc::ENOENT) => Ok(None),
+		Err(error) if error.raw_os_error() == Some(ENOENT) => Ok(None),
 		Err(_) => Err(io_failure()),
 	}
 }
@@ -1590,20 +1594,16 @@ fn open_directory_with_access_at(
 ) -> io::Result<File> {
 	loop {
 		let descriptor = unsafe {
-			libc::openat(
-				parent,
-				name.as_ptr(),
-				access | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-			)
+			libc::openat(parent, name.as_ptr(), access | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 		};
 
 		if descriptor != -1 {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
 
-		let error = io::Error::last_os_error();
+		let error = Error::last_os_error();
 
-		if error.raw_os_error() != Some(libc::EINTR) {
+		if error.raw_os_error() != Some(EINTR) {
 			return Err(error);
 		}
 	}
@@ -1615,11 +1615,11 @@ fn create_directory_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 			return Ok(());
 		}
 
-		let error = io::Error::last_os_error();
+		let error = Error::last_os_error();
 
 		match error.raw_os_error() {
-			Some(libc::EINTR) => {},
-			Some(libc::EEXIST) => return Ok(()),
+			Some(EINTR) => {},
+			Some(EEXIST) => return Ok(()),
 			_ => return Err(io_failure()),
 		}
 	}
@@ -1628,20 +1628,16 @@ fn create_directory_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 fn open_file_at(parent: RawFd, name: &CStr, access: libc::c_int) -> io::Result<File> {
 	loop {
 		let descriptor = unsafe {
-			libc::openat(
-				parent,
-				name.as_ptr(),
-				access | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
-			)
+			libc::openat(parent, name.as_ptr(), access | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
 		};
 
 		if descriptor != -1 {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
 
-		let error = io::Error::last_os_error();
+		let error = Error::last_os_error();
 
-		if error.raw_os_error() != Some(libc::EINTR) {
+		if error.raw_os_error() != Some(EINTR) {
 			return Err(error);
 		}
 	}
@@ -1655,13 +1651,8 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 			libc::openat(
 				parent,
 				name.as_ptr(),
-				libc::O_RDWR
-					| libc::O_CREAT
-					| libc::O_EXCL
-					| libc::O_NOFOLLOW
-					| libc::O_CLOEXEC
-					| libc::O_NONBLOCK,
-				PRIVATE_FILE_MODE as libc::c_uint,
+				O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+				PRIVATE_FILE_MODE as c_uint,
 			)
 		};
 
@@ -1669,11 +1660,11 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
 
-		let error = io::Error::last_os_error();
+		let error = Error::last_os_error();
 
 		match error.raw_os_error() {
-			Some(libc::EINTR) => interrupted = true,
-			Some(libc::EEXIST) if interrupted => return open_file_at(parent, name, libc::O_RDWR),
+			Some(EINTR) => interrupted = true,
+			Some(EEXIST) if interrupted => return open_file_at(parent, name, O_RDWR),
 			_ => return Err(error),
 		}
 	}
@@ -1694,11 +1685,11 @@ fn write_all(file: &File, bytes: &[u8]) -> Result<(), CacheFailure> {
 				file.as_raw_fd(),
 				bytes[offset..].as_ptr().cast(),
 				bytes.len() - offset,
-				offset as libc::off_t,
+				offset as off_t,
 			)
 		};
 
-		if written == -1 && errno() == libc::EINTR {
+		if written == -1 && errno() == EINTR {
 			continue;
 		}
 		if written <= 0 {
@@ -1716,7 +1707,7 @@ fn sync_file(file: &File) -> Result<(), CacheFailure> {
 		if unsafe { libc::fsync(file.as_raw_fd()) } == 0 {
 			return Ok(());
 		}
-		if errno() != libc::EINTR {
+		if errno() != EINTR {
 			return Err(io_failure());
 		}
 	}
@@ -1731,8 +1722,8 @@ fn unlink_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 		}
 
 		match errno() {
-			libc::EINTR => interrupted = true,
-			libc::ENOENT if interrupted => return Ok(()),
+			EINTR => interrupted = true,
+			ENOENT if interrupted => return Ok(()),
 			_ => return Err(io_failure()),
 		}
 	}
@@ -1759,8 +1750,8 @@ fn link_create_only(
 		}
 
 		match errno() {
-			libc::EINTR => {},
-			libc::EEXIST => return Ok(false),
+			EINTR => {},
+			EEXIST => return Ok(false),
 			_ => return Err(io_failure()),
 		}
 	}
@@ -1783,8 +1774,8 @@ fn rename_at(
 		}
 
 		match errno() {
-			libc::EINTR => interrupted = true,
-			libc::ENOENT if interrupted => return Ok(()),
+			EINTR => interrupted = true,
+			ENOENT if interrupted => return Ok(()),
 			_ => return Err(io_failure()),
 		}
 	}
@@ -1794,9 +1785,9 @@ fn validate_ancestor_directory(directory: &File) -> Result<(), CacheFailure> {
 	let status = file_status(directory)?;
 	let mode = status.st_mode & 0o7777;
 	let owner_is_allowed = status.st_uid == 0 || status.st_uid == effective_uid();
-	let root_owned_sticky = status.st_uid == 0 && mode & libc::S_ISVTX != 0;
+	let root_owned_sticky = status.st_uid == 0 && mode & S_ISVTX != 0;
 
-	if status.st_mode & libc::S_IFMT != libc::S_IFDIR
+	if status.st_mode & S_IFMT != S_IFDIR
 		|| !owner_is_allowed
 		|| (mode & 0o022 != 0 && !root_owned_sticky)
 	{
@@ -1810,7 +1801,7 @@ fn validate_directory(directory: &File) -> Result<(), CacheFailure> {
 	let status = file_status(directory)?;
 
 	if status.st_uid != effective_uid()
-		|| status.st_mode & libc::S_IFMT != libc::S_IFDIR
+		|| status.st_mode & S_IFMT != S_IFDIR
 		|| status.st_mode & 0o7777 != PRIVATE_DIRECTORY_MODE
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
@@ -1823,7 +1814,7 @@ fn validate_regular_file(file: &File, max_length: Option<usize>) -> Result<(), C
 	let status = file_status(file)?;
 
 	if status.st_uid != effective_uid()
-		|| status.st_mode & libc::S_IFMT != libc::S_IFREG
+		|| status.st_mode & S_IFMT != S_IFREG
 		|| status.st_mode & 0o7777 != PRIVATE_FILE_MODE
 		|| status.st_nlink != 1
 		|| status.st_size < 0
@@ -1835,14 +1826,14 @@ fn validate_regular_file(file: &File, max_length: Option<usize>) -> Result<(), C
 	Ok(())
 }
 
-fn file_status(file: &File) -> Result<libc::stat, CacheFailure> {
+fn file_status(file: &File) -> Result<stat, CacheFailure> {
 	loop {
-		let mut status = std::mem::MaybeUninit::<libc::stat>::uninit();
+		let mut status = MaybeUninit::<stat>::uninit();
 
 		if unsafe { libc::fstat(file.as_raw_fd(), status.as_mut_ptr()) } == 0 {
 			return Ok(unsafe { status.assume_init() });
 		}
-		if errno() != libc::EINTR {
+		if errno() != EINTR {
 			return Err(io_failure());
 		}
 	}
@@ -1866,11 +1857,11 @@ fn read_bounded(file: &File, maximum: usize) -> Result<Vec<u8>, CacheFailure> {
 				file.as_raw_fd(),
 				bytes[offset..].as_mut_ptr().cast(),
 				bytes.len() - offset,
-				offset as libc::off_t,
+				offset as off_t,
 			)
 		};
 
-		if read == -1 && errno() == libc::EINTR {
+		if read == -1 && errno() == EINTR {
 			continue;
 		}
 		if read <= 0 {
@@ -1923,16 +1914,16 @@ fn is_fresh_eligible(fresh_received_at: i64, now: i64) -> bool {
 
 fn lock_exclusive(lock: &File) -> Result<(), CacheFailure> {
 	loop {
-		if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+		if unsafe { libc::flock(lock.as_raw_fd(), LOCK_EX | LOCK_NB) } == 0 {
 			return Ok(());
 		}
 
 		let error = errno();
 
-		if error == libc::EINTR {
+		if error == EINTR {
 			continue;
 		}
-		if error == libc::EWOULDBLOCK || error == libc::EAGAIN {
+		if error == EWOULDBLOCK || error == EAGAIN {
 			return Err(io_failure());
 		}
 
@@ -1940,12 +1931,12 @@ fn lock_exclusive(lock: &File) -> Result<(), CacheFailure> {
 	}
 }
 
-fn effective_uid() -> libc::uid_t {
+fn effective_uid() -> uid_t {
 	unsafe { libc::geteuid() }
 }
 
 fn errno() -> i32 {
-	io::Error::last_os_error().raw_os_error().unwrap_or(0)
+	Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
 fn errno_clear() {

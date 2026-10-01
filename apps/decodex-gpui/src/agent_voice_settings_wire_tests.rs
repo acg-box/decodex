@@ -8,7 +8,8 @@ use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
-	voice_settings::*, wire_test_support, wire_test_support::SERVER,
+	voice_settings::*,
+	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,

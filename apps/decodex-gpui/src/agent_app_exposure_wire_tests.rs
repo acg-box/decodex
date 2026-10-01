@@ -8,7 +8,10 @@ use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::{app_exposure::*, wire_test_support, wire_test_support::SERVER};
+use crate::shell::agent_surface::{
+	app_exposure::*,
+	wire_test_support::{self, SERVER},
+};
 use decodex_protocol::{
 	AgentPendingEventDto, AgentWorkKindDto, CURRENT_VERSION, ClientMessage, CommandPayload,
 	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
