@@ -6,77 +6,39 @@ mod account_lifecycle;
 mod account_profiles;
 mod account_usage;
 mod accounts;
-mod agent_native_turns;
-mod agent_turn_execution;
-pub use agent_turn_execution::AgentTurnExecution;
-mod agent_dispatch_rejection;
-pub use agent_dispatch_rejection::AgentDispatchRefusal;
-
 mod agent;
-mod agent_request_payload;
-mod agent_settings_observations;
-pub use agent_settings_observations::AgentTaskSettingsObservation;
-mod agent_app_ui_calls;
-pub use agent_app_ui_calls::{AgentAppUiCallAttempt, AgentAppUiCallReceipt};
 mod agent_app_settings;
+mod agent_app_ui_calls;
 mod agent_config_journal;
-pub use agent_app_settings::{
-	AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentAppSettingsReceipt,
-	AgentConfigReceipt,
-};
-pub use agent_config_journal::AgentConfigOwner;
-mod agent_hooks;
-pub use agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookOwner, AgentHookReceipt};
+mod agent_dispatch_rejection;
 mod agent_fork;
-mod agent_prompt_edit;
-pub use agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt};
-mod agent_prompt_inputs;
-pub use agent_prompt_edit::{AgentPromptEditAttempt, AgentPromptEditReceipt};
-pub use agent_prompt_inputs::AgentPromptInput;
-mod agent_prompt_upload;
-pub use agent_prompt_upload::AgentPromptUpload;
-mod agent_models;
-pub use agent_models::{
-	AgentLegacyModelPending, AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
-	AgentModelReceipt, AgentModelRecoveryContext,
-};
-mod agent_plugins;
-pub use agent_plugins::{AgentPluginAttempt, AgentPluginReceipt};
-mod agent_permissions;
-pub use agent_permissions::{AgentPermissionAttempt, AgentPermissionReceipt};
-mod agent_live_settings;
-pub use agent_live_settings::{
-	AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentLiveSettingsReceipt,
-};
 mod agent_guardian;
-pub use agent_guardian::{AgentGuardianObservation, AgentGuardianReview};
+mod agent_hooks;
+mod agent_live_settings;
 mod agent_misalignment;
-pub use agent_misalignment::AgentMisalignment;
+mod agent_models;
+mod agent_native_turns;
 mod agent_output;
-mod agent_reasoning_summary;
-pub use agent_reasoning_summary::AgentReasoningSummaryChange;
+mod agent_permissions;
+mod agent_plugins;
+mod agent_process;
+mod agent_prompt_edit;
+mod agent_prompt_inputs;
+mod agent_prompt_upload;
 mod agent_question_rebuild;
 mod agent_questions;
+mod agent_reasoning_summary;
+mod agent_request_payload;
 mod agent_response_usage;
-pub use agent_response_usage::AgentResponseUsageSummary;
+mod agent_settings_observations;
 mod agent_task_references;
-pub use agent_questions::AgentAsyncQuestion;
-mod agent_process;
+mod agent_turn_execution;
 mod agent_voice;
 mod agent_voice_history;
-pub use agent_output::{AgentLiveOutput, AgentOutputUpdate};
-pub use agent_voice::AgentVoiceCall;
-pub use agent_voice_history::{
-	AgentVoiceHistory, AgentVoiceHistoryRevision, AgentVoiceTranscript, AgentVoiceTranscriptCall,
-};
 mod command;
 mod continuations;
 mod conversation_routing;
 mod conversations;
-pub use conversations::{
-	ConversationNativeSettings, ConversationNativeSettingsObservation,
-	RecordConversationNativeSettings,
-};
 mod credentials;
 mod desktop_settings;
 mod error;
@@ -84,9 +46,8 @@ mod migrations;
 mod process_generations;
 mod program_cycles;
 mod provider_attempts;
-mod reset_cards;
-pub use reset_cards::ResetCardOperation;
 mod quota_activation;
+mod reset_cards;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
@@ -109,7 +70,41 @@ pub use self::{
 		AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
 		EnqueueAgentEvent,
 	},
+	agent_app_settings::{
+		AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentAppSettingsReceipt,
+		AgentConfigReceipt,
+	},
+	agent_app_ui_calls::{AgentAppUiCallAttempt, AgentAppUiCallReceipt},
+	agent_config_journal::AgentConfigOwner,
+	agent_dispatch_rejection::AgentDispatchRefusal,
+	agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt},
+	agent_guardian::{AgentGuardianObservation, AgentGuardianReview},
+	agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookOwner, AgentHookReceipt},
+	agent_live_settings::{
+		AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentLiveSettingsReceipt,
+	},
+	agent_misalignment::AgentMisalignment,
+	agent_models::{
+		AgentLegacyModelPending, AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
+		AgentModelReceipt, AgentModelRecoveryContext,
+	},
+	agent_output::{AgentLiveOutput, AgentOutputUpdate},
+	agent_permissions::{AgentPermissionAttempt, AgentPermissionReceipt},
+	agent_plugins::{AgentPluginAttempt, AgentPluginReceipt},
 	agent_process::AgentProcessBinding,
+	agent_prompt_edit::{AgentPromptEditAttempt, AgentPromptEditReceipt},
+	agent_prompt_inputs::AgentPromptInput,
+	agent_prompt_upload::AgentPromptUpload,
+	agent_questions::AgentAsyncQuestion,
+	agent_reasoning_summary::AgentReasoningSummaryChange,
+	agent_response_usage::AgentResponseUsageSummary,
+	agent_settings_observations::AgentTaskSettingsObservation,
+	agent_turn_execution::AgentTurnExecution,
+	agent_voice::AgentVoiceCall,
+	agent_voice_history::{
+		AgentVoiceHistory, AgentVoiceHistoryRevision, AgentVoiceTranscript,
+		AgentVoiceTranscriptCall,
+	},
 	command::CommandIdentity,
 	continuations::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,
@@ -121,7 +116,8 @@ pub use self::{
 	conversations::{
 		AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
 		ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
-		ArchivedConversationRecord, ConversationAssistantPrefixReadback, ConversationRequest,
+		ArchivedConversationRecord, ConversationAssistantPrefixReadback,
+		ConversationNativeSettings, ConversationNativeSettingsObservation, ConversationRequest,
 		ConversationResumeRejection, ConversationRoutingSuccessor,
 		ConversationRoutingSuccessorOutcome, ConversationTerminalizationOutcome,
 		ConversationTerminalizationReadback, CreateConversationRecord,
@@ -132,11 +128,11 @@ pub use self::{
 		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
 		PendingConversationTerminalizationReadback, ProgramWorkItemContextReadback,
 		ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
-		RecordConversationResumeRejection, RecordHistoryItem, RecoverUnknownConversationTurn,
-		RecoverUnknownConversationTurnOutcome, RecoveredUnknownConversationTurn,
-		ReviewInitialModelSettings, StoredConversation, TerminalizeConversationTurn,
-		TurnReservationOutcome, TurnReservationReadback, UnknownConversationAttemptReadback,
-		bounded_conversation_title,
+		RecordConversationNativeSettings, RecordConversationResumeRejection, RecordHistoryItem,
+		RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome,
+		RecoveredUnknownConversationTurn, ReviewInitialModelSettings, StoredConversation,
+		TerminalizeConversationTurn, TurnReservationOutcome, TurnReservationReadback,
+		UnknownConversationAttemptReadback, bounded_conversation_title,
 	},
 	credentials::{CredentialKey, CredentialRecord},
 	desktop_settings::DesktopSettings,
@@ -156,6 +152,7 @@ pub use self::{
 		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
 		ProviderAttemptRejection, RuntimeSessionBindingReceipt,
 	},
+	reset_cards::ResetCardOperation,
 	role_profiles::RoleProfileRole,
 	runtime_sessions::{
 		BindRuntimeSessionThread, BindRuntimeSessionThreadOutcome,
