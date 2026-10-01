@@ -1,7 +1,10 @@
 //! Resolve voice defaults from the owning server for each new conversation.
-use super::{AppServerClient, ClientError};
-use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
+
+use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError};
 
 impl AppServerClient {
 	/// Read the active thread's effective voice. Never uses a previous call's preference.
@@ -10,7 +13,7 @@ impl AppServerClient {
 		&self,
 		thread: &str,
 	) -> Result<Option<String>, ClientError> {
-		tokio::time::timeout(Duration::from_secs(15), async {
+		time::timeout(Duration::from_secs(15), async {
 			let history = self.thread_read(json!({"threadId":thread})).await?;
 
 			if history["thread"]["id"] != thread {
@@ -87,50 +90,59 @@ pub(super) fn known_voice(voice: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::realtime_settings::{self, AppServerClient, Value};
 
 	#[tokio::test]
 	async fn voice_start_reads_each_project_and_distinguishes_unsupported_from_failed_config() {
 		for (config, catalog, expected) in [
 			(
-				json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
-				json!({}),
+				realtime_settings::json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
+				realtime_settings::json!({}),
 				Ok(Some("juniper")),
 			),
 			(
-				json!({"result":{"config":{}}}),
-				json!({"result":{"voices":{"defaultV1":"maple"}}}),
+				realtime_settings::json!({"result":{"config":{}}}),
+				realtime_settings::json!({"result":{"voices":{"defaultV1":"maple"}}}),
 				Ok(Some("maple")),
 			),
 			(
-				json!({"result":{"config":{}}}),
-				json!({"error":{"code":-32_601,"message":"missing"}}),
+				realtime_settings::json!({"result":{"config":{}}}),
+				realtime_settings::json!({"error":{"code":-32_601,"message":"missing"}}),
 				Ok(Some("cove")),
 			),
 			(
-				json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
-				json!({}),
-				Ok(None),
-			),
-			(json!({"error":{"code":-32_601,"message":"missing"}}), json!({}), Ok(None)),
-			(
-				json!({"error":{"code":-32_600,"message":"config/read unknown variant"}}),
-				json!({}),
+				realtime_settings::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
+				realtime_settings::json!({}),
 				Ok(None),
 			),
 			(
-				json!({"error":{"code":-32_600,"message":"invalid configuration"}}),
-				json!({}),
+				realtime_settings::json!({"error":{"code":-32_601,"message":"missing"}}),
+				realtime_settings::json!({}),
+				Ok(None),
+			),
+			(
+				realtime_settings::json!({"error":{"code":-32_600,"message":"config/read unknown variant"}}),
+				realtime_settings::json!({}),
+				Ok(None),
+			),
+			(
+				realtime_settings::json!({"error":{"code":-32_600,"message":"invalid configuration"}}),
+				realtime_settings::json!({}),
 				Err(()),
 			),
-			(json!({"result":{"config":{"realtime":{"voice":42}}}}), json!({}), Err(())),
+			(
+				realtime_settings::json!({"result":{"config":{"realtime":{"voice":42}}}}),
+				realtime_settings::json!({}),
+				Err(()),
+			),
 		] {
-			let (local, remote) = tokio::io::duplex(8_192);
-			let (read, write) = tokio::io::split(local);
+			let (local, remote) = io::duplex(8_192);
+			let (read, write) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(read, write);
 			let server = tokio::spawn(async move {
-				let (read, mut write) = tokio::io::split(remote);
+				let (read, mut write) = io::split(remote);
 				let mut lines = BufReader::new(read).lines();
 				let mut cwd = String::new();
 
@@ -142,10 +154,13 @@ mod tests {
 
 							cwd = format!("/projects/{thread}");
 
-							json!({"result":{"thread":{"id":thread,"cwd":cwd}}})
+							realtime_settings::json!({"result":{"thread":{"id":thread,"cwd":cwd}}})
 						},
 						"config/read" => {
-							assert_eq!(request["params"], json!({"cwd":cwd,"includeLayers":true}));
+							assert_eq!(
+								request["params"],
+								realtime_settings::json!({"cwd":cwd,"includeLayers":true})
+							);
 
 							config.clone()
 						},

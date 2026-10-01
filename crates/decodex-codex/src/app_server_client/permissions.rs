@@ -1,14 +1,14 @@
 //! Native permission catalogs and task-local selections. A queue ACK is not confirmation.
-use super::{AppServerClient, ClientError, HistoryGuard};
-
-use serde::{Deserialize, Serialize};
-
-use serde_json::{Value, json};
-
 use std::{collections::HashSet, path::Path, time::Duration};
 
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
+
 /// One profile resolved by the server for the selected working directory.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct NativePermissionProfile {
 	/// Opaque profile ID, including native builtin IDs.
 	pub id: String,
@@ -19,7 +19,7 @@ pub struct NativePermissionProfile {
 }
 
 /// A saved-task profile selection, without unrelated model or policy overrides.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ThreadPermissionSelection {
 	thread_id: String,
@@ -53,7 +53,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(Duration::from_secs(15), async {
+		time::timeout(Duration::from_secs(15), async {
 			let mut cursor: Option<String> = None;
 			let mut cursors = HashSet::new();
 			let mut ids = HashSet::new();
@@ -122,7 +122,7 @@ impl AppServerClient {
 		}
 
 		let params = serde_json::to_value(selection).map_err(|_| ClientError::InvalidFrame)?;
-		let response = tokio::time::timeout(
+		let response = time::timeout(
 			Duration::from_secs(8),
 			self.request_with_history("thread/settings/update", params, guard),
 		)
@@ -152,7 +152,7 @@ fn bounded(value: &str, limit: usize) -> bool {
 mod tests;
 
 /// Native saved permission facts. These observations do not authorize a new operation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct NativeTaskPermissions {
 	/// Native cwd used to resolve the profile catalog.

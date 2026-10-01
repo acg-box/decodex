@@ -80,7 +80,7 @@ impl SettingsGuard {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::app_server_client::settings_guard::SettingsRevisions;
 	#[test]
 	fn revision_identities_do_not_repeat_after_values_return_or_guards_are_dropped() {
 		let revisions = SettingsRevisions::default();
@@ -136,7 +136,7 @@ mod tests {
 #[cfg(test)]
 mod transport_tests {
 	use crate::app_server_client::{AppServerClient, ClientError};
-	use serde_json::{Value, json};
+	use serde_json::{self, Value};
 	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[tokio::test]
@@ -157,11 +157,11 @@ mod transport_tests {
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
-		writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"task","model":"selected","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
+		writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"thread":{"id":"task","model":"selected","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
 
 		assert_eq!(read.await.unwrap().unwrap().unwrap().model.as_deref(), Some("selected"));
 
-		writer.write_all(format!("{}\n",json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":{"model":"new-choice"}}})).as_bytes()).await.unwrap();
+		writer.write_all(format!("{}\n",serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":{"model":"new-choice"}}})).as_bytes()).await.unwrap();
 
 		let _unprocessed = events.recv().await.unwrap();
 
@@ -171,7 +171,7 @@ mod transport_tests {
 			client
 				.request_with_history(
 					"turn/start",
-					json!({"threadId":"task","model":"selected","input":[]}),
+					serde_json::json!({"threadId":"task","model":"selected","input":[]}),
 					guard
 				)
 				.await,
@@ -186,7 +186,7 @@ mod transport_tests {
 }
 #[cfg(test)]
 mod combined_tests {
-	use super::super::{AppServerClient, ServerEvent, server_requests::ServerRequests};
+	use crate::app_server_client::{AppServerClient, ServerEvent, server_requests::ServerRequests};
 	use serde_json::json;
 
 	#[test]

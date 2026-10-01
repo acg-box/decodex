@@ -1,10 +1,14 @@
 //! One explicit native workspace-owner notification. The caller owns account admission.
-use super::{AppServerClient, ClientError};
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError};
 
 /// Native notification purpose; never substitute one purpose after a failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountNudgeCreditType {
 	/// Request additional workspace credits.
@@ -35,8 +39,8 @@ impl AppServerClient {
 		&self,
 		credit_type: AccountNudgeCreditType,
 	) -> AccountNudgeOutcome {
-		let result = tokio::time::timeout(
-			std::time::Duration::from_secs(15),
+		let result = time::timeout(
+			Duration::from_secs(15),
 			self.request("account/sendAddCreditsNudgeEmail", json!({"creditType": credit_type})),
 		)
 		.await;
@@ -69,34 +73,36 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::account_nudge::{
+		self, AccountNudgeCreditType, AccountNudgeOutcome, AppServerClient,
+	};
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 	#[tokio::test]
 	async fn native_nudge_keeps_exact_purpose_and_never_retries_unknown_delivery() {
 		for (credit_type, response, expected) in [
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"result":{"status":"sent"}}),
+				account_nudge::json!({"result":{"status":"sent"}}),
 				AccountNudgeOutcome::Sent,
 			),
 			(
 				AccountNudgeCreditType::UsageLimit,
-				json!({"result":{"status":"cooldown_active"}}),
+				account_nudge::json!({"result":{"status":"cooldown_active"}}),
 				AccountNudgeOutcome::CooldownActive,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"result":{"status":"future_status"}}),
+				account_nudge::json!({"result":{"status":"future_status"}}),
 				AccountNudgeOutcome::Uncertain,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"error":{"code":-32_601,"message":"unsupported"}}),
+				account_nudge::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 				AccountNudgeOutcome::Unsupported,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				json!({"error":{"code":-32_603,"message":"delivery unknown"}}),
+				account_nudge::json!({"error":{"code":-32_603,"message":"delivery unknown"}}),
 				AccountNudgeOutcome::Uncertain,
 			),
 		] {
@@ -110,7 +116,7 @@ mod tests {
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 				assert_eq!(request["method"], "account/sendAddCreditsNudgeEmail");
-				assert_eq!(request["params"], json!({"creditType":credit_type}));
+				assert_eq!(request["params"], account_nudge::json!({"creditType":credit_type}));
 
 				let mut reply = response;
 

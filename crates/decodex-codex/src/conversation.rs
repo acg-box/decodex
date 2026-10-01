@@ -13,9 +13,7 @@ use serde::{
 	de::Error as _,
 	ser::{SerializeSeq as _, SerializeStruct as _},
 };
-
 use serde_json::{Map, Value};
-
 use zeroize::Zeroizing;
 
 use crate::{ExactThreadId, ThreadCwd, protocol::MAX_APP_SERVER_FRAME_BYTES};
@@ -328,14 +326,14 @@ impl ConversationSandboxPolicyWire {
 	}
 }
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 enum ConversationLegacyReadOnlyAccessWire {
 	FullAccess,
 	Restricted,
 }
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum ConversationNetworkAccessWire {
 	#[default]
@@ -397,7 +395,7 @@ impl<'de> Deserialize<'de> for ConversationReasoningEffortWire {
 
 // Native delegation policy is descriptive, not a caller-selected binding invariant.
 #[allow(dead_code)]
-#[derive(Clone, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum ConversationMultiAgentModeWire {
 	None,
@@ -407,7 +405,7 @@ enum ConversationMultiAgentModeWire {
 	Proactive,
 }
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum ConversationThreadHistoryModeWire {
 	#[default]
@@ -484,7 +482,7 @@ impl<'de> Deserialize<'de> for ConversationThreadSourceWire {
 	}
 }
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum ConversationTurnItemsViewWire {
 	NotLoaded,
@@ -493,7 +491,7 @@ enum ConversationTurnItemsViewWire {
 	Full,
 }
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum ConversationTurnStatusWire {
 	Completed,
@@ -2075,17 +2073,16 @@ fn validate_exact_id(value: &str, maximum: usize) -> Result<(), ()> {
 
 #[cfg(test)]
 mod tests {
-	use serde_json::{Value, json};
+	use serde_json::{self, Value};
 
-	use crate::ExactThreadId;
-
-	use super::{
-		ConversationContractError, ConversationThreadResumeRequest, ConversationThreadStartRequest,
-		ConversationTurnInput, ConversationTurnStartRequest, ConversationTurnStatus,
-		MAX_CONVERSATION_MODEL_PROVIDER_BYTES, MAX_CONVERSATION_RESPONSE_BYTES,
-		decode_conversation_thread_archive_response, decode_conversation_thread_resume_response,
-		decode_conversation_thread_start_response, decode_conversation_turn_interrupt_response,
-		decode_conversation_turn_start_response,
+	use crate::{
+		ExactThreadId,
+		conversation::{
+			self, ConversationContractError, ConversationThreadResumeRequest,
+			ConversationThreadStartRequest, ConversationTurnInput, ConversationTurnStartRequest,
+			ConversationTurnStatus, MAX_CONVERSATION_MODEL_PROVIDER_BYTES,
+			MAX_CONVERSATION_RESPONSE_BYTES,
+		},
 	};
 
 	fn exact_thread() -> ExactThreadId {
@@ -2108,7 +2105,7 @@ mod tests {
 	}
 
 	fn thread_response(thread_id: &str, model: &str, cwd: &str) -> Value {
-		json!({
+		serde_json::json!({
 			"thread": {
 				"id": thread_id,
 				"sessionId": "session-1",
@@ -2136,22 +2133,30 @@ mod tests {
 
 	#[test]
 	fn native_multi_agent_modes_do_not_override_thread_identity_contracts() {
-		for mode in
-			[json!("explicitRequestOnly"), json!("proactive"), json!({"custom":"Native policy"})]
-		{
+		for mode in [
+			serde_json::json!("explicitRequestOnly"),
+			serde_json::json!("proactive"),
+			serde_json::json!({"custom":"Native policy"}),
+		] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
 			response["multiAgentMode"] = mode;
 
 			let bytes = serde_json::to_vec(&response).unwrap();
 
-			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
-			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+			assert!(
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_ok()
+			);
+			assert!(
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_ok()
+			);
 
-			response["thread"]["id"] = json!("other-thread");
+			response["thread"]["id"] = serde_json::json!("other-thread");
 
 			assert!(
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume_request(),
 					&serde_json::to_vec(&response).unwrap()
 				)
@@ -2161,10 +2166,10 @@ mod tests {
 
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
-		response["multiAgentMode"] = json!("unknown-mode");
+		response["multiAgentMode"] = serde_json::json!("unknown-mode");
 
 		assert!(
-			decode_conversation_thread_start_response(
+			conversation::decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&response).unwrap()
 			)
@@ -2174,7 +2179,9 @@ mod tests {
 
 	#[test]
 	fn ordinary_thread_binding_respects_native_direct_input_capability() {
-		for capability in [None, Some(Value::Null), Some(json!(true)), Some(json!(false))] {
+		for capability in
+			[None, Some(Value::Null), Some(serde_json::json!(true)), Some(serde_json::json!(false))]
+		{
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
 			if let Some(value) = &capability {
@@ -2182,10 +2189,12 @@ mod tests {
 			}
 
 			let bytes = serde_json::to_vec(&response).expect("fixture must serialize");
-			let start = decode_conversation_thread_start_response(&start_request(), &bytes);
-			let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes);
+			let start =
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes);
+			let resume =
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes);
 
-			if capability == Some(json!(false)) {
+			if capability == Some(serde_json::json!(false)) {
 				assert_eq!(start.err(), Some(ConversationContractError::DirectInputRejected));
 				assert_eq!(resume.err(), Some(ConversationContractError::DirectInputRejected));
 			} else {
@@ -2200,19 +2209,19 @@ mod tests {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 		// The top-level value is the current session provider. Thread metadata may
 		// describe its original provider; do not substitute the historical value.
-		response["modelProvider"] = json!("current-provider");
-		response["thread"]["modelProvider"] = json!("original-provider");
+		response["modelProvider"] = serde_json::json!("current-provider");
+		response["thread"]["modelProvider"] = serde_json::json!("original-provider");
 
 		let bytes = serde_json::to_vec(&response).unwrap();
 
 		assert_eq!(
-			decode_conversation_thread_start_response(&start_request(), &bytes)
+			conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
 				.unwrap()
 				.model_provider(),
 			"current-provider"
 		);
 		assert_eq!(
-			decode_conversation_thread_resume_response(&resume_request(), &bytes)
+			conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
 				.unwrap()
 				.model_provider(),
 			"current-provider"
@@ -2224,16 +2233,17 @@ mod tests {
 			"unsafe\nprovider".to_owned(),
 			"x".repeat(MAX_CONVERSATION_MODEL_PROVIDER_BYTES + 1),
 		] {
-			response["modelProvider"] = json!(value);
+			response["modelProvider"] = serde_json::json!(value);
 
 			let bytes = serde_json::to_vec(&response).unwrap();
 
 			assert_eq!(
-				decode_conversation_thread_start_response(&start_request(), &bytes).unwrap_err(),
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.unwrap_err(),
 				ConversationContractError::InvalidModelProvider
 			);
 			assert_eq!(
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume_request().inherit_model().inherit_service_tier(),
 					&bytes
 				)
@@ -2241,13 +2251,19 @@ mod tests {
 				ConversationContractError::InvalidModelProvider
 			);
 		}
-		for value in [Value::Null, json!(42), json!({"id":"provider"})] {
+		for value in [Value::Null, serde_json::json!(42), serde_json::json!({"id":"provider"})] {
 			response["modelProvider"] = value;
 
 			let bytes = serde_json::to_vec(&response).unwrap();
 
-			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
-			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
+			assert!(
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_err()
+			);
+			assert!(
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_err()
+			);
 		}
 	}
 
@@ -2257,22 +2273,31 @@ mod tests {
 
 		assert_eq!(
 			serde_json::to_value(&request).unwrap(),
-			json!({"threadId":"thread-1","excludeTurns":true})
+			serde_json::json!({"threadId":"thread-1","excludeTurns":true})
 		);
 
 		let native =
 			serde_json::to_vec(&thread_response("thread-1", "server-model", "/workspace")).unwrap();
 
 		assert_eq!(
-			decode_conversation_thread_resume_response(&request, &native).unwrap().model().as_str(),
+			conversation::decode_conversation_thread_resume_response(&request, &native)
+				.unwrap()
+				.model()
+				.as_str(),
 			"server-model"
 		);
-		assert!(decode_conversation_thread_resume_response(&resume_request(), &native).is_err());
+		assert!(
+			conversation::decode_conversation_thread_resume_response(&resume_request(), &native)
+				.is_err()
+		);
 
 		for (thread, cwd) in [("foreign", "/workspace"), ("thread-1", "/native-moved")] {
 			let native = serde_json::to_vec(&thread_response(thread, "server-model", cwd)).unwrap();
 
-			assert!(decode_conversation_thread_resume_response(&request, &native).is_err());
+			assert!(
+				conversation::decode_conversation_thread_resume_response(&request, &native)
+					.is_err()
+			);
 		}
 	}
 
@@ -2282,7 +2307,7 @@ mod tests {
 
 		assert_eq!(
 			encoded,
-			json!({
+			serde_json::json!({
 				"threadId": "thread-1",
 				"model": "gpt-5",
 				"cwd": "/workspace",
@@ -2313,8 +2338,8 @@ mod tests {
 		let resume = serde_json::to_value(resume_request().with_fast(true))
 			.expect("fast thread resume request must serialize");
 
-		assert_eq!(start.get("serviceTier"), Some(&json!("priority")));
-		assert_eq!(resume.get("serviceTier"), Some(&json!("priority")));
+		assert_eq!(start.get("serviceTier"), Some(&serde_json::json!("priority")));
+		assert_eq!(resume.get("serviceTier"), Some(&serde_json::json!("priority")));
 	}
 
 	#[test]
@@ -2350,7 +2375,10 @@ mod tests {
 		}
 		for invalid in ["", "a b", "priority\n", "https://example.com", &"a".repeat(65)] {
 			assert!(decodex_core::ServiceTier::new(invalid).is_err());
-			assert!(serde_json::from_value::<decodex_core::ServiceTier>(json!(invalid)).is_err());
+			assert!(
+				serde_json::from_value::<decodex_core::ServiceTier>(serde_json::json!(invalid))
+					.is_err()
+			);
 		}
 	}
 
@@ -2369,13 +2397,13 @@ mod tests {
 		.with_fast(true);
 		let encoded = serde_json::to_value(turn).expect("turn request must serialize");
 
-		assert_eq!(encoded.get("turnTrigger"), Some(&json!("user")));
-		assert_eq!(encoded.get("model"), Some(&json!("gpt-5.6-terra")));
-		assert_eq!(encoded.get("effort"), Some(&json!("xhigh")));
-		assert_eq!(encoded.get("serviceTier"), Some(&json!("priority")));
+		assert_eq!(encoded.get("turnTrigger"), Some(&serde_json::json!("user")));
+		assert_eq!(encoded.get("model"), Some(&serde_json::json!("gpt-5.6-terra")));
+		assert_eq!(encoded.get("effort"), Some(&serde_json::json!("xhigh")));
+		assert_eq!(encoded.get("serviceTier"), Some(&serde_json::json!("priority")));
 		assert_eq!(
 			encoded.get("clientUserMessageId"),
-			Some(&json!("50000000-0000-4000-8000-000000000001")),
+			Some(&serde_json::json!("50000000-0000-4000-8000-000000000001")),
 		);
 	}
 
@@ -2419,7 +2447,10 @@ mod tests {
 				.unwrap();
 
 		assert_eq!(
-			decode_conversation_thread_start_response(&start, &bytes).unwrap().model().as_str(),
+			conversation::decode_conversation_thread_start_response(&start, &bytes)
+				.unwrap()
+				.model()
+				.as_str(),
 			"native-default"
 		);
 
@@ -2433,11 +2464,15 @@ mod tests {
 		let bytes = serde_json::to_vec(&response).unwrap();
 
 		assert_eq!(
-			decode_conversation_thread_resume_response(&resume, &bytes).unwrap().model().as_str(),
+			conversation::decode_conversation_thread_resume_response(&resume, &bytes)
+				.unwrap()
+				.model()
+				.as_str(),
 			"native-new-model"
 		);
 		assert_eq!(
-			decode_conversation_thread_resume_response(&resume_request(), &bytes).unwrap_err(),
+			conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+				.unwrap_err(),
 			ConversationContractError::ModelMismatch
 		);
 
@@ -2447,7 +2482,7 @@ mod tests {
 			thread_response("thread-1", "", "/workspace"),
 		] {
 			assert!(
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume,
 					&serde_json::to_vec(&response).unwrap()
 				)
@@ -2481,39 +2516,53 @@ mod tests {
 
 	#[test]
 	fn current_plugin_metadata_accepts_lists_and_rejects_malformed_values() {
-		for plugins in [json!([]), json!(["plugin@example"])] {
+		for plugins in [serde_json::json!([]), serde_json::json!(["plugin@example"])] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
 			response["disabledPluginIds"] = plugins;
 
 			let bytes = serde_json::to_vec(&response).unwrap();
 
-			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
-			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+			assert!(
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_ok()
+			);
+			assert!(
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_ok()
+			);
 		}
-		for plugins in [Value::Null, json!(true), json!({}), json!([42])] {
+		for plugins in
+			[Value::Null, serde_json::json!(true), serde_json::json!({}), serde_json::json!([42])]
+		{
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
 			response["disabledPluginIds"] = plugins;
 
 			let bytes = serde_json::to_vec(&response).unwrap();
 
-			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
-			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
+			assert!(
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_err()
+			);
+			assert!(
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_err()
+			);
 		}
 	}
 
 	#[test]
 	fn resume_accepts_current_collaboration_settings_without_relaxing_the_wire_contract() {
-		for mode in [json!("default"), json!("plan")] {
+		for mode in [serde_json::json!("default"), serde_json::json!("plan")] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
-			response["collaborationMode"] = json!({"mode":mode,"settings":{
+			response["collaborationMode"] = serde_json::json!({"mode":mode,"settings":{
 				"model":"gpt-5","reasoning_effort":"high","developer_instructions":null
 			}});
 
 			assert!(
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume_request(),
 					&serde_json::to_vec(&response).unwrap()
 				)
@@ -2521,17 +2570,17 @@ mod tests {
 			);
 		}
 		for mode in [
-			json!(true),
-			json!({"mode":"default"}),
-			json!({"mode":"other","settings":{"model":"gpt-5"}}),
-			json!({"mode":"default","settings":{"model":"gpt-5","reasoning_effort":42}}),
+			serde_json::json!(true),
+			serde_json::json!({"mode":"default"}),
+			serde_json::json!({"mode":"other","settings":{"model":"gpt-5"}}),
+			serde_json::json!({"mode":"default","settings":{"model":"gpt-5","reasoning_effort":42}}),
 		] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
 			response["collaborationMode"] = mode;
 
 			assert!(
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume_request(),
 					&serde_json::to_vec(&response).unwrap()
 				)
@@ -2546,14 +2595,14 @@ mod tests {
 		let thread = response["thread"].as_object_mut().unwrap();
 
 		for (key, value) in [
-			("projectId", json!(null)),
-			("model", json!("gpt-5")),
-			("reasoningEffort", json!("high")),
-			("originator", json!("codex_cli_rs")),
-			("daybreakEnabled", json!(false)),
+			("projectId", serde_json::json!(null)),
+			("model", serde_json::json!("gpt-5")),
+			("reasoningEffort", serde_json::json!("high")),
+			("originator", serde_json::json!("codex_cli_rs")),
+			("daybreakEnabled", serde_json::json!(false)),
 			(
 				"environments",
-				json!([{"environmentId":"local", "cwd":"/workspace", "runtimeWorkspaceRoots":["/workspace"]}]),
+				serde_json::json!([{"environmentId":"local", "cwd":"/workspace", "runtimeWorkspaceRoots":["/workspace"]}]),
 			),
 		] {
 			thread.insert(key.into(), value);
@@ -2561,13 +2610,19 @@ mod tests {
 
 		let bytes = serde_json::to_vec(&response).unwrap();
 
-		assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
-		assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+		assert!(
+			conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+				.is_ok()
+		);
+		assert!(
+			conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+				.is_ok()
+		);
 
-		response["thread"]["daybreakEnabled"] = json!("invalid");
+		response["thread"]["daybreakEnabled"] = serde_json::json!("invalid");
 
 		assert!(
-			decode_conversation_thread_start_response(
+			conversation::decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&response).unwrap()
 			)
@@ -2580,8 +2635,9 @@ mod tests {
 		let start_request = start_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let thread_bytes = serde_json::to_vec(&canonical).expect("fixture response must serialize");
-		let start = decode_conversation_thread_start_response(&start_request, &thread_bytes)
-			.expect("pinned thread/start response must decode");
+		let start =
+			conversation::decode_conversation_thread_start_response(&start_request, &thread_bytes)
+				.expect("pinned thread/start response must decode");
 
 		assert_eq!(start.thread_id().as_str(), "thread-1");
 		assert_eq!(start.cwd().as_str(), "/workspace");
@@ -2590,25 +2646,28 @@ mod tests {
 
 		let mut canonical_auto_review = canonical.clone();
 
-		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
+		canonical_auto_review["approvalsReviewer"] = serde_json::json!("auto_review");
 
 		assert!(
-			decode_conversation_thread_start_response(
+			conversation::decode_conversation_thread_start_response(
 				&start_request,
 				&serde_json::to_vec(&canonical_auto_review).unwrap(),
 			)
 			.is_ok()
 		);
 
-		let resume = decode_conversation_thread_resume_response(&resume_request(), &thread_bytes)
-			.expect("pinned thread/resume response must decode");
+		let resume = conversation::decode_conversation_thread_resume_response(
+			&resume_request(),
+			&thread_bytes,
+		)
+		.expect("pinned thread/resume response must decode");
 
 		assert_eq!(resume.thread_id().as_str(), "thread-1");
 		assert_eq!(resume.cwd().as_str(), "/workspace");
 		assert_eq!(resume.model().as_str(), "gpt-5");
 
-		let turn = decode_conversation_turn_start_response(
-			&serde_json::to_vec(&json!({
+		let turn = conversation::decode_conversation_turn_start_response(
+			&serde_json::to_vec(&serde_json::json!({
 				"turn": {
 					"id": "turn-1",
 					"items": [],
@@ -2622,8 +2681,8 @@ mod tests {
 
 		assert_eq!(turn.turn_id().as_str(), "turn-1");
 		assert_eq!(turn.status(), ConversationTurnStatus::InProgress);
-		assert!(decode_conversation_turn_interrupt_response(b"{}").is_ok());
-		assert!(decode_conversation_thread_archive_response(b"{}").is_ok());
+		assert!(conversation::decode_conversation_turn_interrupt_response(b"{}").is_ok());
+		assert!(conversation::decode_conversation_thread_archive_response(b"{}").is_ok());
 	}
 
 	#[test]
@@ -2637,18 +2696,20 @@ mod tests {
 
 		let mut populated = canonical;
 
-		populated["thread"]["section"] = json!({"id": "section-1", "name": "Active"});
-		populated["thread"]["sectionEnteredAt"] = json!(2);
+		populated["thread"]["section"] = serde_json::json!({"id": "section-1", "name": "Active"});
+		populated["thread"]["sectionEnteredAt"] = serde_json::json!(2);
 
 		for (case, response) in [("omitted", omitted), ("null", null), ("populated", populated)] {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert!(
-				decode_conversation_thread_start_response(&start_request(), &bytes).is_ok(),
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_ok(),
 				"thread/start must accept {case} section fields",
 			);
 			assert!(
-				decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_ok(),
 				"thread/resume must accept {case} section fields",
 			);
 		}
@@ -2658,11 +2719,11 @@ mod tests {
 	fn thread_section_appearance_decodes_when_omitted_null_or_populated() {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let cases = [
-			("omitted", json!({"id": "section-1", "name": "Active"})),
-			("null", json!({"id": "section-1", "name": "Active", "appearance": null})),
+			("omitted", serde_json::json!({"id": "section-1", "name": "Active"})),
+			("null", serde_json::json!({"id": "section-1", "name": "Active", "appearance": null})),
 			(
 				"populated",
-				json!({
+				serde_json::json!({
 					"id": "section-1",
 					"name": "Active",
 					"appearance": {"icon": "folder", "color": "blue"},
@@ -2670,11 +2731,11 @@ mod tests {
 			),
 			(
 				"populated with omitted metadata",
-				json!({"id": "section-1", "name": "Active", "appearance": {}}),
+				serde_json::json!({"id": "section-1", "name": "Active", "appearance": {}}),
 			),
 			(
 				"populated with null metadata",
-				json!({
+				serde_json::json!({
 					"id": "section-1",
 					"name": "Active",
 					"appearance": {"icon": null, "color": null},
@@ -2690,11 +2751,13 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert!(
-				decode_conversation_thread_start_response(&start_request(), &bytes).is_ok(),
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.is_ok(),
 				"thread/start must accept {case} section appearance",
 			);
 			assert!(
-				decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.is_ok(),
 				"thread/resume must accept {case} section appearance",
 			);
 		}
@@ -2706,22 +2769,22 @@ mod tests {
 		let cases = [
 			(
 				"non-object appearance",
-				json!("folder"),
+				serde_json::json!("folder"),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-string icon",
-				json!({"icon": 1, "color": null}),
+				serde_json::json!({"icon": 1, "color": null}),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-string color",
-				json!({"icon": null, "color": true}),
+				serde_json::json!({"icon": null, "color": true}),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"unknown appearance field",
-				json!({"icon": null, "color": null, "unexpected": true}),
+				serde_json::json!({"icon": null, "color": null, "unexpected": true}),
 				ConversationContractError::UnknownResponseField,
 			),
 		];
@@ -2729,7 +2792,7 @@ mod tests {
 		for (case, appearance, expected) in cases {
 			let mut response = canonical.clone();
 
-			response["thread"]["section"] = json!({
+			response["thread"]["section"] = serde_json::json!({
 				"id": "section-1",
 				"name": "Active",
 				"appearance": appearance,
@@ -2738,12 +2801,14 @@ mod tests {
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert_eq!(
-				decode_conversation_thread_start_response(&start_request(), &bytes).map(|_| ()),
+				conversation::decode_conversation_thread_start_response(&start_request(), &bytes)
+					.map(|_| ()),
 				Err(expected),
 				"thread/start {case}",
 			);
 			assert_eq!(
-				decode_conversation_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
+				conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+					.map(|_| ()),
 				Err(expected),
 				"thread/resume {case}",
 			);
@@ -2756,32 +2821,32 @@ mod tests {
 		let cases = [
 			(
 				"missing id",
-				json!({"name": "Active"}),
+				serde_json::json!({"name": "Active"}),
 				ConversationContractError::MissingResponseField,
 			),
 			(
 				"missing name",
-				json!({"id": "section-1"}),
+				serde_json::json!({"id": "section-1"}),
 				ConversationContractError::MissingResponseField,
 			),
 			(
 				"non-string id",
-				json!({"id": 1, "name": "Active"}),
+				serde_json::json!({"id": 1, "name": "Active"}),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-string name",
-				json!({"id": "section-1", "name": 1}),
+				serde_json::json!({"id": "section-1", "name": 1}),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"non-object section",
-				json!("section-1"),
+				serde_json::json!("section-1"),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"unknown nested field",
-				json!({"id": "section-1", "name": "Active", "unexpected": true}),
+				serde_json::json!({"id": "section-1", "name": "Active", "unexpected": true}),
 				ConversationContractError::UnknownResponseField,
 			),
 		];
@@ -2792,7 +2857,7 @@ mod tests {
 			response["thread"]["section"] = section;
 
 			assert_eq!(
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request(),
 					&serde_json::to_vec(&response).expect("fixture response must serialize"),
 				)
@@ -2804,10 +2869,10 @@ mod tests {
 
 		let mut malformed_entered_at = canonical;
 
-		malformed_entered_at["thread"]["sectionEnteredAt"] = json!("2");
+		malformed_entered_at["thread"]["sectionEnteredAt"] = serde_json::json!("2");
 
 		assert_eq!(
-			decode_conversation_thread_start_response(
+			conversation::decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&malformed_entered_at)
 					.expect("fixture response must serialize"),
@@ -2822,11 +2887,12 @@ mod tests {
 	fn resume_uses_live_response_cwd_when_persisted_thread_cwd_differs() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
-		response["thread"]["cwd"] = json!("/persisted");
+		response["thread"]["cwd"] = serde_json::json!("/persisted");
 
 		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
-		let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes)
-			.expect("resume must allow distinct persisted thread metadata cwd");
+		let resume =
+			conversation::decode_conversation_thread_resume_response(&resume_request(), &bytes)
+				.expect("resume must allow distinct persisted thread metadata cwd");
 
 		assert_eq!(resume.cwd().as_str(), "/workspace");
 	}
@@ -2835,10 +2901,10 @@ mod tests {
 	fn resume_rejects_live_response_cwd_that_differs_from_request() {
 		let mut response = thread_response("thread-1", "gpt-5", "/other");
 
-		response["thread"]["cwd"] = json!("/persisted");
+		response["thread"]["cwd"] = serde_json::json!("/persisted");
 
 		assert_eq!(
-			decode_conversation_thread_resume_response(
+			conversation::decode_conversation_thread_resume_response(
 				&resume_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
@@ -2851,10 +2917,10 @@ mod tests {
 	fn start_rejects_nested_thread_cwd_that_differs_from_live_response() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
-		response["thread"]["cwd"] = json!("/persisted");
+		response["thread"]["cwd"] = serde_json::json!("/persisted");
 
 		assert_eq!(
-			decode_conversation_thread_start_response(
+			conversation::decode_conversation_thread_start_response(
 				&start_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
@@ -2867,10 +2933,10 @@ mod tests {
 	fn resume_rejects_relative_persisted_thread_cwd() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 
-		response["thread"]["cwd"] = json!("persisted");
+		response["thread"]["cwd"] = serde_json::json!("persisted");
 
 		assert_eq!(
-			decode_conversation_thread_resume_response(
+			conversation::decode_conversation_thread_resume_response(
 				&resume_request(),
 				&serde_json::to_vec(&response).expect("fixture response must serialize"),
 			)
@@ -2885,15 +2951,15 @@ mod tests {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let mut unknown_nested = canonical.clone();
 
-		unknown_nested["thread"]["unexpected"] = json!(true);
+		unknown_nested["thread"]["unexpected"] = serde_json::json!(true);
 
 		let mut legacy_reviewer = canonical.clone();
 
-		legacy_reviewer["approvalsReviewer"] = json!("guardian_subagent");
+		legacy_reviewer["approvalsReviewer"] = serde_json::json!("guardian_subagent");
 
 		let mut legacy_agent_type = canonical.clone();
 
-		legacy_agent_type["thread"]["source"] = json!({
+		legacy_agent_type["thread"]["source"] = serde_json::json!({
 			"subAgent": {
 				"thread_spawn": {
 					"parent_thread_id": "00000000-0000-4000-8000-000000000001",
@@ -2909,12 +2975,13 @@ mod tests {
 			.into_bytes();
 		let mut malformed_nested = canonical.clone();
 
-		malformed_nested["sandbox"] = json!({"type": "readOnly", "access": {"type": "restricted"}});
+		malformed_nested["sandbox"] =
+			serde_json::json!({"type": "readOnly", "access": {"type": "restricted"}});
 
 		let cases = [
 			(
 				"unknown nested field",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&unknown_nested).unwrap(),
 				)
@@ -2923,7 +2990,7 @@ mod tests {
 			),
 			(
 				"legacy approvals reviewer",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&legacy_reviewer).unwrap(),
 				)
@@ -2932,7 +2999,7 @@ mod tests {
 			),
 			(
 				"legacy thread-spawn agent type",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&legacy_agent_type).unwrap(),
 				)
@@ -2941,13 +3008,16 @@ mod tests {
 			),
 			(
 				"duplicate nested field",
-				decode_conversation_thread_start_response(&start_request, &duplicate_nested)
-					.map(|_| ()),
+				conversation::decode_conversation_thread_start_response(
+					&start_request,
+					&duplicate_nested,
+				)
+				.map(|_| ()),
 				ConversationContractError::MalformedResponse,
 			),
 			(
 				"malformed nested value",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&malformed_nested).unwrap(),
 				)
@@ -2968,21 +3038,21 @@ mod tests {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let mut nonempty_turns = canonical.clone();
 
-		nonempty_turns["thread"]["turns"] = json!([{}]);
+		nonempty_turns["thread"]["turns"] = serde_json::json!([{}]);
 
 		let mut wrong_thread = canonical.clone();
 
-		wrong_thread["thread"]["id"] = json!("thread-2");
+		wrong_thread["thread"]["id"] = serde_json::json!("thread-2");
 
 		let mut wrong_model = canonical.clone();
 
-		wrong_model["model"] = json!("gpt-other");
+		wrong_model["model"] = serde_json::json!("gpt-other");
 
 		let mut wrong_cwd = canonical;
 
-		wrong_cwd["cwd"] = json!("/other");
+		wrong_cwd["cwd"] = serde_json::json!("/other");
 
-		let nonempty_items = json!({
+		let nonempty_items = serde_json::json!({
 			"turn": {
 				"id": "turn-1",
 				"items": [{}],
@@ -2994,7 +3064,7 @@ mod tests {
 		let cases = [
 			(
 				"nonempty turns",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&nonempty_turns).unwrap(),
 				)
@@ -3003,7 +3073,7 @@ mod tests {
 			),
 			(
 				"nonempty items",
-				decode_conversation_turn_start_response(
+				conversation::decode_conversation_turn_start_response(
 					&serde_json::to_vec(&nonempty_items).unwrap(),
 				)
 				.map(|_| ()),
@@ -3011,7 +3081,7 @@ mod tests {
 			),
 			(
 				"wrong thread",
-				decode_conversation_thread_resume_response(
+				conversation::decode_conversation_thread_resume_response(
 					&resume_request,
 					&serde_json::to_vec(&wrong_thread).unwrap(),
 				)
@@ -3020,7 +3090,7 @@ mod tests {
 			),
 			(
 				"wrong model",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&wrong_model).unwrap(),
 				)
@@ -3029,7 +3099,7 @@ mod tests {
 			),
 			(
 				"wrong cwd",
-				decode_conversation_thread_start_response(
+				conversation::decode_conversation_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&wrong_cwd).unwrap(),
 				)
@@ -3038,7 +3108,7 @@ mod tests {
 			),
 			(
 				"oversized result",
-				decode_conversation_turn_interrupt_response(&oversized).map(|_| ()),
+				conversation::decode_conversation_turn_interrupt_response(&oversized).map(|_| ()),
 				ConversationContractError::ResponseLimitExceeded,
 			),
 		];

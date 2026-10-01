@@ -1,5 +1,6 @@
-use super::*;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use crate::app_server_client::integrations::*;
 
 #[tokio::test]
 async fn installed_state_preserves_disabled_and_non_callable_apps() {
@@ -9,11 +10,11 @@ async fn installed_state_preserves_disabled_and_non_callable_apps() {
 		{"id":"ready","enabled":true,"callable":true}
 	]);
 	let expected = rows.clone();
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
 		for refresh in [false, true] {

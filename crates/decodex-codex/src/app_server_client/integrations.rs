@@ -1,7 +1,10 @@
 //! Source-bound integration discovery. Catalog metadata is not runtime readiness.
-use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+use std::{collections::HashSet, path::Path, time::Duration};
+
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
 
 impl AppServerClient {
 	/// Read installed connector state for one loaded native thread. An explicit
@@ -15,8 +18,8 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(30),
+		let response = time::timeout(
+			Duration::from_secs(30),
 			self.request("app/installed", json!({"threadId":thread,"forceRefresh":force_refresh})),
 		)
 		.await
@@ -51,7 +54,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(30), async {
+		time::timeout(Duration::from_secs(30), async {
 			let mut rows = Vec::new();
 			let mut names = HashSet::new();
 			let mut cursors = HashSet::new();
@@ -116,12 +119,12 @@ impl AppServerClient {
 	/// Discover installed plugins for this repository, not only home-scoped defaults.
 	/// Keep marketplace errors in the native response for an explicit partial-state UI.
 	pub async fn installed_plugins_for_directory(&self, cwd: &str) -> Result<Value, ClientError> {
-		if !std::path::Path::new(cwd).is_absolute() {
+		if !Path::new(cwd).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let result = tokio::time::timeout(
-			std::time::Duration::from_secs(30),
+		let result = time::timeout(
+			Duration::from_secs(30),
 			self.request("plugin/installed", json!({"cwds":[cwd]})),
 		)
 		.await
@@ -139,34 +142,35 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::integrations::{self, AppServerClient, ClientError, Value};
 	fn server(name: &str, status: Value, error: Value) -> Value {
-		json!({"name":name,"runtimeStatus":status,"authStatus":"notLoggedIn","tools":{},"toolsError":error,"resources":[],"resourceTemplates":[],"serverCapabilities":{"resources":{}},"pluginId":null})
+		integrations::json!({"name":name,"runtimeStatus":status,"authStatus":"notLoggedIn","tools":{},"toolsError":error,"resources":[],"resourceTemplates":[],"serverCapabilities":{"resources":{}},"pluginId":null})
 	}
 	#[tokio::test]
 	async fn discovery_keeps_failure_distinct_from_empty_and_uses_exact_scope() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for (method, response, cursor) in [
 				(
 					"mcpServerStatus/list",
-					json!({"data":[server("broken",json!("authenticationRequired"),json!("Discovery failed"))],"nextCursor":"page2"}),
+					integrations::json!({"data":[server("broken",integrations::json!("authenticationRequired"),integrations::json!("Discovery failed"))],"nextCursor":"page2"}),
 					Value::Null,
 				),
 				(
 					"mcpServerStatus/list",
-					json!({"data":[server("empty",json!("connected"),Value::Null)],"nextCursor":null}),
-					json!("page2"),
+					integrations::json!({"data":[server("empty",integrations::json!("connected"),Value::Null)],"nextCursor":null}),
+					integrations::json!("page2"),
 				),
 				(
 					"plugin/installed",
-					json!({"marketplaces":[],"marketplaceLoadErrors":[{"marketplacePath":"/repo/marketplace.json","message":"Invalid repository configuration"}]}),
+					integrations::json!({"marketplaces":[],"marketplaceLoadErrors":[{"marketplacePath":"/repo/marketplace.json","message":"Invalid repository configuration"}]}),
 					Value::Null,
 				),
 			] {
@@ -180,12 +184,16 @@ mod tests {
 					assert_eq!(request["params"]["cursor"], cursor);
 					assert_eq!(request["params"]["detail"], "full");
 				} else {
-					assert_eq!(request["params"], json!({"cwds":["/repo"]}));
+					assert_eq!(request["params"], integrations::json!({"cwds":["/repo"]}));
 				}
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes(),
+						format!(
+							"{}\n",
+							integrations::json!({"id":request["id"],"result":response})
+						)
+						.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -206,11 +214,11 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn repeated_cursor_is_not_a_successful_partial_inventory() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for _ in 0..2 {
@@ -221,7 +229,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							json!({"id":request["id"],"result":{"data":[],"nextCursor":"repeat"}})
+							integrations::json!({"id":request["id"],"result":{"data":[],"nextCursor":"repeat"}})
 						)
 						.as_bytes(),
 					)

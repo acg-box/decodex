@@ -1,21 +1,25 @@
 //! Isolated native process fixture shared with tool visibility qualification.
-use super::*;
+use std::{env, process::Stdio};
 
-pub(crate) async fn native(home: &Path) -> (AppServerClient, tokio::process::Child) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit installed binary");
+use tokio::process::{Child, Command};
+
+use crate::app_server_client::app_link_settings::*;
+
+pub(crate) async fn native(home: &Path) -> (AppServerClient, Child) {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit installed binary");
 
 	assert!(Path::new(&binary).is_absolute());
 
-	let mut child = tokio::process::Command::new(binary)
+	let mut child = Command::new(binary)
 		.arg("app-server")
 		.env_clear()
 		.env("HOME", home)
 		.env("CODEX_HOME", home)
 		.env("PATH", "/usr/bin:/bin")
 		.current_dir(home)
-		.stdin(std::process::Stdio::piped())
-		.stdout(std::process::Stdio::piped())
-		.stderr(std::process::Stdio::null())
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
 		.kill_on_drop(true)
 		.spawn()
 		.unwrap();

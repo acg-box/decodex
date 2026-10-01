@@ -1,6 +1,10 @@
 //! Read a canonical edit candidate without changing native history or starting work.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
+
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// Complete native input evidence for a later, separately authorized edit.
 #[derive(Clone)]
@@ -35,7 +39,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(60), async {
+		time::timeout(Duration::from_secs(60), async {
 			let guard = self.thread_settings_guard(thread).ok_or(ClientError::InvalidFrame)?;
 			let metadata = self.thread_read(json!({"threadId":thread})).await?;
 

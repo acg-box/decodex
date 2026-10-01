@@ -1,12 +1,14 @@
 //! Read configured thread settings without resuming or dispatching work.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// Native configured settings, not the model used by an individual turn.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeThreadModelSettings {
 	/// Native provider identity. Missing metadata must not inherit a local default.
@@ -43,8 +45,8 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
+		let response = time::timeout(
+			Duration::from_secs(8),
 			self.request_with_history(
 				"thread/read",
 				json!({"threadId":thread,"includeTurns":false}),
@@ -87,41 +89,65 @@ fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSetti
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::thread_model_settings::{self, AppServerClient, Value};
 
 	#[test]
 	fn nullable_settings_are_distinct_from_missing_or_invalid_metadata() {
-		for (model, effort) in
-			[(Value::Null, Value::Null), (json!("future-model"), json!("future-effort"))]
-		{
-			let settings =
-				project(json!({"thread":{"id":"t","model":model,"reasoningEffort":effort}}), "t")
-					.unwrap()
-					.unwrap();
+		for (model, effort) in [
+			(Value::Null, Value::Null),
+			(
+				thread_model_settings::json!("future-model"),
+				thread_model_settings::json!("future-effort"),
+			),
+		] {
+			let settings = thread_model_settings::project(
+				thread_model_settings::json!({"thread":{"id":"t","model":model,"reasoningEffort":effort}}),
+				"t",
+			)
+			.unwrap()
+			.unwrap();
 
 			assert_eq!(
 				serde_json::to_value(settings).unwrap(),
-				json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
+				thread_model_settings::json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
 			);
 		}
 
-		assert!(project(json!({"thread":{"id":"t"}}), "t").unwrap().is_none());
+		assert!(
+			thread_model_settings::project(
+				thread_model_settings::json!({"thread":{"id":"t"}}),
+				"t"
+			)
+			.unwrap()
+			.is_none()
+		);
 
 		for thread in [
-			json!({"id":"other"}),
-			json!({"id":"t","model":42,"reasoningEffort":null}),
-			json!({"id":"t","model":"ok","reasoningEffort":"\n"}),
+			thread_model_settings::json!({"id":"other"}),
+			thread_model_settings::json!({"id":"t","model":42,"reasoningEffort":null}),
+			thread_model_settings::json!({"id":"t","model":"ok","reasoningEffort":"\n"}),
 		] {
-			assert!(project(json!({"thread":thread}), "t").is_err());
+			assert!(
+				thread_model_settings::project(
+					thread_model_settings::json!({"thread":thread}),
+					"t"
+				)
+				.is_err()
+			);
 		}
 	}
 
 	#[test]
 	fn provider_is_native_metadata_and_never_a_local_fallback() {
-		for provider in [json!("server-ollama"), json!("server-bedrock"), Value::Null] {
-			let value = project(
-				json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
+		for provider in [
+			thread_model_settings::json!("server-ollama"),
+			thread_model_settings::json!("server-bedrock"),
+			Value::Null,
+		] {
+			let value = thread_model_settings::project(
+				thread_model_settings::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
 				"t",
 			)
 			.unwrap()
@@ -129,10 +155,15 @@ mod tests {
 
 			assert_eq!(value.model_provider.as_deref(), provider.as_str());
 		}
-		for provider in [json!(""), json!("\n"), json!(42), json!("x".repeat(513))] {
+		for provider in [
+			thread_model_settings::json!(""),
+			thread_model_settings::json!("\n"),
+			thread_model_settings::json!(42),
+			thread_model_settings::json!("x".repeat(513)),
+		] {
 			assert!(
-				project(
-					json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
+				thread_model_settings::project(
+					thread_model_settings::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
 					"t"
 				)
 				.is_err()
@@ -142,20 +173,23 @@ mod tests {
 
 	#[tokio::test]
 	async fn settings_read_uses_only_exact_thread_read() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let guard = client.history_guard(0).unwrap();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 			assert_eq!(request["method"], "thread/read");
-			assert_eq!(request["params"], json!({"threadId":"t","includeTurns":false}));
+			assert_eq!(
+				request["params"],
+				thread_model_settings::json!({"threadId":"t","includeTurns":false})
+			);
 
-			w.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"t","model":"configured","reasoningEffort":null,"turns":[]}}})).as_bytes()).await.unwrap();
+			w.write_all(format!("{}\n",thread_model_settings::json!({"id":request["id"],"result":{"thread":{"id":"t","model":"configured","reasoningEffort":null,"turns":[]}}})).as_bytes()).await.unwrap();
 		});
 		let settings = client.thread_model_settings("t", guard).await.unwrap().unwrap();
 

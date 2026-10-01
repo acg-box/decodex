@@ -1,18 +1,17 @@
 //! Native web-search defaults. Existing loaded threads retain their search configuration.
-use super::{AppServerClient, ClientError, Outbound};
-
-use serde_json::{Value, json};
-
 use std::{path::Path, time::Duration};
 
-use tokio::sync::mpsc;
+use serde_json::{Value, json};
+use tokio::{sync::mpsc::Sender, time};
+
+use crate::app_server_client::{AppServerClient, ClientError, Outbound};
 
 const MODES: [&str; 4] = ["disabled", "cached", "indexed", "live"];
 
 /// A native user-layer selection reviewed in one project's effective configuration.
 #[derive(Clone)]
 pub struct NativeSearchSettings {
-	connection: mpsc::Sender<Outbound>,
+	connection: Sender<Outbound>,
 	cwd: String,
 	file: String,
 	version: String,
@@ -46,7 +45,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(Duration::from_secs(15), async {
+		time::timeout(Duration::from_secs(15), async {
 			let config =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
 			let user = config["layers"]
@@ -111,7 +110,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let receipt = tokio::time::timeout(
+		let receipt = time::timeout(
 			Duration::from_secs(15),
 			self.request(
 				"config/batchWrite",
@@ -164,37 +163,38 @@ fn optional(value: &Value) -> Result<Option<String>, ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::app_server_client::search_preferences::{self};
 	#[test]
 	fn search_write_permits_only_a_reviewed_default_without_reload_or_other_edits() {
-		let valid = json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}]});
+		let valid = search_preferences::json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}]});
 
-		assert!(is_search_mode_write(&valid));
+		assert!(search_preferences::is_search_mode_write(&valid));
 
 		for field in ["expectedVersion", "reloadUserConfig"] {
 			let mut missing = valid.clone();
 
 			missing.as_object_mut().unwrap().remove(field);
 
-			assert!(!is_search_mode_write(&missing));
+			assert!(!search_preferences::is_search_mode_write(&missing));
 		}
 
 		let mut changed = valid.clone();
 
-		changed["reloadUserConfig"] = json!(true);
+		changed["reloadUserConfig"] = search_preferences::json!(true);
 
-		assert!(!is_search_mode_write(&changed));
-
-		let mut changed = valid.clone();
-
-		changed["edits"][0]["keyPath"] = json!("features.standalone_web_search");
-
-		assert!(!is_search_mode_write(&changed));
+		assert!(!search_preferences::is_search_mode_write(&changed));
 
 		let mut changed = valid.clone();
 
-		changed["edits"][0]["value"] = json!("future-mode");
+		changed["edits"][0]["keyPath"] =
+			search_preferences::json!("features.standalone_web_search");
 
-		assert!(!is_search_mode_write(&changed));
+		assert!(!search_preferences::is_search_mode_write(&changed));
+
+		let mut changed = valid.clone();
+
+		changed["edits"][0]["value"] = search_preferences::json!("future-mode");
+
+		assert!(!search_preferences::is_search_mode_write(&changed));
 	}
 }

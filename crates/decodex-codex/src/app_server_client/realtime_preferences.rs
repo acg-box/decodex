@@ -1,16 +1,15 @@
 //! Native voice preferences. Saving affects the next call and never restarts audio.
-use super::{AppServerClient, ClientError, Outbound};
-
-use serde_json::{Value, json};
-
 use std::{path::Path, time::Duration};
 
-use tokio::sync::mpsc;
+use serde_json::{Value, json};
+use tokio::{sync::mpsc::Sender, time};
+
+use crate::app_server_client::{AppServerClient, ClientError, Outbound, realtime_settings};
 
 /// Reviewed native configuration, including the version needed for a conditional write.
 #[derive(Clone)]
 pub struct NativeVoiceSettings {
-	connection: mpsc::Sender<Outbound>,
+	connection: Sender<Outbound>,
 	cwd: String,
 	file: String,
 	version: String,
@@ -52,7 +51,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(Duration::from_secs(15), async {
+		time::timeout(Duration::from_secs(15), async {
 			let config =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
 			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
@@ -106,12 +105,10 @@ impl AppServerClient {
 
 		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,
 			"reloadUserConfig":false,"edits":[{"keyPath":"realtime.voice","value":voice,"mergeStrategy":"replace"}]});
-		let receipt = tokio::time::timeout(
-			Duration::from_secs(15),
-			self.request("config/batchWrite", params),
-		)
-		.await
-		.map_err(|_| ClientError::Io)??;
+		let receipt =
+			time::timeout(Duration::from_secs(15), self.request("config/batchWrite", params))
+				.await
+				.map_err(|_| ClientError::Io)??;
 
 		if !matches!(receipt["status"].as_str(), Some("ok" | "okOverridden"))
 			|| receipt["filePath"] != observed.file
@@ -129,7 +126,7 @@ impl AppServerClient {
 			&& !catalog.is_empty()
 			&& catalog.len() <= 64
 			&& let Ok(voices) = catalog.iter().map(string).collect::<Result<Vec<_>, _>>()
-			&& voices.iter().all(|voice| super::realtime_settings::known_voice(voice))
+			&& voices.iter().all(|voice| realtime_settings::known_voice(voice))
 			&& let Ok(default) = string(&value["voices"]["defaultV1"])
 			&& voices.contains(&default)
 		{

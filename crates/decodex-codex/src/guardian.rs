@@ -9,14 +9,15 @@ mod approval;
 pub use approval::core_denial_event;
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::Value;
 
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+
 /// Maximum retained public review, including its action and explanation.
-pub const MAX_REVIEW_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+pub const MAX_REVIEW_BYTES: usize = MAX_NATIVE_MESSAGE_BYTES;
 
 /// Native review lifecycle, independent of the reviewed command's lifecycle.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReviewStatus {
 	/// No final assessment has been observed.
@@ -130,13 +131,14 @@ pub fn decode_review(method: &str, params: &Value) -> Option<GuardianReview> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json;
+
+	use crate::guardian::{self, MAX_REVIEW_BYTES, Value};
 	const COMPLETED: &str = "item/autoApprovalReview/completed";
 	const STARTED: &str = "item/autoApprovalReview/started";
 
 	fn denial() -> Value {
-		json!({"threadId":"thread", "turnId":"turn", "reviewId":"review",
+		serde_json::json!({"threadId":"thread", "turnId":"turn", "reviewId":"review",
 			"targetItemId":null,"startedAtMs":200,"completedAtMs":201,
 			"decisionSource":"agent",
 			"review":{"status":"denied","riskLevel":"high",
@@ -150,17 +152,19 @@ mod tests {
 		let command = "界".repeat(100_000) + " exact-required-suffix";
 		let mut event = denial();
 
-		event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
-		event["review"]["rationale"] = json!("Complete findings. ".repeat(6_000));
+		event["action"] =
+			serde_json::json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+		event["review"]["rationale"] = serde_json::json!("Complete findings. ".repeat(6_000));
 
 		assert!(event.to_string().len() > 256 * 1_024);
 		assert!(event.to_string().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
 
-		let observed = decode_review(COMPLETED, &event).expect("complete native review");
+		let observed = guardian::decode_review(COMPLETED, &event).expect("complete native review");
 
 		assert_eq!(observed.event, event);
 
-		let converted = core_denial_event(&observed).expect("complete supported command action");
+		let converted =
+			guardian::core_denial_event(&observed).expect("complete supported command action");
 
 		assert_eq!(converted["action"]["command"], command);
 	}
@@ -168,19 +172,19 @@ mod tests {
 	#[test]
 	fn retains_network_without_target_and_distinct_reviews_for_one_item() {
 		let mut event = denial();
-		let first = decode_review(COMPLETED, &event).unwrap();
+		let first = guardian::decode_review(COMPLETED, &event).unwrap();
 
 		assert_eq!(first.target_item_id, None);
 		assert_eq!(first.event, event);
 
-		event["targetItemId"] = json!("command");
-		event["reviewId"] = json!("execve-1");
+		event["targetItemId"] = serde_json::json!("command");
+		event["reviewId"] = serde_json::json!("execve-1");
 
-		let first = decode_review(COMPLETED, &event).unwrap();
+		let first = guardian::decode_review(COMPLETED, &event).unwrap();
 
-		event["reviewId"] = json!("execve-2");
+		event["reviewId"] = serde_json::json!("execve-2");
 
-		let second = decode_review(COMPLETED, &event).unwrap();
+		let second = guardian::decode_review(COMPLETED, &event).unwrap();
 
 		assert_eq!(first.target_item_id, second.target_item_id);
 		assert_ne!(first.review_id, second.review_id);
@@ -191,23 +195,25 @@ mod tests {
 		for status in ["approved", "denied", "timedOut", "aborted"] {
 			let mut event = denial();
 
-			event["review"]["status"] = json!(status);
-			event["completedAtMs"] = json!(199);
+			event["review"]["status"] = serde_json::json!(status);
+			event["completedAtMs"] = serde_json::json!(199);
 
-			assert!(decode_review(COMPLETED, &event).is_some());
-			assert!(decode_review(STARTED, &event).is_none());
+			assert!(guardian::decode_review(COMPLETED, &event).is_some());
+			assert!(guardian::decode_review(STARTED, &event).is_none());
 		}
 
 		let mut event = denial();
 
-		event["review"]["status"] = json!("inProgress");
+		event["review"]["status"] = serde_json::json!("inProgress");
 
 		event.as_object_mut().unwrap().remove("completedAtMs");
 		event.as_object_mut().unwrap().remove("decisionSource");
 
-		assert!(decode_review(STARTED, &event).is_some());
-		assert!(decode_review(COMPLETED, &event).is_none());
-		assert!(decode_review("autoApprovalReview/strictReviewRequired", &event).is_none());
+		assert!(guardian::decode_review(STARTED, &event).is_some());
+		assert!(guardian::decode_review(COMPLETED, &event).is_none());
+		assert!(
+			guardian::decode_review("autoApprovalReview/strictReviewRequired", &event).is_none()
+		);
 	}
 
 	#[test]
@@ -226,40 +232,41 @@ mod tests {
 
 			event.as_object_mut().unwrap().remove(field);
 
-			assert!(decode_review(COMPLETED, &event).is_none(), "{field}");
+			assert!(guardian::decode_review(COMPLETED, &event).is_none(), "{field}");
 		}
 		for (pointer, value) in [
-			("/threadId", json!(" ")),
-			("/turnId", json!("x".repeat(513))),
-			("/startedAtMs", json!(-1)),
-			("/completedAtMs", json!(-1)),
-			("/review/status", json!("unknown")),
-			("/review/riskLevel", json!("safe")),
-			("/review/userAuthorization", json!("approved")),
-			("/action", json!([])),
-			("/action/type", json!(null)),
+			("/threadId", serde_json::json!(" ")),
+			("/turnId", serde_json::json!("x".repeat(513))),
+			("/startedAtMs", serde_json::json!(-1)),
+			("/completedAtMs", serde_json::json!(-1)),
+			("/review/status", serde_json::json!("unknown")),
+			("/review/riskLevel", serde_json::json!("safe")),
+			("/review/userAuthorization", serde_json::json!("approved")),
+			("/action", serde_json::json!([])),
+			("/action/type", serde_json::json!(null)),
 		] {
 			let mut event = denial();
 
 			*event.pointer_mut(pointer).unwrap() = value;
 
-			assert!(decode_review(COMPLETED, &event).is_none(), "{pointer}");
+			assert!(guardian::decode_review(COMPLETED, &event).is_none(), "{pointer}");
 		}
 
 		let mut event = denial();
 
-		event["future"] = json!("x".repeat(MAX_REVIEW_BYTES));
+		event["future"] = serde_json::json!("x".repeat(MAX_REVIEW_BYTES));
 
-		assert!(decode_review(COMPLETED, &event).is_none());
+		assert!(guardian::decode_review(COMPLETED, &event).is_none());
 	}
 
 	#[test]
 	fn preserves_unknown_action_and_fields_without_authorizing_them() {
 		let mut event = denial();
 
-		event["action"] = json!({"type":"futureAction","payload":{"camelCase":"exact"}});
-		event["futureAttribution"] = json!({"plugin":"native"});
+		event["action"] =
+			serde_json::json!({"type":"futureAction","payload":{"camelCase":"exact"}});
+		event["futureAttribution"] = serde_json::json!({"plugin":"native"});
 
-		assert_eq!(decode_review(COMPLETED, &event).unwrap().event, event);
+		assert_eq!(guardian::decode_review(COMPLETED, &event).unwrap().event, event);
 	}
 }

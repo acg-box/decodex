@@ -1,10 +1,11 @@
 //! Read one exact turn through the native history pages without hydrating the whole thread.
 
-use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+use std::{collections::HashSet, time::Duration};
 
 use serde_json::{Value, json};
+use tokio::time;
 
-use std::collections::HashSet;
+use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES, transcript};
 
 const MAX_PAGES: usize = 128;
 const PAGE_SIZE: usize = 100;
@@ -27,7 +28,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(20), async {
+		time::timeout(Duration::from_secs(20), async {
 			let metadata = self.thread_read(json!({"threadId":thread})).await?;
 
 			validate_thread(&metadata, thread)?;
@@ -86,12 +87,9 @@ impl AppServerClient {
 	/// Missing turns remain absent. Incomplete or mismatched pages return an error,
 	/// never partial evidence represented as complete history.
 	pub async fn thread_read_turn(&self, thread: &str, turn: &str) -> Result<Value, ClientError> {
-		tokio::time::timeout(
-			std::time::Duration::from_secs(60),
-			self.read_turn_history(thread, turn),
-		)
-		.await
-		.map_err(|_| ClientError::Io)?
+		time::timeout(Duration::from_secs(60), self.read_turn_history(thread, turn))
+			.await
+			.map_err(|_| ClientError::Io)?
 	}
 
 	/// Read every item of one exact turn in native order, including earlier pages.
@@ -104,7 +102,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(20), async {
+		time::timeout(Duration::from_secs(20), async {
 			let mut budget = MAX_FRAME_BYTES;
 
 			self.read_turn_items(thread, turn, &mut budget).await
@@ -120,18 +118,15 @@ impl AppServerClient {
 		thread: &str,
 		baseline: Option<&str>,
 	) -> Result<Vec<Value>, ClientError> {
-		tokio::time::timeout(
-			std::time::Duration::from_secs(60),
-			self.turn_headers(thread, baseline, false),
-		)
-		.await
-		.map_err(|_| ClientError::Io)?
+		time::timeout(Duration::from_secs(60), self.turn_headers(thread, baseline, false))
+			.await
+			.map_err(|_| ClientError::Io)?
 	}
 
 	/// Export complete persisted conversation text in chronological order. This does not
 	/// resume the thread. Incomplete history is an error, never a partial transcript.
 	pub async fn thread_markdown_transcript(&self, thread: &str) -> Result<String, ClientError> {
-		tokio::time::timeout(std::time::Duration::from_secs(60), async {
+		time::timeout(Duration::from_secs(60), async {
 			let mut turns = self.turn_headers(thread, None, false).await?;
 			let mut budget = MAX_FRAME_BYTES;
 
@@ -147,7 +142,7 @@ impl AppServerClient {
 				}
 			}
 
-			super::transcript::render(&turns)
+			transcript::render(&turns)
 		})
 		.await
 		.map_err(|_| ClientError::Io)?
@@ -155,12 +150,9 @@ impl AppServerClient {
 
 	/// Read only the latest turn identity for a new voice call's recovery baseline.
 	pub async fn thread_latest_turn_id(&self, thread: &str) -> Result<Option<String>, ClientError> {
-		let turns = tokio::time::timeout(
-			std::time::Duration::from_secs(60),
-			self.turn_headers(thread, None, true),
-		)
-		.await
-		.map_err(|_| ClientError::Io)??;
+		let turns = time::timeout(Duration::from_secs(60), self.turn_headers(thread, None, true))
+			.await
+			.map_err(|_| ClientError::Io)??;
 
 		Ok(turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned))
 	}
@@ -425,35 +417,37 @@ fn charge(page: &Value, budget: &mut usize) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::app_server_client::history::{
+		self, AppServerClient, ClientError, MAX_PAGES, Pages, Value,
+	};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	fn metadata() -> Value {
-		json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
+		history::json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
 	}
 
 	fn turn_page() -> Value {
-		json!({"data":[{"id":"target","status":"completed","items":[],"itemsView":"notLoaded"}],"nextCursor":null})
+		history::json!({"data":[{"id":"target","status":"completed","items":[],"itemsView":"notLoaded"}],"nextCursor":null})
 	}
 
 	#[test]
 	fn malformed_and_unbounded_pages_never_look_complete() {
 		let mut pages = Pages::default();
 
-		assert!(pages.advance(&json!({})).is_err());
-		assert!(pages.advance(&json!({"nextCursor":42})).is_err());
+		assert!(pages.advance(&history::json!({})).is_err());
+		assert!(pages.advance(&history::json!({"nextCursor":42})).is_err());
 
 		for index in 0..MAX_PAGES - 1 {
-			assert!(pages.advance(&json!({"nextCursor":index.to_string()})).unwrap());
+			assert!(pages.advance(&history::json!({"nextCursor":index.to_string()})).unwrap());
 		}
 
 		assert!(matches!(
-			pages.advance(&json!({"nextCursor":"last"})),
+			pages.advance(&history::json!({"nextCursor":"last"})),
 			Err(ClientError::CapacityExceeded)
 		));
 		assert!(matches!(
-			charge(&json!({"data":["large"]}), &mut 1),
+			history::charge(&history::json!({"data":["large"]}), &mut 1),
 			Err(ClientError::CapacityExceeded)
 		));
 	}
@@ -482,7 +476,8 @@ mod tests {
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes(),
+						format!("{}\n", history::json!({"id":request["id"],"result":response}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -497,7 +492,7 @@ mod tests {
 			Some(Some("__export_test__")) =>
 				client.thread_markdown_transcript("thread/opaque").await.map(Value::String),
 			Some(Some("__latest_test__")) =>
-				client.thread_latest_turn_id("thread/opaque").await.map(|id| json!(id)),
+				client.thread_latest_turn_id("thread/opaque").await.map(|id| history::json!(id)),
 			None => client.thread_read_turn("thread/opaque", "target").await,
 			Some(baseline) =>
 				client.thread_turns_since("thread/opaque", baseline).await.map(Value::Array),
@@ -516,11 +511,11 @@ mod tests {
 	async fn markdown_export_hydrates_every_turn_and_item_page_in_order() {
 		let (result, requests) = run(vec![
 			("thread/read", metadata()),
-			("thread/turns/list", json!({"data":[{"id":"new","itemsView":"notLoaded"}],"nextCursor":"older"})),
-			("thread/turns/list", json!({"data":[{"id":"old","itemsView":"notLoaded"}],"nextCursor":null})),
-			("thread/items/list", json!({"data":[{"turnId":"old","item":{"id":"a","type":"userMessage","content":[{"type":"text","text":"First question"}]}}],"nextCursor":"next"})),
-			("thread/items/list", json!({"data":[{"turnId":"old","item":{"id":"b","type":"agentMessage","text":"First answer"}}],"nextCursor":null})),
-			("thread/items/list", json!({"data":[{"turnId":"new","item":{"id":"c","type":"agentMessage","text":"Last answer"}}],"nextCursor":null})),
+			("thread/turns/list", history::json!({"data":[{"id":"new","itemsView":"notLoaded"}],"nextCursor":"older"})),
+			("thread/turns/list", history::json!({"data":[{"id":"old","itemsView":"notLoaded"}],"nextCursor":null})),
+			("thread/items/list", history::json!({"data":[{"turnId":"old","item":{"id":"a","type":"userMessage","content":[{"type":"text","text":"First question"}]}}],"nextCursor":"next"})),
+			("thread/items/list", history::json!({"data":[{"turnId":"old","item":{"id":"b","type":"agentMessage","text":"First answer"}}],"nextCursor":null})),
+			("thread/items/list", history::json!({"data":[{"turnId":"new","item":{"id":"c","type":"agentMessage","text":"Last answer"}}],"nextCursor":null})),
 		], Some(Some("__export_test__"))).await;
 		let result = result.unwrap();
 		let text = result.as_str().unwrap();
@@ -536,8 +531,9 @@ mod tests {
 
 	#[tokio::test]
 	async fn markdown_export_preserves_legacy_full_history() {
-		let header = json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[]}});
-		let history = json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[{"id":"one","items":[{"id":"a","type":"agentMessage","text":"Legacy **Markdown**"}]}]}});
+		let header =
+			history::json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[]}});
+		let history = history::json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[{"id":"one","items":[{"id":"a","type":"agentMessage","text":"Legacy **Markdown**"}]}]}});
 		let (result, requests) = run(
 			vec![("thread/read", header), ("thread/read", history)],
 			Some(Some("__export_test__")),
@@ -550,14 +546,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn task_page_preserves_native_items_and_uses_only_read_requests() {
-		let turns = json!([{"id":"recent","itemsView":"full","items":[
+		let turns = history::json!([{"id":"recent","itemsView":"full","items":[
 			{"id":"message","type":"agentMessage","text":"answer","phase":"final_answer"},
 			{"id":"output","type":"functionCallOutput","output":"evidence"}
 		]}]);
 		let (result, requests) = run(
 			vec![
 				("thread/read", metadata()),
-				("thread/turns/list", json!({"data":turns,"nextCursor":"older"})),
+				("thread/turns/list", history::json!({"data":turns,"nextCursor":"older"})),
 			],
 			Some(Some("__page_test__")),
 		)
@@ -569,22 +565,22 @@ mod tests {
 		assert_eq!(requests.len(), 2);
 		assert_eq!(
 			requests[1]["params"],
-			json!({"threadId":"thread/opaque",
+			history::json!({"threadId":"thread/opaque",
 			"cursor":"before","limit":2,"sortDirection":"desc","itemsView":"full"})
 		);
 	}
 
 	#[tokio::test]
 	async fn task_page_rejects_incomplete_or_ambiguous_native_pages() {
-		let full = json!({"id":"one","items":[],"itemsView":"full"});
+		let full = history::json!({"id":"one","items":[],"itemsView":"full"});
 
 		for page in [
-			json!({"data":[full.clone(),full.clone()],"nextCursor":null}),
-			json!({"data":[{"id":"one","items":[],"itemsView":"notLoaded"}],"nextCursor":null}),
-			json!({"data":[{"id":"one"}],"nextCursor":null}),
-			json!({"data":[full.clone()],"nextCursor":"before"}),
-			json!({"data":[full.clone()]}),
-			json!({"data":[full,{"id":"two","items":[]},{"id":"three","items":[]}],"nextCursor":null}),
+			history::json!({"data":[full.clone(),full.clone()],"nextCursor":null}),
+			history::json!({"data":[{"id":"one","items":[],"itemsView":"notLoaded"}],"nextCursor":null}),
+			history::json!({"data":[{"id":"one"}],"nextCursor":null}),
+			history::json!({"data":[full.clone()],"nextCursor":"before"}),
+			history::json!({"data":[full.clone()]}),
+			history::json!({"data":[full,{"id":"two","items":[]},{"id":"three","items":[]}],"nextCursor":null}),
 		] {
 			let (result, _) = run(
 				vec![("thread/read", metadata()), ("thread/turns/list", page)],
@@ -599,7 +595,7 @@ mod tests {
 	#[tokio::test]
 	async fn task_page_rejects_wrong_thread_before_reading_turns() {
 		let (result, requests) = run(
-			vec![("thread/read", json!({"thread":{"id":"another"}}))],
+			vec![("thread/read", history::json!({"thread":{"id":"another"}}))],
 			Some(Some("__page_test__")),
 		)
 		.await;
@@ -610,20 +606,20 @@ mod tests {
 
 	#[tokio::test]
 	async fn paginated_history_preserves_mixed_image_references_and_detail() {
-		let content = json!([
+		let content = history::json!([
 			{"type":"text","text":"Compare these images"},
 			{"type":"image","url":"data:image/png;base64,aW5saW5l","detail":"low"},
 			{"type":"image","fileId":"file-opaque/second","detail":"original"},
 			{"type":"image","url":"https://example.test/third.png","detail":"high"}
 		]);
-		let output = json!({"id":"later-input","type":"userMessage","content":[
+		let output = history::json!({"id":"later-input","type":"userMessage","content":[
 			{"type":"image","fileId":"file-later-input","detail":"original"}
 		]});
 		let (result, requests) = read(vec![
             ("thread/read", metadata()),
             ("thread/turns/list", turn_page()),
-            ("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"input-images","type":"userMessage","content":content}}],"nextCursor":"next-images"})),
-            ("thread/items/list", json!({"data":[{"turnId":"target","item":output}],"nextCursor":null})),
+            ("thread/items/list", history::json!({"data":[{"turnId":"target","item":{"id":"input-images","type":"userMessage","content":content}}],"nextCursor":"next-images"})),
+            ("thread/items/list", history::json!({"data":[{"turnId":"target","item":output}],"nextCursor":null})),
         ]).await;
 		let history = result.unwrap();
 		let items = history["thread"]["turns"][0]["items"].as_array().unwrap();
@@ -638,10 +634,10 @@ mod tests {
 	async fn exact_turn_and_all_item_pages_preserve_order_and_metadata() {
 		let (result, requests) = read(vec![
 			("thread/read", metadata()),
-			("thread/turns/list", json!({"data":[{"id":"other"}],"nextCursor":"turn cursor"})),
+			("thread/turns/list", history::json!({"data":[{"id":"other"}],"nextCursor":"turn cursor"})),
 			("thread/turns/list", turn_page()),
-			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"one","type":"agentMessage","text":"progress","phase":"commentary"}}],"nextCursor":"item cursor"})),
-			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"two","type":"agentMessage","text":"done","phase":"final_answer","delivery":"async"}}],"nextCursor":null})),
+			("thread/items/list", history::json!({"data":[{"turnId":"target","item":{"id":"one","type":"agentMessage","text":"progress","phase":"commentary"}}],"nextCursor":"item cursor"})),
+			("thread/items/list", history::json!({"data":[{"turnId":"target","item":{"id":"two","type":"agentMessage","text":"done","phase":"final_answer","delivery":"async"}}],"nextCursor":null})),
 		]).await;
 		let history = result.unwrap();
 
@@ -659,16 +655,16 @@ mod tests {
 	async fn missing_turn_is_not_replaced_with_a_neighbor() {
 		let (result, _) = read(vec![
 			("thread/read", metadata()),
-			("thread/turns/list", json!({"data":[{"id":"other"}],"nextCursor":null})),
+			("thread/turns/list", history::json!({"data":[{"id":"other"}],"nextCursor":null})),
 		])
 		.await;
 
-		assert_eq!(result.unwrap()["thread"]["turns"], json!([]));
+		assert_eq!(result.unwrap()["thread"]["turns"], history::json!([]));
 	}
 
 	#[tokio::test]
 	async fn repeated_cursor_and_cross_turn_items_are_rejected() {
-		let page = json!({"data":[],"nextCursor":"same"});
+		let page = history::json!({"data":[],"nextCursor":"same"});
 		let (result, _) = read(vec![
 			("thread/read", metadata()),
 			("thread/turns/list", page.clone()),
@@ -683,7 +679,7 @@ mod tests {
 			("thread/turns/list", turn_page()),
 			(
 				"thread/items/list",
-				json!({"data":[{"turnId":"other","item":{"id":"message"}}],"nextCursor":null}),
+				history::json!({"data":[{"turnId":"other","item":{"id":"message"}}],"nextCursor":null}),
 			),
 		])
 		.await;
@@ -693,12 +689,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn legacy_migration_between_reads_uses_pages_instead_of_empty_history() {
-		let legacy = json!({"thread":{"id":"thread/opaque","historyMode":"legacy"}});
+		let legacy = history::json!({"thread":{"id":"thread/opaque","historyMode":"legacy"}});
 		let (result, requests) = read(vec![
 			("thread/read", legacy.clone()),
 			("thread/read", metadata()),
 			("thread/turns/list", turn_page()),
-			("thread/items/list", json!({"data":[{"turnId":"target","item":{"id":"answer","type":"agentMessage","text":"preserved"}}],"nextCursor":null})),
+			("thread/items/list", history::json!({"data":[{"turnId":"target","item":{"id":"answer","type":"agentMessage","text":"preserved"}}],"nextCursor":null})),
 		]).await;
 
 		assert_eq!(result.unwrap()["thread"]["turns"][0]["items"][0]["text"], "preserved");
@@ -717,7 +713,7 @@ mod tests {
 		assert_eq!(result.unwrap()[0]["id"], "target");
 
 		for mode in ["future-format", "paginated"] {
-			let response = json!({"thread":{"id":"other","historyMode":mode,"turns":[]}});
+			let response = history::json!({"thread":{"id":"other","historyMode":mode,"turns":[]}});
 			let (result, _) =
 				read(vec![("thread/read", legacy.clone()), ("thread/read", response)]).await;
 
@@ -728,7 +724,7 @@ mod tests {
 			("thread/read", legacy),
 			(
 				"thread/read",
-				json!({"thread":{"id":"thread/opaque","historyMode":"future-format","turns":[]}}),
+				history::json!({"thread":{"id":"thread/opaque","historyMode":"future-format","turns":[]}}),
 			),
 		])
 		.await;
@@ -738,14 +734,15 @@ mod tests {
 
 	#[tokio::test]
 	async fn legacy_read_preserves_history_and_checks_thread_identity() {
-		let history = json!({"thread":{"id":"thread/opaque","turns":[{"id":"target"}]}});
+		let history = history::json!({"thread":{"id":"thread/opaque","turns":[{"id":"target"}]}});
 		let (result, requests) =
 			read(vec![("thread/read", history.clone()), ("thread/read", history.clone())]).await;
 
 		assert_eq!(result.unwrap(), history);
 		assert_eq!(requests[1]["params"]["includeTurns"], true);
 
-		let (result, _) = read(vec![("thread/read", json!({"thread":{"id":"other"}}))]).await;
+		let (result, _) =
+			read(vec![("thread/read", history::json!({"thread":{"id":"other"}}))]).await;
 
 		assert!(matches!(result, Err(ClientError::InvalidFrame)));
 	}
@@ -757,11 +754,11 @@ mod tests {
 				("thread/read", metadata()),
 				(
 					"thread/turns/list",
-					json!({"data":[{"id":"newest","status":"completed"}],"nextCursor":"older"}),
+					history::json!({"data":[{"id":"newest","status":"completed"}],"nextCursor":"older"}),
 				),
 				(
 					"thread/turns/list",
-					json!({"data":[{"id":"middle"},{"id":"baseline"},{"id":"old"}],"nextCursor":null}),
+					history::json!({"data":[{"id":"middle"},{"id":"baseline"},{"id":"old"}],"nextCursor":null}),
 				),
 			],
 			Some(Some("baseline")),
@@ -777,11 +774,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn recovery_rejects_missing_baseline_and_duplicate_turns() {
-		for entries in [json!([{"id":"new"}]), json!([{"id":"new"},{"id":"new"}])] {
+		for entries in [history::json!([{"id":"new"}]), history::json!([{"id":"new"},{"id":"new"}])]
+		{
 			let (result, _) = run(
 				vec![
 					("thread/read", metadata()),
-					("thread/turns/list", json!({"data":entries,"nextCursor":null})),
+					("thread/turns/list", history::json!({"data":entries,"nextCursor":null})),
 				],
 				Some(Some("missing")),
 			)
@@ -798,35 +796,35 @@ mod tests {
 				("thread/read", metadata()),
 				(
 					"thread/turns/list",
-					json!({"data":[{"id":"two"},{"id":"one"}],"nextCursor":null}),
+					history::json!({"data":[{"id":"two"},{"id":"one"}],"nextCursor":null}),
 				),
 			],
 			Some(None),
 		)
 		.await;
 
-		assert_eq!(result.unwrap(), json!([{"id":"one"},{"id":"two"}]));
+		assert_eq!(result.unwrap(), history::json!([{"id":"one"},{"id":"two"}]));
 
-		let legacy =
-			json!({"thread":{"id":"thread/opaque","turns":[{"id":"baseline"},{"id":"new"}]}});
+		let legacy = history::json!({"thread":{"id":"thread/opaque","turns":[{"id":"baseline"},{"id":"new"}]}});
 		let (result, _) = run(
 			vec![("thread/read", legacy.clone()), ("thread/read", legacy)],
 			Some(Some("baseline")),
 		)
 		.await;
 
-		assert_eq!(result.unwrap(), json!([{"id":"new"}]));
+		assert_eq!(result.unwrap(), history::json!([{"id":"new"}]));
 	}
 
 	#[tokio::test]
 	async fn voice_baseline_reads_only_latest_header_and_accepts_empty_thread() {
-		for (data, expected) in
-			[(json!([{"id":"latest"}]), json!("latest")), (json!([]), Value::Null)]
-		{
+		for (data, expected) in [
+			(history::json!([{"id":"latest"}]), history::json!("latest")),
+			(history::json!([]), Value::Null),
+		] {
 			let (result, requests) = run(
 				vec![
 					("thread/read", metadata()),
-					("thread/turns/list", json!({"data":data,"nextCursor":null})),
+					("thread/turns/list", history::json!({"data":data,"nextCursor":null})),
 				],
 				Some(Some("__latest_test__")),
 			)

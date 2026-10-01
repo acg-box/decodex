@@ -1,12 +1,14 @@
 //! Native goal observations, independent of application-owned coordination goals.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
 
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
+use decodex_core::AccountOperationId;
+
 /// Native scheduler state; a token limit is distinct from account usage limits.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NativeThreadGoalStatus {
 	/// The native goal can continue work.
@@ -24,7 +26,7 @@ pub enum NativeThreadGoalStatus {
 }
 
 /// One native goal snapshot; counters belong to this goal, not all thread history.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeThreadGoal {
 	/// Exact native thread identity.
@@ -88,7 +90,7 @@ impl AppServerClient {
 		}
 
 		let home = self.native_home.get().ok_or(ClientError::InvalidFrame)?;
-		let id = decodex_core::AccountOperationId::generate().map_err(|_| ClientError::Io)?;
+		let id = AccountOperationId::generate().map_err(|_| ClientError::Io)?;
 		let directory = home.join("attachments").join(id.as_str());
 		let path = directory.join("goal-objective.md");
 		let path = path.to_str().ok_or(ClientError::InvalidFrame)?;
@@ -168,7 +170,7 @@ pub fn is_native_goal_update(params: &Value) -> bool {
 
 /// Only the fixed native goal attachment layout can cross the retained bridge.
 pub fn is_goal_attachment_write(method: &str, params: &Value) -> bool {
-	let Some(path) = params["path"].as_str().map(std::path::Path::new) else {
+	let Some(path) = params["path"].as_str().map(Path::new) else {
 		return false;
 	};
 
@@ -192,7 +194,7 @@ pub fn is_goal_attachment_write(method: &str, params: &Value) -> bool {
 	let valid_directory = directory
 		.file_name()
 		.and_then(|s| s.to_str())
-		.is_some_and(|id| decodex_core::AccountOperationId::new(id).is_ok())
+		.is_some_and(|id| AccountOperationId::new(id).is_ok())
 		&& directory.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
 			== Some("attachments");
 
@@ -230,51 +232,53 @@ fn project_goal(response: &Value, thread: &str) -> Result<Option<NativeThreadGoa
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use serde_json::Value;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::goals::{self, AppServerClient};
 	#[tokio::test]
 	async fn native_goal_reads_distinguish_absence_limits_and_malformed_receipts() {
-		let base = json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});
-		let mut cases = vec![(json!({"goal":null}), true), (json!({}), false)];
+		let base = goals::json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});
+		let mut cases = vec![(goals::json!({"goal":null}), true), (goals::json!({}), false)];
 
 		for status in ["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"] {
 			let mut goal = base.clone();
 
-			goal["status"] = json!(status);
+			goal["status"] = goals::json!(status);
 
-			cases.push((json!({"goal":goal}), true));
+			cases.push((goals::json!({"goal":goal}), true));
 		}
 		for (key, value) in [
-			("threadId", json!("other")),
-			("tokensUsed", json!(-1)),
-			("timeUsedSeconds", json!(-1)),
-			("tokenBudget", json!(0)),
-			("status", json!("future")),
+			("threadId", goals::json!("other")),
+			("tokensUsed", goals::json!(-1)),
+			("timeUsedSeconds", goals::json!(-1)),
+			("tokenBudget", goals::json!(0)),
+			("status", goals::json!("future")),
 		] {
 			let mut goal = base.clone();
 
 			goal[key] = value;
 
-			cases.push((json!({"goal":goal}), false));
+			cases.push((goals::json!({"goal":goal}), false));
 		}
 		for (result, valid) in cases {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let request: Value = serde_json::from_str(
 					&BufReader::new(reader).lines().next_line().await.unwrap().unwrap(),
 				)
 				.unwrap();
 
 				assert_eq!(request["method"], "thread/goal/get");
-				assert_eq!(request["params"], json!({"threadId":"thread"}));
+				assert_eq!(request["params"], goals::json!({"threadId":"thread"}));
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						format!("{}\n", goals::json!({"id":request["id"],"result":result}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -288,21 +292,29 @@ mod tests {
 }
 #[cfg(test)]
 mod edit_tests {
-	use super::*;
+	use std::fs;
+
+	use crate::app_server_client::{
+		app_link_settings::tests,
+		goals::{self, ClientError, NativeGoalUpdate, NativeThreadGoalStatus},
+	};
+
 	#[tokio::test]
 	#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated paused native goals"]
 	async fn installed_native_goal_edits_preserve_pause_and_distinguish_budget_reset() {
 		let home = tempfile::tempdir().unwrap();
 
-		std::fs::write(
+		fs::write(
 			home.path().join("config.toml"),
 			"model=\"gpt-5.6-sol\"\n[goals]\nmax_goal_token_budget=100\n[features]\ngoals=true\n",
 		)
 		.unwrap();
 
-		let (client, mut child) = super::super::app_link_settings::tests::native(home.path()).await;
+		let (client, mut child) = tests::native(home.path()).await;
 		let started = client
-			.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+			.thread_start(
+				goals::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+			)
 			.await
 			.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap();
@@ -376,7 +388,7 @@ mod edit_tests {
 			std::path::Path::new(file)
 				.starts_with(home.path().canonicalize().unwrap().join("attachments"))
 		);
-		assert_eq!(std::fs::read_to_string(file).unwrap(), long_text);
+		assert_eq!(fs::read_to_string(file).unwrap(), long_text);
 
 		let edited = client
 			.update_thread_goal(

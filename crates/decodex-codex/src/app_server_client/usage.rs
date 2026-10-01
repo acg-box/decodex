@@ -1,10 +1,11 @@
 //! Native backend estimates, distinct from live token counters and account quotas.
-use super::{AppServerClient, ClientError};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::app_server_client::{AppServerClient, ClientError};
+
 /// Provider estimates for one exact thread; integer micros preserve precision.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadUsageEstimate {
 	/// Exact native thread identity.
@@ -18,7 +19,7 @@ pub struct ThreadUsageEstimate {
 }
 
 /// A model, effort and speed group, retaining missing counts as unknown.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadUsageEstimateGroup {
 	/// Provider model identifier, when reported.
@@ -105,16 +106,16 @@ fn decode(raw: &Value, thread: &str) -> Result<ThreadUsageEstimate, ClientError>
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::usage::{self, AppServerClient, ClientError, Value};
 
 	#[test]
 	fn thread_usage_rejects_negative_and_out_of_range_estimates() {
-		for value in [json!(-1), json!(u64::MAX)] {
+		for value in [usage::json!(-1), usage::json!(u64::MAX)] {
 			assert!(
-				decode(
-					&json!({"threadId":"thread","estimatedUsageCreditsMicros":value,"groups":[]}),
+				usage::decode(
+					&usage::json!({"threadId":"thread","estimatedUsageCreditsMicros":value,"groups":[]}),
 					"thread"
 				)
 				.is_err()
@@ -125,20 +126,20 @@ mod tests {
 	#[tokio::test]
 	async fn native_thread_usage_retains_precision_unknowns_and_exact_identity() {
 		for (returned, accepted) in [("thread", true), ("another-thread", false)] {
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (read, write) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (read, write) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(read, write);
 			let task = tokio::spawn(async move {
-				let (read, mut write) = tokio::io::split(remote);
+				let (read, mut write) = io::split(remote);
 				let request: Value = serde_json::from_str(
 					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
 				)
 				.unwrap();
 
 				assert_eq!(request["method"], "account/usage/read");
-				assert_eq!(request["params"], json!({"threadId":"thread"}));
+				assert_eq!(request["params"], usage::json!({"threadId":"thread"}));
 
-				write.write_all(format!("{}\n",json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
+				write.write_all(format!("{}\n",usage::json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
 			});
 			let result = client.thread_usage_estimate("thread").await;
 
@@ -159,14 +160,16 @@ mod tests {
 
 	#[tokio::test]
 	async fn native_thread_usage_keeps_missing_null_and_failure_distinct() {
-		for (result, absent) in
-			[(json!({}), true), (json!({"threadUsage":null}), true), (json!([]), false)]
-		{
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (read, write) = tokio::io::split(local);
+		for (result, absent) in [
+			(usage::json!({}), true),
+			(usage::json!({"threadUsage":null}), true),
+			(usage::json!([]), false),
+		] {
+			let (local, remote) = io::duplex(4_096);
+			let (read, write) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(read, write);
 			let task = tokio::spawn(async move {
-				let (read, mut write) = tokio::io::split(remote);
+				let (read, mut write) = io::split(remote);
 				let request: Value = serde_json::from_str(
 					&BufReader::new(read).lines().next_line().await.unwrap().unwrap(),
 				)
@@ -174,7 +177,8 @@ mod tests {
 
 				write
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						format!("{}\n", usage::json!({"id":request["id"],"result":result}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();

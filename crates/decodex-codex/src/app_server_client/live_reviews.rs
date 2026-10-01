@@ -1,10 +1,14 @@
 //! Connection-local continuation evidence. Persisted errors cannot populate this cache.
-use super::{ClientError, ServerEvent};
-use serde_json::Value;
 use std::{
 	collections::HashMap,
-	sync::{Arc, Mutex},
+	process,
+	sync::{Arc, Mutex, atomic::Ordering},
+	time::{SystemTime, UNIX_EPOCH},
 };
+
+use serde_json::Value;
+
+use crate::app_server_client::{ClientError, ServerEvent};
 
 #[derive(Clone, Default)]
 pub(super) struct LiveReviews(Arc<Mutex<State>>);
@@ -101,14 +105,11 @@ impl Default for State {
 	fn default() -> Self {
 		static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-		let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-		let time = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap_or_default()
-			.as_nanos();
+		let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+		let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
 
 		Self {
-			identity: format!("{}:{time}:{sequence}", std::process::id()),
+			identity: format!("{}:{time}:{sequence}", process::id()),
 			next: 0,
 			entries: HashMap::new(),
 		}
@@ -117,23 +118,23 @@ impl Default for State {
 
 #[cfg(test)]
 mod tests {
-	use super::{super::AppServerClient, *};
-	use serde_json::json;
+	use crate::app_server_client::{AppServerClient, live_reviews::*};
+	use serde_json;
 	use tokio::sync::mpsc;
 
 	fn error(thread: &str) -> Value {
-		json!({"method":"error","params":{"threadId":thread,"turnId":"failed","willRetry":false,"error":{"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}}}})
+		serde_json::json!({"method":"error","params":{"threadId":thread,"turnId":"failed","willRetry":false,"error":{"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}}}})
 	}
 
 	#[tokio::test]
 	async fn live_review_guard_rejects_queued_changes_before_any_write() {
 		for change in [
-			json!({"method":"turn/started","params":{"threadId":"thread","turn":{"id":"new"}}}),
-			json!({"method":"thread/reverted","params":{"threadId":"thread"}}),
-			json!({"method":"error","params":{"threadId":"thread","turnId":"failed","willRetry":false,"error":{"codexErrorInfo":"badRequest"}}}),
-			json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"newer","status":"completed"}}}),
-			json!({"method":"thread/closed","params":{"threadId":"thread"}}),
-			json!({"method":"item/completed","params":{"threadId":"thread","turnId":"failed","item":{"id":"input","type":"userMessage"}}}),
+			serde_json::json!({"method":"turn/started","params":{"threadId":"thread","turn":{"id":"new"}}}),
+			serde_json::json!({"method":"thread/reverted","params":{"threadId":"thread"}}),
+			serde_json::json!({"method":"error","params":{"threadId":"thread","turnId":"failed","willRetry":false,"error":{"codexErrorInfo":"badRequest"}}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"newer","status":"completed"}}}),
+			serde_json::json!({"method":"thread/closed","params":{"threadId":"thread"}}),
+			serde_json::json!({"method":"item/completed","params":{"threadId":"thread","turnId":"failed","item":{"id":"input","type":"userMessage"}}}),
 		] {
 			let (incoming, frames) = mpsc::channel(8);
 			let (outgoing, mut writes) = mpsc::channel(8);
@@ -147,7 +148,7 @@ mod tests {
 			incoming.send(Ok(change)).await.unwrap();
 
 			assert!(matches!(
-				client.request_with_history("turn/start", json!({}), guard).await,
+				client.request_with_history("turn/start", serde_json::json!({}), guard).await,
 				Err(ClientError::StaleHistory)
 			));
 			assert!(writes.try_recv().is_err());
@@ -168,9 +169,9 @@ mod tests {
 		let first_identity = first.live_review_identity().unwrap();
 
 		for frame in [
-			json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"failed","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"}}}}),
-			json!({"method":"turn/started","params":{"threadId":"other","turn":{"id":"new"}}}),
-			json!({"method":"error","params":{"threadId":"thread","turnId":"settings-update","willRetry":false,"error":{"codexErrorInfo":"badRequest"}}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"failed","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"}}}}),
+			serde_json::json!({"method":"turn/started","params":{"threadId":"other","turn":{"id":"new"}}}),
+			serde_json::json!({"method":"error","params":{"threadId":"thread","turnId":"settings-update","willRetry":false,"error":{"codexErrorInfo":"badRequest"}}}),
 		] {
 			incoming.send(Ok(frame)).await.unwrap();
 			events.recv().await.unwrap();
@@ -179,7 +180,9 @@ mod tests {
 		}
 
 		incoming
-			.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"thread"}})))
+			.send(Ok(
+				serde_json::json!({"method":"thread/reverted","params":{"threadId":"thread"}}),
+			))
 			.await
 			.unwrap();
 		events.recv().await.unwrap();
@@ -204,7 +207,7 @@ mod tests {
 
 		assert_ne!(current.live_review_identity(), other_guard.live_review_identity());
 		assert!(matches!(
-			other.request_with_history("turn/start", json!({}), current.clone()).await,
+			other.request_with_history("turn/start", serde_json::json!({}), current.clone()).await,
 			Err(ClientError::StaleHistory)
 		));
 		assert!(other_written.try_recv().is_err());
@@ -213,12 +216,12 @@ mod tests {
 
 		let sender = client.clone();
 		let request = tokio::spawn(async move {
-			sender.request_with_history("turn/start", json!({}), current.clone()).await
+			sender.request_with_history("turn/start", serde_json::json!({}), current.clone()).await
 		});
 		let wire = writes.recv().await.unwrap();
 
 		incoming
-			.send(Ok(json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
+			.send(Ok(serde_json::json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
 			.await
 			.unwrap();
 

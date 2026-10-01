@@ -1,6 +1,6 @@
-use super::*;
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use crate::app_server_client::temporary_structured::*;
 
 fn options() -> TemporaryStructuredOptions {
 	TemporaryStructuredOptions {
@@ -47,11 +47,11 @@ fn completed(thread: &str, turn: &str, status: &str) -> ServerEvent {
 #[tokio::test]
 async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_profiles() {
 	for profile in [None, Some(":workspace"), Some(":read-only"), Some("restricted")] {
-		let (local, remote) = tokio::io::duplex(16_384);
-		let (read, write) = tokio::io::split(local);
+		let (local, remote) = io::duplex(16_384);
+		let (read, write) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(read, write);
 		let server = tokio::spawn(async move {
-			let (read, mut write) = tokio::io::split(remote);
+			let (read, mut write) = io::split(remote);
 			let mut lines = BufReader::new(read).lines();
 
 			for method in ["config/read", "thread/start", "thread/unsubscribe"] {
@@ -130,12 +130,12 @@ async fn collector_keeps_latest_exact_turn_and_rejects_incomplete_or_oversized_r
 
 #[tokio::test]
 async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
-	let (local, remote) = tokio::io::duplex(16_384);
-	let (read, write) = tokio::io::split(local);
+	let (local, remote) = io::duplex(16_384);
+	let (read, write) = io::split(local);
 	let (client, events) = AppServerClient::from_io(read, write);
 	let (cancel, watch) = watch::channel(false);
 	let server = tokio::spawn(async move {
-		let (read, mut write) = tokio::io::split(remote);
+		let (read, mut write) = io::split(remote);
 		let mut lines = BufReader::new(read).lines();
 
 		for method in
@@ -192,11 +192,11 @@ async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
 #[tokio::test]
 async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inference() {
 	for invalid in [false, true] {
-		let (local, remote) = tokio::io::duplex(16_384);
-		let (read, write) = tokio::io::split(local);
+		let (local, remote) = io::duplex(16_384);
+		let (read, write) = io::split(local);
 		let (client, events) = AppServerClient::from_io(read, write);
 		let server = tokio::spawn(async move {
-			let (read, mut write) = tokio::io::split(remote);
+			let (read, mut write) = io::split(remote);
 			let mut lines = BufReader::new(read).lines();
 
 			for method in ["config/read", "thread/start", "thread/unsubscribe"] {

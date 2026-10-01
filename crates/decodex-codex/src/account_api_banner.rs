@@ -2,8 +2,8 @@
 //! tui/src/backend_banners.rs and backend_banners/{actions,render}.rs.
 
 use serde::Deserialize;
-
 use serde_json::Value;
+use url::Url;
 
 /// Full-read banner presence, including an unsupported payload that must not imply recovery.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -138,7 +138,7 @@ fn parse_banner(value: &Value) -> Option<AccountApiBanner> {
 			return None;
 		}
 
-		let url = url::Url::parse(value).ok()?;
+		let url = Url::parse(value).ok()?;
 
 		(matches!(url.scheme(), "https" | "http")
 			&& url.host_str().is_some()
@@ -206,12 +206,10 @@ fn action(value: &str) -> Option<AccountApiBannerAction> {
 
 #[cfg(test)]
 mod tests {
-	use super::{AccountApiBannerAction as A, AccountApiBannerState as S};
-	use serde_json::json;
 
 	#[test]
 	fn full_usage_read_binds_banner_and_preserves_exact_model_scope() {
-		let mut body = json!({"account_id":"a","user_id":"u","rate_limit":{},"rate_limit_upsell":{
+		let mut body = serde_json::json!({"account_id":"a","user_id":"u","rate_limit":{},"rate_limit_upsell":{
 			"banner_type":"model_limit","title":"Model unavailable","description":"Choose another model.",
 			"blocked_model_slug":"blocked","model_slug":"replacement","fallback_model_slugs":["second","first"],
 			"ctas":[{"action":"view_usage","label":"View usage"},{"action":"future_action","label":"Unknown"}]}});
@@ -219,7 +217,9 @@ mod tests {
 			crate::decode_account_api_usage(v.to_string().as_bytes()).unwrap()
 		};
 		let usage = read(&body);
-		let S::Available(banner) = usage.banner_for("a", "u") else {
+		let crate::account_api_banner::AccountApiBannerState::Available(banner) =
+			usage.banner_for("a", "u")
+		else {
 			panic!("bounded banner");
 		};
 
@@ -227,57 +227,81 @@ mod tests {
 		assert_eq!(banner.model_slug.as_deref(), Some("replacement"));
 		assert_eq!(banner.fallback_model_slugs, ["second", "first"]);
 		assert_eq!(banner.actions.len(), 1);
-		assert_eq!(banner.actions[0].action, A::ViewUsage);
-		assert_eq!(usage.banner_for("b", "u"), S::Unavailable);
-		assert_eq!(usage.banner_for("a", "other"), S::Unavailable);
+		assert_eq!(
+			banner.actions[0].action,
+			crate::account_api_banner::AccountApiBannerAction::ViewUsage
+		);
+		assert_eq!(
+			usage.banner_for("b", "u"),
+			crate::account_api_banner::AccountApiBannerState::Unavailable
+		);
+		assert_eq!(
+			usage.banner_for("a", "other"),
+			crate::account_api_banner::AccountApiBannerState::Unavailable
+		);
 
-		body["rate_limit_upsell"] = json!({"unsupported":true});
+		body["rate_limit_upsell"] = serde_json::json!({"unsupported":true});
 
-		assert_eq!(read(&body).banner_for("a", "u"), S::Unsupported);
+		assert_eq!(
+			read(&body).banner_for("a", "u"),
+			crate::account_api_banner::AccountApiBannerState::Unsupported
+		);
 
 		body["rate_limit_upsell"] = serde_json::Value::Null;
 
-		assert_eq!(read(&body).banner_for("a", "u"), S::Absent);
+		assert_eq!(
+			read(&body).banner_for("a", "u"),
+			crate::account_api_banner::AccountApiBannerState::Absent
+		);
 	}
 
 	#[test]
 	fn invalid_actions_cannot_become_urls_or_owner_notifications() {
-		let mut raw = json!({"banner_type":"usage_limit","title":"Title","description":"Description","ctas":[
+		let mut raw = serde_json::json!({"banner_type":"usage_limit","title":"Title","description":"Description","ctas":[
 			{"action":"request_increase","label":"Request increase"},{"action":"view_usage","label":"bad\nlabel"}],
 			"request_url":"javascript:alert(1)"});
-		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
+		let crate::account_api_banner::AccountApiBannerState::Available(banner) =
+			super::decode_banner(Some(&raw))
+		else {
 			panic!("copy remains valid");
 		};
 
 		assert!(banner.actions.is_empty());
 		assert!(banner.request_url.is_none());
 
-		raw["request_url"] = json!("https://user:password@example.test/");
+		raw["request_url"] = serde_json::json!("https://user:password@example.test/");
 
-		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
+		let crate::account_api_banner::AccountApiBannerState::Available(banner) =
+			super::decode_banner(Some(&raw))
+		else {
 			panic!("copy remains valid");
 		};
 
 		assert!(banner.actions.is_empty());
 
-		raw["request_url"] = json!("https://example.test/request");
+		raw["request_url"] = serde_json::json!("https://example.test/request");
 
-		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
+		let crate::account_api_banner::AccountApiBannerState::Available(banner) =
+			super::decode_banner(Some(&raw))
+		else {
 			panic!("copy remains valid");
 		};
 
 		assert_eq!(banner.actions.len(), 1);
 
 		for (key, value) in [
-			("title", json!("x".repeat(1_025))),
-			("presentation", json!("future")),
-			("fallback_model_slugs", json!(vec!["x"; 17])),
+			("title", serde_json::json!("x".repeat(1_025))),
+			("presentation", serde_json::json!("future")),
+			("fallback_model_slugs", serde_json::json!(vec!["x"; 17])),
 		] {
 			let mut invalid = raw.clone();
 
 			invalid[key] = value;
 
-			assert_eq!(super::decode_banner(Some(&invalid)), S::Unsupported);
+			assert_eq!(
+				super::decode_banner(Some(&invalid)),
+				crate::account_api_banner::AccountApiBannerState::Unsupported
+			);
 		}
 	}
 }

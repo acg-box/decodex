@@ -819,17 +819,17 @@ fn references(value: &Value, name: &str) -> bool {
 
 #[cfg(test)]
 mod tool_input_tests {
-	use serde_json::json;
+	use serde_json;
 	#[test]
 	fn tool_input_requires_a_structural_named_text_output() {
-		let valid = json!({"properties":{"toolOutput":{"anyOf":[{"$ref":"#/definitions/TurnToolOutput"},{"type":"null"}]}},"definitions":{
+		let valid = serde_json::json!({"properties":{"toolOutput":{"anyOf":[{"$ref":"#/definitions/TurnToolOutput"},{"type":"null"}]}},"definitions":{
 			"TurnToolOutput":{"type":"object","required":["name","output"],"properties":{"name":{"type":"string"},"namespace":{"type":["string","null"]},"output":{"$ref":"#/definitions/FunctionCallOutputBody"}}},
 			"FunctionCallOutputBody":{"oneOf":[{"type":"string"},{"type":"array"}]}
 		}});
 
 		assert!(super::validate_tool_output_schema(&valid));
 		assert!(!super::validate_tool_output_schema(
-			&json!({"description":"toolOutput TurnToolOutput FunctionCallOutputBody"})
+			&serde_json::json!({"description":"toolOutput TurnToolOutput FunctionCallOutputBody"})
 		));
 
 		for pointer in [
@@ -842,7 +842,7 @@ mod tool_input_tests {
 		] {
 			let mut invalid = valid.clone();
 
-			*invalid.pointer_mut(pointer).expect("fixture path") = json!(null);
+			*invalid.pointer_mut(pointer).expect("fixture path") = serde_json::json!(null);
 
 			assert!(!super::validate_tool_output_schema(&invalid), "{pointer}");
 		}
@@ -851,6 +851,7 @@ mod tool_input_tests {
 #[cfg(test)]
 mod tests {
 	use std::{
+		env,
 		fs::{self, File},
 		os::unix::net::UnixListener,
 	};
@@ -863,8 +864,7 @@ mod tests {
 	#[test]
 	#[ignore = "set DECODEX_REVIEW_SCHEMA to an official experimental JSON schema directory"]
 	fn official_schema_supports_current_consumers() {
-		let directory =
-			std::env::var_os("DECODEX_REVIEW_SCHEMA").expect("schema directory required");
+		let directory = env::var_os("DECODEX_REVIEW_SCHEMA").expect("schema directory required");
 		let evidence = super::GeneratedSchemaEvidence::load(std::path::Path::new(&directory))
 			.expect("official schema must pass bounded loading and account callback validation");
 		let contract = evidence.contract();

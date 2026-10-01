@@ -1,12 +1,14 @@
 //! Exact-turn settings publication. Native policy and pending approvals remain authoritative.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// Explicit review routing for subsequently captured steps in one live turn.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LiveReviewer {
 	/// Route new approval requests to the user.
@@ -27,7 +29,7 @@ pub enum LiveSettingsOutcome {
 
 /// Model and effort selected from the current account-bound native catalog.
 /// This request changes one running turn, never saved task or application defaults.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct LiveModelUpdate {
 	thread_id: String,
@@ -109,8 +111,8 @@ impl AppServerClient {
 		params: Value,
 		guard: HistoryGuard,
 	) -> Result<LiveSettingsOutcome, ClientError> {
-		let value = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
+		let value = time::timeout(
+			Duration::from_secs(8),
 			self.request_with_history("turn/settings/update", params, guard),
 		)
 		.await
@@ -147,67 +149,73 @@ fn valid_id(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::live_settings::{
+		self, AppServerClient, ClientError, LiveModelUpdate, LiveReviewer, LiveSettingsOutcome,
+		Value,
+	};
 
 	#[test]
 	fn reviewer_update_cannot_smuggle_other_settings_or_missing_identity() {
-		let good = json!({"threadId":"t","turnId":"u","approvalsReviewer":"user"});
+		let good = live_settings::json!({"threadId":"t","turnId":"u","approvalsReviewer":"user"});
 
-		assert!(is_live_reviewer_update(&good));
+		assert!(live_settings::is_live_reviewer_update(&good));
 
 		for (field, bad) in [
-			("threadId", json!("")),
-			("turnId", json!("\n")),
+			("threadId", live_settings::json!("")),
+			("turnId", live_settings::json!("\n")),
 			("approvalsReviewer", Value::Null),
-			("approvalsReviewer", json!("guardian_subagent")),
-			("model", json!("other")),
-			("approvalPolicy", json!("never")),
+			("approvalsReviewer", live_settings::json!("guardian_subagent")),
+			("model", live_settings::json!("other")),
+			("approvalPolicy", live_settings::json!("never")),
 		] {
 			let mut value = good.clone();
 
 			value[field] = bad;
 
-			assert!(!is_live_reviewer_update(&value));
+			assert!(!live_settings::is_live_reviewer_update(&value));
 		}
 	}
 
 	#[test]
 	fn live_model_selection_rejects_unrelated_fields_and_reserve() {
-		let good = json!({"threadId":"thread","turnId":"turn","model":"future-model","effort":"future-effort"});
+		let good = live_settings::json!({"threadId":"thread","turnId":"turn","model":"future-model","effort":"future-effort"});
 
-		assert!(is_live_model_update(&good));
+		assert!(live_settings::is_live_model_update(&good));
 
 		for (field, value) in [
-			("threadId", json!("")),
-			("turnId", json!("\n")),
-			("model", json!("gpt-reserve")),
+			("threadId", live_settings::json!("")),
+			("turnId", live_settings::json!("\n")),
+			("model", live_settings::json!("gpt-reserve")),
 			("effort", Value::Null),
-			("model", json!("x".repeat(257))),
-			("effort", json!("x".repeat(129))),
+			("model", live_settings::json!("x".repeat(257))),
+			("effort", live_settings::json!("x".repeat(129))),
 			("serviceTier", Value::Null),
-			("approvalsReviewer", json!("user")),
-			("approvalPolicy", json!("never")),
-			("collaborationMode", json!({})),
+			("approvalsReviewer", live_settings::json!("user")),
+			("approvalPolicy", live_settings::json!("never")),
+			("collaborationMode", live_settings::json!({})),
 		] {
 			let mut bad = good.clone();
 
 			bad[field] = value;
 
-			assert!(!is_live_model_update(&bad), "accepted unrelated or invalid field: {field}");
+			assert!(
+				!live_settings::is_live_model_update(&bad),
+				"accepted unrelated or invalid field: {field}"
+			);
 		}
 	}
 
 	#[tokio::test]
 	async fn exact_live_reviewer_receipt_is_not_a_future_default_or_retry() {
 		for status in ["applied", "targetUnavailable", "unknown", "rejected", "lost"] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (r, w) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let guard = client.history_guard(0).unwrap();
 			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
+				let (r, mut w) = io::split(remote);
 				let mut lines = BufReader::new(r).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -215,7 +223,7 @@ mod tests {
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
+					live_settings::json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
 				);
 
 				if status == "lost" {
@@ -223,9 +231,9 @@ mod tests {
 				}
 
 				let reply = if status == "rejected" {
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"managed reviewer requirement"}})
+					live_settings::json!({"id":request["id"],"error":{"code":-32_600,"message":"managed reviewer requirement"}})
 				} else {
-					json!({"id":request["id"],"result":{"status":status}})
+					live_settings::json!({"id":request["id"],"result":{"status":status}})
 				};
 
 				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
@@ -259,11 +267,11 @@ mod tests {
 	#[tokio::test]
 	async fn live_model_selection_keeps_exact_scope_and_never_retries_uncertain_replies() {
 		for status in ["applied", "targetUnavailable", "unexpected", "rejected", "lost"] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (r, w) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (r, w) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
+				let (r, mut w) = io::split(remote);
 				let mut lines = BufReader::new(r).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -271,7 +279,7 @@ mod tests {
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"thread","turnId":"original","model":"selected","effort":"high"})
+					live_settings::json!({"threadId":"thread","turnId":"original","model":"selected","effort":"high"})
 				);
 
 				if status == "lost" {
@@ -279,9 +287,9 @@ mod tests {
 				}
 
 				let reply = if status == "rejected" {
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"feature disabled"}})
+					live_settings::json!({"id":request["id"],"error":{"code":-32_600,"message":"feature disabled"}})
 				} else {
-					json!({"id":request["id"],"result":{"status":status}})
+					live_settings::json!({"id":request["id"],"result":{"status":status}})
 				};
 
 				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
@@ -312,11 +320,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn live_updates_reject_a_foreign_history_guard_before_dispatch() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
-		let (other, _peer) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(other);
+		let (other, _peer) = io::duplex(4_096);
+		let (r, w) = io::split(other);
 		let (other, _other_events) = AppServerClient::from_io(r, w);
 		let result = client
 			.update_live_reviewer(
