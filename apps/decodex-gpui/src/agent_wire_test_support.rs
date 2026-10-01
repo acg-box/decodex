@@ -20,10 +20,9 @@ use decodex_protocol::{
 
 pub(super) const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
-pub(super) fn fixture<T: Send + 'static, F, Fut>(
-	serve: F,
-) -> (TempDir, ClientProfile, JoinHandle<T>)
+pub(super) fn fixture<T, F, Fut>(serve: F) -> (TempDir, ClientProfile, JoinHandle<T>)
 where
+	T: Send + 'static,
 	F: FnOnce(tokio::net::UnixListener) -> Fut + Send + 'static,
 	Fut: Future<Output = T>,
 {
