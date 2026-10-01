@@ -3377,8 +3377,10 @@ fn incompatible(reason: &'static str) -> StoreError {
 mod snapshot_tests;
 #[cfg(test)]
 mod archive_tests {
+	use rusqlite::Connection;
+
 	use crate::{
-		CommandIdentity, ConversationTerminalizationOutcome, PlanContinuation,
+		CommandIdentity, ConversationTerminalizationOutcome, DatabaseError, PlanContinuation,
 		PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, RecordHistoryItem,
 		SqliteStore,
 		conversations::{
@@ -3412,6 +3414,412 @@ mod archive_tests {
 	const INTERRUPTION_HISTORY_ID: &str = "80000000-0000-4000-8000-000000000001";
 	const SUCCESSOR_TURN_ID: &str = "50000000-0000-4000-8000-000000000002";
 	const SUCCESSOR_HISTORY_ID: &str = "80000000-0000-4000-8000-000000000002";
+
+	#[test]
+	fn derived_conversation_titles_are_normalized_and_sidebar_bounded() {
+		let title = conversations::bounded_conversation_title(&format!(
+			"  Verify\n\t{}  ",
+			"the persisted provider conversation ".repeat(10)
+		));
+
+		assert!(!title.contains('\n'));
+		assert!(!title.contains('\t'));
+		assert!(title.len() <= conversations::MAX_CONVERSATION_TITLE_BYTES);
+		assert!(title.starts_with("Verify the persisted provider conversation"));
+	}
+
+	fn seed_active_user_turn(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO turns (
+						 turn_id, conversation_id, runtime_session_id, sequence, role,
+						 possible_side_effects, status, revision, created_at_micros,
+						 updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 1, 'user', 'none', 'active', 1, 1, 1)",
+						rusqlite::params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("seed active user Turn");
+	}
+
+	fn seed_unknown_provider_attempt(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE runtime_sessions SET codex_thread_id = 'codex-thread-unknown',
+						 state = 'active', thread_start_request_id = 1,
+						 thread_start_request_sha256 = ?2, thread_start_response_id = 1,
+						 thread_start_response_sha256 = ?2, has_acknowledged_turn = 1,
+						 revision = 7 WHERE runtime_session_id = ?1",
+						rusqlite::params![RUNTIME_SESSION_ID, "b".repeat(64)],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO account_operations (
+						 operation_id, account_id, kind, phase, provider, provider_account_id,
+						 requested_display_label, requested_enabled, created_at_micros,
+						 updated_at_micros, completed_at_micros
+						 ) VALUES ('11000000-0000-4000-8000-000000000001', ?1, 'import',
+						 'committed', 'chatgpt', 'local-fixture-provider', 'Local fixture', 1,
+						 1, 1, 1)",
+						rusqlite::params![ACCOUNT_ID],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO routing_decisions (
+						 routing_decision_id, operation_id, idempotency_key, request_sha256,
+						 authority_shape, conversation_id, turn_id, conversation_revision,
+						 snapshot_id, snapshot_json, decision_kind, account_id, account_revision,
+						 routing_revision, quota_classification, causes_json, exclusions_json,
+						 created_at_micros
+						 ) VALUES (
+						 '21000000-0000-4000-8000-000000000001',
+						 '22000000-0000-4000-8000-000000000001', 'unknown-route', ?4,
+						 'conversation_account_registry', ?1, ?2, 1,
+						 '23000000-0000-4000-8000-000000000001', '{}', 'selected', ?3, 1,
+						 1, 'known_available', '[]', '[]', 1)",
+						rusqlite::params![CONVERSATION_ID, TURN_ID, ACCOUNT_ID, "c".repeat(64)],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO continuation_plans (
+						 continuation_plan_id, operation_id, idempotency_key, request_sha256,
+						 conversation_id, turn_id, routing_decision_id,
+						 source_runtime_session_id, source_runtime_session_revision,
+						 selected_account_id, runtime_session_id, kind, created_at_micros
+						 ) VALUES (
+						 '31000000-0000-4000-8000-000000000001',
+						 '32000000-0000-4000-8000-000000000001', 'unknown-plan', ?4,
+						 ?1, ?2, '21000000-0000-4000-8000-000000000001', ?3, 7, ?5, ?3,
+						 'initial_thread', 1)",
+						rusqlite::params![
+							CONVERSATION_ID,
+							TURN_ID,
+							RUNTIME_SESSION_ID,
+							"d".repeat(64),
+							ACCOUNT_ID,
+						],
+					)
+					.map_err(error::sqlite_error)?;
+
+				seed_unknown_process(connection)?;
+
+				connection
+					.execute(
+						"INSERT INTO provider_attempts (
+						 attempt_id, conversation_id, turn_id, continuation_plan_id,
+						 routing_decision_id, runtime_session_id, runtime_session_revision,
+						 account_id, process_generation_id, process_generation_revision,
+						 execution_epoch_id, request_id, request_sha256,
+						 provider_correlation_key, state, unknown_reason, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, '31000000-0000-4000-8000-000000000001',
+						 '21000000-0000-4000-8000-000000000001', ?4, 7, ?5, ?6, 1,
+						 '41000000-0000-4000-8000-000000000009',
+						 '61000000-0000-4000-8000-000000000001', ?7,
+						 'app-server:test:1', 'unknown', 'dispatch_outcome_unavailable', 1, 1, 1)",
+						rusqlite::params![
+							ATTEMPT_ID,
+							CONVERSATION_ID,
+							TURN_ID,
+							RUNTIME_SESSION_ID,
+							ACCOUNT_ID,
+							GENERATION_ID,
+							"1".repeat(64),
+						],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("seed unknown provider attempt");
+	}
+
+	fn seed_unknown_process(connection: &Connection) -> Result<(), DatabaseError> {
+		connection
+			.execute(
+				"INSERT INTO process_execution_epochs (
+						 execution_epoch_id, authorization_sha256, created_at_micros
+						 ) VALUES ('41000000-0000-4000-8000-000000000009', ?1, 1)",
+				rusqlite::params!["e".repeat(64)],
+			)
+			.map_err(error::sqlite_error)?;
+		connection
+			.execute(
+				"INSERT INTO process_generations (
+						 generation_id, account_id, runtime_session_id, execution_epoch_id,
+						 runner_identity, intended_boot_id, control_kind, isolation_kind,
+						 account_revision, credential_schema_version, credential_version,
+						 credential_fingerprint, credential_writer_operation_id, provider,
+						 provider_account_id, refresh_callback_profile_sha256, state, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, '41000000-0000-4000-8000-000000000009',
+						 'test-runner', 'test-boot', 'stdio_only_best_effort_eof', 'session',
+						 1, 1, 1, ?4, '11000000-0000-4000-8000-000000000001', 'chatgpt',
+						 'local-fixture-provider', ?4, 'starting', 1, 1, 1)",
+				rusqlite::params![GENERATION_ID, ACCOUNT_ID, RUNTIME_SESSION_ID, "f".repeat(64)],
+			)
+			.map_err(error::sqlite_error)?;
+
+		Ok(())
+	}
+
+	fn record_exact_process_death(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO process_generation_death_evidence (
+						 evidence_id, generation_id, kind, observed_boot_id, witness_sha256,
+						 observed_at_micros
+						 ) VALUES ('71000000-0000-4000-8000-000000000001', ?1,
+						 'spawn_not_created', 'test-boot', ?2, 2)",
+						rusqlite::params![GENERATION_ID, "2".repeat(64)],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"UPDATE process_generations SET state = 'dead',
+						 death_evidence_id = '71000000-0000-4000-8000-000000000001',
+						 revision = 2, updated_at_micros = 2 WHERE generation_id = ?1",
+						rusqlite::params![GENERATION_ID],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("record exact process death");
+	}
+
+	fn recovery_context_pack(conversation_id: &ConversationId) -> ContextPack {
+		decodex_core::compile_context_pack(ContextPackInput {
+			conversation_id: conversation_id.clone(),
+			possible_side_effects: PossibleSideEffects::Unknown,
+			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
+			pinned: PinnedContextSource::new(
+				"silent-recovery",
+				1,
+				"The prior provider effect remains unknown. Continue only from this new user intent.",
+			)
+			.expect("pinned Context Pack source"),
+			optional_sources: vec![],
+		})
+		.expect("compile Context Pack")
+	}
+
+	fn verify_fallback_ownership(store: &SqliteStore, request: &PlanContinuation) {
+		let ownership: (String, i64, String, i64, String) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT source.state, source.revision, fallback.state,
+						 fallback.revision, turn.runtime_session_id
+						 FROM runtime_sessions AS source
+						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
+						 JOIN turns AS turn ON turn.turn_id = ?3
+						 WHERE source.runtime_session_id = ?1",
+						rusqlite::params![
+							RUNTIME_SESSION_ID,
+							request.fallback_runtime_session_id,
+							SUCCESSOR_TURN_ID,
+						],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+					)
+					.map_err(error::sqlite_error)
+			})
+			.expect("read fallback ownership");
+
+		assert_eq!(ownership.0, "ended");
+		assert_eq!(ownership.1, 8);
+		assert_eq!(ownership.2, "starting");
+		assert_eq!(ownership.3, 1);
+		assert_eq!(ownership.4, request.fallback_runtime_session_id);
+	}
+
+	fn seed_successor_continuation(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO turns (
+						 turn_id, conversation_id, runtime_session_id, sequence, role,
+						 possible_side_effects, status, revision, created_at_micros,
+						 updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 2, 'user', 'unknown', 'active', 1, 3, 3)",
+						rusqlite::params![SUCCESSOR_TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO history_items (
+						 history_item_id, conversation_id, turn_id, sequence, kind, role,
+						 status, media_type, inline_text, metadata_json, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 2, 'message', 'user', 'completed',
+						 'text/markdown', 'Continue safely.', '{}', 1, 3, 3)",
+						rusqlite::params![SUCCESSOR_HISTORY_ID, CONVERSATION_ID, SUCCESSOR_TURN_ID],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO routing_decisions (
+						 routing_decision_id, operation_id, idempotency_key, request_sha256,
+						 authority_shape, conversation_id, turn_id, conversation_revision,
+						 source_runtime_session_id, source_runtime_session_revision,
+						 account_snapshot_id, profile_snapshot_id, decision_kind, account_id,
+						 account_revision, routing_revision, quota_classification, causes_json,
+						 exclusions_json, created_at_micros
+						 ) VALUES (
+						 'a1000000-0000-4000-8000-000000000002',
+						 'a2000000-0000-4000-8000-000000000002', 'fallback-route', ?4,
+						 'conversation_continuation', ?1, ?2, 1, ?3, 7,
+						 '41000000-0000-4000-8000-000000000001',
+						 '42000000-0000-4000-8000-000000000001', 'selected', ?5, 1, 1,
+						 'known_available', '[]', '[]', 3)",
+						rusqlite::params![
+							CONVERSATION_ID,
+							SUCCESSOR_TURN_ID,
+							RUNTIME_SESSION_ID,
+							"3".repeat(64),
+							ACCOUNT_ID,
+						],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("seed successor continuation authority");
+	}
+
+	fn activate_fallback_authority(store: &SqliteStore, request: &PlanContinuation) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE runtime_sessions SET codex_thread_id = 'fallback-codex-thread',
+						 state = 'active', thread_start_request_id = 2,
+						 thread_start_request_sha256 = ?2, thread_start_response_id = 2,
+						 thread_start_response_sha256 = ?2, revision = 3
+						 WHERE runtime_session_id = ?1 AND state = 'starting' AND revision = 1",
+						rusqlite::params![request.fallback_runtime_session_id, "4".repeat(64)],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_execution_epochs (
+						 execution_epoch_id, authorization_sha256, created_at_micros
+						 ) VALUES ('73000000-0000-4000-8000-000000000002', ?1, 4)",
+						rusqlite::params!["5".repeat(64)],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_generations (
+						 generation_id, account_id, runtime_session_id, execution_epoch_id,
+						 runner_identity, intended_boot_id, control_kind, isolation_kind,
+						 bound_boot_id, process_id, process_start_id, process_group_id, session_id,
+						 account_revision, credential_schema_version, credential_version,
+						 credential_fingerprint, credential_writer_operation_id, provider,
+						 provider_account_id, refresh_callback_profile_sha256, state, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 '72000000-0000-4000-8000-000000000002', ?1, ?2,
+						 '73000000-0000-4000-8000-000000000002', 'test-runner', 'test-boot',
+						 'stdio_only_best_effort_eof', 'session', 'test-boot', 44,
+						 'fallback-process', 44, 44, 1, 1, 1, ?3,
+						 '11000000-0000-4000-8000-000000000001', 'chatgpt',
+						 'local-fixture-provider', ?3, 'ready', 1, 4, 4)",
+						rusqlite::params![
+							ACCOUNT_ID,
+							request.fallback_runtime_session_id,
+							"6".repeat(64),
+						],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("activate fallback execution authority");
+	}
+
+	fn seed_archive_session(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO account_identities (account_id, created_at_micros)
+						 VALUES (?1, 1)",
+						rusqlite::params![ACCOUNT_ID],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO accounts (
+						 account_id, display_label, enabled, state, revision, provider,
+						 provider_account_id, created_at_micros, updated_at_micros
+						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
+						 'archive-fixture-provider', 1, 1)",
+						rusqlite::params![ACCOUNT_ID],
+					)
+					.map_err(error::sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO runtime_sessions (
+						 runtime_session_id, conversation_id, account_id, account_revision,
+						 account_snapshot_id, account_display_label, account_observed_state,
+						 credential_binding_json, profile_snapshot_id, profile_revision,
+						 profile_role, model, reasoning_effort, instructions, service_tier,
+						 instructions_sha256, codex_thread_id, state, thread_start_request_id,
+						 thread_start_request_sha256, thread_start_response_id,
+						 thread_start_response_sha256, has_acknowledged_turn, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
+						 'Archive fixture', 'available', '{}',
+						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
+						 'high', 'Follow the request.', 'priority',
+						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+						 'codex-thread-1', 'active', 1,
+						 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1,
+						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+						 1, 7, 1, 1
+						 )",
+						rusqlite::params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+					)
+					.map_err(error::sqlite_error)?;
+
+				Ok(())
+			})
+			.expect("seed active RuntimeSession");
+	}
+
+	fn unknown_recovery_request(
+		conversation_id: &ConversationId,
+	) -> RecoverUnknownConversationTurn {
+		RecoverUnknownConversationTurn {
+			conversation_id: conversation_id.clone(),
+			expected_conversation_revision: 1,
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
+				.expect("RuntimeSession ID"),
+			expected_runtime_session_revision: 7,
+			user_turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
+			expected_user_turn_revision: 1,
+			attempt_id: ProviderAttemptId::new(ATTEMPT_ID).expect("ProviderAttempt ID"),
+			expected_attempt_revision: 1,
+			process_generation_id: ProcessGenerationId::new(GENERATION_ID)
+				.expect("ProcessGeneration ID"),
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("HistoryItem ID"),
+		}
+	}
 
 	async fn seed_provider_less_starting_task(store: &SqliteStore) {
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
@@ -3651,19 +4059,6 @@ mod archive_tests {
 			.expect("restart state");
 	}
 
-	#[test]
-	fn derived_conversation_titles_are_normalized_and_sidebar_bounded() {
-		let title = conversations::bounded_conversation_title(&format!(
-			"  Verify\n\t{}  ",
-			"the persisted provider conversation ".repeat(10)
-		));
-
-		assert!(!title.contains('\n'));
-		assert!(!title.contains('\t'));
-		assert!(title.len() <= conversations::MAX_CONVERSATION_TITLE_BYTES);
-		assert!(title.starts_with("Verify the persisted provider conversation"));
-	}
-
 	#[tokio::test]
 	async fn unsafe_legacy_title_degrades_without_hiding_the_conversation() {
 		let directory = tempfile::tempdir().expect("temporary database directory");
@@ -3701,175 +4096,6 @@ mod archive_tests {
 					if row.conversation_id == conversation_id && row.title == "Start this task."
 			));
 		}
-	}
-
-	fn seed_active_user_turn(store: &SqliteStore) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"INSERT INTO turns (
-						 turn_id, conversation_id, runtime_session_id, sequence, role,
-						 possible_side_effects, status, revision, created_at_micros,
-						 updated_at_micros
-						 ) VALUES (?1, ?2, ?3, 1, 'user', 'none', 'active', 1, 1, 1)",
-						rusqlite::params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("seed active user Turn");
-	}
-
-	fn seed_unknown_provider_attempt(store: &SqliteStore) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"UPDATE runtime_sessions SET codex_thread_id = 'codex-thread-unknown',
-						 state = 'active', thread_start_request_id = 1,
-						 thread_start_request_sha256 = ?2, thread_start_response_id = 1,
-						 thread_start_response_sha256 = ?2, has_acknowledged_turn = 1,
-						 revision = 7 WHERE runtime_session_id = ?1",
-						rusqlite::params![RUNTIME_SESSION_ID, "b".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO account_operations (
-						 operation_id, account_id, kind, phase, provider, provider_account_id,
-						 requested_display_label, requested_enabled, created_at_micros,
-						 updated_at_micros, completed_at_micros
-						 ) VALUES ('11000000-0000-4000-8000-000000000001', ?1, 'import',
-						 'committed', 'chatgpt', 'local-fixture-provider', 'Local fixture', 1,
-						 1, 1, 1)",
-						rusqlite::params![ACCOUNT_ID],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO routing_decisions (
-						 routing_decision_id, operation_id, idempotency_key, request_sha256,
-						 authority_shape, conversation_id, turn_id, conversation_revision,
-						 snapshot_id, snapshot_json, decision_kind, account_id, account_revision,
-						 routing_revision, quota_classification, causes_json, exclusions_json,
-						 created_at_micros
-						 ) VALUES (
-						 '21000000-0000-4000-8000-000000000001',
-						 '22000000-0000-4000-8000-000000000001', 'unknown-route', ?4,
-						 'conversation_account_registry', ?1, ?2, 1,
-						 '23000000-0000-4000-8000-000000000001', '{}', 'selected', ?3, 1,
-						 1, 'known_available', '[]', '[]', 1)",
-						rusqlite::params![CONVERSATION_ID, TURN_ID, ACCOUNT_ID, "c".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO continuation_plans (
-						 continuation_plan_id, operation_id, idempotency_key, request_sha256,
-						 conversation_id, turn_id, routing_decision_id,
-						 source_runtime_session_id, source_runtime_session_revision,
-						 selected_account_id, runtime_session_id, kind, created_at_micros
-						 ) VALUES (
-						 '31000000-0000-4000-8000-000000000001',
-						 '32000000-0000-4000-8000-000000000001', 'unknown-plan', ?4,
-						 ?1, ?2, '21000000-0000-4000-8000-000000000001', ?3, 7, ?5, ?3,
-						 'initial_thread', 1)",
-						rusqlite::params![
-							CONVERSATION_ID,
-							TURN_ID,
-							RUNTIME_SESSION_ID,
-							"d".repeat(64),
-							ACCOUNT_ID,
-						],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO process_execution_epochs (
-						 execution_epoch_id, authorization_sha256, created_at_micros
-						 ) VALUES ('41000000-0000-4000-8000-000000000009', ?1, 1)",
-						rusqlite::params!["e".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO process_generations (
-						 generation_id, account_id, runtime_session_id, execution_epoch_id,
-						 runner_identity, intended_boot_id, control_kind, isolation_kind,
-						 account_revision, credential_schema_version, credential_version,
-						 credential_fingerprint, credential_writer_operation_id, provider,
-						 provider_account_id, refresh_callback_profile_sha256, state, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (?1, ?2, ?3, '41000000-0000-4000-8000-000000000009',
-						 'test-runner', 'test-boot', 'stdio_only_best_effort_eof', 'session',
-						 1, 1, 1, ?4, '11000000-0000-4000-8000-000000000001', 'chatgpt',
-						 'local-fixture-provider', ?4, 'starting', 1, 1, 1)",
-						rusqlite::params![
-							GENERATION_ID,
-							ACCOUNT_ID,
-							RUNTIME_SESSION_ID,
-							"f".repeat(64)
-						],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO provider_attempts (
-						 attempt_id, conversation_id, turn_id, continuation_plan_id,
-						 routing_decision_id, runtime_session_id, runtime_session_revision,
-						 account_id, process_generation_id, process_generation_revision,
-						 execution_epoch_id, request_id, request_sha256,
-						 provider_correlation_key, state, unknown_reason, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (?1, ?2, ?3, '31000000-0000-4000-8000-000000000001',
-						 '21000000-0000-4000-8000-000000000001', ?4, 7, ?5, ?6, 1,
-						 '41000000-0000-4000-8000-000000000009',
-						 '61000000-0000-4000-8000-000000000001', ?7,
-						 'app-server:test:1', 'unknown', 'dispatch_outcome_unavailable', 1, 1, 1)",
-						rusqlite::params![
-							ATTEMPT_ID,
-							CONVERSATION_ID,
-							TURN_ID,
-							RUNTIME_SESSION_ID,
-							ACCOUNT_ID,
-							GENERATION_ID,
-							"1".repeat(64),
-						],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("seed unknown provider attempt");
-	}
-
-	fn record_exact_process_death(store: &SqliteStore) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"INSERT INTO process_generation_death_evidence (
-						 evidence_id, generation_id, kind, observed_boot_id, witness_sha256,
-						 observed_at_micros
-						 ) VALUES ('71000000-0000-4000-8000-000000000001', ?1,
-						 'spawn_not_created', 'test-boot', ?2, 2)",
-						rusqlite::params![GENERATION_ID, "2".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"UPDATE process_generations SET state = 'dead',
-						 death_evidence_id = '71000000-0000-4000-8000-000000000001',
-						 revision = 2, updated_at_micros = 2 WHERE generation_id = ?1",
-						rusqlite::params![GENERATION_ID],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("record exact process death");
 	}
 
 	#[tokio::test]
@@ -4354,20 +4580,7 @@ mod archive_tests {
 		record_exact_process_death(&store);
 
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
-		let recovery = RecoverUnknownConversationTurn {
-			conversation_id: conversation_id.clone(),
-			expected_conversation_revision: 1,
-			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
-				.expect("RuntimeSession ID"),
-			expected_runtime_session_revision: 7,
-			user_turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
-			expected_user_turn_revision: 1,
-			attempt_id: ProviderAttemptId::new(ATTEMPT_ID).expect("ProviderAttempt ID"),
-			expected_attempt_revision: 1,
-			process_generation_id: ProcessGenerationId::new(GENERATION_ID)
-				.expect("ProcessGeneration ID"),
-			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("HistoryItem ID"),
-		};
+		let recovery = unknown_recovery_request(&conversation_id);
 
 		assert!(matches!(
 			store
@@ -4464,157 +4677,6 @@ mod archive_tests {
 			replayed.fallback_context_pack.expect("replayed Context Pack").pack.digest(),
 			context_pack.digest()
 		);
-	}
-
-	fn recovery_context_pack(conversation_id: &ConversationId) -> ContextPack {
-		decodex_core::compile_context_pack(ContextPackInput {
-			conversation_id: conversation_id.clone(),
-			possible_side_effects: PossibleSideEffects::Unknown,
-			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
-			pinned: PinnedContextSource::new(
-				"silent-recovery",
-				1,
-				"The prior provider effect remains unknown. Continue only from this new user intent.",
-			)
-			.expect("pinned Context Pack source"),
-			optional_sources: vec![],
-		})
-		.expect("compile Context Pack")
-	}
-
-	fn verify_fallback_ownership(store: &SqliteStore, request: &PlanContinuation) {
-		let ownership: (String, i64, String, i64, String) = store
-			.with_connection(|connection| {
-				connection
-					.query_row(
-						"SELECT source.state, source.revision, fallback.state,
-						 fallback.revision, turn.runtime_session_id
-						 FROM runtime_sessions AS source
-						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
-						 JOIN turns AS turn ON turn.turn_id = ?3
-						 WHERE source.runtime_session_id = ?1",
-						rusqlite::params![
-							RUNTIME_SESSION_ID,
-							request.fallback_runtime_session_id,
-							SUCCESSOR_TURN_ID,
-						],
-						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-					)
-					.map_err(error::sqlite_error)
-			})
-			.expect("read fallback ownership");
-
-		assert_eq!(ownership.0, "ended");
-		assert_eq!(ownership.1, 8);
-		assert_eq!(ownership.2, "starting");
-		assert_eq!(ownership.3, 1);
-		assert_eq!(ownership.4, request.fallback_runtime_session_id);
-	}
-
-	fn seed_successor_continuation(store: &SqliteStore) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"INSERT INTO turns (
-						 turn_id, conversation_id, runtime_session_id, sequence, role,
-						 possible_side_effects, status, revision, created_at_micros,
-						 updated_at_micros
-						 ) VALUES (?1, ?2, ?3, 2, 'user', 'unknown', 'active', 1, 3, 3)",
-						rusqlite::params![SUCCESSOR_TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO history_items (
-						 history_item_id, conversation_id, turn_id, sequence, kind, role,
-						 status, media_type, inline_text, metadata_json, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (?1, ?2, ?3, 2, 'message', 'user', 'completed',
-						 'text/markdown', 'Continue safely.', '{}', 1, 3, 3)",
-						rusqlite::params![SUCCESSOR_HISTORY_ID, CONVERSATION_ID, SUCCESSOR_TURN_ID],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO routing_decisions (
-						 routing_decision_id, operation_id, idempotency_key, request_sha256,
-						 authority_shape, conversation_id, turn_id, conversation_revision,
-						 source_runtime_session_id, source_runtime_session_revision,
-						 account_snapshot_id, profile_snapshot_id, decision_kind, account_id,
-						 account_revision, routing_revision, quota_classification, causes_json,
-						 exclusions_json, created_at_micros
-						 ) VALUES (
-						 'a1000000-0000-4000-8000-000000000002',
-						 'a2000000-0000-4000-8000-000000000002', 'fallback-route', ?4,
-						 'conversation_continuation', ?1, ?2, 1, ?3, 7,
-						 '41000000-0000-4000-8000-000000000001',
-						 '42000000-0000-4000-8000-000000000001', 'selected', ?5, 1, 1,
-						 'known_available', '[]', '[]', 3)",
-						rusqlite::params![
-							CONVERSATION_ID,
-							SUCCESSOR_TURN_ID,
-							RUNTIME_SESSION_ID,
-							"3".repeat(64),
-							ACCOUNT_ID,
-						],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("seed successor continuation authority");
-	}
-
-	fn activate_fallback_authority(store: &SqliteStore, request: &PlanContinuation) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"UPDATE runtime_sessions SET codex_thread_id = 'fallback-codex-thread',
-						 state = 'active', thread_start_request_id = 2,
-						 thread_start_request_sha256 = ?2, thread_start_response_id = 2,
-						 thread_start_response_sha256 = ?2, revision = 3
-						 WHERE runtime_session_id = ?1 AND state = 'starting' AND revision = 1",
-						rusqlite::params![request.fallback_runtime_session_id, "4".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO process_execution_epochs (
-						 execution_epoch_id, authorization_sha256, created_at_micros
-						 ) VALUES ('73000000-0000-4000-8000-000000000002', ?1, 4)",
-						rusqlite::params!["5".repeat(64)],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO process_generations (
-						 generation_id, account_id, runtime_session_id, execution_epoch_id,
-						 runner_identity, intended_boot_id, control_kind, isolation_kind,
-						 bound_boot_id, process_id, process_start_id, process_group_id, session_id,
-						 account_revision, credential_schema_version, credential_version,
-						 credential_fingerprint, credential_writer_operation_id, provider,
-						 provider_account_id, refresh_callback_profile_sha256, state, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (
-						 '72000000-0000-4000-8000-000000000002', ?1, ?2,
-						 '73000000-0000-4000-8000-000000000002', 'test-runner', 'test-boot',
-						 'stdio_only_best_effort_eof', 'session', 'test-boot', 44,
-						 'fallback-process', 44, 44, 1, 1, 1, ?3,
-						 '11000000-0000-4000-8000-000000000001', 'chatgpt',
-						 'local-fixture-provider', ?3, 'ready', 1, 4, 4)",
-						rusqlite::params![
-							ACCOUNT_ID,
-							request.fallback_runtime_session_id,
-							"6".repeat(64),
-						],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("activate fallback execution authority");
 	}
 
 	async fn verify_fallback_attempt_authority(
@@ -4731,57 +4793,6 @@ mod archive_tests {
 				]),
 			}
 		);
-	}
-
-	fn seed_archive_session(store: &SqliteStore) {
-		store
-			.with_connection(|connection| {
-				connection
-					.execute(
-						"INSERT INTO account_identities (account_id, created_at_micros)
-						 VALUES (?1, 1)",
-						rusqlite::params![ACCOUNT_ID],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO accounts (
-						 account_id, display_label, enabled, state, revision, provider,
-						 provider_account_id, created_at_micros, updated_at_micros
-						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
-						 'archive-fixture-provider', 1, 1)",
-						rusqlite::params![ACCOUNT_ID],
-					)
-					.map_err(error::sqlite_error)?;
-				connection
-					.execute(
-						"INSERT INTO runtime_sessions (
-						 runtime_session_id, conversation_id, account_id, account_revision,
-						 account_snapshot_id, account_display_label, account_observed_state,
-						 credential_binding_json, profile_snapshot_id, profile_revision,
-						 profile_role, model, reasoning_effort, instructions, service_tier,
-						 instructions_sha256, codex_thread_id, state, thread_start_request_id,
-						 thread_start_request_sha256, thread_start_response_id,
-						 thread_start_response_sha256, has_acknowledged_turn, revision,
-						 created_at_micros, updated_at_micros
-						 ) VALUES (
-						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
-						 'Archive fixture', 'available', '{}',
-						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
-						 'high', 'Follow the request.', 'priority',
-						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-						 'codex-thread-1', 'active', 1,
-						 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1,
-						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-						 1, 7, 1, 1
-						 )",
-						rusqlite::params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
-			})
-			.expect("seed active RuntimeSession");
 	}
 
 	#[tokio::test]
