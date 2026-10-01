@@ -130,7 +130,8 @@ public func decodexVoiceMediaCreate(_ nativeView: UnsafeMutableRawPointer?) -> U
     guard Thread.isMainThread, let nativeView else { return nil }
     let viewAddress = UInt(bitPattern: nativeView)
     let address = MainActor.assumeIsolated {
-        let view = Unmanaged<NSView>.fromOpaque(UnsafeMutableRawPointer(bitPattern: viewAddress)!).takeUnretainedValue()
+        guard let viewPointer = UnsafeMutableRawPointer(bitPattern: viewAddress) else { return UInt(0) }
+        let view = Unmanaged<NSView>.fromOpaque(viewPointer).takeUnretainedValue()
         guard view.window != nil else { return UInt(0) }
         return UInt(bitPattern: Unmanaged.passRetained(VoiceMediaHost()).toOpaque())
     }

@@ -149,7 +149,10 @@ final class DictationCapture: DictationCapturing {
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size) == noErr else { throw CaptureError.device }
         var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        let status = devices.withUnsafeMutableBytes { AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size, $0.baseAddress!) }
+        let status = try devices.withUnsafeMutableBytes { buffer in
+            guard let baseAddress = buffer.baseAddress else { throw CaptureError.device }
+            return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size, baseAddress)
+        }
         guard status == noErr else { throw CaptureError.device }
         for device in devices {
             var label: Unmanaged<CFString>?
