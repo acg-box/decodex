@@ -1,11 +1,16 @@
 //! Durable history-edit intent. A reservation is never permission to retry a native write.
-use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use std::collections::BTreeSet;
+
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+use crate::{
+	SqliteStore, StoreError, agent_models, agent_permissions, agent_plugins, agent_process, error,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPromptEditAttempt {
 	pub work: String,
 	pub thread: String,
@@ -19,19 +24,11 @@ pub struct AgentPromptEditAttempt {
 	/// Complete canonical native input. Never replace this with rendered UI text.
 	pub content: Vec<Value>,
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AgentPromptEditReceipt {
-	pub id: i64,
-	pub attempt: AgentPromptEditAttempt,
-	pub state: String,
-}
-
 impl AgentPromptEditAttempt {
 	pub(crate) fn validate(&self) -> Result<(), StoreError> {
 		let valid =
 			|v: &str| !v.trim().is_empty() && v.len() <= 512 && !v.chars().any(char::is_control);
-		let mut unique = std::collections::BTreeSet::new();
+		let mut unique = BTreeSet::new();
 
 		if [&self.work, &self.thread, &self.attempt_id, &self.before_turn_id, &self.item_id]
 			.into_iter()
@@ -47,7 +44,7 @@ impl AgentPromptEditAttempt {
 			|| serde_json::to_vec(self)
 				.map_err(|_| StoreError::InvalidInput("invalid prompt edit"))?
 				.len()
-				> 8 * 1024 * 1024
+				> 8 * 1_024 * 1_024
 		{
 			return Err(StoreError::InvalidInput("invalid prompt edit"));
 		}
@@ -57,7 +54,7 @@ impl AgentPromptEditAttempt {
 
 	pub(crate) fn key(&self) -> String {
 		let digest = Sha256::digest(
-			json!([self.work, self.thread, self.review_token]).to_string().as_bytes(),
+			serde_json::json!([self.work, self.thread, self.review_token]).to_string().as_bytes(),
 		);
 
 		format!(
@@ -67,43 +64,11 @@ impl AgentPromptEditAttempt {
 	}
 }
 
-pub(crate) fn pending(c: &Connection, work: &str) -> Result<bool, StoreError> {
-	c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events a WHERE a.work_item_id=?1 AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))",[work],|r|r.get(0)).map_err(|e|sqlite_error(e).into())
-}
-
-pub(crate) fn receipt(
-	c: &Connection,
-	id: i64,
-) -> Result<Option<AgentPromptEditReceipt>, StoreError> {
-	let row: Option<(String,String)> = c.query_row("SELECT a.payload,coalesce(r.disposition_note,o.disposition_note,'reserved') FROM agent_inbox_events a LEFT JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation' AND o.event_kind='prompt_edit_observation' LEFT JOIN agent_inbox_events r ON r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release' WHERE a.id=?1 AND a.event_kind='prompt_edit_attempt'",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(sqlite_error)?;
-
-	row.map(|(payload, state)| {
-		Ok(AgentPromptEditReceipt {
-			id,
-			attempt: serde_json::from_str(&payload)
-				.map_err(|_| StoreError::InvalidInput("invalid saved prompt edit"))?,
-			state,
-		})
-	})
-	.transpose()
-}
-fn owned(
-	c: &Connection,
-	a: &AgentPromptEditAttempt,
-	generation: Option<&str>,
-) -> Result<bool, StoreError> {
-	Ok(owns_work(c, &a.work, generation)?
-		&& c.query_row(
-			"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
-			params![a.work, a.thread],
-			|r| r.get::<_, bool>(0),
-		)
-		.map_err(sqlite_error)?)
-}
-fn release(c: &Connection, a: &AgentPromptEditAttempt, state: &str) -> Result<bool, StoreError> {
-	let now = unix_micros()?;
-
-	Ok(c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_release','{}',?3,'resolved',?4,?3)",params![format!("{}:release",a.key()),a.work,now,state]).map_err(sqlite_error)? == 1)
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentPromptEditReceipt {
+	pub id: i64,
+	pub attempt: AgentPromptEditAttempt,
+	pub state: String,
 }
 
 impl SqliteStore {
@@ -116,18 +81,18 @@ impl SqliteStore {
 		a.validate()?;
 
 		self.run(move |c| {
-			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
 			if !owned(&tx,&a,a.generation.as_deref())? || pending(&tx,&a.work)?
-				|| crate::agent_models::pending(&tx,&a.work)? || crate::agent_permissions::pending(&tx,&a.work)? || crate::agent_plugins::pending(&tx,&a.work)? { return Ok(None); }
+				|| agent_models::pending(&tx,&a.work)? || agent_permissions::pending(&tx,&a.work)? || agent_plugins::pending(&tx,&a.work)? { return Ok(None); }
 
-			let eligible: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w WHERE w.id=?1 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL AND w.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM agent_voice_calls v WHERE v.work_id=w.id AND v.closed_at_micros IS NULL) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE (e.work_item_id=w.id OR e.delivery_work_item_id=w.id) AND e.disposition IS NULL AND (e.delivered_turn_id IS NULL OR e.delivered_turn_id='')))",[&a.work],|r|r.get(0)).map_err(sqlite_error)?;
+			let eligible: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w WHERE w.id=?1 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL AND w.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM agent_voice_calls v WHERE v.work_id=w.id AND v.closed_at_micros IS NULL) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE (e.work_item_id=w.id OR e.delivery_work_item_id=w.id) AND e.disposition IS NULL AND (e.delivered_turn_id IS NULL OR e.delivered_turn_id='')))",[&a.work],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 			if !eligible { return Ok(None); }
 
-			let now=unix_micros()?;
-			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_attempt',?3,?4,'resolved','reserved',?4)",params![a.key(),a.work,json!(a).to_string(),now]).map_err(sqlite_error)?;
-			let id=tx.last_insert_rowid(); tx.commit().map_err(sqlite_error)?;
+			let now=crate::unix_micros()?;
+			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_attempt',?3,?4,'resolved','reserved',?4)",rusqlite::params![a.key(),a.work,serde_json::json!(a).to_string(),now]).map_err(error::sqlite_error)?;
+			let id=tx.last_insert_rowid(); tx.commit().map_err(error::sqlite_error)?;
 
 			Ok((changed==1).then_some(id))
 		}).await
@@ -140,7 +105,7 @@ impl SqliteStore {
 		thread: String,
 	) -> Result<Option<AgentPromptEditReceipt>, StoreError> {
 		self.run(move |c| {
-			let id: Option<i64> = c.query_row("SELECT id FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='prompt_edit_attempt' AND json_extract(payload,'$.thread')=?2 ORDER BY id DESC LIMIT 1",params![work,thread],|r|r.get(0)).optional().map_err(sqlite_error)?;
+			let id: Option<i64> = c.query_row("SELECT id FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='prompt_edit_attempt' AND json_extract(payload,'$.thread')=?2 ORDER BY id DESC LIMIT 1",rusqlite::params![work,thread],|r|r.get(0)).optional().map_err(error::sqlite_error)?;
 
 			id.map(|id| receipt(c,id)).transpose().map(Option::flatten)
 		}).await
@@ -158,7 +123,7 @@ impl SqliteStore {
 		self.run(move |c| {
 			let tx = c
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			if !owned(&tx, &a, a.generation.as_deref())?
 				|| !receipt(&tx, id)?.is_some_and(|r| r.attempt == a && r.state == "reserved")
@@ -168,7 +133,7 @@ impl SqliteStore {
 
 			let changed = release(&tx, &a, "not_submitted")?;
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(changed)
 		})
@@ -184,7 +149,7 @@ impl SqliteStore {
 		turns: Vec<String>,
 	) -> Result<bool, StoreError> {
 		self.run(move |c| {
-			let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let Some(r)=receipt(&tx,id)? else {return Ok(false)};
 			let a=&r.attempt;
 
@@ -194,19 +159,19 @@ impl SqliteStore {
 
 			if !same {
 				let (Some(old),Some(new))=(&a.generation,&generation) else {return Ok(false)};
-				let dead:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations old JOIN process_generation_death_evidence e ON e.evidence_id=old.death_evidence_id AND e.generation_id=old.generation_id JOIN process_generations new ON new.generation_id=?2 AND new.account_id=old.account_id WHERE old.generation_id=?1 AND old.state='dead' AND new.state='ready')",params![old,new],|r|r.get(0)).map_err(sqlite_error)?;
+				let dead:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations old JOIN process_generation_death_evidence e ON e.evidence_id=old.death_evidence_id AND e.generation_id=old.generation_id JOIN process_generations new ON new.generation_id=?2 AND new.account_id=old.account_id WHERE old.generation_id=?1 AND old.state='dead' AND new.state='ready')",rusqlite::params![old,new],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 				if !dead {return Ok(false);}
 			}
 
 			let boundary=a.turn_ids.iter().position(|id| id==&a.before_turn_id).ok_or(StoreError::InvalidInput("invalid saved edit boundary"))?;
 			let changed=if turns==a.turn_ids[..boundary] {
-				let now=unix_micros()?;
+				let now=crate::unix_micros()?;
 
-				tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_observation',?3,?4,'resolved','applied',?4)",params![format!("{}:observation",a.key()),a.work,json!({"generation":generation,"turns":turns}).to_string(),now]).map_err(sqlite_error)?==1
+				tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_observation',?3,?4,'resolved','applied',?4)",rusqlite::params![format!("{}:observation",a.key()),a.work,serde_json::json!({"generation":generation,"turns":turns}).to_string(),now]).map_err(error::sqlite_error)?==1
 			} else if !same && turns==a.turn_ids { release(&tx,a,"unchanged")? } else {false};
 
-			tx.commit().map_err(sqlite_error)?; Ok(changed)
+			tx.commit().map_err(error::sqlite_error)?; Ok(changed)
 		}).await
 	}
 
@@ -220,7 +185,7 @@ impl SqliteStore {
 		self.run(move |c| {
 			let tx = c
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 			let Some(r) = receipt(&tx, id)? else { return Ok(false) };
 
 			if r.state != "applied" || !owned(&tx, &r.attempt, generation.as_deref())? {
@@ -229,12 +194,52 @@ impl SqliteStore {
 
 			let changed = release(&tx, &r.attempt, "draft_restored")?;
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(changed)
 		})
 		.await
 	}
+}
+
+pub(crate) fn pending(c: &Connection, work: &str) -> Result<bool, StoreError> {
+	c.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events a WHERE a.work_item_id=?1 AND a.event_kind='prompt_edit_attempt' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release'))",[work],|r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
+}
+
+pub(crate) fn receipt(
+	c: &Connection,
+	id: i64,
+) -> Result<Option<AgentPromptEditReceipt>, StoreError> {
+	let row: Option<(String,String)> = c.query_row("SELECT a.payload,coalesce(r.disposition_note,o.disposition_note,'reserved') FROM agent_inbox_events a LEFT JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation' AND o.event_kind='prompt_edit_observation' LEFT JOIN agent_inbox_events r ON r.source_event_id=a.source_event_id||':release' AND r.event_kind='prompt_edit_release' WHERE a.id=?1 AND a.event_kind='prompt_edit_attempt'",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(error::sqlite_error)?;
+
+	row.map(|(payload, state)| {
+		Ok(AgentPromptEditReceipt {
+			id,
+			attempt: serde_json::from_str(&payload)
+				.map_err(|_| StoreError::InvalidInput("invalid saved prompt edit"))?,
+			state,
+		})
+	})
+	.transpose()
+}
+
+fn owned(
+	c: &Connection,
+	a: &AgentPromptEditAttempt,
+	generation: Option<&str>,
+) -> Result<bool, StoreError> {
+	Ok(agent_process::owns_work(c, &a.work, generation)?
+		&& c.query_row(
+			"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
+			rusqlite::params![a.work, a.thread],
+			|r| r.get::<_, bool>(0),
+		)
+		.map_err(error::sqlite_error)?)
+}
+fn release(c: &Connection, a: &AgentPromptEditAttempt, state: &str) -> Result<bool, StoreError> {
+	let now = crate::unix_micros()?;
+
+	Ok(c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'prompt_edit_release','{}',?3,'resolved',?4,?3)",rusqlite::params![format!("{}:release",a.key()),a.work,now,state]).map_err(error::sqlite_error)? == 1)
 }
 
 #[cfg(test)] mod tests;
