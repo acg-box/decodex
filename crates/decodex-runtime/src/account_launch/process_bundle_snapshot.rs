@@ -1,7 +1,18 @@
 //! Preserve the signed bundle context of a CLI image during static attestation.
-use io::Error;
 
-use crate::account_launch::process::*;
+#[cfg(target_os = "macos")] use std::os::unix::fs::OpenOptionsExt as _;
+#[cfg(test)] use std::os::unix::fs::PermissionsExt as _;
+
+#[cfg(target_os = "macos")] use crate::account_launch::process::OpenOptions;
+#[cfg(target_os = "macos")]
+#[cfg(test)]
+use crate::account_launch::process::{AttestedCodeIdentity, Permissions};
+#[cfg(test)]
+use crate::account_launch::process::{Command, TempDir, capture_executable_snapshot};
+use crate::account_launch::process::{
+	File, OsStr, Path, PathBuf, Read as _, SupervisionError, fs,
+	io::{self, Error},
+};
 
 struct Budget {
 	bytes: u64,

@@ -3,7 +3,10 @@ use std::{collections::HashSet, env, fs, path::Path, sync::Mutex};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::reviewer::store::live_model::*;
+use crate::account_launch::agent_process::native_tests::reviewer::store::live_model::{
+	self, AgentLiveReviewerState, Arc, AtomicUsize, ConversationModel, ConversationReasoningEffort,
+	Duration, LiveEdit, NativeSession, Ordering, OwnedReviewer, ServerEvent, Value,
+};
 
 fn catalog(home: &Path) -> String {
 	let models: Vec<_> = ["gpt-5.6-sol", "gpt-5.6-terra"].into_iter().map(|slug| serde_json::json!({
@@ -57,7 +60,7 @@ async fn qualify_child_model(check_catalog: bool) {
 	let address = listener.local_addr().expect("native fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(live_model::serve_fixture(
 		listener,
 		calls.clone(),
 		None,
@@ -89,10 +92,10 @@ async fn qualify_child_model(check_catalog: bool) {
 
         let guard = session.client.server_request_guard(&id, &method, &params).expect("native fixture");
         let owned = OwnedReviewer::new(home.path(), &session.client, &thread, turn).await;
-        let state = read_options(&owned.store, true, || async {Some(owned.source(&owned.key))}).await;
+        let state = live_model::read_options(&owned.store, true, || async {Some(owned.source(&owned.key))}).await;
         let AgentLiveReviewerState::Available {review_token, ..} = state else {panic!("live settings unavailable")};
 
-        write(&owned.store, || async {Some(owned.source(&owned.key))}, turn, review_token.as_str(), LiveEdit::Model {model:ConversationModel::new("gpt-5.6-terra").expect("native fixture"), effort:ConversationReasoningEffort::High}, "child-step-edit").await.expect("native fixture");
+        live_model::write(&owned.store, || async {Some(owned.source(&owned.key))}, turn, review_token.as_str(), LiveEdit::Model {model:ConversationModel::new("gpt-5.6-terra").expect("native fixture"), effort:ConversationReasoningEffort::High}, "child-step-edit").await.expect("native fixture");
 
         assert_eq!(calls.load(Ordering::Acquire), 1);
 

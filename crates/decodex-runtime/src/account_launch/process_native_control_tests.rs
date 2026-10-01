@@ -1,8 +1,16 @@
 //! Isolated installed-native control launch with production executable attestation.
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde_json::Value;
 
-use crate::account_launch::process::*;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+#[cfg(target_os = "macos")] use crate::account_launch::process::AttestedCodeIdentity;
+#[cfg(test)] use crate::account_launch::process::RunnerCapacity;
+use crate::account_launch::process::{
+	self, AccountBinding, AccountId, AccountIdentity, AppServerCommand, AttestedAppServerLaunch,
+	AttestedAppServerProfile, AttestedProcessChild, CredentialProjection, CredentialVault,
+	CredentialVaultError, Duration, ExactBuildLaunchCapability, OsStr, Path,
+	ProcessGenerationAccountBinding, ReadOnlyMethod,
+	serde_json::{self, Value},
+};
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
@@ -34,7 +42,7 @@ impl CredentialVault for SyntheticVault {
 
 pub(crate) fn attested_profile(binary: &OsStr, home: &Path) -> AttestedAppServerProfile {
 	let (program, executable, digest) =
-		resolve_executable(binary).expect("explicit native executable");
+		process::resolve_executable(binary).expect("explicit native executable");
 	let mut command =
 		AppServerCommand::production_from_resolved(program, executable, digest, home.into());
 
@@ -43,13 +51,13 @@ pub(crate) fn attested_profile(binary: &OsStr, home: &Path) -> AttestedAppServer
 			.expect("native code identity"),
 	);
 
-	validated_working_directory(&command).expect("isolated control directory");
+	process::validated_working_directory(&command).expect("isolated control directory");
 
 	let capability =
 		ExactBuildLaunchCapability::attest_profile(&command).expect("production launch capability");
 	let codex_home = home.join(".codex");
 	let (build, generated, guard) =
-		attest_executable_for_home(&command, &codex_home, Duration::from_secs(20), None)
+		process::attest_executable_for_home(&command, &codex_home, Duration::from_secs(20), None)
 			.expect("native schema and executable attestation");
 
 	assert!(guard.is_none());
