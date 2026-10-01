@@ -280,31 +280,19 @@ mod tests {
 		)
 		.unwrap()
 	}
-	async fn confirm_original_process_death(store: &SqliteStore) {
-		let evidence = ProcessDeathEvidence::new(
-			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
-			generation_id(1),
-			ProcessDeathEvidenceKind::OwnedChildExit,
-			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			Some(identity(123)),
-			DIGEST,
-		)
-		.unwrap();
 
-		assert!(matches!(
-			store.record_process_generation_death(4, &evidence).await.unwrap(),
-			crate::ProcessGenerationMutationOutcome::Applied(_)
-		));
-	}
 	fn account_id(number: u8) -> AccountId {
 		AccountId::new(format!("10000000-0000-4000-8000-{number:012}")).unwrap()
 	}
+
 	fn operation_id(number: u8) -> AccountOperationId {
 		AccountOperationId::new(format!("20000000-0000-4000-8000-{number:012}")).unwrap()
 	}
+
 	fn generation_id(number: u8) -> ProcessGenerationId {
 		ProcessGenerationId::new(format!("30000000-0000-4000-8000-{number:012}")).unwrap()
 	}
+
 	fn binding(number: u8) -> ProcessGenerationAccountBinding {
 		ProcessGenerationAccountBinding::new(
 			1,
@@ -323,6 +311,7 @@ mod tests {
 		)
 		.unwrap()
 	}
+
 	fn intent(account: u8, generation: u8) -> ProcessGenerationIntent {
 		ProcessGenerationIntent {
 			generation_id: generation_id(generation),
@@ -338,6 +327,34 @@ mod tests {
 			.unwrap(),
 		}
 	}
+
+	fn guardian_observation(
+		work: &str,
+		generation: Option<String>,
+	) -> crate::AgentGuardianObservation {
+		crate::AgentGuardianObservation {
+			thread_id:format!("thread-{work}"),turn_id:"turn".into(),review_id:"review".into(),connection_id:"connection".into(),generation_id:generation,
+			event_json:serde_json::json!({"threadId":format!("thread-{work}"),"turnId":"turn","reviewId":"review","startedAtMs":1,"completedAtMs":2,"review":{"status":"denied"},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string()
+    }
+	}
+
+	async fn confirm_original_process_death(store: &SqliteStore) {
+		let evidence = ProcessDeathEvidence::new(
+			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+			generation_id(1),
+			ProcessDeathEvidenceKind::OwnedChildExit,
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			Some(identity(123)),
+			DIGEST,
+		)
+		.unwrap();
+
+		assert!(matches!(
+			store.record_process_generation_death(4, &evidence).await.unwrap(),
+			crate::ProcessGenerationMutationOutcome::Applied(_)
+		));
+	}
+
 	async fn seed(store: &SqliteStore) {
 		store.with_connection(|connection| {
 			for number in [1, 2] {
@@ -649,6 +666,7 @@ mod tests {
 
 		store.revalidate().await.unwrap();
 	}
+
 	#[tokio::test]
 	async fn account_rotation_requires_dead_process_and_idle_work_and_preserves_thread() {
 		let directory = tempfile::tempdir().unwrap();
@@ -719,6 +737,7 @@ mod tests {
 
 		reopened.revalidate().await.unwrap();
 	}
+
 	#[tokio::test]
 	async fn admission_ignores_only_superseded_credential_recovery() {
 		let directory = tempfile::tempdir().unwrap();
@@ -780,6 +799,7 @@ mod tests {
 			PrepareProcessGenerationOutcome::Fresh(_)
 		));
 	}
+
 	#[tokio::test]
 	async fn config_warning_receipts_are_process_owned_bounded_and_durable() {
 		let directory = tempfile::tempdir().unwrap();
@@ -812,10 +832,10 @@ mod tests {
 
 		let identity = decodex_core::ProcessIdentity::new(
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			1234,
+			1_234,
 			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
-			1234,
-			1234,
+			1_234,
+			1_234,
 		)
 		.unwrap();
 
@@ -891,16 +911,6 @@ mod tests {
 		);
 	}
 
-	fn guardian_observation(
-		work: &str,
-		generation: Option<String>,
-	) -> crate::AgentGuardianObservation {
-		crate::AgentGuardianObservation {
-			thread_id:format!("thread-{work}"),turn_id:"turn".into(),review_id:"review".into(),connection_id:"connection".into(),generation_id:generation,
-			event_json:serde_json::json!({"threadId":format!("thread-{work}"),"turnId":"turn","reviewId":"review","startedAtMs":1,"completedAtMs":2,"review":{"status":"denied"},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string()
-    }
-	}
-
 	async fn assert_guardian_observation_ownership(
 		store: &SqliteStore,
 	) -> decodex_core::ProcessIdentity {
@@ -940,10 +950,10 @@ mod tests {
 
 		let identity = decodex_core::ProcessIdentity::new(
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			1234,
+			1_234,
 			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
-			1234,
-			1234,
+			1_234,
+			1_234,
 		)
 		.unwrap();
 
@@ -1074,7 +1084,7 @@ mod tests {
 			serde_json::json!("界".repeat(100_000) + " exact-required-suffix");
 		observation.event_json = event.to_string();
 
-		assert!(observation.event_json.len() > 256 * 1024);
+		assert!(observation.event_json.len() > 256 * 1_024);
 
 		let expected = observation.event_json.clone();
 
@@ -1168,10 +1178,10 @@ mod tests {
 
 		let identity = decodex_core::ProcessIdentity::new(
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			5678,
+			5_678,
 			decodex_core::ProcessStartIdentity::new("reconnected-start").unwrap(),
-			5678,
-			5678,
+			5_678,
+			5_678,
 		)
 		.unwrap();
 
@@ -1220,29 +1230,7 @@ mod tests {
 		let store = SqliteStore::open_test(&path).unwrap();
 
 		seed(&store).await;
-
-		store.bind_agent_thread("root".into(), "voice-thread".into()).await.unwrap();
-		store
-			.prepare_agent_bound_process_generation(
-				&intent(1, 1),
-				&binding(1),
-				"root",
-				"voice-process",
-			)
-			.await
-			.unwrap();
-
-		let identity = decodex_core::ProcessIdentity::new(
-			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			1234,
-			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
-			1234,
-			1234,
-		)
-		.unwrap();
-
-		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
-		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		prepare_voice_process(&store).await;
 
 		let call = crate::AgentVoiceCall {
 			session_id: "voice-1".into(),
@@ -1337,6 +1325,7 @@ mod tests {
 
 		verify_voice_history_projection(&reopened, other).await;
 	}
+
 	async fn verify_voice_history_projection(store: &SqliteStore, mut next: crate::AgentVoiceCall) {
 		let history =
 			store.read_agent_voice_history("root".into(), "voice-thread".into()).await.unwrap();
@@ -1392,5 +1381,30 @@ mod tests {
 		assert_eq!(bounded.calls[7].session_id, "voice-10");
 		assert!(bounded.truncated);
 		assert_eq!(bounded.revision.open_calls, 0);
+	}
+
+	async fn prepare_voice_process(store: &SqliteStore) {
+		store.bind_agent_thread("root".into(), "voice-thread".into()).await.unwrap();
+		store
+			.prepare_agent_bound_process_generation(
+				&intent(1, 1),
+				&binding(1),
+				"root",
+				"voice-process",
+			)
+			.await
+			.unwrap();
+
+		let identity = decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			1_234,
+			decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
+			1_234,
+			1_234,
+		)
+		.unwrap();
+
+		store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
+		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
 	}
 }
