@@ -4,10 +4,9 @@ use crate::{
 	SqliteStore,
 	agent::{EnqueueAgentEvent, tests},
 };
-use serde_json::json;
 
 fn reference_payload(thread: &str) -> String {
-	json!({"text":"Read the selected task","source":"user","options":{"taskReferences":[
+	serde_json::json!({"text":"Read the selected task","source":"user","options":{"taskReferences":[
 		{"workId":"target","threadId":thread,"title":"Task title"}
 	]}})
 	.to_string()
@@ -49,6 +48,7 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 	assert!(allowed(&store, "recipient", "target-thread").await);
 	assert!(!allowed(&store, "target", "target-thread").await);
 	assert!(!allowed(&store, "recipient", "new-thread").await);
+
 	// Seed a migration completed by an older release; current code never upgrades threads.
 	store
 		.run(|connection| {
@@ -142,13 +142,15 @@ async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
 	let valid: Value = serde_json::from_str(&reference_payload("target-thread")).unwrap();
 	let mut invalid = valid.clone();
 
-	invalid["options"]["taskReferences"] =
-		json!([valid["options"]["taskReferences"][0], valid["options"]["taskReferences"][0]]);
+	invalid["options"]["taskReferences"] = serde_json::json!([
+		valid["options"]["taskReferences"][0],
+		valid["options"]["taskReferences"][0]
+	]);
 
 	for (i, payload) in [
 		invalid,
-		json!({"source":"assistant","options":valid["options"]}),
-		json!({"source":"user","options":{"taskReferences":"target"}}),
+		serde_json::json!({"source":"assistant","options":valid["options"]}),
+		serde_json::json!({"source":"user","options":{"taskReferences":"target"}}),
 	]
 	.iter()
 	.enumerate()

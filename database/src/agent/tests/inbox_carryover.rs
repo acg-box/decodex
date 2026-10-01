@@ -107,7 +107,7 @@ async fn unresolved_evidence_survives_failed_interrupted_turns_and_reopen() {
 			.iter()
 			.all(|event| event.id != evidence.id)
 	);
-	assert!(store.list_agent_wake_events("agent".into(), 1001).await.is_err());
+	assert!(store.list_agent_wake_events("agent".into(), 1_001).await.is_err());
 }
 
 #[tokio::test]

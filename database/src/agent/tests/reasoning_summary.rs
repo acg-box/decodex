@@ -1,4 +1,8 @@
-use crate::{AgentReasoningSummaryChange as Change, SqliteStore, agent::tests};
+use std::time::Duration;
+
+use tokio::time;
+
+use crate::{AgentReasoningSummaryChange, SqliteStore, agent::tests};
 
 #[tokio::test]
 async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_deltas() {
@@ -19,13 +23,13 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			"turn".into(),
 			"item".into(),
 			None,
-			Change::Delta { index: 32, text: "omitted".into() },
+			AgentReasoningSummaryChange::Delta { index: 32, text: "omitted".into() },
 		)
 		.await
 		.unwrap();
 
-	let (next, values) = tokio::time::timeout(
-		std::time::Duration::from_secs(1),
+	let (next, values) = time::timeout(
+		Duration::from_secs(1),
 		store.wait_agent_output("agent".into(), Some(revision)),
 	)
 	.await
@@ -42,7 +46,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 				"turn".into(),
 				"item".into(),
 				None,
-				Change::Delta { index, text: text.into() },
+				AgentReasoningSummaryChange::Delta { index, text: text.into() },
 			)
 			.await
 			.unwrap();
@@ -62,7 +66,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			"turn".into(),
 			"handoff".into(),
 			None,
-			Change::VoiceHandoff,
+			AgentReasoningSummaryChange::VoiceHandoff,
 		)
 		.await
 		.unwrap();
@@ -89,7 +93,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			"turn".into(),
 			"private-voice".into(),
 			None,
-			Change::Completed { parts: vec!["PRIVATE_VOICE".into()] },
+			AgentReasoningSummaryChange::Completed { parts: vec!["PRIVATE_VOICE".into()] },
 		)
 		.await
 		.unwrap();
@@ -107,7 +111,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 				turn.into(),
 				"item".into(),
 				generation,
-				Change::Delta { index: 0, text: "unowned".into() },
+				AgentReasoningSummaryChange::Delta { index: 0, text: "unowned".into() },
 			)
 			.await
 			.unwrap();
@@ -125,7 +129,10 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 			"turn".into(),
 			"item".into(),
 			None,
-			Change::Delta { index: 32, text: "Outside the bounded preview".into() },
+			AgentReasoningSummaryChange::Delta {
+				index: 32,
+				text: "Outside the bounded preview".into(),
+			},
 		)
 		.await
 		.unwrap();
@@ -138,7 +145,9 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 			"turn".into(),
 			"item".into(),
 			None,
-			Change::Completed { parts: vec!["Corrected complete summary.".into()] },
+			AgentReasoningSummaryChange::Completed {
+				parts: vec!["Corrected complete summary.".into()],
+			},
 		)
 		.await
 		.unwrap();
@@ -148,7 +157,7 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 			"turn".into(),
 			"item".into(),
 			None,
-			Change::Delta { index: 0, text: "late".into() },
+			AgentReasoningSummaryChange::Delta { index: 0, text: "late".into() },
 		)
 		.await
 		.unwrap();
@@ -165,7 +174,7 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 			"turn".into(),
 			"item".into(),
 			None,
-			Change::Completed { parts: vec!["界".repeat(30000)] },
+			AgentReasoningSummaryChange::Completed { parts: vec!["界".repeat(30_000)] },
 		)
 		.await
 		.unwrap();
@@ -173,7 +182,7 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 	let output = store.read_agent_output("agent".into()).await.unwrap();
 	let large = output.iter().find(|row| row.item_id == "item").unwrap();
 
-	assert!(large.truncated && large.text.len() <= 65536 && large.text.chars().all(|c| c == '界'));
+	assert!(large.truncated && large.text.len() <= 65_536 && large.text.chars().all(|c| c == '界'));
 }
 
 async fn assert_voice_origins(store: &SqliteStore) {
