@@ -113,14 +113,17 @@ impl SupervisedProcess {
 		}
 	}
 
-	fn read_history_pages<T: DeserializeOwned + Record>(
+	fn read_history_pages<T>(
 		&mut self,
 		id: &ExactThreadId,
 		turns: bool,
 		started: Instant,
 		timeout: Duration,
 		budget: &mut usize,
-	) -> Result<Vec<T>, ExactReconciliationError> {
+	) -> Result<Vec<T>, ExactReconciliationError>
+	where
+		T: DeserializeOwned + Record,
+	{
 		let mut cursors: Vec<SensitiveString> = Vec::new();
 		let mut data = Vec::new();
 

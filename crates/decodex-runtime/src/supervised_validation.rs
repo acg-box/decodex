@@ -332,11 +332,14 @@ enum CaptureEvent {
 }
 
 /// Run one explicitly authorized validation command under bounded fail-closed supervision.
-pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
+pub fn supervise_validation<P>(
 	authority: &ValidationCommandAuthority,
 	cancellation: &ValidationCancellation,
 	probe: &mut P,
-) -> Result<SupervisedValidationEvidence, ValidationSupervisionError> {
+) -> Result<SupervisedValidationEvidence, ValidationSupervisionError>
+where
+	P: ProtectedWorktreeStateProbe,
+{
 	let before = probe.observe()?;
 
 	if before.source_revision != authority.expected_source_revision {
@@ -496,11 +499,14 @@ fn pre_spawn_rejection(
 	}
 }
 
-fn spawn_capture<R: Read + Send + 'static>(
+fn spawn_capture<R>(
 	mut reader: R,
 	stream: CaptureStream,
 	sender: SyncSender<CaptureEvent>,
-) -> JoinHandle<()> {
+) -> JoinHandle<()>
+where
+	R: Read + Send + 'static,
+{
 	thread::spawn(move || {
 		let mut buffer = [0_u8; 8 * 1_024];
 

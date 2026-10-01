@@ -82,12 +82,15 @@ impl ConversationRuntime {
 	}
 
 	/// Share account selection, process lifetime and final source checks for initial catalogs.
-	pub(super) async fn discover_initial_metadata<T: Send + 'static>(
+	pub(super) async fn discover_initial_metadata<T>(
 		&self,
 		key: &str,
 		request: InitialModelCatalogRequest,
 		read: impl FnOnce(&mut AttestedProcessChild, &str) -> Option<T> + Send + 'static,
-	) -> Option<(EntityId, i64, ConversationWorkingDirectory, T)> {
+	) -> Option<(EntityId, i64, ConversationWorkingDirectory, T)>
+	where
+		T: Send + 'static,
+	{
 		let preferred =
 			request.account_id.as_ref().map(|id| AccountId::new(id.as_str())).transpose().ok()?;
 		let now =

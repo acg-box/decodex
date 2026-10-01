@@ -2955,10 +2955,13 @@ impl SupervisedProcess {
 		Self::write_bound_json(&mut self.stdin, value)
 	}
 
-	pub(super) fn write_bound_json<T: Serialize + ?Sized>(
+	pub(super) fn write_bound_json<T>(
 		stdin: &mut Box<dyn Write + Send>,
 		value: &T,
-	) -> Result<(), ProbeError> {
+	) -> Result<(), ProbeError>
+	where
+		T: Serialize + ?Sized,
+	{
 		let frame = ZeroizingOutboundFrame::serialize(value)?;
 
 		frame.write_to(stdin)?;
