@@ -616,6 +616,7 @@ fn spawn_suspended_with_environment(
 		)),
 		_ => None,
 	};
+	let protocol = ProtocolFifos::new()?;
 	let mut argv_pointers = argv
 		.iter()
 		.map(|value| value.as_ptr().cast_mut())
@@ -632,7 +633,6 @@ fn spawn_suspended_with_environment(
 	.map(|value| value.cast_mut())
 	.chain(iter::once(ptr::null_mut()))
 	.collect::<Vec<_>>();
-	let protocol = ProtocolFifos::new()?;
 	let mut actions = SpawnFileActions::new()?;
 
 	actions.open(STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
@@ -670,13 +670,14 @@ fn spawn_suspended_with_environment(
 		return Err(io::Error::other("posix_spawn returned an invalid child identifier"));
 	}
 
-	let mut suspended = SuspendedAttestedSpawn {
+	let suspended = SuspendedAttestedSpawn {
 		execution_path: spawned_execution_path,
 		child: Some(AttestedChild { pid, status: None }),
 		stdin: None,
 		stdout: None,
 	};
 	let (parent_stdin, parent_stdout) = protocol.finish_after_spawn()?;
+	let mut suspended = suspended;
 
 	suspended.stdin = Some(parent_stdin);
 	suspended.stdout = Some(parent_stdout);

@@ -16,7 +16,7 @@ mod provisioned_cli;
 
 pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
 
-#[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
+#[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
 	cell::UnsafeCell,
@@ -42,7 +42,7 @@ use std::{
 	sync::{
 		Arc, Condvar, Mutex, PoisonError,
 		atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-		mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
+		mpsc::{self, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
 	},
 	thread::{self, Builder, JoinHandle, ThreadId},
 	time::{Duration, Instant},
@@ -73,20 +73,19 @@ use {
 #[cfg(test)] use crate::account_launch::RunnerCapacity;
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
-	AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE,
-	spawn_private_stdio_suspended, spawn_private_stdio_suspended_at, spawn_suspended,
+	self, AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV,
+	PRIVATE_STDIO_STARTUP_VALUE,
 };
 use crate::{
 	StoredCredential,
 	account_launch::{
 		RunnerPermit,
 		protocol::{
-			AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
+			self, AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 			ExactThreadStateListParams, InitializeCapabilities, InitializeParams,
 			InitializeResponse, JsonRpcError, JsonRpcResponse, MAX_APP_SERVER_FRAME_BYTES,
 			ProtocolThread, SensitiveString, ThreadArchiveParams, ThreadArchiveResponse,
 			ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
-			exact_thread_facts,
 		},
 	},
 	native_config_warning,
@@ -103,9 +102,6 @@ use decodex_codex::{
 	MAX_EXACT_THREAD_READ_ITEMS, MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES,
 	MethodObservation, NormalizedEvent, ThreadSummary, TurnStatus, UnavailableReason,
 	app_server_client::{self, AppServerClient, NativeDispatchRefusal, ServerEvent},
-	decode_conversation_thread_resume_response, decode_conversation_thread_start_response,
-	decode_conversation_turn_interrupt_response, decode_conversation_turn_start_response,
-	normalize_event, project_conversation_message_delta,
 	schema::{ACCOUNT_REFRESH_CALLBACK_METHOD, GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
 use decodex_core::{
@@ -978,7 +974,7 @@ impl AttestedProcessChild {
 		let request_id = wire.request_id;
 		let request_sha256 = wire.request_sha256.clone();
 		let success = self.process.conversation_request(wire, self.timeout, true, |bytes| {
-			decode_conversation_thread_start_response(&request, bytes)
+			decodex_codex::decode_conversation_thread_start_response(&request, bytes)
 		})?;
 		let codex_thread_id = success.value.thread_id().as_str().to_owned();
 		let binding = authority.into_binding(SuccessfulRuntimeSessionThreadStart {
@@ -1025,7 +1021,7 @@ impl AttestedProcessChild {
 			self.timeout,
 			false,
 			&mut events,
-			|bytes| decode_conversation_thread_resume_response(request, bytes),
+			|bytes| decodex_codex::decode_conversation_thread_resume_response(request, bytes),
 		);
 		let success = match result {
 			Ok(success) => success,
@@ -1088,7 +1084,7 @@ impl AttestedProcessChild {
 			wire,
 			self.timeout,
 			true,
-			decode_conversation_turn_start_response,
+			decodex_codex::decode_conversation_turn_start_response,
 		)?;
 		let mut notices: Vec<_> = self.process.deferred_conversation_events.drain(..).collect();
 
@@ -1135,7 +1131,7 @@ impl AttestedProcessChild {
 				wire,
 				self.timeout,
 				true,
-				decode_conversation_turn_interrupt_response,
+				decodex_codex::decode_conversation_turn_interrupt_response,
 			)
 			.map(|success: ConversationProcessSuccess<ConversationTurnInterruptResponse>| {
 				success.events
@@ -1627,7 +1623,7 @@ impl CredentialVault for UnavailableCredentialVault {
 
 pub(super) struct StdoutPump {
 	cancelled: Arc<AtomicBool>,
-	done: Receiver<()>,
+	done: mpsc::Receiver<()>,
 	thread: Option<JoinHandle<()>>,
 }
 impl StdoutPump {
@@ -1650,7 +1646,7 @@ impl StdoutPump {
 		buffered: Arc<AtomicBool>,
 	) -> Result<Self, SupervisionError>
 	where
-		R: Read + std::os::fd::AsRawFd + Send + 'static,
+		R: Read + AsRawFd + Send + 'static,
 	{
 		Self::start_inner(reader, sender, protocol_limit_exceeded, Some(buffered))
 	}
@@ -1726,7 +1722,7 @@ impl StdoutPump {
 pub(super) struct SupervisedProcess {
 	owner: ProcessGroupOwner,
 	stdin: Box<dyn Write + Send>,
-	stdout: Receiver<InboundFrame>,
+	stdout: mpsc::Receiver<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 	binding: AccountBinding,
 	#[cfg(test)]
@@ -1957,25 +1953,7 @@ impl SupervisedProcess {
 			let header: InboundHeader = serde_json::from_slice(&line)
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
-			if header.id.is_none()
-				&& matches!(header.method.as_deref(), Some("configWarning" | "warning"))
-			{
-				let projected = if header.method.as_deref() == Some("warning") {
-					native_config_warning::warning_from_frame(&line)
-				} else {
-					native_config_warning::from_frame(&line)
-				};
-
-				if let Some(warning) = projected
-					&& !self.config_warnings.contains(&warning)
-				{
-					if self.config_warnings.len() < 32 {
-						self.config_warnings.push(warning);
-					} else if self.config_warnings.len() == 32 {
-						self.config_warnings.push(serde_json::json!({"method":"configWarning","params":{"summary":"Additional configuration warnings exceeded the display limit.","details":null}}));
-					}
-				}
-
+			if self.record_rpc_warning(&header, &line) {
 				continue;
 			}
 			// Thread history and titles legitimately contain JSON escapes. As with
@@ -2035,6 +2013,32 @@ impl SupervisedProcess {
 				}
 			}
 		}
+	}
+
+	fn record_rpc_warning(&mut self, header: &InboundHeader, line: &[u8]) -> bool {
+		if header.id.is_none()
+			&& matches!(header.method.as_deref(), Some("configWarning" | "warning"))
+		{
+			let projected = if header.method.as_deref() == Some("warning") {
+				native_config_warning::warning_from_frame(line)
+			} else {
+				native_config_warning::from_frame(line)
+			};
+
+			if let Some(warning) = projected
+				&& !self.config_warnings.contains(&warning)
+			{
+				if self.config_warnings.len() < 32 {
+					self.config_warnings.push(warning);
+				} else if self.config_warnings.len() == 32 {
+					self.config_warnings.push(serde_json::json!({"method":"configWarning","params":{"summary":"Additional configuration warnings exceeded the display limit.","details":null}}));
+				}
+			}
+
+			return true;
+		}
+
+		false
 	}
 
 	fn prepare_conversation_request<P>(
@@ -2119,8 +2123,8 @@ impl SupervisedProcess {
 		frame.write_to(&mut self.stdin).map_err(|_| ambiguous())?;
 		self.stdin.flush().map_err(|_| ambiguous())?;
 
-		let mut native_activity = false;
 		let deadline = Instant::now() + timeout;
+		let mut native_activity = false;
 
 		loop {
 			let remaining = deadline.saturating_duration_since(Instant::now());
@@ -2142,25 +2146,12 @@ impl SupervisedProcess {
 			let header: InboundHeader =
 				serde_json::from_slice(&line).map_err(|_| invalid_response())?;
 
-			if header.method.is_some()
-				&& !matches!(header.method.as_deref(), Some("warning" | "configWarning"))
+			if self
+				.observe_and_service_conversation_request(&header, &line, &mut native_activity)
+				.map_err(|_| ambiguous())?
 			{
-				native_activity = true;
-			}
-
-			if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
-				Self::service_inbound_request(
-					&self.binding,
-					&mut self.stdin,
-					id,
-					inbound_method,
-					&line,
-				)
-				.map_err(|_| ambiguous())?;
-
 				continue;
 			}
-
 			if header.id == Some(request_id_u64) {
 				let witness_digest = hex_digest(&Sha256::digest(&line));
 				let response: JsonRpcResponse<serde_json::Value> =
@@ -2228,6 +2219,33 @@ impl SupervisedProcess {
 				return Err(invalid_response());
 			}
 		}
+	}
+
+	fn observe_and_service_conversation_request(
+		&mut self,
+		header: &InboundHeader,
+		line: &[u8],
+		native_activity: &mut bool,
+	) -> Result<bool, ProbeError> {
+		if header.method.is_some()
+			&& !matches!(header.method.as_deref(), Some("warning" | "configWarning"))
+		{
+			*native_activity = true;
+		}
+
+		if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
+			Self::service_inbound_request(
+				&self.binding,
+				&mut self.stdin,
+				id,
+				inbound_method,
+				line,
+			)?;
+
+			return Ok(true);
+		}
+
+		Ok(false)
 	}
 
 	fn next_conversation_event(
@@ -2430,7 +2448,7 @@ impl SupervisedProcess {
 					return Err("Codex thread archived state contradicts its list filter");
 				}
 
-				exact_thread_facts(thread, archived)
+				protocol::exact_thread_facts(thread, archived)
 			})
 			.collect::<Result<Vec<_>, _>>()
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
@@ -2487,7 +2505,7 @@ impl SupervisedProcess {
 			None =>
 				self.resolve_exact_thread_archived_state(&response.thread, thread_id, timeout)?,
 		};
-		let facts = exact_thread_facts(&response.thread, archived)
+		let facts = protocol::exact_thread_facts(&response.thread, archived)
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
 
 		if &facts.id != thread_id {
@@ -3317,7 +3335,7 @@ impl QuarantineSlot {
 pub(super) struct ProcessQuarantine {
 	state: Arc<ProcessQuarantineState>,
 	shutdown: SyncSender<()>,
-	joined: Mutex<Receiver<()>>,
+	joined: Mutex<mpsc::Receiver<()>>,
 	worker_id: ThreadId,
 }
 impl ProcessQuarantine {
@@ -4208,36 +4226,6 @@ enum QuarantineStartFailure {
 	Coordinator,
 }
 
-/// Consume one fresh exact Conversation admission before the ordinary supervisor may spawn.
-pub(crate) async fn spawn_admitted_conversation_process(
-	control: &ProcessGenerationControl,
-	admission: FreshConversationProcessGeneration,
-	execution_authorization: ProcessExecutionAuthorization,
-	mut launch: AttestedAppServerLaunch,
-	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
-) -> Result<FencedProcess, ProcessSupervisorError> {
-	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
-
-	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
-}
-
-/// Keep the same attested directory boundary for a retained Agent process admission.
-pub(crate) async fn spawn_admitted_agent_process(
-	control: &ProcessGenerationControl,
-	root_id: String,
-	operation_key: String,
-	generation_id: ProcessGenerationId,
-	execution_authorization: ProcessExecutionAuthorization,
-	mut launch: AttestedAppServerLaunch,
-	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
-) -> Result<FencedProcess, ProcessSupervisorError> {
-	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
-
-	control
-		.spawn_fenced_agent(root_id, operation_key, generation_id, execution_authorization, launch)
-		.await
-}
-
 pub(super) fn project_exact_submitted_turn(
 	thread: &ProtocolThread,
 	client_user_message_id: &str,
@@ -4334,6 +4322,36 @@ pub(super) fn project_exact_submitted_turn(
 	.map_err(|_| ExactReconciliationError::InvalidResult)
 }
 
+/// Consume one fresh exact Conversation admission before the ordinary supervisor may spawn.
+pub(crate) async fn spawn_admitted_conversation_process(
+	control: &ProcessGenerationControl,
+	admission: FreshConversationProcessGeneration,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+
+	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
+}
+
+/// Keep the same attested directory boundary for a retained Agent process admission.
+pub(crate) async fn spawn_admitted_agent_process(
+	control: &ProcessGenerationControl,
+	root_id: String,
+	operation_key: String,
+	generation_id: ProcessGenerationId,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+
+	control
+		.spawn_fenced_agent(root_id, operation_key, generation_id, execution_authorization, launch)
+		.await
+}
+
 fn validated_working_directory(command: &AppServerCommand) -> Result<String, ProbeError> {
 	command
 		.working_directory
@@ -4417,13 +4435,15 @@ fn decode_conversation_process_event(
 		}));
 	}
 
-	if let Some(delta) = project_conversation_message_delta(bytes)
+	if let Some(delta) = decodex_codex::project_conversation_message_delta(bytes)
 		.map_err(|_| ConversationProcessError::Incompatible)?
 	{
 		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
 	}
 
-	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
+	match decodex_codex::normalize_event(bytes)
+		.map_err(|_| ConversationProcessError::Incompatible)?
+	{
 		NormalizedEvent::TurnCompleted { status, .. } => {
 			// Display normalization hashes opaque IDs. Runtime correlation must retain
 			// the exact native identity, including when metadata queries collect events.
@@ -4456,9 +4476,13 @@ fn spawn_protocol_process(
 	#[cfg(target_os = "macos")]
 	if let Some(identity) = &command.attested_code_identity {
 		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
-		let suspended =
-			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
-				.map_err(|_| SupervisionError::SpawnFailed)?;
+		let suspended = macos_attested_spawn::spawn_suspended(
+			identity,
+			&command.app_server_args,
+			&command.working_directory,
+			home,
+		)
+		.map_err(|_| SupervisionError::SpawnFailed)?;
 
 		// This non-profile path retains full filesystem and snapshot digest verification. The
 		// dynamic code check then binds the stopped image to that snapshot before SIGCONT.
@@ -4466,8 +4490,9 @@ fn spawn_protocol_process(
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), guard);
+		let owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), guard);
 		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
+		let mut owner = owner;
 
 		owner.attach_pump(pump);
 
@@ -4548,7 +4573,7 @@ fn spawn_attested_protocol_process(
 
 		let suspended = match (capability, pre_spawn_check) {
 			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, Some(check)) =>
-				spawn_private_stdio_suspended_at(
+				macos_attested_spawn::spawn_private_stdio_suspended_at(
 					identity,
 					&command.app_server_args,
 					check.working_directory_descriptor(),
@@ -4556,7 +4581,7 @@ fn spawn_attested_protocol_process(
 					binding.personal_access_token.as_deref().map(String::as_str),
 				),
 			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, None) =>
-				spawn_private_stdio_suspended(
+				macos_attested_spawn::spawn_private_stdio_suspended(
 					identity,
 					&command.app_server_args,
 					&command.working_directory,
@@ -5805,7 +5830,10 @@ pub(crate) mod tests {
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
-		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+		os::{
+			fd::AsRawFd,
+			unix::fs::{MetadataExt as _, PermissionsExt as _},
+		},
 		path::{Path, PathBuf},
 		process::{Command, Stdio},
 		sync::{
@@ -5829,12 +5857,12 @@ pub(crate) mod tests {
 			RunnerCapacity, RunnerPermit,
 			process::{
 				self, AccountBinding, AccountIdentity, AppServerCommand, AttestedAppServerLaunch,
-				AttestedAppServerProfile, ConversationProcessEvent, CredentialProjection,
-				CredentialProjectionResponse, CredentialVault, CredentialVaultError,
-				ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
-				PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod,
-				ReadOnlyProbe, ShutdownOutcome, SupervisedProcess, SupervisionError,
-				UnavailableCredentialVault,
+				AttestedAppServerProfile, ConversationProcessEvent, ConversationRejectionReason,
+				CredentialProjection, CredentialProjectionResponse, CredentialVault,
+				CredentialVaultError, ExactThreadReconciler, ExactThreadReconciliation,
+				ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY, ProbeError,
+				ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
+				SupervisedProcess, SupervisionError, UnavailableCredentialVault,
 			},
 			protocol::{
 				self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -6929,7 +6957,7 @@ pub(crate) mod tests {
 			}
 		}
 
-		impl std::os::fd::AsRawFd for UnavailableDescriptor {
+		impl AsRawFd for UnavailableDescriptor {
 			fn as_raw_fd(&self) -> std::os::fd::RawFd {
 				-1
 			}
@@ -8356,6 +8384,7 @@ pub(crate) mod tests {
 				Duration::from_secs(2),
 			)
 			.unwrap();
+			let vault = FixtureVault::matching();
 			let mut child = super::AttestedProcessChild {
 				process: SupervisedProcess::spawn(command, binding).unwrap(),
 				build: profile.build,
@@ -8363,7 +8392,6 @@ pub(crate) mod tests {
 				timeout: Duration::from_secs(2),
 				initialized: false,
 			};
-			let vault = FixtureVault::matching();
 
 			if agent {
 				child.initialize_agent_turns(&vault).unwrap();
@@ -8504,18 +8532,16 @@ pub(crate) mod tests {
 
 	#[test]
 	fn resume_rejection_classification_requires_exact_thread_evidence() {
-		use crate::account_launch::process::ConversationRejectionReason as Reason;
-
 		for (mode, expected) in [
-			("resume-reject-closing", Reason::ClosingThread),
-			("resume-reject-closing-other-thread", Reason::Other),
-			("resume-reject-closing-wrong-code", Reason::Other),
-			("resume-reject-missing", Reason::MissingThread),
-			("resume-reject-archived", Reason::ArchivedThread),
-			("resume-reject-sandbox", Reason::SandboxConfiguration),
-			("resume-reject-other-thread", Reason::Other),
-			("resume-reject-wrong-code", Reason::Other),
-			("resume-reject-generic", Reason::Other),
+			("resume-reject-closing", ConversationRejectionReason::ClosingThread),
+			("resume-reject-closing-other-thread", ConversationRejectionReason::Other),
+			("resume-reject-closing-wrong-code", ConversationRejectionReason::Other),
+			("resume-reject-missing", ConversationRejectionReason::MissingThread),
+			("resume-reject-archived", ConversationRejectionReason::ArchivedThread),
+			("resume-reject-sandbox", ConversationRejectionReason::SandboxConfiguration),
+			("resume-reject-other-thread", ConversationRejectionReason::Other),
+			("resume-reject-wrong-code", ConversationRejectionReason::Other),
+			("resume-reject-generic", ConversationRejectionReason::Other),
 		] {
 			let (_temp, mut child) = ordinary_catalog_child(mode);
 			let request = decodex_codex::ConversationThreadResumeRequest::new(
