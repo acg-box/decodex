@@ -32,9 +32,9 @@ use zeroize as _;
 
 use decodex_core::RepositoryContentRevision;
 use decodex_runtime::{
-	ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
+	self, ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
 	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
-	ValidationSupervisionError, ValidationTermination, supervise_validation,
+	ValidationSupervisionError, ValidationTermination,
 };
 use tempfile::TempDir;
 
@@ -99,8 +99,12 @@ fn run(script: &str) -> SupervisedValidationEvidence {
 	let root = TempDir::new().expect("temporary validation root is available");
 	let authority = authority(&root, script, Duration::from_secs(2), 4_096, 4_096);
 
-	supervise_validation(&authority, &ValidationCancellation::default(), &mut Probe::stable())
-		.expect("supervision returns complete evidence")
+	decodex_runtime::supervise_validation(
+		&authority,
+		&ValidationCancellation::default(),
+		&mut Probe::stable(),
+	)
+	.expect("supervision returns complete evidence")
 }
 
 #[test]
@@ -135,9 +139,12 @@ fn success_nonzero_and_signal_have_exact_bounded_evidence() {
 fn timeout_and_cancellation_fail_closed() {
 	let root = TempDir::new().expect("temporary validation root is available");
 	let timeout = authority(&root, "sleep 30", Duration::from_millis(120), 4_096, 4_096);
-	let evidence =
-		supervise_validation(&timeout, &ValidationCancellation::default(), &mut Probe::stable())
-			.expect("timeout returns evidence");
+	let evidence = decodex_runtime::supervise_validation(
+		&timeout,
+		&ValidationCancellation::default(),
+		&mut Probe::stable(),
+	)
+	.expect("timeout returns evidence");
 
 	assert_eq!(evidence.termination, ValidationTermination::TimedOut);
 	assert_eq!(evidence.acceptance, ValidationAcceptance::Rejected(ValidationRejection::TimedOut));
@@ -147,8 +154,9 @@ fn timeout_and_cancellation_fail_closed() {
 	cancellation.cancel();
 
 	let cancelled = authority(&root, "exit 0", Duration::from_secs(1), 4_096, 4_096);
-	let evidence = supervise_validation(&cancelled, &cancellation, &mut Probe::stable())
-		.expect("pre-spawn cancellation returns evidence");
+	let evidence =
+		decodex_runtime::supervise_validation(&cancelled, &cancellation, &mut Probe::stable())
+			.expect("pre-spawn cancellation returns evidence");
 
 	assert_eq!(evidence.termination, ValidationTermination::Cancelled);
 	assert_eq!(evidence.after, None);
@@ -159,9 +167,12 @@ fn timeout_and_cancellation_fail_closed() {
 fn output_limits_and_concurrent_protected_state_mutation_override_process_success() {
 	let root = TempDir::new().expect("temporary validation root is available");
 	let output = authority(&root, "printf 123456789", Duration::from_secs(1), 4, 4_096);
-	let evidence =
-		supervise_validation(&output, &ValidationCancellation::default(), &mut Probe::stable())
-			.expect("output-limit supervision returns evidence");
+	let evidence = decodex_runtime::supervise_validation(
+		&output,
+		&ValidationCancellation::default(),
+		&mut Probe::stable(),
+	)
+	.expect("output-limit supervision returns evidence");
 
 	assert_eq!(evidence.stdout, b"1234");
 	assert_eq!(evidence.termination, ValidationTermination::OutputLimitExceeded);
@@ -172,8 +183,12 @@ fn output_limits_and_concurrent_protected_state_mutation_override_process_succes
 
 	let mutation = authority(&root, "exit 0", Duration::from_secs(1), 4_096, 4_096);
 	let mut probe = Probe { observations: vec![fingerprint(1), fingerprint(2)], next: 0 };
-	let evidence = supervise_validation(&mutation, &ValidationCancellation::default(), &mut probe)
-		.expect("mutation supervision returns evidence");
+	let evidence = decodex_runtime::supervise_validation(
+		&mutation,
+		&ValidationCancellation::default(),
+		&mut probe,
+	)
+	.expect("mutation supervision returns evidence");
 
 	assert_eq!(evidence.termination, ValidationTermination::Exited(0));
 	assert_eq!(
@@ -188,9 +203,12 @@ fn timeout_tears_down_descendants_and_spawn_failure_returns_no_false_evidence() 
 	let pid_path = root.path().join("descendant.pid");
 	let script = format!("sleep 30 & child=$!; printf %s $child > {}; wait", pid_path.display());
 	let timeout = authority(&root, &script, Duration::from_millis(250), 4_096, 4_096);
-	let evidence =
-		supervise_validation(&timeout, &ValidationCancellation::default(), &mut Probe::stable())
-			.expect("descendant timeout returns evidence");
+	let evidence = decodex_runtime::supervise_validation(
+		&timeout,
+		&ValidationCancellation::default(),
+		&mut Probe::stable(),
+	)
+	.expect("descendant timeout returns evidence");
 
 	assert_eq!(evidence.termination, ValidationTermination::TimedOut);
 
@@ -217,7 +235,11 @@ fn timeout_tears_down_descendants_and_spawn_failure_returns_no_false_evidence() 
 	.expect("missing executable is still explicit authority");
 
 	assert!(matches!(
-		supervise_validation(&missing, &ValidationCancellation::default(), &mut Probe::stable()),
+		decodex_runtime::supervise_validation(
+			&missing,
+			&ValidationCancellation::default(),
+			&mut Probe::stable()
+		),
 		Err(ValidationSupervisionError::Spawn(_))
 	));
 }
@@ -231,8 +253,9 @@ fn cancellation_during_execution_terminates_the_child_group() {
 	let evidence = Arc::new(Mutex::new(None));
 	let slot = Arc::clone(&evidence);
 	let worker = thread::spawn(move || {
-		let observed = supervise_validation(&authority, &cancellation, &mut Probe::stable())
-			.expect("cancellation returns evidence");
+		let observed =
+			decodex_runtime::supervise_validation(&authority, &cancellation, &mut Probe::stable())
+				.expect("cancellation returns evidence");
 
 		*slot.lock().expect("evidence lock is available") = Some(observed);
 	});

@@ -1,5 +1,14 @@
 //! Disposable ownership fixture. This does not qualify kernel admission or credential enrollment.
-use crate::agent_usage_estimate::{Source, SourceKey};
+use std::path::Path;
+
+use rusqlite::Connection;
+use serde_json::Value;
+use tokio::{sync::oneshot, time};
+
+use crate::{
+	agent_model_settings,
+	agent_usage_estimate::{Source, SourceKey},
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
@@ -12,6 +21,8 @@ use decodex_database::{
 	AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
 	CodexAccountCapabilityAttestation, SqliteStore,
 };
+use decodex_protocol::AgentModelSettingsResult;
+
 const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 const OPERATION: &str = "20000000-0000-4000-8000-000000000001";
@@ -24,7 +35,7 @@ pub(crate) struct OwnedReviewer {
 }
 impl OwnedReviewer {
 	pub(crate) async fn new(
-		home: &std::path::Path,
+		home: &Path,
 		client: &AppServerClient,
 		thread: &str,
 		turn: &str,
@@ -144,7 +155,7 @@ impl OwnedReviewer {
 }
 
 fn seed_account(root: &DecodexRoot) {
-	let connection = rusqlite::Connection::open(root.paths().product_database_file())
+	let connection = Connection::open(root.paths().product_database_file())
 		.expect("disposable fixture connection");
 
 	connection
@@ -162,9 +173,9 @@ fn seed_account(root: &DecodexRoot) {
 
 // Model observations must retain exact ownership across the native read.
 
-use decodex_protocol::AgentModelSettingsResult as Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 #[tokio::test]
 async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
@@ -184,15 +195,15 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 		"other_settings",
 	] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-		let (release, released) = tokio::sync::oneshot::channel::<()>();
+		let (release, released) = oneshot::channel::<()>();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
-			let request: serde_json::Value =
+			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 			assert_eq!(request["method"], "thread/read");
@@ -227,7 +238,7 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 			let _ = released.await;
 		});
 		let calls = AtomicUsize::new(0);
-		let result = crate::agent_model_settings::read(&owner.store, || {
+		let result = agent_model_settings::read(&owner.store, || {
 			let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 			let mut key = owner.key.clone();
 
@@ -259,14 +270,19 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 
 		match change {
 			"none" | "other_settings" => assert!(
-				matches!(result, Result::Available { model: Some(ref model), reasoning_effort: Some(ref effort), model_provider: Some(ref provider), .. } if model.as_str()=="configured-model" && effort.as_str()=="future-effort" && provider.as_str()=="server-provider")
+				matches!(result, AgentModelSettingsResult::Available{ model: Some(ref model), reasoning_effort: Some(ref effort), model_provider: Some(ref provider), .. } if model.as_str()=="configured-model" && effort.as_str()=="future-effort" && provider.as_str()=="server-provider")
 			),
 			"null" => assert!(matches!(
 				result,
-				Result::Available { model: None, reasoning_effort: None, .. }
+				AgentModelSettingsResult::Available { model: None, reasoning_effort: None, .. }
 			)),
-			"missing" => assert_eq!(result, Result::NotReported),
-			_ => assert_eq!(result, Result::Unavailable, "{change}"),
+			"missing" =>
+				assert_eq!(result, decodex_protocol::AgentModelSettingsResult::NotReported),
+			_ => assert_eq!(
+				result,
+				decodex_protocol::AgentModelSettingsResult::Unavailable,
+				"{change}"
+			),
 		}
 
 		assert!(owner.store.list_pending_agent_events(100).await.unwrap().is_empty());
@@ -276,8 +292,8 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 #[tokio::test]
 async fn model_settings_do_not_read_a_foreign_thread() {
 	let home = tempfile::tempdir().unwrap();
-	let (local, mut remote) = tokio::io::duplex(4_096);
-	let (r, w) = tokio::io::split(local);
+	let (local, mut remote) = io::duplex(4_096);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let mut key = owner.key.clone();
@@ -285,15 +301,14 @@ async fn model_settings_do_not_read_a_foreign_thread() {
 	key.thread = "foreign".into();
 
 	assert_eq!(
-		crate::agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) })
-			.await,
-		Result::Unavailable
+		agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) }).await,
+		decodex_protocol::AgentModelSettingsResult::Unavailable
 	);
 
 	let mut byte = [0];
 
 	assert!(
-		tokio::time::timeout(
+		time::timeout(
 			std::time::Duration::from_millis(25),
 			tokio::io::AsyncReadExt::read(&mut remote, &mut byte)
 		)

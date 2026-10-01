@@ -1,8 +1,15 @@
 //! Ordinary typed turns preserve native reasoning and exact recovery identity.
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::{agent_process::native_tests::*, process, protocol::ProtocolThread};
 use decodex_codex::{
-	ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnInput,
-	ConversationTurnStartRequest, ExactThreadId, decode_conversation_thread_resume_response,
+	self, ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnInput,
+	ConversationTurnStartRequest, ExactThreadId,
 };
 
 #[tokio::test]
@@ -14,7 +21,7 @@ async fn installed_ordinary_turn_effort_preserves_inheritance_across_restart() {
 		(Some("none"), Some("provider-effort")),
 		(Some("provider-effort"), None),
 	] {
-		tokio::time::timeout(Duration::from_secs(30), qualify(requested, configured, false, false))
+		time::timeout(Duration::from_secs(30), qualify(requested, configured, false, false))
 			.await
 			.expect("bounded native ordinary effort fixture");
 	}
@@ -23,23 +30,17 @@ async fn installed_ordinary_turn_effort_preserves_inheritance_across_restart() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native inheritance qualification"]
 async fn installed_ordinary_configured_flex_survives_without_catalog_or_fast_mode() {
-	tokio::time::timeout(
-		Duration::from_secs(30),
-		qualify(None, Some("provider-effort"), true, false),
-	)
-	.await
-	.expect("bounded native inheritance fixture");
+	time::timeout(Duration::from_secs(30), qualify(None, Some("provider-effort"), true, false))
+		.await
+		.expect("bounded native inheritance fixture");
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated per-turn tier qualification"]
 async fn installed_ordinary_advertised_flex_reaches_per_turn_request() {
-	tokio::time::timeout(
-		Duration::from_secs(30),
-		qualify(None, Some("provider-effort"), true, true),
-	)
-	.await
-	.expect("bounded per-turn tier fixture");
+	time::timeout(Duration::from_secs(30), qualify(None, Some("provider-effort"), true, true))
+		.await
+		.expect("bounded per-turn tier fixture");
 }
 
 async fn qualify(
@@ -48,13 +49,12 @@ async fn qualify(
 	inherit: bool,
 	tier_override: bool,
 ) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir_in("/tmp").expect("native ordinary effort fixture");
-	let listener =
-		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native ordinary effort fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native ordinary effort fixture");
 	let address = listener.local_addr().expect("native ordinary effort fixture");
-	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let requests = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -75,7 +75,7 @@ async fn qualify(
 
 	let catalog = home.path().join("models.json");
 
-	std::fs::write(
+	fs::write(
 		&catalog,
 		serde_json::to_vec(&json!({"models":[model]})).expect("native ordinary effort fixture"),
 	)
@@ -86,7 +86,7 @@ async fn qualify(
 		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
 		.unwrap_or_default();
 
-	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
+	fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
@@ -145,7 +145,7 @@ async fn qualify(
 		assert_eq!(response["serviceTier"], Value::Null, "per-turn Flex must not persist");
 	}
 
-	let decoded = decode_conversation_thread_resume_response(
+	let decoded = decodex_codex::decode_conversation_thread_resume_response(
 		&resume,
 		&serde_json::to_vec(&response).expect("native resume response"),
 	)
@@ -233,24 +233,19 @@ async fn assert_readback(session: &NativeSession, thread_id: &str, client_id: &s
 		.thread_read(json!({"threadId":thread_id,"includeTurns":true}))
 		.await
 		.expect("read native persisted history");
-	let thread: crate::account_launch::protocol::ProtocolThread =
-		serde_json::from_value(response["thread"].clone())
-			.expect("decode native history using the ordinary recovery contract");
-	let recovered =
-		crate::account_launch::process::project_exact_submitted_turn(&thread, client_id)
-			.expect("project exact native identity")
-			.expect("native user client ID survives history persistence");
+	let thread: ProtocolThread = serde_json::from_value(response["thread"].clone())
+		.expect("decode native history using the ordinary recovery contract");
+	let recovered = process::project_exact_submitted_turn(&thread, client_id)
+		.expect("project exact native identity")
+		.expect("native user client ID survives history persistence");
 
 	assert_eq!(recovered.provider_turn_id().as_str(), turn_id);
 	assert_eq!(recovered.status(), decodex_codex::ConversationTurnStatus::Completed);
 	assert_eq!(recovered.assistant_text(), "Native ordinary answer");
 	assert!(
-		crate::account_launch::process::project_exact_submitted_turn(
-			&thread,
-			"50000000-0000-4000-8000-000000000099"
-		)
-		.expect("absent identity readback")
-		.is_none()
+		process::project_exact_submitted_turn(&thread, "50000000-0000-4000-8000-000000000099")
+			.expect("absent identity readback")
+			.is_none()
 	);
 }
 

@@ -1,4 +1,10 @@
-use super::*;
+use std::time::Duration;
+
+use rusqlite::Connection;
+use tokio::{io, time};
+
+use crate::{agent::tests::*, application};
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history() {
@@ -8,8 +14,8 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 
 	while sent.try_recv().is_ok() {}
 
-	let (io, mut write) = tokio::io::duplex(16_384);
-	let (read, writer) = tokio::io::split(io);
+	let (io, mut write) = io::duplex(16_384);
+	let (read, writer) = io::split(io);
 	let (_client, mut events) = AppServerClient::from_io(read, writer);
 	let params = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","provider":"AWS","message":"[Sign in](https://example.invalid)"});
 
@@ -23,10 +29,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 
 		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-		let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
-			.await
-			.unwrap()
-			.unwrap();
+		let event = time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 
 		agent.handle_event(event).await.unwrap();
 	}
@@ -42,12 +45,10 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 
 	assert!(receipts.is_empty());
 	// Load a receipt saved before retirement. No production writer remains.
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	{
-		let connection = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+		let connection = Connection::open(root.paths().product_database_file()).unwrap();
 
 		connection.execute(
 			"INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES('legacy-auth-recovery','agent','auth_recovery_started',?1,1,'resolved','Historical provider notice',1,'agent','opaque turn/1')",
@@ -56,7 +57,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 	}
 
 	let (transcript, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-	let projected = crate::application::render_agent_history_for_test(transcript)
+	let projected = application::render_agent_history_for_test(transcript)
 		.into_iter()
 		.filter(|entry| entry.kind == "auth_recovery")
 		.collect::<Vec<_>>();
@@ -79,7 +80,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 	let (rows, _) = reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-	let after = crate::application::render_agent_history_for_test(rows)
+	let after = application::render_agent_history_for_test(rows)
 		.into_iter()
 		.filter(|entry| entry.kind == "auth_recovery")
 		.collect::<Vec<_>>();

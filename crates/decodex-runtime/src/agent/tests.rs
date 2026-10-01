@@ -32,9 +32,18 @@
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
 
-use super::*;
+use crate::agent::*;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+use decodex_protocol::{AgentRequestedDecision, requested_decision_response};
+
+use std::{iter, slice};
+
+use timeline::metrics;
+use tokio::{sync::mpsc, task, time};
+
+use crate::{agent::misalignment, application};
 
 struct FixtureFaults {
 	resume_failures: u64,
@@ -186,13 +195,13 @@ pub(super) async fn fixture_with_history(
 	root.paths().ensure_layout().unwrap();
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
-	let (client_io, server_io) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(client_io);
+	let (client_io, server_io) = io::duplex(65_536);
+	let (reader, writer) = io::split(client_io);
 	let (client, mut events) = AppServerClient::from_io(reader, writer);
 
 	tokio::spawn(async move { while events.recv().await.is_some() {} });
 
-	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	let (sent, received) = mpsc::unbounded_channel();
 
 	tokio::spawn(serve_fixture(server_io, history, sent));
 
@@ -297,7 +306,7 @@ fn live_review_token(
 	let (_, guard) =
 		agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
 
-	super::misalignment::review_token(review, &guard).unwrap()
+	misalignment::review_token(review, &guard).unwrap()
 }
 
 #[tokio::test]
@@ -398,8 +407,8 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	let (io, mut write) = tokio::io::duplex(8_192);
-	let (read, writer) = tokio::io::split(io);
+	let (io, mut write) = io::duplex(8_192);
+	let (read, writer) = io::split(io);
 	let (_client, mut events) = AppServerClient::from_io(read, writer);
 
 	for (index, kind) in ["started", "interacted", "interrupted", "completed"].iter().enumerate() {
@@ -417,7 +426,7 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 
 				write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-				let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
+				let event = time::timeout(std::time::Duration::from_secs(2), events.recv())
 					.await
 					.unwrap()
 					.unwrap();
@@ -536,7 +545,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 	let native = json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
 	let mut page = timeline::project("opaque thread/1", &native).unwrap();
 
-	timeline::metrics::enrich(&store, "agent", &mut page).await.unwrap();
+	metrics::enrich(&store, "agent", &mut page).await.unwrap();
 
 	for (id, _, _, _, expected) in cases {
 		assert_eq!(
@@ -561,7 +570,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 
 	let mut other = timeline::project("foreign", &native).unwrap();
 
-	timeline::metrics::enrich(&store, "agent", &mut other).await.unwrap();
+	metrics::enrich(&store, "agent", &mut other).await.unwrap();
 
 	assert!(
 		matches!(&other.entries[0].content, decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } if activity.duration_ms.is_none())
@@ -592,8 +601,8 @@ async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution(
 
 	while sent.try_recv().is_ok() {}
 
-	let (read, mut write) = tokio::io::duplex(8_192);
-	let (reader, writer) = tokio::io::split(read);
+	let (read, mut write) = io::duplex(8_192);
+	let (reader, writer) = io::split(read);
 	let (_client, mut events) = AppServerClient::from_io(reader, writer);
 
 	for (thread, turn, started) in [
@@ -608,10 +617,8 @@ async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution(
 
 		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-		let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
-			.await
-			.unwrap()
-			.unwrap();
+		let event =
+			time::timeout(std::time::Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 
 		coordinator.handle_event(event).await.unwrap();
 	}
@@ -731,13 +738,13 @@ async fn attach_request_transport(
 	history: Value,
 	request: Value,
 ) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
-	let (local, mut remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, mut remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, mut events) = AppServerClient::from_io(reader, writer);
 
 	agent.client = client;
 
-	let (sent, received) = tokio::sync::mpsc::unbounded_channel();
+	let (sent, received) = mpsc::unbounded_channel();
 	let frames = request.as_array().cloned().unwrap_or_else(|| vec![request]);
 	let count = frames.len();
 
@@ -785,7 +792,7 @@ async fn serve_fixture(
 	history: Value,
 	sent: tokio::sync::mpsc::UnboundedSender<Value>,
 ) {
-	let (reader, mut writer) = tokio::io::split(server_io);
+	let (reader, mut writer) = io::split(server_io);
 	let mut lines = BufReader::new(reader).lines();
 	let mut threads = 0;
 	let mut turns = 0;
@@ -1059,7 +1066,7 @@ async fn failed_dependency_write_cannot_leave_dispatchable_work() {
 
 	coordinator.wake_pending().await.unwrap();
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert!(
 		!requests.iter().any(|request| matches!(
@@ -1413,7 +1420,7 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 	assert!(pending[0].payload.contains("A later request"));
 	assert!(pending[0].delivered_turn_id.is_none());
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|request| request["method"] == "turn/start")
 		.collect();
 
@@ -1444,8 +1451,6 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 
 #[tokio::test]
 async fn large_requested_decisions_reach_native_once_without_truncation() {
-	use decodex_protocol::{AgentRequestedDecision, requested_decision_response};
-
 	for (method, requested, decision) in [
 		(
 			"item/permissions/requestApproval",
@@ -1599,7 +1604,7 @@ async fn resolving_prerequisite_releases_authorized_unbound_worker_once() {
 	assert!(second.active_turn_id.is_some());
 	assert!(coordinator.release_ready_workers("agent").await.unwrap().is_empty());
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.iter().filter(|request| request["method"] == "thread/start").count(), 1);
 	assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 1);
@@ -1932,17 +1937,14 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 		tokio::spawn(async move { store.wait_agent_output("agent".into(), Some(revision)).await });
 
 	assert!(
-		tokio::time::timeout(std::time::Duration::from_millis(10), &mut observer).await.is_err(),
+		time::timeout(std::time::Duration::from_millis(10), &mut observer).await.is_err(),
 		"unchanged output must remain asleep"
 	);
 
 	coordinator.handle_event(event(turn, "Hello ")).await.unwrap();
 
-	let (next, observed) = tokio::time::timeout(std::time::Duration::from_secs(1), observer)
-		.await
-		.unwrap()
-		.unwrap()
-		.unwrap();
+	let (next, observed) =
+		time::timeout(std::time::Duration::from_secs(1), observer).await.unwrap().unwrap().unwrap();
 
 	assert!(next > revision);
 	assert_eq!(observed[0].text, "Hello ");
@@ -2025,7 +2027,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	assert_eq!(events.len(), 1);
 	assert_eq!(events[0].work_item_id, "worker");
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let starts: Vec<_> =
 		requests.iter().filter(|request| request["method"] == "thread/start").collect();
 
@@ -2072,7 +2074,7 @@ async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 	assert_eq!(original.codex_thread_id, upgraded.codex_thread_id);
 	assert_eq!(coordinator.store.agent_tool_version("agent".into()).await.unwrap(), 1);
 
-	let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let messages: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
@@ -2113,7 +2115,7 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 
 	coordinator.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|request| request["method"] == "turn/start")
 		.collect();
 
@@ -2124,7 +2126,7 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 
 	coordinator.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|request| request["method"] == "turn/start")
 		.collect();
 
@@ -2140,7 +2142,7 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 			.is_none()
 	);
 
-	let message = wake_message(std::slice::from_ref(&evidence)).unwrap();
+	let message = wake_message(slice::from_ref(&evidence)).unwrap();
 
 	assert!(!message.contains("Background evidence"));
 	assert!(wake_evidence(&evidence).to_string().contains("Background evidence"));
@@ -2257,7 +2259,7 @@ async fn external_writer_release_requires_a_new_send() {
 	coordinator.enqueue_user_message("agent", "explicit-resend", "Continue").await.unwrap();
 	coordinator.wake_pending().await.unwrap();
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.iter().filter(|r| r["method"] == "turn/start").count(), 1);
 }
@@ -2396,9 +2398,8 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 	coordinator.wake_pending().await.unwrap();
 	coordinator.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|r| r["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|r| r["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 
@@ -2867,17 +2868,17 @@ async fn other_client_input_blocks_question_writes_before_owner_observation() {
 
 		while sent.try_recv().is_ok() {}
 
-		let (incoming, frames) = tokio::sync::mpsc::channel(8);
-		let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
 		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 
 		agent.client = client.clone();
 
 		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
 
-		tokio::time::timeout(std::time::Duration::from_secs(2), async {
+		time::timeout(std::time::Duration::from_secs(2), async {
 			while client.question_revision() == 0 {
-				tokio::task::yield_now().await;
+				task::yield_now().await;
 			}
 		})
 		.await
@@ -2917,8 +2918,8 @@ async fn transport_revert_blocks_old_question_before_coordinator_reads_notificat
 
 	while sent.try_recv().is_ok() {}
 
-	let (incoming, frames) = tokio::sync::mpsc::channel(8);
-	let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+	let (incoming, frames) = mpsc::channel(8);
+	let (outgoing, mut writes) = mpsc::channel(8);
 	let (client, mut notifications) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 
 	agent.client = client.clone();
@@ -2928,9 +2929,9 @@ async fn transport_revert_blocks_old_question_before_coordinator_reads_notificat
 		.await
 		.unwrap();
 
-	tokio::time::timeout(std::time::Duration::from_secs(2), async {
+	time::timeout(std::time::Duration::from_secs(2), async {
 		while client.history_revision() == 0 {
-			tokio::task::yield_now().await;
+			task::yield_now().await;
 		}
 	})
 	.await
@@ -2979,8 +2980,8 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 
 		let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 		let (foreign, _events, _process) = {
-			let (io, remote) = tokio::io::duplex(4_096);
-			let (read, write) = tokio::io::split(io);
+			let (io, remote) = io::duplex(4_096);
+			let (read, write) = io::split(io);
 			let (client, events) = AppServerClient::from_io(read, write);
 
 			(client, events, remote)
@@ -4036,7 +4037,7 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 				.unwrap();
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let events = reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap().0;
-		let rendered = crate::application::render_agent_history_for_test(events);
+		let rendered = application::render_agent_history_for_test(events);
 		let partial: Vec<_> =
 			rendered.iter().filter(|entry| entry.kind.starts_with("partial_")).collect();
 

@@ -1,4 +1,6 @@
 //! Preserve whole recent exchanges before excerpting both ends of long fields.
+use crate::agent_recap::prompt::HISTORY_MAX_BYTES;
+
 const OMITTED_HISTORY: &str = "[Earlier exchanges omitted]\n\n";
 const EXCERPT_MARKER: &str = "\n[... excerpted ...]\n";
 
@@ -18,7 +20,7 @@ impl Exchange {
 }
 
 pub(super) fn render(exchanges: &[Exchange]) -> String {
-	render_budget(exchanges, super::prompt::HISTORY_MAX_BYTES)
+	render_budget(exchanges, HISTORY_MAX_BYTES)
 }
 
 pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String {

@@ -1,7 +1,12 @@
 //! Native task evidence under the existing manager ownership boundary.
 
-use super::{AgentCoordinator, AgentError, AgentWorkItem, belongs_to, exact};
+use std::{collections::HashMap, time::Duration};
+
+use reqwest::Url;
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::agent::{self, AgentCoordinator, AgentError, AgentWorkItem};
 
 impl AgentCoordinator {
 	pub(super) async fn read_work_history(
@@ -19,15 +24,15 @@ impl AgentCoordinator {
 			return self.search_work_history(agent, args).await;
 		}
 
-		let id = exact(args, "/id")?;
-		let expected = exact(args, "/threadId")?;
+		let id = agent::exact(args, "/id")?;
+		let expected = agent::exact(args, "/threadId")?;
 		let all = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;
 		let work = all
 			.iter()
 			.find(|item| item.id == id)
 			.ok_or_else(|| AgentError::Invalid("referenced work is unavailable".into()))?;
-		let owned = work.id == agent.id || belongs_to(work, &agent.id, &all, &managers);
+		let owned = work.id == agent.id || agent::belongs_to(work, &agent.id, &all, &managers);
 		let granted = self
 			.store
 			.agent_has_task_reference(agent.id.clone(), id.clone(), expected.clone())
@@ -112,10 +117,10 @@ impl AgentCoordinator {
 		// access.
 		let all = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;
-		let mut permitted = std::collections::HashMap::new();
+		let mut permitted = HashMap::new();
 
 		for work in &all {
-			if work.id == agent.id || belongs_to(work, &agent.id, &all, &managers) {
+			if work.id == agent.id || agent::belongs_to(work, &agent.id, &all, &managers) {
 				if let Some(thread) = &work.codex_thread_id {
 					permitted.insert(thread.clone(), work.id.clone());
 				}
@@ -188,12 +193,9 @@ impl AgentCoordinator {
 			]);
 			"thread/search"
 		};
-		let page = tokio::time::timeout(
-			std::time::Duration::from_secs(20),
-			self.client.request(method, params),
-		)
-		.await
-		.map_err(|_| AgentError::Invalid("native search timed out".into()))??;
+		let page = time::timeout(Duration::from_secs(20), self.client.request(method, params))
+			.await
+			.map_err(|_| AgentError::Invalid("native search timed out".into()))??;
 		let invalid = || AgentError::Invalid("invalid or oversized native search page".into());
 		let rows = page["data"].as_array().filter(|rows| rows.len() <= 20).ok_or_else(invalid)?;
 		let next = match page.get("nextCursor").ok_or_else(invalid)? {
@@ -209,8 +211,8 @@ impl AgentCoordinator {
 			let snippet =
 				row["snippet"].as_str().filter(|s| s.len() <= 8_192).ok_or_else(invalid)?;
 			let projected = if thread.is_some() {
-				let turn = exact(row, "/turnId")?;
-				let item = exact(row, "/itemId")?;
+				let turn = agent::exact(row, "/turnId")?;
+				let item = agent::exact(row, "/itemId")?;
 				let turn_cursor = row["turnCursor"]
 					.as_str()
 					.filter(|s| !s.is_empty() && s.len() <= 4_096)
@@ -219,7 +221,7 @@ impl AgentCoordinator {
 				json!({"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
 					"snippetMatchRange":row["snippetMatchRange"],"rangeEncoding":"utf16"})
 			} else {
-				let id = exact(row, "/thread/id")?;
+				let id = agent::exact(row, "/thread/id")?;
 				let title = row["thread"]["name"].as_str().filter(|s| s.len() <= 4_096);
 
 				json!({"threadId":id,"title":title,"snippet":snippet})
@@ -239,7 +241,7 @@ impl AgentCoordinator {
 }
 
 fn source_url(thread: &str) -> String {
-	let mut url = reqwest::Url::parse("codex://threads/").expect("constant URL");
+	let mut url = Url::parse("codex://threads/").expect("constant URL");
 
 	url.path_segments_mut().expect("hierarchical URL").pop_if_empty().push(thread);
 
@@ -347,17 +349,18 @@ fn bounded(value: &Value, depth: usize, truncated: &mut bool) -> Value {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent::task_history::{self};
 
 	#[test]
 	fn summary_reports_omitted_items_and_unicode_truncation() {
 		let items: Vec<_> = (0..25)
 			.map(|id| {
-				json!({"id":id.to_string(),
+				task_history::json!({"id":id.to_string(),
 			"type":"agentMessage","text":"界".repeat(1_100)})
 			})
 			.collect();
-		let result = summarize_turn(&json!({"id":"turn","items":items}), false);
+		let result =
+			task_history::summarize_turn(&task_history::json!({"id":"turn","items":items}), false);
 
 		assert_eq!(result["omittedEarlierItems"], 5);
 		assert_eq!(result["items"].as_array().unwrap().len(), 20);

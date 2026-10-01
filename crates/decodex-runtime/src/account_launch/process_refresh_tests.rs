@@ -1,18 +1,18 @@
 //! Exercise the production refresh response owner with synthetic credentials only.
 #[path = "process_refresh_native_tests.rs"] mod native;
 
-use super::*;
-
-use decodex_core::{
-	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
-	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+use std::sync::{
+	Mutex,
+	atomic::{AtomicUsize, Ordering},
 };
 
 use serde_json::{Value, json};
 
-use std::sync::{
-	Mutex,
-	atomic::{AtomicUsize, Ordering},
+use crate::account_launch::process::*;
+use decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
+use decodex_core::{
+	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 };
 
 const PROVIDER: &str = "123e4567-e89b-42d3-a456-426614174011";
@@ -117,7 +117,7 @@ fn pat_bound_child_cannot_invoke_the_oauth_refresh_owner() {
 
 	binding.personal_access_token = Some(Zeroizing::new("synthetic-pat".into()));
 
-	let method = decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
+	let method = ACCOUNT_REFRESH_CALLBACK_METHOD;
 	let result = handle(
 		&binding,
 		17,

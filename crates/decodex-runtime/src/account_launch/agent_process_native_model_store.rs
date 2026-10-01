@@ -1,19 +1,23 @@
 //! Journal qualification with native settings; process-death qualification lives in database tests.
+use std::path::Path;
+
+use crate::agent_models;
 use decodex_codex::app_server_client::AppServerClient;
+use decodex_core::DecodexRoot;
 use decodex_database::{
 	AgentDispatchState, AgentModelAttempt, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
 	SqliteStore,
 };
 
 pub(super) async fn reserve(
-	home: &std::path::Path,
+	home: &Path,
 	client: &AppServerClient,
 	thread: &str,
 	active_turn: Option<&str>,
 	effort: Option<&str>,
 ) -> (SqliteStore, AgentModelAttempt, i64) {
-	let root = decodex_core::DecodexRoot::new(home.canonicalize().expect("home").join("product"))
-		.expect("product root");
+	let root =
+		DecodexRoot::new(home.canonicalize().expect("home").join("product")).expect("product root");
 
 	root.paths().ensure_layout().expect("layout");
 
@@ -46,7 +50,7 @@ pub(super) async fn reserve(
 			.expect("active turn");
 	}
 
-	crate::agent_models::persist_current(&store, client, thread, None).await.expect("native facts");
+	agent_models::persist_current(&store, client, thread, None).await.expect("native facts");
 
 	let observed = store
 		.agent_task_models("model-task".into(), thread.into(), None)
@@ -101,7 +105,7 @@ pub(super) async fn observe(
 		"unknown"
 	);
 
-	crate::agent_models::persist_current(store, client, &attempt.thread, None)
+	agent_models::persist_current(store, client, &attempt.thread, None)
 		.await
 		.expect("native publication");
 

@@ -125,6 +125,10 @@ use decodex_protocol::MAX_CONVERSATION_WORKING_DIRECTORY_BYTES;
 
 use crate::process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError};
 
+use crate::native_config_warning;
+
+use decodex_codex::app_server_client;
+
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
 
@@ -2253,9 +2257,9 @@ impl SupervisedProcess {
 				&& matches!(header.method.as_deref(), Some("configWarning" | "warning"))
 			{
 				let projected = if header.method.as_deref() == Some("warning") {
-					crate::native_config_warning::warning_from_frame(&line)
+					native_config_warning::warning_from_frame(&line)
 				} else {
-					crate::native_config_warning::from_frame(&line)
+					native_config_warning::from_frame(&line)
 				};
 
 				if let Some(warning) = projected
@@ -2482,7 +2486,7 @@ impl SupervisedProcess {
 					(None, Some(error)) => Err(ConversationProcessError::Rejected {
 						witness_digest,
 						reason: if native_activity
-							&& decodex_codex::app_server_client::classify_dispatch_refusal(
+							&& app_server_client::classify_dispatch_refusal(
 								error.code,
 								error.message(),
 							)
@@ -3905,6 +3909,66 @@ impl Write for ZeroizingOutboundFrame {
 	}
 }
 
+impl std::error::Error for SupervisionError {}
+
+impl Display for SupervisionError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl std::error::Error for ProbeError {}
+
+impl Display for ProbeError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl From<SupervisionError> for ProbeError {
+	fn from(value: SupervisionError) -> Self {
+		Self::Supervision(value)
+	}
+}
+
+impl ReadOnlyMethod {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Initialize => "initialize",
+			Self::AccountLoginStart => "account/login/start",
+			Self::AccountRead => "account/read",
+			Self::GetAuthStatus => "getAuthStatus",
+			Self::ConfigRequirementsRead => "configRequirements/read",
+			Self::ThreadList => "thread/list",
+			Self::ThreadRead => "thread/read",
+		}
+	}
+}
+
+impl ManagedChild {
+	fn id(&self) -> u32 {
+		match self {
+			Self::Standard(child) => child.id(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.id(),
+		}
+	}
+
+	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		match self {
+			Self::Standard(child) => child.try_wait(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.try_wait(),
+		}
+	}
+}
+
+impl From<Child> for ManagedChild {
+	fn from(child: Child) -> Self {
+		Self::Standard(child)
+	}
+}
+
 impl ExactBuildLaunchCapability {
 	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
 	/// spawn a child.
@@ -3970,50 +4034,6 @@ impl ExactReconciliationError {
 		};
 
 		ArchiveReconciliationOutcome::Unverified(reason)
-	}
-}
-
-impl std::error::Error for CredentialVaultError {}
-
-impl Display for CredentialVaultError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl std::error::Error for SupervisionError {}
-
-impl Display for SupervisionError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl std::error::Error for ProbeError {}
-
-impl Display for ProbeError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl From<SupervisionError> for ProbeError {
-	fn from(value: SupervisionError) -> Self {
-		Self::Supervision(value)
-	}
-}
-
-impl ReadOnlyMethod {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Initialize => "initialize",
-			Self::AccountLoginStart => "account/login/start",
-			Self::AccountRead => "account/read",
-			Self::GetAuthStatus => "getAuthStatus",
-			Self::ConfigRequirementsRead => "configRequirements/read",
-			Self::ThreadList => "thread/list",
-			Self::ThreadRead => "thread/read",
-		}
 	}
 }
 
@@ -4085,6 +4105,13 @@ pub enum CredentialVaultError {
 	ProjectionRejected,
 	/// A vault attempted to switch credentials under one live child.
 	ProjectionAlreadyUsed,
+}
+impl std::error::Error for CredentialVaultError {}
+
+impl Display for CredentialVaultError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
 }
 
 /// Bounded child shutdown result.
@@ -4212,29 +4239,6 @@ enum ManagedChild {
 	Standard(Child),
 	#[cfg(target_os = "macos")]
 	Attested(AttestedChild),
-}
-impl ManagedChild {
-	fn id(&self) -> u32 {
-		match self {
-			Self::Standard(child) => child.id(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.id(),
-		}
-	}
-
-	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-		match self {
-			Self::Standard(child) => child.try_wait(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.try_wait(),
-		}
-	}
-}
-
-impl From<Child> for ManagedChild {
-	fn from(child: Child) -> Self {
-		Self::Standard(child)
-	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4397,9 +4401,7 @@ fn conversation_rejection_reason(
 ) -> ConversationRejectionReason {
 	let message = error.message();
 
-	if let Some(refusal) =
-		decodex_codex::app_server_client::classify_dispatch_refusal(error.code, message)
-	{
+	if let Some(refusal) = app_server_client::classify_dispatch_refusal(error.code, message) {
 		return match refusal {
 			decodex_codex::app_server_client::NativeDispatchRefusal::ServerDraining =>
 				ConversationRejectionReason::ServerDraining,
@@ -4440,9 +4442,9 @@ fn decode_conversation_process_event(
 		let frame: serde_json::Value =
 			serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
 		let value = if header.method.as_deref() == Some("warning") {
-			crate::native_config_warning::warning(&frame["params"])
+			native_config_warning::warning(&frame["params"])
 		} else {
-			crate::native_config_warning::project(&frame["params"]).map(|value| {
+			native_config_warning::project(&frame["params"]).map(|value| {
 				let mut message = value["summary"].as_str().unwrap_or_default().to_owned();
 
 				if let Some(details) =
@@ -5867,31 +5869,33 @@ pub(crate) mod tests {
 		Serialize,
 		ser::{Error as _, SerializeMap as _},
 	};
-
 	use tempfile::TempDir;
+	use tokio::time;
 
-	use crate::account_launch::{
-		RunnerCapacity, RunnerPermit,
-		process::{
-			self, AccountBinding, AccountIdentity, AppServerCommand, AttestedAppServerLaunch,
-			AttestedAppServerProfile, CredentialProjection, CredentialProjectionResponse,
-			CredentialVault, CredentialVaultError, ExactThreadReconciler,
-			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
-			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
-			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
+	use crate::{
+		account_launch::{
+			RunnerCapacity, RunnerPermit,
+			process::{
+				self, AccountBinding, AccountIdentity, AppServerCommand, AttestedAppServerLaunch,
+				AttestedAppServerProfile, ConversationProcessEvent, CredentialProjection,
+				CredentialProjectionResponse, CredentialVault, CredentialVaultError,
+				ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
+				PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod,
+				ReadOnlyProbe, ShutdownOutcome, SupervisedProcess, SupervisionError,
+				UnavailableCredentialVault,
+			},
+			protocol::{
+				self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
+				JsonRpcResponse, ProtocolThread,
+			},
 		},
-		protocol::{
-			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
-			JsonRpcResponse, ProtocolThread,
-		},
+		host_credentials,
 	};
-
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
 		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
 		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
-
 	use decodex_core::{
 		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
@@ -6153,8 +6157,7 @@ pub(crate) mod tests {
 				)
 				.unwrap();
 
-			crate::host_credentials::seal_exact_read(&account, &credential, &credential, bundle)
-				.unwrap()
+			host_credentials::seal_exact_read(&account, &credential, &credential, bundle).unwrap()
 		};
 		let selected = stored("synthetic-selected-pat");
 
@@ -8423,13 +8426,11 @@ pub(crate) mod tests {
 
 	#[test]
 	fn ordinary_warnings_preserve_scope_without_terminal_authority() {
-		use super::{ConversationProcessEvent, decode_conversation_process_event};
-
 		for frame in [
 			br#"{"method":"warning","params":{"threadId":"exact-thread","message":"Retained old instructions"}}"#.as_slice(),
 			br#"{"method":"configWarning","params":{"summary":"Ignored setting","details":"Details"}}"#.as_slice(),
 		] {
-			let event = decode_conversation_process_event(frame).unwrap().unwrap();
+			let event = process::decode_conversation_process_event(frame).unwrap().unwrap();
 			let ConversationProcessEvent::Warning { thread_id, text } = event else {
 				panic!("display-only notice");
 			};
@@ -8444,7 +8445,7 @@ pub(crate) mod tests {
 		}
 
 		assert!(
-			decode_conversation_process_event(
+			process::decode_conversation_process_event(
 				br#"{"method":"warning","params":{"threadId":42,"message":"bad"}}"#
 			)
 			.unwrap()
@@ -8550,7 +8551,7 @@ pub(crate) mod tests {
 
 	#[test]
 	fn resume_rejection_classification_requires_exact_thread_evidence() {
-		use super::ConversationRejectionReason as Reason;
+		use crate::account_launch::process::ConversationRejectionReason as Reason;
 
 		for (mode, expected) in [
 			("resume-reject-closing", Reason::ClosingThread),
@@ -9072,7 +9073,7 @@ pub(crate) mod tests {
 			("configWarning", "summary", "Second fixture warning"),
 		] {
 			let event =
-				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+				time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
 				event
 			else {

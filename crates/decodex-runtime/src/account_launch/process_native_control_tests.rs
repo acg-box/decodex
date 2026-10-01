@@ -1,8 +1,8 @@
 //! Isolated installed-native control launch with production executable attestation.
-use super::*;
-
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde_json::Value;
 
+use crate::account_launch::process::*;
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
@@ -98,7 +98,7 @@ pub(crate) fn initialized_control_child(binary: &OsStr, home: &Path) -> Attested
 	child
 }
 
-pub(crate) fn read_native_account(child: &mut AttestedProcessChild) -> serde_json::Value {
+pub(crate) fn read_native_account(child: &mut AttestedProcessChild) -> Value {
 	child
 		.process
 		.request(ReadOnlyMethod::AccountRead, &serde_json::json!({}), Duration::from_secs(15))

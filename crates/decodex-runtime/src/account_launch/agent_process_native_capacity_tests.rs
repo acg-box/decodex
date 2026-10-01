@@ -1,20 +1,27 @@
 //! Real overload, durable selection, cold resume and same-model retry through the native bridge.
-use super::*;
-use crate::agent::{AgentConfig, AgentCoordinator};
+use std::{env, fs, sync::atomic::AtomicUsize};
+
+use mpsc::Receiver;
+use tokio::{net::TcpListener, time};
+
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator},
+};
+use decodex_core::DecodexRoot;
 use decodex_database::{EnqueueAgentEvent, SqliteStore};
-use std::sync::atomic::AtomicUsize;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native capacity recovery"]
 async fn installed_capacity_retry_retains_selected_model_after_process_and_store_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().expect("isolated native home");
 	let home_path = home.path().canonicalize().expect("canonical home");
-	let root = decodex_core::DecodexRoot::new(home_path.join("product")).expect("isolated product");
+	let root = DecodexRoot::new(home_path.join("product")).expect("isolated product");
 
 	root.paths().ensure_layout().expect("product layout");
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture backend");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture backend");
 	let address = listener.local_addr().expect("backend address");
 	let count = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -38,7 +45,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 		},
 	));
 
-	std::fs::write(home_path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Capacity fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native fixture config");
+	fs::write(home_path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Capacity fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native fixture config");
 
 	let config =
 		AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home_path.display().to_string());
@@ -53,7 +60,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 
 	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"capacity-user-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:json!({"text":"capacity-fixture-input","options":{"execution":{"model":"gpt-5.6-terra","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()}).await.expect("selected input");
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("selected turn");
 
 		finish(&mut agent, &mut session.events, "failed").await;
@@ -78,7 +85,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config)
 		.expect("reopened coordinator");
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.check_due_followups(retry.due_at_micros).await.expect("saved retry");
 
 		finish(&mut agent, &mut session.events, "completed").await;
@@ -121,12 +128,12 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 async fn effort_only_followup(
 	agent: &mut AgentCoordinator,
 	store: &SqliteStore,
-	events: &mut mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	bodies: &std::sync::Mutex<Vec<Value>>,
 ) {
 	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"effort-only-after-recovery".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:json!({"text":"next-fixture-input","options":{"execution":{"reasoning_effort":"low"},"attachments":[]}}).to_string()}).await.expect("partial user choice");
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("partial selection dispatch");
 
 		finish(agent, events, "completed").await;
@@ -141,11 +148,7 @@ async fn effort_only_followup(
 	assert_eq!(requests[2]["reasoning"]["effort"], "low");
 }
 
-async fn finish(
-	agent: &mut AgentCoordinator,
-	events: &mut mpsc::Receiver<ServerEvent>,
-	expected: &str,
-) {
+async fn finish(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>, expected: &str) {
 	loop {
 		let event = events.recv().await.expect("native events");
 		let terminal = if let ServerEvent::Notification { method, params } = &event {
@@ -186,14 +189,14 @@ async fn installed_throttling_and_quota_do_not_schedule_capacity_retries() {
 }
 
 async fn native_error_classification(code: &'static str, expected: &str, requests: usize) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().expect("isolated home");
 	let path = home.path().canonicalize().expect("canonical home");
-	let root = decodex_core::DecodexRoot::new(path.join("product")).expect("product root");
+	let root = DecodexRoot::new(path.join("product")).expect("product root");
 
 	root.paths().ensure_layout().expect("layout");
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("backend");
 	let address = listener.local_addr().expect("address");
 	let count = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture_frames(
@@ -208,7 +211,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 		},
 	));
 
-	std::fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Native classification fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\nstream_max_retries = 1\nrequest_max_retries = 0\n")).expect("config");
+	fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Native classification fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\nstream_max_retries = 1\nrequest_max_retries = 0\n")).expect("config");
 
 	let config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
@@ -229,7 +232,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 		.await
 		.expect("input");
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("start");
 
 		loop {

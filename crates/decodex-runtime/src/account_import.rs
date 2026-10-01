@@ -1,8 +1,10 @@
 //! Bounded private credential-source reader for enrollment and explicit import.
 
 use std::{
-	fs::{File, OpenOptions},
-	io::{Read, Take},
+	env,
+	fs::{self, File, OpenOptions},
+	io::{Read as _, Take},
+	mem,
 	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _},
 	path::{Component, Path, PathBuf},
 };
@@ -11,14 +13,12 @@ use base64::{
 	Engine as _,
 	engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD},
 };
-
-use decodex_core::{AccountProvider, ProviderIdentity};
-
-use serde::Deserialize;
-
+use libc::{O_CLOEXEC, O_NOFOLLOW};
+use serde::{Deserialize, de::IgnoredAny};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::host_credentials::CredentialSecretBundle;
+use decodex_core::{AccountProvider, ProviderIdentity};
 
 const MAX_CREDENTIAL_FILE_BYTES: u64 = 256 * 1_024;
 const MAX_TOKEN_BYTES: usize = 64 * 1_024;
@@ -42,7 +42,7 @@ pub(crate) struct DecodedChatgptIdentity {
 struct SourceMode {
 	auth_mode: Option<String>,
 	schema: Option<String>,
-	personal_access_token: Option<serde::de::IgnoredAny>,
+	personal_access_token: Option<IgnoredAny>,
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -55,12 +55,12 @@ struct PersonalAccessTokenSource {
 	#[serde(rename = "OPENAI_API_KEY")]
 	api_key: Option<String>,
 	#[zeroize(skip)]
-	tokens: Option<serde::de::IgnoredAny>,
+	tokens: Option<IgnoredAny>,
 	last_refresh: Option<String>,
 	#[zeroize(skip)]
-	agent_identity: Option<serde::de::IgnoredAny>,
+	agent_identity: Option<IgnoredAny>,
 	#[zeroize(skip)]
-	bedrock_api_key: Option<serde::de::IgnoredAny>,
+	bedrock_api_key: Option<IgnoredAny>,
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -157,7 +157,7 @@ enum SourceKind {
 
 /// Read the normal Codex-owned shared auth file without modifying it.
 pub(crate) fn read_shared_codex_credential() -> Result<CredentialSource, CredentialImportError> {
-	let home = std::env::var_os("HOME")
+	let home = env::var_os("HOME")
 		.filter(|value| !value.is_empty())
 		.ok_or(CredentialImportError::UnsafeSource)?;
 
@@ -238,9 +238,9 @@ pub(crate) fn parse_shared_codex(
 
 	let expiry = decode_expiry_micros(&auth.tokens.access_token)?;
 	let bundle = CredentialSecretBundle::chatgpt(
-		std::mem::take(&mut auth.tokens.access_token),
-		std::mem::take(&mut auth.tokens.refresh_token),
-		Some(std::mem::take(&mut auth.tokens.id_token)),
+		mem::take(&mut auth.tokens.access_token),
+		mem::take(&mut auth.tokens.refresh_token),
+		Some(mem::take(&mut auth.tokens.id_token)),
 		identity.plan_type,
 		identity.provider_email,
 		"bearer".to_owned(),
@@ -318,7 +318,7 @@ fn read_credential_file(
 
 	let mut options = OpenOptions::new();
 
-	options.read(true).custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+	options.read(true).custom_flags(O_CLOEXEC | O_NOFOLLOW);
 
 	let file = options.open(path).map_err(|_| CredentialImportError::Unavailable)?;
 
@@ -343,7 +343,7 @@ fn validate_components(path: &Path) -> Result<(), CredentialImportError> {
 		}
 
 		let metadata =
-			std::fs::symlink_metadata(&current).map_err(|_| CredentialImportError::Unavailable)?;
+			fs::symlink_metadata(&current).map_err(|_| CredentialImportError::Unavailable)?;
 
 		if metadata.file_type().is_symlink() {
 			return Err(CredentialImportError::UnsafeSource);
@@ -420,7 +420,7 @@ fn parse_pat_source(
 
 	validate_token(&source.personal_access_token)?;
 
-	Ok(CredentialSource::PersonalAccessToken(Zeroizing::new(std::mem::take(
+	Ok(CredentialSource::PersonalAccessToken(Zeroizing::new(mem::take(
 		&mut source.personal_access_token,
 	))))
 }
@@ -453,12 +453,12 @@ fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, Credential
 		ProviderIdentity::new(AccountProvider::Chatgpt, import.provider_account_id.clone())
 			.map_err(|_| CredentialImportError::InvalidCredential)?;
 	let bundle = CredentialSecretBundle::chatgpt(
-		std::mem::take(&mut import.access_token),
-		std::mem::take(&mut import.refresh_token),
+		mem::take(&mut import.access_token),
+		mem::take(&mut import.refresh_token),
 		import.id_token.take(),
 		import.plan_type.take(),
-		std::mem::take(&mut import.provider_email),
-		std::mem::take(&mut import.token_type),
+		mem::take(&mut import.provider_email),
+		mem::take(&mut import.token_type),
 		import.access_token_expires_at_unix_micros,
 	)
 	.map_err(|_| CredentialImportError::Store)?;
@@ -518,12 +518,8 @@ mod tests {
 	use std::{fs, os::unix::fs::PermissionsExt as _};
 
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-	use serde_json::json;
-	use tempfile::tempdir;
 
-	use super::{
-		CredentialImportError, decode_chatgpt_identity, read_explicit_shared_codex_credential_file,
-	};
+	use crate::account_import::{self, CredentialImportError};
 
 	fn token(claims: serde_json::Value) -> String {
 		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
@@ -532,7 +528,7 @@ mod tests {
 	}
 
 	fn owner_private_json(value: serde_json::Value) -> (tempfile::TempDir, String) {
-		let temp = tempdir().unwrap();
+		let temp = tempfile::tempdir().unwrap();
 		let root = fs::canonicalize(temp.path()).unwrap();
 		let path = root.join("auth.json");
 
@@ -544,25 +540,32 @@ mod tests {
 
 	#[test]
 	fn usage_identity_requires_exact_account_and_non_fedramp_user() {
-		let mut auth =
-			json!({"chatgpt_account_id":"account", "chatgpt_user_id":"user", "user_id":"fallback"});
+		let mut auth = serde_json::json!({"chatgpt_account_id":"account", "chatgpt_user_id":"user", "user_id":"fallback"});
 		let decode = |auth: &serde_json::Value, account: &str| {
-			super::usage_user_id(&token(json!({"https://api.openai.com/auth": auth})), account)
+			super::usage_user_id(
+				&token(serde_json::json!({"https://api.openai.com/auth": auth})),
+				account,
+			)
 		};
 
 		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("user"));
 		assert!(decode(&auth, "other").is_none());
 
-		auth["chatgpt_account_is_fedramp"] = json!(true);
+		auth["chatgpt_account_is_fedramp"] = serde_json::json!(true);
 
 		assert!(decode(&auth, "account").is_none());
 
-		auth["chatgpt_account_is_fedramp"] = json!(false);
+		auth["chatgpt_account_is_fedramp"] = serde_json::json!(false);
 		auth["chatgpt_user_id"] = serde_json::Value::Null;
 
 		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("fallback"));
 
-		for invalid in [json!(""), json!("x".repeat(513)), json!("user\n"), json!(42)] {
+		for invalid in [
+			serde_json::json!(""),
+			serde_json::json!("x".repeat(513)),
+			serde_json::json!("user\n"),
+			serde_json::json!(42),
+		] {
 			auth["chatgpt_user_id"] = invalid;
 
 			assert!(decode(&auth, "account").is_none());
@@ -573,7 +576,7 @@ mod tests {
 
 	#[test]
 	fn fresh_chatgpt_identity_is_derived_only_from_bounded_id_token_claims() {
-		let identity = decode_chatgpt_identity(&token(json!({
+		let identity = account_import::decode_chatgpt_identity(&token(serde_json::json!({
 			"email": "fresh@example.test",
 			"https://api.openai.com/auth": {
 				"chatgpt_account_id": "fresh-provider-account",
@@ -590,20 +593,20 @@ mod tests {
 	#[test]
 	fn chatgpt_identity_preserves_missing_email_without_relaxing_account_identity() {
 		for email in [None, Some(serde_json::Value::Null)] {
-			let mut claims = json!({"https://api.openai.com/auth":{"chatgpt_account_id":"exact-account","chatgpt_plan_type":"pro"}});
+			let mut claims = serde_json::json!({"https://api.openai.com/auth":{"chatgpt_account_id":"exact-account","chatgpt_plan_type":"pro"}});
 
 			if let Some(email) = email {
 				claims["email"] = email;
 			}
 
-			let identity = decode_chatgpt_identity(&token(claims.clone())).unwrap();
+			let identity = account_import::decode_chatgpt_identity(&token(claims.clone())).unwrap();
 
 			assert!(identity.provider_email.is_none());
 			assert_eq!(identity.provider.account_id(), "exact-account");
 
-			claims["https://api.openai.com/auth"]["chatgpt_account_id"] = json!("");
+			claims["https://api.openai.com/auth"]["chatgpt_account_id"] = serde_json::json!("");
 
-			assert!(decode_chatgpt_identity(&token(claims)).is_err());
+			assert!(account_import::decode_chatgpt_identity(&token(claims)).is_err());
 		}
 	}
 
@@ -611,11 +614,11 @@ mod tests {
 	fn missing_or_malformed_fresh_identity_is_ambiguous_input_to_refresh() {
 		for token in [
 			"not-a-jwt".to_owned(),
-			token(json!({
+			token(serde_json::json!({
 				"email": "fresh@example.test",
 				"https://api.openai.com/auth": {}
 			})),
-			token(json!({
+			token(serde_json::json!({
 				"email": "not-an-email",
 				"https://api.openai.com/auth": {
 					"chatgpt_account_id": "fresh-provider-account"
@@ -623,7 +626,7 @@ mod tests {
 			})),
 		] {
 			assert!(matches!(
-				decode_chatgpt_identity(&token),
+				account_import::decode_chatgpt_identity(&token),
 				Err(CredentialImportError::InvalidCredential)
 			));
 		}
@@ -632,15 +635,15 @@ mod tests {
 	#[test]
 	fn explicit_shared_codex_source_parses_only_owner_private_auth_json() {
 		let account_id = "fresh-provider-account";
-		let id_token = token(json!({
+		let id_token = token(serde_json::json!({
 			"email": "fresh@example.test",
 			"https://api.openai.com/auth": {
 				"chatgpt_account_id": account_id,
 				"chatgpt_plan_type": "pro"
 			}
 		}));
-		let access_token = token(json!({"exp": 2_000_000_000_i64}));
-		let (_temp, path) = owner_private_json(json!({
+		let access_token = token(serde_json::json!({"exp": 2_000_000_000_i64}));
+		let (_temp, path) = owner_private_json(serde_json::json!({
 			"auth_mode": "chatgpt",
 			"OPENAI_API_KEY": null,
 			"tokens": {
@@ -652,7 +655,7 @@ mod tests {
 			"last_refresh": null
 		}));
 		let super::CredentialSource::Oauth(imported) =
-			read_explicit_shared_codex_credential_file(&path).unwrap()
+			account_import::read_explicit_shared_codex_credential_file(&path).unwrap()
 		else {
 			panic!("expected OAuth source")
 		};
@@ -665,34 +668,34 @@ mod tests {
 	#[test]
 	fn explicit_shared_codex_source_rejects_relative_public_or_wrong_shape_inputs() {
 		assert!(matches!(
-			read_explicit_shared_codex_credential_file("auth.json"),
+			account_import::read_explicit_shared_codex_credential_file("auth.json"),
 			Err(CredentialImportError::InvalidSource)
 		));
 
-		let (_temp, path) = owner_private_json(json!({
+		let (_temp, path) = owner_private_json(serde_json::json!({
 			"schema": "decodex/account-credential-import/1",
 			"provider": "chatgpt"
 		}));
 
 		assert!(matches!(
-			read_explicit_shared_codex_credential_file(&path),
+			account_import::read_explicit_shared_codex_credential_file(&path),
 			Err(CredentialImportError::InvalidCredential)
 		));
 
 		fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
 		assert!(matches!(
-			read_explicit_shared_codex_credential_file(&path),
+			account_import::read_explicit_shared_codex_credential_file(&path),
 			Err(CredentialImportError::UnsafeSource)
 		));
 	}
 
 	#[test]
 	fn native_and_versioned_pat_files_require_identity_hydration() {
-		let native = json!({"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"synthetic-pat"});
+		let native = serde_json::json!({"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"synthetic-pat"});
 		let (_temp, path) = owner_private_json(native.clone());
 		let super::CredentialSource::PersonalAccessToken(token) =
-			read_explicit_shared_codex_credential_file(&path).unwrap()
+			account_import::read_explicit_shared_codex_credential_file(&path).unwrap()
 		else {
 			panic!("expected PAT source")
 		};
@@ -700,7 +703,7 @@ mod tests {
 		assert_eq!(token.as_str(), "synthetic-pat");
 
 		let (_temp, path) = owner_private_json(
-			json!({"schema":"decodex/account-credential-import/2","provider":"chatgpt","personal_access_token":"synthetic-pat"}),
+			serde_json::json!({"schema":"decodex/account-credential-import/2","provider":"chatgpt","personal_access_token":"synthetic-pat"}),
 		);
 
 		assert!(matches!(
@@ -709,11 +712,11 @@ mod tests {
 		));
 
 		for (field, value) in [
-			("OPENAI_API_KEY", json!("unexpected-key")),
-			("tokens", json!({"access_token":"mixed"})),
-			("agent_identity", json!("mixed")),
-			("bedrock_api_key", json!({"api_key":"mixed"})),
-			("personal_access_token", json!("\ninvalid")),
+			("OPENAI_API_KEY", serde_json::json!("unexpected-key")),
+			("tokens", serde_json::json!({"access_token":"mixed"})),
+			("agent_identity", serde_json::json!("mixed")),
+			("bedrock_api_key", serde_json::json!({"api_key":"mixed"})),
+			("personal_access_token", serde_json::json!("\ninvalid")),
 		] {
 			let mut invalid = native.clone();
 

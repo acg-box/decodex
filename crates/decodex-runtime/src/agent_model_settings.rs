@@ -1,23 +1,28 @@
 //! Verify native configured model observations against exact account and task ownership.
+use std::future::Future;
+
 use crate::agent_usage_estimate::Source;
-
 use decodex_database::SqliteStore;
+use decodex_protocol::{EntityId, WireText};
 
-use decodex_protocol::AgentModelSettingsResult as Result;
-
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> Result
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+) -> decodex_protocol::AgentModelSettingsResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	let Some(before) = source().await else { return Result::Unavailable };
+	let Some(before) = source().await else {
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
+	};
 
 	if !owned(store, &before).await {
-		return Result::Unavailable;
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
 
 	let Some(guard) = before.client.thread_settings_guard(&before.key.thread) else {
-		return Result::Unavailable;
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	};
 	let response = before.client.thread_model_settings(&before.key.thread, guard.clone()).await;
 
@@ -25,13 +30,13 @@ where
 		|| source().await.is_none_or(|after| after.key != before.key)
 		|| !owned(store, &before).await
 	{
-		return Result::Unavailable;
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
 
 	let settings = match response {
 		Ok(Some(settings)) => settings,
-		Ok(None) => return Result::NotReported,
-		Err(_) => return Result::Unavailable,
+		Ok(None) => return decodex_protocol::AgentModelSettingsResult::NotReported,
+		Err(_) => return decodex_protocol::AgentModelSettingsResult::Unavailable,
 	};
 	let (
 		Ok(work_id),
@@ -41,18 +46,25 @@ where
 		Ok(reasoning_effort),
 		Ok(model_provider),
 	) = (
-		decodex_protocol::EntityId::new(before.key.work),
-		decodex_protocol::EntityId::new(before.key.thread),
-		decodex_protocol::EntityId::new(before.key.account.as_str().to_owned()),
-		settings.model.map(decodex_protocol::WireText::new).transpose(),
-		settings.reasoning_effort.map(decodex_protocol::WireText::new).transpose(),
-		settings.model_provider.map(decodex_protocol::WireText::new).transpose(),
+		EntityId::new(before.key.work),
+		EntityId::new(before.key.thread),
+		EntityId::new(before.key.account.as_str().to_owned()),
+		settings.model.map(WireText::new).transpose(),
+		settings.reasoning_effort.map(WireText::new).transpose(),
+		settings.model_provider.map(WireText::new).transpose(),
 	)
 	else {
-		return Result::Unavailable;
+		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	};
 
-	Result::Available { work_id, thread_id, account_id, model, reasoning_effort, model_provider }
+	decodex_protocol::AgentModelSettingsResult::Available {
+		work_id,
+		thread_id,
+		account_id,
+		model,
+		reasoning_effort,
+		model_provider,
+	}
 }
 
 async fn owned(store: &SqliteStore, source: &Source) -> bool {

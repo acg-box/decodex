@@ -1,10 +1,17 @@
 //! Host edits use an owned process and retain uncertain receipts across database reopen.
-use super::*;
-use crate::agent_app_exposure::{Change, read, write};
-use decodex_protocol::{AgentAppExposureResult as State, AgentToolExposureSurface as Surface};
-use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+use rusqlite::Connection;
+use serde_json::{self, Value};
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
+
+use crate::{
+	account_launch::agent_process::native_tests::reviewer::store::*,
+	agent_app_exposure::{self, Change},
+	agent_config_settings,
+};
+use decodex_codex::app_server_client;
+use decodex_protocol::AgentAppExposureResult;
 
 #[derive(Default)]
 struct Config {
@@ -14,8 +21,8 @@ struct Config {
 	apply_then_reject: bool,
 	missing: bool,
 }
-async fn server(remote: tokio::io::DuplexStream, state: Arc<std::sync::Mutex<Config>>) {
-	let (reader, mut writer) = tokio::io::split(remote);
+async fn server(remote: DuplexStream, state: Arc<std::sync::Mutex<Config>>) {
+	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 
 	while let Some(line) = lines.next_line().await.expect("App exposure fixture") {
@@ -24,28 +31,26 @@ async fn server(remote: tokio::io::DuplexStream, state: Arc<std::sync::Mutex<Con
 			let mut config = state.lock().expect("App exposure fixture");
 
 			match request["method"].as_str().expect("App exposure fixture") {
-				"thread/read" => json!({"thread":{"id":"thread","cwd":"/fixture"}}),
+				"thread/read" => serde_json::json!({"thread":{"id":"thread","cwd":"/fixture"}}),
 				"app/installed" => {
 					assert_eq!(
 						request["params"],
-						json!({"threadId":"thread","forceRefresh":false})
+						serde_json::json!({"threadId":"thread","forceRefresh":false})
 					);
 
 					if config.missing {
-						json!({"apps":[]})
+						serde_json::json!({"apps":[]})
 					} else {
-						json!({"apps":[{"id":"calendar","enabled":true,"callable":true}]})
+						serde_json::json!({"apps":[{"id":"calendar","enabled":true,"callable":true}]})
 					}
 				},
 				"config/read" => {
-					let values = json!({"apps":{"calendar":{"omit_tools_from":config.preference}}});
+					let values = serde_json::json!({"apps":{"calendar":{"omit_tools_from":config.preference}}});
 
-					json!({"config":values,"layers":[{"name":{"type":"user","file":"/fixture/config.toml"},"version":format!("v{}",config.writes),"config":values}]})
+					serde_json::json!({"config":values,"layers":[{"name":{"type":"user","file":"/fixture/config.toml"},"version":format!("v{}",config.writes),"config":values}]})
 				},
 				"config/batchWrite" => {
-					assert!(decodex_codex::app_server_client::is_app_tool_exposure_write(
-						&request["params"]
-					));
+					assert!(app_server_client::is_app_tool_exposure_write(&request["params"]));
 
 					config.writes += 1;
 
@@ -55,29 +60,41 @@ async fn server(remote: tokio::io::DuplexStream, state: Arc<std::sync::Mutex<Con
 								.expect("App exposure fixture");
 					}
 					if config.reject {
-						json!({"fixtureError":true})
+						serde_json::json!({"fixtureError":true})
 					} else {
-						json!({"status":"ok","filePath":"/fixture/config.toml","version":format!("v{}",config.writes)})
+						serde_json::json!({"status":"ok","filePath":"/fixture/config.toml","version":format!("v{}",config.writes)})
 					}
 				},
 				method => panic!("unexpected native method {method}"),
 			}
 		};
 		let response = if result["fixtureError"] == true {
-			json!({"id":request["id"],"error":{"code":-32_603,"message":"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`","data":{"private":"do-not-retain"}}})
+			serde_json::json!({"id":request["id"],"error":{"code":-32_603,"message":"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`","data":{"private":"do-not-retain"}}})
 		} else {
-			json!({"id":request["id"],"result":result})
+			serde_json::json!({"id":request["id"],"result":result})
 		};
 
 		writer.write_all(format!("{response}\n").as_bytes()).await.expect("App exposure fixture");
 	}
 }
 
+async fn assert_missing_app_unavailable(owner: &OwnedReviewer) {
+	assert_eq!(
+		agent_app_exposure::read(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar"
+		)
+		.await,
+		decodex_protocol::AgentAppExposureResult::Unavailable
+	);
+}
+
 #[tokio::test]
 async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	let home = tempfile::tempdir().expect("App exposure fixture");
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let config = Arc::new(std::sync::Mutex::new(Config::default()));
 	let backend = tokio::spawn(server(remote, config.clone()));
@@ -85,15 +102,17 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 
 	config.lock().expect("App exposure fixture").missing = true;
 
-	assert_eq!(
-		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await,
-		State::Unavailable
-	);
+	assert_missing_app_unavailable(&owner).await;
 
 	config.lock().expect("App exposure fixture").missing = false;
 
-	let State::Available { review_token, can_update: true, .. } =
-		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	let AgentAppExposureResult::Available { review_token, can_update: true, .. } =
+		agent_app_exposure::read(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar",
+		)
+		.await
 	else {
 		panic!("owned inventory")
 	};
@@ -102,13 +121,13 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	changed.revision += 1;
 
 	assert!(
-		write(
+		agent_app_exposure::write(
 			&owner.store,
 			|| async { Some(owner.source(&changed)) },
 			Change {
 				connector: "calendar",
 				review: review_token.as_str(),
-				omit: Some(vec![Surface::Direct]),
+				omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
 				attempt: "stale"
 			}
 		)
@@ -117,13 +136,13 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	);
 	assert_eq!(config.lock().expect("App exposure fixture").writes, 0);
 
-	write(
+	agent_app_exposure::write(
 		&owner.store,
 		|| async { Some(owner.source(&owner.key)) },
 		Change {
 			connector: "calendar",
 			review: review_token.as_str(),
-			omit: Some(vec![Surface::Direct]),
+			omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
 			attempt: "first",
 		},
 	)
@@ -132,7 +151,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 
 	assert_eq!(config.lock().expect("App exposure fixture").writes, 1);
 	assert!(
-		write(
+		agent_app_exposure::write(
 			&owner.store,
 			|| async { Some(owner.source(&owner.key)) },
 			Change {
@@ -147,8 +166,13 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	);
 	assert_eq!(config.lock().expect("App exposure fixture").writes, 1);
 
-	let State::Available { review_token, preference, last_outcome, .. } =
-		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	let AgentAppExposureResult::Available { review_token, preference, last_outcome, .. } =
+		agent_app_exposure::read(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar",
+		)
+		.await
 	else {
 		panic!("saved state")
 	};
@@ -159,7 +183,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	config.lock().expect("App exposure fixture").reject = true;
 
 	assert!(
-		write(
+		agent_app_exposure::write(
 			&owner.store,
 			|| async { Some(owner.source(&owner.key)) },
 			Change {
@@ -175,7 +199,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 
 	let reopened = SqliteStore::open(&owner.root.paths()).expect("App exposure fixture");
 	let receipt = reopened
-		.agent_app_settings_receipt(crate::agent_config_settings::digest("/fixture/config.toml"))
+		.agent_app_settings_receipt(agent_config_settings::digest("/fixture/config.toml"))
 		.await
 		.expect("App exposure fixture")
 		.expect("App exposure fixture");
@@ -213,8 +237,8 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 #[tokio::test]
 async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_preferences() {
 	let home = tempfile::tempdir().expect("legacy exposure fixture");
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let config = Arc::new(std::sync::Mutex::new(Config::default()));
 	let backend = tokio::spawn(server(remote, config.clone()));
@@ -222,16 +246,17 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 	let mut previous_review: Option<String> = None;
 
 	for state in ["reserved", "saved", "rejected", "unknown"] {
-		let connection = rusqlite::Connection::open(owner.root.paths().product_database_file())
-			.expect("fixture database");
+		let connection =
+			Connection::open(owner.root.paths().product_database_file()).expect("fixture database");
 		let source = format!("app-exposure:legacy-{state}");
-		let payload = json!({"attempt":{"work":owner.key.work,"thread":"thread","generation":owner.key.generation.as_str(),"connector":"calendar","review_token":"a".repeat(64),"preference":["direct"],"attempt_id":"legacy"}}).to_string();
+		let payload = serde_json::json!({"attempt":{"work":owner.key.work,"thread":"thread","generation":owner.key.generation.as_str(),"connector":"calendar","review_token":"a".repeat(64),"preference":["direct"],"attempt_id":"legacy"}}).to_string();
 
 		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_exposure_attempt',?3,1,'resolved','legacy reservation',1)",rusqlite::params![source,owner.key.work,payload]).expect("legacy attempt");
 
 		if state != "reserved" {
 			let result =
-				json!({"reservation":connection.last_insert_rowid(),"state":state}).to_string();
+				serde_json::json!({"reservation":connection.last_insert_rowid(),"state":state})
+					.to_string();
 
 			connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_exposure_result',?3,2,'resolved','legacy result',2)",rusqlite::params![format!("{source}:result"),owner.key.work,result]).expect("legacy result");
 		}
@@ -239,8 +264,13 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 		drop(connection);
 
 		let reopened = SqliteStore::open(&owner.root.paths()).expect("reopen legacy records");
-		let State::Available { last_outcome, preference, review_token, .. } =
-			read(&reopened, || async { Some(owner.source(&owner.key)) }, "calendar").await
+		let AgentAppExposureResult::Available { last_outcome, preference, review_token, .. } =
+			agent_app_exposure::read(
+				&reopened,
+				|| async { Some(owner.source(&owner.key)) },
+				"calendar",
+			)
+			.await
 		else {
 			panic!("legacy state")
 		};
@@ -264,9 +294,7 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 
 		assert!(
 			reopened
-				.agent_app_settings_receipt(crate::agent_config_settings::digest(
-					"/fixture/config.toml"
-				))
+				.agent_app_settings_receipt(agent_config_settings::digest("/fixture/config.toml"))
 				.await
 				.expect("shared journal")
 				.is_none()
@@ -274,13 +302,13 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 
 		if let Some(review) = previous_review.as_ref() {
 			assert!(
-				write(
+				agent_app_exposure::write(
 					&reopened,
 					|| async { Some(owner.source(&owner.key)) },
 					Change {
 						connector: "calendar",
 						review,
-						omit: Some(vec![Surface::Direct]),
+						omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
 						attempt: "stale-legacy-review"
 					}
 				)
@@ -294,21 +322,26 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 		assert_eq!(config.lock().expect("fixture config").writes, 0);
 	}
 
-	write(
+	agent_app_exposure::write(
 		&owner.store,
 		|| async { Some(owner.source(&owner.key)) },
 		Change {
 			connector: "calendar",
 			review: previous_review.as_deref().expect("fresh review"),
-			omit: Some(vec![Surface::Direct]),
+			omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
 			attempt: "explicit-current-edit",
 		},
 	)
 	.await
 	.expect("new reviewed edit");
 
-	let State::Available { last_outcome, preference, .. } =
-		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	let AgentAppExposureResult::Available { last_outcome, preference, .. } =
+		agent_app_exposure::read(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar",
+		)
+		.await
 	else {
 		panic!("current state")
 	};
@@ -323,8 +356,8 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 #[tokio::test]
 async fn applied_app_exposure_error_recovers_after_reopen_without_replaying_write() {
 	let home = tempfile::tempdir().expect("App exposure recovery fixture");
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let config = Arc::new(std::sync::Mutex::new(Config {
 		reject: true,
@@ -333,14 +366,19 @@ async fn applied_app_exposure_error_recovers_after_reopen_without_replaying_writ
 	}));
 	let backend = tokio::spawn(server(remote, config.clone()));
 	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-	let State::Available { review_token, can_update: true, .. } =
-		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	let AgentAppExposureResult::Available { review_token, can_update: true, .. } =
+		agent_app_exposure::read(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar",
+		)
+		.await
 	else {
 		panic!("owned settings review")
 	};
 
 	assert!(
-		write(
+		agent_app_exposure::write(
 			&owner.store,
 			|| async { Some(owner.source(&owner.key)) },
 			Change {
@@ -355,7 +393,7 @@ async fn applied_app_exposure_error_recovers_after_reopen_without_replaying_writ
 	);
 
 	let reopened = SqliteStore::open(&owner.root.paths()).expect("App exposure recovery fixture");
-	let scope = crate::agent_config_settings::digest("/fixture/config.toml");
+	let scope = agent_config_settings::digest("/fixture/config.toml");
 
 	assert_eq!(
 		reopened
@@ -367,8 +405,13 @@ async fn applied_app_exposure_error_recovers_after_reopen_without_replaying_writ
 		"unknown"
 	);
 
-	let State::Available { preference, last_outcome, can_update, .. } =
-		read(&reopened, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	let AgentAppExposureResult::Available { preference, last_outcome, can_update, .. } =
+		agent_app_exposure::read(
+			&reopened,
+			|| async { Some(owner.source(&owner.key)) },
+			"calendar",
+		)
+		.await
 	else {
 		panic!("reconciled settings")
 	};

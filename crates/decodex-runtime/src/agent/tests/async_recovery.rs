@@ -1,4 +1,11 @@
-use super::*;
+use std::time::Duration;
+
+use tokio::{
+	sync::{mpsc, oneshot},
+	time,
+};
+
+use crate::agent::tests::*;
 
 #[tokio::test]
 async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_read() {
@@ -22,13 +29,13 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 
 		while sent.try_recv().is_ok() {}
 
-		let (incoming, frames) = tokio::sync::mpsc::channel(8);
-		let (outgoing, mut writes) = tokio::sync::mpsc::channel(8);
+		let (incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
 		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 
 		agent.client = client.clone();
 
-		let (release, finished) = tokio::sync::oneshot::channel();
+		let (release, finished) = oneshot::channel();
 		let server = tokio::spawn(async move {
 			for index in 0..4 {
 				let request = writes.recv().await.unwrap();
@@ -57,7 +64,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 			let _ = finished.await;
 		});
 
-		tokio::time::timeout(std::time::Duration::from_secs(3), agent.recover_async_questions())
+		time::timeout(Duration::from_secs(3), agent.recover_async_questions())
 			.await
 			.unwrap()
 			.unwrap();

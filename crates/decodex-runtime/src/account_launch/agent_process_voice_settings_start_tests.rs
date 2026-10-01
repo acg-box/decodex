@@ -1,31 +1,43 @@
 //! Effective configuration is read before creating a native voice session.
-use super::*;
-use crate::agent::{AgentConfig, AgentCoordinator};
-use decodex_protocol::{AgentVoiceRequest, EntityId, VoiceSdp};
-use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use std::{env, fs};
+
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::mpsc,
+};
+
+use crate::{
+	account_launch::agent_process::native_tests::{NativeSession, reviewer::store::*},
+	agent::{AgentConfig, AgentCoordinator},
+	agent_voice::VoiceGateway,
+};
+use decodex_protocol::{
+	AgentVoiceOptions, AgentVoiceRequest, EntityId, HistoryText, VoiceSdp, WireText,
+};
 
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
 	for (voice, fails) in [("juniper", false), ("future_voice", false), ("juniper", true)] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(8_192);
-		let (read, write) = tokio::io::split(local);
+		let (local, remote) = io::duplex(8_192);
+		let (read, write) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(read, write);
-		let (sent, mut requests) = tokio::sync::mpsc::unbounded_channel();
+		let (sent, mut requests) = mpsc::unbounded_channel();
 		let server = tokio::spawn(async move {
-			let (read, mut write) = tokio::io::split(remote);
+			let (read, mut write) = io::split(remote);
 			let mut lines = BufReader::new(read).lines();
 
 			while let Some(line) = lines.next_line().await.unwrap() {
 				let request: Value = serde_json::from_str(&line).unwrap();
 				let mut response = match request["method"].as_str().unwrap() {
 					"thread/read" | "thread/resume" =>
-						json!({"result":{"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}}),
+						serde_json::json!({"result":{"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}}),
 					"config/read" if fails =>
-						json!({"error":{"code":-32_603,"message":"unavailable"}}),
-					"config/read" => json!({"result":{"config":{"realtime":{"voice":voice}}}}),
-					"thread/realtime/start" => json!({"result":{}}),
+						serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
+					"config/read" =>
+						serde_json::json!({"result":{"config":{"realtime":{"voice":voice}}}}),
+					"thread/realtime/start" => serde_json::json!({"result":{}}),
 					other => panic!("unexpected native method: {other}"),
 				};
 
@@ -50,7 +62,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		)
 		.unwrap();
 
-		agent.attach_voice_host(GENERATION.into(), crate::agent_voice::VoiceGateway::new());
+		agent.attach_voice_host(GENERATION.into(), VoiceGateway::new());
 
 		let result = agent
 			.voice_request(AgentVoiceRequest::Start {
@@ -58,12 +70,10 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				work_id: EntityId::new("root").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
 				options: if voice == "juniper" {
-					decodex_protocol::AgentVoiceOptions {
-						model: Some(decodex_protocol::WireText::new("realtime-fixture").unwrap()),
-						start_instructions: Some(
-							decodex_protocol::HistoryText::new("Start fixture").unwrap(),
-						),
-						end_instructions: Some(decodex_protocol::HistoryText::new("").unwrap()),
+					AgentVoiceOptions {
+						model: Some(WireText::new("realtime-fixture").unwrap()),
+						start_instructions: Some(HistoryText::new("Start fixture").unwrap()),
+						end_instructions: Some(HistoryText::new("").unwrap()),
 					}
 				} else {
 					Default::default()
@@ -101,7 +111,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 
 			assert_eq!(
 				start["params"]["voice"],
-				if voice == "future_voice" { Value::Null } else { json!(voice) }
+				if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
 			);
 		}
 
@@ -112,13 +122,11 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native effective voice configuration"]
 async fn installed_native_voice_reads_project_override_and_refreshed_user_default() {
-	use super::super::super::NativeSession;
-
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
 	let home = tempfile::tempdir().unwrap();
 	let project = home.path().join("project");
 
-	std::fs::create_dir_all(project.join(".codex")).unwrap();
+	fs::create_dir_all(project.join(".codex")).unwrap();
 
 	let config = |voice: &str| {
 		format!(
@@ -127,14 +135,14 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 		)
 	};
 
-	std::fs::write(home.path().join("config.toml"), config("cove")).unwrap();
-	std::fs::write(project.join(".codex/config.toml"), "[realtime]\nvoice=\"juniper\"\n").unwrap();
+	fs::write(home.path().join("config.toml"), config("cove")).unwrap();
+	fs::write(project.join(".codex/config.toml"), "[realtime]\nvoice=\"juniper\"\n").unwrap();
 
 	let session = NativeSession::start(&binary, home.path());
 	let started = session
 		.client
 		.thread_start(
-			json!({"cwd":project,"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only"}),
+			serde_json::json!({"cwd":project,"ephemeral":true,"approvalPolicy":"never","sandbox":"read-only"}),
 		)
 		.await
 		.unwrap();
@@ -145,19 +153,19 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 		Some("juniper")
 	);
 
-	std::fs::remove_file(project.join(".codex/config.toml")).unwrap();
-	std::fs::write(home.path().join("config.toml"), config("maple")).unwrap();
+	fs::remove_file(project.join(".codex/config.toml")).unwrap();
+	fs::write(home.path().join("config.toml"), config("maple")).unwrap();
 
 	assert_eq!(
 		session.client.realtime_voice_for_thread(thread).await.unwrap().as_deref(),
 		Some("maple")
 	);
 
-	std::fs::write(home.path().join("config.toml"), config("future_voice")).unwrap();
+	fs::write(home.path().join("config.toml"), config("future_voice")).unwrap();
 	// This installed server rejects an unknown configured enum; propagate its read failure.
 	assert!(session.client.realtime_voice_for_thread(thread).await.is_err());
 
-	std::fs::write(
+	fs::write(
 		home.path().join("config.toml"),
 		config("cove").replace("[realtime]\nvoice=\"cove\"\n", ""),
 	)
@@ -172,9 +180,7 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native voice preference bridge"]
 async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_connection() {
-	use super::super::super::NativeSession;
-
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
 	let home = tempfile::tempdir().unwrap();
 	let session = NativeSession::start(&binary, home.path());
 	let cwd = home.path().to_str().unwrap();

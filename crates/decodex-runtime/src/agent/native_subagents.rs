@@ -2,8 +2,10 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use super::{
-	AgentCoordinator, AgentError, AgentWorkItem, AppServerClient, SqliteStore, exact, json,
+use tokio::time;
+
+use crate::agent::{
+	self, AgentCoordinator, AgentError, AgentWorkItem, AppServerClient, SqliteStore,
 };
 
 impl AgentCoordinator {
@@ -33,13 +35,14 @@ pub(crate) async fn request_owner(
 				return Ok(owner.clone());
 			}
 
-			let native = client.thread_read(json!({"threadId":current})).await?;
+			let native = client.thread_read(agent::json!({"threadId":current})).await?;
 
 			if native["thread"]["id"] != current {
 				break;
 			}
 
-			let parent = exact(&native, "/thread/source/subAgent/thread_spawn/parent_thread_id")?;
+			let parent =
+				agent::exact(&native, "/thread/source/subAgent/thread_spawn/parent_thread_id")?;
 			// Forks and independently created workers do not establish native child authority.
 			if native["thread"]["parentThreadId"].as_str() != Some(&parent) {
 				break;
@@ -51,7 +54,7 @@ pub(crate) async fn request_owner(
 		Err(AgentError::Invalid("request for unowned native thread".into()))
 	};
 
-	tokio::time::timeout(Duration::from_secs(10), resolve)
+	time::timeout(Duration::from_secs(10), resolve)
 		.await
 		.map_err(|_| AgentError::Invalid("native request ownership lookup timed out".into()))?
 }

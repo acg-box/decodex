@@ -1,20 +1,24 @@
 //! Summary history remains display-only across native process restart.
-use super::*;
+use std::{env, fs, sync::atomic::AtomicUsize};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native summary history"]
 async fn installed_native_summary_history_is_read_only_and_survives_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("home");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("backend");
 	let address = listener.local_addr().expect("address");
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, calls.clone()));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("config");
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("config");
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let thread=tokio::time::timeout(Duration::from_secs(30),async {
+	let thread=time::timeout(Duration::from_secs(30),async {
         let started=session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("start");
         let thread=started["thread"]["id"].as_str().expect("thread").to_owned();
 

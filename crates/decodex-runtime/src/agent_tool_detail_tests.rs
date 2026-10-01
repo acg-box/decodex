@@ -1,4 +1,4 @@
-use super::*;
+use crate::agent_detail::*;
 
 fn history(item: Value) -> Value {
 	json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}})

@@ -1,9 +1,15 @@
 //! Same-UID transport over the real command owner; provider observations remain fixture-owned.
-use super::*;
-use crate::{Application, ProtocolServer, ServerConfig};
+use tokio::{net::TcpListener, time};
+
+use crate::{
+	Application, ProtocolServer, ServerConfig, account_launch,
+	application::account_nudge::native_tests::*,
+};
+use decodex_core::LocalTrustPolicy;
 use decodex_protocol::{
-	AccountCommandResponse, AccountRecoveryNudgeResult, LocalTransportAuthority, RetainedSession,
-	RetainedSessionConfig, ServerId, SessionCancellation, SessionDelivery,
+	AccountCommandResponse, AccountRecoveryNudgeResult, AccountRecoveryPreparation,
+	LocalTransportAuthority, QueryEnvelope, QueryResultPayload, RetainedSession,
+	RetainedSessionConfig, ServerId, SessionCancellation, SessionDelivery, SnapshotItem,
 };
 
 // The fixture owns observation timing. Delegate real command/query and shutdown behavior,
@@ -18,11 +24,11 @@ impl Application for ObservedFixture {
 		self.0.wait_for_shutdown().await;
 	}
 
-	async fn snapshot(&self) -> Vec<decodex_protocol::SnapshotItem> {
+	async fn snapshot(&self) -> Vec<SnapshotItem> {
 		self.0.snapshot().await
 	}
 
-	fn command_independent_snapshot(&self) -> Option<Vec<decodex_protocol::SnapshotItem>> {
+	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
 		self.0.command_independent_snapshot()
 	}
 
@@ -33,10 +39,7 @@ impl Application for ObservedFixture {
 		self.0.execute(command).await
 	}
 
-	async fn query<'a>(
-		&'a self,
-		query: &'a decodex_protocol::QueryEnvelope,
-	) -> decodex_protocol::QueryResultPayload {
+	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		self.0.query(query).await
 	}
 }
@@ -46,7 +49,7 @@ pub(super) async fn qualify(
 	root: &DecodexRoot,
 	source: &AccountRecoveryResult,
 	observations: &AccountObservationService,
-	listener: &tokio::net::TcpListener,
+	listener: &TcpListener,
 ) {
 	observations
 		.cache_recovery_fixture(
@@ -60,7 +63,7 @@ pub(super) async fn qualify(
 
 	let authority = LocalTransportAuthority::new(
 		root.paths(),
-		decodex_core::LocalTrustPolicy::SameUid,
+		LocalTrustPolicy::SameUid,
 		Some(unsafe { libc::geteuid() }),
 	)
 	.expect("same-UID authority");
@@ -70,7 +73,7 @@ pub(super) async fn qualify(
 		.bind(
 			LocalTransportAuthority::new(
 				root.paths(),
-				decodex_core::LocalTrustPolicy::SameUid,
+				LocalTrustPolicy::SameUid,
 				Some(unsafe { libc::geteuid() }),
 			)
 			.expect("server authority"),
@@ -98,7 +101,7 @@ pub(super) async fn qualify(
 			.prepare_recovery(current.clone(), AccountRecoveryAction::NotifyOwner)
 			.await
 			.expect("prepare query"),
-		decodex_protocol::AccountRecoveryPreparation::Ready {
+		AccountRecoveryPreparation::Ready {
 			destination: decodex_protocol::AccountRecoveryDestination::RequestCredits,
 			..
 		}
@@ -106,14 +109,14 @@ pub(super) async fn qualify(
 
 	let key =
 		IdempotencyKey::new("native-notification-through-socket").expect("explicit operation");
-	let (response, ()) = tokio::time::timeout(Duration::from_secs(30), async {
+	let (response, ()) = time::timeout(Duration::from_secs(30), async {
 		tokio::join!(
 			client.send_recovery_nudge(
 				current.clone(),
 				AccountRecoveryAction::NotifyOwner,
 				key.clone()
 			),
-			crate::account_launch::serve_native_nudge_fixture(
+			account_launch::serve_native_nudge_fixture(
 				listener,
 				"200 OK",
 				decodex_codex::app_server_client::AccountNudgeCreditType::Credits
@@ -129,7 +132,7 @@ pub(super) async fn qualify(
 	);
 
 	let SessionDelivery::Event { event, confirmation } =
-		tokio::time::timeout(Duration::from_secs(5), peer.next())
+		time::timeout(Duration::from_secs(5), peer.next())
 			.await
 			.expect("peer event deadline")
 			.expect("peer event")
@@ -160,7 +163,7 @@ pub(super) async fn qualify(
 		AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge {status:Status::Sent,..}))
 	);
 	assert!(
-		tokio::time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
+		time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
 		"wire replay must not start native work"
 	);
 

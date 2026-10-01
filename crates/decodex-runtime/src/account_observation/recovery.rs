@@ -1,8 +1,10 @@
 //! Fresh and stale account recovery projections from the existing observation owner.
 
-use decodex_codex::{AccountApiBanner, AccountApiBannerAction as A, AccountApiBannerState};
+use decodex_codex::{
+	AccountApiBanner, AccountApiBannerAction, AccountApiBannerState, AccountApiRecoveryContext,
+};
 use decodex_protocol::{
-	AccountRecoveryAction as B, AccountRecoveryBanner, AccountRecoveryCta, AccountRecoveryResult,
+	AccountRecoveryAction, AccountRecoveryBanner, AccountRecoveryCta, AccountRecoveryResult,
 	AccountRecoveryState, EntityId, EntityRevision, WireText,
 };
 
@@ -12,7 +14,7 @@ pub(super) struct CachedAccountBanner {
 	pub observed_at: i64,
 	pub current: bool,
 	pub banner: AccountApiBannerState,
-	pub context: Option<decodex_codex::AccountApiRecoveryContext>,
+	pub context: Option<AccountApiRecoveryContext>,
 }
 
 pub(super) fn unavailable(
@@ -68,16 +70,18 @@ fn project_banner(banner: AccountApiBanner) -> Option<AccountRecoveryBanner> {
 		.map(|cta| {
 			Some(AccountRecoveryCta {
 				action: match cta.action {
-					A::AddCredits => B::AddCredits,
-					A::BuyReset => B::BuyReset,
-					A::ResetUsage => B::ResetUsage,
-					A::ViewUsage => B::ViewUsage,
-					A::ViewWorkspaceUsage => B::ViewWorkspaceUsage,
-					A::NotifyOwner => B::NotifyOwner,
-					A::RequestIncrease => B::RequestIncrease,
-					A::PlusPricing => B::PlusPricing,
-					A::ProPricing => B::ProPricing,
-					A::Pricing => B::Pricing,
+					AccountApiBannerAction::AddCredits => AccountRecoveryAction::AddCredits,
+					AccountApiBannerAction::BuyReset => AccountRecoveryAction::BuyReset,
+					AccountApiBannerAction::ResetUsage => AccountRecoveryAction::ResetUsage,
+					AccountApiBannerAction::ViewUsage => AccountRecoveryAction::ViewUsage,
+					AccountApiBannerAction::ViewWorkspaceUsage =>
+						AccountRecoveryAction::ViewWorkspaceUsage,
+					AccountApiBannerAction::NotifyOwner => AccountRecoveryAction::NotifyOwner,
+					AccountApiBannerAction::RequestIncrease =>
+						AccountRecoveryAction::RequestIncrease,
+					AccountApiBannerAction::PlusPricing => AccountRecoveryAction::PlusPricing,
+					AccountApiBannerAction::ProPricing => AccountRecoveryAction::ProPricing,
+					AccountApiBannerAction::Pricing => AccountRecoveryAction::Pricing,
 				},
 				label: text(cta.label)?,
 			})
@@ -104,8 +108,8 @@ fn project_banner(banner: AccountApiBanner) -> Option<AccountRecoveryBanner> {
 
 #[cfg(test)]
 mod tests {
-	use super::{CachedAccountBanner, project};
-	use decodex_protocol::{AccountRecoveryState as S, EntityId, EntityRevision};
+	use crate::account_observation::recovery::{self, CachedAccountBanner};
+	use decodex_protocol::{EntityId, EntityRevision};
 
 	#[test]
 	fn expired_failed_or_wrong_revision_observations_never_authorize_actions() {
@@ -119,18 +123,24 @@ mod tests {
 			banner: usage.banner_for("a", "u"),
 		};
 		let read = |value: CachedAccountBanner, revision, now| {
-			project(account.clone(), EntityRevision(revision), Some(value), now).state
+			recovery::project(account.clone(), EntityRevision(revision), Some(value), now).state
 		};
 
 		assert!(
-			matches!(read(cached.clone(),1,100),S::Current(b) if b.blocked_model_slug.as_ref().unwrap().as_str()=="model-a")
+			matches!(read(cached.clone(),1,100),decodex_protocol::AccountRecoveryState::Current(b) if b.blocked_model_slug.as_ref().unwrap().as_str()=="model-a")
 		);
-		assert!(matches!(read(cached.clone(), 1, 300_000_101), S::Stale(_)));
+		assert!(matches!(
+			read(cached.clone(), 1, 300_000_101),
+			decodex_protocol::AccountRecoveryState::Stale(_)
+		));
 		assert!(matches!(
 			read(CachedAccountBanner { current: false, ..cached.clone() }, 1, 101),
-			S::Stale(_)
+			decodex_protocol::AccountRecoveryState::Stale(_)
 		));
-		assert!(matches!(read(cached.clone(), 2, 101), S::Unavailable));
-		assert!(matches!(read(cached, 1, 99), S::Unavailable));
+		assert!(matches!(
+			read(cached.clone(), 2, 101),
+			decodex_protocol::AccountRecoveryState::Unavailable
+		));
+		assert!(matches!(read(cached, 1, 99), decodex_protocol::AccountRecoveryState::Unavailable));
 	}
 }

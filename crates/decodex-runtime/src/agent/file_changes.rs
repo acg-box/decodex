@@ -1,17 +1,21 @@
 //! Hold connection-bound file evidence until its immutable approval record commits.
-use serde_json::Value;
 use std::collections::HashMap;
+
+use serde_json::Value;
+
+use crate::agent::{AgentCoordinator, AgentError, RequestId};
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 
 type Key = (String, String, String, String);
 
-impl super::AgentCoordinator {
+impl AgentCoordinator {
 	pub(super) async fn request_payload(
 		&self,
-		id: &super::RequestId,
+		id: &RequestId,
 		method: &str,
 		params: &Value,
 		owner: Option<&str>,
-	) -> Result<Value, super::AgentError> {
+	) -> Result<Value, AgentError> {
 		let mut payload = serde_json::json!({"id":id,"method":method,"params":params,"ownerThreadId":owner,"connectionId":self.client.connection_identity()});
 
 		if method != "item/fileChange/requestApproval" {
@@ -81,7 +85,7 @@ impl PendingFileChanges {
 		let item = params["item"].to_string();
 		let bytes = cost(&key, &item);
 
-		if item.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES
+		if item.len() > MAX_NATIVE_MESSAGE_BYTES
 			|| self.items.len() >= 32
 			|| self.bytes + bytes > 32 * 1_024 * 1_024
 		{
@@ -137,19 +141,19 @@ fn cost(key: &Key, item: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent::file_changes::PendingFileChanges;
 	#[test]
 	fn evidence_is_bound_to_connection_and_released_after_commit_or_lifecycle_end() {
 		let mut state = PendingFileChanges::default();
-		let started = json!({"threadId":"child","turnId":"turn","item":{"id":"patch","type":"fileChange","changes":[]}});
-		let request = json!({"threadId":"child","turnId":"turn","itemId":"patch"});
+		let started = serde_json::json!({"threadId":"child","turnId":"turn","item":{"id":"patch","type":"fileChange","changes":[]}});
+		let request = serde_json::json!({"threadId":"child","turnId":"turn","itemId":"patch"});
 
 		for (method, params) in [
 			("item/completed", started.clone()),
-			("turn/completed", json!({"threadId":"child","turn":{"id":"turn"}})),
-			("thread/reverted", json!({"threadId":"child"})),
-			("thread/closed", json!({"threadId":"child"})),
+			("turn/completed", serde_json::json!({"threadId":"child","turn":{"id":"turn"}})),
+			("thread/reverted", serde_json::json!({"threadId":"child"})),
+			("thread/closed", serde_json::json!({"threadId":"child"})),
 		] {
 			state.observe("connection", "item/started", &started);
 
@@ -158,7 +162,7 @@ mod tests {
 			for field in ["threadId", "turnId", "itemId"] {
 				let mut wrong = request.clone();
 
-				wrong[field] = json!("foreign");
+				wrong[field] = serde_json::json!("foreign");
 
 				assert!(state.get("connection", &wrong).is_none());
 			}

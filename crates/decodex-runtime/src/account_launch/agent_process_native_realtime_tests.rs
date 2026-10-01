@@ -1,23 +1,26 @@
 //! Native realtime history crosses the retained bridge and Agent without replay.
-use super::*;
-
-use crate::agent::{AgentConfig, AgentCoordinator};
-
-use decodex_database::SqliteStore;
-
-use decodex_protocol::AgentTimelineContent as Content;
+use std::{env, fs, sync::atomic::AtomicUsize};
 
 use futures_util::{SinkExt as _, StreamExt as _};
+use tokio::{sync::oneshot, time};
+use tokio_tungstenite::tungstenite::{Error, Message, error::ProtocolError};
 
-use std::sync::atomic::AtomicUsize;
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator, timeline},
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
+use decodex_database::SqliteStore;
+use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
 
 fn assert_projection(thread: &str, page: &Value) {
-	let page = crate::agent::timeline::project(thread, page).expect("native realtime projection");
+	let page = timeline::project(thread, page).expect("native realtime projection");
 	let speech: Vec<_> = page
 		.entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
-			Content::Speech { role, text, .. } =>
+			AgentTimelineContent::Speech { role, text, .. } =>
 				Some((entry.position, role.as_str(), text.as_str())),
 			_ => None,
 		})
@@ -28,17 +31,17 @@ fn assert_projection(thread: &str, page: &Value) {
 		vec![("assistant", "Speech before typed input"), ("user", "User speech")]
 	);
 
-	let typed = page.entries.iter().find(|entry| matches!(&entry.content, Content::Item { kind, text, .. } if kind == "userMessage" && text == "Typed input during speech")).expect("typed input");
+	let typed = page.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::Item{ kind, text, .. } if kind == "userMessage" && text == "Typed input during speech")).expect("typed input");
 
 	assert!(speech.iter().all(|(position, _, _)| *position < typed.position));
-	assert_eq!(page.entries.iter().filter(|entry| matches!(&entry.content, Content::Promotion { presentation, .. } if presentation == "inlineMarkdown")).count(), 1);
-	assert_eq!(page.entries.iter().filter(|entry| matches!(&entry.content, Content::VoiceBoundary { outcome: Some(outcome), .. } if outcome == "ended")).count(), 1);
+	assert_eq!(page.entries.iter().filter(|entry| matches!(&entry.content, AgentTimelineContent::Promotion{ presentation, .. } if presentation == "inlineMarkdown")).count(), 1);
+	assert_eq!(page.entries.iter().filter(|entry| matches!(&entry.content, AgentTimelineContent::VoiceBoundary{ outcome: Some(outcome), .. } if outcome == "ended")).count(), 1);
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native realtime qualification"]
 async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -56,14 +59,13 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 		Some(json!({"input_tokens":10,"output_tokens":2,"total_tokens":12})),
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":if serial == 0 { "Seed" } else { "::codex-realtime-inline{}\nShared artifact" }}]}),
 	));
-	let (speech_tx, speech_rx) = tokio::sync::oneshot::channel();
-	let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+	let (speech_tx, speech_rx) = oneshot::channel();
+	let (done_tx, done_rx) = oneshot::channel();
 	let realtime = tokio::spawn(serve_realtime(websocket, speech_rx, done_rx));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\nexperimental_realtime_ws_base_url = \"ws://{realtime_address}\"\nexperimental_realtime_ws_startup_context = \"\"\n[features]\nrealtime_conversation = false\n[realtime]\nversion = \"v2\"\n[model_providers.fixture]\nname = \"Isolated realtime fixture\"\nbase_url = \"http://{address}\"\nexperimental_bearer_token = \"fixture-only-not-a-credential\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\nexperimental_realtime_ws_base_url = \"ws://{realtime_address}\"\nexperimental_realtime_ws_startup_context = \"\"\n[features]\nrealtime_conversation = false\n[realtime]\nversion = \"v2\"\n[model_providers.fixture]\nname = \"Isolated realtime fixture\"\nbase_url = \"http://{address}\"\nexperimental_bearer_token = \"fixture-only-not-a-credential\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -78,7 +80,7 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
 	let mut completed = Vec::new();
-	let (thread, before) = tokio::time::timeout(Duration::from_secs(30), async {
+	let (thread, before) = time::timeout(Duration::from_secs(30), async {
 		agent.start_agent("agent", "Seed native timeline").await.unwrap();
 
 		drain(&mut agent, &mut session.events, "turn/completed", 1, &mut completed).await;
@@ -117,7 +119,7 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 	let session = NativeSession::start(&binary, home.path());
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.recover_persisted().await.unwrap();
 
 		let after = session.client.thread_timeline_page(&thread, None, 30).await.unwrap();
@@ -141,22 +143,20 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 }
 
 async fn assert_enriched(client: &AppServerClient, store: &SqliteStore, thread: &str) {
-	let result = crate::agent::timeline::read(
+	let result = timeline::read(
 		Some(store),
 		|| {
 			let client = client.clone();
 
 			async move {
-				Some(crate::agent_usage_estimate::Source {
-					key: crate::agent_usage_estimate::SourceKey {
-						generation: decodex_core::ProcessGenerationId::new(
+				Some(Source {
+					key: SourceKey {
+						generation: ProcessGenerationId::new(
 							"10000000-0000-4000-8000-000000000002",
 						)
 						.expect("fixture generation"),
-						account: decodex_core::AccountId::new(
-							"10000000-0000-4000-8000-000000000001",
-						)
-						.expect("fixture account"),
+						account: AccountId::new("10000000-0000-4000-8000-000000000001")
+							.expect("fixture account"),
 						revision: 1,
 						history_revision: client.history_revision(),
 						thread: thread.into(),
@@ -169,12 +169,12 @@ async fn assert_enriched(client: &AppServerClient, store: &SqliteStore, thread: 
 		None,
 	)
 	.await;
-	let decodex_protocol::AgentTimelineResult::Available { page, .. } = result else {
+	let AgentTimelineResult::Available { page, .. } = result else {
 		panic!("native timeline enrichment failed: {result:?}");
 	};
 
 	assert!(page.entries.iter().any(|entry| matches!(&entry.content,
-		Content::Promotion { resolved: Some(content), .. } if content.text.contains("Shared artifact"))));
+		AgentTimelineContent::Promotion{ resolved: Some(content), .. } if content.text.contains("Shared artifact"))));
 }
 
 async fn drain(
@@ -212,7 +212,7 @@ async fn serve_realtime(
 		tokio_tungstenite::accept_async(socket).await.expect("realtime fixture handshake");
 
 	socket
-		.send(tokio_tungstenite::tungstenite::Message::Text(
+		.send(Message::Text(
 			json!({"type":"session.updated","session":{"id":"voice-fixture"}}).to_string().into(),
 		))
 		.await
@@ -223,10 +223,7 @@ async fn serve_realtime(
 		json!({"type":"response.output_text.delta","delta":"Speech before typed input"}),
 		json!({"type":"conversation.item.input_audio_transcription.delta","delta":"User speech"}),
 	] {
-		socket
-			.send(tokio_tungstenite::tungstenite::Message::Text(event.to_string().into()))
-			.await
-			.expect("speech delta");
+		socket.send(Message::Text(event.to_string().into())).await.expect("speech delta");
 	}
 
 	done.await.expect("speech completion gate");
@@ -235,10 +232,7 @@ async fn serve_realtime(
 		json!({"type":"response.output_text.done","text":"Speech before typed input"}),
 		json!({"type":"conversation.item.input_audio_transcription.completed","transcript":"User speech"}),
 	] {
-		socket
-			.send(tokio_tungstenite::tungstenite::Message::Text(event.to_string().into()))
-			.await
-			.expect("speech done");
+		socket.send(Message::Text(event.to_string().into())).await.expect("speech done");
 	}
 
 	socket.close(None).await.expect("normal realtime close");
@@ -246,10 +240,8 @@ async fn serve_realtime(
 	// Otherwise unread session updates can turn a normal close into a connection reset.
 	// Native Codex may drop its transport after receiving our Close without replying.
 	// The main fixture still rejects every thread/realtime/error notification.
-	tokio::time::timeout(Duration::from_secs(5), async {
+	time::timeout(Duration::from_secs(5), async {
 		while let Some(frame) = socket.next().await {
-			use tokio_tungstenite::tungstenite::{Error, Message, error::ProtocolError};
-
 			match frame {
 				Ok(Message::Close(_))
 				| Err(Error::ConnectionClosed)

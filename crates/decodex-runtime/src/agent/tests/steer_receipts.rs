@@ -1,4 +1,7 @@
-use super::*;
+use std::iter;
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_replay() {
@@ -29,9 +32,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 			.unwrap()
 			.id;
 		let receipt = |id: &str| json!({"id":format!("item-{id}"),"type":"userMessage","clientId":id,"content":[]});
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 		if mode != "live" {
 			if mode == "idle" {
@@ -55,7 +56,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 				recovered.store.get_agent_inbox_event(pending).await.unwrap().disposition.is_some()
 			);
 			assert!(
-				std::iter::from_fn(|| calls.try_recv().ok())
+				iter::from_fn(|| calls.try_recv().ok())
 					.all(|r| r["method"] != "turn/start" && r["method"] != "turn/steer")
 			);
 		} else {

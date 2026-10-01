@@ -1,9 +1,14 @@
 //! Read native capabilities on the retained process. Never expose raw configuration.
-use decodex_codex::app_server_client::AppServerClient;
-
-use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, ConversationModel};
+use std::{future::Future, time::Duration};
 
 use serde_json::{Value, json};
+use tokio::time;
+
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_core::ServiceTier;
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentModelDto, AgentModelUpgradeDto, ConversationModel,
+};
 
 /// Shared model-page projection for retained Agent and ordinary process transports.
 #[derive(Default)]
@@ -64,7 +69,7 @@ pub(crate) async fn read_scoped<K, F, Fut>(source: F) -> AgentCapabilitiesResult
 where
 	K: PartialEq,
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<(K, AppServerClient)>>,
+	Fut: Future<Output = Option<(K, AppServerClient)>>,
 {
 	let Some((before, client)) = source().await else {
 		return AgentCapabilitiesResult::Unavailable;
@@ -79,7 +84,7 @@ where
 }
 
 pub(crate) async fn read(client: &AppServerClient) -> AgentCapabilitiesResult {
-	tokio::time::timeout(std::time::Duration::from_secs(8), read_inner(client))
+	time::timeout(Duration::from_secs(8), read_inner(client))
 		.await
 		.unwrap_or(AgentCapabilitiesResult::Unavailable)
 }
@@ -149,7 +154,7 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 		let tiers = value["serviceTiers"].as_array().filter(|tiers| tiers.len() <= 32)?;
 
 		for tier in tiers {
-			let id = decodex_core::ServiceTier::new(tier["id"].as_str()?).ok()?;
+			let id = ServiceTier::new(tier["id"].as_str()?).ok()?;
 
 			if service_tiers
 				.iter()
@@ -183,7 +188,7 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"))
 	{
 		service_tiers.push(decodex_protocol::AgentServiceTierDto {
-			id: decodex_core::ServiceTier::from_fast(true),
+			id: ServiceTier::from_fast(true),
 			name: "Fast".into(),
 			description: String::new(),
 		});
@@ -192,7 +197,7 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 	let default_service_tier = if value["defaultServiceTier"].is_null() {
 		None
 	} else {
-		Some(decodex_core::ServiceTier::new(value["defaultServiceTier"].as_str()?).ok()?)
+		Some(ServiceTier::new(value["defaultServiceTier"].as_str()?).ok()?)
 	};
 	let supports_fast = service_tiers.iter().any(|tier| tier.id.as_str() == "priority");
 	let available_cyber_programs = if value["availableAccessPrograms"].is_null() {
@@ -228,7 +233,7 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 		.and_then(Value::as_str)
 		.or_else(|| value["upgrade"].as_str())
 		.and_then(|model| ConversationModel::new(model).ok());
-	let upgrade = upgrade_model.map(|model| decodex_protocol::AgentModelUpgradeDto {
+	let upgrade = upgrade_model.map(|model| AgentModelUpgradeDto {
 		model,
 		notice: notice(&value["upgradeInfo"]["upgradeCopy"]),
 		retirement_at: value["upgradeInfo"]["retirementAt"].as_i64(),
@@ -289,14 +294,20 @@ async fn memory_feature(client: &AppServerClient) -> Option<bool> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::sync::atomic::{AtomicU64, Ordering};
+
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::agent_capabilities::{
+		self, AgentCapabilitiesResult, AppServerClient, ModelCatalogPages, Value,
+	};
 
 	#[test]
 	fn model_defined_efforts_survive_native_catalog_projection() {
-		let value = json!({"model":"custom","displayName":"Custom",
+		let value = agent_capabilities::json!({"model":"custom","displayName":"Custom",
             "supportedReasoningEfforts":[{"reasoningEffort":"none"},{"reasoningEffort":"minimal"},{"reasoningEffort":"provider-defined-effort"}],
             "defaultReasoningEffort":"provider-defined-effort"});
-		let model = project_model(&value).expect("native model-defined effort");
+		let model = agent_capabilities::project_model(&value).expect("native model-defined effort");
 
 		assert_eq!(
 			model.efforts.iter().map(|effort| effort.as_str()).collect::<Vec<_>>(),
@@ -310,25 +321,30 @@ mod tests {
 
 	#[test]
 	fn access_programs_preserve_unknown_empty_and_changed_catalog_metadata() {
-		let mut value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
+		let mut value = agent_capabilities::json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
 
-		assert_eq!(project_model(&value).unwrap().available_cyber_programs, None);
+		assert_eq!(
+			agent_capabilities::project_model(&value).unwrap().available_cyber_programs,
+			None
+		);
 
 		let mut observations = Vec::new();
 
 		for (metadata, expected) in [
 			(Value::Null, None),
 			(
-				json!({"cyber":["standard","daybreakBlue","future","daybreakBlue"]}),
+				agent_capabilities::json!({"cyber":["standard","daybreakBlue","future","daybreakBlue"]}),
 				Some(vec!["standard".to_string(), "daybreakBlue".to_string()]),
 			),
-			(json!({"cyber":[]}), Some(vec![])),
+			(agent_capabilities::json!({"cyber":[]}), Some(vec![])),
 		] {
 			value["availableAccessPrograms"] = metadata;
 
 			let mut catalog = ModelCatalogPages::default();
 
-			catalog.push(&json!({"data":[value.clone()],"nextCursor":null})).unwrap();
+			catalog
+				.push(&agent_capabilities::json!({"data":[value.clone()],"nextCursor":null}))
+				.unwrap();
 
 			assert_eq!(catalog.models[0].available_cyber_programs, expected);
 
@@ -338,24 +354,26 @@ mod tests {
 		assert_ne!(observations[0], observations[2]);
 		assert_ne!(observations[1], observations[2]);
 
-		value["availableAccessPrograms"] = json!({"cyber":[1]});
+		value["availableAccessPrograms"] = agent_capabilities::json!({"cyber":[1]});
 
-		assert!(project_model(&value).is_none());
+		assert!(agent_capabilities::project_model(&value).is_none());
 	}
 
 	#[test]
 	fn advertised_persistent_effort_retains_native_value() {
-		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"persistent"}],"defaultReasoningEffort":"persistent"});
-		let model = project_model(&value).expect("advertised model");
+		let value = agent_capabilities::json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"persistent"}],"defaultReasoningEffort":"persistent"});
+		let model = agent_capabilities::project_model(&value).expect("advertised model");
 
 		assert_eq!(model.efforts[0].as_str(), "persistent");
 		assert_eq!(model.default_effort, Some(model.efforts[0].clone()));
 
 		let mut value = value;
 
-		value["supportedReasoningEfforts"] = json!([{"reasoningEffort":"high"}]);
+		value["supportedReasoningEfforts"] =
+			agent_capabilities::json!([{"reasoningEffort":"high"}]);
 
-		let model = project_model(&value).expect("model without persistent support");
+		let model =
+			agent_capabilities::project_model(&value).expect("model without persistent support");
 
 		assert_eq!(model.efforts.len(), 1);
 		assert_eq!(model.efforts[0].as_str(), "high");
@@ -365,8 +383,8 @@ mod tests {
 	#[test]
 	fn custom_catalog_efforts_and_default_keep_exact_native_values() {
 		let custom = "future-provider-reasoning-effort-over-32-bytes";
-		let value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"high"},{"reasoningEffort":custom},{"reasoningEffort":custom}],"defaultReasoningEffort":custom});
-		let model = project_model(&value).expect("advertised model");
+		let value = agent_capabilities::json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"high"},{"reasoningEffort":custom},{"reasoningEffort":custom}],"defaultReasoningEffort":custom});
+		let model = agent_capabilities::project_model(&value).expect("advertised model");
 
 		assert_eq!(model.efforts.len(), 2);
 		assert_eq!(model.efforts[1].as_str(), custom);
@@ -379,49 +397,62 @@ mod tests {
 
 	#[test]
 	fn shared_catalog_rejects_partial_repeated_and_oversized_pages() {
-		let model = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
+		let model = agent_capabilities::json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high"});
 		let mut pages = ModelCatalogPages::default();
 
 		assert_eq!(
-			pages.push(&json!({"data":[model.clone()],"nextCursor":"next"})),
+			pages.push(&agent_capabilities::json!({"data":[model.clone()],"nextCursor":"next"})),
 			Ok(Some("next".into()))
 		);
-		assert!(pages.push(&json!({"data":[model.clone()],"nextCursor":null})).is_err());
+		assert!(
+			pages
+				.push(&agent_capabilities::json!({"data":[model.clone()],"nextCursor":null}))
+				.is_err()
+		);
 
 		let mut pages = ModelCatalogPages::default();
 
-		assert!(pages.push(&json!({"data":[],"nextCursor":"next"})).is_ok());
-		assert!(pages.push(&json!({"data":[],"nextCursor":"next"})).is_err());
+		assert!(pages.push(&agent_capabilities::json!({"data":[],"nextCursor":"next"})).is_ok());
+		assert!(pages.push(&agent_capabilities::json!({"data":[],"nextCursor":"next"})).is_err());
 
 		let mut pages = ModelCatalogPages::default();
 
-		assert!(pages.push(&json!({"data":vec![model.clone();101],"nextCursor":null})).is_err());
+		assert!(
+			pages
+				.push(
+					&agent_capabilities::json!({"data":vec![model.clone();101],"nextCursor":null})
+				)
+				.is_err()
+		);
 
 		let mut pages = ModelCatalogPages::default();
 		let mut hidden = model.clone();
 
-		hidden["hidden"] = json!(true);
+		hidden["hidden"] = agent_capabilities::json!(true);
 
-		assert_eq!(pages.push(&json!({"data":[hidden,model],"nextCursor":null})), Ok(None));
+		assert_eq!(
+			pages.push(&agent_capabilities::json!({"data":[hidden,model],"nextCursor":null})),
+			Ok(None)
+		);
 		assert_eq!(pages.models.len(), 1);
-		assert!(pages.push(&json!({"data":[],"nextCursor":null})).is_err());
+		assert!(pages.push(&agent_capabilities::json!({"data":[],"nextCursor":null})).is_err());
 	}
 
 	#[test]
 	fn catalog_exposes_bounded_upgrade_notices_without_changing_selected_model() {
-		let mut value = json!({"model":"old","displayName":"Old","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high","upgradeInfo":{"model":"new","upgradeCopy":"New model available","retirementAt":1_800_000_000},"availabilityNux":{"message":"Available for this account"}});
-		let model = project_model(&value).unwrap();
+		let mut value = agent_capabilities::json!({"model":"old","displayName":"Old","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high","upgradeInfo":{"model":"new","upgradeCopy":"New model available","retirementAt":1_800_000_000},"availabilityNux":{"message":"Available for this account"}});
+		let model = agent_capabilities::project_model(&value).unwrap();
 
 		assert_eq!(model.model.as_str(), "old");
 		assert_eq!(model.upgrade.as_ref().unwrap().model.as_str(), "new");
 		assert_eq!(model.upgrade.unwrap().retirement_at, Some(1_800_000_000));
 		assert_eq!(model.availability.as_deref(), Some("Available for this account"));
 
-		value["availabilityNux"]["message"] = json!("x".repeat(4_097));
+		value["availabilityNux"]["message"] = agent_capabilities::json!("x".repeat(4_097));
 		value["upgradeInfo"] = Value::Null;
-		value["upgrade"] = json!("fallback");
+		value["upgrade"] = agent_capabilities::json!("fallback");
 
-		let model = project_model(&value).unwrap();
+		let model = agent_capabilities::project_model(&value).unwrap();
 
 		assert!(model.availability.is_none());
 		assert_eq!(model.upgrade.unwrap().model.as_str(), "fallback");
@@ -429,26 +460,32 @@ mod tests {
 
 	#[test]
 	fn catalog_preserves_named_service_tiers_and_default_without_selecting_them() {
-		let mut value = json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"priority","name":"Fast","description":"Increased usage"},{"id":"ultrafast","name":"Ultrafast","description":"Latency-sensitive work"}],"defaultServiceTier":"ultrafast"});
-		let projected = project_model(&value).unwrap();
+		let mut value = agent_capabilities::json!({"model":"custom","displayName":"Custom","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","serviceTiers":[{"id":"priority","name":"Fast","description":"Increased usage"},{"id":"ultrafast","name":"Ultrafast","description":"Latency-sensitive work"}],"defaultServiceTier":"ultrafast"});
+		let projected = agent_capabilities::project_model(&value).unwrap();
 
 		assert_eq!(projected.service_tiers.len(), 2);
 		assert_eq!(projected.service_tiers[1].id.as_str(), "ultrafast");
 		assert_eq!(projected.service_tiers[1].description, "Latency-sensitive work");
 		assert_eq!(projected.default_service_tier.unwrap().as_str(), "ultrafast");
 
-		value["serviceTiers"][1]["id"] = json!("future-tier");
+		value["serviceTiers"][1]["id"] = agent_capabilities::json!("future-tier");
 
-		assert_eq!(project_model(&value).unwrap().service_tiers[1].id.as_str(), "future-tier");
+		assert_eq!(
+			agent_capabilities::project_model(&value).unwrap().service_tiers[1].id.as_str(),
+			"future-tier"
+		);
 
-		value["serviceTiers"][1]["id"] = json!("priority");
+		value["serviceTiers"][1]["id"] = agent_capabilities::json!("priority");
 
-		assert!(project_model(&value).is_none(), "duplicate tier identities are ambiguous");
+		assert!(
+			agent_capabilities::project_model(&value).is_none(),
+			"duplicate tier identities are ambiguous"
+		);
 
-		value["serviceTiers"] = json!([]);
-		value["defaultServiceTier"] = json!("flex");
+		value["serviceTiers"] = agent_capabilities::json!([]);
+		value["defaultServiceTier"] = agent_capabilities::json!("flex");
 
-		let projected = project_model(&value).unwrap();
+		let projected = agent_capabilities::project_model(&value).unwrap();
 
 		assert_eq!(projected.default_service_tier.unwrap().as_str(), "flex");
 		assert!(projected.service_tiers.is_empty(), "a default is not an advertised selection");
@@ -456,29 +493,35 @@ mod tests {
 
 	#[test]
 	fn catalog_preserves_specialty_without_guessing_from_model_names() {
-		let mut value =
-			json!({"model":"cyber-example","displayName":"Example","supportedReasoningEfforts":[]});
+		let mut value = agent_capabilities::json!({"model":"cyber-example","displayName":"Example","supportedReasoningEfforts":[]});
 
-		assert_eq!(project_model(&value).unwrap().specialty, None);
+		assert_eq!(agent_capabilities::project_model(&value).unwrap().specialty, None);
 
 		for specialty in ["cyber", "future-specialty"] {
-			value["modelSpecialty"] = json!(specialty);
+			value["modelSpecialty"] = agent_capabilities::json!(specialty);
 
-			assert_eq!(project_model(&value).unwrap().specialty.as_deref(), Some(specialty));
+			assert_eq!(
+				agent_capabilities::project_model(&value).unwrap().specialty.as_deref(),
+				Some(specialty)
+			);
 		}
-		for invalid in
-			[Value::Null, json!(42), json!(""), json!("bad\nlabel"), json!("x".repeat(129))]
-		{
+		for invalid in [
+			Value::Null,
+			agent_capabilities::json!(42),
+			agent_capabilities::json!(""),
+			agent_capabilities::json!("bad\nlabel"),
+			agent_capabilities::json!("x".repeat(129)),
+		] {
 			value["modelSpecialty"] = invalid;
 
-			assert_eq!(project_model(&value).unwrap().specialty, None);
+			assert_eq!(agent_capabilities::project_model(&value).unwrap().specialty, None);
 		}
 	}
 
 	#[test]
 	fn catalog_uses_advertised_values_not_model_name_guesses() {
-		let value = json!({"model":"custom-model","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"medium"},{"reasoningEffort":"future-level"}],"defaultReasoningEffort":"medium","inputModalities":["text"],"serviceTiers":[{"id":"priority"}]});
-		let model = project_model(&value).expect("native model");
+		let value = agent_capabilities::json!({"model":"custom-model","displayName":"Custom","supportedReasoningEfforts":[{"reasoningEffort":"medium"},{"reasoningEffort":"future-level"}],"defaultReasoningEffort":"medium","inputModalities":["text"],"serviceTiers":[{"id":"priority"}]});
+		let model = agent_capabilities::project_model(&value).expect("native model");
 
 		assert_eq!(
 			model.efforts,
@@ -493,25 +536,21 @@ mod tests {
 
 		let mut invalid = value;
 
-		invalid["displayName"] = json!("invalid\nlabel");
+		invalid["displayName"] = agent_capabilities::json!("invalid\nlabel");
 
-		assert!(project_model(&invalid).is_none());
+		assert!(agent_capabilities::project_model(&invalid).is_none());
 	}
 
 	#[tokio::test]
 	async fn catalog_discards_account_changes_while_native_discovery_is_in_flight() {
-		use std::sync::atomic::{AtomicU64, Ordering};
-
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
 		for change in [0, 1, 2] {
 			let revision = std::sync::Arc::new(AtomicU64::new(1));
-			let (client_io, server_io) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(client_io);
+			let (client_io, server_io) = io::duplex(65_536);
+			let (reader, writer) = io::split(client_io);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let current = revision.clone();
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(server_io);
+				let (reader, mut writer) = io::split(server_io);
 				let mut lines = BufReader::new(reader).lines();
 
 				for method in ["model/list", "experimentalFeature/list"] {
@@ -528,7 +567,7 @@ mod tests {
 						.write_all(
 							format!(
 								"{}\n",
-								json!({"id":request["id"],"result":{"data":[],"nextCursor":null}})
+								agent_capabilities::json!({"id":request["id"],"result":{"data":[],"nextCursor":null}})
 							)
 							.as_bytes(),
 						)
@@ -536,7 +575,7 @@ mod tests {
 						.unwrap();
 				}
 			});
-			let result = read_scoped(|| async {
+			let result = agent_capabilities::read_scoped(|| async {
 				let revision = revision.load(Ordering::SeqCst);
 
 				(revision != 0).then(|| (revision, client.clone()))
@@ -551,13 +590,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn reads_all_pages_without_a_turn_and_projects_only_memory_flag() {
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-		let (client_io, server_io) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(client_io);
+		let (client_io, server_io) = io::duplex(65_536);
+		let (reader, writer) = io::split(client_io);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(server_io);
+			let (reader, mut writer) = io::split(server_io);
 			let mut lines = BufReader::new(reader).lines();
 
 			for (index, method) in
@@ -569,25 +606,29 @@ mod tests {
 				assert_eq!(request["method"], method);
 
 				let result = if index == 2 {
-					json!({"data":[{"name":"memories","enabled":true}],"private":"DO_NOT_PROJECT"})
+					agent_capabilities::json!({"data":[{"name":"memories","enabled":true}],"private":"DO_NOT_PROJECT"})
 				} else {
 					assert_eq!(
 						request["params"]["cursor"],
-						if index == 0 { Value::Null } else { json!("page2") }
+						if index == 0 { Value::Null } else { agent_capabilities::json!("page2") }
 					);
 
-					json!({"data":[{"model":format!("model-{index}"),"displayName":"Model","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high"}],"nextCursor":if index == 0 {json!("page2")} else {Value::Null}})
+					agent_capabilities::json!({"data":[{"model":format!("model-{index}"),"displayName":"Model","supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high"}],"nextCursor":if index == 0 {agent_capabilities::json!("page2")} else {Value::Null}})
 				};
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						format!(
+							"{}\n",
+							agent_capabilities::json!({"id":request["id"],"result":result})
+						)
+						.as_bytes(),
 					)
 					.await
 					.unwrap();
 			}
 		});
-		let result = read(&client).await;
+		let result = agent_capabilities::read(&client).await;
 
 		server.await.unwrap();
 
@@ -599,15 +640,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn feature_discovery_uses_task_config_and_rejects_oversized_pages() {
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
 		for thread in [None, Some("opaque thread/1")] {
 			for oversized in [false, true] {
-				let (client_io, server_io) = tokio::io::duplex(65_536);
-				let (reader, writer) = tokio::io::split(client_io);
+				let (client_io, server_io) = io::duplex(65_536);
+				let (reader, writer) = io::split(client_io);
 				let (client, _events) = AppServerClient::from_io(reader, writer);
 				let server = tokio::spawn(async move {
-					let (reader, mut writer) = tokio::io::split(server_io);
+					let (reader, mut writer) = io::split(server_io);
 					let mut lines = BufReader::new(reader).lines();
 
 					for index in 0..2 {
@@ -618,19 +657,22 @@ mod tests {
 						assert_eq!(request["method"], "experimentalFeature/list");
 						assert_eq!(
 							request["params"],
-							json!({"threadId":thread,"limit":100,"cursor":if index == 0 {Value::Null} else {json!("page2")}})
+							agent_capabilities::json!({"threadId":thread,"limit":100,"cursor":if index == 0 {Value::Null} else {agent_capabilities::json!("page2")}})
 						);
 
 						let result = if index == 0 {
-							json!({"data":[],"nextCursor":"page2"})
+							agent_capabilities::json!({"data":[],"nextCursor":"page2"})
 						} else {
-							json!({"data":vec![json!({"name":"fast_mode","enabled":thread.is_some()});if oversized {101} else {1}],"nextCursor":null})
+							agent_capabilities::json!({"data":vec![agent_capabilities::json!({"name":"fast_mode","enabled":thread.is_some()});if oversized {101} else {1}],"nextCursor":null})
 						};
 
 						writer
 							.write_all(
-								format!("{}\n", json!({"id":request["id"],"result":result}))
-									.as_bytes(),
+								format!(
+									"{}\n",
+									agent_capabilities::json!({"id":request["id"],"result":result})
+								)
+								.as_bytes(),
 							)
 							.await
 							.unwrap();
@@ -638,7 +680,7 @@ mod tests {
 				});
 
 				assert_eq!(
-					feature_enabled(&client, "fast_mode", thread).await,
+					agent_capabilities::feature_enabled(&client, "fast_mode", thread).await,
 					if oversized { None } else { Some(thread.is_some()) }
 				);
 

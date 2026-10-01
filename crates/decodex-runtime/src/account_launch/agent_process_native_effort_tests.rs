@@ -1,9 +1,24 @@
 //! Exact model-defined effort through native discovery and coordinator dispatch.
-use super::*;
+use std::{
+	env, fs,
+	path::Path,
+	sync::{Mutex, atomic::AtomicUsize},
+};
 
-use crate::agent::{AgentConfig, AgentCoordinator};
+use tokio::{net::TcpListener, time};
 
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator},
+	agent_capabilities, agent_host,
+};
+use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentExecutionOverrides, AgentSandboxDto, AgentStartDto,
+	ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory, EntityId,
+	HistoryText,
+};
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 
@@ -20,26 +35,21 @@ pub(super) fn fixture_model(slug: &str, effort: &str) -> Value {
 	})
 }
 
-fn creation_action(
-	requested: Option<&str>,
-	home: &std::path::Path,
-) -> decodex_protocol::AgentActionDto {
-	let model = decodex_protocol::ConversationModel::new("gpt-5.6-sol").expect("model");
-	let effort = requested
-		.map(|value| decodex_protocol::ConversationReasoningEffort::new(value).expect("effort"));
+fn creation_action(requested: Option<&str>, home: &Path) -> decodex_protocol::AgentActionDto {
+	let model = ConversationModel::new("gpt-5.6-sol").expect("model");
+	let effort = requested.map(|value| ConversationReasoningEffort::new(value).expect("effort"));
 
 	decodex_protocol::AgentActionDto::StartConfigured {
-		start: decodex_protocol::AgentStartDto {
-			root_id: decodex_protocol::EntityId::new("agent").expect("root"),
-			prompt: decodex_protocol::HistoryText::new("Return fixture output").expect("prompt"),
+		start: AgentStartDto {
+			root_id: EntityId::new("agent").expect("root"),
+			prompt: HistoryText::new("Return fixture output").expect("prompt"),
 			model: model.clone(),
 			effort: effort.clone(),
-			cwd: decodex_protocol::ConversationWorkingDirectory::new(home.display().to_string())
-				.expect("cwd"),
+			cwd: ConversationWorkingDirectory::new(home.display().to_string()).expect("cwd"),
 			account_id: None,
-			sandbox: decodex_protocol::AgentSandboxDto::ReadOnly,
+			sandbox: AgentSandboxDto::ReadOnly,
 		},
-		execution: decodex_protocol::AgentExecutionOverrides {
+		execution: AgentExecutionOverrides {
 			model: Some(model),
 			reasoning_effort: effort,
 			..Default::default()
@@ -52,7 +62,7 @@ fn creation_action(
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native custom-effort qualification"]
 async fn installed_custom_effort_survives_catalog_and_coordinator_dispatch() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(Some(EFFORT), None, Some(EFFORT)))
+	time::timeout(Duration::from_secs(45), qualify(Some(EFFORT), None, Some(EFFORT)))
 		.await
 		.expect("bounded fixture");
 }
@@ -63,7 +73,7 @@ async fn installed_inherited_effort_survives_coordinator_creation_and_restart() 
 	for (configured, catalog_default) in
 		[(Some(EFFORT), Some(EFFORT)), (None, Some(EFFORT)), (None, None)]
 	{
-		tokio::time::timeout(Duration::from_secs(45), qualify(None, configured, catalog_default))
+		time::timeout(Duration::from_secs(45), qualify(None, configured, catalog_default))
 			.await
 			.expect("bounded inherited effort fixture");
 	}
@@ -76,7 +86,7 @@ async fn qualify(
 ) {
 	let selected = requested.or(configured);
 	let effective = selected.or(catalog_default);
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -90,13 +100,13 @@ async fn qualify(
 		model["supported_reasoning_levels"] = json!([]);
 	}
 
-	std::fs::write(&catalog, serde_json::to_vec(&json!({"models":[model]})).expect("catalog JSON"))
+	fs::write(&catalog, serde_json::to_vec(&json!({"models":[model]})).expect("catalog JSON"))
 		.expect("write catalog");
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
 	let address = listener.local_addr().expect("fixture address");
-	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let requests = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -106,27 +116,25 @@ async fn qualify(
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native Agent answer"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
 
 	if let Some(configured) = configured {
 		let path = home.path().join("config.toml");
-		let original = std::fs::read_to_string(&path).expect("config");
+		let original = fs::read_to_string(&path).expect("config");
 
-		std::fs::write(path, format!("model_reasoning_effort={}\n{original}", json!(configured)))
+		fs::write(path, format!("model_reasoning_effort={}\n{original}", json!(configured)))
 			.expect("native effort config");
 	}
 
-	let root = decodex_core::DecodexRoot::new(
-		home.path().canonicalize().expect("fixture path").join("product"),
-	)
-	.expect("product root");
+	let root = DecodexRoot::new(home.path().canonicalize().expect("fixture path").join("product"))
+		.expect("product root");
 
 	root.paths().ensure_layout().expect("fixture layout");
 
 	let store = SqliteStore::open(&root.paths()).expect("fixture store");
 	let mut session = NativeSession::start(&binary, home.path());
-	let decodex_protocol::AgentCapabilitiesResult::Available { models, .. } =
-		crate::agent_capabilities::read(&session.client).await
+	let AgentCapabilitiesResult::Available { models, .. } =
+		agent_capabilities::read(&session.client).await
 	else {
 		panic!("native catalog available")
 	};
@@ -136,7 +144,7 @@ async fn qualify(
 	assert_eq!(model.default_effort.as_ref().map(|v| v.as_str()), catalog_default);
 
 	let action = creation_action(requested, home.path());
-	let config = crate::agent_host::queue_start_for_native_test(&store, action).await;
+	let config = agent_host::queue_start_for_native_test(&store, action).await;
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config)
 		.expect("creation config admitted");
 

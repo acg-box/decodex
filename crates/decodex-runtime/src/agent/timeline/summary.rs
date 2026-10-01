@@ -1,11 +1,17 @@
 //! Incomplete display recovery without inventing native timeline positions.
-use super::{Content, ProjectionError, ordinary};
-use crate::agent_usage_estimate::Source;
-use decodex_protocol::{AgentTimelineResult, EntityId};
+use std::{collections::HashSet, time::Duration};
+
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::{
+	agent::timeline::{self, Content, ProjectionError},
+	agent_usage_estimate::Source,
+};
+use decodex_protocol::{AgentTimelineResult, EntityId};
 
 pub(super) async fn read(source: &Source) -> Option<AgentTimelineResult> {
-	tokio::time::timeout(std::time::Duration::from_secs(15), async {
+	time::timeout(Duration::from_secs(15), async {
 		for limit in [100, 50, 25, 10, 1] {
 			let value =
 				source.client.thread_history_summary(&source.key.thread, limit).await.ok()?;
@@ -32,7 +38,7 @@ pub(super) async fn read(source: &Source) -> Option<AgentTimelineResult> {
 
 fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
 	let mut items = Vec::new();
-	let mut ids = std::collections::HashSet::new();
+	let mut ids = HashSet::new();
 
 	for turn in value["turns"].as_array().ok_or(ProjectionError::Malformed)? {
 		for item in turn["items"].as_array().ok_or(ProjectionError::Malformed)? {
@@ -40,7 +46,7 @@ fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
 				continue;
 			}
 
-			let content = ordinary(&json!({"turnId":turn["id"],"item":item}))
+			let content = timeline::ordinary(&json!({"turnId":turn["id"],"item":item}))
 				.ok_or(ProjectionError::Malformed)?;
 
 			if let Content::Item { turn_id, item_id, .. } = &content
@@ -62,27 +68,31 @@ fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::agent_usage_estimate::SourceKey;
-	use decodex_codex::app_server_client::AppServerClient;
 	use std::sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	};
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::{
+		agent::timeline::summary::{self, AgentTimelineResult, Content, Source, Value},
+		agent_usage_estimate::SourceKey,
+	};
+	use decodex_codex::app_server_client::AppServerClient;
 
 	#[tokio::test]
 	async fn summary_recovery_is_read_only_bounded_and_source_checked() {
 		for case in
 			["summary", "both_fail", "older", "account", "revision", "history", "process", "thread"]
 		{
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let stage = Arc::new(AtomicUsize::new(0));
 			let observed = stage.clone();
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let mut methods = Vec::new();
 
@@ -94,21 +104,21 @@ mod tests {
 
 					let mut response = match method {
 						"thread/read" =>
-							json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
+							summary::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
 						"thread/timeline/list" =>
-							json!({"error":{"code":-32_603,"message":"history unavailable"}}),
+							summary::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
 						"thread/turns/list" => {
 							assert_eq!(
 								request["params"],
-								json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
+								summary::json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
 							);
 
 							observed.store(1, Ordering::Release);
 
 							if case == "both_fail" {
-								json!({"error":{"code":-32_603,"message":"summary unavailable"}})
+								summary::json!({"error":{"code":-32_603,"message":"summary unavailable"}})
 							} else {
-								json!({"result":{"data":[
+								summary::json!({"result":{"data":[
                                 {"id":"new","itemsView":"summary","items":[{"id":"answer","type":"agentMessage","text":"Final reply"}]},
                                 {"id":"old","itemsView":"summary","items":[{"id":"prompt","type":"userMessage","content":[{"type":"text","text":"Question"}]}]}
                             ],"nextCursor":"must-not-use"}})

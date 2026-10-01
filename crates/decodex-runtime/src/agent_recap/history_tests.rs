@@ -1,4 +1,6 @@
-use super::*;
+use tokio::io;
+
+use crate::agent_recap::{excerpts, history::*, prompt};
 
 #[test]
 fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reasoning_text() {
@@ -23,13 +25,13 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 
 	let result = finish(select(&messages), Some("latest".into())).expect("bounded history");
 
-	assert!(!crate::agent_recap::excerpts::render(&result.exchanges).contains("question-1"));
-	assert!(crate::agent_recap::excerpts::render(&result.exchanges).contains("question-2"));
+	assert!(!excerpts::render(&result.exchanges).contains("question-1"));
+	assert!(excerpts::render(&result.exchanges).contains("question-2"));
 	assert!(
-		crate::agent_recap::excerpts::render(&result.exchanges)
+		excerpts::render(&result.exchanges)
 			.contains("Pending user request: latest correction\n\nsteer detail")
 	);
-	assert!(!crate::agent_recap::excerpts::render(&result.exchanges).contains("PRIVATE_"));
+	assert!(!excerpts::render(&result.exchanges).contains("PRIVATE_"));
 }
 
 #[test]
@@ -43,8 +45,8 @@ fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_bu
 		),
 		exchange(format!("LATEST{}CORRECTION", "字".repeat(20_000)), String::new()),
 	];
-	let history = super::super::excerpts::render(&exchanges);
-	let prompt = super::super::prompt::build(&history);
+	let history = excerpts::render(&exchanges);
+	let prompt = prompt::build(&history);
 
 	assert!(prompt.len() <= super::super::prompt::MAX_BYTES);
 
@@ -87,7 +89,7 @@ fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor(
 	recent.push(&json!({"id":"native-output","status":"completed"}), &items).unwrap();
 
 	let history = recent.finish().unwrap();
-	let rendered = crate::agent_recap::excerpts::render(&history.exchanges);
+	let rendered = excerpts::render(&history.exchanges);
 
 	assert!(rendered.contains("The task was tested, not installed."));
 	assert!(rendered.contains("native-output"));
@@ -99,11 +101,11 @@ fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor(
 async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	let (local, remote) = tokio::io::duplex(16_384);
-	let (read, write) = tokio::io::split(local);
+	let (local, remote) = io::duplex(16_384);
+	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let server = tokio::spawn(async move {
-		let (read, mut write) = tokio::io::split(remote);
+		let (read, mut write) = io::split(remote);
 		let mut lines = BufReader::new(read).lines();
 		let replies = [
 			("thread/read", json!({"thread":{"id":"source","historyMode":"paginated"}})),
@@ -146,12 +148,8 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	let prepared = super::read(&client, "source", false).await.expect("complete native pages");
 
 	assert_eq!(prepared.latest_turn.as_deref(), Some("turn"));
-	assert!(
-		crate::agent_recap::excerpts::render(&prepared.exchanges).contains("Keep the current goal")
-	);
-	assert!(
-		crate::agent_recap::excerpts::render(&prepared.exchanges).contains("Tested; not deployed")
-	);
+	assert!(excerpts::render(&prepared.exchanges).contains("Keep the current goal"));
+	assert!(excerpts::render(&prepared.exchanges).contains("Tested; not deployed"));
 
 	server.await.expect("fixture");
 }

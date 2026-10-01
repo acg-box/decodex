@@ -1,7 +1,12 @@
 //! File image references retain order and detail through native input and cold history.
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
 
-use std::sync::atomic::AtomicUsize;
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 
 fn assert_user_content(history: &Value, expected: &Value) {
 	let item = history["thread"]["turns"][0]["items"]
@@ -23,12 +28,12 @@ async fn installed_native_file_images_survive_cold_history() {
 }
 
 async fn qualify(omit_media: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("image fixture");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -38,7 +43,7 @@ async fn qualify(omit_media: bool) {
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nomit_app_server_notification_media = {omit_media}\n[model_providers.fixture]\nname = \"Isolated image fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nomit_app_server_notification_media = {omit_media}\n[model_providers.fixture]\nname = \"Isolated image fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
 
 	let input = json!([
 		{"type":"text","text":"Compare these references.","text_elements":[]},
@@ -47,7 +52,7 @@ async fn qualify(omit_media: bool) {
 		{"type":"image","fileId":"file_fixture_last","detail":"low"}
 	]);
 
-	tokio::time::timeout(Duration::from_secs(45), async {
+	time::timeout(Duration::from_secs(45), async {
 		let mut session = NativeSession::start(&binary, home.path());
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread ID").to_owned();

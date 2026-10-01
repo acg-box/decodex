@@ -1,14 +1,26 @@
 //! Real native inference after explicit model-source confirmation.
-use super::*;
+use serde_json::Value;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	net::TcpListener,
+	time,
+};
 
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+use crate::application::{
+	ServiceApplication,
+	account_nudge::{native_tests::model_review::*, tests},
+};
+use decodex_core::ConversationId;
+use decodex_protocol::{
+	CommandEnvelope, ConversationExecutionSettings, ConversationModel, ConversationReasoningEffort,
+	ConversationResult, ConversationSummary, InitialModelSource,
+};
 
-pub(super) async fn assert_cold_readback(root: &DecodexRoot, id: &decodex_core::ConversationId) {
+pub(super) async fn assert_cold_readback(root: &DecodexRoot, id: &ConversationId) {
 	let store = SqliteStore::open(&root.paths()).expect("reopen product database");
-	let app = super::super::super::tests::application(store);
+	let app = tests::application(store);
 	let id = EntityId::new(id.as_str()).expect("conversation");
-	let decodex_protocol::ConversationResult::Available(current) = app.conversation_get(&id).await
-	else {
+	let ConversationResult::Available(current) = app.conversation_get(&id).await else {
 		panic!("cold conversation readback");
 	};
 
@@ -21,13 +33,13 @@ pub(super) async fn assert_cold_readback(root: &DecodexRoot, id: &decodex_core::
 }
 
 pub(super) async fn qualify(
-	app: &crate::application::ServiceApplication,
-	listener: &tokio::net::TcpListener,
-	id: &decodex_core::ConversationId,
+	app: &ServiceApplication,
+	listener: &TcpListener,
+	id: &ConversationId,
 	account_id: EntityId,
 	account_revision: i64,
 ) {
-	let command = decodex_protocol::CommandEnvelope {
+	let command = CommandEnvelope {
 		version: CURRENT_VERSION,
 		client_command_id: ClientCommandId::new("native-review-confirm").expect("command"),
 		idempotency_key: IdempotencyKey::new("native-review-confirm").expect("key"),
@@ -36,12 +48,12 @@ pub(super) async fn qualify(
 		causation_id: None,
 		payload: CommandPayload::ReviewConversationModelSettings {
 			conversation_id: EntityId::new(id.as_str()).expect("conversation"),
-			execution: decodex_protocol::ConversationExecutionSettings::new(
-				decodex_protocol::ConversationModel::new("gpt-5.6-sol").expect("model"),
-				decodex_protocol::ConversationReasoningEffort::High,
+			execution: ConversationExecutionSettings::new(
+				ConversationModel::new("gpt-5.6-sol").expect("model"),
+				ConversationReasoningEffort::High,
 				false,
 			),
-			source: decodex_protocol::InitialModelSource { account_id, account_revision },
+			source: InitialModelSource { account_id, account_revision },
 		},
 	};
 	let requests = std::sync::Mutex::new(Vec::new());
@@ -55,7 +67,7 @@ pub(super) async fn qualify(
 			loop {
 				if !requests.lock().expect("requests").is_empty() { break; }
 
-				tokio::time::sleep(Duration::from_millis(25)).await;
+				time::sleep(Duration::from_millis(25)).await;
 			}
 
 			app.execute(&command).await.expect("repeat while inference is running");
@@ -76,7 +88,7 @@ pub(super) async fn qualify(
 			// Discard the first command publication; native lifecycle events still run.
 			app.execute(&command).await.expect("repeat confirmation");
 
-			tokio::time::sleep(Duration::from_millis(500)).await;
+			time::sleep(Duration::from_millis(500)).await;
 		} => {}
 	}
 
@@ -91,7 +103,7 @@ pub(super) async fn qualify(
 	assert!(request["input"].to_string().contains("Preserve the original request"));
 }
 
-fn assert_native_observation(summary: &decodex_protocol::ConversationSummary) {
+fn assert_native_observation(summary: &ConversationSummary) {
 	let native = summary.native_settings.as_deref().expect("native response observation");
 
 	assert_eq!(native.model.as_str(), "gpt-5.6-sol");
@@ -108,8 +120,8 @@ fn assert_native_observation(summary: &decodex_protocol::ConversationSummary) {
 fn response(
 	first: &str,
 	body: &[u8],
-	listener: &tokio::net::TcpListener,
-	requests: &std::sync::Mutex<Vec<serde_json::Value>>,
+	listener: &TcpListener,
+	requests: &std::sync::Mutex<Vec<Value>>,
 ) -> (&'static str, &'static str, String) {
 	if first.starts_with("GET /api/codex/accounts/check ") {
 		let address = listener.local_addr().expect("address");
@@ -140,13 +152,13 @@ fn response(
 }
 
 async fn serve(
-	listener: &tokio::net::TcpListener,
-	requests: &std::sync::Mutex<Vec<serde_json::Value>>,
+	listener: &TcpListener,
+	requests: &std::sync::Mutex<Vec<Value>>,
 	release: &tokio::sync::Notify,
 ) {
 	loop {
 		let (socket, _) = listener.accept().await.expect("fixture connection");
-		let mut socket = tokio::io::BufReader::new(socket);
+		let mut socket = BufReader::new(socket);
 		let mut first = String::new();
 
 		socket.read_line(&mut first).await.expect("request line");

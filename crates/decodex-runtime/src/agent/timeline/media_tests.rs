@@ -1,12 +1,14 @@
-use super::*;
+use std::{
+	fs, future,
+	sync::atomic::{AtomicUsize, Ordering},
+};
 
+use tempfile::NamedTempFile;
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
+
+use crate::agent::timeline::{attachments, media::*, promotions};
 use decodex_codex::app_server_client::AppServerClient;
-
 use decodex_core::{AccountId, ProcessGenerationId};
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 fn key() -> SourceKey {
 	SourceKey {
@@ -75,7 +77,7 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 fn exact_item_indices_and_supported_payloads_are_required() {
 	let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"userMessage","content":[{"type":"text","text":"literal"},{"type":"image","url":"data:image/png;base64,AQID"}]}]}]}});
 	let mut req = request();
-	let item = super::super::promotions::exact_item(
+	let item = promotions::exact_item(
 		&history,
 		req.thread_id.as_str(),
 		req.turn_id.as_str(),
@@ -90,7 +92,7 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 	req.thread_id = EntityId::new("another").unwrap();
 
 	assert!(
-		super::super::promotions::exact_item(
+		promotions::exact_item(
 			&history,
 			req.thread_id.as_str(),
 			req.turn_id.as_str(),
@@ -146,20 +148,20 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("remote-image.png");
 
-	std::fs::write(&path, b"\x89PNG\r\n\x1a\nlocal-private-content").unwrap();
+	fs::write(&path, b"\x89PNG\r\n\x1a\nlocal-private-content").unwrap();
 
 	let item = json!({"id":"image","type":"imageView","path":path});
 
 	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
 
-	let (descriptors, _) = super::super::attachments::project(&item);
+	let (descriptors, _) = attachments::project(&item);
 
 	assert_eq!(descriptors[0].source, decodex_protocol::AgentTimelineAttachmentSource::Unknown);
 	assert!(!serde_json::to_string(&descriptors).unwrap().contains(path.to_str().unwrap()));
 }
 
-async fn server(remote: tokio::io::DuplexStream, path: Option<String>) {
-	let (reader, mut writer) = tokio::io::split(remote);
+async fn server(remote: DuplexStream, path: Option<String>) {
+	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 	let content = if let Some(path) = path {
 		json!({"type":"localImage","path":path})
@@ -193,12 +195,12 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("photo.png");
 
-	std::fs::write(&path, b"\x89PNG\r\n\x1a\nfixture").unwrap();
+	fs::write(&path, b"\x89PNG\r\n\x1a\nfixture").unwrap();
 
 	for change in ["none", "revision", "history", "account", "process", "thread", "closed"] {
 		for local in ["inline", "absolute", "relative"] {
-			let (io, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(io);
+			let (io, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(io);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let native_path = match local {
 				"absolute" => Some(path.to_str().unwrap().to_owned()),
@@ -261,17 +263,17 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 
 #[tokio::test]
 async fn oversized_local_attachment_does_not_send_file_bytes_through_native_transport() {
-	let file = tempfile::NamedTempFile::new().unwrap();
+	let file = NamedTempFile::new().unwrap();
 
 	file.as_file().set_len((MAX_AGENT_MEDIA_BYTES + 1) as u64).unwrap();
 
-	let (io, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(io);
+	let (io, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let path = file.path().to_str().unwrap().to_owned();
 	// Keep the same native connection after the three history reads.
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
 		for (method, result) in [
@@ -295,7 +297,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 		}
 	});
 	let result = read(
-		|| std::future::ready(Some(Source { key: key(), client: client.clone() })),
+		|| future::ready(Some(Source { key: key(), client: client.clone() })),
 		|_| None,
 		&request(),
 	)
@@ -343,7 +345,7 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("generated.png");
 
-	std::fs::write(&path, b"\x89PNG\r\n\x1a\nwrong-host-image").unwrap();
+	fs::write(&path, b"\x89PNG\r\n\x1a\nwrong-host-image").unwrap();
 
 	let expected = b"\x89PNG\r\n\x1a\nnative-image";
 	let mut item =
@@ -354,7 +356,7 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 
-	std::fs::remove_file(&path).unwrap();
+	fs::remove_file(&path).unwrap();
 
 	assert_eq!(
 		resolve(locate(&item, 0).unwrap(), None).await,
@@ -371,7 +373,7 @@ async fn relative_media_requires_an_absolute_admitted_process_directory() {
 	let directory = tempfile::tempdir().unwrap();
 	let expected = b"\x89PNG\r\n\x1a\nrelative-native-image";
 
-	std::fs::write(directory.path().join("photo.png"), expected).unwrap();
+	fs::write(directory.path().join("photo.png"), expected).unwrap();
 
 	for base in [None, Some("relative-base")] {
 		assert_eq!(resolve(Media::Local("photo.png"), base).await, Err(Result::Unavailable));

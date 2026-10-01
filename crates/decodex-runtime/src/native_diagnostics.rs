@@ -1,8 +1,13 @@
 //! Refresh-only native diagnostics from the existing supervised process.
+use std::time::Duration;
+
+use serde::Deserialize;
+use serde_json::{Value, json};
+use tokio::time;
+
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_core::ProcessGenerationId;
 use decodex_protocol::NativeProcessDiagnostics as Result;
-use serde_json::{Value, json};
 
 pub(crate) async fn read(
 	source: impl Fn() -> Option<(ProcessGenerationId, AppServerClient)>,
@@ -10,11 +15,9 @@ pub(crate) async fn read(
 	let Some((generation, client)) = source() else {
 		return Result::Inactive;
 	};
-	let response = tokio::time::timeout(
-		std::time::Duration::from_secs(2),
-		client.request("server/diagnostics", json!({})),
-	)
-	.await;
+	let response =
+		time::timeout(Duration::from_secs(2), client.request("server/diagnostics", json!({})))
+			.await;
 
 	if source().is_none_or(|(current, _)| current != generation) {
 		return Result::Unavailable;
@@ -28,7 +31,7 @@ pub(crate) async fn read(
 }
 
 fn project(value: &Value) -> Option<Result> {
-	#[derive(serde::Deserialize)]
+	#[derive(Deserialize)]
 	#[serde(rename_all = "camelCase")]
 	struct Process {
 		id: u32,
@@ -47,12 +50,17 @@ fn project(value: &Value) -> Option<Result> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::sync::atomic::{AtomicBool, Ordering};
+
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::native_diagnostics::{self, AppServerClient, ProcessGenerationId, Result, Value};
+
 	#[test]
 	fn resource_samples_keep_unknown_memory_and_ignore_unselected_gauges() {
 		assert_eq!(
-			project(
-				&json!({"process":{"id":17,"residentMemoryBytes":42},"gauges":[{"name":"PRIVATE","value":7}]})
+			native_diagnostics::project(
+				&native_diagnostics::json!({"process":{"id":17,"residentMemoryBytes":42},"gauges":[{"name":"PRIVATE","value":7}]})
 			),
 			Some(Result::Available {
 				process_id: 17,
@@ -62,27 +70,23 @@ mod tests {
 		);
 
 		for value in [
-			json!({}),
-			json!({"process":{"id":0}}),
-			json!({"process":{"id":17,"residentMemoryBytes":-1}}),
+			native_diagnostics::json!({}),
+			native_diagnostics::json!({"process":{"id":0}}),
+			native_diagnostics::json!({"process":{"id":17,"residentMemoryBytes":-1}}),
 		] {
-			assert!(project(&value).is_none());
+			assert!(native_diagnostics::project(&value).is_none());
 		}
 	}
 	#[tokio::test]
 	async fn diagnostic_read_does_not_start_a_process_and_rejects_changed_generation() {
-		use std::sync::atomic::{AtomicBool, Ordering};
-
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-		assert_eq!(read(|| None).await, Result::Inactive);
+		assert_eq!(native_diagnostics::read(|| None).await, Result::Inactive);
 
 		for state in ["same", "stopped", "replaced"] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let line = BufReader::new(reader).lines().next_line().await.unwrap().unwrap();
 				let request: Value = serde_json::from_str(&line).unwrap();
 
@@ -92,7 +96,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							json!({"id":request["id"],"result":{"process":{"id":17},"gauges":[]}})
+							native_diagnostics::json!({"id":request["id"],"result":{"process":{"id":17},"gauges":[]}})
 						)
 						.as_bytes(),
 					)
@@ -100,7 +104,7 @@ mod tests {
 					.unwrap();
 			});
 			let called = AtomicBool::new(false);
-			let result = read(|| {
+			let result = native_diagnostics::read(|| {
 				let after_response = called.swap(true, Ordering::SeqCst);
 
 				if after_response && state == "stopped" {

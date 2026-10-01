@@ -1,8 +1,15 @@
 //! Review-bound native history mutation. Persist before one write; recover by reading only.
-use super::{AgentCoordinator, AgentError, ClientError, HistoryGuard, json};
-use decodex_database::{AgentPromptEditAttempt, AgentPromptEditReceipt};
-use sha2::{Digest as _, Sha256};
 use std::time::Duration;
+
+use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::agent::{self, AgentCoordinator, AgentError, ClientError, HistoryGuard};
+use decodex_codex::app_server_client::ThreadForkBoundary;
+use decodex_database::{
+	AgentForkAttempt, AgentForkBoundary, AgentForkReceipt, AgentPromptEditAttempt,
+	AgentPromptEditReceipt,
+};
 
 /// Opaque service review. The UI must show the canonical input and excluded history boundary.
 /// Keep this object in the owning service; never reconstruct its guard from a client payload.
@@ -27,12 +34,8 @@ impl AgentCoordinator {
 		&mut self,
 		review: PromptEditReview,
 		target_work: String,
-		boundary: decodex_database::AgentForkBoundary,
-	) -> Result<decodex_database::AgentForkReceipt, AgentError> {
-		use decodex_codex::app_server_client::ThreadForkBoundary;
-
-		use decodex_database::{AgentForkAttempt, AgentForkBoundary};
-
+		boundary: AgentForkBoundary,
+	) -> Result<AgentForkReceipt, AgentError> {
 		let a = review.attempt;
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 
@@ -61,7 +64,7 @@ impl AgentCoordinator {
 			AgentForkBoundary::AfterTurn =>
 				ThreadForkBoundary::AfterTurn(&attempt.source.before_turn_id),
 		};
-		let response = tokio::time::timeout(
+		let response = time::timeout(
 			Duration::from_secs(60),
 			self.client.fork_thread_at_boundary(
 				&attempt.source.thread,
@@ -109,7 +112,7 @@ impl AgentCoordinator {
 		&mut self,
 		source_work: &str,
 		review_token: &str,
-	) -> Result<Option<decodex_database::AgentForkReceipt>, AgentError> {
+	) -> Result<Option<AgentForkReceipt>, AgentError> {
 		let Some(saved) =
 			self.store.agent_fork_receipt(source_work.into(), review_token.into()).await?
 		else {
@@ -135,7 +138,7 @@ impl AgentCoordinator {
 		}
 
 		let thread = saved.target_thread.as_ref().ok_or_else(rejected)?;
-		let metadata = self.client.thread_read(json!({"threadId":thread})).await?;
+		let metadata = self.client.thread_read(agent::json!({"threadId":thread})).await?;
 
 		if metadata["thread"]["id"] != thread.as_str()
 			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
@@ -180,7 +183,7 @@ impl AgentCoordinator {
 			return Ok(None);
 		};
 
-		if super::voice_handoff(&json!({"type":"userMessage","content":candidate.content})) {
+		if super::voice_handoff(&agent::json!({"type":"userMessage","content":candidate.content})) {
 			return Ok(None);
 		}
 
@@ -196,7 +199,7 @@ impl AgentCoordinator {
 			content: candidate.content,
 		};
 
-		attempt.review_token = Sha256::digest(json!(attempt).to_string().as_bytes())
+		attempt.review_token = Sha256::digest(agent::json!(attempt).to_string().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();
@@ -236,11 +239,11 @@ impl AgentCoordinator {
 		}
 
 		let id = self.store.reserve_agent_prompt_edit(a.clone()).await?.ok_or_else(rejected)?;
-		let response = tokio::time::timeout(
+		let response = time::timeout(
 			Duration::from_secs(60),
 			self.client.request_with_history(
 				"thread/revert",
-				json!({"threadId":a.thread,"beforeTurnId":a.before_turn_id}),
+				agent::json!({"threadId":a.thread,"beforeTurnId":a.before_turn_id}),
 				current.guard,
 			),
 		)
@@ -287,10 +290,9 @@ impl AgentCoordinator {
 			return Ok(Some(receipt));
 		}
 
-		let (turns, guard) =
-			tokio::time::timeout(Duration::from_secs(60), self.read_edit_history(thread))
-				.await
-				.map_err(|_| AgentError::UnknownDispatch)??;
+		let (turns, guard) = time::timeout(Duration::from_secs(60), self.read_edit_history(thread))
+			.await
+			.map_err(|_| AgentError::UnknownDispatch)??;
 
 		if !guard.is_live() {
 			return Err(rejected());
@@ -313,7 +315,8 @@ impl AgentCoordinator {
 		let current = self.store.agent_prompt_edit_receipt(work.into(), thread.into()).await?;
 
 		if current.as_ref().is_some_and(|r| r.state == "applied") {
-			self.observe_notification("thread/reverted", &json!({"threadId":thread})).await?;
+			self.observe_notification("thread/reverted", &agent::json!({"threadId":thread}))
+				.await?;
 			self.recover_async_questions().await?;
 
 			if self.store.agent_async_questions_recovering(work.into()).await? || !guard.is_live() {
@@ -329,7 +332,7 @@ impl AgentCoordinator {
 		thread: &str,
 	) -> Result<(Vec<String>, HistoryGuard), AgentError> {
 		let guard = self.client.thread_settings_guard(thread).ok_or_else(rejected)?;
-		let metadata = self.client.thread_read(json!({"threadId":thread})).await?;
+		let metadata = self.client.thread_read(agent::json!({"threadId":thread})).await?;
 
 		if metadata["thread"]["id"] != thread || metadata["thread"]["historyMode"] != "paginated" {
 			return Err(rejected());

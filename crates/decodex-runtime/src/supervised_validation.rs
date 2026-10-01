@@ -9,8 +9,8 @@
 use std::{
 	collections::BTreeSet,
 	ffi::OsString,
-	fmt::{self, Display},
-	io::{self, Read},
+	fmt::{self, Display, Formatter},
+	io::{self, ErrorKind, Read},
 	os::unix::process::{CommandExt as _, ExitStatusExt as _},
 	path::PathBuf,
 	process::{Child, Command, ExitStatus, Stdio},
@@ -19,9 +19,11 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 		mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
 	},
-	thread,
+	thread::{self, JoinHandle},
 	time::{Duration, Instant},
 };
+
+use libc::{EINTR, ESRCH, SIGKILL, SIGTERM};
 
 use decodex_core::RepositoryContentRevision;
 
@@ -302,7 +304,7 @@ pub enum ValidationSupervisionError {
 	Spawn(io::Error),
 }
 impl Display for ValidationSupervisionError {
-	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::InvalidAuthority(reason) => {
 				write!(formatter, "invalid validation authority: {reason}")
@@ -498,7 +500,7 @@ fn spawn_capture<R: Read + Send + 'static>(
 	mut reader: R,
 	stream: CaptureStream,
 	sender: SyncSender<CaptureEvent>,
-) -> thread::JoinHandle<()> {
+) -> JoinHandle<()> {
 	thread::spawn(move || {
 		let mut buffer = [0_u8; 8 * 1_024];
 
@@ -510,7 +512,7 @@ fn spawn_capture<R: Read + Send + 'static>(
 					return;
 				},
 				Ok(count) => count,
-				Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+				Err(error) if error.kind() == ErrorKind::Interrupted => continue,
 				Err(_) => {
 					let _ = sender.send(CaptureEvent::Failed(stream));
 
@@ -563,7 +565,7 @@ fn teardown_process_group(
 	let grace_deadline = deadline.min(Instant::now() + TERMINATION_GRACE);
 
 	if Instant::now() < deadline {
-		let _ = signal_group_until(pid, libc::SIGTERM, deadline);
+		let _ = signal_group_until(pid, SIGTERM, deadline);
 	}
 
 	loop {
@@ -584,7 +586,7 @@ fn teardown_process_group(
 
 	// Always attempt both group and leader SIGKILL paths within the supervisor's fixed teardown
 	// budget.
-	let _ = signal_group_until(pid, libc::SIGKILL, deadline);
+	let _ = signal_group_until(pid, SIGKILL, deadline);
 	let _ = child.kill();
 
 	loop {
@@ -600,7 +602,7 @@ fn teardown_process_group(
 			break;
 		}
 
-		let _ = signal_group_until(pid, libc::SIGKILL, deadline);
+		let _ = signal_group_until(pid, SIGKILL, deadline);
 
 		sleep_bounded(deadline);
 	}
@@ -632,8 +634,8 @@ fn signal_group_until(pid: u32, signal: i32, deadline: Instant) -> io::Result<()
 		let error = io::Error::last_os_error();
 
 		match error.raw_os_error() {
-			Some(libc::ESRCH) => return Ok(()),
-			Some(libc::EINTR) if Instant::now() < deadline => continue,
+			Some(ESRCH) => return Ok(()),
+			Some(EINTR) if Instant::now() < deadline => continue,
 			_ => return Err(error),
 		}
 	}
@@ -649,8 +651,8 @@ fn group_gone(pid: u32, deadline: Instant) -> bool {
 		}
 
 		match io::Error::last_os_error().raw_os_error() {
-			Some(libc::ESRCH) => return true,
-			Some(libc::EINTR) if Instant::now() < deadline => continue,
+			Some(ESRCH) => return true,
+			Some(EINTR) if Instant::now() < deadline => continue,
 			_ => return false,
 		}
 	}

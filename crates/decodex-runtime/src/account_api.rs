@@ -6,19 +6,30 @@ mod routing_cookies;
 
 use std::{sync::Arc, time::Duration};
 
+use reqwest::{Method, StatusCode, redirect::Policy, retry};
+use serde_json::Value;
+use tokio::time;
+use zeroize::Zeroizing;
+
+use crate::{
+	account_import,
+	account_launch::AttestedAppServerProfile,
+	account_service::{
+		AccountApiCredential, AccountLifecycleError, AccountService, CredentialRefreshError,
+	},
+};
 use decodex_codex::{
-	AccountApiProfile, AccountApiProtocolError, AccountApiQuotaWindow, AccountApiResetCredit,
-	AccountApiResetCredits, AccountApiUsage, decode_account_api_profile,
-	decode_account_api_reset_credits, decode_account_api_usage,
+	self, AccountApiBannerState, AccountApiConsumeOutcome, AccountApiProfile,
+	AccountApiProtocolError, AccountApiQuotaWindow, AccountApiRecoveryContext,
+	AccountApiResetCredit, AccountApiResetCredits, AccountApiUsage, ExactResetCreditId,
+	MAX_ACCOUNT_API_BODY_BYTES, ResetCardIdempotencyKey,
 };
-
-use decodex_core::{AccountId, AccountOperationId, AccountProvider, ProviderIdentity};
-
-use reqwest::{Method, StatusCode};
-
-use crate::account_service::{
-	AccountApiCredential, AccountLifecycleError, AccountService, CredentialRefreshError,
+use decodex_core::{
+	AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider,
+	AccountUsageConditions, ProviderIdentity, ResetCardConsumeOutcome,
 };
+use decodex_database::SqliteStore;
+use routing_cookies::RoutingCookies;
 
 const BACKEND_API_BASE: &str = "https://chatgpt.com/backend-api";
 const USAGE_PATH: &str = "/wham/usage";
@@ -116,9 +127,9 @@ enum AccountApiRequestError {
 pub(crate) struct AccountApiInventory {
 	pub(crate) account_revision: i64,
 	pub(crate) ordinary_usage_allowed: Option<bool>,
-	pub(crate) conditions: decodex_core::AccountUsageConditions,
-	pub(crate) banner: decodex_codex::AccountApiBannerState,
-	pub(crate) recovery_context: Option<decodex_codex::AccountApiRecoveryContext>,
+	pub(crate) conditions: AccountUsageConditions,
+	pub(crate) banner: AccountApiBannerState,
+	pub(crate) recovery_context: Option<AccountApiRecoveryContext>,
 	pub(crate) quota_windows: [AccountApiQuotaWindow; 2],
 	pub(crate) reported_available_count: Option<u64>,
 	pub(crate) details_complete: bool,
@@ -138,16 +149,16 @@ pub(crate) struct AccountApiObservation {
 #[derive(Clone)]
 pub(crate) struct AccountApiRuntime {
 	accounts: Arc<AccountService>,
-	store: decodex_database::SqliteStore,
+	store: SqliteStore,
 	client: reqwest::Client,
-	activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
+	activation_profile: Option<AttestedAppServerProfile>,
 }
 impl AccountApiRuntime {
 	/// Build the account client; only model activation needs the optional native policy profile.
 	pub(crate) fn new(
 		accounts: Arc<AccountService>,
-		store: decodex_database::SqliteStore,
-		activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
+		store: SqliteStore,
+		activation_profile: Option<AttestedAppServerProfile>,
 	) -> Result<Self, AccountApiRuntimeError> {
 		let client = account_http_client()?;
 
@@ -180,7 +191,7 @@ impl AccountApiRuntime {
 			.request_json(Method::GET, USAGE_PATH, credential, None)
 			.await
 			.map_err(map_request_error)?;
-		let usage = decode_account_api_usage(&body).map_err(map_protocol_error)?;
+		let usage = decodex_codex::decode_account_api_usage(&body).map_err(map_protocol_error)?;
 
 		self.enrich_inventory(credential, usage).await
 	}
@@ -189,9 +200,9 @@ impl AccountApiRuntime {
 	pub(crate) async fn consume_exact_reset_credit(
 		&self,
 		credential: &AccountApiCredential,
-		key: &decodex_codex::ResetCardIdempotencyKey,
-		credit: &decodex_codex::ExactResetCreditId,
-	) -> Result<decodex_core::ResetCardConsumeOutcome, AccountApiRuntimeError> {
+		key: &ResetCardIdempotencyKey,
+		credit: &ExactResetCreditId,
+	) -> Result<ResetCardConsumeOutcome, AccountApiRuntimeError> {
 		let body =
 			serde_json::json!({"redeem_request_id": key.as_str(), "credit_id": credit.as_str()});
 		let response = self
@@ -203,10 +214,6 @@ impl AccountApiRuntime {
 			)
 			.await
 			.map_err(map_request_error)?;
-
-		use decodex_codex::AccountApiConsumeOutcome;
-
-		use decodex_core::ResetCardConsumeOutcome;
 
 		Ok(
 			match decodex_codex::decode_account_api_consume(&response)
@@ -288,12 +295,12 @@ impl AccountApiRuntime {
 		let usage = self.request_json(Method::GET, USAGE_PATH, &credential, None);
 		let profile = self.request_json(Method::GET, PROFILE_PATH, &credential, None);
 		let (usage, profile) = tokio::join!(usage, profile);
-		let usage = usage
-			.map_err(map_request_error)
-			.and_then(|body| decode_account_api_usage(&body).map_err(map_protocol_error));
-		let profile = profile
-			.map_err(map_request_error)
-			.and_then(|body| decode_account_api_profile(&body).map_err(map_protocol_error));
+		let usage = usage.map_err(map_request_error).and_then(|body| {
+			decodex_codex::decode_account_api_usage(&body).map_err(map_protocol_error)
+		});
+		let profile = profile.map_err(map_request_error).and_then(|body| {
+			decodex_codex::decode_account_api_profile(&body).map_err(map_protocol_error)
+		});
 		let inventory = match usage {
 			Ok(usage) => self.enrich_inventory(&credential, usage).await,
 			Err(error) => Err(error),
@@ -316,11 +323,9 @@ impl AccountApiRuntime {
 		let bundle = credential.stored.bundle();
 		let user_id = bundle
 			.personal_access_token_user_id()
-			.map(|user_id| zeroize::Zeroizing::new(user_id.to_owned()))
+			.map(|user_id| Zeroizing::new(user_id.to_owned()))
 			.or_else(|| {
-				bundle
-					.id_token()
-					.and_then(|token| crate::account_import::usage_user_id(token, account_id))
+				bundle.id_token().and_then(|token| account_import::usage_user_id(token, account_id))
 			});
 		let (ordinary_usage_allowed, conditions, banner, recovery_context) = user_id
 			.map(|user_id| {
@@ -366,7 +371,7 @@ impl AccountApiRuntime {
 			// The summary and detail endpoints are independent provider projections. One bounded
 			// successor read absorbs their common short convergence window without delaying any
 			// other account's observation owner.
-			tokio::time::sleep(RESET_CREDIT_DETAIL_RETRY_DELAY).await;
+			time::sleep(RESET_CREDIT_DETAIL_RETRY_DELAY).await;
 
 			details = self.request_reset_credit_details(credential).await;
 		}
@@ -409,7 +414,8 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 	) -> Result<AccountApiResetCredits, AccountApiRuntimeError> {
 		match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
-			Ok(body) => decode_account_api_reset_credits(&body).map_err(map_protocol_error),
+			Ok(body) =>
+				decodex_codex::decode_account_api_reset_credits(&body).map_err(map_protocol_error),
 			Err(error) => Err(map_request_error(error)),
 		}
 	}
@@ -434,7 +440,7 @@ impl AccountApiRuntime {
 		method: Method,
 		path: &str,
 		credential: &AccountApiCredential,
-		json: Option<&serde_json::Value>,
+		json: Option<&Value>,
 	) -> Result<Vec<u8>, AccountApiRequestError> {
 		let mut request = self
 			.client
@@ -460,7 +466,7 @@ impl AccountApiRuntime {
 		}
 		if response
 			.content_length()
-			.is_some_and(|length| length > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES as u64)
+			.is_some_and(|length| length > MAX_ACCOUNT_API_BODY_BYTES as u64)
 		{
 			return Err(AccountApiRequestError::ProtocolUnavailable);
 		}
@@ -470,7 +476,7 @@ impl AccountApiRuntime {
 		while let Some(chunk) =
 			response.chunk().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?
 		{
-			if chunk.len() > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES.saturating_sub(body.len()) {
+			if chunk.len() > MAX_ACCOUNT_API_BODY_BYTES.saturating_sub(body.len()) {
 				return Err(AccountApiRequestError::ProtocolUnavailable);
 			}
 
@@ -485,10 +491,10 @@ fn account_http_client() -> Result<reqwest::Client, AccountApiRuntimeError> {
 	reqwest::Client::builder()
 		.connect_timeout(CONNECT_TIMEOUT)
 		.timeout(HTTP_TIMEOUT)
-		.redirect(reqwest::redirect::Policy::none())
-		.retry(reqwest::retry::never())
+		.redirect(Policy::none())
+		.retry(retry::never())
 		.user_agent("decodex")
-		.cookie_provider(Arc::new(routing_cookies::RoutingCookies::default()))
+		.cookie_provider(Arc::new(RoutingCookies::default()))
 		.build()
 		.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)
 }
@@ -518,14 +524,12 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		AccountLifecycleError::CredentialAbsent
 		| AccountLifecycleError::CredentialStore(_)
 		| AccountLifecycleError::NotReady(
-			decodex_core::AccountLifecycleReadiness::CredentialAbsent
-			| decodex_core::AccountLifecycleReadiness::StoreUnavailable
-			| decodex_core::AccountLifecycleReadiness::StoreMismatch,
+			AccountLifecycleReadiness::CredentialAbsent
+			| AccountLifecycleReadiness::StoreUnavailable
+			| AccountLifecycleReadiness::StoreMismatch,
 		) => AccountApiRuntimeError::CredentialUnavailable,
 		AccountLifecycleError::ProviderMismatch
-		| AccountLifecycleError::NotReady(
-			decodex_core::AccountLifecycleReadiness::ProviderMismatch,
-		)
+		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch)
 		| AccountLifecycleError::StaleAccount => AccountApiRuntimeError::AccountChanged,
 		AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy) =>
 			AccountApiRuntimeError::CredentialBusy,
@@ -574,24 +578,22 @@ fn should_retry_reset_credit_details(
 
 #[cfg(test)]
 mod tests {
-	use decodex_codex::{AccountApiResetCredits, decode_account_api_reset_credits};
-
-	use super::{
-		AccountApiRuntimeError, PendingAccountApiObservation, map_account_service_error,
-		reset_credit_details_are_complete, should_retry_reset_credit_details,
+	use crate::{
+		account_api::{self, AccountApiRuntimeError, PendingAccountApiObservation},
+		account_service::{AccountLifecycleError, CredentialRefreshError},
 	};
-	use crate::account_service::{AccountLifecycleError, CredentialRefreshError};
+	use decodex_codex::{self, AccountApiResetCredits};
 
 	#[test]
 	fn incomplete_or_mismatched_reset_credit_details_get_one_bounded_retry() {
-		let complete = decode_account_api_reset_credits(
+		let complete = decodex_codex::decode_account_api_reset_credits(
 			br#"{"available_count":1,"credits":[{"id":"credit-1","reset_type":"codexRateLimits","status":"available","granted_at":1800000000,"expires_at":1800003600}]}"#,
 		)
 		.expect("complete fixture");
 
-		assert!(reset_credit_details_are_complete(1, &complete));
-		assert!(!should_retry_reset_credit_details(1, &Ok(complete.clone())));
-		assert!(should_retry_reset_credit_details(2, &Ok(complete)));
+		assert!(account_api::reset_credit_details_are_complete(1, &complete));
+		assert!(!account_api::should_retry_reset_credit_details(1, &Ok(complete.clone())));
+		assert!(account_api::should_retry_reset_credit_details(2, &Ok(complete)));
 
 		let incomplete = AccountApiResetCredits {
 			reported_available_count: 1,
@@ -599,12 +601,15 @@ mod tests {
 			details_complete: false,
 		};
 
-		assert!(should_retry_reset_credit_details(1, &Ok(incomplete)));
-		assert!(should_retry_reset_credit_details(
+		assert!(account_api::should_retry_reset_credit_details(1, &Ok(incomplete)));
+		assert!(account_api::should_retry_reset_credit_details(
 			1,
 			&Err(AccountApiRuntimeError::ProviderUnavailable),
 		));
-		assert!(!should_retry_reset_credit_details(1, &Err(AccountApiRuntimeError::Unauthorized),));
+		assert!(!account_api::should_retry_reset_credit_details(
+			1,
+			&Err(AccountApiRuntimeError::Unauthorized),
+		));
 	}
 
 	#[test]
@@ -635,7 +640,7 @@ mod tests {
 			(CredentialRefreshError::Ambiguous, AccountApiRuntimeError::RefreshAmbiguous),
 		] {
 			assert_eq!(
-				map_account_service_error(AccountLifecycleError::Refresh(refresh)),
+				account_api::map_account_service_error(AccountLifecycleError::Refresh(refresh)),
 				expected
 			);
 		}

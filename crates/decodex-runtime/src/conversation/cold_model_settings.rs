@@ -1,12 +1,12 @@
 //! Inspect persisted native settings through the existing bounded metadata process owner.
-use super::{
-	super::{
-		ConversationId, ConversationRefreshCallback, ConversationRuntime,
-		ProcessAccountRefreshCallback, ProcessGenerationId, derived_uuid,
-	},
-	ResultDto, project,
-};
 use std::{sync::Arc, time::Duration};
+
+use crate::conversation::{
+	ConversationId, ConversationRefreshCallback, ConversationRuntime,
+	ProcessAccountRefreshCallback, ProcessGenerationId, derived_uuid,
+	model_settings::{ResultDto, project},
+};
+use tokio::{runtime::Handle, sync::oneshot, task, time};
 
 impl ConversationRuntime {
 	pub(super) async fn cold_model_settings(&self, key: &str, conversation: &str) -> ResultDto {
@@ -24,7 +24,7 @@ impl ConversationRuntime {
 		let runtime = self.clone();
 		let key = key.to_owned();
 		let conversation = conversation.to_owned();
-		let (reply, result) = tokio::sync::oneshot::channel();
+		let (reply, result) = oneshot::channel();
 
 		workers.spawn(async move {
 			let _permit = permit;
@@ -34,7 +34,7 @@ impl ConversationRuntime {
 
 		drop(workers);
 
-		tokio::time::timeout(Duration::from_secs(35), result)
+		time::timeout(Duration::from_secs(35), result)
 			.await
 			.ok()
 			.and_then(Result::ok)
@@ -53,7 +53,7 @@ impl ConversationRuntime {
 		let request = self.inner.store.read_conversation_request(&id).await.ok()??;
 		let account = source.source_account_id.clone();
 		let revision = self.inner.accounts.inspect(&account).await.ok()?.account.revision;
-		let credential = tokio::time::timeout(
+		let credential = time::timeout(
 			Duration::from_secs(10),
 			self.inner.accounts.process_credential(&account, revision),
 		)
@@ -63,7 +63,7 @@ impl ConversationRuntime {
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
 				accounts: self.inner.accounts.clone(),
-				runtime: tokio::runtime::Handle::current(),
+				runtime: Handle::current(),
 				generation_id: ProcessGenerationId::new(derived_uuid(
 					"cold-model-settings-process",
 					&[key, account.as_str()],
@@ -74,7 +74,7 @@ impl ConversationRuntime {
 		let read_account = account.clone();
 		let directory = request.working_directory.clone();
 		let thread = source.codex_thread_id.clone();
-		let settings = tokio::task::spawn_blocking(move || {
+		let settings = task::spawn_blocking(move || {
 			runtime.read_metadata_process(
 				&read_account,
 				revision,

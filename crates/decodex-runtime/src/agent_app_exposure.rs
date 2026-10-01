@@ -1,19 +1,19 @@
 //! Native App inventory and configuration edits bound to an owned task source.
-use crate::{
-	agent_config_settings as shared, agent_host::AgentHostError, agent_usage_estimate::Source,
-};
+use std::{future::Future, time::Duration};
 
-use decodex_codex::app_server_client::{AppToolExposureSettings, ClientError, HistoryGuard};
-
-use decodex_database::{AgentAppSettingsAttempt, SqliteStore};
-
-use decodex_protocol::{
-	AgentAppExposureResult as State, AgentToolExposureSurface, EntityId, WireText,
-};
-
-use serde_json::json;
-
+use AgentHostError::{Rejected, Unknown};
 use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{
+	agent_config_settings, agent_host::AgentHostError, agent_usage_estimate::Source,
+	native_config_warning,
+};
+use decodex_codex::app_server_client::{AppToolExposureSettings, ClientError, HistoryGuard};
+use decodex_database::{
+	AgentAppSettingsAttempt, AgentAppSettingsReceipt, AgentWorkStatus, SqliteStore,
+};
+use decodex_protocol::{AgentToolExposureSurface, EntityId, WireText};
 
 pub(crate) struct Change<'a> {
 	pub connector: &'a str,
@@ -23,34 +23,37 @@ pub(crate) struct Change<'a> {
 }
 
 struct Inspection {
-	state: State,
+	state: decodex_protocol::AgentAppExposureResult,
 	settings: AppToolExposureSettings,
 	guard: HistoryGuard,
-	prior: Option<decodex_database::AgentAppSettingsReceipt>,
+	prior: Option<AgentAppSettingsReceipt>,
 	scope: String,
 }
 
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F, connector: &str) -> State
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+	connector: &str,
+) -> decodex_protocol::AgentAppExposureResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return State::Unavailable;
+		return decodex_protocol::AgentAppExposureResult::Unavailable;
 	};
-	let result = tokio::time::timeout(
-		std::time::Duration::from_secs(30),
-		inspect(store, &before, connector),
-	)
-	.await
-	.ok()
-	.flatten();
+	let result = time::timeout(Duration::from_secs(30), inspect(store, &before, connector))
+		.await
+		.ok()
+		.flatten();
 
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return State::Unavailable;
+		return decodex_protocol::AgentAppExposureResult::Unavailable;
 	}
 
-	result.filter(|r| r.guard.is_live()).map_or(State::Unavailable, |r| r.state)
+	result
+		.filter(|r| r.guard.is_live())
+		.map_or(decodex_protocol::AgentAppExposureResult::Unavailable, |r| r.state)
 }
 
 pub(crate) async fn write<F, Fut>(
@@ -60,20 +63,19 @@ pub(crate) async fn write<F, Fut>(
 ) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	use AgentHostError::{Rejected, Unknown};
-
 	let before = source().await.ok_or(Rejected("App settings source is unavailable."))?;
-	let inspected = tokio::time::timeout(
-		std::time::Duration::from_secs(30),
-		inspect(store, &before, change.connector),
-	)
-	.await
-	.ok()
-	.flatten()
-	.ok_or(Rejected("Refresh the App inventory and settings."))?;
-	let State::Available { review_token, can_update: true, .. } = &inspected.state else {
+	let inspected =
+		time::timeout(Duration::from_secs(30), inspect(store, &before, change.connector))
+			.await
+			.ok()
+			.flatten()
+			.ok_or(Rejected("Refresh the App inventory and settings."))?;
+	let decodex_protocol::AgentAppExposureResult::Available {
+		review_token, can_update: true, ..
+	} = &inspected.state
+	else {
 		return Err(Rejected("This settings review was already submitted or is not editable."));
 	};
 
@@ -92,14 +94,14 @@ where
 	}
 
 	let attempt = AgentAppSettingsAttempt {
-		owner: shared::owner(&before),
+		owner: agent_config_settings::owner(&before),
 		request_event_id: None,
 		scope: inspected.scope.clone(),
 		connector: change.connector.into(),
 		link: String::new(),
 		field: "omit_tools_from".into(),
-		value: preference.as_ref().map(|v| json!(v)),
-		previous_value: inspected.settings.preference.as_ref().map(|v| json!(v)),
+		value: preference.as_ref().map(|v| serde_json::json!(v)),
+		previous_value: inspected.settings.preference.as_ref().map(|v| serde_json::json!(v)),
 		config_version: inspected.settings.config_version().into(),
 		review_token: change.review.into(),
 		attempt_id: change.attempt.into(),
@@ -133,7 +135,7 @@ where
 				("rejected", Err(Rejected("The native source changed before dispatch."))),
 			Err(error) => {
 				if source().await.is_some_and(|after| after.key == before.key) {
-					crate::native_config_warning::record_settings_error(
+					native_config_warning::record_settings_error(
 						store,
 						&before,
 						"App tool visibility write or readback failed",
@@ -192,7 +194,8 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 	}
 
 	let guard = source.client.thread_settings_guard(&key.thread)?;
-	let native = source.client.thread_read(json!({"threadId":key.thread})).await.ok()?;
+	let native =
+		source.client.thread_read(serde_json::json!({"threadId":key.thread})).await.ok()?;
 
 	if native["thread"]["id"] != key.thread {
 		return None;
@@ -210,7 +213,7 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 	if guard.is_live()
 		&& let Err(error) = &response
 	{
-		crate::native_config_warning::record_settings_error(
+		native_config_warning::record_settings_error(
 			store,
 			source,
 			"App tool visibility settings could not be read",
@@ -220,9 +223,9 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 	}
 
 	let settings = response.ok()?;
-	let scope = shared::digest(settings.config_file());
+	let scope = agent_config_settings::digest(settings.config_file());
 
-	shared::reconcile(store, source, cwd, &scope).await;
+	agent_config_settings::reconcile(store, source, cwd, &scope).await;
 
 	let prior = store.agent_app_settings_receipt(scope.clone()).await.ok()?;
 	let last = store.agent_config_receipt(scope.clone()).await.ok()?;
@@ -244,7 +247,7 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		return None;
 	}
 
-	let identity = json!([
+	let identity = serde_json::json!([
 		key.work,
 		key.thread,
 		key.generation.as_str(),
@@ -254,16 +257,16 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		connector,
 		settings.fingerprint(),
 		prior.as_ref().map(|r| (r.id, &r.state)),
-		last.as_ref().map(shared::project),
+		last.as_ref().map(crate::agent_config_settings::project),
 		legacy
 	]);
 	let token: String = Sha256::digest(identity.to_string().as_bytes())
 		.iter()
 		.map(|b| format!("{b:02x}"))
 		.collect();
-	let can_update = work.status != decodex_database::AgentWorkStatus::Resolved
-		&& !last.as_ref().is_some_and(shared::pending);
-	let state = State::Available {
+	let can_update = work.status != AgentWorkStatus::Resolved
+		&& !last.as_ref().is_some_and(crate::agent_config_settings::pending);
+	let state = decodex_protocol::AgentAppExposureResult::Available {
 		work_id: EntityId::new(key.work.clone()).ok()?,
 		connector_id: WireText::new(connector).ok()?,
 		review_token: WireText::new(token).ok()?,
@@ -272,7 +275,7 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		can_update,
 		last_outcome: last
 			.as_ref()
-			.map(|p| shared::project(p).outcome)
+			.map(|p| agent_config_settings::project(p).outcome)
 			.or_else(|| legacy.map(|(_, state)| state)),
 	};
 

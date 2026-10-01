@@ -1,5 +1,15 @@
-use super::*;
-use std::sync::{Arc, Mutex};
+use std::{
+	iter,
+	sync::{Arc, Mutex},
+};
+
+use tokio::{
+	sync::mpsc::{self, UnboundedReceiver},
+	task::JoinHandle,
+};
+
+use crate::agent::tests::*;
+use decodex_database::{AgentForkBoundary, EnqueueAgentEvent};
 
 type NativeHistory = Arc<Mutex<Vec<Value>>>;
 fn history() -> NativeHistory {
@@ -8,11 +18,11 @@ fn history() -> NativeHistory {
 fn transport(
 	mode: &'static str,
 	history: NativeHistory,
-) -> (AppServerClient, tokio::sync::mpsc::UnboundedReceiver<Value>, tokio::task::JoinHandle<()>) {
-	let (incoming, frames) = tokio::sync::mpsc::channel(16);
-	let (outgoing, mut writes) = tokio::sync::mpsc::channel::<Value>(16);
+) -> (AppServerClient, UnboundedReceiver<Value>, JoinHandle<()>) {
+	let (incoming, frames) = mpsc::channel(16);
+	let (outgoing, mut writes) = mpsc::channel::<Value>(16);
 	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
-	let (log, reads) = tokio::sync::mpsc::unbounded_channel();
+	let (log, reads) = mpsc::unbounded_channel();
 	let server = tokio::spawn(async move {
 		let mut selected_reads = 0;
 		let mut fork: Option<Vec<Value>> = None;
@@ -147,7 +157,7 @@ async fn prompt_edit_submits_once_and_recovers_lost_or_postcommit_replies_withou
 		assert_eq!(review.evidence().turn_ids, vec!["prefix", "selected", "suffix"]);
 
 		let receipt = agent.confirm_prompt_edit(review).await.unwrap();
-		let requests = std::iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
+		let requests = iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
 
 		assert_eq!(requests.iter().filter(|r| r["method"] == "thread/revert").count(), 1);
 		assert_eq!(receipt.attempt.content, content);
@@ -176,7 +186,7 @@ async fn prompt_edit_submits_once_and_recovers_lost_or_postcommit_replies_withou
 				"draft acknowledgement remains required"
 			);
 			assert!(
-				std::iter::from_fn(|| recovery_reads.try_recv().ok())
+				iter::from_fn(|| recovery_reads.try_recv().ok())
 					.all(|r| r["method"] != "thread/revert")
 			);
 
@@ -219,7 +229,7 @@ async fn prompt_edit_revalidates_content_before_reservation_or_native_mutation()
 			.unwrap()
 			.is_none()
 	);
-	assert!(std::iter::from_fn(|| reads.try_recv().ok()).all(|r| r["method"] != "thread/revert"));
+	assert!(iter::from_fn(|| reads.try_recv().ok()).all(|r| r["method"] != "thread/revert"));
 
 	server.abort();
 
@@ -265,7 +275,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 		)
 		.await
 		.unwrap();
-	let event = decodex_database::EnqueueAgentEvent {
+	let event = EnqueueAgentEvent {
 		source_event_id: json!(["user_message", "agent", "canonical-send"]).to_string(), work_item_id: "agent".into(), event_kind: "user_message".into(),
 		payload: json!({"text":"BOUNDED PREVIEW ONLY","source":"user","options":{
 			"canonicalInput":{"id":saved.id,"threadId":saved.thread,"editReceiptId":receipt.id,"sha256":saved.sha256},
@@ -373,8 +383,6 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 
 #[tokio::test]
 async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without_replay() {
-	use decodex_database::AgentForkBoundary;
-
 	for (mode, boundary) in [
 		("fork-success", AgentForkBoundary::BeforeInput),
 		("fork-success", AgentForkBoundary::AfterTurn),
@@ -418,7 +426,7 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 				.is_none()
 		);
 
-		let requests = std::iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
+		let requests = iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
 
 		assert_eq!(requests.iter().filter(|r| r["method"] == "thread/fork").count(), 1);
 		assert!(requests.iter().all(|r| !matches!(
@@ -461,7 +469,7 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 				recovered.state,
 				if mode == "fork-lost-reply" { "reserved" } else { "forked" }
 			);
-			assert!(std::iter::from_fn(|| recovery_reads.try_recv().ok()).all(|r| matches!(
+			assert!(iter::from_fn(|| recovery_reads.try_recv().ok()).all(|r| matches!(
 				r["method"].as_str(),
 				Some("thread/read" | "thread/turns/list" | "thread/items/list")
 			)));

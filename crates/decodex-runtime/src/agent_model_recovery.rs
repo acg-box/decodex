@@ -9,6 +9,8 @@ use decodex_protocol::{
 };
 use sha2::{Digest as _, Sha256};
 
+use crate::agent_capabilities;
+
 /// Evaluate one exact source. The Agent actor owns scheduling and drains native events.
 pub(crate) async fn recover_ordinary_model<F, Fut, B, BFut>(
 	store: &SqliteStore,
@@ -81,7 +83,7 @@ where
 	}
 
 	let AgentCapabilitiesResult::Available { models, .. } =
-		crate::agent_capabilities::read(&before.client).await
+		agent_capabilities::read(&before.client).await
 	else {
 		return Ok(());
 	};
@@ -93,8 +95,7 @@ where
 	) else {
 		return Ok(());
 	};
-	let fast =
-		crate::agent_capabilities::feature_enabled(&before.client, "fast_mode", Some(thread)).await;
+	let fast = agent_capabilities::feature_enabled(&before.client, "fast_mode", Some(thread)).await;
 	let Some((update, attempt)) =
 		prepare_recovery(&before, observed.id, settings, target, fast, &recovery)?
 	else {
@@ -231,15 +232,23 @@ fn target_settings(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use decodex_protocol::ConversationReasoningEffort as Effort;
+	use serde_json::{self, Value};
+	use tokio::{io, time};
+
+	use crate::agent_models::recovery::{
+		self, AgentModelDto, NativeRecoveryAuth, NativeTaskModelSettings,
+	};
+	use decodex_codex::app_server_client::AppServerClient;
 
 	fn target() -> AgentModelDto {
 		AgentModelDto {
 			model: decodex_protocol::ConversationModel::new("target").unwrap(),
 			name: "Target".into(),
-			efforts: vec![Effort::Low, Effort::Medium],
-			default_effort: Some(Effort::Medium),
+			efforts: vec![
+				decodex_protocol::ConversationReasoningEffort::Low,
+				decodex_protocol::ConversationReasoningEffort::Medium,
+			],
+			default_effort: Some(decodex_protocol::ConversationReasoningEffort::Medium),
 			supports_fast: false,
 			service_tiers: vec![],
 			default_service_tier: None,
@@ -263,7 +272,7 @@ mod tests {
 		for tier in ["default", "flex"] {
 			for fast in [Some(false), Some(true)] {
 				assert_eq!(
-					target_settings(&current(Some("low"), Some(tier)), &target(), fast),
+					recovery::target_settings(&current(Some("low"), Some(tier)), &target(), fast),
 					Some((
 						"low".into(),
 						if tier == "flex" || fast == Some(true) { Some(tier.into()) } else { None }
@@ -273,7 +282,7 @@ mod tests {
 		}
 		for effort in [None, Some("high"), Some("future")] {
 			assert_eq!(
-				target_settings(&current(effort, Some("default")), &target(), Some(true)),
+				recovery::target_settings(&current(effort, Some("default")), &target(), Some(true)),
 				Some(("medium".into(), Some("default".into())))
 			);
 		}
@@ -283,8 +292,12 @@ mod tests {
 		unknown.default_effort = None;
 
 		assert!(
-			target_settings(&current(Some("future"), Some("default")), &unknown, Some(true))
-				.is_none()
+			recovery::target_settings(
+				&current(Some("future"), Some("default")),
+				&unknown,
+				Some(true)
+			)
+			.is_none()
 		);
 	}
 	#[test]
@@ -300,44 +313,42 @@ mod tests {
 		model.default_service_tier = Some(decodex_core::ServiceTier::new("priority").unwrap());
 
 		assert_eq!(
-			target_settings(&current(None, None), &model, Some(true)),
+			recovery::target_settings(&current(None, None), &model, Some(true)),
 			Some(("medium".into(), Some("priority".into())))
 		);
 		assert_eq!(
-			target_settings(&current(None, Some("withdrawn")), &model, Some(true)),
+			recovery::target_settings(&current(None, Some("withdrawn")), &model, Some(true)),
 			Some(("medium".into(), Some("default".into())))
 		);
 		assert_eq!(
-			target_settings(&current(None, None), &model, Some(false)),
+			recovery::target_settings(&current(None, None), &model, Some(false)),
 			Some(("medium".into(), None))
 		);
 		assert_eq!(
-			target_settings(&current(None, Some("withdrawn")), &model, Some(false)),
+			recovery::target_settings(&current(None, Some("withdrawn")), &model, Some(false)),
 			Some(("medium".into(), None))
 		);
 
 		model.service_tiers.clear();
 
 		assert_eq!(
-			target_settings(&current(None, None), &model, Some(true)),
+			recovery::target_settings(&current(None, None), &model, Some(true)),
 			Some(("medium".into(), Some("default".into())))
 		);
-		assert!(target_settings(&current(None, None), &model, None).is_none());
-		assert!(target_settings(&current(None, Some("withdrawn")), &model, None).is_none());
+		assert!(recovery::target_settings(&current(None, None), &model, None).is_none());
+		assert!(
+			recovery::target_settings(&current(None, Some("withdrawn")), &model, None).is_none()
+		);
 	}
 	#[tokio::test]
 	async fn queued_native_settings_block_a_guard_captured_after_notification() {
-		use decodex_codex::app_server_client::AppServerClient;
-
-		use serde_json::{Value, json};
-
 		use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (reader, writer) = io::split(local);
 		let (client, mut events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for index in 0..2 {
@@ -347,18 +358,18 @@ mod tests {
 				assert_eq!(request["method"], "getAuthStatus");
 
 				if index == 0 {
-					let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"model":"manual-choice"}}});
+					let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"model":"manual-choice"}}});
 
 					writer.write_all(format!("{event}\n").as_bytes()).await.unwrap();
 				}
 
-				let reply = json!({"id":request["id"],"result":{"authMethod":"chatgpt","requiresOpenaiAuth":true}});
+				let reply = serde_json::json!({"id":request["id"],"result":{"authMethod":"chatgpt","requiresOpenaiAuth":true}});
 
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 			}
 
 			assert!(
-				tokio::time::timeout(std::time::Duration::from_millis(25), lines.next_line())
+				time::timeout(std::time::Duration::from_millis(25), lines.next_line())
 					.await
 					.is_err()
 			);
@@ -373,14 +384,14 @@ mod tests {
 			NativeRecoveryAuth::ChatGpt
 		);
 		assert!(guard.is_live(), "a fresh guard alone cannot prove the journal is current");
-		assert!(!recovery_source_ready(&guard, &events));
+		assert!(!recovery::recovery_source_ready(&guard, &events));
 
 		let event = events.recv().await.unwrap();
 
 		assert!(
 			matches!(event, decodex_codex::app_server_client::ServerEvent::Notification { method, .. } if method == "thread/settings/updated")
 		);
-		assert!(recovery_source_ready(&guard, &events));
+		assert!(recovery::recovery_source_ready(&guard, &events));
 
 		server.await.unwrap();
 		client.close();

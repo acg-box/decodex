@@ -5,19 +5,36 @@
 #[path = "agent_process_native_media_socket_tests.rs"] mod media;
 #[path = "agent_process_native_recap_reply_proxy.rs"] mod reply_proxy;
 
-use super::*;
-
-use crate::{ProtocolServer, ServerConfig};
-
-use decodex_protocol::{
-	AgentActionDto as Action, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
-	AgentSandboxDto, AgentSnapshotResult, AgentStartDto, ClientProfile, ConversationModel,
-	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
-	IdempotencyKey, LocalTransportAuthority, ServerId, TaskRecapPhase as Phase, WireText,
+use std::{
+	collections::BTreeSet,
+	env,
+	fs::{self, File, Permissions},
+	panic::AssertUnwindSafe,
+	path::{Path, PathBuf},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
+use tokio::{net::TcpListener, process::Command, task, time};
+
+use crate::{
+	ProtocolServer, ServerConfig,
+	account_launch::{AttestedAppServerProfile, agent_process::native_tests::cold_settings::*},
+};
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_core::{AccountQuotaWindow, LocalTrustPolicy};
+use decodex_database::AgentVoiceCall;
+use decodex_protocol::{
+	AgentActionDto as Action, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+	AgentExecutionOverrides, AgentSandboxDto, AgentSnapshotResult, AgentStartDto,
+	AgentTimelineContent, AgentTimelineResult, ClientProfile, ConversationModel,
+	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
+	IdempotencyKey, LocalTransportAuthority, PromptDraft, PromptEditStatus, PromptInputSend,
+	PromptInputSendIdentity, PromptInputUpload, ServerId, TaskRecapPhase as Phase, WireText,
+};
+use reply_proxy::Proxy;
+
 fn interaction_seconds(interactive: bool) -> u64 {
-	if std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
+	if env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
 		2_460
 	} else if interactive {
 		1_200
@@ -55,44 +72,39 @@ fn assert_preserved_native_settings(before: &Value, after: &Value) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_recap_public_socket_preserves_parent_and_exact_request_identity() {
-	let home = std::path::PathBuf::from(
-		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"),
-	)
-	.canonicalize()
-	.expect("fixture home");
+	let home = PathBuf::from(env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"))
+		.canonicalize()
+		.expect("fixture home");
 
-	assert_eq!(std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME")), home);
+	assert_eq!(std::path::PathBuf::from(env::var_os("HOME").expect("HOME")), home);
 	assert_eq!(
-		std::fs::read_to_string(home.join(".decodex-recap-fixture"))
-			.expect("explicit fixture marker"),
+		fs::read_to_string(home.join(".decodex-recap-fixture")).expect("explicit fixture marker"),
 		"isolated-recap\n"
 	);
 	assert!(!home.join(".codex").exists());
 
-	let seconds = if std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
+	let seconds = if env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
 		2_520
-	} else if std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() {
+	} else if env::var_os("DECODEX_TEST_DESKTOP_APP").is_some() {
 		1_260
 	} else {
 		90
 	};
 
-	tokio::time::timeout(Duration::from_secs(seconds), qualify(&home))
+	time::timeout(Duration::from_secs(seconds), qualify(&home))
 		.await
 		.expect("bounded real service fixture");
 }
 
 async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
-	let observed = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.expect("fixture clock")
-		.as_micros() as i64;
+	let observed =
+		SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_micros() as i64;
 
 	for minutes in [300, 10_080] {
 		accounts
 			.observe_quota(
 				account,
-				decodex_core::AccountQuotaWindow::new(minutes, 0, observed + 3_600_000_000)
+				AccountQuotaWindow::new(minutes, 0, observed + 3_600_000_000)
 					.expect("synthetic available quota"),
 				observed,
 			)
@@ -101,13 +113,13 @@ async fn observe_fixture_quota(accounts: &AccountService, account: &AccountId) {
 	}
 }
 
-async fn qualify(home: &std::path::Path) {
-	let interactive = std::env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
+async fn qualify(home: &Path) {
+	let interactive = env::var_os("DECODEX_TEST_DESKTOP_APP").is_some();
 	let native_home = home.join(".codex");
 
-	std::fs::create_dir(&native_home).expect("fixture native home");
+	fs::create_dir(&native_home).expect("fixture native home");
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback provider");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback provider");
 	let address = listener.local_addr().expect("loopback address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -123,7 +135,7 @@ async fn qualify(home: &std::path::Path) {
 	));
 	let catalog = native_home.join("models.json");
 
-	std::fs::write(
+	fs::write(
 		&catalog,
 		serde_json::to_vec(
 			&json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
@@ -131,7 +143,7 @@ async fn qualify(home: &std::path::Path) {
 		.expect("catalog"),
 	)
 	.expect("catalog");
-	std::fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", json!(catalog))).expect("fixture config");
+	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", json!(catalog))).expect("fixture config");
 
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
@@ -150,10 +162,10 @@ async fn qualify(home: &std::path::Path) {
 
 	let directory = home.to_owned();
 	// This mode prepares accounts only. It does not qualify recap behavior.
-	if std::env::var_os("DECODEX_TEST_ACCOUNT_SEED_ONLY").is_some() {
+	if env::var_os("DECODEX_TEST_ACCOUNT_SEED_ONLY").is_some() {
 		assert_eq!(requests.load(Ordering::Acquire), 0, "account seed cannot infer");
 
-		std::fs::write(
+		fs::write(
 			home.join("account-seed.json"),
 			b"{\"prepared_only\":true,\"model_requests\":0}\n",
 		)
@@ -164,8 +176,8 @@ async fn qualify(home: &std::path::Path) {
 		return;
 	}
 
-	let profile = tokio::task::spawn_blocking(move || {
-		crate::account_launch::AttestedAppServerProfile::attest(directory, Duration::from_secs(15))
+	let profile = task::spawn_blocking(move || {
+		AttestedAppServerProfile::attest(directory, Duration::from_secs(15))
 	})
 	.await
 	.expect("profile task")
@@ -181,7 +193,7 @@ async fn qualify(home: &std::path::Path) {
 	let authority = || {
 		LocalTransportAuthority::new(
 			root.paths(),
-			decodex_core::LocalTrustPolicy::SameUid,
+			LocalTrustPolicy::SameUid,
 			Some(unsafe { libc::geteuid() }),
 		)
 		.expect("same-UID authority")
@@ -189,12 +201,11 @@ async fn qualify(home: &std::path::Path) {
 	let uid = unsafe { libc::geteuid() };
 	let config = root.as_path().join("config.toml");
 
-	std::fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
+	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
 
 	use std::os::unix::fs::PermissionsExt as _;
 
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600))
-		.expect("private profile");
+	fs::set_permissions(config, Permissions::from_mode(0o600)).expect("private profile");
 
 	let client = AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"));
 	let app = submit::application(&runtime, &store, home);
@@ -205,17 +216,17 @@ async fn qualify(home: &std::path::Path) {
 
 	use futures_util::FutureExt as _;
 
-	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(
+	let outcome = AssertUnwindSafe(time::timeout(
 		Duration::from_secs(interaction_seconds(interactive)),
 		async {
 			if interactive {
 				desktop::check(&client, home, &account, &requests).await;
-			} else if std::env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
+			} else if env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 				media::check(&client, &runtime, home, &account, &requests).await;
 			} else {
 				check(&client, &runtime, &store, home, &account, &requests).await;
 			}
-			if std::env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
+			if env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
 				qualify_account_rotation(
 					&client, &runtime, &store, &accounts, home, &account, &requests,
 				)
@@ -243,11 +254,11 @@ async fn check(
 	client: &AgentClient,
 	runtime: &ConversationRuntime,
 	store: &SqliteStore,
-	home: &std::path::Path,
+	home: &Path,
 	account: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
-	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
+	if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
 		return active_shutdown::prepare(client, home, account).await;
 	}
 
@@ -278,7 +289,7 @@ async fn check(
 
 	let native = runtime.agent_client().expect("active native client");
 
-	if std::env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
+	if env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
 		return fork::check(client, &native, store, &work, &thread, requests, home).await;
 	}
 
@@ -375,7 +386,7 @@ async fn check(
 
 	assert!(client.recap(work.clone()).await.expect("cancelled query").recap.is_none());
 
-	if std::env::var("DECODEX_TEST_PROMPT_REVERT").as_deref() == Ok("1") {
+	if env::var("DECODEX_TEST_PROMPT_REVERT").as_deref() == Ok("1") {
 		qualify_native_prompt_revert(
 			store,
 			&native,
@@ -390,7 +401,7 @@ async fn check(
 }
 
 async fn qualify_prompt_selection(
-	client: &decodex_codex::app_server_client::AppServerClient,
+	client: &AppServerClient,
 	thread: &str,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
@@ -431,10 +442,10 @@ async fn qualify_prompt_selection(
 async fn qualify_desktop_recap(
 	client: &AgentClient,
 	store: &SqliteStore,
-	home: &std::path::Path,
+	home: &Path,
 	work: &EntityId,
 ) -> usize {
-	let Some(binary) = std::env::var_os("DECODEX_TEST_RECAP_GUI_BINARY") else {
+	let Some(binary) = env::var_os("DECODEX_TEST_RECAP_GUI_BINARY") else {
 		return 0;
 	};
 
@@ -450,16 +461,16 @@ async fn qualify_desktop_recap(
 		.expect("enable only disposable fixture preference");
 	let screenshot = home.join("automatic-recap.png");
 	let log = home.join("automatic-recap-capture.log");
-	let stdout = std::fs::File::create(&log).expect("capture diagnostics");
+	let stdout = File::create(&log).expect("capture diagnostics");
 	let stderr = stdout.try_clone().expect("shared capture log");
-	let proxy = if std::env::var("DECODEX_TEST_RECAP_LOST_REPLY").as_deref() == Ok("1") {
-		Some(reply_proxy::Proxy::start(home).await)
+	let proxy = if env::var("DECODEX_TEST_RECAP_LOST_REPLY").as_deref() == Ok("1") {
+		Some(Proxy::start(home).await)
 	} else {
 		None
 	};
 	let capture_root =
 		proxy.as_ref().map_or_else(|| home.join("product"), |proxy| proxy.root.clone());
-	let mut child = tokio::process::Command::new(binary)
+	let mut child = Command::new(binary)
 		.env("DECODEX_VISUAL_AGENT_ROOT", capture_root)
 		.env("DECODEX_VISUAL_AGENT_WORK", work.as_str())
 		.env("DECODEX_VISUAL_AUTO_RECAP", "1")
@@ -470,10 +481,10 @@ async fn qualify_desktop_recap(
 		.spawn()
 		.expect("desktop capture process");
 
-	std::fs::write(home.join("automatic-recap.pid"), child.id().expect("child PID").to_string())
+	fs::write(home.join("automatic-recap.pid"), child.id().expect("child PID").to_string())
 		.expect("child identity");
 
-	let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+	let status = time::timeout(Duration::from_secs(30), child.wait())
 		.await
 		.expect("bounded desktop capture")
 		.expect("desktop capture exit");
@@ -481,7 +492,7 @@ async fn qualify_desktop_recap(
 	assert!(status.success(), "desktop capture failed; inspect {}", log.display());
 
 	let evidence: serde_json::Value = serde_json::from_slice(
-		&std::fs::read(screenshot.with_extension("recap.json")).expect("desktop evidence"),
+		&fs::read(screenshot.with_extension("recap.json")).expect("desktop evidence"),
 	)
 	.expect("desktop JSON");
 
@@ -516,8 +527,6 @@ async fn qualify_completed_progress(
 	account: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
-	use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
-
 	for index in 1..=8 {
 		accepted(
 			client,
@@ -536,8 +545,8 @@ async fn qualify_completed_progress(
 	assert_eq!(requests.load(Ordering::Acquire), 9, "only parent turns inferred");
 
 	let mut cursor = None;
-	let mut completed = std::collections::BTreeSet::new();
-	let mut seen = std::collections::BTreeSet::new();
+	let mut completed = BTreeSet::new();
+	let mut seen = BTreeSet::new();
 	let mut pages = 0;
 
 	loop {
@@ -615,7 +624,7 @@ async fn settled(client: &AgentClient) -> String {
 			return thread.clone();
 		}
 
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		time::sleep(Duration::from_millis(20)).await;
 	}
 }
 
@@ -629,7 +638,7 @@ async fn wait_phase(client: &AgentClient, work: &EntityId, phase: Phase) {
 
 		assert_ne!(state.phase, Phase::Failed, "native recap failed: {state:?}");
 
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		time::sleep(Duration::from_millis(20)).await;
 	}
 }
 
@@ -644,7 +653,7 @@ async fn prepare_voice_call(
 	let (generation, _, _, _) = runtime.agent_usage_source().await.expect("voice source");
 
 	store
-		.begin_agent_voice_call(decodex_database::AgentVoiceCall {
+		.begin_agent_voice_call(AgentVoiceCall {
 			session_id: "recap-voice".into(),
 			work_id: work.as_str().into(),
 			thread_id: thread.into(),
@@ -712,12 +721,12 @@ async fn prepare_voice_call(
 
 async fn qualify_native_prompt_revert(
 	store: &SqliteStore,
-	native: &decodex_codex::app_server_client::AppServerClient,
+	native: &AppServerClient,
 	work: &str,
 	thread: &str,
 	requests: &std::sync::atomic::AtomicUsize,
 	client: &AgentClient,
-	home: &std::path::Path,
+	home: &Path,
 ) {
 	let before = native
 		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
@@ -820,7 +829,7 @@ async fn qualify_native_prompt_revert(
 
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
 
-	let relative = decodex_protocol::PromptDraft::new(vec![
+	let relative = PromptDraft::new(vec![
 		json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
 	])
 	.expect("native recap fixture");
@@ -850,20 +859,20 @@ async fn qualify_native_prompt_revert(
 
 async fn qualify_prompt_acknowledgement(
 	client: &AgentClient,
-	status: decodex_protocol::PromptEditStatus,
+	status: PromptEditStatus,
 	content: &[serde_json::Value],
-	home: &std::path::Path,
+	home: &Path,
 ) {
 	let evidence = status.evidence.expect("edit receipt");
 	let draft = home.join("saved-canonical-prompt.json");
 
-	std::fs::write(&draft, serde_json::to_vec(content).expect("canonical bytes"))
+	fs::write(&draft, serde_json::to_vec(content).expect("canonical bytes"))
 		.expect("save client draft");
-	std::fs::File::open(&draft).expect("saved draft").sync_all().expect("durable client draft");
-	std::fs::File::open(home).expect("fixture directory").sync_all().expect("durable draft entry");
+	File::open(&draft).expect("saved draft").sync_all().expect("durable client draft");
+	File::open(home).expect("fixture directory").sync_all().expect("durable draft entry");
 
 	let saved: Vec<serde_json::Value> =
-		serde_json::from_slice(&std::fs::read(&draft).expect("saved bytes"))
+		serde_json::from_slice(&fs::read(&draft).expect("saved bytes"))
 			.expect("saved canonical input");
 
 	assert_eq!(saved, content);
@@ -899,16 +908,15 @@ async fn qualify_prompt_acknowledgement(
 
 async fn qualify_canonical_prompt_send(
 	client: &AgentClient,
-	native: &decodex_codex::app_server_client::AppServerClient,
+	native: &AppServerClient,
 	work_id: EntityId,
 	thread_id: WireText,
 	receipt_id: i64,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
 	let text = format!("Edited canonical input: {} END-OF-FULL-INPUT", "x".repeat(70_000));
-	let input = decodex_protocol::PromptDraft::new(vec![json!({"type":"text","text":text})])
-		.expect("full input");
-	let execution = decodex_protocol::AgentExecutionOverrides::default();
+	let input = PromptDraft::new(vec![json!({"type":"text","text":text})]).expect("full input");
+	let execution = AgentExecutionOverrides::default();
 	let count = requests.load(Ordering::Acquire);
 
 	client
@@ -916,7 +924,7 @@ async fn qualify_canonical_prompt_send(
 		.await
 		.expect("native envelope preflight");
 
-	let upload = decodex_protocol::PromptInputUpload {
+	let upload = PromptInputUpload {
 		work_id: work_id.clone(),
 		thread_id: thread_id.clone(),
 		edit_receipt_id: receipt_id,
@@ -934,11 +942,11 @@ async fn qualify_canonical_prompt_send(
 	);
 	assert_eq!(requests.load(Ordering::Acquire), count, "staging must not submit input");
 
-	let identity = decodex_protocol::PromptInputSendIdentity {
+	let identity = PromptInputSendIdentity {
 		work_id: work_id.clone(),
 		thread_id: thread_id.clone(),
 		edit_receipt_id: receipt_id,
-		send: decodex_protocol::PromptInputSend {
+		send: PromptInputSend {
 			input_id,
 			sha256: upload.sha256.clone(),
 			command_key: IdempotencyKey::new("installed-edited-send")
@@ -1020,7 +1028,7 @@ async fn qualify_account_rotation(
 	runtime: &ConversationRuntime,
 	store: &SqliteStore,
 	accounts: &AccountService,
-	home: &std::path::Path,
+	home: &Path,
 	first: &AccountId,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
@@ -1035,17 +1043,16 @@ async fn qualify_account_rotation(
 
 	let second = enroll_numbered(store, accounts, home, 2).await;
 	let count = requests.load(Ordering::Acquire);
-	let observed = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.expect("native recap fixture")
-		.as_micros() as i64;
+	let observed =
+		SystemTime::now().duration_since(UNIX_EPOCH).expect("native recap fixture").as_micros()
+			as i64;
 
 	for (account, used) in [(&second, 0), (first, 100)] {
 		for minutes in [300, 10_080] {
 			accounts
 				.observe_quota(
 					account,
-					decodex_core::AccountQuotaWindow::new(minutes, used, observed + 3_600_000_000)
+					AccountQuotaWindow::new(minutes, used, observed + 3_600_000_000)
 						.expect("native recap fixture"),
 					observed,
 				)
@@ -1054,7 +1061,7 @@ async fn qualify_account_rotation(
 		}
 	}
 
-	tokio::time::timeout(Duration::from_secs(20), async {
+	time::timeout(Duration::from_secs(20), async {
 		loop {
 			if runtime.agent_usage_source().await.is_some_and(|(generation, account, _, _)| {
 				account == second && generation != original.generation_id
@@ -1062,7 +1069,7 @@ async fn qualify_account_rotation(
 				break;
 			}
 
-			tokio::time::sleep(Duration::from_millis(25)).await;
+			time::sleep(Duration::from_millis(25)).await;
 		}
 	})
 	.await
@@ -1112,7 +1119,7 @@ async fn qualify_account_rotation(
 }
 
 async fn qualify_summary_read(
-	native: &decodex_codex::app_server_client::AppServerClient,
+	native: &AppServerClient,
 	thread: &str,
 	requests: &std::sync::atomic::AtomicUsize,
 ) {

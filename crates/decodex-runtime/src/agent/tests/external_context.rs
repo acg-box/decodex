@@ -1,18 +1,23 @@
-use super::*;
+use std::{env, error::Error, iter, time::Duration};
+
+use tokio::{process::Command, time};
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
+use decodex_database::AgentDispatchState;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_CONTEXT_HOME and a local fixture backend"]
-async fn native_delegation_preserves_tool_authority_and_history()
--> Result<(), Box<dyn std::error::Error>> {
-	let home = std::env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
-	let executable = std::env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
+async fn native_delegation_preserves_tool_authority_and_history() -> Result<(), Box<dyn Error>> {
+	let home = env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
+	let executable = env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
 	let (mut agent, _sent, _directory) = fixture().await;
-	let mut command = tokio::process::Command::new(executable);
+	let mut command = Command::new(executable);
 
 	command.arg("app-server").current_dir(&home).env("CODEX_HOME", &home);
 
 	let (client, mut events, mut process) = AppServerClient::spawn(&mut command)?;
-	let outcome: Result<(), Box<dyn std::error::Error>> = async {
+	let outcome: Result<(), Box<dyn Error>> = async {
 		agent.client = client;
 		agent.config = AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home);
 
@@ -28,13 +33,17 @@ async fn native_delegation_preserves_tool_authority_and_history()
 				agent.continue_worker("worker", "Native delegated followup instruction").await?;
 			}
 
-			tokio::time::timeout(std::time::Duration::from_secs(45), async {
+			time::timeout(Duration::from_secs(45), async {
 				while let Some(event) = events.recv().await {
 					agent.handle_event(event).await?;
 
-					if agent.store.list_agent_work_items().await?.iter().all(|work| {
-						work.dispatch_state == decodex_database::AgentDispatchState::Idle
-					}) {
+					if agent
+						.store
+						.list_agent_work_items()
+						.await?
+						.iter()
+						.all(|work| work.dispatch_state == AgentDispatchState::Idle)
+					{
 						return Ok::<(), AgentError>(());
 					}
 				}
@@ -103,7 +112,7 @@ async fn external_results_use_named_tool_context_before_the_wake_turn() {
 
 	coordinator.ingest_automation_result("source-1", "agent", data.clone()).await.unwrap();
 
-	let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let messages: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let injection = messages.iter().position(|v| v["method"] == "thread/inject_items").unwrap();
 	let turn = messages.iter().position(|v| v["method"] == "turn/start").unwrap();
 
@@ -142,9 +151,8 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 
 	agent.start_agent("agent", "Actual user request").await.unwrap();
 
-	let root: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let root: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(root[0]["params"]["input"][0]["text"], "Actual user request");
 	assert!(root[0]["params"].get("toolOutput").is_none());
@@ -156,9 +164,8 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 	agent.continue_worker("worker", "Repair the evidence").await.unwrap();
 	agent.create_manager("agent", "manager", "Manage this delegated outcome", None).await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 3);
 
@@ -197,16 +204,13 @@ async fn uncertain_delegation_is_not_replayed_as_user_input_after_reopen() {
 
 	assert!(agent.create_worker("agent", "worker", "Do this once").await.is_err());
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["input"], json!([]));
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (fresh, mut requests, _other) = fixture().await;
 	let mut recovered =
@@ -219,7 +223,7 @@ async fn uncertain_delegation_is_not_replayed_as_user_input_after_reopen() {
 		recovered.store.get_agent_work_item("worker".into()).await.unwrap().dispatch_state,
 		decodex_database::AgentDispatchState::Unknown
 	);
-	assert!(!std::iter::from_fn(|| requests.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(!iter::from_fn(|| requests.try_recv().ok()).any(|v| v["method"] == "turn/start"));
 }
 
 #[tokio::test]
@@ -241,7 +245,7 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 				.is_err()
 		);
 
-		let messages: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		let messages: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 		assert_eq!(messages.iter().filter(|v| v["method"] == "thread/inject_items").count(), 1);
 		assert_eq!(
@@ -249,9 +253,7 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 			usize::from(failure == "_turn_after_injection_disconnect")
 		);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let (fresh, mut requests, _other_directory) = fixture().await;
 		let mut recovered =
@@ -265,7 +267,7 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 		assert_eq!(saved.dispatch_state, decodex_database::AgentDispatchState::Unknown);
 		assert!(saved.active_turn_id.is_none());
 		assert!(
-			!std::iter::from_fn(|| requests.try_recv().ok()).any(|v| matches!(
+			!iter::from_fn(|| requests.try_recv().ok()).any(|v| matches!(
 				v["method"].as_str(),
 				Some("thread/inject_items" | "turn/start")
 			))
@@ -276,17 +278,16 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 /// Use a private native home and a local Responses server, without a paid model.
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_CONTEXT_HOME and a local fixture backend"]
-async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dyn std::error::Error>>
-{
-	let home = std::env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
-	let executable = std::env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
+async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dyn Error>> {
+	let home = env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
+	let executable = env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
 	let (mut agent, _sent, _directory) = fixture().await;
-	let mut command = tokio::process::Command::new(executable);
+	let mut command = Command::new(executable);
 
 	command.arg("app-server").current_dir(&home).env("CODEX_HOME", &home);
 
 	let (client, mut events, mut process) = AppServerClient::spawn(&mut command)?;
-	let outcome: Result<(), Box<dyn std::error::Error>> = async {
+	let outcome: Result<(), Box<dyn Error>> = async {
 		agent.client = client;
 		agent.config = AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home);
 
@@ -294,7 +295,7 @@ async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dy
 		agent.start_agent("agent", "Complete this local fixture.").await?;
 
 		for phase in 0..2 {
-			tokio::time::timeout(std::time::Duration::from_secs(30), async {
+			time::timeout(Duration::from_secs(30), async {
 				while let Some(event) = events.recv().await {
 					let done = matches!(&event,ServerEvent::Notification{method,..} if method=="turn/completed");
 
@@ -322,7 +323,7 @@ async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dy
 
 		let work = agent.store.get_agent_work_item("agent".into()).await?;
 
-		if work.dispatch_state != decodex_database::AgentDispatchState::Idle {
+		if work.dispatch_state != AgentDispatchState::Idle {
 			return Err("native work did not return to idle".into());
 		}
 
@@ -350,7 +351,7 @@ async fn structured_work_context_tracks_the_current_work_without_changing_user_i
 	agent.start_agent("manager", "User-owned goal").await.unwrap();
 
 	let work = agent.store.get_agent_work_item("manager".into()).await.unwrap();
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
 
 	assert_eq!(turn["params"]["input"][0]["text"], "User-owned goal");
@@ -378,7 +379,7 @@ async fn structured_work_context_tracks_the_current_work_without_changing_user_i
 		.await
 		.unwrap();
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let steer = requests.iter().find(|request| request["method"] == "turn/steer").unwrap();
 
 	assert_eq!(steer["params"]["additionalContext"], turn["params"]["additionalContext"]);
@@ -387,7 +388,7 @@ async fn structured_work_context_tracks_the_current_work_without_changing_user_i
 	agent.create_worker("manager", "child", "Subordinate fixture work").await.unwrap();
 
 	let child = agent.store.get_agent_work_item("child".into()).await.unwrap();
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let child_turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
 	let identity: Value = serde_json::from_str(
 		child_turn["params"]["additionalContext"]["decodex_work_identity"]["value"]

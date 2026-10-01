@@ -1,12 +1,20 @@
-use super::*;
-use crate::agent_usage_estimate::SourceKey;
-use decodex_codex::app_server_client::AppServerClient;
-use decodex_core::{AccountId, ProcessGenerationId};
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	future,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
 };
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use serde_json::Value;
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	task::JoinHandle,
+};
+
+use crate::{agent_search_settings::*, agent_usage_estimate::SourceKey};
+use decodex_codex::app_server_client::{self, AppServerClient};
+use decodex_core::{AccountId, ProcessGenerationId};
 
 fn source(client: AppServerClient, revision: usize) -> Source {
 	Source {
@@ -22,20 +30,18 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 	}
 }
 
-fn fixture(
-	fail_readback: bool,
-) -> (AppServerClient, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
-	let (local, remote) = tokio::io::duplex(8_192);
-	let (read, write) = tokio::io::split(local);
+fn fixture(fail_readback: bool) -> (AppServerClient, Arc<AtomicUsize>, JoinHandle<()>) {
+	let (local, remote) = io::duplex(8_192);
+	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let count = writes.clone();
 	let task = tokio::spawn(async move {
-		let (read, mut write) = tokio::io::split(remote);
+		let (read, mut write) = io::split(remote);
 		let mut lines = BufReader::new(read).lines();
 
 		while let Some(line) = lines.next_line().await.unwrap() {
-			let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+			let request: Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
 			let version = if saved { "v2" } else { "v1" };
 			let mut response = match request["method"].as_str().unwrap() {
@@ -55,9 +61,7 @@ fn fixture(
 						request["params"]["edits"],
 						json!([{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}])
 					);
-					assert!(decodex_codex::app_server_client::is_search_mode_write(
-						&request["params"]
-					));
+					assert!(app_server_client::is_search_mode_write(&request["params"]));
 
 					count.fetch_add(1, Ordering::SeqCst);
 
@@ -81,7 +85,7 @@ fn fixture(
 async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 	for fail_readback in [false, true] {
 		let (client, writes, task) = fixture(fail_readback);
-		let read_source = || std::future::ready(Some(source(client.clone(), 1)));
+		let read_source = || future::ready(Some(source(client.clone(), 1)));
 		let AgentSearchSettingsResult::Available { review_token, modes, .. } =
 			read(read_source).await
 		else {
@@ -98,7 +102,7 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 		);
 		assert!(
 			write(
-				|| std::future::ready(Some(source(client.clone(), 2))),
+				|| future::ready(Some(source(client.clone(), 2))),
 				review_token.as_str(),
 				"indexed"
 			)

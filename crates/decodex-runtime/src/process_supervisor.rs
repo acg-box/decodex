@@ -6,6 +6,7 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet, btree_map::Entry},
+	error::Error,
 	fmt::{Display, Formatter},
 	future::Future,
 	sync::{
@@ -15,23 +16,23 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use decodex_core::{
-	AccountId, ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
-	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
-	ProcessExecutionAuthorization, ProcessGeneration, ProcessGenerationAccountBinding,
-	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
-};
-
-use decodex_database::{
-	FreshConversationProcessGeneration, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
-	ProcessGenerationMutationOutcome, SqliteStore,
-};
-
+use libc::{SIGKILL, SIGTERM};
 use sha2::{Digest as _, Sha256};
+use tokio::{sync::watch::Receiver, time};
 
 use crate::{
 	account_launch::{AttestedAppServerLaunch, AttestedProcessChild},
 	process_platform::{self, ExactProcessObservation, KernelExitWitness, ProcessPlatformError},
+};
+use decodex_core::{
+	AccountId, BoundProcessGeneration, ProcessAccountQuarantine, ProcessAuthorityLossReason,
+	ProcessBootIdentity, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+	ProcessExecutionAuthorization, ProcessGeneration, ProcessGenerationAccountBinding,
+	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
+};
+use decodex_database::{
+	FreshConversationProcessGeneration, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+	ProcessGenerationMutationOutcome, SqliteStore,
 };
 
 const RECONCILIATION_PAGE_SIZE: u16 = 256;
@@ -77,7 +78,7 @@ impl ProcessGenerationControl {
 	/// Build the periodic reconciler for direct ownership by the server lifecycle.
 	pub(crate) fn reconciliation_task(
 		&self,
-		mut stop: tokio::sync::watch::Receiver<bool>,
+		mut stop: Receiver<bool>,
 	) -> impl Future<Output = ()> + Send + 'static {
 		let weak = Arc::downgrade(&self.inner);
 
@@ -95,7 +96,7 @@ impl ProcessGenerationControl {
 
 						continue;
 					},
-					_ = tokio::time::sleep(RECONCILIATION_INTERVAL) => {},
+					_ = time::sleep(RECONCILIATION_INTERVAL) => {},
 				}
 
 				if *stop.borrow_and_update() {
@@ -265,7 +266,7 @@ impl ProcessGenerationControl {
 			}
 
 			if !owned_process.leader_exited {
-				tokio::time::sleep(Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		}
 
@@ -275,7 +276,7 @@ impl ProcessGenerationControl {
 
 				return Err(ProcessSupervisorError::Platform);
 			}
-			if process_platform::signal_owned_process_group(&identity, libc::SIGTERM).is_err() {
+			if process_platform::signal_owned_process_group(&identity, SIGTERM).is_err() {
 				if let Err(error) = refresh_owned_exit(&mut owned_process) {
 					self.restore_owned(key, owned_process, &mut supervision)?;
 
@@ -340,7 +341,7 @@ impl ProcessGenerationControl {
 			}
 			if !hard_signal_sent && !owned_process.leader_exited && Instant::now() >= hard_signal_at
 			{
-				if process_platform::signal_owned_process_group(&identity, libc::SIGKILL).is_err() {
+				if process_platform::signal_owned_process_group(&identity, SIGKILL).is_err() {
 					if let Err(error) = refresh_owned_exit(&mut owned_process) {
 						self.restore_owned(key, owned_process, &mut supervision)?;
 
@@ -357,7 +358,7 @@ impl ProcessGenerationControl {
 				hard_signal_sent = true;
 			}
 
-			tokio::time::sleep(Duration::from_millis(10)).await;
+			time::sleep(Duration::from_millis(10)).await;
 		}
 
 		let unknown = self
@@ -936,7 +937,7 @@ impl ProcessGenerationControl {
 	async fn find_bound_generation(
 		&self,
 		generation_id: &ProcessGenerationId,
-	) -> Result<Option<decodex_core::BoundProcessGeneration>, ProcessSupervisorError> {
+	) -> Result<Option<BoundProcessGeneration>, ProcessSupervisorError> {
 		let mut after = None;
 
 		loop {
@@ -1267,7 +1268,7 @@ impl ProcessGenerationControl {
 	) -> Result<(), ProcessSupervisorError> {
 		child.close_private_lifetime_channels();
 
-		let _ = process_platform::signal_owned_process_group_id(process_group_id, libc::SIGKILL);
+		let _ = process_platform::signal_owned_process_group_id(process_group_id, SIGKILL);
 		let mutation = self
 			.inner
 			.store
@@ -1312,7 +1313,7 @@ impl ProcessGenerationControl {
 	) -> Result<(), ProcessSupervisorError> {
 		child.close_private_lifetime_channels();
 
-		let _ = process_platform::signal_owned_process_group(&identity, libc::SIGKILL);
+		let _ = process_platform::signal_owned_process_group(&identity, SIGKILL);
 		let current = match self.find_generation(&intent.generation_id).await {
 			Ok(current) => current,
 			Err(error) => {
@@ -1666,7 +1667,7 @@ pub enum ProcessSupervisorError {
 	/// A requested bounded termination duration was invalid.
 	InvalidTerminationWait,
 }
-impl std::error::Error for ProcessSupervisorError {}
+impl Error for ProcessSupervisorError {}
 
 impl Display for ProcessSupervisorError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -1815,7 +1816,7 @@ async fn wait_owned_briefly(process: &mut OwnedGeneration) -> Result<(), Process
 			break;
 		}
 
-		tokio::time::sleep(Duration::from_millis(10)).await;
+		time::sleep(Duration::from_millis(10)).await;
 	}
 
 	Ok(())
@@ -1830,7 +1831,15 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
-	use super::OwnedGenerationRegistry;
+	use crate::{
+		account_launch::process::tests,
+		process_supervisor::{OwnedGenerationRegistry, ProcessGenerationControl, process_platform},
+	};
+	use decodex_core::{
+		AccountId, DecodexRoot, ProcessControlKind, ProcessExecutionAuthorization,
+		ProcessExecutionEpochId, ProcessGenerationId, ProcessGenerationIntent,
+		ProcessIsolationKind, ProcessRunnerIdentity,
+	};
 
 	const CONCURRENCY_TIMEOUT: Duration = Duration::from_secs(2);
 	const EXCLUSION_WINDOW: Duration = Duration::from_millis(200);
@@ -1838,12 +1847,6 @@ mod tests {
 	fn failed_identity_intent(
 		control: &super::ProcessGenerationControl,
 	) -> super::ProcessGenerationIntent {
-		use decodex_core::{
-			AccountId, ProcessControlKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
-			ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind,
-			ProcessRunnerIdentity,
-		};
-
 		ProcessGenerationIntent {
 			generation_id: ProcessGenerationId::new("30000000-0000-4000-8000-000000000001")
 				.unwrap(),
@@ -1863,10 +1866,6 @@ mod tests {
 
 	#[test]
 	fn cancelled_failed_identity_cleanup_releases_supervision() {
-		use super::ProcessGenerationControl;
-
-		use decodex_core::DecodexRoot;
-
 		use std::{
 			future::Future as _,
 			task::{Context, Poll, Waker},
@@ -1883,15 +1882,12 @@ mod tests {
 		let control = runtime.block_on(ProcessGenerationControl::start(store)).unwrap();
 
 		for bound in [false, true] {
-			let child =
-				crate::account_launch::process::tests::supervisor_child_fixture(directory.path());
+			let child = tests::supervisor_child_fixture(directory.path());
 			let process_id = child.process_id();
-			let identity = super::process_platform::inspect_process_identity(
-				process_id,
-				&control.inner.boot_id,
-			)
-			.unwrap()
-			.unwrap();
+			let identity =
+				process_platform::inspect_process_identity(process_id, &control.inner.boot_id)
+					.unwrap()
+					.unwrap();
 			let intent = failed_identity_intent(&control);
 			let generation_id = intent.generation_id.clone();
 			let mut supervision = control.reserve_supervision(&generation_id).unwrap();
@@ -2151,15 +2147,12 @@ mod tests {
 		for bound in [false, true] {
 			let intent = failed_identity_intent(&control);
 			let mut supervision = control.reserve_supervision(&intent.generation_id).unwrap();
-			let child =
-				crate::account_launch::process::tests::supervisor_child_fixture(directory.path());
+			let child = tests::supervisor_child_fixture(directory.path());
 			let process_id = child.process_id();
-			let identity = super::process_platform::inspect_process_identity(
-				process_id,
-				&control.inner.boot_id,
-			)
-			.unwrap()
-			.unwrap();
+			let identity =
+				process_platform::inspect_process_identity(process_id, &control.inner.boot_id)
+					.unwrap()
+					.unwrap();
 			// No generation was inserted: both database mutations must reject the request.
 			let result = if bound {
 				control

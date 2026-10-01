@@ -1,10 +1,14 @@
 //! Discover skills before first input through the existing account-bound metadata owner.
-use super::ConversationRuntime;
-use crate::agent_skill_roots::RuntimeSkillRoots;
+use std::time::{Duration, Instant};
+
+use tokio::{sync::oneshot, time};
+
+use crate::{
+	agent_skill_roots::RuntimeSkillRoots, agent_skills, conversation::ConversationRuntime,
+};
 use decodex_protocol::{
 	AgentSkillsResult, AgentSkillsTarget, InitialModelCatalogRequest, ModelCatalogPurpose,
 };
-use std::time::Duration;
 
 impl ConversationRuntime {
 	pub(crate) async fn initial_skills(
@@ -19,16 +23,14 @@ impl ConversationRuntime {
 		}
 		// Opening the attachment menu also refreshes the model catalog. Wait for that
 		// shared metadata owner instead of reporting a spurious unavailable skill list.
-		let started = std::time::Instant::now();
-		let Ok(permit) = tokio::time::timeout(
-			Duration::from_secs(25),
-			self.inner.initial_catalog.clone().lock_owned(),
-		)
-		.await
+		let started = Instant::now();
+		let Ok(permit) =
+			time::timeout(Duration::from_secs(25), self.inner.initial_catalog.clone().lock_owned())
+				.await
 		else {
 			return AgentSkillsResult::Unavailable;
 		};
-		let (reply, received) = tokio::sync::oneshot::channel();
+		let (reply, received) = oneshot::channel();
 		let mut workers = self.inner.workers.lock().await;
 
 		if self.is_shutting_down() {
@@ -49,7 +51,7 @@ impl ConversationRuntime {
 
 					child.retain_ordinary_events(events).ok()?;
 
-					crate::agent_skills::project(&result.ok()?, cwd, &filter)
+					agent_skills::project(&result.ok()?, cwd, &filter)
 				})
 				.await;
 			let result = observation.map_or(AgentSkillsResult::Unavailable, |(_, _, _, page)| {
@@ -60,7 +62,7 @@ impl ConversationRuntime {
 
 		drop(workers);
 
-		tokio::time::timeout(Duration::from_secs(35).saturating_sub(started.elapsed()), received)
+		time::timeout(Duration::from_secs(35).saturating_sub(started.elapsed()), received)
 			.await
 			.ok()
 			.and_then(Result::ok)

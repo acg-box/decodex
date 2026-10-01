@@ -1,4 +1,4 @@
-use super::*;
+use crate::agent::tests::*;
 
 #[test]
 fn completion_summary_excludes_nonfinal_and_unscoped_items() {

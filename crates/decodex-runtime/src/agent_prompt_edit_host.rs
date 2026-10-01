@@ -1,15 +1,4 @@
 //! Public commands retain opaque reviews in the existing Agent actor. Queries are read-only.
-use super::{AgentCoordinator, AgentHost, AgentHostError};
-
-use crate::PromptEditReview;
-
-use decodex_database::AgentPromptEditAttempt;
-
-use decodex_protocol::{
-	AgentActionDto as Action, EntityId, PromptEditEvidence, PromptEditPhase as Phase,
-	PromptEditStatus, WireText,
-};
-
 use std::{
 	collections::BTreeMap,
 	sync::Arc,
@@ -17,6 +6,16 @@ use std::{
 };
 
 use tokio::sync::Mutex;
+
+use crate::{
+	PromptEditReview,
+	agent_host::{AgentCoordinator, AgentHost, AgentHostError},
+};
+use decodex_database::{AgentForkBoundary, AgentPromptEditAttempt};
+use decodex_protocol::{
+	EntityId, PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary,
+	PromptForkResult, WireText,
+};
 
 pub(super) type Reviews = Arc<Mutex<BTreeMap<String, (Instant, PromptEditReview)>>>;
 
@@ -26,13 +25,18 @@ impl AgentHost {
 	pub(super) async fn handle_prompt_edit(
 		&self,
 		key: &str,
-		action: Action,
+		action: decodex_protocol::AgentActionDto,
 		agent: Option<&mut AgentCoordinator>,
 	) -> Result<String, AgentHostError> {
 		let agent = agent.ok_or("Task connection is unavailable")?;
 
 		match action {
-			Action::PreparePromptEdit { work_id, thread_id, turn_id, item_id } => {
+			decodex_protocol::AgentActionDto::PreparePromptEdit {
+				work_id,
+				thread_id,
+				turn_id,
+				item_id,
+			} => {
 				let pending = self
 					.store
 					.agent_prompt_edit_receipt(work_id.as_str().into(), thread_id.as_str().into())
@@ -68,7 +72,11 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::ConfirmPromptEdit { work_id, thread_id, review_token } => {
+			decodex_protocol::AgentActionDto::ConfirmPromptEdit {
+				work_id,
+				thread_id,
+				review_token,
+			} => {
 				if let Some(receipt) = self
 					.store
 					.agent_prompt_edit_receipt(work_id.as_str().into(), thread_id.as_str().into())
@@ -87,7 +95,7 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::ForkPromptEdit {
+			decodex_protocol::AgentActionDto::ForkPromptEdit {
 				work_id,
 				thread_id,
 				review_token,
@@ -95,10 +103,8 @@ impl AgentHost {
 				boundary,
 			} => {
 				let boundary = match boundary {
-					decodex_protocol::PromptForkBoundary::BeforeInput =>
-						decodex_database::AgentForkBoundary::BeforeInput,
-					decodex_protocol::PromptForkBoundary::AfterTurn =>
-						decodex_database::AgentForkBoundary::AfterTurn,
+					PromptForkBoundary::BeforeInput => AgentForkBoundary::BeforeInput,
+					PromptForkBoundary::AfterTurn => AgentForkBoundary::AfterTurn,
 				};
 
 				if let Some(receipt) = self
@@ -130,7 +136,7 @@ impl AgentHost {
 
 				Ok(target_work_id.as_str().into())
 			},
-			Action::RecoverPromptFork { work_id, review_token } => {
+			decodex_protocol::AgentActionDto::RecoverPromptFork { work_id, review_token } => {
 				agent
 					.recover_prompt_fork(work_id.as_str(), review_token.as_str())
 					.await
@@ -138,14 +144,19 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::RecoverPromptEdit { work_id, thread_id } => {
+			decodex_protocol::AgentActionDto::RecoverPromptEdit { work_id, thread_id } => {
 				agent.recover_prompt_edit(work_id.as_str(), thread_id.as_str()).await.map_err(
 					|_| AgentHostError::Unknown("Prompt edit history could not be reloaded"),
 				)?;
 
 				Ok(work_id.as_str().into())
 			},
-			Action::AcknowledgePromptEditDraft { work_id, thread_id, receipt_id, review_token } =>
+			decodex_protocol::AgentActionDto::AcknowledgePromptEditDraft {
+				work_id,
+				thread_id,
+				receipt_id,
+				review_token,
+			} =>
 				self.acknowledge_prompt_draft(agent, work_id, thread_id, receipt_id, review_token)
 					.await,
 			_ => Err("Unsupported prompt edit command".into()),
@@ -227,7 +238,7 @@ impl AgentHost {
 		let mut result = PromptEditStatus {
 			work_id: work.clone(),
 			thread_id: thread.clone(),
-			phase: Phase::Idle,
+			phase: PromptEditPhase::Idle,
 			evidence: None,
 		};
 		let receipt = match self
@@ -237,7 +248,7 @@ impl AgentHost {
 		{
 			Ok(receipt) => receipt,
 			Err(_) => {
-				result.phase = Phase::Unavailable;
+				result.phase = PromptEditPhase::Unavailable;
 
 				return result;
 			},
@@ -258,12 +269,12 @@ impl AgentHost {
 			.filter(|r| matches!(r.state.as_str(), "reserved" | "applied") || prepared.is_none())
 		{
 			let phase = match receipt.state.as_str() {
-				"reserved" => Phase::Uncertain,
-				"applied" => Phase::Applied,
-				"not_submitted" | "unchanged" => Phase::Unchanged,
-				"draft_restored" => Phase::Restored,
+				"reserved" => PromptEditPhase::Uncertain,
+				"applied" => PromptEditPhase::Applied,
+				"not_submitted" | "unchanged" => PromptEditPhase::Unchanged,
+				"draft_restored" => PromptEditPhase::Restored,
 				_ => {
-					result.phase = Phase::Unavailable;
+					result.phase = PromptEditPhase::Unavailable;
 
 					return result;
 				},
@@ -281,12 +292,12 @@ impl AgentHost {
 				.await
 				.unwrap_or(false)
 			{
-				result.phase = Phase::Unavailable;
+				result.phase = PromptEditPhase::Unavailable;
 
 				return result;
 			}
 
-			(prepared, None, Phase::Review)
+			(prepared, None, PromptEditPhase::Review)
 		} else {
 			return result;
 		};
@@ -294,13 +305,13 @@ impl AgentHost {
 		if (offset > 0 && review.is_none())
 			|| review.is_some_and(|r| r.as_str() != attempt.review_token)
 		{
-			result.phase = Phase::Unavailable;
+			result.phase = PromptEditPhase::Unavailable;
 
 			return result;
 		}
 
 		result.evidence = fragment(&attempt, id, offset);
-		result.phase = if result.evidence.is_some() { phase } else { Phase::Unavailable };
+		result.phase = if result.evidence.is_some() { phase } else { PromptEditPhase::Unavailable };
 
 		result
 	}
@@ -312,7 +323,7 @@ impl AgentHost {
 		&self,
 		work: &EntityId,
 		review: &WireText,
-	) -> decodex_protocol::PromptForkResult {
+	) -> PromptForkResult {
 		use decodex_protocol::{
 			PromptForkBoundary as Boundary, PromptForkPhase as Phase, PromptForkResult as Result,
 			PromptForkStatus,
@@ -333,8 +344,8 @@ impl AgentHost {
 				target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
 				target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
 				boundary: match saved.attempt.boundary {
-					decodex_database::AgentForkBoundary::BeforeInput => Boundary::BeforeInput,
-					decodex_database::AgentForkBoundary::AfterTurn => Boundary::AfterTurn,
+					AgentForkBoundary::BeforeInput => Boundary::BeforeInput,
+					AgentForkBoundary::AfterTurn => Boundary::AfterTurn,
 				},
 				phase: match saved.state.as_str() {
 					"reserved" => Phase::Uncertain,
@@ -389,7 +400,7 @@ fn fragment(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent_host::prompt_edit::{self, AgentPromptEditAttempt};
 	#[test]
 	fn canonical_fragments_preserve_unicode_and_fit_the_transport() {
 		let a = AgentPromptEditAttempt {
@@ -410,7 +421,7 @@ mod tests {
 		let mut restored = String::new();
 
 		while restored.len() < expected.len() {
-			let page = fragment(&a, None, restored.len() as u64).unwrap();
+			let page = prompt_edit::fragment(&a, None, restored.len() as u64).unwrap();
 
 			assert_eq!(page.removed_turns, 2);
 			assert!(
@@ -422,7 +433,9 @@ mod tests {
 		}
 
 		assert_eq!(restored, expected);
-		assert!(fragment(&a, None, (expected.find('界').unwrap() + 1) as u64).is_none());
-		assert!(fragment(&a, None, expected.len() as u64).is_none());
+		assert!(
+			prompt_edit::fragment(&a, None, (expected.find('界').unwrap() + 1) as u64).is_none()
+		);
+		assert!(prompt_edit::fragment(&a, None, expected.len() as u64).is_none());
 	}
 }

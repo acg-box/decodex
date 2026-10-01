@@ -1,5 +1,10 @@
 //! Native web actions and opaque results survive the exact-item detail projection.
-use super::*;
+use tokio::{
+	io,
+	io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+};
+
+use crate::agent_detail::*;
 
 fn detail(mut item: Value) -> (String, bool) {
 	item["id"] = json!("i");
@@ -115,13 +120,11 @@ fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
 
 #[tokio::test]
 async fn paginated_native_history_preserves_page_action_and_result_error() {
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
 		for (method, result) in [

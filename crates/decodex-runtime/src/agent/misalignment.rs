@@ -1,5 +1,9 @@
 //! Explicit continuation of an exact reviewed provider precaution.
-use super::{AgentCoordinator, AgentError, ClientError, Value, exact, json};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::agent::{self, AgentCoordinator, AgentError, ClientError, Value};
+use decodex_codex::app_server_client::HistoryGuard;
+use decodex_database::{AgentDispatchState, AgentMisalignment};
 
 impl AgentCoordinator {
 	pub(super) async fn superseded_misalignment(
@@ -7,7 +11,7 @@ impl AgentCoordinator {
 		work: &str,
 		thread: &str,
 		turns: &[Value],
-	) -> Result<Option<decodex_database::AgentMisalignment>, AgentError> {
+	) -> Result<Option<AgentMisalignment>, AgentError> {
 		let expected = self.store.agent_misalignment(work.into()).await?;
 
 		Ok(expected.filter(|review| {
@@ -23,7 +27,7 @@ impl AgentCoordinator {
 	pub async fn continue_misalignment(
 		&mut self,
 		id: &str,
-		review: decodex_database::AgentMisalignment,
+		review: AgentMisalignment,
 		key: &str,
 		expected_review: &str,
 	) -> Result<(), AgentError> {
@@ -41,7 +45,7 @@ impl AgentCoordinator {
 		let work = self.store.get_agent_work_item(id.into()).await?;
 
 		if self.dispatch_paused
-			|| work.dispatch_state != decodex_database::AgentDispatchState::Idle
+			|| work.dispatch_state != AgentDispatchState::Idle
 			|| work.codex_thread_id.as_ref() != Some(&review.thread_id)
 			|| self.store.agent_misalignment(id.into()).await?.as_ref() != Some(&review)
 		{
@@ -89,19 +93,19 @@ impl AgentCoordinator {
 			.pointer("/steer/message")
 			.and_then(Value::as_str)
 			.ok_or_else(|| AgentError::Rejected("No continuation was supplied.".into()))?;
-		let timestamp = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
+		let timestamp = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Rejected("Clock before epoch.".into()))?
 			.as_millis();
 		let event = self
 			.store
 			.begin_agent_misalignment_continuation(id.into(), review.clone(), key.into())
 			.await?;
-		let result=self.client.request_with_history("turn/start",json!({"threadId":review.thread_id,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":json!({"timestamp":timestamp}).to_string()}}),guard).await;
+		let result=self.client.request_with_history("turn/start",agent::json!({"threadId":review.thread_id,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":agent::json!({"timestamp":timestamp}).to_string()}}),guard).await;
 
 		match result {
 			Ok(value) => {
-				let turn = exact(&value, "/turn/id")?;
+				let turn = agent::exact(&value, "/turn/id")?;
 
 				self.store
 					.finish_agent_misalignment_continuation(id.into(), event, review, Some(turn))
@@ -132,16 +136,13 @@ impl AgentCoordinator {
 	}
 }
 
-pub(crate) fn review_token(
-	review: &decodex_database::AgentMisalignment,
-	guard: &decodex_codex::app_server_client::HistoryGuard,
-) -> Option<String> {
+pub(crate) fn review_token(review: &AgentMisalignment, guard: &HistoryGuard) -> Option<String> {
 	use sha2::{Digest as _, Sha256};
 
 	let identity = guard.live_review_identity()?;
 
 	Some(
-		Sha256::digest(json!([review.review_id(), identity]).to_string().as_bytes())
+		Sha256::digest(agent::json!([review.review_id(), identity]).to_string().as_bytes())
 			.iter()
 			.map(|byte| format!("{byte:02x}"))
 			.collect(),
@@ -153,6 +154,6 @@ pub(crate) fn details(error: &Value) -> Option<String> {
         let explanation=value["detailedExplanation"].as_str().filter(|text|!text.trim().is_empty() && text.len()<=65_536);
         let steer=value.pointer("/steer/message").and_then(Value::as_str).filter(|text|!text.trim().is_empty() && text.len()<=1_024);
 
-        json!({"detailedExplanation":explanation,"steer":steer.map(|message|json!({"message":message}))}).to_string()
+        agent::json!({"detailedExplanation":explanation,"steer":steer.map(|message|agent::json!({"message":message}))}).to_string()
     })
 }

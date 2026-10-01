@@ -2,23 +2,21 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	path::Path,
 	sync::OnceLock,
 };
 
+use serde::Deserialize;
+use sha2::{Digest as _, Sha256};
+
 use decodex_core::ConversationId;
-
 use decodex_database::{ProgramCycleRecord, ProgramDomainPackBinding};
-
 use decodex_protocol::{
 	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 	DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
 	DomainPackViewKind, DomainRelationDto, EntityId, PAPER_INVESTMENT_DOMAIN_PACK_ID,
 	ProviderThreadId, Sha256Digest, WireText,
 };
-
-use serde::Deserialize;
-
-use sha2::{Digest as _, Sha256};
 
 const MANIFEST_SCHEMA: &str = "decodex/domain-pack/1";
 const MANIFEST_DIGEST_DOMAIN: &[u8] = b"decodex-domain-pack-manifest-v1\0";
@@ -578,7 +576,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn repository_title(path: &str) -> String {
-	std::path::Path::new(path)
+	Path::new(path)
 		.file_name()
 		.and_then(|name| name.to_str())
 		.filter(|name| !name.is_empty())
@@ -603,18 +601,21 @@ fn field(
 
 #[cfg(test)]
 mod tests {
+	use crate::domain_packs::{
+		self, ConversationId, DEVELOPMENT_DOMAIN_PACK_ID, DEVELOPMENT_MANIFEST_DIGEST,
+		DomainPackError, HashMap, PAPER_INVESTMENT_DOMAIN_PACK_ID,
+		PAPER_INVESTMENT_MANIFEST_DIGEST, ProgramCycleRecord, ProgramDomainPackBinding,
+		ProviderThreadId, WireText,
+	};
 	use decodex_core::{
 		ObjectiveId, ObjectiveState, ProgramId, ProgramState, WorkItemId, WorkItemState,
 	};
-
 	use decodex_database::{ProgramCharterRecord, ProgramObjectiveRecord, ProgramWorkItemRecord};
-
-	use super::*;
 
 	fn resolve_identity(
 		pack_id: &str,
 	) -> Result<decodex_database::DomainPackIdentity, DomainPackError> {
-		let pack = registry()?.pack(pack_id)?;
+		let pack = domain_packs::registry()?.pack(pack_id)?;
 
 		Ok(decodex_database::DomainPackIdentity {
 			pack_id: pack.descriptor.id.as_str().to_owned(),
@@ -693,12 +694,12 @@ mod tests {
 		assert_eq!(development.pack_digest, DEVELOPMENT_MANIFEST_DIGEST);
 		assert_eq!(paper.pack_digest, PAPER_INVESTMENT_MANIFEST_DIGEST);
 		assert_ne!(development.pack_digest, paper.pack_digest);
-		assert_eq!(registry().expect("registry").packs.len(), 2);
+		assert_eq!(domain_packs::registry().expect("registry").packs.len(), 2);
 	}
 
 	#[test]
 	fn treasury_fixture_has_expected_curve_metrics() {
-		let observations = &registry().expect("registry").treasury.observations;
+		let observations = &domain_packs::registry().expect("registry").treasury.observations;
 		let spreads = observations
 			.iter()
 			.map(|item| item.ten_year_basis_points - item.two_year_basis_points)
@@ -715,19 +716,20 @@ mod tests {
 	fn projections_are_stable_and_domain_distinct() {
 		let development = program(DEVELOPMENT_DOMAIN_PACK_ID);
 		let provider_threads = HashMap::new();
-		let first = projection(&development, &provider_threads)
+		let first = domain_packs::projection(&development, &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
-		let second = projection(&development, &provider_threads)
+		let second = domain_packs::projection(&development, &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
 
 		assert_eq!(first, second);
 		assert_eq!(first.entities.len(), 3);
 
-		let paper = projection(&program(PAPER_INVESTMENT_DOMAIN_PACK_ID), &provider_threads)
-			.expect("projection")
-			.expect("bound projection");
+		let paper =
+			domain_packs::projection(&program(PAPER_INVESTMENT_DOMAIN_PACK_ID), &provider_threads)
+				.expect("projection")
+				.expect("bound projection");
 
 		assert_eq!(paper.entities.len(), 4);
 		assert_ne!(first.entities[0].id, paper.entities[0].id);
@@ -741,7 +743,7 @@ mod tests {
 
 		development.work_items[0].conversation_id = Some(conversation_id.clone());
 
-		let without_binding = projection(&development, &HashMap::new())
+		let without_binding = domain_packs::projection(&development, &HashMap::new())
 			.expect("projection")
 			.expect("bound projection");
 		let change = without_binding
@@ -759,7 +761,7 @@ mod tests {
 			ProviderThreadId::new("provider-thread:opaque-1").expect("provider thread identity"),
 		);
 
-		let with_binding = projection(&development, &provider_threads)
+		let with_binding = domain_packs::projection(&development, &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
 		let change = with_binding
@@ -783,7 +785,7 @@ mod tests {
 		record.domain_pack = program(DEVELOPMENT_DOMAIN_PACK_ID).domain_pack;
 
 		let validation = |record: &ProgramCycleRecord| {
-			projection(record, &HashMap::new())
+			domain_packs::projection(record, &HashMap::new())
 				.unwrap()
 				.unwrap()
 				.entities
@@ -815,12 +817,15 @@ mod tests {
 
 		record.domain_pack.as_mut().expect("binding").pack_digest.replace_range(0..1, "0");
 
-		assert_eq!(projection(&record, &HashMap::new()), Err(DomainPackError::BindingMismatch));
+		assert_eq!(
+			domain_packs::projection(&record, &HashMap::new()),
+			Err(DomainPackError::BindingMismatch)
+		);
 
 		let paper = resolve_identity(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("paper Pack");
 
 		assert!(
-			!registry()
+			!domain_packs::registry()
 				.expect("registry")
 				.pack(&paper.pack_id)
 				.expect("paper Pack")

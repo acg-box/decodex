@@ -1,17 +1,26 @@
 //! Native media history and exact public byte reads through the production service.
-use super::*;
-use decodex_protocol::{AgentMediaRequest, AgentMediaResult};
+use std::{
+	env,
+	fs::{self, File},
+	path::Path,
+	sync::atomic::AtomicUsize,
+};
+
+use tokio::{process::Command, time};
+
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use decodex_protocol::{AgentMediaRequest, AgentMediaResult, AgentResourcesResult};
 
 pub(super) async fn check(
 	client: &AgentClient,
 	runtime: &ConversationRuntime,
-	home: &std::path::Path,
+	home: &Path,
 	account: &AccountId,
-	requests: &std::sync::atomic::AtomicUsize,
+	requests: &AtomicUsize,
 ) {
 	let png = include_bytes!("../../../../assets/workspace-symbols/plus.png");
 
-	std::fs::write(home.join("fixture.png"), png).expect("native media fixture");
+	fs::write(home.join("fixture.png"), png).expect("native media fixture");
 	// A complete two-second PCM WAV forces several public chunks.
 	let mut wav = b"RIFF".to_vec();
 
@@ -28,11 +37,11 @@ pub(super) async fn check(
 	wav.extend(64000_u32.to_le_bytes());
 	wav.resize(64_044, 0);
 
-	std::fs::write(home.join("fixture.wav"), &wav).expect("native media fixture");
+	fs::write(home.join("fixture.wav"), &wav).expect("native media fixture");
 
 	let thread_directory = home.join("thread-directory");
 
-	std::fs::create_dir(&thread_directory).expect("native media fixture");
+	fs::create_dir(&thread_directory).expect("native media fixture");
 
 	let work = EntityId::new("recap-root").expect("native media fixture");
 
@@ -77,7 +86,7 @@ pub(super) async fn check(
 			break;
 		}
 
-		tokio::time::sleep(Duration::from_millis(20)).await;
+		time::sleep(Duration::from_millis(20)).await;
 	}
 
 	assert_eq!(settled(client).await, thread);
@@ -123,7 +132,7 @@ pub(super) async fn check(
 		request.fingerprint = None;
 
 		if index == 1 {
-			std::fs::write(
+			fs::write(
 				home.join("media-source.json"),
 				serde_json::to_vec(&request).expect("native media fixture"),
 			)
@@ -140,7 +149,7 @@ pub(super) async fn check(
 
 	assert_eq!(requests.load(Ordering::Acquire), before, "media reads cannot infer");
 
-	std::fs::write(
+	fs::write(
 		home.join("media-evidence.json"),
 		serde_json::to_vec_pretty(
 			&json!({"thread":thread,"turn":turn,"item":item,"reads":evidence,"model_requests":before}),
@@ -156,8 +165,6 @@ pub(super) async fn check(
 }
 
 async fn qualify_resources(client: &AgentClient, work: &EntityId) {
-	use decodex_protocol::AgentResourcesResult;
-
 	let empty = AgentResourcesResult::Available { resources: vec![] };
 
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), empty);
@@ -202,20 +209,20 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 }
 
 async fn qualify_desktop(
-	home: &std::path::Path,
+	home: &Path,
 	work: &EntityId,
 	item: &Value,
-	requests: &std::sync::atomic::AtomicUsize,
+	requests: &AtomicUsize,
 	before: usize,
 ) {
-	if let Some(binary) = std::env::var_os("DECODEX_TEST_MEDIA_GUI_BINARY") {
+	if let Some(binary) = env::var_os("DECODEX_TEST_MEDIA_GUI_BINARY") {
 		assert!(std::path::Path::new(&binary).is_absolute());
 
 		let log = home.join("media-capture.log");
-		let stdout = std::fs::File::create(&log).expect("native media fixture");
+		let stdout = File::create(&log).expect("native media fixture");
 		let stderr = stdout.try_clone().expect("native media fixture");
 		let output = home.join("media-live.png");
-		let mut child = tokio::process::Command::new(binary)
+		let mut child = Command::new(binary)
 			.env("DECODEX_VISUAL_AGENT_ROOT", home.join("product"))
 			.env("DECODEX_VISUAL_AGENT_WORK", work.as_str())
 			.env("DECODEX_VISUAL_MEDIA", "1")
@@ -225,7 +232,7 @@ async fn qualify_desktop(
 			.kill_on_drop(true)
 			.spawn()
 			.expect("native media fixture");
-		let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+		let status = time::timeout(Duration::from_secs(30), child.wait())
 			.await
 			.expect("bounded desktop capture")
 			.expect("native media fixture");
@@ -233,7 +240,7 @@ async fn qualify_desktop(
 		assert!(status.success(), "media capture failed; inspect {}", log.display());
 
 		let saved: Value = serde_json::from_slice(
-			&std::fs::read(output.with_extension("media.json")).expect("native media fixture"),
+			&fs::read(output.with_extension("media.json")).expect("native media fixture"),
 		)
 		.expect("native media fixture");
 

@@ -1,7 +1,11 @@
 //! Service shutdown with a witnessed active native request in an isolated fixture.
-use super::*;
+use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 
-pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, account: &AccountId) {
+use tokio::time;
+
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+
+pub(super) async fn prepare(client: &AgentClient, home: &Path, account: &AccountId) {
 	accepted(
 		client,
 		Action::Start(AgentStartDto {
@@ -21,7 +25,7 @@ pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, accoun
 	)
 	.await;
 
-	tokio::time::timeout(Duration::from_secs(15), async {
+	time::timeout(Duration::from_secs(15), async {
 		loop {
 			if home.join("active-provider-started").exists()
 				&& let AgentSnapshotResult::Available(snapshot) =
@@ -30,7 +34,7 @@ pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, accoun
 				&& work.dispatch_state == AgentDispatchStateDto::Running
 				&& work.active_turn_id.is_some()
 			{
-				std::fs::write(
+				fs::write(
 					home.join("active-shutdown-before.json"),
 					serde_json::to_vec_pretty(work).expect("work evidence"),
 				)
@@ -39,21 +43,21 @@ pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, accoun
 				break;
 			}
 
-			tokio::time::sleep(Duration::from_millis(20)).await;
+			time::sleep(Duration::from_millis(20)).await;
 		}
 	})
 	.await
 	.expect("witness active model request before service shutdown");
 }
 
-pub(super) async fn verify(home: &std::path::Path, requests: &std::sync::atomic::AtomicUsize) {
-	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
+pub(super) async fn verify(home: &Path, requests: &AtomicUsize) {
+	if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
 		return;
 	}
 
-	tokio::time::timeout(Duration::from_secs(5), async {
+	time::timeout(Duration::from_secs(5), async {
 		while !home.join("active-provider-closed").exists() {
-			tokio::time::sleep(Duration::from_millis(20)).await;
+			time::sleep(Duration::from_millis(20)).await;
 		}
 	})
 	.await
@@ -61,7 +65,7 @@ pub(super) async fn verify(home: &std::path::Path, requests: &std::sync::atomic:
 
 	assert_eq!(requests.load(Ordering::Acquire), 1, "shutdown cannot replay input");
 
-	std::fs::write(
+	fs::write(
 		home.join("active-shutdown-result.json"),
 		b"{\"service_shutdown_success\":true,\"provider_closed\":true,\"model_requests\":1}\n",
 	)

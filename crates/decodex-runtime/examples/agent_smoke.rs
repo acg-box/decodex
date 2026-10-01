@@ -24,16 +24,17 @@ use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentDispatchState, AgentDisposition, AgentWorkStatus, SqliteStore};
 use decodex_runtime::{AgentConfig, AgentCoordinator};
-use serde_json::json;
-use tokio::{process::Command, time::timeout};
+use tokio::process::Command;
+
+use std::{collections::HashSet, env, path::Path};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-	let mut arguments = std::env::args().skip(1);
+	let mut arguments = env::args().skip(1);
 	let model = arguments.next().ok_or("explicit MODEL required")?;
 	let cwd = arguments.next().ok_or("explicit ABSOLUTE_CWD required")?;
 
-	if !std::path::Path::new(&cwd).is_absolute() {
+	if !Path::new(&cwd).is_absolute() {
 		return Err("working directory must be absolute".into());
 	}
 
@@ -51,16 +52,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let mut config = AgentConfig::new(model.clone(), "medium".into(), cwd);
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
-	let result = timeout(Duration::from_secs(300), async {
+	let result = tokio::time::timeout(Duration::from_secs(300), async {
 		let mut agent = AgentCoordinator::new(store.clone(), client.clone(), config)?;
 
 		agent.initialize().await?;
 
 		println!("App-server initialized.");
 
-		let catalog = client.request("model/list", json!({})).await?;
+		let catalog = client.request("model/list", serde_json::json!({})).await?;
 
 		if !catalog["data"].as_array().is_some_and(|entries| {
 			entries.iter().any(|entry| entry["model"] == model)
@@ -97,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 
 		let work = store.list_agent_work_items().await?;
-		let ids: std::collections::HashSet<_> = work.iter().filter_map(|item| item.codex_thread_id.as_ref()).collect();
+		let ids: HashSet<_> = work.iter().filter_map(|item| item.codex_thread_id.as_ref()).collect();
 
 		if ids.len() != 3 { return Err("expected three independent Codex threads".into()); }
 
@@ -134,7 +135,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 
 		let source = "smoke:automation:decision:1";
-		let payload = json!({"observation":"Options A and B are available; user selection is required."});
+		let payload = serde_json::json!({"observation":"Options A and B are available; user selection is required."});
 
 		agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
 		agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
@@ -177,7 +178,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 		for item in &work {
 			if let Some(thread_id) = &item.codex_thread_id {
-				client.request("thread/archive", json!({"threadId":thread_id})).await?;
+				client.request("thread/archive", serde_json::json!({"threadId":thread_id})).await?;
 			}
 		}
 

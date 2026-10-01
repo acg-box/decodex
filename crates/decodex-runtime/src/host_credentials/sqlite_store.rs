@@ -2,13 +2,12 @@
 
 use std::fmt::{Debug, Formatter};
 
+use crate::host_credentials::{
+	self, CredentialSecretBundle, CredentialStoreError, HostCredentialStore, PersistedCredential,
+	StoredCredential,
+};
 use decodex_core::{AccountId, CredentialBinding, CredentialVersion};
 use decodex_database::{CredentialKey, CredentialRecord, DatabaseError, SqliteStore};
-
-use super::{
-	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, PersistedCredential,
-	StoredCredential, decode, encode, enforce_exact, fingerprint, provider_text, seal_exact_read,
-};
 
 /// Narrow secret-bearing adapter over the same physical SQLite product authority.
 pub struct SqliteCredentialStore {
@@ -25,7 +24,7 @@ impl SqliteCredentialStore {
 		account_id: &AccountId,
 	) -> Result<(PersistedCredential, CredentialBinding), CredentialStoreError> {
 		let record = self.store.read_credential(account_id.as_str()).map_err(map_read_error)?;
-		let (persisted, fingerprint) = decode(record.payload.to_vec())?;
+		let (persisted, fingerprint) = host_credentials::decode(record.payload.to_vec())?;
 
 		if persisted.account_id()? != *account_id {
 			return Err(CredentialStoreError::AccountMismatch);
@@ -65,10 +64,10 @@ impl HostCredentialStore for SqliteCredentialStore {
 			&target.provider,
 			bundle,
 		);
-		let bytes = encode(&persisted)?;
-		let binding = persisted.binding(fingerprint(&bytes)?)?;
+		let bytes = host_credentials::encode(&persisted)?;
+		let binding = persisted.binding(host_credentials::fingerprint(&bytes)?)?;
 
-		enforce_exact(&binding, target)?;
+		host_credentials::enforce_exact(&binding, target)?;
 
 		self.store
 			.create_credential(CredentialRecord {
@@ -105,10 +104,10 @@ impl HostCredentialStore for SqliteCredentialStore {
 			&target.provider,
 			bundle,
 		);
-		let bytes = encode(&persisted)?;
-		let binding = persisted.binding(fingerprint(&bytes)?)?;
+		let bytes = host_credentials::encode(&persisted)?;
+		let binding = persisted.binding(host_credentials::fingerprint(&bytes)?)?;
 
-		enforce_exact(&binding, target)?;
+		host_credentials::enforce_exact(&binding, target)?;
 
 		self.store
 			.create_credential(CredentialRecord {
@@ -126,7 +125,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 		let (persisted, binding) = self.read_record(account_id)?;
 		let bundle = persisted.into_bundle()?;
 
-		seal_exact_read(account_id, &binding, expected, bundle)
+		host_credentials::seal_exact_read(account_id, &binding, expected, bundle)
 	}
 
 	fn compare_and_swap_rotate(
@@ -145,7 +144,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 
 		let (_, actual) = self.read_record(account_id)?;
 
-		enforce_exact(&actual, expected)?;
+		host_credentials::enforce_exact(&actual, expected)?;
 
 		let persisted = PersistedCredential::new(
 			account_id,
@@ -154,10 +153,10 @@ impl HostCredentialStore for SqliteCredentialStore {
 			&target.provider,
 			bundle,
 		);
-		let bytes = encode(&persisted)?;
-		let target_binding = persisted.binding(fingerprint(&bytes)?)?;
+		let bytes = host_credentials::encode(&persisted)?;
+		let target_binding = persisted.binding(host_credentials::fingerprint(&bytes)?)?;
 
-		enforce_exact(&target_binding, target)?;
+		host_credentials::enforce_exact(&target_binding, target)?;
 
 		self.store
 			.rotate_credential(
@@ -174,7 +173,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 	) -> Result<(), CredentialStoreError> {
 		let (_, actual) = self.read_record(account_id)?;
 
-		enforce_exact(&actual, expected)?;
+		host_credentials::enforce_exact(&actual, expected)?;
 
 		self.store
 			.delete_credential(&credential_key(expected, account_id))
@@ -189,7 +188,7 @@ fn credential_key(binding: &CredentialBinding, account_id: &AccountId) -> Creden
 		credential_version: binding.version.get(),
 		fingerprint: binding.fingerprint.as_str().to_owned(),
 		writer_operation_id: binding.writer_operation_id.as_str().to_owned(),
-		provider: provider_text(binding.provider.provider()).to_owned(),
+		provider: host_credentials::provider_text(binding.provider.provider()).to_owned(),
 		provider_account_id: binding.provider.account_id().to_owned(),
 	}
 }

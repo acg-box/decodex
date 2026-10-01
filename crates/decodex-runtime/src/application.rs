@@ -11,63 +11,19 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
-use decodex_core::{
-	AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
-	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
-	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
-	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProgramId,
-	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
-	TurnRole,
-};
-
-use decodex_database::{
-	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity, DatabaseError,
-	DesktopSettings as StoreDesktopSettings, HistoryCursor, HistoryEntry,
-	OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
-	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
-	ProgramSummaryRecord, RoutingControlOutcome, SqliteStore, StoreError,
-};
-
-use decodex_protocol::{
-	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
-	AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
-	AccountLoginRequest, AccountLoginStatus, AccountManualRecoveryActionDto,
-	AccountManualRecoveryOutcomeDto, AccountObservedStateDto, AccountOperationKindDto,
-	AccountOperationPhaseDto, AccountProfileDailyUsageDto, AccountProfileDto,
-	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, AccountProviderDto,
-	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutingControlDto,
-	AccountSelectionModeDto, AccountSelectionRecoveryDto, AccountUnsettledOperationDto,
-	AccountsResult, CausationId, Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError,
-	CommandPayload, ConversationExecutionSettings as ConversationExecutionSettingsDto,
-	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
-	ConversationListPage, ConversationListResult, ConversationProgramContext,
-	ConversationReadError, ConversationRecoveryAction, ConversationResult, ConversationState,
-	ConversationSummary, ConversationTitle, ConversationTurnOutcome, CorrelationId,
-	DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, DoctorCheck,
-	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
-	EventPayload, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
-	HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
-	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
-	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, ProgramCycleDto,
-	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
-	ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, ProviderThreadId, QueryEnvelope,
-	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
-	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
-	ResultPayload, Sha256Digest, SnapshotItem, WireText,
-};
-
 use serde::{Deserialize, Serialize};
-
-use tokio::sync::watch;
+use tokio::{
+	runtime::Handle,
+	sync::watch::{self, Receiver, Sender},
+};
 
 use crate::{
-	CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
+	CredentialRefreshError, CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{
 		ApiResetCardRuntime, ResetCardFailureCode, ResetCardInventoryObservation,
 		ResetCardOperationStatus, ResetCardServiceError,
 	},
+	account_login::{self, AccountLoginManager},
 	account_observation::AccountObservationService,
 	account_profile::{
 		AccountProfileClaimsView, AccountProfileRuntimeError, AccountProfileRuntimeResult,
@@ -78,6 +34,10 @@ use crate::{
 		AccountRouteCommit, AccountRouteFailure, AccountRouteResult, AccountService,
 		CodexAuthProjectionInspection,
 	},
+	agent_app_ui_receipt, agent_detail, agent_guardian,
+	agent_host::AgentHostError,
+	agent_recap::Recaps,
+	agent_voice,
 	conversation::{
 		ControlConversation, ConversationCapability, ConversationControlOutcome,
 		ConversationExecutionSettings as RuntimeConversationExecutionSettings,
@@ -85,8 +45,79 @@ use crate::{
 		ConversationProjection, ConversationReadback, ConversationRuntime,
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
-	domain_packs,
+	dictation, domain_packs, mcp_login,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
+};
+use decodex_codex::ThreadTokenUsage;
+use decodex_core::{
+	AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
+	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
+	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
+	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProgramEvidenceKind, ProgramId,
+	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
+	TurnRole,
+};
+use decodex_database::{
+	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
+	AccountCommandReceiptLease, AccountLifecycleRejection, AgentCapacityRetry, AgentDispatchState,
+	AgentDisposition, AgentInboxEvent, AgentLiveOutput, AgentStoreSnapshot, AgentWorkItem,
+	AgentWorkKind, AgentWorkStatus, CommandIdentity, ConversationNativeSettingsObservation,
+	ConversationRequest, DatabaseError, DesktopSettings as StoreDesktopSettings, HistoryCursor,
+	HistoryEntry, InitialModelReviewOutcome, OrdinaryTaskConversationCursor,
+	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
+	OrdinaryTaskPreSessionState, ProgramClaimRecord, ProgramCycleRecord, ProgramEvidenceRecord,
+	ProgramObjectiveRecord, ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord,
+	ProgramSummaryRecord, ProgramWorkItemRecord, ReviewInitialModelSettings, RoutingControlOutcome,
+	SqliteStore, StoreError,
+};
+use decodex_protocol::{
+	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
+	AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
+	AccountLoginRequest, AccountLoginStatus, AccountManualRecoveryActionDto,
+	AccountManualRecoveryOutcomeDto, AccountObservedStateDto, AccountOperationKindDto,
+	AccountOperationPhaseDto, AccountProfileDailyUsageDto, AccountProfileDto,
+	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, AccountProviderDto,
+	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRecoveryAction,
+	AccountRecoveryPreparation, AccountRecoveryState, AccountResetCardOperationResult,
+	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
+	AccountUnsettledOperationDto, AccountsResult, AgentActivityDetailCursor,
+	AgentAppExposureResult, AgentAppSettingsResult, AgentAppUiCallReview, AgentAppUiReceiptResult,
+	AgentAppUiResult, AgentArchiveResult, AgentAsyncQuestionDto, AgentCapabilitiesResult,
+	AgentDependencyDto, AgentDispatchStateDto, AgentGuardianDetailResult, AgentHistoryResult,
+	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
+	AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
+	AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
+	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
+	AgentPermissionState, AgentPluginSelectionState, AgentRequestResult, AgentRequestText,
+	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSnapshotResult,
+	AgentSteerIdentity, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
+	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AgentWorkspaceDto, CausationId,
+	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	ConversationExecutionSettings as ConversationExecutionSettingsDto, ConversationHistoryPage,
+	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
+	ConversationListResult, ConversationModel, ConversationModelReviewResult,
+	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
+	ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult, ConversationState,
+	ConversationSummary, ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory,
+	CorrelationId, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult,
+	DictationRequest, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
+	EntityId, EntityRevision, EventPayload, HistoryArtifactId, HistoryArtifactReference,
+	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
+	HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
+	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_DEPENDENCIES,
+	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
+	MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_PAGE_SIZE, McpLoginPhase, McpLoginRequest,
+	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeProcessDiagnostics,
+	ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto,
+	ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, PromptEditPhase,
+	PromptEditStatus, PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus,
+	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
+	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -112,7 +143,7 @@ pub trait Application: Send + Sync + 'static {
 	/// futures before it drops the application or releases local transport authority.
 	fn daemon_service_tasks(
 		&self,
-		_stop: watch::Receiver<bool>,
+		_stop: Receiver<bool>,
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		Vec::new()
 	}
@@ -158,7 +189,7 @@ pub trait Application: Send + Sync + 'static {
 		&'a self,
 		request: &'a AccountLoginRequest,
 	) -> impl Future<Output = AccountLoginStatus> + Send + 'a {
-		future::ready(crate::account_login::unavailable_status(request))
+		future::ready(account_login::unavailable_status(request))
 	}
 
 	/// Wait for one application-owned publication that completes after its initiating command.
@@ -200,9 +231,9 @@ impl ApplicationPublication {
 /// One asynchronous application event ready for ordered WebSocket publication.
 pub struct ApplicationEventPublication {
 	/// Correlation identity retained from the initiating command.
-	pub correlation_id: decodex_protocol::CorrelationId,
+	pub correlation_id: CorrelationId,
 	/// Optional direct cause retained from the initiating command.
-	pub causation_id: Option<decodex_protocol::CausationId>,
+	pub causation_id: Option<CausationId>,
 	/// Logical channel for this event.
 	pub channel: Channel,
 	/// Stable identity of the changed or appended entity.
@@ -222,10 +253,10 @@ pub(crate) struct ServiceApplication {
 	provider_attempts: Option<ProviderAttemptControl>,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
-	publication_stop: watch::Sender<bool>,
+	publication_stop: Sender<bool>,
 	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
-	account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
+	account_login: Option<Arc<AccountLoginManager>>,
 	conversations: ConversationCapability,
 	doctor: DoctorReport,
 }
@@ -245,7 +276,7 @@ impl ServiceApplication {
 			QueryPayload::GetAgentGuardianDetail { work_id, review_row, review_digest, offset } =>
 				QueryResultPayload::AgentGuardianDetail(match &self.store {
 					ProductStore::Available(store) =>
-						crate::agent_guardian::detail(
+						agent_guardian::detail(
 							store,
 							work_id.as_str(),
 							*review_row,
@@ -253,8 +284,7 @@ impl ServiceApplication {
 							*offset,
 						)
 						.await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::AgentGuardianDetailResult::Unavailable,
+					ProductStore::Unavailable(_) => AgentGuardianDetailResult::Unavailable,
 				}),
 			_ => unreachable!("only Guardian queries reach this owner"),
 		}
@@ -263,74 +293,67 @@ impl ServiceApplication {
 	async fn query_native_goal(&self, work: &str, thread: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentNativeGoal(match &self.agent {
 			Some(agent) => agent.native_goal(work, thread).await,
-			None => decodex_protocol::AgentNativeGoalResult::Unavailable,
+			None => AgentNativeGoalResult::Unavailable,
 		})
 	}
 
 	async fn query_app_exposure(&self, work: &str, connector: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentAppExposure(match &self.agent {
 			Some(agent) => agent.app_tool_exposure(work, connector).await,
-			None => decodex_protocol::AgentAppExposureResult::Unavailable,
+			None => AgentAppExposureResult::Unavailable,
 		})
 	}
 
 	async fn query_integrations(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentIntegrations(match &self.agent {
 			Some(agent) => agent.integrations(work).await,
-			None => decodex_protocol::AgentIntegrationsResult::Unavailable,
+			None => AgentIntegrationsResult::Unavailable,
 		})
 	}
 
 	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentHookSettings(match &self.agent {
 			Some(agent) => agent.hook_settings(work).await,
-			None => decodex_protocol::AgentHookSettingsState::Unavailable,
+			None => AgentHookSettingsState::Unavailable,
 		})
 	}
 
 	async fn query_plugin_selection(&self, _work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentPluginSelection(
-			decodex_protocol::AgentPluginSelectionState::Unavailable,
-		)
+		QueryResultPayload::AgentPluginSelection(AgentPluginSelectionState::Unavailable)
 	}
 
 	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentModelSelection(match &self.agent {
 			Some(agent) => agent.model_selection(work).await,
-			None => decodex_protocol::AgentModelSelectionState::Unavailable,
+			None => AgentModelSelectionState::Unavailable,
 		})
 	}
 
 	async fn query_permission_profiles(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentPermissionProfiles(match &self.agent {
 			Some(agent) => agent.permission_profiles(work).await,
-			None => decodex_protocol::AgentPermissionState::Unavailable,
+			None => AgentPermissionState::Unavailable,
 		})
 	}
 
 	async fn query_live_reviewer(&self, work: &str, include_models: bool) -> QueryResultPayload {
 		QueryResultPayload::AgentLiveReviewer(match &self.agent {
 			Some(agent) => agent.live_reviewer(work, include_models).await,
-			None => decodex_protocol::AgentLiveReviewerState::Unavailable,
+			None => AgentLiveReviewerState::Unavailable,
 		})
 	}
 
-	async fn query_dictation(
-		&self,
-		request: &decodex_protocol::DictationRequest,
-	) -> QueryResultPayload {
+	async fn query_dictation(&self, request: &DictationRequest) -> QueryResultPayload {
 		QueryResultPayload::Dictation(match &self.agent {
 			Some(agent) => agent.dictation(request).await,
-			None =>
-				crate::dictation::failed(request.session_id().clone(), "Agent is not connected."),
+			None => dictation::failed(request.session_id().clone(), "Agent is not connected."),
 		})
 	}
 
-	fn query_voice(&self, request: &decodex_protocol::AgentVoiceRequest) -> QueryResultPayload {
+	fn query_voice(&self, request: &AgentVoiceRequest) -> QueryResultPayload {
 		QueryResultPayload::AgentVoice(match &self.agent {
 			Some(agent) => agent.voice(request),
-			None =>
-				crate::agent_voice::failed(request.session_id().clone(), "Agent is not connected."),
+			None => agent_voice::failed(request.session_id().clone(), "Agent is not connected."),
 		})
 	}
 
@@ -340,20 +363,18 @@ impl ServiceApplication {
 		after_revision: Option<u64>,
 	) -> QueryResultPayload {
 		let result = match &self.store {
-			ProductStore::Available(store) =>
-				match store.wait_agent_output(work_id.as_str().into(), after_revision).await {
-					Ok((revision, output)) => {
-						let messages = query_agent_live(output);
+			ProductStore::Available(store) => match store
+				.wait_agent_output(work_id.as_str().into(), after_revision)
+				.await
+			{
+				Ok((revision, output)) => {
+					let messages = query_agent_live(output);
 
-						decodex_protocol::AgentOutputResult::Available {
-							revision,
-							work_id: work_id.clone(),
-							messages,
-						}
-					},
-					Err(_) => decodex_protocol::AgentOutputResult::Unavailable,
+					AgentOutputResult::Available { revision, work_id: work_id.clone(), messages }
 				},
-			_ => decodex_protocol::AgentOutputResult::Unavailable,
+				Err(_) => AgentOutputResult::Unavailable,
+			},
+			_ => AgentOutputResult::Unavailable,
 		};
 
 		QueryResultPayload::AgentOutput(result)
@@ -374,7 +395,7 @@ impl ServiceApplication {
 						cursor.map(WireText::as_str),
 					)
 					.await,
-			None => decodex_protocol::NativeAgentsResult::Unavailable,
+			None => NativeAgentsResult::Unavailable,
 		})
 	}
 
@@ -392,9 +413,9 @@ impl ServiceApplication {
 	async fn query_activity_detail(
 		&self,
 		work: &decodex_protocol::EntityId,
-		turn: &decodex_protocol::WireText,
-		item: &decodex_protocol::WireText,
-		cursor: Option<&decodex_protocol::AgentActivityDetailCursor>,
+		turn: &WireText,
+		item: &WireText,
+		cursor: Option<&AgentActivityDetailCursor>,
 	) -> QueryResultPayload {
 		QueryResultPayload::AgentActivityDetail(match &self.agent {
 			Some(agent) =>
@@ -434,7 +455,7 @@ impl ServiceApplication {
 	async fn query_model_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentModelSettings(match &self.agent {
 			Some(agent) => agent.model_settings(work).await,
-			None => decodex_protocol::AgentModelSettingsResult::Unavailable,
+			None => AgentModelSettingsResult::Unavailable,
 		})
 	}
 
@@ -448,10 +469,10 @@ impl ServiceApplication {
 		QueryResultPayload::AgentPromptEdit(match &self.agent {
 			Some(agent) =>
 				agent.prompt_edit_status(work, thread, review_token.as_ref(), *offset).await,
-			None => decodex_protocol::PromptEditStatus {
+			None => PromptEditStatus {
 				work_id: work,
 				thread_id: thread,
-				phase: decodex_protocol::PromptEditPhase::Unavailable,
+				phase: PromptEditPhase::Unavailable,
 				evidence: None,
 			},
 		})
@@ -460,35 +481,32 @@ impl ServiceApplication {
 	async fn query_recap(&self, work: EntityId) -> QueryResultPayload {
 		QueryResultPayload::AgentRecap(match &self.agent {
 			Some(agent) => agent.recap_status(work).await,
-			None => crate::agent_recap::Recaps::default().status(work, None),
+			None => Recaps::default().status(work, None),
 		})
 	}
 
 	async fn query_voice_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentVoiceSettings(match &self.agent {
 			Some(agent) => agent.voice_settings(work).await,
-			None => decodex_protocol::AgentVoiceSettingsResult::Unavailable,
+			None => AgentVoiceSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_search_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentSearchSettings(match &self.agent {
 			Some(agent) => agent.search_settings(work).await,
-			None => decodex_protocol::AgentSearchSettingsResult::Unavailable,
+			None => AgentSearchSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentUsageEstimate(match &self.agent {
 			Some(agent) => agent.usage_estimate(work).await,
-			None => decodex_protocol::AgentUsageEstimateResult::Unavailable,
+			None => AgentUsageEstimateResult::Unavailable,
 		})
 	}
 
-	async fn query_steer_receipt(
-		&self,
-		identity: &decodex_protocol::AgentSteerIdentity,
-	) -> QueryResultPayload {
+	async fn query_steer_receipt(&self, identity: &AgentSteerIdentity) -> QueryResultPayload {
 		use decodex_protocol::AgentSteerReceiptResult as Receipt;
 
 		let result = match &self.store {
@@ -511,13 +529,10 @@ impl ServiceApplication {
 		QueryResultPayload::AgentSteerReceipt(result)
 	}
 
-	async fn query_media(
-		&self,
-		request: &decodex_protocol::AgentMediaRequest,
-	) -> QueryResultPayload {
+	async fn query_media(&self, request: &AgentMediaRequest) -> QueryResultPayload {
 		QueryResultPayload::AgentMedia(match &self.agent {
 			Some(agent) => agent.media(request).await,
-			None => decodex_protocol::AgentMediaResult::Unavailable,
+			None => AgentMediaResult::Unavailable,
 		})
 	}
 
@@ -529,7 +544,7 @@ impl ServiceApplication {
 	) -> QueryResultPayload {
 		QueryResultPayload::AgentTimeline(match &self.agent {
 			Some(agent) => agent.timeline(work, thread, cursor).await,
-			None => decodex_protocol::AgentTimelineResult::Unavailable,
+			None => AgentTimelineResult::Unavailable,
 		})
 	}
 
@@ -590,7 +605,7 @@ impl ServiceApplication {
 
 	pub(crate) fn with_account_login(
 		mut self,
-		account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
+		account_login: Option<Arc<AccountLoginManager>>,
 	) -> Self {
 		self.account_login = account_login;
 
@@ -635,7 +650,7 @@ impl ServiceApplication {
 			.collect();
 		let native = match &self.agent {
 			Some(agent) => agent.process_diagnostics().await,
-			None => decodex_protocol::NativeProcessDiagnostics::Inactive,
+			None => NativeProcessDiagnostics::Inactive,
 		};
 
 		DoctorReport::new(self.doctor.server_id().clone(), self.doctor.version(), checks)
@@ -816,11 +831,11 @@ impl ServiceApplication {
 	async fn prepare_account_recovery(
 		&self,
 		source: &decodex_protocol::AccountRecoveryResult,
-		action: decodex_protocol::AccountRecoveryAction,
+		action: AccountRecoveryAction,
 	) -> QueryResultPayload {
 		QueryResultPayload::AccountRecoveryPreparation(match &self.account_observations {
 			Some(observations) => observations.prepare_recovery(source, action).await,
-			None => decodex_protocol::AccountRecoveryPreparation::Unavailable,
+			None => AccountRecoveryPreparation::Unavailable,
 		})
 	}
 
@@ -835,7 +850,7 @@ impl ServiceApplication {
 				account_id: account_id.clone(),
 				account_revision,
 				observed_at_unix_micros: None,
-				state: decodex_protocol::AccountRecoveryState::Unavailable,
+				state: AccountRecoveryState::Unavailable,
 			},
 		})
 	}
@@ -1243,7 +1258,7 @@ impl ServiceApplication {
 	async fn account_reset_card_operation(
 		&self,
 		account_id: &EntityId,
-	) -> decodex_protocol::AccountResetCardOperationResult {
+	) -> AccountResetCardOperationResult {
 		use decodex_protocol::{AccountResetCardOperationResult as Result, ResetCardOperationView};
 
 		let Some(runtime) = &self.reset_cards else {
@@ -1258,11 +1273,8 @@ impl ServiceApplication {
 			Err(error) => return Result::Unavailable { error: protocol_reset_error(error) },
 		};
 		let (Ok(key), Ok(descriptor), Ok(revision)) = (
-			decodex_protocol::IdempotencyKey::new(operation.key.clone()),
-			decodex_protocol::ResetCardDescriptorDto::new(
-				operation.granted_at,
-				operation.expires_at,
-			),
+			IdempotencyKey::new(operation.key.clone()),
+			ResetCardDescriptorDto::new(operation.granted_at, operation.expires_at),
 			u64::try_from(operation.account_revision),
 		) else {
 			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
@@ -1718,7 +1730,7 @@ impl ServiceApplication {
 		let outcome = store
 			.review_initial_model_settings(
 				command.idempotency_key.as_str(),
-				&decodex_database::ReviewInitialModelSettings {
+				&ReviewInitialModelSettings {
 					conversation_id: id.clone(),
 					expected_revision,
 					model: execution.model.as_str().to_owned(),
@@ -1729,7 +1741,7 @@ impl ServiceApplication {
 					fast: execution.fast,
 					service_tier: execution.service_tier.clone(),
 					source: decodex_database::InitialModelSource {
-						account_id: decodex_core::AccountId::new(source.account_id.as_str())
+						account_id: AccountId::new(source.account_id.as_str())
 							.map_err(|_| conversation_conflict())?,
 						account_revision: source.account_revision,
 					},
@@ -1737,7 +1749,7 @@ impl ServiceApplication {
 			)
 			.await
 			.map_err(|_| conversation_conflict())?;
-		let decodex_database::InitialModelReviewOutcome::Applied { revision, .. } = outcome else {
+		let InitialModelReviewOutcome::Applied { revision, .. } = outcome else {
 			return Err(conversation_conflict());
 		};
 		let ConversationResult::Available(current) = self.conversation_get(conversation_id).await
@@ -2234,7 +2246,7 @@ impl ServiceApplication {
 	async fn query_resources(&self, work_id: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentResources(match &self.agent {
 			Some(agent) => agent.resources(work_id).await,
-			None => decodex_protocol::AgentResourcesResult::Unavailable,
+			None => AgentResourcesResult::Unavailable,
 		})
 	}
 
@@ -2243,11 +2255,10 @@ impl ServiceApplication {
 			QueryPayload::GetAgentArchiveState { work_id } =>
 				QueryResultPayload::AgentArchiveState(match &self.agent {
 					Some(agent) => agent.archive_state(work_id.as_str()).await,
-					None => decodex_protocol::AgentArchiveResult::Unavailable,
+					None => AgentArchiveResult::Unavailable,
 				}),
-			QueryPayload::GetAgentInstallState { .. } => QueryResultPayload::AgentInstallState(
-				decodex_protocol::AgentInstallState::Unavailable,
-			),
+			QueryPayload::GetAgentInstallState { .. } =>
+				QueryResultPayload::AgentInstallState(AgentInstallState::Unavailable),
 			_ => unreachable!("native lifecycle query dispatched above"),
 		}
 	}
@@ -2267,7 +2278,7 @@ impl ServiceApplication {
 			QueryPayload::GetAgentPromptInputSend { identity } =>
 				QueryResultPayload::AgentPromptInputSend(match &self.agent {
 					Some(agent) => agent.prompt_send_status(identity.clone()).await,
-					None => decodex_protocol::PromptInputSendStatus {
+					None => PromptInputSendStatus {
 						identity: identity.clone(),
 						accepted_event_id: None,
 					},
@@ -2275,9 +2286,7 @@ impl ServiceApplication {
 			QueryPayload::GetAgentPromptInputUpload { upload } =>
 				QueryResultPayload::AgentPromptInputUpload(match &self.agent {
 					Some(agent) => agent.prompt_upload_status(upload.clone()).await,
-					None => decodex_protocol::PromptInputUploadStatus::Unavailable {
-						upload: upload.clone(),
-					},
+					None => PromptInputUploadStatus::Unavailable { upload: upload.clone() },
 				}),
 			_ => unreachable!("query_prompt_input dispatched above"),
 		}
@@ -2288,23 +2297,20 @@ impl ServiceApplication {
 			QueryPayload::GetAgentPendingAppUiCall { work_id } =>
 				QueryResultPayload::AgentPendingAppUiCall(match &self.store {
 					ProductStore::Available(store) =>
-						crate::agent_app_ui_receipt::pending(store, work_id).await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::AgentPendingAppUiCall::Unavailable,
+						agent_app_ui_receipt::pending(store, work_id).await,
+					ProductStore::Unavailable(_) => AgentPendingAppUiCall::Unavailable,
 				}),
 			QueryPayload::GetAgentAppUiReceipt { request } =>
 				QueryResultPayload::AgentAppUiReceipt(match &self.store {
 					ProductStore::Available(store) =>
-						crate::agent_app_ui_receipt::read(store, request).await,
-					ProductStore::Unavailable(_) =>
-						decodex_protocol::AgentAppUiReceiptResult::Unavailable,
+						agent_app_ui_receipt::read(store, request).await,
+					ProductStore::Unavailable(_) => AgentAppUiReceiptResult::Unavailable,
 				}),
-			QueryPayload::ReviewAgentAppUiCall { .. } => QueryResultPayload::AgentAppUiCallReview(
-				decodex_protocol::AgentAppUiCallReview::Unavailable,
-			),
+			QueryPayload::ReviewAgentAppUiCall { .. } =>
+				QueryResultPayload::AgentAppUiCallReview(AgentAppUiCallReview::Unavailable),
 			QueryPayload::GetAgentAppUiSource { .. } => QueryResultPayload::AgentAppUiSource(false),
 			QueryPayload::GetAgentAppUi { .. } =>
-				QueryResultPayload::AgentAppUi(decodex_protocol::AgentAppUiResult::Unsupported),
+				QueryResultPayload::AgentAppUi(AgentAppUiResult::Unsupported),
 			_ => unreachable!("query_app_ui dispatched above"),
 		}
 	}
@@ -2313,7 +2319,7 @@ impl ServiceApplication {
 		&self,
 		id: &ConversationId,
 		revision: EntityRevision,
-	) -> Option<decodex_database::ConversationRequest> {
+	) -> Option<ConversationRequest> {
 		let row = self.conversation_command_row(id, Some(revision)).await.ok()?;
 
 		if row.pre_session_state != Some(OrdinaryTaskPreSessionState::ModelSettingsReviewRequired)
@@ -2339,33 +2345,32 @@ impl ServiceApplication {
 		let id = ConversationId::new(conversation_id.as_str()).ok()?;
 		let saved = self.saved_model_review_request(&id, revision).await?;
 		let execution = ConversationExecutionSettingsDto {
-			model: decodex_protocol::ConversationModel::new(saved.model.clone()).ok()?,
+			model: ConversationModel::new(saved.model.clone()).ok()?,
 			reasoning_effort: saved
 				.reasoning_effort
 				.clone()
-				.map(decodex_protocol::ConversationReasoningEffort::new)
+				.map(ConversationReasoningEffort::new)
 				.transpose()
 				.ok()?,
 			fast: saved.fast,
 			service_tier: saved.service_tier.clone(),
 		};
 		let working_directory =
-			decodex_protocol::ConversationWorkingDirectory::new(saved.working_directory.clone())
-				.ok()?;
+			ConversationWorkingDirectory::new(saved.working_directory.clone()).ok()?;
 		let catalog = self
 			.conversations
 			.runtime()?
 			.initial_model_catalog(
 				key,
-				decodex_protocol::InitialModelCatalogRequest {
+				InitialModelCatalogRequest {
 					working_directory,
-					purpose: decodex_protocol::ModelCatalogPurpose::Conversation,
+					purpose: ModelCatalogPurpose::Conversation,
 					account_id: None,
 				},
 			)
 			.await;
 
-		if !matches!(&catalog, decodex_protocol::InitialModelCatalogResult::Available { .. })
+		if !matches!(&catalog, InitialModelCatalogResult::Available { .. })
 			|| self.saved_model_review_request(&id, revision).await.as_ref() != Some(&saved)
 		{
 			return None;
@@ -2374,7 +2379,7 @@ impl ServiceApplication {
 		Some(Box::new(decodex_protocol::ConversationModelReview {
 			conversation_id: conversation_id.clone(),
 			conversation_revision: revision,
-			message: decodex_protocol::HistoryText::new(saved.message).ok()?,
+			message: HistoryText::new(saved.message).ok()?,
 			execution,
 			catalog,
 		}))
@@ -2391,8 +2396,8 @@ impl ServiceApplication {
 					)
 					.await
 					.map_or(
-						decodex_protocol::ConversationModelReviewResult::Unavailable,
-						decodex_protocol::ConversationModelReviewResult::Available,
+						ConversationModelReviewResult::Unavailable,
+						ConversationModelReviewResult::Available,
 					),
 				),
 			QueryPayload::GetInitialModelCatalog { request } =>
@@ -2401,12 +2406,12 @@ impl ServiceApplication {
 						runtime
 							.initial_model_catalog(query.query_id.as_str(), request.clone())
 							.await,
-					None => decodex_protocol::InitialModelCatalogResult::Unavailable,
+					None => InitialModelCatalogResult::Unavailable,
 				}),
 			QueryPayload::GetAgentCapabilities =>
 				QueryResultPayload::AgentCapabilities(match &self.agent {
 					Some(agent) => agent.capabilities().await,
-					None => decodex_protocol::AgentCapabilitiesResult::Unavailable,
+					None => AgentCapabilitiesResult::Unavailable,
 				}),
 			QueryPayload::GetConversationModelSettings { conversation_id } =>
 				QueryResultPayload::ConversationModelSettings(match self.conversations.runtime() {
@@ -2414,12 +2419,12 @@ impl ServiceApplication {
 						runtime
 							.model_settings(query.query_id.as_str(), conversation_id.as_str())
 							.await,
-					None => decodex_protocol::ConversationModelSettingsResult::Unavailable,
+					None => ConversationModelSettingsResult::Unavailable,
 				}),
 			QueryPayload::GetConversationCapabilities { conversation_id } =>
 				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {
 					Some(runtime) => runtime.model_capabilities(conversation_id.as_str()).await,
-					None => decodex_protocol::AgentCapabilitiesResult::Unavailable,
+					None => AgentCapabilitiesResult::Unavailable,
 				}),
 			_ => unreachable!("model catalog query dispatched above"),
 		}
@@ -2489,7 +2494,7 @@ impl Application for ServiceApplication {
 
 	fn daemon_service_tasks(
 		&self,
-		stop: watch::Receiver<bool>,
+		stop: Receiver<bool>,
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
 
@@ -2527,10 +2532,10 @@ impl Application for ServiceApplication {
 
 	async fn account_login<'a>(&'a self, request: &'a AccountLoginRequest) -> AccountLoginStatus {
 		let Some(manager) = &self.account_login else {
-			return crate::account_login::unavailable_status(request);
+			return account_login::unavailable_status(request);
 		};
-		let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-			return crate::account_login::unavailable_status(request);
+		let Ok(runtime) = Handle::try_current() else {
+			return account_login::unavailable_status(request);
 		};
 
 		manager.handle(request, runtime).await
@@ -2552,10 +2557,8 @@ impl Application for ServiceApplication {
 					.submit(command.idempotency_key.as_str().into(), *action.clone())
 					.await
 					.map_err(|error| match error {
-						crate::agent_host::AgentHostError::Rejected(reason) =>
-							application_unavailable(reason),
-						crate::agent_host::AgentHostError::Unknown(_) =>
-							CommandError::AcceptanceUnknown,
+						AgentHostError::Rejected(reason) => application_unavailable(reason),
+						AgentHostError::Unknown(_) => CommandError::AcceptanceUnknown,
 					})?;
 				let work_id = EntityId::new(id)
 					.map_err(|_| application_unavailable("invalid Agent identity"))?;
@@ -2674,13 +2677,10 @@ impl Application for ServiceApplication {
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
-			QueryPayload::GetAgentAppSettings { .. } => QueryResultPayload::AgentAppSettings(
-				decodex_protocol::AgentAppSettingsResult::Unavailable,
-			),
+			QueryPayload::GetAgentAppSettings { .. } =>
+				QueryResultPayload::AgentAppSettings(AgentAppSettingsResult::Unavailable),
 			QueryPayload::GetAgentSavedAppSettings { .. } =>
-				QueryResultPayload::AgentSavedAppSettings(
-					decodex_protocol::AgentSavedAppSettingsResult::Unavailable,
-				),
+				QueryResultPayload::AgentSavedAppSettings(AgentSavedAppSettingsResult::Unavailable),
 			QueryPayload::GetAgentHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentPluginSelection { work_id } =>
@@ -2697,7 +2697,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentPromptFork { work_id, review_token } =>
 				QueryResultPayload::AgentPromptFork(match &self.agent {
 					Some(agent) => agent.prompt_fork_status(work_id, review_token).await,
-					None => decodex_protocol::PromptForkResult::Unavailable,
+					None => PromptForkResult::Unavailable,
 				}),
 			QueryPayload::GetAgentPromptInputDirectory { .. }
 			| QueryPayload::GetAgentPromptInputSend { .. }
@@ -2708,12 +2708,11 @@ impl Application for ServiceApplication {
 				self.query_voice_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentSkills { target, filter } =>
 				QueryResultPayload::AgentSkills(match target {
-					decodex_protocol::AgentSkillsTarget::Existing { work_id } =>
-						match &self.agent {
-							Some(agent) => agent.skills(work_id.as_str(), filter.as_str()).await,
-							None => decodex_protocol::AgentSkillsResult::Unavailable,
-						},
-					decodex_protocol::AgentSkillsTarget::New { request } => match (
+					AgentSkillsTarget::Existing { work_id } => match &self.agent {
+						Some(agent) => agent.skills(work_id.as_str(), filter.as_str()).await,
+						None => AgentSkillsResult::Unavailable,
+					},
+					AgentSkillsTarget::New { request } => match (
 						self.conversations.runtime(),
 						self.agent.as_ref().and_then(|agent| agent.skill_roots()),
 					) {
@@ -2726,7 +2725,7 @@ impl Application for ServiceApplication {
 									roots,
 								)
 								.await,
-						_ => decodex_protocol::AgentSkillsResult::Unavailable,
+						_ => AgentSkillsResult::Unavailable,
 					},
 				}),
 			QueryPayload::GetAgentSearchSettings { work_id } =>
@@ -2745,7 +2744,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentTranscript { request } =>
 				QueryResultPayload::AgentTranscript(match &self.agent {
 					Some(agent) => agent.transcript(request).await,
-					None => decodex_protocol::AgentTranscriptResult::Unavailable,
+					None => AgentTranscriptResult::Unavailable,
 				}),
 			QueryPayload::GetAgentMedia { request } => self.query_media(request).await,
 			QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } =>
@@ -2993,13 +2992,13 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 			account_rejection(AccountCommandRejectionDto::AuthWriteFailed, None),
 		AccountLifecycleError::AuthReadbackMismatch =>
 			account_rejection(AccountCommandRejectionDto::AuthReadbackMismatch, None),
-		AccountLifecycleError::Refresh(crate::CredentialRefreshError::OwnerBusy) =>
+		AccountLifecycleError::Refresh(CredentialRefreshError::OwnerBusy) =>
 			account_rejection(AccountCommandRejectionDto::CodexIsRunning, None),
-		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Rejected) =>
+		AccountLifecycleError::Refresh(CredentialRefreshError::Rejected) =>
 			account_rejection(AccountCommandRejectionDto::CredentialRefreshRejected, None),
-		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Unavailable) =>
+		AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable) =>
 			account_rejection(AccountCommandRejectionDto::CredentialRefreshUnavailable, None),
-		AccountLifecycleError::Refresh(crate::CredentialRefreshError::Ambiguous) =>
+		AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous) =>
 			account_rejection(AccountCommandRejectionDto::CredentialNeedsLogin, None),
 		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable =>
 			application_unavailable("account service is unavailable"),
@@ -3088,16 +3087,16 @@ fn pre_session_presentation(
 }
 
 fn native_conversation_settings(
-	observed: decodex_database::ConversationNativeSettingsObservation,
+	observed: ConversationNativeSettingsObservation,
 ) -> Result<decodex_protocol::ConversationNativeSettings, ()> {
 	decodex_protocol::ConversationNativeSettings {
-		model: decodex_protocol::ConversationModel::new(observed.settings.model).map_err(|_| ())?,
+		model: ConversationModel::new(observed.settings.model).map_err(|_| ())?,
 		model_provider: observed.settings.model_provider,
 		cwd: observed.settings.cwd,
 		reasoning_effort: observed
 			.settings
 			.reasoning_effort
-			.map(decodex_protocol::ConversationReasoningEffort::new)
+			.map(ConversationReasoningEffort::new)
 			.transpose()
 			.map_err(|_| ())?,
 		observed_at_micros: observed.observed_at_micros,
@@ -3121,9 +3120,8 @@ fn conversation_summary_from_row(
 		.clone()
 		.map(|observation| native_conversation_settings(*observation))
 		.transpose()?;
-	let directory =
-		decodex_protocol::ConversationWorkingDirectory::new(row.original_working_directory.clone())
-			.map_err(|_| ())?;
+	let directory = ConversationWorkingDirectory::new(row.original_working_directory.clone())
+		.map_err(|_| ())?;
 	let mut summary = conversation_summary_without_original_directory(row, projection)?;
 
 	summary.original_working_directory = Some(directory);
@@ -3522,10 +3520,10 @@ fn program_cycle_dto(
 }
 
 fn append_historical_semantics(
-	signals: Vec<decodex_database::ProgramSignalRecord>,
-	claims: Vec<decodex_database::ProgramClaimRecord>,
-	proposals: Vec<decodex_database::ProgramProposalRecord>,
-	objectives: Vec<decodex_database::ProgramObjectiveRecord>,
+	signals: Vec<ProgramSignalRecord>,
+	claims: Vec<ProgramClaimRecord>,
+	proposals: Vec<ProgramProposalRecord>,
+	objectives: Vec<ProgramObjectiveRecord>,
 	program_id: &EntityId,
 	nodes: &mut Vec<ProgramNodeDto>,
 	edges: &mut Vec<ProgramEdgeDto>,
@@ -3622,7 +3620,7 @@ fn append_historical_semantics(
 }
 
 fn append_historical_executions(
-	work_items: Vec<decodex_database::ProgramWorkItemRecord>,
+	work_items: Vec<ProgramWorkItemRecord>,
 	run_states: &[(ConversationId, &'static str)],
 	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
 	nodes: &mut Vec<ProgramNodeDto>,
@@ -3687,8 +3685,8 @@ fn append_historical_executions(
 }
 
 fn append_historical_evidence(
-	evidence: Vec<decodex_database::ProgramEvidenceRecord>,
-	reviews: Vec<decodex_database::ProgramReviewRecord>,
+	evidence: Vec<ProgramEvidenceRecord>,
+	reviews: Vec<ProgramReviewRecord>,
 	program_id: &EntityId,
 	nodes: &mut Vec<ProgramNodeDto>,
 	edges: &mut Vec<ProgramEdgeDto>,
@@ -3705,9 +3703,8 @@ fn append_historical_evidence(
 			id: evidence_id,
 			kind: ProgramNodeKind::Evidence,
 			title: wire(match evidence.kind {
-				decodex_core::ProgramEvidenceKind::DeterministicValidation =>
-					"Deterministic validation",
-				decodex_core::ProgramEvidenceKind::External => "External evidence",
+				ProgramEvidenceKind::DeterministicValidation => "Deterministic validation",
+				ProgramEvidenceKind::External => "External evidence",
 			})?,
 			summary: wire(evidence.summary)?,
 			state: wire(evidence.kind.as_str())?,
@@ -4426,8 +4423,7 @@ fn account_routed_publication(
 	let routing = routing_dto(commit.routing)
 		.map_err(|_| application_unavailable("account Route result is incompatible"))?;
 
-	if routing.mode != decodex_protocol::AccountSelectionModeDto::Fixed(account.account_id.clone())
-	{
+	if routing.mode != AccountSelectionModeDto::Fixed(account.account_id.clone()) {
 		return Err(application_unavailable("account Route result is incompatible"));
 	}
 
@@ -4661,7 +4657,7 @@ fn attach_file_approval_detail(
 		fields["changeDetails"] = serde_json::json!(text);
 		fields["changeDetailsTruncated"] = serde_json::json!(truncated);
 
-		if let Ok(updated) = decodex_protocol::AgentRequestText::new(fields.to_string()) {
+		if let Ok(updated) = AgentRequestText::new(fields.to_string()) {
 			*request_json = updated;
 		} else {
 			return decodex_protocol::AgentRequestResult::Unavailable;
@@ -4706,7 +4702,7 @@ fn agent_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 
 fn request_belongs_to_work(
 	payload: &serde_json::Value,
-	work: &decodex_database::AgentWorkItem,
+	work: &AgentWorkItem,
 	native_live: bool,
 ) -> bool {
 	let Some(params) = payload["params"].as_object() else { return false };
@@ -4727,7 +4723,7 @@ fn request_belongs_to_work(
 		|| (!native_live
 			&& !native_child
 			&& !standalone_elicitation
-			&& (work.dispatch_state != decodex_database::AgentDispatchState::Running
+			&& (work.dispatch_state != AgentDispatchState::Running
 				|| work.active_turn_id.is_none()
 				|| params.get("turnId").and_then(serde_json::Value::as_str)
 					!= work.active_turn_id.as_deref())))
@@ -4747,7 +4743,7 @@ fn page_agent_request(
 	};
 	let content = request_json.as_str();
 
-	if content.len() <= decodex_protocol::MAX_HISTORY_INLINE_BYTES {
+	if content.len() <= MAX_HISTORY_INLINE_BYTES {
 		return if expected_digest.is_none() && offset == 0 {
 			request
 		} else {
@@ -4783,8 +4779,7 @@ fn page_agent_request(
 		digest,
 		offset,
 		total_bytes: content.len(),
-		text: decodex_protocol::HistoryText::new(content[offset..end].to_owned())
-			.expect("bounded page"),
+		text: HistoryText::new(content[offset..end].to_owned()).expect("bounded page"),
 		next_offset: (end < content.len()).then_some(end),
 	}
 }
@@ -4875,7 +4870,7 @@ fn agent_assistant_history(
 fn completed_agent_history(
 	value: &serde_json::Value,
 	has_more: &mut bool,
-	pending_retry: Option<&decodex_database::AgentCapacityRetry>,
+	pending_retry: Option<&AgentCapacityRetry>,
 	event_id: i64,
 	completed_message_ids: &mut Vec<(String, String)>,
 ) -> (&'static str, String) {
@@ -4975,9 +4970,9 @@ fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 }
 
 fn render_agent_history(
-	events: Vec<decodex_database::AgentInboxEvent>,
+	events: Vec<AgentInboxEvent>,
 	question_bytes: usize,
-	pending_retry: Option<decodex_database::AgentCapacityRetry>,
+	pending_retry: Option<AgentCapacityRetry>,
 ) -> RenderedAgentHistory {
 	let older_available = events.len() > 32;
 	let mut has_more = older_available;
@@ -5003,7 +4998,7 @@ fn render_agent_history(
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
-            "user_message" if event.disposition == Some(decodex_database::AgentDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
+            "user_message" if event.disposition == Some(AgentDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
                 ("unsent_input", agent_user_message_text(&value)),
 			"user_message" | "async_question_answer" | "voice_user" =>
 				("user", agent_user_message_text(&value)),
@@ -5115,7 +5110,7 @@ fn render_agent_history(
 }
 
 fn append_task_reference_labels(text: &mut String, value: &serde_json::Value) {
-	let Ok(references) = serde_json::from_value::<Vec<decodex_protocol::AgentTaskReferenceDto>>(
+	let Ok(references) = serde_json::from_value::<Vec<AgentTaskReferenceDto>>(
 		value.pointer("/options/taskReferences").cloned().unwrap_or(serde_json::Value::Null),
 	) else {
 		return;
@@ -5149,8 +5144,6 @@ async fn query_agent_request_with_details(
 	event_id: i64,
 	agent: Option<&crate::agent_host::AgentHost>,
 ) -> decodex_protocol::AgentRequestResult {
-	use decodex_protocol::AgentRequestResult;
-
 	let (Some(agent), ProductStore::Available(database)) = (agent, store) else {
 		return AgentRequestResult::Unavailable;
 	};
@@ -5174,7 +5167,7 @@ async fn query_agent_request_with_details(
 	{
 		return request;
 	}
-	if crate::agent_detail::saved_file_changes(&payload).is_some() {
+	if agent_detail::saved_file_changes(&payload).is_some() {
 		return request;
 	}
 
@@ -5197,15 +5190,11 @@ async fn query_agent_request_with_details(
 
 async fn query_mcp_login(
 	agent: Option<&crate::agent_host::AgentHost>,
-	request: &decodex_protocol::McpLoginRequest,
-) -> decodex_protocol::McpLoginStatus {
+	request: &McpLoginRequest,
+) -> McpLoginStatus {
 	match agent {
 		Some(agent) => agent.mcp_login(request).await,
-		None => crate::mcp_login::status(
-			request,
-			decodex_protocol::McpLoginPhase::Disconnected,
-			"Agent is not connected.",
-		),
+		None => mcp_login::status(request, McpLoginPhase::Disconnected, "Agent is not connected."),
 	}
 }
 
@@ -5217,7 +5206,7 @@ async fn query_guardian_reviews(
 ) -> decodex_protocol::AgentGuardianReviewsResult {
 	match store {
 		ProductStore::Available(store) =>
-			crate::agent_guardian::read(
+			agent_guardian::read(
 				store,
 				work,
 				before,
@@ -5241,8 +5230,6 @@ async fn query_agent_request_scoped(
 	event_id: i64,
 	native_live: bool,
 ) -> decodex_protocol::AgentRequestResult {
-	use decodex_protocol::AgentRequestResult;
-
 	let ProductStore::Available(store) = store else {
 		return AgentRequestResult::Unavailable;
 	};
@@ -5348,13 +5335,12 @@ async fn query_agent_request_scoped(
 		selected.insert("kind".into(), serde_json::json!("command"));
 	}
 
-	if let Some(text) = crate::agent_detail::saved_file_changes(&payload) {
+	if let Some(text) = agent_detail::saved_file_changes(&payload) {
 		selected.insert("changeDetails".into(), serde_json::json!(text));
 		selected.insert("changeDetailsTruncated".into(), serde_json::json!(false));
 	}
 
-	let Ok(request_json) =
-		decodex_protocol::AgentRequestText::new(serde_json::Value::Object(selected).to_string())
+	let Ok(request_json) = AgentRequestText::new(serde_json::Value::Object(selected).to_string())
 	else {
 		return AgentRequestResult::Unavailable;
 	};
@@ -5379,7 +5365,7 @@ async fn query_agent_input_receipts(
 	store: &ProductStore,
 	work: &str,
 	after: Option<i64>,
-) -> decodex_protocol::AgentInputReceiptsResult {
+) -> AgentInputReceiptsResult {
 	use decodex_protocol::AgentInputReceiptsResult as Result;
 
 	let ProductStore::Available(store) = store else {
@@ -5439,9 +5425,7 @@ async fn query_agent_history_page(
 	id: &str,
 	before: Option<i64>,
 	agent: Option<&crate::agent_host::AgentHost>,
-) -> decodex_protocol::AgentHistoryResult {
-	use decodex_protocol::AgentHistoryResult;
-
+) -> AgentHistoryResult {
 	let ProductStore::Available(store) = store else {
 		return AgentHistoryResult::Unavailable;
 	};
@@ -5460,7 +5444,7 @@ async fn query_agent_history_page(
 				.and_then(|value| serde_json::from_str(value).ok())
 				.unwrap_or_default();
 
-			decodex_protocol::AgentMisalignmentDto {
+			AgentMisalignmentDto {
 				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
 				explanation: details["detailedExplanation"]
 					.as_str()
@@ -5487,7 +5471,7 @@ async fn query_agent_history_page(
 
 	for pending in pending_questions {
 		let Ok(mut question) =
-			serde_json::from_str::<decodex_protocol::AgentAsyncQuestionDto>(&pending.question_json)
+			serde_json::from_str::<AgentAsyncQuestionDto>(&pending.question_json)
 		else {
 			return AgentHistoryResult::Unavailable;
 		};
@@ -5496,9 +5480,7 @@ async fn query_agent_history_page(
 
 		let cost = serde_json::to_vec(&question).expect("serializable question").len() + 1;
 
-		if questions.len() >= 32
-			|| question_bytes + cost > decodex_protocol::MAX_HISTORY_INLINE_BYTES
-		{
+		if questions.len() >= 32 || question_bytes + cost > MAX_HISTORY_INLINE_BYTES {
 			questions_truncated = true;
 
 			break;
@@ -5558,7 +5540,7 @@ mod task_reference_display_tests {
 }
 
 fn partial_history_text(
-	event: &decodex_database::AgentInboxEvent,
+	event: &AgentInboxEvent,
 	value: &serde_json::Value,
 	rendered: &std::collections::HashSet<(String, String, String)>,
 ) -> Option<(&'static str, String)> {
@@ -5607,7 +5589,7 @@ fn completed_partial_sources(value: &serde_json::Value) -> Vec<(String, String, 
 }
 
 fn partial_history_source(
-	event: &decodex_database::AgentInboxEvent,
+	event: &AgentInboxEvent,
 	value: &serde_json::Value,
 ) -> Option<decodex_protocol::AgentHistorySourceDto> {
 	(event.event_kind == "partial_output").then_some(())?;
@@ -5620,7 +5602,7 @@ fn partial_history_source(
 }
 
 fn agent_history_entry(
-	event: &decodex_database::AgentInboxEvent,
+	event: &AgentInboxEvent,
 	value: &serde_json::Value,
 	kind: &str,
 	text: String,
@@ -5640,11 +5622,11 @@ fn agent_history_entry(
 			None
 		},
 		usage: serde_json::from_value(value["usage"].clone()).ok().or_else(|| {
-			let usage: decodex_codex::ThreadTokenUsage =
+			let usage: ThreadTokenUsage =
 				serde_json::from_value(value.pointer("/threadReadback/tokenUsage")?.clone())
 					.ok()?;
 
-			usage.is_valid().then_some(decodex_protocol::AgentTurnUsageDto {
+			usage.is_valid().then_some(AgentTurnUsageDto {
 				details: None,
 				input_tokens: usage.last.input_tokens,
 				output_tokens: usage.last.output_tokens,
@@ -5659,7 +5641,7 @@ fn agent_history_entry(
 }
 
 fn agent_history_receipt(
-	event: &decodex_database::AgentInboxEvent,
+	event: &AgentInboxEvent,
 ) -> Option<decodex_protocol::AgentHistoryReceiptDto> {
 	if event.event_kind.is_empty()
 		|| event.event_kind.len() > 80
@@ -5676,7 +5658,7 @@ fn agent_history_receipt(
 	})
 }
 
-fn agent_voice_receipt_session(event: &decodex_database::AgentInboxEvent) -> Option<String> {
+fn agent_voice_receipt_session(event: &AgentInboxEvent) -> Option<String> {
 	if !matches!(event.event_kind.as_str(), "voice_user" | "voice_assistant") {
 		return None;
 	}
@@ -5899,21 +5881,19 @@ fn bound_agent_text(mut text: String, encoded_budget: usize) -> (String, bool) {
 	(text, true)
 }
 
-fn query_agent_live(
-	partial: Vec<decodex_database::AgentLiveOutput>,
-) -> Vec<decodex_protocol::AgentLiveMessageDto> {
+fn query_agent_live(partial: Vec<AgentLiveOutput>) -> Vec<decodex_protocol::AgentLiveMessageDto> {
 	let mut live = Vec::new();
 	let mut budget = 65_536_usize;
 
 	for mut output in partial {
 		let kind = match output.kind.as_str() {
-			"agentMessage" => decodex_protocol::AgentLiveMessageKind::AgentMessage,
-			"plan" => decodex_protocol::AgentLiveMessageKind::Plan,
-			"reasoningSummary" => decodex_protocol::AgentLiveMessageKind::ReasoningSummary,
+			"agentMessage" => AgentLiveMessageKind::AgentMessage,
+			"plan" => AgentLiveMessageKind::Plan,
+			"reasoningSummary" => AgentLiveMessageKind::ReasoningSummary,
 			_ => continue,
 		};
 
-		if kind == decodex_protocol::AgentLiveMessageKind::ReasoningSummary
+		if kind == AgentLiveMessageKind::ReasoningSummary
 			&& decodex_core::contains_credential_material(&output.text)
 		{
 			output.text = "Sensitive details omitted".into();
@@ -6141,16 +6121,6 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 }
 
 async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
-	use decodex_database::{
-		AgentDispatchState, AgentStoreSnapshot, AgentWorkKind, AgentWorkStatus,
-	};
-
-	use decodex_protocol::{
-		AgentDependencyDto, AgentDispatchStateDto, AgentPendingEventDto, AgentSnapshotDto,
-		AgentSnapshotResult, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto,
-		MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS, MAX_AGENT_WORK_ITEMS,
-	};
-
 	let ProductStore::Available(store) = store else {
 		return AgentSnapshotResult::Unavailable;
 	};
@@ -6182,11 +6152,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
-			.map(|(agent_id, name, directory)| decodex_protocol::AgentWorkspaceDto {
-				agent_id,
-				name,
-				directory,
-			})
+			.map(|(agent_id, name, directory)| AgentWorkspaceDto { agent_id, name, directory })
 			.collect(),
 		work_items: work_items
 			.into_iter()
@@ -6243,9 +6209,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 			.collect(),
 	};
 
-	if serde_json::to_vec(&snapshot)
-		.is_ok_and(|bytes| bytes.len() > decodex_protocol::MAX_AGENT_SNAPSHOT_BYTES)
-	{
+	if serde_json::to_vec(&snapshot).is_ok_and(|bytes| bytes.len() > MAX_AGENT_SNAPSHOT_BYTES) {
 		return AgentSnapshotResult::CapacityExceeded {
 			work_items: counts.0,
 			dependencies: counts.1,
@@ -6261,8 +6225,16 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 
 #[cfg(test)]
 mod tests {
-	use crate::account_launch::{ResetCardFailureCode, ResetCardOperationStatus};
+	use std::collections::HashMap;
 
+	use crate::{
+		account_launch::{ResetCardFailureCode, ResetCardOperationStatus},
+		application::{
+			self, ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
+			AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
+			StoredAccountCommandOutcome,
+		},
+	};
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
@@ -6270,28 +6242,17 @@ mod tests {
 		ConversationId, DecodexRoot, ProgramObservationId, ProgramReviewId, ProviderIdentity,
 		RuntimeSessionState,
 	};
-
 	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
+		AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
 		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
 		SqliteStore,
 	};
-
 	use decodex_protocol::{
-		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
-		ConversationRecoveryAction, ConversationState, ProgramNodeKind, ProgramRelationKind,
-		ResetCardError, ResetCardOperationResult,
-	};
-
-	use std::collections::HashMap;
-
-	use super::{
-		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
-		AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
-		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
-		account_profile_dto, account_profile_unavailable_dto, conversation_summary_from_row,
-		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
-		operation_query_result, program_cycle_dto, protocol_reset_error, quota_dto,
+		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
+		AgentActivityDetailResult, AgentHistoryResult, AgentRequestResult, AgentSnapshotResult,
+		CommandError, ConversationRecoveryAction, ConversationState, ProgramNodeKind,
+		ProgramRelationKind, ResetCardError, ResetCardOperationResult,
 	};
 
 	#[test]
@@ -6343,8 +6304,6 @@ mod tests {
 
 	#[test]
 	fn file_approval_details_preserve_request_identity_and_do_not_enrich_other_methods() {
-		use decodex_protocol::{AgentActivityDetailResult, AgentRequestResult};
-
 		for method in ["item/fileChange/requestApproval", "item/tool/requestUserInput"] {
 			let request = AgentRequestResult::Available {
 				event_id: 7,
@@ -6418,8 +6377,8 @@ mod tests {
 		let record: ProgramCycleRecord =
 			serde_json::from_str(include_str!("../tests/fixtures/historical_program_cycle.json"))
 				.expect("historical two-cycle fixture");
-		let projection =
-			program_cycle_dto(record, &[], &HashMap::new()).expect("two-cycle projection");
+		let projection = application::program_cycle_dto(record, &[], &HashMap::new())
+			.expect("two-cycle projection");
 
 		assert_eq!(
 			projection.nodes.iter().map(|node| node.kind).collect::<Vec<_>>(),
@@ -6499,7 +6458,7 @@ mod tests {
 				account_revision: 7,
 			}));
 
-		let durable = conversation_summary_from_row(row.clone(), None).unwrap();
+		let durable = application::conversation_summary_from_row(row.clone(), None).unwrap();
 
 		assert_eq!(durable.original_working_directory.as_ref().unwrap().as_str(), "/saved/project");
 		assert_eq!(durable.native_settings.as_ref().unwrap().model_provider, "server-provider");
@@ -6520,7 +6479,8 @@ mod tests {
 			},
 			recovery: None,
 		};
-		let live = conversation_summary_from_row(row.clone(), Some(local.clone())).unwrap();
+		let live =
+			application::conversation_summary_from_row(row.clone(), Some(local.clone())).unwrap();
 
 		assert_eq!(live.native_settings, durable.native_settings);
 
@@ -6535,21 +6495,21 @@ mod tests {
 
 		foreign.readback.codex_thread_id = Some("other-thread".into());
 
-		assert!(conversation_summary_from_row(row.clone(), Some(foreign)).is_err());
+		assert!(application::conversation_summary_from_row(row.clone(), Some(foreign)).is_err());
 
 		row.native_settings.as_mut().unwrap().settings.model_provider.clear();
 
-		assert!(conversation_summary_from_row(row, None).is_err());
+		assert!(application::conversation_summary_from_row(row, None).is_err());
 	}
 
 	#[test]
 	fn conversation_projection_distinguishes_routing_and_establishment_recovery() {
-		let routing = conversation_summary_from_row(
+		let routing = application::conversation_summary_from_row(
 			pre_session_conversation(OrdinaryTaskPreSessionState::RoutingPending, None),
 			None,
 		)
 		.unwrap();
-		let establishment = conversation_summary_from_row(
+		let establishment = application::conversation_summary_from_row(
 			pre_session_conversation(
 				OrdinaryTaskPreSessionState::EstablishmentPending,
 				Some("41000000-0000-4000-8000-000000001276"),
@@ -6557,7 +6517,7 @@ mod tests {
 			None,
 		)
 		.unwrap();
-		let review = conversation_summary_from_row(
+		let review = application::conversation_summary_from_row(
 			pre_session_conversation(
 				OrdinaryTaskPreSessionState::ModelSettingsReviewRequired,
 				None,
@@ -6603,7 +6563,7 @@ mod tests {
 			routing_decision_id: Some("41000000-0000-4000-8000-000000001276".to_owned()),
 			updated_at_micros: 1,
 		};
-		let projection = conversation_summary_from_row(row, None).unwrap();
+		let projection = application::conversation_summary_from_row(row, None).unwrap();
 
 		assert_eq!(projection.state, ConversationState::ManualRecovery);
 		assert_eq!(
@@ -6614,7 +6574,7 @@ mod tests {
 
 	#[test]
 	fn optional_quota_absence_is_publicly_distinct_from_unknown_or_zero_usage() {
-		let dto = quota_dto(AccountQuotaWindowObservation {
+		let dto = application::quota_dto(AccountQuotaWindowObservation {
 			duration_minutes: AccountQuotaWindow::FIVE_HOURS_MINUTES,
 			observed_at_unix_micros: Some(1_000_000),
 			disposition: AccountQuotaDisposition::NotApplicable,
@@ -6632,7 +6592,7 @@ mod tests {
 
 	#[test]
 	fn stale_internal_quota_is_publicly_unknown_without_old_values() {
-		let dto = quota_dto(AccountQuotaWindowObservation {
+		let dto = application::quota_dto(AccountQuotaWindowObservation {
 			duration_minutes: AccountQuotaWindow::SEVEN_DAYS_MINUTES,
 			observed_at_unix_micros: Some(1_000_000),
 			disposition: AccountQuotaDisposition::Stale(
@@ -6648,7 +6608,7 @@ mod tests {
 
 	#[test]
 	fn account_profile_projection_keeps_email_visibility_and_bounded_daily_facts_explicit() {
-		let dto = account_profile_dto(AccountProfileView {
+		let dto = application::account_profile_dto(AccountProfileView {
 			snapshot: AccountProfileSnapshot {
 				account_id: AccountId::new("40000000-0000-4000-8000-000000000001").unwrap(),
 				account_revision: 4,
@@ -6710,14 +6670,17 @@ mod tests {
 		};
 
 		assert_eq!(
-			account_dto(account).expect("prepared account must remain listable").alias.as_str(),
+			application::account_dto(account)
+				.expect("prepared account must remain listable")
+				.alias
+				.as_str(),
 			"Val",
 		);
 	}
 
 	#[test]
 	fn unavailable_profile_keeps_current_claims_and_a_typed_error() {
-		let result = account_profile_unavailable_dto(
+		let result = application::account_profile_unavailable_dto(
 			AccountProfileClaimsView {
 				email: Some("iris@example.test".into()),
 				plan_type: Some("pro".into()),
@@ -6738,7 +6701,9 @@ mod tests {
 
 	#[test]
 	fn transient_status_failure_is_not_projected_as_durable_pre_effect_failure() {
-		let result = operation_query_result(Err(ResetCardServiceError::ProductStateUnavailable));
+		let result = application::operation_query_result(Err(
+			ResetCardServiceError::ProductStateUnavailable,
+		));
 
 		assert_eq!(
 			result,
@@ -6752,7 +6717,7 @@ mod tests {
 	#[test]
 	fn inventory_deadline_projects_as_a_typed_query_error() {
 		assert_eq!(
-			protocol_reset_error(ResetCardServiceError::RequestTimedOut),
+			application::protocol_reset_error(ResetCardServiceError::RequestTimedOut),
 			ResetCardError::RequestTimedOut,
 		);
 	}
@@ -6760,7 +6725,7 @@ mod tests {
 	#[test]
 	fn only_persisted_terminal_failure_projects_as_failed_before_effect() {
 		assert_eq!(
-			operation_query_result(Ok(ResetCardOperationStatus::FailedBeforeEffect(
+			application::operation_query_result(Ok(ResetCardOperationStatus::FailedBeforeEffect(
 				ResetCardFailureCode::InventoryChanged,
 			))),
 			ResetCardOperationResult::FailedBeforeEffect {
@@ -6790,15 +6755,15 @@ mod tests {
 			.expect("the stored result is an object")
 			.insert("unknown".to_owned(), serde_json::Value::Bool(true));
 
-		assert!(decode_account_command_receipt(unknown_envelope).is_err());
-		assert!(decode_account_command_receipt(unknown_result).is_err());
+		assert!(application::decode_account_command_receipt(unknown_envelope).is_err());
+		assert!(application::decode_account_command_receipt(unknown_result).is_err());
 	}
 
 	#[test]
 	fn duplicate_provider_is_not_reported_as_credential_store_unavailable() {
-		let error = account_lifecycle_command_error(AccountLifecycleError::CredentialStore(
-			crate::CredentialStoreError::DuplicateProvider,
-		));
+		let error = application::account_lifecycle_command_error(
+			AccountLifecycleError::CredentialStore(crate::CredentialStoreError::DuplicateProvider),
+		);
 
 		assert_eq!(
 			error.clone(),
@@ -6808,7 +6773,7 @@ mod tests {
 			}
 		);
 
-		let encoded = encode_account_command_receipt(&Err(error.clone()))
+		let encoded = application::encode_account_command_receipt(&Err(error.clone()))
 			.expect("typed duplicate-provider rejection must encode");
 
 		assert_eq!(
@@ -6824,7 +6789,7 @@ mod tests {
 				},
 			}),
 		);
-		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
+		assert_eq!(application::decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 
 	#[test]
@@ -6834,10 +6799,16 @@ mod tests {
 			actual_revision: None,
 		};
 
-		assert_eq!(lifecycle_rejection(AccountLifecycleRejection::IdentityConflict, 0), error,);
-		assert_eq!(account_lifecycle_command_error(AccountLifecycleError::ProviderMismatch), error,);
+		assert_eq!(
+			application::lifecycle_rejection(AccountLifecycleRejection::IdentityConflict, 0),
+			error,
+		);
+		assert_eq!(
+			application::account_lifecycle_command_error(AccountLifecycleError::ProviderMismatch),
+			error,
+		);
 
-		let encoded = encode_account_command_receipt(&Err(error.clone()))
+		let encoded = application::encode_account_command_receipt(&Err(error.clone()))
 			.expect("typed provider-mismatch rejection must encode");
 
 		assert_eq!(
@@ -6853,17 +6824,11 @@ mod tests {
 				},
 			}),
 		);
-		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
+		assert_eq!(application::decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 
 	#[tokio::test]
 	async fn agent_read_projection_uses_store_and_excludes_private_content() {
-		use decodex_database::{
-			AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
-		};
-
-		use decodex_protocol::AgentSnapshotResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7187,8 +7152,6 @@ mod tests {
 	async fn agent_history_deduplicates_async_questions_against_terminal_readback() {
 		use decodex_database::EnqueueAgentEvent;
 
-		use decodex_protocol::AgentHistoryResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7373,8 +7336,6 @@ mod tests {
 	async fn agent_history_query_selects_latest_work_and_bounds_utf8_content() {
 		use decodex_database::EnqueueAgentEvent;
 
-		use decodex_protocol::AgentHistoryResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7464,8 +7425,6 @@ mod tests {
 	#[tokio::test]
 	async fn agent_history_reads_structured_and_legacy_assistant_results() {
 		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentHistoryResult;
 
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
@@ -7679,8 +7638,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn complete_file_approval_pages_bind_the_enriched_diff() {
-		use decodex_protocol::{AgentActivityDetailResult, AgentRequestResult};
-
 		let request = AgentRequestResult::Available {
 			event_id: 77,
 			work_id: "work".into(),
@@ -8242,8 +8199,7 @@ fn runtime_initial_model_source(
 			}
 
 			Ok(decodex_database::InitialModelSource {
-				account_id: decodex_core::AccountId::new(source.account_id.as_str())
-					.map_err(|_| ())?,
+				account_id: AccountId::new(source.account_id.as_str()).map_err(|_| ())?,
 				account_revision: source.account_revision,
 			})
 		})

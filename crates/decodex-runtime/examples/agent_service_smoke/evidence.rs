@@ -1,5 +1,7 @@
 //! Real read-only engineering and research tasks through the product coordinator.
-use super::{AgentClient, SmokeResult, history, idle, wait_graph_for};
+use std::{fs, path::Path, time::Duration};
+
+use crate::{AgentClient, SmokeResult};
 use decodex_protocol::{AgentActivityDetailResult, AgentWorkStatusDto, EntityId, WireText};
 
 pub(super) fn prompt() -> String {
@@ -7,13 +9,13 @@ pub(super) fn prompt() -> String {
 }
 
 pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
-	let graph = wait_graph_for(
+	let graph = crate::wait_graph_for(
 		client,
 		"real engineering and research reports",
-		std::time::Duration::from_secs(480),
+		Duration::from_secs(480),
 		|graph| {
 			graph.work_items.len() == 3
-				&& idle(graph)
+				&& crate::idle(graph)
 				&& graph
 					.work_items
 					.iter()
@@ -29,7 +31,7 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 
 	for (id, source) in [("engineering", "agent_capabilities"), ("research", "subscription-voice")]
 	{
-		let entries = history(client, id).await?;
+		let entries = crate::history(client, id).await?;
 		let answer = entries
 			.iter()
 			.filter(|entry| entry.kind == "assistant")
@@ -69,7 +71,7 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 		return Err("no real worker tool evidence was readable".into());
 	}
 
-	let root_report = history(client, "agent-service-smoke")
+	let root_report = crate::history(client, "agent-service-smoke")
 		.await?
 		.into_iter()
 		.filter(|entry| entry.kind == "assistant")
@@ -82,9 +84,9 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 		graph.work_items.len()
 	));
 
-	let destination = std::path::Path::new("target/agent-live-acceptance.md");
+	let destination = Path::new("target/agent-live-acceptance.md");
 
-	std::fs::write(destination, report)?;
+	fs::write(destination, report)?;
 
 	println!(
 		"Real engineering and research reports verified; native worker evidence read successfully. Report: {}",

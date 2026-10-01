@@ -7,18 +7,17 @@ pub use sqlite_store::SqliteCredentialStore;
 use std::{
 	error::Error,
 	fmt::{Debug, Display, Formatter},
+	mem,
 };
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 };
-
-use serde::{Deserialize, Serialize};
-
-use sha2::{Digest, Sha256};
-
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const FINGERPRINT_DOMAIN: &[u8] = b"decodex-host-credential-store-v1\0";
 const MAX_CREDENTIAL_RECORD_BYTES: usize = 1_024 * 1_024;
@@ -238,7 +237,7 @@ impl StoredCredential {
 
 	/// Consume the read and return its secret bundle.
 	pub fn into_bundle(mut self) -> CredentialSecretBundle {
-		std::mem::replace(
+		mem::replace(
 			&mut self.bundle,
 			CredentialSecretBundle {
 				access_token: String::new(),
@@ -302,12 +301,12 @@ impl PersistedCredential {
 			writer_operation_id: writer_operation_id.as_str().to_owned(),
 			provider: provider_text(provider.provider()).to_owned(),
 			provider_account_id: provider.account_id().to_owned(),
-			access_token: std::mem::take(&mut bundle.access_token),
-			refresh_token: std::mem::take(&mut bundle.refresh_token),
+			access_token: mem::take(&mut bundle.access_token),
+			refresh_token: mem::take(&mut bundle.refresh_token),
 			id_token: bundle.id_token.take(),
 			plan_type: bundle.plan_type.take(),
-			provider_email: std::mem::take(&mut bundle.provider_email),
-			token_type: std::mem::take(&mut bundle.token_type),
+			provider_email: mem::take(&mut bundle.provider_email),
+			token_type: mem::take(&mut bundle.token_type),
 			access_token_expires_at_unix_micros: bundle.access_token_expires_at_unix_micros,
 			personal_access_token_user_id: bundle.personal_access_token_user_id.take(),
 		}
@@ -350,7 +349,7 @@ impl PersistedCredential {
 			}
 
 			return CredentialSecretBundle::personal_access_token(
-				std::mem::take(&mut self.access_token),
+				mem::take(&mut self.access_token),
 				self.personal_access_token_user_id
 					.take()
 					.ok_or(CredentialStoreError::CorruptBundle)?,
@@ -365,12 +364,12 @@ impl PersistedCredential {
 		}
 
 		CredentialSecretBundle::chatgpt(
-			std::mem::take(&mut self.access_token),
+			mem::take(&mut self.access_token),
 			self.refresh_token.take().ok_or(CredentialStoreError::CorruptBundle)?,
 			self.id_token.take(),
 			self.plan_type.take(),
-			std::mem::take(&mut self.provider_email),
-			std::mem::take(&mut self.token_type),
+			mem::take(&mut self.provider_email),
+			mem::take(&mut self.token_type),
 			self.access_token_expires_at_unix_micros.ok_or(CredentialStoreError::CorruptBundle)?,
 		)
 	}
@@ -520,16 +519,14 @@ fn enforce_exact(
 
 #[cfg(test)]
 mod optional_email_tests {
-	use super::*;
+	use serde_json::{self, Value};
 
-	use serde_json::json;
-
-	use serde_json::Value;
+	use crate::host_credentials::PersistedCredential;
 
 	#[test]
 	fn stored_credentials_preserve_null_email_and_read_existing_string_email() {
 		for email in [None, Some(Value::Null), Some(Value::String("user@example.test".into()))] {
-			let mut record = json!({"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","token_type":"bearer","access_token_expires_at_unix_micros":100});
+			let mut record = serde_json::json!({"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","token_type":"bearer","access_token_expires_at_unix_micros":100});
 
 			if let Some(email) = email.clone() {
 				record["provider_email"] = email;
@@ -546,17 +543,22 @@ mod optional_email_tests {
 }
 #[cfg(test)]
 mod personal_access_token_tests {
-	use super::*;
+	use crate::host_credentials::{
+		self, AccountId, AccountOperationId, AccountProvider, CredentialSecretBundle,
+		CredentialStoreSchemaVersion, CredentialVersion, HostCredentialStore, PersistedCredential,
+		ProviderIdentity, SqliteCredentialStore,
+	};
 
 	const OAUTH_RECORD: &[u8] = br#"{"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","provider_email":null,"token_type":"bearer","access_token_expires_at_unix_micros":100}"#;
 
 	#[test]
 	fn oauth_record_keeps_exact_bytes_and_fingerprint() {
-		let (record, original_fingerprint) = decode(OAUTH_RECORD.to_vec()).unwrap();
-		let encoded = encode(&record).unwrap();
+		let (record, original_fingerprint) =
+			host_credentials::decode(OAUTH_RECORD.to_vec()).unwrap();
+		let encoded = host_credentials::encode(&record).unwrap();
 
 		assert_eq!(encoded.as_slice(), OAUTH_RECORD);
-		assert_eq!(fingerprint(&encoded).unwrap(), original_fingerprint);
+		assert_eq!(host_credentials::fingerprint(&encoded).unwrap(), original_fingerprint);
 
 		let bundle = record.into_bundle().unwrap();
 
@@ -576,7 +578,7 @@ mod personal_access_token_tests {
 		record["access_token_expires_at_unix_micros"] = serde_json::Value::Null;
 		record["personal_access_token_user_id"] = "pat-user".into();
 
-		let (decoded, _) = decode(serde_json::to_vec(&record).unwrap()).unwrap();
+		let (decoded, _) = host_credentials::decode(serde_json::to_vec(&record).unwrap()).unwrap();
 		let bundle = decoded.into_bundle().unwrap();
 
 		assert!(bundle.is_personal_access_token());

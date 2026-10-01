@@ -5,23 +5,25 @@ mod prompt;
 mod response;
 mod voice;
 
-use crate::agent_usage_estimate::Source;
-
-use decodex_codex::app_server_client::ServerEvent;
-
-use decodex_protocol::{EntityId, TaskRecap, TaskRecapPhase as Phase, TaskRecapStatus, WireText};
-
 use std::{
 	collections::BTreeMap,
 	sync::{Arc, Mutex},
 };
 
+use serde_json::Value;
 use tokio::sync::{mpsc, watch};
+
+use crate::agent_usage_estimate::Source;
+use decodex_codex::app_server_client::{HistoryGuard, ServerEvent};
+use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
+use decodex_protocol::{
+	AgentActionDto, EntityId, TaskRecap, TaskRecapPhase as Phase, TaskRecapStatus, WireText,
+};
 
 #[derive(Clone, Default)]
 pub(crate) struct Recaps(Arc<Mutex<State>>);
 impl Recaps {
-	pub(crate) fn note_input(&self, action: &decodex_protocol::AgentActionDto) {
+	pub(crate) fn note_input(&self, action: &AgentActionDto) {
 		use decodex_protocol::AgentActionDto as Action;
 
 		match action {
@@ -58,7 +60,7 @@ impl Recaps {
 		&self,
 		source: Source,
 		key: &str,
-		voice_revision: decodex_database::AgentVoiceHistoryRevision,
+		voice_revision: AgentVoiceHistoryRevision,
 	) -> Result<watch::Receiver<bool>, &'static str> {
 		let mut state = self.0.lock().map_err(|_| "Recap service unavailable")?;
 
@@ -107,7 +109,7 @@ impl Recaps {
 	pub(crate) fn voice_is_current(
 		&self,
 		work: &str,
-		revision: &decodex_database::AgentVoiceHistoryRevision,
+		revision: &AgentVoiceHistoryRevision,
 	) -> bool {
 		self.0.lock().is_ok_and(|state| {
 			state.requests.get(work).is_none_or(|r| &r.voice_revision == revision)
@@ -232,7 +234,7 @@ impl Recaps {
 
 pub(crate) struct Prepared {
 	pub options: decodex_codex::app_server_client::TemporaryStructuredOptions,
-	pub guard: decodex_codex::app_server_client::HistoryGuard,
+	pub guard: HistoryGuard,
 	pub prompt: String,
 	pub latest_turn: Option<String>,
 }
@@ -244,9 +246,9 @@ struct State {
 }
 
 struct Record {
-	voice_revision: decodex_database::AgentVoiceHistoryRevision,
+	voice_revision: AgentVoiceHistoryRevision,
 	source: Source,
-	guard: Option<decodex_codex::app_server_client::HistoryGuard>,
+	guard: Option<HistoryGuard>,
 	key: String,
 	cancel: watch::Sender<bool>,
 	phase: Phase,
@@ -267,13 +269,13 @@ pub(crate) fn parse(value: &str) -> Option<TaskRecap> {
 	response::parse(value)
 }
 
-pub(crate) fn schema() -> serde_json::Value {
+pub(crate) fn schema() -> Value {
 	response::schema()
 }
 
 pub(crate) async fn prepare(
 	source: &Source,
-	voice: Option<&decodex_database::AgentVoiceHistory>,
+	voice: Option<&AgentVoiceHistory>,
 ) -> Option<Prepared> {
 	let (permissions, guard) = source.client.configured_task_permissions(&source.key.thread)?;
 	let model =

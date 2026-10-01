@@ -13,10 +13,21 @@
 #[path = "agent_process_voice_tail_tests.rs"] mod voice_tail_tests;
 #[path = "agent_process_warning_tests.rs"] mod warning_tests;
 
-use crate::agent_usage_estimate::{Source, SourceKey};
+use std::{path::Path, time::Duration};
 
+use rusqlite::Connection;
+use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{
+	agent_hooks,
+	agent_hooks::Selection,
+	agent_live_settings, agent_model_settings, agent_models,
+	agent_models::Change,
+	agent_permissions,
+	agent_usage_estimate::{Source, SourceKey},
+};
 use decodex_codex::app_server_client::AppServerClient;
-
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot, ProcessBootIdentity,
@@ -24,15 +35,13 @@ use decodex_core::{
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent, ProcessIdentity,
 	ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, ProviderIdentity,
 };
-
 use decodex_database::{
 	AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
 	CodexAccountCapabilityAttestation, SqliteStore,
 };
-
-use decodex_protocol::{AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentReviewer};
-
-use sha2::Digest as _;
+use decodex_protocol::{
+	AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentModelSettingsResult, AgentReviewer,
+};
 
 const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
@@ -47,19 +56,18 @@ pub(super) struct OwnedReviewer {
 }
 impl OwnedReviewer {
 	pub(super) async fn observe_model(&self) {
-		let state = crate::agent_model_settings::read(&self.store, || async {
-			Some(self.source(&self.key))
-		})
-		.await;
+		let state =
+			agent_model_settings::read(&self.store, || async { Some(self.source(&self.key)) })
+				.await;
 
-		assert!(matches!(state, decodex_protocol::AgentModelSettingsResult::Available {
+		assert!(matches!(state, AgentModelSettingsResult::Available{
 			work_id, thread_id, account_id, model: Some(model), model_provider:Some(provider), ..
 		} if work_id.as_str() == "root" && thread_id.as_str() == self.key.thread
 			&& account_id.as_str() == ACCOUNT && model.as_str() == "gpt-5.6-sol" && provider.as_str()=="fixture"));
 	}
 
 	pub(super) async fn new(
-		home: &std::path::Path,
+		home: &Path,
 		client: &AppServerClient,
 		thread: &str,
 		turn: &str,
@@ -179,10 +187,8 @@ impl OwnedReviewer {
 	}
 
 	pub(super) async fn publish(&self, turn: &str, reviewer: AgentReviewer) {
-		let state = crate::agent_live_settings::read(&self.store, || async {
-			Some(self.source(&self.key))
-		})
-		.await;
+		let state =
+			agent_live_settings::read(&self.store, || async { Some(self.source(&self.key)) }).await;
 		let AgentLiveReviewerState::Available {
 			review_token,
 			can_update: true,
@@ -197,7 +203,7 @@ impl OwnedReviewer {
 		changed.revision += 1;
 
 		assert!(
-			crate::agent_live_settings::write(
+			agent_live_settings::write(
 				&self.store,
 				|| async { Some(self.source(&changed)) },
 				turn,
@@ -216,7 +222,7 @@ impl OwnedReviewer {
 				.is_none()
 		);
 
-		crate::agent_live_settings::write(
+		agent_live_settings::write(
 			&self.store,
 			|| async { Some(self.source(&self.key)) },
 			turn,
@@ -228,7 +234,7 @@ impl OwnedReviewer {
 		.expect("native reviewer publication");
 
 		assert!(
-			crate::agent_live_settings::write(
+			agent_live_settings::write(
 				&self.store,
 				|| async { Some(self.source(&self.key)) },
 				turn,
@@ -242,8 +248,7 @@ impl OwnedReviewer {
 
 		let reopened = SqliteStore::open(&self.root.paths()).expect("reopen durable receipt");
 		let state =
-			crate::agent_live_settings::read(&reopened, || async { Some(self.source(&self.key)) })
-				.await;
+			agent_live_settings::read(&reopened, || async { Some(self.source(&self.key)) }).await;
 
 		assert!(matches!(
 			state,
@@ -258,16 +263,14 @@ impl OwnedReviewer {
 
 	pub(super) async fn completed_target(&self, turn: &str) {
 		// Deliberately leave the local turn running to simulate delayed terminal notification.
-		let state = crate::agent_live_settings::read(&self.store, || async {
-			Some(self.source(&self.key))
-		})
-		.await;
+		let state =
+			agent_live_settings::read(&self.store, || async { Some(self.source(&self.key)) }).await;
 		let AgentLiveReviewerState::Available { review_token, .. } = state else {
 			panic!("local running receipt");
 		};
 
 		assert!(
-			crate::agent_live_settings::write(
+			agent_live_settings::write(
 				&self.store,
 				|| async { Some(self.source(&self.key)) },
 				turn,
@@ -279,10 +282,8 @@ impl OwnedReviewer {
 			.is_err()
 		);
 
-		let state = crate::agent_live_settings::read(&self.store, || async {
-			Some(self.source(&self.key))
-		})
-		.await;
+		let state =
+			agent_live_settings::read(&self.store, || async { Some(self.source(&self.key)) }).await;
 
 		assert!(matches!(
 			state,
@@ -300,12 +301,12 @@ impl OwnedReviewer {
 
 		let source = || async { Some(self.source(&self.key)) };
 		let State::Available { review_token, .. } =
-			crate::agent_permissions::read(&self.store, source).await
+			agent_permissions::read(&self.store, source).await
 		else {
 			panic!("native permission review")
 		};
 
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&self.store,
 			source,
 			&self.key.thread,
@@ -315,23 +316,23 @@ impl OwnedReviewer {
 		)
 		.await
 		.expect("native permission selection");
-		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+		time::timeout(Duration::from_secs(5), async {
 			loop {
 				if matches!(
-					crate::agent_permissions::read(&self.store, source).await,
+					agent_permissions::read(&self.store, source).await,
 					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
 				) {
 					break;
 				}
 
-				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		})
 		.await
 		.expect("native publication settles receipt");
 
 		assert!(
-			crate::agent_permissions::write(
+			agent_permissions::write(
 				&self.store,
 				source,
 				&self.key.thread,
@@ -362,16 +363,15 @@ impl OwnedReviewer {
 		use decodex_protocol::{AgentModelOutcome as Outcome, AgentModelSelectionState as State};
 
 		let source = || async { Some(self.source(&self.key)) };
-		let State::Available { review_token, .. } =
-			crate::agent_models::read(&self.store, source).await
+		let State::Available { review_token, .. } = agent_models::read(&self.store, source).await
 		else {
 			panic!("native model review")
 		};
 
-		crate::agent_models::write(
+		agent_models::write(
 			&self.store,
 			source,
-			crate::agent_models::Change {
+			Change {
 				thread: &self.key.thread,
 				review: review_token.as_str(),
 				model,
@@ -381,23 +381,23 @@ impl OwnedReviewer {
 		)
 		.await
 		.expect("native model selection");
-		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+		time::timeout(Duration::from_secs(5), async {
 			loop {
 				if matches!(
-					crate::agent_models::read(&self.store, source).await,
+					agent_models::read(&self.store, source).await,
 					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
 				) {
 					break;
 				}
 
-				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		})
 		.await
 		.expect("native model publication");
 
 		assert!(
-			crate::agent_models::write(
+			agent_models::write(
 				&self.store,
 				source,
 				crate::agent_models::Change {
@@ -426,7 +426,7 @@ impl OwnedReviewer {
 			Some(self.source(&key))
 		};
 		let State::Available { review_token, hooks, config_file, .. } =
-			crate::agent_hooks::read(&self.store, source).await
+			agent_hooks::read(&self.store, source).await
 		else {
 			panic!("hook service review")
 		};
@@ -437,10 +437,10 @@ impl OwnedReviewer {
 
 		assert_eq!(hook.trust_status, "untrusted");
 
-		crate::agent_hooks::write(
+		agent_hooks::write(
 			&self.store,
 			source,
-			crate::agent_hooks::Selection {
+			Selection {
 				thread: &self.key.thread,
 				review: review_token.as_str(),
 				hook: hook.key.as_str(),
@@ -452,7 +452,7 @@ impl OwnedReviewer {
 		.expect("production hook trust");
 
 		let State::Available { last_edit: Some(edit), hooks, .. } =
-			crate::agent_hooks::read(&self.store, source).await
+			agent_hooks::read(&self.store, source).await
 		else {
 			panic!("native hook readback")
 		};
@@ -460,7 +460,7 @@ impl OwnedReviewer {
 		assert_eq!(edit.outcome, "saved");
 		assert_eq!(hooks.iter().find(|h| h.key == hook.key).expect("hook").trust_status, "trusted");
 		assert!(
-			crate::agent_hooks::write(
+			agent_hooks::write(
 				&self.store,
 				source,
 				crate::agent_hooks::Selection {
@@ -475,7 +475,7 @@ impl OwnedReviewer {
 			.is_err()
 		);
 
-		let scope: String = sha2::Sha256::digest(config_file.as_str().as_bytes())
+		let scope: String = Sha256::digest(config_file.as_str().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();
@@ -494,7 +494,7 @@ impl OwnedReviewer {
 }
 
 fn seed_account(root: &DecodexRoot) {
-	let connection = rusqlite::Connection::open(root.paths().product_database_file())
+	let connection = Connection::open(root.paths().product_database_file())
 		.expect("disposable fixture connection");
 
 	connection

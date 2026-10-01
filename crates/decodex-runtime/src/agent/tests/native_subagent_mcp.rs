@@ -1,5 +1,9 @@
 //! Native child MCP requests retain policy decisions and exact response ownership.
-use super::*;
+use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
+
+use tokio::{net::TcpListener, process::Command, sync::mpsc, time};
+
+use crate::agent::tests::native_subagent_live::*;
 
 fn mcp_response(body: &Value, serial: usize) -> Value {
 	if serial == 1 {
@@ -28,10 +32,7 @@ async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 		[json!({"codex_approval_kind":"browser_auth"}), json!({"codex_requires_user_input":true})]
 	{
 		for interactive in [false, true] {
-			if std::panic::AssertUnwindSafe(qualify(marker.clone(), interactive))
-				.catch_unwind()
-				.await
-				.is_err()
+			if AssertUnwindSafe(qualify(marker.clone(), interactive)).catch_unwind().await.is_err()
 			{
 				failures += 1;
 			}
@@ -42,23 +43,23 @@ async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 }
 
 async fn qualify(marker: Value, interactive: bool) {
-	let binary = std::env::var("DECODEX_NATIVE_BINARY").expect("native binary");
+	let binary = env::var("DECODEX_NATIVE_BINARY").expect("native binary");
 	let directory = tempfile::tempdir().expect("fixture home");
 	let home = directory.path().canonicalize().expect("canonical home");
 	let script = home.join("mcp.py");
 
-	std::fs::write(&script, include_str!("native_subagent_mcp_server.py")).expect("fixture script");
+	fs::write(&script, include_str!("native_subagent_mcp_server.py")).expect("fixture script");
 
 	let record = home.join("result.json");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let address = listener.local_addr().expect("address");
-	let (requests_tx, mut requests_rx) = tokio::sync::mpsc::unbounded_channel();
+	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
 	let backend = tokio::spawn(serve_with_response(listener, requests_tx, mcp_response));
 
-	std::fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",json!(script),json!(record),json!(marker.to_string()),json!(interactive.to_string()))).expect("config");
+	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",json!(script),json!(record),json!(marker.to_string()),json!(interactive.to_string()))).expect("config");
 
 	let (mut agent, _, _store_home) = fixture().await;
-	let mut command = tokio::process::Command::new(binary);
+	let mut command = Command::new(binary);
 
 	command
 		.arg("app-server")
@@ -77,7 +78,7 @@ async fn qualify(marker: Value, interactive: bool) {
 	agent.config.sandbox = if interactive { "read-only" } else { "danger-full-access" }.into();
 	agent.config.approval_policy = json!(if interactive { "on-request" } else { "never" });
 
-	let outcome=std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(60),async{
+	let outcome=AssertUnwindSafe(time::timeout(Duration::from_secs(60),async{
  agent.initialize().await.expect("initialize");
  agent.start_agent("agent","ROOT_SPAWN").await.expect("start root");
 
@@ -123,7 +124,7 @@ async fn qualify(marker: Value, interactive: bool) {
  assert_eq!(prompts,usize::from(interactive),"exactly one interactive child prompt");
  assert!(agent.pending_requests.is_empty(),"all child prompts resolved");
 
- let result:Value=serde_json::from_slice(&std::fs::read(&record).expect("native MCP result")).expect("result JSON");
+ let result:Value=serde_json::from_slice(&fs::read(&record).expect("native MCP result")).expect("result JSON");
 
  assert_eq!(result["result"],json!({"action":"accept","content":if interactive {json!({"answer":"continue"})} else {json!({})}}),"marker={marker}, native reply={result}");
 

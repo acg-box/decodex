@@ -1,23 +1,27 @@
 //! Native permission catalog, observations and restart with one materialization turn.
-use super::*;
+use std::{env, ffi::OsStr, fs, path::Path, sync::atomic::AtomicUsize};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::{reviewer, *};
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated permission selection qualification"]
 async fn installed_permission_selection_publishes_and_survives_native_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false))
+	time::timeout(Duration::from_secs(45), qualify(false))
 		.await
 		.expect("bounded permissions fixture");
 }
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated active permission qualification"]
 async fn installed_named_permission_selection_during_active_turn_survives_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(true))
+	time::timeout(Duration::from_secs(45), qualify(true))
 		.await
 		.expect("bounded active permissions fixture");
 }
 async fn qualify(running: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -25,11 +29,11 @@ async fn qualify(running: bool) {
 	let root = home.path().canonicalize().expect("canonical home");
 	let workspace = root.join("workspace");
 
-	std::fs::create_dir_all(workspace.join("writable/private")).expect("fixture workspace");
+	fs::create_dir_all(workspace.join("writable/private")).expect("fixture workspace");
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let address = listener.local_addr().expect("address");
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let calls = Arc::new(AtomicUsize::new(0));
 	let mut listener = Some(listener);
 	let mut backend = None;
 
@@ -37,7 +41,7 @@ async fn qualify(running: bool) {
 		backend = Some(tokio::spawn(serve(listener.take().expect("listener"), calls.clone())));
 	}
 
-	std::fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",json!(workspace.join("writable")),json!(workspace.join("writable/private")))).expect("fixture config");
+	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",json!(workspace.join("writable")),json!(workspace.join("writable/private")))).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, &root);
 	let profiles = session
@@ -87,7 +91,7 @@ async fn qualify(running: bool) {
 	let guard = session.client.thread_settings_guard(&thread).expect("settings guard");
 
 	if running {
-		super::reviewer::select_permission(&session.client, &root, &thread).await;
+		reviewer::select_permission(&session.client, &root, &thread).await;
 	} else {
 		session
 			.client
@@ -183,8 +187,8 @@ async fn wait_turn(session: &mut NativeSession, thread: &str, expected: &str) {
 }
 
 async fn verify_restart(
-	binary: &std::ffi::OsStr,
-	root: &std::path::Path,
+	binary: &OsStr,
+	root: &Path,
 	thread: &str,
 	observed: NativeTaskPermissions,
 ) {

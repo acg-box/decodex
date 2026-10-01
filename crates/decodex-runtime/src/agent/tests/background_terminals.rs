@@ -1,4 +1,6 @@
-use super::*;
+use std::iter;
+
+use crate::agent::tests::*;
 
 #[tokio::test]
 async fn background_commands_keep_native_identity_and_do_not_start_turns() {
@@ -22,7 +24,7 @@ async fn background_commands_keep_native_identity_and_do_not_start_turns() {
 			terminated
 		);
 
-		let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 		assert_eq!(requests.len(), 2);
 		assert_eq!(requests[0]["method"], "thread/backgroundTerminals/list");

@@ -7,7 +7,7 @@
 use std::{
 	collections::{HashMap, VecDeque},
 	fmt::{Display, Formatter},
-	future::Future,
+	future::{self, Future},
 	panic::AssertUnwindSafe,
 	pin::Pin,
 	sync::{
@@ -24,14 +24,14 @@ use futures_util::{
 
 use tokio::{
 	sync::{mpsc, mpsc::Receiver, oneshot, watch},
-	task::{AbortHandle, Id as TokioTaskId, JoinError, JoinHandle, JoinSet},
+	task::{AbortHandle, JoinError, JoinHandle, JoinSet},
 	time,
 };
 
 use tokio_tungstenite::{
 	WebSocketStream, accept_hdr_async_with_config,
 	tungstenite::{
-		Error as TungsteniteError, Message,
+		Message,
 		error::ProtocolError,
 		handshake::server::{ErrorResponse, Request, Response},
 		http::StatusCode,
@@ -1039,10 +1039,8 @@ where
 			};
 
 			if frozen_reader.is_some_and(SessionReaderCompletion::is_peer_close)
-				&& matches!(
-					&flush_result,
-					Ok(Err(TungsteniteError::Protocol(ProtocolError::SendAfterClosing)))
-				) {
+				&& Self::is_send_after_closing(&flush_result)
+			{
 				let _ =
 					Self::flush_peer_close_reply(&mut socket_writer, transport.write_timeout).await;
 			}
@@ -1058,6 +1056,17 @@ where
 
 			locally_written = SessionOrdinalProgress::Through(item.ordinal);
 		}
+	}
+
+	fn is_send_after_closing(
+		result: &Result<Result<(), tokio_tungstenite::tungstenite::Error>, time::error::Elapsed>,
+	) -> bool {
+		matches!(
+			result,
+			Ok(Err(tokio_tungstenite::tungstenite::Error::Protocol(
+				ProtocolError::SendAfterClosing
+			)))
+		)
 	}
 
 	async fn next_outbound_item<F>(
@@ -1726,7 +1735,7 @@ where
 					publication = application.next_publication(), if may_poll_events => {
 						AcceptingOrdinaryWake::ApplicationEvent(publication)
 					},
-					_ = std::future::pending::<()>() => unreachable!(),
+					_ = future::pending::<()>() => unreachable!(),
 				}
 			};
 
@@ -1792,13 +1801,13 @@ where
 			request = self.actor_receiver.recv(), if may_drain_ingress => {
 				StoppingWake::Request(request)
 			},
-			_ = std::future::ready(()), if may_flush_deferred => {
+			_ = future::ready(()), if may_flush_deferred => {
 					StoppingWake::FlushDeferred
 			},
 			publication = self.server.inner.application.next_publication(), if may_poll_events => {
 				StoppingWake::ApplicationEvent(publication)
 			},
-			_ = std::future::pending::<()>() => unreachable!(),
+			_ = future::pending::<()>() => unreachable!(),
 		};
 
 		match wake {
@@ -2404,7 +2413,7 @@ where
 
 	fn harvest_task(
 		&mut self,
-		joined: Result<(TokioTaskId, OwnedTaskCompletion), JoinError>,
+		joined: Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>,
 	) -> OwnerDirective {
 		self.receipt.record_harvested_task();
 
@@ -2954,7 +2963,7 @@ struct OwnedTaskRecord {
 
 struct OwnedTasks {
 	set: JoinSet<OwnedTaskCompletion>,
-	identities: HashMap<TokioTaskId, OwnedTaskRecord>,
+	identities: HashMap<tokio::task::Id, OwnedTaskRecord>,
 	next_spawn_id: u64,
 	active_sessions: usize,
 }
@@ -3011,7 +3020,7 @@ impl OwnedTasks {
 		self.active_sessions
 	}
 
-	fn take_record(&mut self, task_id: TokioTaskId) -> Option<OwnedTaskRecord> {
+	fn take_record(&mut self, task_id: tokio::task::Id) -> Option<OwnedTaskRecord> {
 		let record = self.identities.remove(&task_id)?;
 
 		if record.identity.kind == OwnedTaskKind::Session {
@@ -3307,7 +3316,7 @@ enum CommandShutdownState {
 enum AcceptingWake {
 	RequestedShutdown,
 	ListenerHealth,
-	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
+	OwnedTask(Option<Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>>),
 	Operation(ActiveActorOperationCompletion),
 	Ordinary(Box<AcceptingOrdinaryWake>),
 }
@@ -3320,7 +3329,7 @@ enum AcceptingOrdinaryWake {
 
 enum StoppingWake {
 	Deadline,
-	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
+	OwnedTask(Option<Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>>),
 	Operation(ActiveActorOperationCompletion),
 	ApplicationSettled,
 	Request(Option<PublicationRequest>),

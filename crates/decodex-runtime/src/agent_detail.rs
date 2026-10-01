@@ -10,6 +10,9 @@ use serde_json::Value;
 #[cfg(test)] use serde_json::json;
 
 use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::agent::{image_generation, timeline::tool_output};
 
 pub(crate) fn saved_file_changes(payload: &Value) -> Option<String> {
 	let params = &payload["params"];
@@ -61,7 +64,7 @@ where
 	let Some(before) = source().await else {
 		return AgentActivityDetailResult::Unavailable;
 	};
-	let history = tokio::time::timeout(
+	let history = time::timeout(
 		std::time::Duration::from_secs(8),
 		before.client.thread_read_turn(&before.key.thread, turn),
 	)
@@ -98,11 +101,9 @@ pub(crate) async fn read_file_changes(
 	turn: &str,
 	item: &str,
 ) -> AgentActivityDetailResult {
-	let Ok(Ok(history)) = tokio::time::timeout(
-		std::time::Duration::from_secs(8),
-		client.thread_read_turn(thread, turn),
-	)
-	.await
+	let Ok(Ok(history)) =
+		time::timeout(std::time::Duration::from_secs(8), client.thread_read_turn(thread, turn))
+			.await
 	else {
 		return AgentActivityDetailResult::Unavailable;
 	};
@@ -160,11 +161,11 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 				}
 			},
 		"mcpToolCall" | "dynamicToolCall" => parts.extend(tool_detail::parts(item)),
-		"functionCallOutput" => parts.extend(crate::agent::timeline::tool_output::parts(item)?),
+		"functionCallOutput" => parts.extend(tool_output::parts(item)?),
 		"imageGeneration" => {
 			parts.push(format!("Image generation: {}", item["status"].as_str()?));
 
-			if let Some(detail) = crate::agent::image_generation::quota_detail(item) {
+			if let Some(detail) = image_generation::quota_detail(item) {
 				parts.push(detail);
 			}
 		},
@@ -311,12 +312,21 @@ mod tool_tests;
 mod web_tests;
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::{
+		agent::timeline,
+		agent_detail::{self, AgentActivityDetailResult, AppServerClient, Value},
+		agent_usage_estimate::{Source, SourceKey},
+	};
+	use decodex_core::{AccountId, ProcessGenerationId};
 
 	#[test]
 	fn image_quota_is_visible_in_timeline_and_exact_activity_details() {
-		let item = json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200},"result":""});
-		let page=crate::agent::timeline::project("thread",&json!({"data":[{"type":"item","turnId":"turn","position":0,"item":item}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null})).unwrap();
+		let item = agent_detail::json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200},"result":""});
+		let page=timeline::project("thread",&agent_detail::json!({"data":[{"type":"item","turnId":"turn","position":0,"item":item}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null})).unwrap();
 		let decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } =
 			&page.entries[0].content
 		else {
@@ -326,31 +336,36 @@ mod tests {
 		assert_eq!(activity.label, "Image generation limit reached");
 		assert_eq!(activity.status, "failed");
 
-		let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}});
-		let text = project_text(&history, "thread", "turn", "image").unwrap();
+		let history =
+			agent_detail::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}});
+		let text = agent_detail::project_text(&history, "thread", "turn", "image").unwrap();
 
 		assert!(text.contains("Image generation usage limit reached"));
 		assert!(text.contains("2026-09-29T12:00:00Z"));
-		assert!(project_text(&history, "other", "turn", "image").is_none());
+		assert!(agent_detail::project_text(&history, "other", "turn", "image").is_none());
 	}
 
 	#[test]
 	fn exact_source_required_and_reasoning_not_projected() {
-		let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
+		let history = agent_detail::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
 
 		assert!(
-			matches!(project(&history,"thread","turn","item"),Some(AgentActivityDetailResult::Available {text,..}) if text.contains("Passed"))
+			matches!(agent_detail::project(&history,"thread","turn","item"),Some(AgentActivityDetailResult::Available {text,..}) if text.contains("Passed"))
 		);
-		assert!(project(&history, "other", "turn", "item").is_none());
-		assert!(project(&history, "thread", "other", "item").is_none());
-		assert!(project(&history, "thread", "turn", "private").is_none());
+		assert!(agent_detail::project(&history, "other", "turn", "item").is_none());
+		assert!(agent_detail::project(&history, "thread", "other", "item").is_none());
+		assert!(agent_detail::project(&history, "thread", "turn", "private").is_none());
 	}
 
 	#[test]
 	fn output_is_bounded_at_utf8_boundary() {
-		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
+		let history = agent_detail::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
 		let Some(AgentActivityDetailResult::Available { text, truncated, offset, next }) =
-			page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
+			agent_detail::page(
+				&agent_detail::project_text(&history, "t", "u", "i").unwrap(),
+				"scope",
+				None,
+			)
 		else {
 			panic!("detail");
 		};
@@ -364,9 +379,9 @@ mod tests {
 
 	#[test]
 	fn complete_detail_is_not_shortened_before_request_paging() {
-		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
+		let history = agent_detail::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
 		let Some(AgentActivityDetailResult::Available { text, truncated, .. }) =
-			project(&history, "t", "u", "i")
+			agent_detail::project(&history, "t", "u", "i")
 		else {
 			panic!("detail");
 		};
@@ -377,22 +392,26 @@ mod tests {
 
 	#[tokio::test]
 	async fn file_approval_loads_exact_paginated_item_without_full_history() {
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
 		for kind in ["fileChange", "commandExecution"] {
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 
 				for (method, result) in [
-					("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+					(
+						"thread/read",
+						agent_detail::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+					),
+					(
+						"thread/turns/list",
+						agent_detail::json!({"data":[{"id":"turn"}],"nextCursor":null}),
+					),
 					(
 						"thread/items/list",
-						json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
+						agent_detail::json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
 					),
 				] {
 					let request: Value =
@@ -403,13 +422,17 @@ mod tests {
 
 					writer
 						.write_all(
-							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+							format!(
+								"{}\n",
+								agent_detail::json!({"id":request["id"],"result":result})
+							)
+							.as_bytes(),
 						)
 						.await
 						.unwrap();
 				}
 			});
-			let detail = read_file_changes(&client, "thread", "turn", "patch").await;
+			let detail = agent_detail::read_file_changes(&client, "thread", "turn", "patch").await;
 
 			server.await.unwrap();
 
@@ -434,23 +457,15 @@ mod tests {
 
 	#[tokio::test]
 	async fn activity_detail_rejects_changed_or_missing_source() {
-		use crate::agent_usage_estimate::{Source, SourceKey};
-
-		use decodex_core::{AccountId, ProcessGenerationId};
-
-		use std::sync::atomic::{AtomicUsize, Ordering};
-
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
 		for change in [
 			"none", "account", "process", "revision", "history", "thread", "work", "closed",
 			"absent",
 		] {
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 
 				if change == "absent" {
@@ -460,11 +475,17 @@ mod tests {
 				}
 
 				for (method, result) in [
-					("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-					("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+					(
+						"thread/read",
+						agent_detail::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+					),
+					(
+						"thread/turns/list",
+						agent_detail::json!({"data":[{"id":"turn"}],"nextCursor":null}),
+					),
 					(
 						"thread/items/list",
-						json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
+						agent_detail::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
 					),
 				] {
 					let request: Value =
@@ -475,14 +496,18 @@ mod tests {
 
 					writer
 						.write_all(
-							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+							format!(
+								"{}\n",
+								agent_detail::json!({"id":request["id"],"result":result})
+							)
+							.as_bytes(),
 						)
 						.await
 						.unwrap();
 				}
 			});
 			let calls = AtomicUsize::new(0);
-			let result = read_bound(
+			let result = agent_detail::read_bound(
 				|| {
 					let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 					let client = client.clone();

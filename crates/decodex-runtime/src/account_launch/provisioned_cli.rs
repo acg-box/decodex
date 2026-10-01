@@ -1,10 +1,13 @@
 //! Resolve the official provisioned CLI launcher without executing a shell.
 //! Layout and launcher from openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582.
-use super::SupervisionError;
 use std::{
 	fs,
 	path::{Path, PathBuf},
 };
+
+use serde_json::Value;
+
+use crate::account_launch::process::SupervisionError;
 
 const LAUNCHER: &str = r#"#!/bin/sh
 set -eu
@@ -41,7 +44,7 @@ pub(super) fn native_entrypoint(path: PathBuf) -> Result<PathBuf, SupervisionErr
 		return Err(unavailable());
 	}
 
-	let metadata: serde_json::Value =
+	let metadata: Value =
 		serde_json::from_slice(&fs::read(metadata_path).map_err(|_| unavailable())?)
 			.map_err(|_| unavailable())?;
 
@@ -61,8 +64,9 @@ pub(super) fn native_entrypoint(path: PathBuf) -> Result<PathBuf, SupervisionErr
 
 #[cfg(test)]
 mod tests {
-	use super::{LAUNCHER, Path, PathBuf, fs};
-	use std::os::unix::fs::{PermissionsExt as _, symlink};
+	use std::os::unix::fs::PermissionsExt as _;
+
+	use crate::account_launch::process::provisioned_cli::{LAUNCHER, Path, PathBuf, fs};
 
 	fn package(root: &Path) -> PathBuf {
 		let entry = root.join("bin/codex");
@@ -104,7 +108,8 @@ mod tests {
 
 		let link = home.path().join("installed-codex");
 
-		symlink("relocated package/bin/codex", &link).expect("provisioned package fixture");
+		std::os::unix::fs::symlink("relocated package/bin/codex", &link)
+			.expect("provisioned package fixture");
 
 		let (resolved, _, digest) = super::super::resolve_executable(link.as_os_str())
 			.expect("provisioned package fixture");

@@ -1,13 +1,25 @@
 //! Opt-in real app-server qualification with a local, deterministic Responses backend.
-use super::*;
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{Arc, Mutex},
+	time::Duration,
+};
 
 use futures_util::FutureExt as _;
+use tokio::{
+	io::AsyncReadExt as _,
+	net::{TcpListener, TcpStream},
+	process::Command,
+	sync::mpsc::Receiver,
+	time,
+};
 
-use std::sync::{Arc, Mutex};
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
+use decodex_database::AgentDispatchState;
 
-use tokio::io::AsyncReadExt as _;
-
-pub(super) async fn read_http_body(socket: &mut tokio::net::TcpStream) -> Value {
+pub(super) async fn read_http_body(socket: &mut TcpStream) -> Value {
 	let mut bytes = Vec::new();
 	let mut buffer = [0; 8_192];
 
@@ -89,11 +101,11 @@ fn message(serial: usize, text: &str) -> Value {
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY pointing to an installed Codex binary"]
 async fn native_task_reference_round_trip() {
-	let binary = std::env::var("DECODEX_NATIVE_BINARY").expect("explicit native binary required");
+	let binary = env::var("DECODEX_NATIVE_BINARY").expect("explicit native binary required");
 	let directory = tempfile::tempdir().unwrap();
 	let home = directory.path().canonicalize().unwrap();
 	let observed = Arc::new(Mutex::new(false));
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let witness = observed.clone();
 	let backend = tokio::spawn(async move {
@@ -123,16 +135,16 @@ async fn native_task_reference_round_trip() {
 		}
 	});
 
-	std::fs::write(home.join("config.toml"),format!(
+	fs::write(home.join("config.toml"),format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Isolated reference fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
 	)).unwrap();
 
-	let root = decodex_core::DecodexRoot::new(home.join("product")).unwrap();
+	let root = DecodexRoot::new(home.join("product")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
-	let mut command = tokio::process::Command::new(binary);
+	let mut command = Command::new(binary);
 
 	command
 		.arg("app-server")
@@ -150,7 +162,7 @@ async fn native_task_reference_round_trip() {
 	config.approval_policy = json!("never");
 
 	let mut agent = AgentCoordinator::new(store.clone(), client, config).unwrap();
-	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(90), async {
+	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(90), async {
 		agent.initialize().await.unwrap();
 		agent.start_agent("root", "ROOT_READY").await.unwrap();
 
@@ -187,13 +199,9 @@ async fn native_task_reference_round_trip() {
 		.expect("native reference round trip timed out");
 }
 
-async fn drain_work(
-	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
-	id: &str,
-) {
+async fn drain_work(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>, id: &str) {
 	while agent.store.get_agent_work_item(id.into()).await.unwrap().dispatch_state
-		!= decodex_database::AgentDispatchState::Idle
+		!= AgentDispatchState::Idle
 	{
 		agent.handle_event(events.recv().await.expect("native event stream ended")).await.unwrap();
 	}

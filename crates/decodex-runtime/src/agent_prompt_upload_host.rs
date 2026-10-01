@@ -1,11 +1,13 @@
 //! Durable input staging does not authorize native execution.
-use super::{AgentHost, AgentHostError};
+use crate::agent_host::{AgentHost, AgentHostError};
 
 use decodex_database::AgentPromptUpload;
 
-use decodex_protocol::{
-	AgentActionDto as Action, PromptInputUpload, PromptInputUploadStatus as Status,
-};
+use decodex_protocol::PromptInputUpload;
+
+use std::iter;
+
+use crate::agent;
 
 impl AgentHost {
 	pub(crate) async fn prompt_send_status(
@@ -31,14 +33,14 @@ impl AgentHost {
 	pub(super) async fn send_prompt_input(
 		&self,
 		key: &str,
-		action: Action,
+		action: decodex_protocol::AgentActionDto,
 		active: &mut Option<(
 			String,
 			super::AgentCoordinator,
 			tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
 		)>,
 	) -> Result<String, AgentHostError> {
-		let Action::SendPromptInput {
+		let decodex_protocol::AgentActionDto::SendPromptInput {
 			work_id,
 			thread_id,
 			input_id,
@@ -68,7 +70,7 @@ impl AgentHost {
 			.content
 			.iter()
 			.filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
-			.flat_map(|text| text.chars().chain(std::iter::once('\n')))
+			.flat_map(|text| text.chars().chain(iter::once('\n')))
 			.take(2_000)
 			.collect();
 		let preview = decodex_protocol::HistoryText::new(format!(
@@ -80,7 +82,7 @@ impl AgentHost {
 		let mut params =
 			serde_json::json!({"threadId":thread_id,"input":input.content,"turnTrigger":"user"});
 
-		crate::agent::apply_message_options(
+		agent::apply_message_options(
 			&mut params,
 			&serde_json::json!({"options":options}).to_string(),
 		)
@@ -93,10 +95,10 @@ impl AgentHost {
 
 	pub(super) async fn handle_prompt_upload(
 		&self,
-		action: Action,
+		action: decodex_protocol::AgentActionDto,
 	) -> Result<String, AgentHostError> {
 		match action {
-			Action::UploadPromptInput { upload, offset, fragment } => {
+			decodex_protocol::AgentActionDto::UploadPromptInput { upload, offset, fragment } => {
 				let source = source(&upload)?;
 				let offset = i64::try_from(offset).map_err(|_| "Invalid prompt upload offset")?;
 
@@ -107,7 +109,7 @@ impl AgentHost {
 
 				Ok(upload.work_id.as_str().into())
 			},
-			Action::CompletePromptInputUpload { upload } => {
+			decodex_protocol::AgentActionDto::CompletePromptInputUpload { upload } => {
 				self.store
 					.complete_agent_prompt_upload(source(&upload)?)
 					.await
@@ -119,9 +121,12 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn prompt_upload_status(&self, upload: PromptInputUpload) -> Status {
+	pub(crate) async fn prompt_upload_status(
+		&self,
+		upload: PromptInputUpload,
+	) -> decodex_protocol::PromptInputUploadStatus {
 		let Ok(source) = source(&upload) else {
-			return Status::Unavailable { upload };
+			return decodex_protocol::PromptInputUploadStatus::Unavailable { upload };
 		};
 		let bound = self
 			.store
@@ -130,7 +135,7 @@ impl AgentHost {
 			.is_ok_and(|work| work.codex_thread_id.as_deref() == Some(source.thread.as_str()));
 
 		if !bound {
-			return Status::Unavailable { upload };
+			return decodex_protocol::PromptInputUploadStatus::Unavailable { upload };
 		}
 		// Check the current receipt before reporting reusable data for this source.
 		let valid = self
@@ -145,12 +150,12 @@ impl AgentHost {
 			});
 
 		if !valid {
-			return Status::Unavailable { upload };
+			return decodex_protocol::PromptInputUploadStatus::Unavailable { upload };
 		}
 
 		let received = match self.store.agent_prompt_upload_received(source.clone()).await {
 			Ok(bytes) => bytes as u64,
-			Err(_) => return Status::Unavailable { upload },
+			Err(_) => return decodex_protocol::PromptInputUploadStatus::Unavailable { upload },
 		};
 
 		match self
@@ -164,9 +169,13 @@ impl AgentHost {
 			)
 			.await
 		{
-			Ok(Some(input_id)) => Status::Ready { upload, input_id },
-			Ok(None) => Status::Receiving { upload, received_bytes: received },
-			Err(_) => Status::Unavailable { upload },
+			Ok(Some(input_id)) =>
+				decodex_protocol::PromptInputUploadStatus::Ready { upload, input_id },
+			Ok(None) => decodex_protocol::PromptInputUploadStatus::Receiving {
+				upload,
+				received_bytes: received,
+			},
+			Err(_) => decodex_protocol::PromptInputUploadStatus::Unavailable { upload },
 		}
 	}
 }

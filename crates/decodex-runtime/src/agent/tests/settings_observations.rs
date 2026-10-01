@@ -1,14 +1,21 @@
 //! Native wire publications reach the existing durable settings owners without dispatch.
-use super::*;
+use std::time::Duration;
+
+use tokio::{io, io::DuplexStream, sync::mpsc::Receiver, time};
+
+use crate::agent::tests::*;
+use decodex_codex::app_server_client::{NativeTaskModelSettings, NativeTaskPermissions};
+use decodex_core::DecodexRoot;
+use decodex_database::{AgentPermissionAttempt, AgentTaskSettingsObservation};
 
 struct Wire {
-	remote: tokio::io::DuplexStream,
-	events: tokio::sync::mpsc::Receiver<ServerEvent>,
+	remote: DuplexStream,
+	events: Receiver<ServerEvent>,
 }
 impl Wire {
 	fn attach(agent: &mut AgentCoordinator) -> Self {
-		let (local, remote) = tokio::io::duplex(32_768);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(32_768);
+		let (reader, writer) = io::split(local);
 		let (client, events) = AppServerClient::from_io(reader, writer);
 
 		agent.client = client;
@@ -21,10 +28,8 @@ impl Wire {
 
 		self.remote.write_all(format!("{event}\n").as_bytes()).await.unwrap();
 
-		let event = tokio::time::timeout(std::time::Duration::from_secs(2), self.events.recv())
-			.await
-			.unwrap()
-			.unwrap();
+		let event =
+			time::timeout(Duration::from_secs(2), self.events.recv()).await.unwrap().unwrap();
 
 		agent.handle_event(event).await.unwrap();
 	}
@@ -47,8 +52,8 @@ impl Wire {
 		});
 		let mut line = String::new();
 
-		tokio::time::timeout(
-			std::time::Duration::from_secs(2),
+		time::timeout(
+			Duration::from_secs(2),
 			BufReader::new(&mut self.remote).read_line(&mut line),
 		)
 		.await
@@ -73,7 +78,7 @@ impl Wire {
 		let mut byte = [0];
 
 		assert!(
-			tokio::time::timeout(std::time::Duration::from_millis(20), self.remote.read(&mut byte))
+			time::timeout(std::time::Duration::from_millis(20), self.remote.read(&mut byte))
 				.await
 				.is_err(),
 			"settings observation must not write to the native process"
@@ -89,7 +94,7 @@ fn facts(model: &str) -> Value {
         "collaborationMode":{"settings":{"developer_instructions":"private instruction sentinel"}}})
 }
 
-fn assert_projections(values: &[decodex_database::AgentTaskSettingsObservation; 3]) {
+fn assert_projections(values: &[AgentTaskSettingsObservation; 3]) {
 	let model: Value = serde_json::from_str(values[0].settings_json.as_ref().unwrap()).unwrap();
 
 	assert_eq!(
@@ -97,7 +102,7 @@ fn assert_projections(values: &[decodex_database::AgentTaskSettingsObservation; 
 		json!({"model":"first","modelProvider":"fixture","effort":"high","serviceTier":null})
 	);
 
-	let permissions: decodex_codex::app_server_client::NativeTaskPermissions =
+	let permissions: NativeTaskPermissions =
 		serde_json::from_str(values[1].settings_json.as_ref().unwrap()).unwrap();
 
 	assert_eq!(permissions.profile_id.as_deref(), Some("first"));
@@ -154,10 +159,7 @@ fn response(thread: &str, model: &str) -> Value {
 	value
 }
 
-async fn records(
-	store: &SqliteStore,
-	thread: &str,
-) -> [Option<decodex_database::AgentTaskSettingsObservation>; 3] {
+async fn records(store: &SqliteStore, thread: &str) -> [Option<AgentTaskSettingsObservation>; 3] {
 	[
 		store.agent_task_models("agent".into(), thread.into(), None).await.unwrap(),
 		store.agent_task_permissions("agent".into(), thread.into(), None).await.unwrap(),
@@ -168,7 +170,7 @@ async fn records(
 async fn assert_foreign_generation(
 	store: &SqliteStore,
 	thread: &str,
-	first: &decodex_database::AgentTaskSettingsObservation,
+	first: &AgentTaskSettingsObservation,
 ) {
 	let foreign = Some("foreign-generation".to_owned());
 
@@ -302,9 +304,7 @@ async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch(
 
 	wire.assert_no_requests().await;
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 	assert_eq!(records(&reopened, &thread).await, invalid.map(Some));
@@ -366,7 +366,7 @@ async fn resumed_wire_settings_require_exact_thread_and_complete_model_facts() {
 	agent.persist_task_settings(&thread).await.unwrap();
 
 	let observed = records(&agent.store, &thread).await[0].clone().unwrap();
-	let settings: decodex_codex::app_server_client::NativeTaskModelSettings =
+	let settings: NativeTaskModelSettings =
 		serde_json::from_str(observed.settings_json.as_ref().unwrap()).unwrap();
 
 	assert_eq!(settings.model, "resumed");
@@ -404,7 +404,7 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 	wire.publish(&mut agent, &thread, facts("readonly")).await;
 
 	let observed = records(&agent.store, &thread).await[1].clone().unwrap();
-	let attempt = decodex_database::AgentPermissionAttempt {
+	let attempt = AgentPermissionAttempt {
 		work: "agent".into(),
 		thread: thread.clone(),
 		generation: None,
@@ -456,9 +456,7 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 
 	wire.publish(&mut agent, &thread, facts("scoped")).await;
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 	assert_eq!(

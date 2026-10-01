@@ -2,33 +2,41 @@
 #[path = "application_model_review_native_tests.rs"] mod model_review;
 #[path = "application_account_nudge_socket_tests.rs"] mod socket;
 
-use super::*;
+use std::{
+	env, fs,
+	fs::OpenOptions,
+	io::Write as _,
+	os::unix::fs::OpenOptionsExt as _,
+	path::{Path, PathBuf},
+	sync::Arc,
+	time::Duration,
+};
+
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde_json::json;
+use tokio::{sync::Notify, task, time};
 
 use crate::{
+	account_launch,
+	account_launch::{AttestedAppServerProfile, RunnerCapacity, process::native_control_tests},
 	account_observation::AccountObservationService,
 	account_service::{
 		AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
 	},
+	application::account_nudge::{tests, *},
 	conversation::{ConversationCapability, ConversationRuntime},
 	host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
+	process_supervisor::ProcessGenerationControl,
+	provider_attempt_service::ProviderAttemptControl,
 };
-
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-
+use decodex_codex::{AccountApiUsage, app_server_client::AccountNudgeCreditType};
 use decodex_core::{
 	AccountId, AccountOperationId, BlobStore, DecodexRoot, ProcessExecutionAuthorization,
 	ProcessExecutionEpochId,
 };
-
 use decodex_protocol::{
 	CURRENT_VERSION, ClientCommandId, CommandPayload, CorrelationId, EntityId, EntityRevision,
 	IdempotencyKey,
-};
-
-use serde_json::json;
-
-use std::{
-	io::Write as _, os::unix::fs::OpenOptionsExt as _, path::PathBuf, sync::Arc, time::Duration,
 };
 
 struct NoRefresh;
@@ -43,15 +51,14 @@ impl CredentialRefreshPort for NoRefresh {
 
 fn isolated_home() -> PathBuf {
 	let requested = PathBuf::from(
-		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME")
+		env::var_os("DECODEX_TEST_ACCOUNT_HOME")
 			.expect("explicit disposable home under the OS account home, outside .codex"),
 	);
 	let home = requested.canonicalize().expect("canonical fixture home");
 
-	assert_eq!(PathBuf::from(std::env::var_os("HOME").expect("HOME")), home);
+	assert_eq!(PathBuf::from(env::var_os("HOME").expect("HOME")), home);
 	assert_eq!(
-		std::fs::read_to_string(home.join(".decodex-native-test-home"))
-			.expect("fixture opt-in marker"),
+		fs::read_to_string(home.join(".decodex-native-test-home")).expect("fixture opt-in marker"),
 		"native-account-command-fixture\n"
 	);
 	assert!(!home.join(".codex").exists(), "fixture requires a fresh isolated home");
@@ -59,7 +66,7 @@ fn isolated_home() -> PathBuf {
 	home
 }
 
-fn credential_file(home: &std::path::Path) -> PathBuf {
+fn credential_file(home: &Path) -> PathBuf {
 	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture","chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
@@ -70,7 +77,7 @@ fn credential_file(home: &std::path::Path) -> PathBuf {
 	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,
 		"refresh_token":"fixture-only","account_id":"workspace-fixture"},"last_refresh":"2026-09-21T15:00:00Z"});
 	let path = home.join("synthetic-credential.json");
-	let mut file = std::fs::OpenOptions::new()
+	let mut file = OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
@@ -82,14 +89,14 @@ fn credential_file(home: &std::path::Path) -> PathBuf {
 	path
 }
 
-fn fixture_usage() -> decodex_codex::AccountApiUsage {
+fn fixture_usage() -> AccountApiUsage {
 	decodex_codex::decode_account_api_usage(br#"{"account_id":"workspace-fixture","user_id":"user-fixture","plan_type":"team","rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":"Workspace limit","description":"Ask the owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}}"#).expect("backend recovery source")
 }
 
 async fn enroll(
 	store: &decodex_database::SqliteStore,
 	service: &AccountService,
-	home: &std::path::Path,
+	home: &Path,
 ) -> AccountId {
 	let account = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account identity");
 	let identity = CommandIdentity::new("fixture-enrollment", b"synthetic account enrollment")
@@ -120,7 +127,7 @@ async fn enroll(
 		.await
 		.expect("owned credential enrollment");
 
-	std::fs::remove_file(source).expect("remove synthetic import file");
+	fs::remove_file(source).expect("remove synthetic import file");
 
 	account
 }
@@ -129,16 +136,16 @@ async fn enroll(
 #[ignore = "run alone in explicit DECODEX_TEST_ACCOUNT_HOME with matching HOME and fixture marker"]
 async fn native_notification_command_sends_once_and_replays_after_store_reopen() {
 	let home = isolated_home();
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
-	std::fs::create_dir(home.join(".codex")).expect("isolated Codex home");
+	fs::create_dir(home.join(".codex")).expect("isolated Codex home");
 
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture backend");
 	let address = listener.local_addr().expect("loopback address");
 
-	std::fs::write(
+	fs::write(
 		home.join(".codex/config.toml"),
 		format!("chatgpt_base_url = \"http://{address}\"\ncli_auth_credentials_store = \"file\"\n"),
 	)
@@ -156,11 +163,8 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 	));
 	let account = enroll(&store, &accounts, &home).await;
 	let profile_home = home.clone();
-	let profile = tokio::task::spawn_blocking(move || {
-		crate::account_launch::process::native_control_tests::attested_profile(
-			&binary,
-			&profile_home,
-		)
+	let profile = task::spawn_blocking(move || {
+		native_control_tests::attested_profile(&binary, &profile_home)
 	})
 	.await
 	.expect("native profile owner");
@@ -198,8 +202,8 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 		)
 		.await;
 	let runtime = runtime(&root, &store, accounts, profile).await;
-	let mut app = super::tests::application(store.clone())
-		.with_account_observations(Some(observations.clone()));
+	let mut app =
+		tests::application(store.clone()).with_account_observations(Some(observations.clone()));
 
 	app.conversations = ConversationCapability::Ready(runtime);
 
@@ -216,10 +220,10 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 		},
 	};
 	let send = concurrent_sends(&app, &command, &source);
-	let (result, ()) = tokio::time::timeout(Duration::from_secs(45), async {
+	let (result, ()) = time::timeout(Duration::from_secs(45), async {
 		tokio::join!(
 			send,
-			crate::account_launch::serve_native_nudge_fixture(
+			account_launch::serve_native_nudge_fixture(
 				&listener,
 				"200 OK",
 				decodex_codex::app_server_client::AccountNudgeCreditType::Credits
@@ -241,7 +245,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 
 	drop(store);
 
-	let reopened = super::tests::application(
+	let reopened = tests::application(
 		decodex_database::SqliteStore::open(&root.paths()).expect("reopen store"),
 	);
 	let replay = reopened
@@ -254,7 +258,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 		ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
 	));
 	assert!(
-		tokio::time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
+		time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
 		"replay must not send again"
 	);
 }
@@ -263,18 +267,14 @@ async fn runtime(
 	root: &DecodexRoot,
 	store: &decodex_database::SqliteStore,
 	accounts: Arc<AccountService>,
-	profile: crate::account_launch::AttestedAppServerProfile,
+	profile: AttestedAppServerProfile,
 ) -> ConversationRuntime {
 	ConversationRuntime::new(
 		store.clone(),
 		BlobStore::open(root.paths()).expect("blob store"),
 		accounts,
-		crate::process_supervisor::ProcessGenerationControl::start(store.clone())
-			.await
-			.expect("process control"),
-		crate::provider_attempt_service::ProviderAttemptControl::start(store.clone())
-			.await
-			.expect("attempt control"),
+		ProcessGenerationControl::start(store.clone()).await.expect("process control"),
+		ProviderAttemptControl::start(store.clone()).await.expect("attempt control"),
 		ProcessExecutionAuthorization::new(
 			ProcessExecutionEpochId::new("30000000-0000-4000-8000-000000000001")
 				.expect("fixture epoch"),
@@ -282,7 +282,7 @@ async fn runtime(
 		)
 		.expect("fixture execution authority"),
 		profile,
-		crate::account_launch::RunnerCapacity::daemon().expect("fixture capacity"),
+		RunnerCapacity::daemon().expect("fixture capacity"),
 	)
 }
 
@@ -298,7 +298,7 @@ async fn assert_source_invalidated_during_launch(
 	command.idempotency_key =
 		IdempotencyKey::new("invalidate-during-native-launch").expect("new explicit operation");
 
-	let gate = Arc::new((tokio::sync::Notify::new(), tokio::sync::Notify::new()));
+	let gate = Arc::new((Notify::new(), Notify::new()));
 	let change = async {
 		gate.0.notified().await;
 		observations
@@ -307,13 +307,13 @@ async fn assert_source_invalidated_during_launch(
 		gate.1.notify_one();
 	};
 	let send = app.execute_recovery_nudge(&command, source, AccountRecoveryAction::NotifyOwner);
-	let backend = crate::account_launch::serve_native_nudge_with_gate(
+	let backend = account_launch::serve_native_nudge_with_gate(
 		listener,
 		"200 OK",
-		decodex_codex::app_server_client::AccountNudgeCreditType::Credits,
+		AccountNudgeCreditType::Credits,
 		Some(Arc::clone(&gate)),
 	);
-	let outcome = tokio::time::timeout(Duration::from_secs(30), async {
+	let outcome = time::timeout(Duration::from_secs(30), async {
 		tokio::select! {
 		 _ = backend => panic!("invalidated source sent a notification"),
 		 (result, ()) = async { tokio::join!(send, change) } => result,

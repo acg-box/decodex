@@ -1,19 +1,21 @@
 //! Read complete native patches through the retained bridge, including after cold restart.
-use super::*;
+use std::{env, fs, sync::atomic::AtomicUsize};
 
-use crate::agent_usage_estimate::{Source, SourceKey};
+use tokio::{net::TcpListener, time};
 
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent_detail,
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_core::{AccountId, ProcessGenerationId};
 use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult};
-
-use std::sync::atomic::AtomicUsize;
 
 fn source_key(thread: &str, generation: u8) -> SourceKey {
 	SourceKey {
-		generation: decodex_core::ProcessGenerationId::new(format!(
-			"10000000-0000-4000-8000-{generation:012}"
-		))
-		.expect("fixture process generation"),
-		account: decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001")
+		generation: ProcessGenerationId::new(format!("10000000-0000-4000-8000-{generation:012}"))
+			.expect("fixture process generation"),
+		account: AccountId::new("10000000-0000-4000-8000-000000000001")
 			.expect("retained bridge fixture account"),
 		revision: 1,
 		history_revision: 0,
@@ -25,12 +27,12 @@ fn source_key(thread: &str, generation: u8) -> SourceKey {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native patch continuation"]
 async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let body = format!("{}final patch line\n", "Unicode 界🙂e\u{301} fixture line\n".repeat(2_500));
@@ -53,10 +55,10 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated patch fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated patch fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let (thread, turn, item, text, cursor) = tokio::time::timeout(Duration::from_secs(60), async {
+	let (thread, turn, item, text, cursor) = time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"workspace-write"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Create the fixture patch."}]})).await.unwrap();
@@ -71,7 +73,7 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 			}
 		}
 
-		assert_eq!(std::fs::read_to_string(home.path().join("large.txt")).unwrap(), body);
+		assert_eq!(fs::read_to_string(home.path().join("large.txt")).unwrap(), body);
 
 		let history = session.client.thread_read_turn(&thread, &turn).await.unwrap();
 		let item = history["thread"]["turns"][0]["items"].as_array().unwrap().iter()
@@ -93,7 +95,7 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 
 	let reopened = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let key = source_key(&thread, 2);
 
 		assert_eq!(
@@ -119,7 +121,7 @@ async fn read(
 	item: &str,
 	cursor: Option<&AgentActivityDetailCursor>,
 ) -> AgentActivityDetailResult {
-	crate::agent_detail::read_bound(
+	agent_detail::read_bound(
 		|| {
 			let client = client.clone();
 			let key = key.clone();

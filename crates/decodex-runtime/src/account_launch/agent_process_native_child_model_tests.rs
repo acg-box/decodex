@@ -1,6 +1,9 @@
 //! Native children inherit the model captured after a runtime-owned active-turn edit.
-use super::*;
-use std::path::Path;
+use std::{collections::HashSet, env, fs, path::Path, sync::Mutex};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::reviewer::store::live_model::*;
 
 fn catalog(home: &Path) -> String {
 	let models: Vec<_> = ["gpt-5.6-sol", "gpt-5.6-terra"].into_iter().map(|slug| json!({
@@ -16,7 +19,7 @@ fn catalog(home: &Path) -> String {
 	})).collect();
 	let path = home.join("models.json");
 
-	std::fs::write(&path, serde_json::to_vec(&json!({"models":models})).expect("catalog JSON"))
+	fs::write(&path, serde_json::to_vec(&json!({"models":models})).expect("catalog JSON"))
 		.expect("write fixture catalog");
 
 	format!("model_catalog_json={}\n", serde_json::to_string(&path).expect("catalog path"))
@@ -45,12 +48,12 @@ async fn installed_native_spawn_description_follows_updated_step_model() {
 }
 
 async fn qualify_child_model(check_catalog: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().expect("native fixture");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native fixture");
 	let address = listener.local_addr().expect("native fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		calls.clone(),
@@ -69,9 +72,9 @@ async fn qualify_child_model(check_catalog: bool) {
 	));
 	let catalog_config = if check_catalog { catalog(home.path()) } else { String::new() };
 
-	std::fs::write(home.path().join("config.toml"),format!("{catalog_config}model=\"gpt-5.6-sol\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\nstep_model_switching=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native fixture");
+	fs::write(home.path().join("config.toml"),format!("{catalog_config}model=\"gpt-5.6-sol\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\nstep_model_switching=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native fixture");
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
         let mut session = NativeSession::start(&binary, home.path());
         let start = session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause the isolated test","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native fixture");
         let thread = start["thread"]["id"].as_str().expect("native fixture").to_owned();
@@ -92,7 +95,7 @@ async fn qualify_child_model(check_catalog: bool) {
 
         session.client.respond_guarded(id, json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), guard).await.expect("native fixture");
 
-        let mut completed = std::collections::HashSet::new();
+        let mut completed = HashSet::new();
 
         while completed.len() < 2 {
             match session.events.recv().await.expect("native child event") {

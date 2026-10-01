@@ -1,14 +1,18 @@
 //! Short-lived transfer of one fully hydrated conversation, independent of history storage.
-use crate::agent_usage_estimate::{Source, SourceKey};
-use decodex_protocol::{
-	AgentTranscriptRequest, AgentTranscriptResult as Result, EntityId, TRANSCRIPT_CHUNK_BYTES,
-};
-use sha2::{Digest, Sha256};
 use std::{
+	future::Future,
 	sync::Arc,
 	time::{Duration, Instant},
 };
-use tokio::sync::Mutex;
+
+use sha2::{Digest, Sha256};
+use tokio::{sync::Mutex, time};
+
+use crate::agent_usage_estimate::{Source, SourceKey};
+use decodex_codex::app_server_client::ClientError;
+use decodex_protocol::{
+	AgentTranscriptRequest, AgentTranscriptResult as Result, EntityId, TRANSCRIPT_CHUNK_BYTES,
+};
 
 #[derive(Clone, Default)]
 pub(crate) struct Transcripts(Arc<Mutex<Option<Document>>>);
@@ -16,7 +20,7 @@ impl Transcripts {
 	pub(crate) async fn read<F, Fut>(&self, source: F, request: &AgentTranscriptRequest) -> Result
 	where
 		F: Fn() -> Fut,
-		Fut: std::future::Future<Output = Option<Source>>,
+		Fut: Future<Output = Option<Source>>,
 	{
 		let Some(before) = source().await else { return Result::Unavailable };
 
@@ -28,8 +32,7 @@ impl Transcripts {
 		if request.offset == 0 && request.token.is_none() {
 			let text = match before.client.thread_markdown_transcript(&before.key.thread).await {
 				Ok(text) => text,
-				Err(decodex_codex::app_server_client::ClientError::CapacityExceeded) =>
-					return Result::CapacityExceeded,
+				Err(ClientError::CapacityExceeded) => return Result::CapacityExceeded,
 				Err(_) => return Result::Unavailable,
 			};
 
@@ -58,7 +61,7 @@ impl Transcripts {
 			let cache = Arc::downgrade(&self.0);
 
 			tokio::spawn(async move {
-				tokio::time::sleep(Duration::from_secs(120)).await;
+				time::sleep(Duration::from_secs(120)).await;
 
 				if let Some(cache) = cache.upgrade() {
 					let mut cache = cache.lock().await;
@@ -122,8 +125,14 @@ struct Document {
 }
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use tokio::io;
+
+	use crate::agent_transcript::{
+		AgentTranscriptRequest, Document, EntityId, Instant, Result, Source, SourceKey,
+		TRANSCRIPT_CHUNK_BYTES, Transcripts,
+	};
 	use decodex_core::{AccountId, ProcessGenerationId};
+
 	#[tokio::test]
 	async fn transcript_chunks_keep_owner_and_token_and_release_completed_document() {
 		let key = SourceKey {
@@ -150,7 +159,7 @@ mod tests {
 			bytes: vec![b'x'; TRANSCRIPT_CHUNK_BYTES + 3],
 		});
 
-		let (reader, writer) = tokio::io::duplex(1_024);
+		let (reader, writer) = io::duplex(1_024);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 		let source = || async { Some(Source { key: key.clone(), client: client.clone() }) };

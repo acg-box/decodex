@@ -1,27 +1,39 @@
 //! Qualify permission-preserving Agent hydration against the installed native server.
-use super::{native_goal_fixture::serve, *};
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	path::Path,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
+
+use crate::agent::tests::{native_goal_fixture::serve, *};
+use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
+use decodex_core::DecodexRoot;
+use decodex_database::AgentPermissionAttempt;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native permission restoration"]
 async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
-	let binary = std::env::var("DECODEX_NATIVE_BINARY").unwrap();
+	let binary = env::var("DECODEX_NATIVE_BINARY").unwrap();
 	let native_home = tempfile::tempdir().unwrap();
 	let home = native_home.path().canonicalize().unwrap();
 	let workspace = home.join("selected-workspace");
 
-	std::fs::create_dir_all(workspace.join("writable/private")).unwrap();
+	fs::create_dir_all(workspace.join("writable/private")).unwrap();
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-	std::fs::write(home.join("config.toml"), format!(
+	fs::write(home.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
 		json!(workspace.join("writable")), json!(workspace.join("writable/private"))
 	)).unwrap();
@@ -35,15 +47,13 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 	for cold in [false, true] {
 		if cold {
-			let root = decodex_core::DecodexRoot::new(
-				store_home.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(store_home.path().canonicalize().unwrap().join("root")).unwrap();
 
 			agent.store = SqliteStore::open(&root.paths()).unwrap();
 		}
 
-		let mut command = tokio::process::Command::new(&binary);
+		let mut command = Command::new(&binary);
 
 		command
 			.arg("app-server")
@@ -57,89 +67,76 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 		agent = AgentCoordinator::new(agent.store.clone(), client, agent.config.clone()).unwrap();
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
-			std::time::Duration::from_secs(40),
-			async {
-				agent.initialize().await.unwrap();
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
+			agent.initialize().await.unwrap();
 
-				if !cold {
-					select_native_permissions(&mut agent, &mut events, &workspace).await;
+			if !cold {
+				select_native_permissions(&mut agent, &mut events, &workspace).await;
 
-					agent.loaded_threads.clear();
-				}
+				agent.loaded_threads.clear();
+			}
 
-				agent.continue_worker("agent", "Reply Done again.").await.unwrap();
+			agent.continue_worker("agent", "Reply Done again.").await.unwrap();
 
-				finish(&mut agent, &mut events).await;
+			finish(&mut agent, &mut events).await;
 
-				let item = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+			let item = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 
-				assert_eq!(
-					agent
-						.store
-						.agent_permission_receipt(
-							"agent".into(),
-							item.codex_thread_id.clone().unwrap()
-						)
-						.await
-						.unwrap()
-						.unwrap()
-						.state,
-					"target_observed",
-					"cold={cold}"
-				);
-				assert!(
-					agent
-						.client
-						.observed_task_permissions(item.codex_thread_id.as_deref().unwrap())
-						.is_some(),
-					"idle task must expose permissions before an extra resume; cold={cold}"
-				);
-
-				let actual = agent
-					.client
-					.thread_resume(json!({
-						"threadId":item.codex_thread_id, "excludeTurns":true
-					}))
-					.await
-					.unwrap();
-
-				assert_eq!(
-					actual["activePermissionProfile"]["id"], "scoped",
-					"cold={cold}: {actual}"
-				);
-				assert_eq!(actual["approvalPolicy"], "on-request", "cold={cold}");
-				assert_eq!(actual["approvalsReviewer"], "auto_review", "cold={cold}");
-				assert_eq!(actual["cwd"], json!(workspace), "cold={cold}");
-
-				let (wire_permissions, wire_guard) = agent
-					.client
-					.observed_task_permissions(item.codex_thread_id.as_deref().unwrap())
-					.expect("native resume must supply current permission facts");
-
-				assert!(wire_guard.is_live(), "cold={cold}");
-				assert_eq!(wire_permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
-				assert_eq!(wire_permissions.approvals_reviewer, "auto_review", "cold={cold}");
-
-				let persisted = agent
+			assert_eq!(
+				agent
 					.store
-					.agent_task_permissions(
-						"agent".into(),
-						item.codex_thread_id.clone().unwrap(),
-						None,
-					)
+					.agent_permission_receipt("agent".into(), item.codex_thread_id.clone().unwrap())
 					.await
 					.unwrap()
-					.unwrap();
-				let permissions: decodex_codex::app_server_client::NativeTaskPermissions =
-					serde_json::from_str(persisted.settings_json.as_ref().unwrap()).unwrap();
+					.unwrap()
+					.state,
+				"target_observed",
+				"cold={cold}"
+			);
+			assert!(
+				agent
+					.client
+					.observed_task_permissions(item.codex_thread_id.as_deref().unwrap())
+					.is_some(),
+				"idle task must expose permissions before an extra resume; cold={cold}"
+			);
 
-				assert_eq!(permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
-				assert_eq!(permissions.approvals_reviewer, "auto_review", "cold={cold}");
-				assert_eq!(permissions.cwd, workspace.to_str().unwrap(), "cold={cold}");
-				assert_eq!(calls.load(Ordering::Acquire), if cold { 3 } else { 2 });
-			},
-		))
+			let actual = agent
+				.client
+				.thread_resume(json!({
+					"threadId":item.codex_thread_id, "excludeTurns":true
+				}))
+				.await
+				.unwrap();
+
+			assert_eq!(actual["activePermissionProfile"]["id"], "scoped", "cold={cold}: {actual}");
+			assert_eq!(actual["approvalPolicy"], "on-request", "cold={cold}");
+			assert_eq!(actual["approvalsReviewer"], "auto_review", "cold={cold}");
+			assert_eq!(actual["cwd"], json!(workspace), "cold={cold}");
+
+			let (wire_permissions, wire_guard) = agent
+				.client
+				.observed_task_permissions(item.codex_thread_id.as_deref().unwrap())
+				.expect("native resume must supply current permission facts");
+
+			assert!(wire_guard.is_live(), "cold={cold}");
+			assert_eq!(wire_permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
+			assert_eq!(wire_permissions.approvals_reviewer, "auto_review", "cold={cold}");
+
+			let persisted = agent
+				.store
+				.agent_task_permissions("agent".into(), item.codex_thread_id.clone().unwrap(), None)
+				.await
+				.unwrap()
+				.unwrap();
+			let permissions: NativeTaskPermissions =
+				serde_json::from_str(persisted.settings_json.as_ref().unwrap()).unwrap();
+
+			assert_eq!(permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
+			assert_eq!(permissions.approvals_reviewer, "auto_review", "cold={cold}");
+			assert_eq!(permissions.cwd, workspace.to_str().unwrap(), "cold={cold}");
+			assert_eq!(calls.load(Ordering::Acquire), if cold { 3 } else { 2 });
+		}))
 		.catch_unwind()
 		.await;
 
@@ -159,8 +156,8 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 async fn select_native_permissions(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
-	workspace: &std::path::Path,
+	events: &mut Receiver<ServerEvent>,
+	workspace: &Path,
 ) {
 	agent.start_agent("agent", "Reply Done.").await.unwrap();
 
@@ -184,18 +181,15 @@ async fn select_native_permissions(
 
 	assert!(profiles.iter().any(|profile| profile.id == "scoped" && profile.allowed));
 
-	let selection = decodex_codex::app_server_client::ThreadPermissionSelection::new(
-		item.codex_thread_id.as_deref().unwrap(),
-		"scoped",
-	)
-	.unwrap();
+	let selection =
+		ThreadPermissionSelection::new(item.codex_thread_id.as_deref().unwrap(), "scoped").unwrap();
 	let observed = agent
 		.store
 		.agent_task_permissions("agent".into(), item.codex_thread_id.clone().unwrap(), None)
 		.await
 		.unwrap()
 		.unwrap();
-	let attempt = decodex_database::AgentPermissionAttempt {
+	let attempt = AgentPermissionAttempt {
 		work: "agent".into(),
 		thread: item.codex_thread_id.clone().unwrap(),
 		generation: None,
@@ -234,10 +228,7 @@ async fn select_native_permissions(
 	}
 }
 
-async fn finish(
-	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
-) {
+async fn finish(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>) {
 	loop {
 		let event = events.recv().await.expect("native events");
 		let done = if let ServerEvent::Notification { method, params } = &event {

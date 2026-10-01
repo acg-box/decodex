@@ -1,4 +1,6 @@
 //! Display standalone tool input without promoting it to user authority.
+use std::iter;
+
 use serde_json::Value;
 
 pub(super) fn text(item: &Value) -> Option<String> {
@@ -24,17 +26,17 @@ pub(crate) fn parts(item: &Value) -> Option<Vec<String>> {
 		_ => return None,
 	};
 
-	Some(std::iter::once(title).chain(output).collect())
+	Some(iter::once(title).chain(output).collect())
 }
 
 #[cfg(test)]
 mod tests {
+
 	use decodex_protocol::AgentTimelineContent;
-	use serde_json::json;
 
 	#[test]
 	fn standalone_outputs_keep_authority_bounds_and_structured_media_indices() {
-		let mut row = json!({"type":"item","position":1,"turnId":"turn","item":{
+		let mut row = serde_json::json!({"type":"item","position":1,"turnId":"turn","item":{
 			"type":"functionCallOutput","id":"output","name":"work_instruction",
 			"namespace":"decodex","output":"Inspect the delegated task."
 		}});
@@ -48,7 +50,7 @@ mod tests {
 		assert_eq!(activity.unwrap().kind, "functionCallOutput");
 		assert_eq!(text, "decodex/work_instruction\nInspect the delegated task.");
 
-		for namespace in [json!(null), json!("")] {
+		for namespace in [serde_json::json!(null), serde_json::json!("")] {
 			let mut unnamed = row.clone();
 
 			unnamed["item"]["namespace"] = namespace;
@@ -58,7 +60,7 @@ mod tests {
 			);
 		}
 
-		row["item"]["output"] = json!([
+		row["item"]["output"] = serde_json::json!([
 			{"type":"input_text","text":"Visible"},
 			{"type":"input_image","image_url":"data:image/png;base64,PRIVATE_IMAGE"},
 			{"type":"input_audio","audio_url":"https://example.invalid/private-audio"},
@@ -78,14 +80,14 @@ mod tests {
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private-audio"));
 
 		for output in ["界".repeat(4_000), "Bearer abcdefgh".into()] {
-			row["item"]["output"] = json!(output);
+			row["item"]["output"] = serde_json::json!(output);
 
 			assert!(
 				matches!(super::super::ordinary(&row).unwrap(), AgentTimelineContent::Item {text,truncated:true,..} if text.len()<=8_192)
 			);
 		}
 
-		row["item"]["output"] = json!([{"type":"input_text","text":false}]);
+		row["item"]["output"] = serde_json::json!([{"type":"input_text","text":false}]);
 
 		assert!(super::super::ordinary(&row).is_none());
 	}

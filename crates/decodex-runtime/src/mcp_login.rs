@@ -1,20 +1,18 @@
 //! One in-memory native OAuth intent. No authorization material enters SQLite.
-use decodex_codex::app_server_client::{AppServerClient, ClientError, ServerEvent};
-
-use decodex_core::ProcessGenerationId;
-
-use decodex_protocol::{
-	McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus, WireText,
-};
-
-use serde_json::json;
-
 use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
 
-use tokio::sync::Mutex;
+use reqwest::Url;
+use serde_json::{Value, json};
+use tokio::{sync::Mutex, time, time::error::Elapsed};
+
+use decodex_codex::app_server_client::{AppServerClient, ClientError, ServerEvent};
+use decodex_core::ProcessGenerationId;
+use decodex_protocol::{
+	EntityId, McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus, WireText,
+};
 
 pub(crate) struct Source {
 	pub generation: ProcessGenerationId,
@@ -127,7 +125,7 @@ impl McpLoginGateway {
 		}
 
 		let McpLoginRequest::Start { server_name, .. } = request else { unreachable!() };
-		let reply = tokio::time::timeout(
+		let reply = time::timeout(
 			Duration::from_secs(30),
 			source.client.request(
 				"mcpServer/oauth/login",
@@ -143,7 +141,7 @@ impl McpLoginGateway {
 		&self,
 		request: &McpLoginRequest,
 		source: &Source,
-		reply: Result<Result<serde_json::Value, ClientError>, tokio::time::error::Elapsed>,
+		reply: Result<Result<Value, ClientError>, Elapsed>,
 	) -> McpLoginStatus {
 		let mut slot = self.0.lock().await;
 		let Some(session) = slot.as_mut().filter(|session| {
@@ -161,7 +159,7 @@ impl McpLoginGateway {
 			Ok(Ok(value)) => {
 				let url = value["authorizationUrl"]
 					.as_str()
-					.and_then(|value| reqwest::Url::parse(value).ok())
+					.and_then(|value| Url::parse(value).ok())
 					.filter(|url| {
 						matches!(url.scheme(), "https" | "http")
 							&& url.host_str().is_some()
@@ -271,7 +269,7 @@ impl McpLoginGateway {
 
 struct Session {
 	status: McpLoginStatus,
-	aliases: Vec<decodex_protocol::EntityId>,
+	aliases: Vec<EntityId>,
 	work: String,
 	thread: String,
 	server: String,
@@ -299,9 +297,13 @@ fn project(session: &Session, request: &McpLoginRequest) -> McpLoginStatus {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::mcp_login::{
+		self, AppServerClient, Duration, Instant, McpAuthorizationUrl, McpLoginGateway,
+		McpLoginPhase, McpLoginRequest, McpLoginStatus, ProcessGenerationId, ServerEvent, Session,
+		Source, WireText,
+	};
 	use decodex_protocol::EntityId;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 	fn generation() -> ProcessGenerationId {
 		ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap()
 	}
@@ -329,10 +331,10 @@ mod tests {
 			assert_eq!(request["method"], "mcpServer/oauth/login");
 			assert_eq!(
 				request["params"],
-				json!({"name":"server","threadId":"native-thread","timeoutSecs":120})
+				mcp_login::json!({"name":"server","threadId":"native-thread","timeoutSecs":120})
 			);
 
-			writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize?state=private-test"}})).as_bytes()).await.unwrap();
+			writer.write_all(format!("{}\n",mcp_login::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize?state=private-test"}})).as_bytes()).await.unwrap();
 
 			assert!(
 				tokio::time::timeout(Duration::from_millis(100), lines.next_line()).await.is_err(),
@@ -364,7 +366,7 @@ mod tests {
 					&generation(),
 					&ServerEvent::Notification {
 						method: "mcpServer/oauthLogin/completed".into(),
-						params: json!({"threadId":thread,"name":name,"success":true}),
+						params: mcp_login::json!({"threadId":thread,"name":name,"success":true}),
 					},
 				)
 				.await;
@@ -373,7 +375,7 @@ mod tests {
 		let wrong = ProcessGenerationId::new("20000000-0000-4000-8000-000000000002").unwrap();
 		let completed = ServerEvent::Notification {
 			method: "mcpServer/oauthLogin/completed".into(),
-			params: json!({"threadId":"native-thread","name":"server","success":true}),
+			params: mcp_login::json!({"threadId":"native-thread","name":"server","success":true}),
 		};
 
 		gateway.observe(&wrong, &completed).await;
@@ -424,7 +426,7 @@ mod tests {
 				authorization_url: Some(
 					McpAuthorizationUrl::new("https://example.test/private".into()).unwrap(),
 				),
-				..status(&request, McpLoginPhase::AwaitingUser, "Waiting")
+				..mcp_login::status(&request, McpLoginPhase::AwaitingUser, "Waiting")
 			},
 			aliases: Vec::new(),
 			work: "work".into(),
@@ -472,7 +474,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize"}})
+							mcp_login::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize"}})
 						)
 						.as_bytes(),
 					)
@@ -506,7 +508,7 @@ mod tests {
 						&generation(),
 						&ServerEvent::Notification {
 							method: "mcpServer/oauthLogin/completed".into(),
-							params: json!({"threadId":"native-thread","name":reported,"success":true}),
+							params: mcp_login::json!({"threadId":"native-thread","name":reported,"success":true}),
 						},
 					)
 					.await;

@@ -1,5 +1,8 @@
 //! Recover only exact closing refusals on the retained connection.
-use super::{AgentCoordinator, AgentError, AgentWorkItem, ClientError, Value, json};
+use std::time::Duration;
+
+use crate::agent::{self, AgentCoordinator, AgentError, AgentWorkItem, ClientError, Value};
+use decodex_database::AgentDispatchState;
 
 pub(super) struct ClosingResume {
 	pub(super) thread: String,
@@ -36,7 +39,7 @@ impl AgentCoordinator {
 		let Some(pending) = self.closing_resumes.remove(&id) else { return Ok(()) };
 		let item = self.store.get_agent_work_item(id).await?;
 
-		if item.dispatch_state != decodex_database::AgentDispatchState::Unknown
+		if item.dispatch_state != AgentDispatchState::Unknown
 			|| item.codex_thread_id.as_deref() != Some(&pending.thread)
 			|| item.active_turn_id.as_deref() != Some(&pending.turn)
 			|| self.client.history_revision() != pending.revision
@@ -75,7 +78,7 @@ impl AgentCoordinator {
 						turn: turn.clone(),
 						revision,
 						next: tokio::time::Instant::now()
-							+ std::time::Duration::from_secs(match attempts {
+							+ Duration::from_secs(match attempts {
 								0 => 1,
 								1 => 2,
 								2 => 4,
@@ -111,7 +114,7 @@ impl AgentCoordinator {
 
 		let current = self.store.get_agent_work_item(item.id.clone()).await?;
 
-		if current.dispatch_state != decodex_database::AgentDispatchState::Unknown
+		if current.dispatch_state != AgentDispatchState::Unknown
 			|| current.codex_thread_id != item.codex_thread_id
 			|| current.active_turn_id != item.active_turn_id
 		{
@@ -130,7 +133,7 @@ impl AgentCoordinator {
 		match exact_turn["status"].as_str() {
 			Some("completed" | "failed" | "interrupted") => {
 				self.record_terminal(
-					json!({"threadId":thread,"turn":exact_turn}),
+					agent::json!({"threadId":thread,"turn":exact_turn}),
 					Ok(history),
 					false,
 				)

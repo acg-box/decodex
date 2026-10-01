@@ -1,17 +1,25 @@
 //! Qualify native-admitted goal turns through Agent without local dispatch claims.
-use super::*;
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
+
+use crate::agent::tests::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native goal lifecycle"]
 async fn native_goal_turn_preserves_separate_user_input_delivery() {
 	let home = tempfile::tempdir().unwrap();
 	let home_path = home.path().canonicalize().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let gate = Arc::new(tokio::sync::Notify::new());
@@ -22,12 +30,12 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 		vec![(3, Arc::clone(&gate)), (5, Arc::clone(&continuation_gate))],
 	));
 
-	std::fs::write(home_path.join("config.toml"),format!(
+	fs::write(home_path.join("config.toml"),format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ngoals = true\n[model_providers.fixture]\nname = \"Isolated goal fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
 	)).unwrap();
 
 	let (fixture, _, _store_home) = fixture().await;
-	let mut command = tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+	let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 	command
 		.arg("app-server")
@@ -44,82 +52,79 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home_path.display().to_string()),
 	)
 	.unwrap();
-	let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
-		std::time::Duration::from_secs(40),
-		async {
-			agent.initialize().await.unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
+		agent.initialize().await.unwrap();
 
-			let initial = agent.start_agent("agent", "Reply Done.").await.unwrap();
-			let thread = initial.codex_thread_id.unwrap();
+		let initial = agent.start_agent("agent", "Reply Done.").await.unwrap();
+		let thread = initial.codex_thread_id.unwrap();
 
-			finish(&mut agent, &mut events, None).await;
+		finish(&mut agent, &mut events, None).await;
 
-			let pending = agent
-				.store
-				.enqueue_agent_event(EnqueueAgentEvent {
-					source_event_id: "unsent-goal-input".into(),
-					work_item_id: "agent".into(),
-					event_kind: "user_message".into(),
-					payload: json!({"text":"Pending local input","source":"user"}).to_string(),
-				})
-				.await
-				.unwrap();
+		let pending = agent
+			.store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "unsent-goal-input".into(),
+				work_item_id: "agent".into(),
+				event_kind: "user_message".into(),
+				payload: json!({"text":"Pending local input","source":"user"}).to_string(),
+			})
+			.await
+			.unwrap();
 
-			agent
-				.client
-				.request(
-					"thread/goal/set",
-					json!({"threadId":thread,"objective":"Fixture goal","status":"active","tokenBudget":1}),
-				)
-				.await
-				.unwrap();
+		agent
+			.client
+			.request(
+				"thread/goal/set",
+				json!({"threadId":thread,"objective":"Fixture goal","status":"active","tokenBudget":1}),
+			)
+			.await
+			.unwrap();
 
-			let automatic = finish(&mut agent, &mut events, Some(pending.id)).await;
+		let automatic = finish(&mut agent, &mut events, Some(pending.id)).await;
 
-			assert_ne!(Some(&automatic), initial.active_turn_id.as_ref());
+		assert_ne!(Some(&automatic), initial.active_turn_id.as_ref());
 
-			let goal =
-				agent.client.request("thread/goal/get", json!({"threadId":thread})).await.unwrap();
+		let goal =
+			agent.client.request("thread/goal/get", json!({"threadId":thread})).await.unwrap();
 
-			assert_eq!(goal["goal"]["status"], "budgetLimited");
+		assert_eq!(goal["goal"]["status"], "budgetLimited");
 
-			let input = agent.store.get_agent_inbox_event(pending.id).await.unwrap();
+		let input = agent.store.get_agent_inbox_event(pending.id).await.unwrap();
 
-			assert!(input.disposition.is_none());
-			assert!(input.delivered_turn_id.is_some());
-			assert_ne!(input.delivered_turn_id.as_deref(), Some(automatic.as_str()));
+		assert!(input.disposition.is_none());
+		assert!(input.delivered_turn_id.is_some());
+		assert_ne!(input.delivered_turn_id.as_deref(), Some(automatic.as_str()));
 
-			let user_turn = finish(&mut agent, &mut events, None).await;
+		let user_turn = finish(&mut agent, &mut events, None).await;
 
-			assert_eq!(input.delivered_turn_id.as_deref(), Some(user_turn.as_str()));
+		assert_eq!(input.delivered_turn_id.as_deref(), Some(user_turn.as_str()));
 
-			let history = agent.store.read_agent_work_events("agent".into(), 100).await.unwrap();
+		let history = agent.store.read_agent_work_events("agent".into(), 100).await.unwrap();
 
-			assert!(history.iter().any(|event| event.event_kind == "agent_turn_completed"
-				&& serde_json::from_str::<Value>(&event.payload).unwrap()["terminal"]["turn"]["id"]
-					== automatic));
+		assert!(history.iter().any(|event| event.event_kind == "agent_turn_completed"
+			&& serde_json::from_str::<Value>(&event.payload).unwrap()["terminal"]["turn"]["id"]
+				== automatic));
 
-			agent
-				.handle_event(ServerEvent::Notification {
-					method: "turn/started".into(),
-					params: json!({"threadId":thread,"turn":{"id":automatic,"status":"inProgress"}}),
-				})
-				.await
-				.unwrap();
+		agent
+			.handle_event(ServerEvent::Notification {
+				method: "turn/started".into(),
+				params: json!({"threadId":thread,"turn":{"id":automatic,"status":"inProgress"}}),
+			})
+			.await
+			.unwrap();
 
-			assert_eq!(
-				agent.store.get_agent_work_item("agent".into()).await.unwrap().dispatch_state,
-				decodex_database::AgentDispatchState::Idle
-			);
-			assert_eq!(calls.load(Ordering::Acquire), 3);
+		assert_eq!(
+			agent.store.get_agent_work_item("agent".into()).await.unwrap().dispatch_state,
+			decodex_database::AgentDispatchState::Idle
+		);
+		assert_eq!(calls.load(Ordering::Acquire), 3);
 
-			recover_missed_goal_turn(&mut agent, &mut events, &thread, &gate).await;
+		recover_missed_goal_turn(&mut agent, &mut events, &thread, &gate).await;
 
-			assert_eq!(calls.load(Ordering::Acquire), 4);
+		assert_eq!(calls.load(Ordering::Acquire), 4);
 
-			continue_with_pending_input(&mut agent, &mut events, &thread, &continuation_gate).await;
-		},
-	))
+		continue_with_pending_input(&mut agent, &mut events, &thread, &continuation_gate).await;
+	}))
 	.catch_unwind()
 	.await;
 
@@ -130,7 +135,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 
 async fn recover_missed_goal_turn(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	thread: &str,
 	gate: &tokio::sync::Notify,
 ) {
@@ -190,7 +195,7 @@ async fn recover_missed_goal_turn(
 
 async fn finish(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	pending_input: Option<i64>,
 ) -> String {
 	loop {
@@ -238,7 +243,7 @@ async fn finish(
 
 async fn continue_with_pending_input(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	thread: &str,
 	gate: &tokio::sync::Notify,
 ) {
@@ -317,7 +322,7 @@ async fn continue_with_pending_input(
 
 async fn hold_completion_until_next_start(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 ) -> (ServerEvent, ServerEvent, String, String) {
 	let mut completion = None;
 

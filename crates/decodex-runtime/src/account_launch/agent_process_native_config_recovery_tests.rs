@@ -1,14 +1,18 @@
 //! Restore native configuration boundaries through the retained bridge.
-use super::*;
+use std::{env, fs};
+
+use tokio::time;
+
+use crate::account_launch::agent_process::native_tests::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native login policy"]
 async fn installed_native_login_methods_follow_running_policy_until_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
 	let config = home.path().join("config.toml");
 
-	std::fs::write(&config, "cli_auth_credentials_store = 'file'\n").unwrap();
+	fs::write(&config, "cli_auth_credentials_store = 'file'\n").unwrap();
 
 	let unrestricted = NativeSession::start(&binary, home.path());
 	let requirements =
@@ -19,7 +23,7 @@ async fn installed_native_login_methods_follow_running_policy_until_restart() {
 	drop(unrestricted);
 
 	for (current, changed) in [("api", "chatgpt"), ("chatgpt", "api")] {
-		std::fs::write(
+		fs::write(
 			&config,
 			format!("cli_auth_credentials_store = 'file'\nforced_login_method = '{current}'\n"),
 		)
@@ -29,7 +33,7 @@ async fn installed_native_login_methods_follow_running_policy_until_restart() {
 
 		for rewrite in [false, true] {
 			if rewrite {
-				std::fs::write(
+				fs::write(
 					&config,
 					format!(
 						"cli_auth_credentials_store = 'file'\nforced_login_method = '{changed}'\n"
@@ -57,15 +61,14 @@ async fn installed_native_login_methods_follow_running_policy_until_restart() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated initial thread preference"]
 async fn installed_native_daybreak_preference_is_staged_without_selecting_access() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
 
-	std::fs::write(home.path().join("config.toml"), "cli_auth_credentials_store = 'file'\n")
-		.unwrap();
+	fs::write(home.path().join("config.toml"), "cli_auth_credentials_store = 'file'\n").unwrap();
 
 	let session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		for choice in [Some(true), Some(false), None] {
 			let mut params = json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"});
 

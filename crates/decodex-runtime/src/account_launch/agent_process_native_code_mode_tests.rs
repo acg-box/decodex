@@ -1,15 +1,23 @@
 //! Exercise the installed Code Mode helper through the retained native bridge.
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
+
+use serde_json::Value;
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and its packaged Code Mode helper"]
 async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let calls = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		calls.clone(),
@@ -28,13 +36,13 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!(
+	fs::write(home.path().join("config.toml"), format!(
 		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nenable_request_compression=false\n"
 	)).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		let start = session
 			.client
 			.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
@@ -124,17 +132,17 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and its packaged Code Mode helper"]
 async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
 	let gate = home.path().join("release");
 	let fixture = home.path().join("delayed.py");
 
-	std::fs::write(&fixture, include_str!("native_mcp_delayed.py")).unwrap();
+	fs::write(&fixture, include_str!("native_mcp_delayed.py")).unwrap();
 
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let calls = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		calls.clone(),
@@ -151,13 +159,13 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!(
+	fs::write(home.path().join("config.toml"), format!(
         "model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nenable_request_compression=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{}]\n",
         serde_json::to_string(&fixture).unwrap(), serde_json::to_string(&gate).unwrap()
     )).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let (thread, first_turn, item_ids, before) = tokio::time::timeout(Duration::from_secs(30), async {
+	let (thread, first_turn, item_ids, before) = time::timeout(Duration::from_secs(30), async {
         let start = session.client.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
         let thread = start["thread"]["id"].as_str().unwrap().to_owned();
         let mut first_turn = String::new();
@@ -172,7 +180,7 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
             else {
                 assert_ne!(turn,first_turn);
 
-                std::fs::write(&gate,b"release").unwrap();
+                fs::write(&gate,b"release").unwrap();
             }
 
             loop {
@@ -197,7 +205,7 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 
             if phase==0 {
                 while !gate.with_extension("started").exists() {
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    time::sleep(Duration::from_millis(10)).await;
                 }
             }
         }
@@ -212,8 +220,8 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 
 	assert_eq!(calls.load(Ordering::Acquire), 4);
 
-	let metadata = std::fs::read_to_string(gate.with_extension("metadata")).unwrap();
-	let metadata: Vec<serde_json::Value> =
+	let metadata = fs::read_to_string(gate.with_extension("metadata")).unwrap();
+	let metadata: Vec<Value> =
 		metadata.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
 
 	assert_eq!(metadata.len(), 2, "both nested calls reached the MCP server");

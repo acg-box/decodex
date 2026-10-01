@@ -2,8 +2,6 @@
 
 mod personal_access_token;
 
-use personal_access_token::resolve_import;
-
 use std::{
 	collections::HashMap,
 	error::Error,
@@ -17,11 +15,10 @@ use std::{
 };
 
 use decodex_core::{
-	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
+	self, AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
 	AccountOperationKind, AccountOperationPhase, AccountProvider, AccountRecord,
-	AccountRoutingControl, AccountSelectionMode, AccountSelectionRecovery, CredentialBinding,
-	CredentialVersion, ProcessGenerationAccountBinding, ProcessGenerationId,
-	ProcessGenerationState, ProviderIdentity,
+	AccountSelectionMode, AccountSelectionRecovery, CredentialBinding, CredentialVersion,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
 
 use decodex_database::{
@@ -36,16 +33,12 @@ use serde_json::Value;
 
 use sha2::{Digest as _, Sha256};
 
-use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
+use tokio::sync::OwnedMutexGuard;
 
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+use zeroize::{self, Zeroize, ZeroizeOnDrop};
 
 use crate::{
-	account_import::{
-		CredentialImportError, ImportedCredential, decode_chatgpt_identity, decode_expiry_micros,
-		read_explicit_credential_file, read_explicit_shared_codex_credential_file,
-		read_shared_codex_credential,
-	},
+	account_import::{self, CredentialImportError, ImportedCredential},
 	auth_projection::{CodexAuthProjectionError, SharedCodexAuthSnapshot, SharedCodexAuthVersion},
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
@@ -86,7 +79,7 @@ pub(crate) struct CredentialRefreshResult {
 #[derive(Clone)]
 pub(crate) struct AccountRouteCommit {
 	pub(crate) account: AccountRecord,
-	pub(crate) routing: AccountRoutingControl,
+	pub(crate) routing: decodex_core::AccountRoutingControl,
 	pub(crate) projection_digest: String,
 }
 
@@ -275,8 +268,8 @@ pub struct AccountService {
 	credentials: Arc<dyn HostCredentialStore>,
 	refresher: Arc<dyn CredentialRefreshPort>,
 	shared_auth: Arc<SharedAuthCoordinator>,
-	routing_lock: AsyncMutex<()>,
-	account_locks: Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
+	routing_lock: tokio::sync::Mutex<()>,
+	account_locks: Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	callback_ready: AtomicBool,
 	callback_profile_sha256: Mutex<Option<String>>,
 }
@@ -292,7 +285,7 @@ impl AccountService {
 			credentials,
 			refresher,
 			shared_auth: Arc::new(SharedAuthCoordinator::production()),
-			routing_lock: AsyncMutex::new(()),
+			routing_lock: tokio::sync::Mutex::new(()),
 			account_locks: Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
 			callback_profile_sha256: Mutex::new(None),
@@ -1053,7 +1046,7 @@ impl AccountService {
 				.id_token()
 				.ok_or(AccountLifecycleError::CredentialAbsent)
 				.map_err(SharedAuthProjectionError::Rejected)?;
-			let identity = decode_chatgpt_identity(id_token)
+			let identity = account_import::decode_chatgpt_identity(id_token)
 				.map_err(AccountLifecycleError::from)
 				.map_err(SharedAuthProjectionError::Rejected)?;
 
@@ -1106,7 +1099,11 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported = match resolve_import(read_shared_codex_credential()).await {
+		let imported = match personal_access_token::resolve_import(
+			account_import::read_shared_codex_credential(),
+		)
+		.await
+		{
 			Ok(imported) => imported,
 			Err(error) => {
 				return self
@@ -1147,17 +1144,18 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported =
-			match resolve_import(read_explicit_shared_codex_credential_file(source_descriptor))
-				.await
-			{
-				Ok(imported) => imported,
-				Err(error) => {
-					return self
-						.complete_account_command_error(lease, error.into(), build_response)
-						.await;
-				},
-			};
+		let imported = match personal_access_token::resolve_import(
+			account_import::read_explicit_shared_codex_credential_file(source_descriptor),
+		)
+		.await
+		{
+			Ok(imported) => imported,
+			Err(error) => {
+				return self
+					.complete_account_command_error(lease, error.into(), build_response)
+					.await;
+			},
+		};
 		let alias = stable_account_alias(&imported.provider);
 
 		self.install_credentials_command(
@@ -1190,7 +1188,10 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported = match resolve_import(read_explicit_credential_file(source_descriptor)).await
+		let imported = match personal_access_token::resolve_import(
+			account_import::read_explicit_credential_file(source_descriptor),
+		)
+		.await
 		{
 			Ok(imported) => imported,
 			Err(error) => {
@@ -1611,16 +1612,17 @@ impl AccountService {
 		current: &CredentialBinding,
 		stored: StoredCredential,
 	) -> Result<RefreshResolution, CredentialRefreshError> {
-		let imported =
-			resolve_import(Ok(crate::account_import::CredentialSource::PersonalAccessToken(
-				zeroize::Zeroizing::new(stored.bundle().access_token().to_owned()),
-			)))
-			.await
-			.map_err(|error| match error {
-				CredentialImportError::InvalidCredential
-				| CredentialImportError::ProviderMismatch => CredentialRefreshError::Rejected,
-				_ => CredentialRefreshError::Unavailable,
-			})?;
+		let imported = personal_access_token::resolve_import(Ok(
+			crate::account_import::CredentialSource::PersonalAccessToken(zeroize::Zeroizing::new(
+				stored.bundle().access_token().to_owned(),
+			)),
+		))
+		.await
+		.map_err(|error| match error {
+			CredentialImportError::InvalidCredential | CredentialImportError::ProviderMismatch =>
+				CredentialRefreshError::Rejected,
+			_ => CredentialRefreshError::Unavailable,
+		})?;
 
 		if imported.provider != current.provider
 			|| imported.bundle.personal_access_token_user_id()
@@ -2190,8 +2192,10 @@ impl AccountService {
 	) -> Result<(CredentialBinding, ImportedCredential, CredentialBinding), AccountLifecycleError>
 	{
 		let current = reauthentication_current(account, expected_account_revision)?;
-		let imported =
-			resolve_import(read_explicit_shared_codex_credential_file(source_descriptor)).await?;
+		let imported = personal_access_token::resolve_import(
+			account_import::read_explicit_shared_codex_credential_file(source_descriptor),
+		)
+		.await?;
 		let target = reauthentication_target(&current, account_id, operation_id, &imported)?;
 
 		self.credentials.read_exact(account_id, &current)?;
@@ -4711,7 +4715,7 @@ impl AccountService {
 	fn lock_for(
 		&self,
 		account_id: &AccountId,
-	) -> Result<Arc<AsyncMutex<()>>, AccountLifecycleError> {
+	) -> Result<Arc<tokio::sync::Mutex<()>>, AccountLifecycleError> {
 		account_lock_for(&self.account_locks, account_id)
 	}
 
@@ -5104,7 +5108,7 @@ fn operation_id_from_digest(digest: &[u8]) -> Result<AccountOperationId, Account
 
 fn classify_refresh_http_response(response: reqwest::blocking::Response) -> CredentialRefreshError {
 	let status = response.status();
-	let mut body = Zeroizing::new(Vec::new());
+	let mut body = zeroize::Zeroizing::new(Vec::new());
 	let _ = response.take(MAX_REFRESH_ERROR_BODY_BYTES + 1).read_to_end(&mut body);
 
 	classify_refresh_http_failure(status, &body)
@@ -5191,30 +5195,30 @@ fn credential_refresh_result(
 		.access_token
 		.take()
 		.filter(|value| !value.is_empty())
-		.map(Zeroizing::new)
+		.map(zeroize::Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
 	let mut refresh_token = refreshed
 		.refresh_token
 		.take()
 		.or_else(|| current.refresh_token().map(str::to_owned))
-		.map(Zeroizing::new)
+		.map(zeroize::Zeroizing::new)
 		.ok_or(CredentialRefreshError::Rejected)?;
 	let mut id_token = refreshed
 		.id_token
 		.take()
 		.filter(|value| !value.is_empty())
-		.map(Zeroizing::new)
+		.map(zeroize::Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
-	let identity =
-		decode_chatgpt_identity(&id_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
+	let identity = account_import::decode_chatgpt_identity(&id_token)
+		.map_err(|_| CredentialRefreshError::Ambiguous)?;
 	let token_type = refreshed.token_type.take().ok_or(CredentialRefreshError::Ambiguous)?;
 
 	if refreshed.expires_in.is_none_or(|expires_in| expires_in == 0) {
 		return Err(CredentialRefreshError::Ambiguous);
 	}
 
-	let expires_at_micros =
-		decode_expiry_micros(&access_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
+	let expires_at_micros = account_import::decode_expiry_micros(&access_token)
+		.map_err(|_| CredentialRefreshError::Ambiguous)?;
 
 	if expires_at_micros <= observed_at_micros {
 		return Err(CredentialRefreshError::Ambiguous);
@@ -5313,12 +5317,14 @@ const fn refresh_owner_is_busy(
 }
 
 fn account_lock_for(
-	locks: &Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
+	locks: &Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	account_id: &AccountId,
-) -> Result<Arc<AsyncMutex<()>>, AccountLifecycleError> {
+) -> Result<Arc<tokio::sync::Mutex<()>>, AccountLifecycleError> {
 	let mut locks = locks.lock().map_err(|_| AccountLifecycleError::CoordinatorUnavailable)?;
 
-	Ok(Arc::clone(locks.entry(account_id.clone()).or_insert_with(|| Arc::new(AsyncMutex::new(())))))
+	Ok(Arc::clone(
+		locks.entry(account_id.clone()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+	))
 }
 
 fn projection(
@@ -5669,18 +5675,15 @@ mod tests {
 		AccountOperationPreparation, CommandIdentity, SqliteStore,
 	};
 
-	use serde_json::json;
-
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-	use super::process_test_refresh_endpoint_is_safe;
+	use crate::account_service;
 
-	use super::{
+	use crate::account_service::{
 		AccountLifecycleError, AccountService, CodexAuthProjectionError, CredentialImportError,
 		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
 		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
-		ReauthenticationReplayDisposition, RefreshResponse, accepted_phase,
-		access_token_needs_refresh, account_lock_for, callback_uses_current_successor,
+		ReauthenticationReplayDisposition, RefreshResponse,
 		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
 		classify_refresh_http_failure, classify_refresh_http_response,
 		classify_refresh_transport_failure, codex_auth_projection_digest,
@@ -5692,7 +5695,7 @@ mod tests {
 	};
 
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-	use super::{REFRESH_ENDPOINT, refresh_endpoint};
+	use crate::account_service::REFRESH_ENDPOINT;
 
 	use std::{
 		collections::HashMap,
@@ -5707,8 +5710,6 @@ mod tests {
 		time::Duration,
 	};
 
-	use tempfile::tempdir;
-
 	use tokio::time;
 
 	use crate::{
@@ -5721,6 +5722,9 @@ mod tests {
 			SharedAuthFilePort,
 		},
 	};
+	use decodex_core::AccountSelectionRecovery;
+
+	use crate::account_observation::AccountObservationService;
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
 
@@ -5920,12 +5924,21 @@ mod tests {
 		let now = 1_000_000_i64;
 		let minimum_validity = Duration::from_micros(500);
 
-		assert!(access_token_needs_refresh(Some(now - 1), now, minimum_validity).unwrap());
-		assert!(access_token_needs_refresh(Some(now + 500), now, minimum_validity).unwrap());
-		assert!(!access_token_needs_refresh(Some(now + 501), now, minimum_validity).unwrap());
-		assert!(!access_token_needs_refresh(None, now, minimum_validity).unwrap());
+		assert!(
+			account_service::access_token_needs_refresh(Some(now - 1), now, minimum_validity)
+				.unwrap()
+		);
+		assert!(
+			account_service::access_token_needs_refresh(Some(now + 500), now, minimum_validity)
+				.unwrap()
+		);
+		assert!(
+			!account_service::access_token_needs_refresh(Some(now + 501), now, minimum_validity)
+				.unwrap()
+		);
+		assert!(!account_service::access_token_needs_refresh(None, now, minimum_validity).unwrap());
 		assert!(matches!(
-			access_token_needs_refresh(Some(i64::MAX), i64::MAX, minimum_validity),
+			account_service::access_token_needs_refresh(Some(i64::MAX), i64::MAX, minimum_validity),
 			Err(AccountLifecycleError::InvalidOperation)
 		));
 		assert!(matches!(
@@ -6336,23 +6349,23 @@ mod tests {
 		let process = ProcessGenerationAccountBinding::new(7, initial.clone(), "a".repeat(64))
 			.expect("process binding");
 
-		assert!(!callback_uses_current_successor(7, &process, &initial).unwrap());
+		assert!(!account_service::callback_uses_current_successor(7, &process, &initial).unwrap());
 
 		let mut successor = binding("callback-provider", 4);
 
 		successor.writer_operation_id =
 			AccountOperationId::new("10000000-0000-4000-8000-000000000004").unwrap();
 
-		assert!(callback_uses_current_successor(8, &process, &successor).unwrap());
+		assert!(account_service::callback_uses_current_successor(8, &process, &successor).unwrap());
 		assert!(matches!(
-			callback_uses_current_successor(6, &process, &successor),
+			account_service::callback_uses_current_successor(6, &process, &successor),
 			Err(AccountLifecycleError::StaleAccount)
 		));
 
 		let switched = binding("different-callback-provider", 4);
 
 		assert!(matches!(
-			callback_uses_current_successor(8, &process, &switched),
+			account_service::callback_uses_current_successor(8, &process, &switched),
 			Err(AccountLifecycleError::ProviderMismatch)
 		));
 	}
@@ -6378,7 +6391,7 @@ mod tests {
 	}
 
 	fn identity_token(account_id: &str, email: &str, plan_type: &str) -> String {
-		let claims = json!({
+		let claims = serde_json::json!({
 			"email": email,
 			"https://api.openai.com/auth": {
 				"chatgpt_account_id": account_id,
@@ -6394,13 +6407,13 @@ mod tests {
 		provider_account_id: &str,
 		email: &str,
 	) -> (tempfile::TempDir, String) {
-		let directory = tempdir().expect("temporary device-login home");
+		let directory = tempfile::tempdir().expect("temporary device-login home");
 		let root = fs::canonicalize(directory.path()).expect("canonical device-login home");
 		let path = root.join("auth.json");
-		let access_payload =
-			URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"exp": 2_000_000_000_i64})).unwrap());
+		let access_payload = URL_SAFE_NO_PAD
+			.encode(serde_json::to_vec(&serde_json::json!({"exp": 2_000_000_000_i64})).unwrap());
 		let access_token = format!("header.{access_payload}.signature");
-		let value = json!({
+		let value = serde_json::json!({
 			"auth_mode": "chatgpt",
 			"OPENAI_API_KEY": null,
 			"tokens": {
@@ -6433,8 +6446,8 @@ mod tests {
 	}
 
 	fn response(id_token: Option<String>) -> RefreshResponse {
-		let access_payload =
-			URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"exp": 61_i64})).unwrap());
+		let access_payload = URL_SAFE_NO_PAD
+			.encode(serde_json::to_vec(&serde_json::json!({"exp": 61_i64})).unwrap());
 
 		RefreshResponse {
 			id_token,
@@ -6448,7 +6461,9 @@ mod tests {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	#[test]
 	fn process_acceptance_refresh_endpoint_accepts_only_exact_loopback_http() {
-		assert!(process_test_refresh_endpoint_is_safe("http://127.0.0.1:49152/oauth/token"));
+		assert!(account_service::process_test_refresh_endpoint_is_safe(
+			"http://127.0.0.1:49152/oauth/token"
+		));
 
 		for unsafe_endpoint in [
 			"https://127.0.0.1:49152/oauth/token",
@@ -6459,7 +6474,7 @@ mod tests {
 			"http://user@127.0.0.1:49152/oauth/token",
 			"https://auth.openai.com/oauth/token",
 		] {
-			assert!(!process_test_refresh_endpoint_is_safe(unsafe_endpoint));
+			assert!(!account_service::process_test_refresh_endpoint_is_safe(unsafe_endpoint));
 		}
 	}
 
@@ -6467,7 +6482,7 @@ mod tests {
 	#[test]
 	fn ordinary_build_refresh_endpoint_is_the_fixed_https_authority() {
 		assert!(
-			matches!(refresh_endpoint(), Ok(endpoint) if endpoint == REFRESH_ENDPOINT),
+			matches!(account_service::refresh_endpoint(), Ok(endpoint) if endpoint == REFRESH_ENDPOINT),
 			"ordinary builds must retain the fixed refresh authority"
 		);
 	}
@@ -6616,8 +6631,6 @@ mod tests {
 
 	#[test]
 	fn paid_capacity_routes_without_window_data_but_respects_account_limits() {
-		use decodex_core::AccountSelectionRecovery;
-
 		let mut account = projection_account(None);
 		let mut observation = decodex_core::AccountUsageObservation {
 			account_revision: account.revision,
@@ -6919,7 +6932,7 @@ mod tests {
 	fn missing_empty_or_malformed_fresh_id_token_is_ambiguous_without_fallback() {
 		let malformed_claims = {
 			let payload = URL_SAFE_NO_PAD.encode(
-				serde_json::to_vec(&json!({
+				serde_json::to_vec(&serde_json::json!({
 					"email": "fresh@example.test",
 					"https://api.openai.com/auth": {},
 				}))
@@ -6969,7 +6982,7 @@ mod tests {
 	#[tokio::test]
 	async fn pat_accounts_route_only_after_quiescence_and_keep_exact_readback() {
 		for liveness in [CodexLiveness::MayBeRunning, CodexLiveness::Quiescent] {
-			let directory = tempdir().unwrap();
+			let directory = tempfile::tempdir().unwrap();
 			let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 			let store = SqliteStore::open(&root.paths()).unwrap();
 			let pat = |index| {
@@ -7042,7 +7055,7 @@ mod tests {
 						|result| {
 							assert!(result.is_ok());
 
-							Ok(json!({"outcome":"imported"}))
+							Ok(serde_json::json!({"outcome":"imported"}))
 						},
 					)
 					.await
@@ -7076,7 +7089,7 @@ mod tests {
 						));
 					}
 
-					Ok(json!({"outcome":"checked"}))
+					Ok(serde_json::json!({"outcome":"checked"}))
 				})
 				.await
 				.unwrap();
@@ -7214,7 +7227,7 @@ mod tests {
 		refresh: Result<CredentialRefreshResult, CredentialRefreshError>,
 	) -> (tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>)
 	{
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
 		let store = SqliteStore::open(&root.paths()).expect("open product store");
@@ -7236,7 +7249,7 @@ mod tests {
 			)
 			.expect("initial binding");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.prepare_account_operation(&AccountOperationPreparation {
 					operation_id: enrollment_id.clone(),
@@ -7256,7 +7269,7 @@ mod tests {
 
 		credentials.create(&account_id, &binding, bundle).expect("create credential");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&enrollment_id,
@@ -7268,7 +7281,7 @@ mod tests {
 				.expect("record credential"),
 		)
 		.expect("accept store effect");
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&enrollment_id,
@@ -7312,8 +7325,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn recovery_preparation_rechecks_current_account_revision_and_observation() {
-		use crate::account_observation::AccountObservationService;
-
 		use decodex_protocol::{
 			AccountRecoveryAction as A, AccountRecoveryDestination as D,
 			AccountRecoveryPreparation as P, EntityId, EntityRevision,
@@ -7325,7 +7336,7 @@ mod tests {
 		let revision = service.inspect(&account).await.unwrap().account.revision;
 		let observations = AccountObservationService::new(Arc::clone(&service), None, None, None);
 		let usage = |title: &str| {
-			decodex_codex::decode_account_api_usage(json!({
+			decodex_codex::decode_account_api_usage(serde_json::json!({
 			"account_id":"observed-account","user_id":"fixture-user","plan_type":"team",
 			"rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":title,
 			"description":"Ask your workspace owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}
@@ -7403,7 +7414,7 @@ mod tests {
 
 		service
 			.set_account_enabled_command(lease, &account, revision, false, |_, _| {
-				Ok(json!({"disabled":true}))
+				Ok(serde_json::json!({"disabled":true}))
 			})
 			.await
 			.unwrap();
@@ -7694,7 +7705,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // The precommitted refresh fixture and receipt readback form one crash-window proof.
 	async fn committed_refresh_replay_mirrors_its_successor_without_provider_work() {
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
 		let store = SqliteStore::open(&root.paths()).expect("open product store");
@@ -7718,7 +7729,7 @@ mod tests {
 			)
 			.expect("initial binding");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.prepare_account_operation(&AccountOperationPreparation {
 					operation_id: enrollment_operation.clone(),
@@ -7740,7 +7751,7 @@ mod tests {
 			.create(&account_id, &initial_binding, initial_bundle)
 			.expect("create initial credential");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&enrollment_operation,
@@ -7752,7 +7763,7 @@ mod tests {
 				.expect("record enrollment store effect"),
 		)
 		.expect("accept enrollment store effect");
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&enrollment_operation,
@@ -7777,7 +7788,7 @@ mod tests {
 			)
 			.expect("refreshed binding");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.prepare_account_operation(&AccountOperationPreparation {
 					operation_id: refresh_operation.clone(),
@@ -7794,7 +7805,7 @@ mod tests {
 				.expect("prepare refresh"),
 		)
 		.expect("accept refresh preparation");
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&refresh_operation,
@@ -7806,7 +7817,7 @@ mod tests {
 				.expect("record provider effect boundary"),
 		)
 		.expect("accept provider effect boundary");
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.set_account_operation_target(&refresh_operation, &refreshed_binding)
 				.await
@@ -7823,7 +7834,7 @@ mod tests {
 			)
 			.expect("persist refreshed credential");
 
-		accepted_phase(
+		account_service::accepted_phase(
 			store
 				.advance_account_operation(
 					&refresh_operation,
@@ -7865,17 +7876,17 @@ mod tests {
 		let response = service
 			.refresh_command(lease, refresh_operation.clone(), &account_id, 1, |result| {
 				Ok(match result {
-					Ok(account) => json!({
+					Ok(account) => serde_json::json!({
 						"outcome": "succeeded",
 						"account_revision": account.revision,
 					}),
-					Err(_) => json!({"outcome": "unexpected"}),
+					Err(_) => serde_json::json!({"outcome": "unexpected"}),
 				})
 			})
 			.await
 			.expect("complete committed refresh command");
 
-		assert_eq!(response, json!({"outcome": "succeeded", "account_revision": 2}));
+		assert_eq!(response, serde_json::json!({"outcome": "succeeded", "account_revision": 2}));
 
 		let refreshed = service.inspect(&account_id).await.expect("read refreshed account").account;
 
@@ -7912,7 +7923,7 @@ mod tests {
 	#[tokio::test]
 	async fn device_login_enrollment_commits_one_credential_bound_account_and_replays_its_receipt()
 	{
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
 		let store = SqliteStore::open(&root.paths()).expect("open product store");
@@ -7955,18 +7966,18 @@ mod tests {
 				&source_descriptor,
 				|result| {
 					Ok(match result {
-						Ok(account) => json!({
+						Ok(account) => serde_json::json!({
 							"outcome": "succeeded",
 							"account_revision": account.revision,
 						}),
-						Err(_) => json!({"outcome": "unexpected"}),
+						Err(_) => serde_json::json!({"outcome": "unexpected"}),
 					})
 				},
 			)
 			.await
 			.expect("complete device-login enrollment");
 
-		assert_eq!(response, json!({"outcome": "succeeded", "account_revision": 1}));
+		assert_eq!(response, serde_json::json!({"outcome": "succeeded", "account_revision": 1}));
 
 		let accounts = service.list().await.expect("list enrolled account");
 
@@ -8015,7 +8026,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // The existing-provider setup and exact durable rejection remain one end-to-end boundary.
 	async fn duplicate_provider_enrollment_is_cancelled_and_replays_its_typed_receipt() {
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 
 		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
 			.expect("private product root");
@@ -8121,11 +8132,11 @@ mod tests {
 					Ok(match result {
 						Err(AccountLifecycleError::CredentialStore(
 							CredentialStoreError::DuplicateProvider,
-						)) => json!({
+						)) => serde_json::json!({
 							"outcome": "rejected",
 							"rejection": "provider_already_enrolled",
 						}),
-						_ => json!({"outcome": "unexpected"}),
+						_ => serde_json::json!({"outcome": "unexpected"}),
 					})
 				},
 			)
@@ -8134,7 +8145,7 @@ mod tests {
 
 		assert_eq!(
 			response,
-			json!({"outcome": "rejected", "rejection": "provider_already_enrolled"})
+			serde_json::json!({"outcome": "rejected", "rejection": "provider_already_enrolled"})
 		);
 		assert!(matches!(
 			credentials.read_exact(&account_id, &existing_binding),
@@ -8175,7 +8186,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // One regression proves legacy cleanup, restoration, replay, routing, and reopen together.
 	async fn logged_out_provider_enrollment_restores_the_original_account_and_receipt() {
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 
 		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
 			.expect("private product root");
@@ -8225,12 +8236,12 @@ mod tests {
 				&initial_descriptor,
 				|result| {
 					Ok(match result {
-						Ok(account) => json!({
+						Ok(account) => serde_json::json!({
 							"outcome": "succeeded",
 							"account_id": account.account_id.as_str(),
 							"account_revision": account.revision,
 						}),
-						Err(_) => json!({"outcome": "unexpected"}),
+						Err(_) => serde_json::json!({"outcome": "unexpected"}),
 					})
 				},
 			)
@@ -8239,7 +8250,7 @@ mod tests {
 
 		assert_eq!(
 			initial,
-			json!({
+			serde_json::json!({
 				"outcome": "succeeded",
 				"account_id": original_account.as_str(),
 				"account_revision": 1,
@@ -8353,12 +8364,12 @@ mod tests {
 				&restore_descriptor,
 				|result| {
 					Ok(match result {
-						Ok(account) => json!({
+						Ok(account) => serde_json::json!({
 							"outcome": "succeeded",
 							"account_id": account.account_id.as_str(),
 							"account_revision": account.revision,
 						}),
-						Err(_) => json!({"outcome": "unexpected"}),
+						Err(_) => serde_json::json!({"outcome": "unexpected"}),
 					})
 				},
 			)
@@ -8386,7 +8397,7 @@ mod tests {
 
 		assert_eq!(
 			restored,
-			json!({
+			serde_json::json!({
 				"outcome": "succeeded",
 				"account_id": original_account.as_str(),
 				"account_revision": 3,
@@ -8450,7 +8461,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // One full cross-store takeover regression keeps every safety boundary visible together.
 	async fn verified_device_login_takes_over_rejected_refresh_after_restart() {
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 
 		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
 			.expect("private product root");
@@ -8583,15 +8594,17 @@ mod tests {
 			Some("provider_refresh_rejected")
 		);
 
-		let login_directory = tempdir().expect("private login directory");
+		let login_directory = tempfile::tempdir().expect("private login directory");
 		let login_root = fs::canonicalize(login_directory.path()).expect("canonical login root");
 		let auth_path = login_root.join("auth.json");
-		let access_payload = URL_SAFE_NO_PAD
-			.encode(serde_json::to_vec(&json!({"exp": 4_000_000_000_i64})).expect("access claims"));
+		let access_payload = URL_SAFE_NO_PAD.encode(
+			serde_json::to_vec(&serde_json::json!({"exp": 4_000_000_000_i64}))
+				.expect("access claims"),
+		);
 
 		fs::write(
 			&auth_path,
-			serde_json::to_vec(&json!({
+			serde_json::to_vec(&serde_json::json!({
 				"auth_mode": "chatgpt",
 				"OPENAI_API_KEY": null,
 				"tokens": {
@@ -8616,7 +8629,7 @@ mod tests {
 
 		fs::write(
 			&wrong_auth_path,
-			serde_json::to_vec(&json!({
+			serde_json::to_vec(&serde_json::json!({
 				"auth_mode": "chatgpt",
 				"OPENAI_API_KEY": null,
 				"tokens": {
@@ -8665,13 +8678,15 @@ mod tests {
 				Some(&ambiguity_id),
 				wrong_auth_path.to_string_lossy().as_ref(),
 				|result| {
-					Ok(json!({"outcome": if result.is_ok() { "applied" } else { "rejected" }}))
+					Ok(
+						serde_json::json!({"outcome": if result.is_ok() { "applied" } else { "rejected" }}),
+					)
 				},
 			)
 			.await
 			.expect("complete wrong-provider denial");
 
-		assert_eq!(wrong_response, json!({"outcome": "rejected"}));
+		assert_eq!(wrong_response, serde_json::json!({"outcome": "rejected"}));
 		assert_eq!(
 			reopened
 				.read_account_operation(&ambiguity_id)
@@ -8709,15 +8724,16 @@ mod tests {
 				auth_path.to_string_lossy().as_ref(),
 				|result| {
 					Ok(match result {
-						Ok(account) => json!({"outcome": "applied", "revision": account.revision}),
-						Err(_) => json!({"outcome": "rejected"}),
+						Ok(account) =>
+							serde_json::json!({"outcome": "applied", "revision": account.revision}),
+						Err(_) => serde_json::json!({"outcome": "rejected"}),
 					})
 				},
 			)
 			.await
 			.expect("complete verified login takeover");
 
-		assert_eq!(response, json!({"outcome": "applied", "revision": 2}));
+		assert_eq!(response, serde_json::json!({"outcome": "applied", "revision": 2}));
 
 		let account = service.inspect(&account_id).await.expect("inspect settled account");
 
@@ -8764,7 +8780,7 @@ mod tests {
 				)
 				.unwrap();
 
-			accepted_phase(
+			account_service::accepted_phase(
 				store
 					.prepare_account_operation(&AccountOperationPreparation {
 						operation_id: operation_id.clone(),
@@ -8842,7 +8858,7 @@ mod tests {
 					)
 					.unwrap();
 
-				accepted_phase(
+				account_service::accepted_phase(
 					store
 						.prepare_account_operation(&AccountOperationPreparation {
 							operation_id: operation_id.clone(),
@@ -8933,12 +8949,12 @@ mod tests {
 				operation_id,
 				revision,
 				super::AccountManualRecoveryAction::ReconcileExactStoreState,
-				|result| Ok(json!({"outcome": format!("{:?}", result.unwrap().0)})),
+				|result| Ok(serde_json::json!({"outcome": format!("{:?}", result.unwrap().0)})),
 			)
 			.await
 			.unwrap();
 
-		assert_eq!(response, json!({"outcome": format!("{outcome:?}")}));
+		assert_eq!(response, serde_json::json!({"outcome": format!("{outcome:?}")}));
 		assert_eq!(
 			service.store.read_account_operation(operation_id).await.unwrap().unwrap().phase,
 			phase
@@ -8969,8 +8985,8 @@ mod tests {
 	async fn one_account_lock_serializes_projection_and_revision_writers() {
 		let locks = Mutex::new(HashMap::new());
 		let account_id = AccountId::new("20000000-0000-4000-8000-000000000098").unwrap();
-		let first = account_lock_for(&locks, &account_id).unwrap();
-		let second = account_lock_for(&locks, &account_id).unwrap();
+		let first = account_service::account_lock_for(&locks, &account_id).unwrap();
+		let second = account_service::account_lock_for(&locks, &account_id).unwrap();
 
 		assert!(Arc::ptr_eq(&first, &second));
 

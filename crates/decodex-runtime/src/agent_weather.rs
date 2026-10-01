@@ -1,14 +1,18 @@
 //! Narrow compatibility adapter until app-server exposes web weather results.
 //! Read only the path returned for the selected native thread, never scan sessions.
-use crate::agent_host::AgentHost;
-
-use decodex_protocol::{AgentHistoryResult, WeatherForecast};
+use std::{
+	collections::{BTreeSet, HashMap},
+	fs::File,
+	io::{BufRead as _, BufReader, Read as _},
+	time::Duration,
+};
 
 use serde_json::{Value, json};
+use tokio::{task, time};
 
-use std::{
-	collections::HashMap,
-	io::{BufRead, BufReader, Read},
+use crate::agent_host::AgentHost;
+use decodex_protocol::{
+	AgentHistoryEntryDto, AgentHistoryResult, AgentTimelinePage, WeatherForecast,
 };
 
 pub(super) struct CachedWeather {
@@ -20,7 +24,7 @@ impl AgentHost {
 	async fn weather_for_turns(
 		&self,
 		thread: &str,
-		turns: &std::collections::BTreeSet<String>,
+		turns: &BTreeSet<String>,
 	) -> HashMap<String, Vec<WeatherForecast>> {
 		if turns.is_empty() {
 			return HashMap::new();
@@ -41,8 +45,8 @@ impl AgentHost {
 		let Some((_, client)) = self.runtime.agent_catalog_client() else {
 			return HashMap::new();
 		};
-		let Ok(Ok(readback)) = tokio::time::timeout(
-			std::time::Duration::from_secs(2),
+		let Ok(Ok(readback)) = time::timeout(
+			Duration::from_secs(2),
 			client.thread_read(json!({"threadId":thread,"includeTurns":false})),
 		)
 		.await
@@ -60,8 +64,7 @@ impl AgentHost {
 			return HashMap::new();
 		};
 		let source_thread = thread.to_owned();
-		let Ok(weather) =
-			tokio::task::spawn_blocking(move || read_weather(&path, &source_thread)).await
+		let Ok(weather) = task::spawn_blocking(move || read_weather(&path, &source_thread)).await
 		else {
 			return HashMap::new();
 		};
@@ -77,10 +80,7 @@ impl AgentHost {
 		selected
 	}
 
-	pub(crate) async fn enrich_timeline_weather(
-		&self,
-		page: &mut decodex_protocol::AgentTimelinePage,
-	) {
+	pub(crate) async fn enrich_timeline_weather(&self, page: &mut AgentTimelinePage) {
 		use decodex_protocol::AgentTimelineContent as Content;
 
 		let turns = page
@@ -108,7 +108,7 @@ impl AgentHost {
 		let AgentHistoryResult::Available { entries, .. } = history else {
 			return;
 		};
-		let turns: std::collections::BTreeSet<_> = entries
+		let turns: BTreeSet<_> = entries
 			.iter()
 			.filter(|entry| entry.kind == "assistant" && has_weather(&entry.text))
 			.filter_map(|entry| entry.turn_id.clone())
@@ -133,10 +133,7 @@ fn has_weather(text: &str) -> bool {
 	["weather", "forecast"].iter().any(|kind| text.contains(&format!("\u{e200}{kind}\u{e202}")))
 }
 
-fn attach(
-	entries: &mut [decodex_protocol::AgentHistoryEntryDto],
-	weather: &HashMap<String, Vec<WeatherForecast>>,
-) {
+fn attach(entries: &mut [AgentHistoryEntryDto], weather: &HashMap<String, Vec<WeatherForecast>>) {
 	for entry in entries {
 		if entry.kind != "assistant" {
 			continue;
@@ -164,7 +161,7 @@ fn attach(
 
 fn read_weather(path: &str, thread: &str) -> HashMap<String, Vec<WeatherForecast>> {
 	let mut result = HashMap::new();
-	let Ok(file) = std::fs::File::open(path) else { return result };
+	let Ok(file) = File::open(path) else { return result };
 
 	if !file.metadata().is_ok_and(|m| m.is_file() && m.len() <= 16 * 1_024 * 1_024) {
 		return result;
@@ -216,7 +213,10 @@ fn read_weather(path: &str, thread: &str) -> HashMap<String, Vec<WeatherForecast
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{io::Write as _, slice};
+
+	use crate::agent_host::weather::{self, HashMap, WeatherForecast};
+
 	#[test]
 	fn weather_and_forecast_aliases_attach_only_exact_assistant_references() {
 		let forecast = WeatherForecast::parse(include_str!(
@@ -241,39 +241,37 @@ mod tests {
 		for marker in ["weather", "forecast"] {
 			entry.text = format!("\u{e200}{marker}\u{e202}{}\u{e201}", forecast.reference);
 
-			attach(std::slice::from_mut(&mut entry), &weather);
+			weather::attach(slice::from_mut(&mut entry), &weather);
 
 			assert_eq!(entry.weather, vec![forecast.clone()]);
 		}
 
 		entry.text = "\u{e200}forecast\u{e202}unrelated\u{e201}".into();
 
-		attach(std::slice::from_mut(&mut entry), &weather);
+		weather::attach(slice::from_mut(&mut entry), &weather);
 
 		assert!(entry.weather.is_empty());
 	}
 
 	#[test]
 	fn weather_history_is_bound_to_the_exact_thread_and_turn() {
-		use std::io::Write;
-
 		let mut file = tempfile::NamedTempFile::new().unwrap();
 		let fixture =
 			include_str!("../../../apps/decodex-gpui/examples/fixtures/singapore-weather.txt");
 
 		for record in [
-			json!({"type":"session_meta","payload":{"id":"thread-a"}}),
-			json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}),
-			json!({"type":"response_item","payload":{"type":"custom_tool_call_output","output":[{"type":"input_text","text":fixture}]}}),
+			weather::json!({"type":"session_meta","payload":{"id":"thread-a"}}),
+			weather::json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}),
+			weather::json!({"type":"response_item","payload":{"type":"custom_tool_call_output","output":[{"type":"input_text","text":fixture}]}}),
 		] {
 			writeln!(file, "{record}").unwrap();
 		}
 
 		let path = file.path().to_str().unwrap();
 
-		assert!(read_weather(path, "another-thread").is_empty());
+		assert!(weather::read_weather(path, "another-thread").is_empty());
 
-		let results = read_weather(path, "thread-a");
+		let results = weather::read_weather(path, "thread-a");
 
 		assert_eq!(results["turn-a"][0].celsius, 32);
 		assert_eq!(results["turn-a"][0].hours.len(), 12);

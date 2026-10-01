@@ -1,8 +1,16 @@
 //! Source-bound provider observations. They do not authorize a turn or resolve work.
 
-use super::{AgentCoordinator, AgentError, EnqueueAgentEvent, Value, exact, json};
-use decodex_codex::ThreadTokenUsage;
+use std::time::Duration;
+
 use sha2::{Digest as _, Sha256};
+use tokio::{time, time::Instant};
+
+use crate::agent::{
+	self, AgentCoordinator, AgentError, EnqueueAgentEvent, Value, async_projection::Projection,
+	misalignment, result_messages,
+};
+use decodex_codex::{ThreadTokenUsage, app_server_client, guardian};
+use decodex_database::AgentGuardianObservation;
 
 impl AgentCoordinator {
 	pub(super) async fn observe_steer_receipt(
@@ -39,7 +47,7 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
-		let details = super::misalignment::details(error);
+		let details = misalignment::details(error);
 
 		self.store.record_agent_misalignment(thread.into(), turn.into(), details).await?;
 
@@ -59,12 +67,11 @@ impl AgentCoordinator {
 		for (work, thread, required_item) in self.store.pending_agent_async_recovery().await? {
 			let revision = self.client.question_revision();
 			let lifecycle = self.client.thread_settings_guard(&thread);
-			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-			let mut projection = super::async_projection::Projection::default();
+			let deadline = Instant::now() + Duration::from_secs(30);
+			let mut projection = Projection::default();
 			let mut saw_required = required_item.is_none();
 			let Ok(Ok(turns)) =
-				tokio::time::timeout_at(deadline, self.client.thread_turns_since(&thread, None))
-					.await
+				time::timeout_at(deadline, self.client.thread_turns_since(&thread, None)).await
 			else {
 				continue;
 			};
@@ -79,8 +86,7 @@ impl AgentCoordinator {
 					break;
 				};
 				let Ok(Ok(history)) =
-					tokio::time::timeout_at(deadline, self.client.thread_read_turn(&thread, turn))
-						.await
+					time::timeout_at(deadline, self.client.thread_read_turn(&thread, turn)).await
 				else {
 					complete = false;
 
@@ -109,7 +115,7 @@ impl AgentCoordinator {
 						.restore_agent_misalignment(
 							thread.clone(),
 							turn.into(),
-							super::misalignment::details(&native_turn["error"]),
+							misalignment::details(&native_turn["error"]),
 						)
 						.await?;
 					self.stop_voice_for_precaution(&thread).await?;
@@ -222,7 +228,7 @@ impl AgentCoordinator {
 
 		self.observe_notification(method, params).await?;
 
-		if decodex_codex::app_server_client::invalidates_question_state(method, params) {
+		if app_server_client::invalidates_question_state(method, params) {
 			self.handled_question_revision = self
 				.handled_question_revision
 				.saturating_add(1)
@@ -279,12 +285,12 @@ impl AgentCoordinator {
 		params: &Value,
 	) -> Result<(), AgentError> {
 		if method == "thread/reverted" {
-			return self.invalidate_reverted_requests(&exact(params, "/threadId")?).await;
+			return self.invalidate_reverted_requests(&agent::exact(params, "/threadId")?).await;
 		}
 
-		if let Some(review) = decodex_codex::guardian::decode_review(method, params) {
+		if let Some(review) = guardian::decode_review(method, params) {
 			self.store
-				.record_agent_guardian_review(decodex_database::AgentGuardianObservation {
+				.record_agent_guardian_review(AgentGuardianObservation {
 					thread_id: review.thread_id,
 					turn_id: review.turn_id,
 					review_id: review.review_id,
@@ -322,8 +328,8 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
-		let thread = exact(params, "/threadId")?;
-		let turn = exact(params, "/turnId")?;
+		let thread = agent::exact(params, "/threadId")?;
+		let turn = agent::exact(params, "/turnId")?;
 		let Some(work) = self.store.list_agent_work_items().await?.into_iter().find(|work| {
 			work.codex_thread_id.as_deref() == Some(&thread)
 				&& work.active_turn_id.as_deref() == Some(&turn)
@@ -342,7 +348,7 @@ impl AgentCoordinator {
 					return Ok(());
 				}
 
-				let value = json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
+				let value = agent::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
 
 				("token_usage", value.clone(), value)
 			},
@@ -350,26 +356,26 @@ impl AgentCoordinator {
 				if params["item"]["type"] == "agentMessage"
 					&& params["item"]["delivery"] == "async" =>
 			{
-				let item_id = exact(params, "/item/id")?;
+				let item_id = agent::exact(params, "/item/id")?;
 				let (messages, truncated) =
-					super::result_messages::collect(Some(&json!({"items":[params["item"]]})));
+					result_messages::collect(Some(&agent::json!({"items":[params["item"]]})));
 				let Some(item) = messages.first() else {
 					return Ok(());
 				};
 
 				(
 					"assistant_message",
-					json!([thread, turn, item_id]),
-					json!({"threadId":thread,"turnId":turn,"item":item,"truncated":truncated}),
+					agent::json!([thread, turn, item_id]),
+					agent::json!({"threadId":thread,"turnId":turn,"item":item,"truncated":truncated}),
 				)
 			},
 			"item/completed" if params["item"]["type"] == "contextCompaction" => {
-				let item_id = exact(params, "/item/id")?;
+				let item_id = agent::exact(params, "/item/id")?;
 
 				(
 					"context_compacted",
-					json!([thread, turn, item_id]),
-					json!({"threadId":thread,"turnId":turn,"itemId":item_id}),
+					agent::json!([thread, turn, item_id]),
+					agent::json!({"threadId":thread,"turnId":turn,"itemId":item_id}),
 				)
 			},
 			_ => return Ok(()),

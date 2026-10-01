@@ -1,5 +1,7 @@
 //! Bound durable result JSON without slicing its serialized representation.
 
+use std::cmp::Reverse;
+
 use serde_json::{Value, json};
 
 const MAX_BYTES: usize = 48_000;
@@ -74,7 +76,7 @@ pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
 			} else {
 				2
 			},
-			std::cmp::Reverse(*index),
+			Reverse(*index),
 		)
 	});
 
@@ -162,12 +164,12 @@ fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent::result_messages::{self, MAX_BYTES, Value};
 
 	#[test]
 	fn long_error_keeps_provider_classification_without_partial_steer() {
-		let output = terminal(
-			&json!({"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"Stopped","codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"x".repeat(8_000),"steer":{"message":"User must acknowledge this"}}}}}),
+		let output = result_messages::terminal(
+			&result_messages::json!({"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"Stopped","codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"x".repeat(8_000),"steer":{"message":"User must acknowledge this"}}}}}),
 		);
 
 		assert_eq!(output["turn"]["error"]["codexErrorInfo"], "misalignmentPolicyViolation");
@@ -178,25 +180,34 @@ mod tests {
 
 	#[test]
 	fn terminal_retains_native_times_without_inventing_replay_times() {
-		let value = terminal(&json!({"threadId":"thread","turn":{
-			"id":"turn","status":"completed","error":null,
-			"startedAt":1_700_000_000,"completedAt":1_700_000_125,"durationMs":125_000
-		}}));
+		let value =
+			result_messages::terminal(&result_messages::json!({"threadId":"thread","turn":{
+				"id":"turn","status":"completed","error":null,
+				"startedAt":1_700_000_000,"completedAt":1_700_000_125,"durationMs":125_000
+			}}));
 
 		assert_eq!(value["turn"]["startedAt"], 1_700_000_000);
 		assert_eq!(value["turn"]["completedAt"], 1_700_000_125);
 		assert_eq!(value["turn"]["durationMs"], 125_000);
 		assert_eq!(value["detailsOmitted"], false);
 
-		let old = terminal(&json!({"turn":{"id":"old","status":"completed"}}));
+		let old = result_messages::terminal(
+			&result_messages::json!({"turn":{"id":"old","status":"completed"}}),
+		);
 
 		assert!(old["turn"]["startedAt"].is_null());
 		assert!(old["turn"]["completedAt"].is_null());
 		assert!(old["turn"]["durationMs"].is_null());
 
-		for invalid in [json!(-1), json!("x".repeat(70_000)), json!({"unexpected":true})] {
-			let bounded = terminal(&json!({"turn":{"id":"turn","startedAt":invalid,
-				"completedAt":invalid,"durationMs":invalid}}));
+		for invalid in [
+			result_messages::json!(-1),
+			result_messages::json!("x".repeat(70_000)),
+			result_messages::json!({"unexpected":true}),
+		] {
+			let bounded = result_messages::terminal(
+				&result_messages::json!({"turn":{"id":"turn","startedAt":invalid,
+				"completedAt":invalid,"durationMs":invalid}}),
+			);
 
 			assert!(bounded["turn"]["startedAt"].is_null());
 			assert!(bounded["turn"]["completedAt"].is_null());
@@ -208,11 +219,11 @@ mod tests {
 
 	#[test]
 	fn final_report_survives_large_commentary_and_keeps_chronological_order() {
-		let turn = json!({"items":[
+		let turn = result_messages::json!({"items":[
 			{"type":"agentMessage","phase":"commentary","text":"x".repeat(60_000)},
 			{"type":"agentMessage","phase":"final_answer","text":"Verified final result"}
 		]});
-		let (messages, truncated) = collect(Some(&turn));
+		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
 		assert_eq!(messages.last().unwrap()["text"], "Verified final result");
@@ -222,8 +233,8 @@ mod tests {
 	#[test]
 	fn long_escaped_multibyte_output_remains_structured_readable_and_bounded() {
 		let text = "界🙂\"\\\n\u{0001}".repeat(12_000);
-		let turn = json!({"items":[{"type":"agentMessage","id":"message-1","text":text}]});
-		let (messages, truncated) = collect(Some(&turn));
+		let turn = result_messages::json!({"items":[{"type":"agentMessage","id":"message-1","text":text}]});
+		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
 
@@ -243,10 +254,10 @@ mod tests {
 	#[test]
 	fn combined_evidence_fits_store_limit_with_maximum_escaped_ids_and_error() {
 		let id = "\u{0001}".repeat(512);
-		let turn = json!({"id":id,"status":"failed","error":{"message":"e".repeat(4_000)},
+		let turn = result_messages::json!({"id":id,"status":"failed","error":{"message":"e".repeat(4_000)},
 			"items":[{"type":"agentMessage","text":"界\"".repeat(MAX_BYTES)}]});
-		let (messages, truncated) = collect(Some(&turn));
-		let evidence = json!({"terminal":terminal(&json!({"threadId":id,"turn":turn})),
+		let (messages, truncated) = result_messages::collect(Some(&turn));
+		let evidence = result_messages::json!({"terminal":result_messages::terminal(&result_messages::json!({"threadId":id,"turn":turn})),
 			"threadReadback":{"threadId":id,"turnId":id,"assistantMessages":messages,
 			"truncated":truncated,"exactTurnReadback":true}});
 
@@ -255,28 +266,28 @@ mod tests {
 
 	#[test]
 	fn ordinary_messages_keep_fields_and_non_assistant_items_are_excluded() {
-		let turn = json!({"items":[
+		let turn = result_messages::json!({"items":[
 			{"type":"commandExecution","text":"not assistant"},
 			{"type":"agentMessage","id":"one","text":"first","phase":"commentary"},
 			{"type":"agentMessage","id":"two","text":"done","phase":"final_answer"}
 		]});
-		let (messages, truncated) = collect(Some(&turn));
+		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(!truncated);
 		assert_eq!(messages, vec![turn["items"][1].clone(), turn["items"][2].clone()]);
-		assert_eq!(collect(None), (Vec::new(), false));
+		assert_eq!(result_messages::collect(None), (Vec::new(), false));
 	}
 
 	#[test]
 	fn oversized_metadata_preserves_text_and_many_messages_obey_array_budget() {
-		let turn = json!({"items":[{"type":"agentMessage","id":"x".repeat(MAX_BYTES),"text":"useful result"}]});
-		let (messages, truncated) = collect(Some(&turn));
+		let turn = result_messages::json!({"items":[{"type":"agentMessage","id":"x".repeat(MAX_BYTES),"text":"useful result"}]});
+		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
 		assert_eq!(messages[0]["text"], "useful result");
 
-		let turn = json!({"items":vec![json!({"type":"agentMessage","text":"done"}); 2_000]});
-		let (messages, truncated) = collect(Some(&turn));
+		let turn = result_messages::json!({"items":vec![result_messages::json!({"type":"agentMessage","text":"done"}); 2_000]});
+		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
 		assert!(serde_json::to_string(&messages).unwrap().len() <= MAX_BYTES);

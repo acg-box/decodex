@@ -1,13 +1,11 @@
 //! Resolve native voice references through the existing bounded exact-turn history adapter.
-use super::{Content, ordinary};
-
-use decodex_codex::app_server_client::AppServerClient;
-
-use decodex_protocol::{AgentTimelinePage, AgentTimelinePromotedContent};
+use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use std::collections::BTreeMap;
+use crate::agent::timeline::{Content, ordinary};
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_protocol::{AgentTimelinePage, AgentTimelinePromotedContent};
 
 pub(super) fn exact_item<'a>(
 	history: &'a Value,

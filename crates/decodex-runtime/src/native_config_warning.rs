@@ -1,14 +1,20 @@
 //! Bounded public configuration diagnostics. Never retain arbitrary provider fields.
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::agent_usage_estimate::Source;
+use decodex_codex::app_server_client::RpcError;
+use decodex_core::ProcessGenerationId;
+use decodex_database::{SqliteStore, StoreError};
+
 pub(crate) fn from_frame(bytes: &[u8]) -> Option<Value> {
-	#[derive(serde::Deserialize)]
+	#[derive(Deserialize)]
 	struct Fields {
 		summary: String,
 		details: Option<String>,
 	}
 
-	#[derive(serde::Deserialize)]
+	#[derive(Deserialize)]
 	struct Frame {
 		params: Fields,
 	}
@@ -75,11 +81,11 @@ pub(crate) fn warning_from_frame(bytes: &[u8]) -> Option<Value> {
 }
 
 pub(crate) async fn record(
-	store: &decodex_database::SqliteStore,
+	store: &SqliteStore,
 	root: &str,
-	generation: &decodex_core::ProcessGenerationId,
+	generation: &ProcessGenerationId,
 	params: &Value,
-) -> Result<(), decodex_database::StoreError> {
+) -> Result<(), StoreError> {
 	use sha2::{Digest as _, Sha256};
 
 	let Some(value) = project(params) else {
@@ -99,12 +105,12 @@ pub(crate) async fn record(
 
 /// Shared host dispatch for process and task diagnostics.
 pub(crate) async fn record_notification(
-	store: &decodex_database::SqliteStore,
+	store: &SqliteStore,
 	root: &str,
-	generation: &decodex_core::ProcessGenerationId,
+	generation: &ProcessGenerationId,
 	method: &str,
 	params: &Value,
-) -> Result<(), decodex_database::StoreError> {
+) -> Result<(), StoreError> {
 	match method {
 		"warning" => record_warning(store, root, generation, params).await,
 		"configWarning" => record(store, root, generation, params).await,
@@ -120,11 +126,11 @@ pub(crate) async fn record_notification(
 }
 
 pub(crate) async fn record_warning(
-	store: &decodex_database::SqliteStore,
+	store: &SqliteStore,
 	root: &str,
-	generation: &decodex_core::ProcessGenerationId,
+	generation: &ProcessGenerationId,
 	params: &Value,
-) -> Result<(), decodex_database::StoreError> {
+) -> Result<(), StoreError> {
 	use sha2::{Digest as _, Sha256};
 
 	let Some(value) = warning(params) else {
@@ -147,8 +153,8 @@ pub(crate) async fn record_warning(
 /// Retain an actionable configuration RPC cause without changing dispatch certainty.
 /// Private error data and Debug output are never projected into the transcript.
 pub(crate) async fn record_settings_error(
-	store: &decodex_database::SqliteStore,
-	source: &crate::agent_usage_estimate::Source,
+	store: &SqliteStore,
+	source: &Source,
 	operation: &'static str,
 	error: &decodex_codex::app_server_client::ClientError,
 ) {
@@ -183,10 +189,7 @@ fn mcp_reauthentication_notice(params: &Value) -> Option<Value> {
 	)
 }
 
-fn settings_error_message(
-	operation: &str,
-	error: &decodex_codex::app_server_client::RpcError,
-) -> Option<String> {
+fn settings_error_message(operation: &str, error: &RpcError) -> Option<String> {
 	let projected = project(&json!({"summary":error.message}))?;
 
 	Some(format!(
@@ -198,11 +201,13 @@ fn settings_error_message(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::native_config_warning::{self, Value};
+	use decodex_codex::app_server_client::RpcError;
+
 	#[test]
 	fn mcp_reauthentication_requires_explicit_native_cause() {
-		let mut params = json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
-		let notice = mcp_reauthentication_notice(&params).unwrap();
+		let mut params = native_config_warning::json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
+		let notice = native_config_warning::mcp_reauthentication_notice(&params).unwrap();
 
 		assert_eq!(notice["threadId"], "thread");
 		assert!(notice["message"].as_str().unwrap().contains("Open Codex for this account"));
@@ -210,19 +215,19 @@ mod tests {
 
 		params["failureReason"] = Value::Null;
 
-		assert!(mcp_reauthentication_notice(&params).is_none());
+		assert!(native_config_warning::mcp_reauthentication_notice(&params).is_none());
 
-		params["failureReason"] = json!("reauthenticationRequired");
-		params["status"] = json!("ready");
+		params["failureReason"] = native_config_warning::json!("reauthenticationRequired");
+		params["status"] = native_config_warning::json!("ready");
 
-		assert!(mcp_reauthentication_notice(&params).is_none());
+		assert!(native_config_warning::mcp_reauthentication_notice(&params).is_none());
 	}
 	#[test]
 	fn settings_errors_keep_actionable_causes_but_hide_private_material() {
-		use decodex_codex::app_server_client::RpcError;
-
-		let mut error=RpcError{code:-32_603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(json!({"private":"do-not-display"}))};
-		let message = settings_error_message("Account setting failed", &error).unwrap();
+		let mut error=RpcError{code:-32_603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(native_config_warning::json!({"private":"do-not-display"}))};
+		let message =
+			native_config_warning::settings_error_message("Account setting failed", &error)
+				.unwrap();
 
 		assert!(message.contains("/fixture/config.toml:1:24: unclosed array"));
 		assert!(message.contains("code -32603"));
@@ -231,56 +236,92 @@ mod tests {
 
 		error.message = "Bearer fixture-private-access-token-123456789".into();
 
-		let message = settings_error_message("Account setting failed", &error).unwrap();
+		let message =
+			native_config_warning::settings_error_message("Account setting failed", &error)
+				.unwrap();
 
 		assert!(message.contains("hidden"));
 		assert!(!message.contains("fixture-private"));
 
 		error.message = "x".repeat(8_193);
 
-		assert!(settings_error_message("Account setting failed", &error).is_none());
+		assert!(
+			native_config_warning::settings_error_message("Account setting failed", &error)
+				.is_none()
+		);
 	}
 
 	#[test]
 	fn native_warning_keeps_only_safe_message_and_exact_optional_thread() {
-		let value = warning(
-			&json!({"threadId":"task","message":"Read failed\nRetained previous text","private":"hidden"}),
+		let value = native_config_warning::warning(
+			&native_config_warning::json!({"threadId":"task","message":"Read failed\nRetained previous text","private":"hidden"}),
 		)
 		.unwrap();
 
 		assert_eq!(
 			value,
-			json!({"threadId":"task","message":"Read failed\nRetained previous text"})
+			native_config_warning::json!({"threadId":"task","message":"Read failed\nRetained previous text"})
 		);
-		assert!(warning(&json!({"threadId":12,"message":"warning"})).is_none());
-		assert!(warning(&json!({"threadId":"","message":"warning"})).is_none());
-		assert!(warning(&json!({"message":"x".repeat(8_193)})).is_none());
-		assert!(warning(&json!({"message":"Bearer fixture-private-access-token-123456789"})).unwrap()["message"].as_str().unwrap().contains("hidden"));
+		assert!(
+			native_config_warning::warning(
+				&native_config_warning::json!({"threadId":12,"message":"warning"})
+			)
+			.is_none()
+		);
+		assert!(
+			native_config_warning::warning(
+				&native_config_warning::json!({"threadId":"","message":"warning"})
+			)
+			.is_none()
+		);
+		assert!(
+			native_config_warning::warning(
+				&native_config_warning::json!({"message":"x".repeat(8_193)})
+			)
+			.is_none()
+		);
+		assert!(
+			native_config_warning::warning(
+				&native_config_warning::json!({"message":"Bearer fixture-private-access-token-123456789"})
+			)
+			.unwrap()["message"]
+				.as_str()
+				.unwrap()
+				.contains("hidden")
+		);
 		assert_eq!(
-			warning_from_frame(br#"{"method":"warning","params":{"message":"global"}}"#).unwrap()["params"]
-				["threadId"],
+			native_config_warning::warning_from_frame(
+				br#"{"method":"warning","params":{"message":"global"}}"#
+			)
+			.unwrap()["params"]["threadId"],
 			Value::Null
 		);
 	}
 	#[test]
 	fn only_bounded_public_diagnostics_are_projected() {
-		let warning = project(&json!({"summary":"Ignored \"setting\"","details":"one\ntwo","path":"private","unknown":"secret"})).unwrap();
+		let warning = native_config_warning::project(&native_config_warning::json!({"summary":"Ignored \"setting\"","details":"one\ntwo","path":"private","unknown":"secret"})).unwrap();
 
-		assert_eq!(warning, json!({"summary":"Ignored \"setting\"","details":"one\ntwo"}));
+		assert_eq!(
+			warning,
+			native_config_warning::json!({"summary":"Ignored \"setting\"","details":"one\ntwo"})
+		);
 
 		for bad in [
-			json!({}),
-			json!({"summary":" "}),
-			json!({"summary":1}),
-			json!({"summary":"x","details":false}),
-			json!({"summary":"x".repeat(8_193)}),
-			json!({"summary":"x","details":"x".repeat(16_385)}),
+			native_config_warning::json!({}),
+			native_config_warning::json!({"summary":" "}),
+			native_config_warning::json!({"summary":1}),
+			native_config_warning::json!({"summary":"x","details":false}),
+			native_config_warning::json!({"summary":"x".repeat(8_193)}),
+			native_config_warning::json!({"summary":"x","details":"x".repeat(16_385)}),
 		] {
-			assert!(project(&bad).is_none());
+			assert!(native_config_warning::project(&bad).is_none());
 		}
 
 		let secret = "Bearer fixture-private-access-token-123456789";
-		let safe = project(&json!({"summary":"Invalid header","details":secret})).unwrap();
+		let safe = native_config_warning::project(
+			&native_config_warning::json!({"summary":"Invalid header","details":secret}),
+		)
+		.unwrap();
 
 		assert!(!safe.to_string().contains(secret));
 	}

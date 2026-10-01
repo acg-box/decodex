@@ -1,27 +1,31 @@
 //! Observe native goal persistence through the retained bridge without model work.
-use super::*;
+use std::{env, ffi::OsStr, fs, path::Path, sync::atomic::AtomicUsize};
+
+use tokio::{net::TcpListener, process::Command, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 use decodex_codex::app_server_client::NativeThreadGoalStatus;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native goal qualification"]
 async fn installed_native_goal_reads_preserve_native_state_after_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify()).await.expect("bounded fixture");
+	time::timeout(Duration::from_secs(45), qualify()).await.expect("bounded fixture");
 }
 
 async fn qualify() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("native goal fixture");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native goal fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native goal fixture");
 	let address = listener.local_addr().expect("native goal fixture");
-	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let requests = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&requests)));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\ngoals=true\n[model_providers.fixture]\nname=\"Isolated goal fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native goal fixture");
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\ngoals=true\n[model_providers.fixture]\nname=\"Isolated goal fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native goal fixture");
 
-	let mut child = tokio::process::Command::new(&binary)
+	let mut child = Command::new(&binary)
 		.arg("app-server")
 		.env_clear()
 		.env("HOME", home.path())
@@ -122,12 +126,11 @@ async fn qualify() {
 	backend.abort();
 }
 
-async fn qualify_disabled(binary: &std::ffi::OsStr, home: &std::path::Path, thread: &str) {
+async fn qualify_disabled(binary: &OsStr, home: &Path, thread: &str) {
 	let path = home.join("config.toml");
-	let config = std::fs::read_to_string(&path).expect("fixture config");
+	let config = fs::read_to_string(&path).expect("fixture config");
 
-	std::fs::write(path, config.replace("goals=true", "goals=false"))
-		.expect("disable fixture goals");
+	fs::write(path, config.replace("goals=true", "goals=false")).expect("disable fixture goals");
 
 	let disabled = NativeSession::start(binary, home);
 
@@ -139,23 +142,21 @@ async fn qualify_disabled(binary: &std::ffi::OsStr, home: &std::path::Path, thre
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated active goal accounting"]
 async fn installed_active_goal_preserves_native_budget_and_elapsed_accounting() {
-	tokio::time::timeout(Duration::from_secs(45), qualify_active())
-		.await
-		.expect("bounded active fixture");
+	time::timeout(Duration::from_secs(45), qualify_active()).await.expect("bounded active fixture");
 }
 async fn qualify_active() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("fixture home");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
-	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let requests = Arc::new(AtomicUsize::new(0));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\ngoals=true\n[model_providers.fixture]\nname=\"Isolated active goal fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\ngoals=true\n[model_providers.fixture]\nname=\"Isolated active goal fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
 
-	let mut child = tokio::process::Command::new(&binary)
+	let mut child = Command::new(&binary)
 		.arg("app-server")
 		.env_clear()
 		.env("HOME", home.path())
@@ -183,7 +184,7 @@ async fn qualify_active() {
 
 	client.request("thread/goal/set",json!({"threadId":thread,"objective":"Return a short fixture answer","status":"active","tokenBudget":1})).await.expect("activate goal");
 	// Hold the fake provider until the active goal has accumulated a whole second.
-	tokio::time::sleep(Duration::from_millis(1_200)).await;
+	time::sleep(Duration::from_millis(1_200)).await;
 
 	let backend = tokio::spawn(serve_fixture(
 		listener,
@@ -207,7 +208,7 @@ async fn qualify_active() {
 		}
 	};
 	// Budget-limited time must stop advancing, and no new inference may start.
-	tokio::time::sleep(Duration::from_millis(1_200)).await;
+	time::sleep(Duration::from_millis(1_200)).await;
 
 	let goal = client.thread_goal(&thread).await.expect("goal read").expect("goal");
 

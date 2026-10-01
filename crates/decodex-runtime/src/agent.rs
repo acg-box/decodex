@@ -28,18 +28,34 @@ pub use prompt_edit::PromptEditReview;
 
 pub(crate) use reasoning::voice_handoff;
 
-use decodex_codex::app_server_client::{
-	AppServerClient, ClientError, HistoryGuard, RequestId, ServerEvent,
-};
-
-use decodex_database::{
-	AgentDisposition, AgentInboxEvent, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
-	EnqueueAgentEvent, SqliteStore, StoreError,
+use std::{
+	error::Error,
+	fmt::{Display, Formatter},
+	path::Path,
+	process,
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
+
+use crate::agent_resources;
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal, RequestId, ServerEvent,
+	classify_dispatch_refusal,
+};
+use decodex_core::ProcessGenerationId;
+use decodex_database::{
+	AgentDispatchState, AgentDisposition, AgentInboxEvent, AgentOutputUpdate, AgentTurnExecution,
+	AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent, SqliteStore, StoreError,
+};
+use decodex_protocol::{
+	AgentAsyncQuestionDto, AgentAttachmentDto, AgentExecutionOverrides, AgentTaskReferenceDto,
+	ConversationReasoningEffort,
+};
+use file_changes::PendingFileChanges;
+use resume_recovery::ClosingResume;
+use voice::VoiceConnection;
 
 const INSTRUCTIONS: &str = include_str!("agent/instructions.md");
 // Leave ample space below the transport's frame limit for prompt escaping and RPC fields.
@@ -83,17 +99,17 @@ impl AgentConfig {
 
 /// No native subagent interface or model engine is used here.
 pub struct AgentCoordinator {
-	voice: Option<voice::VoiceConnection>,
+	voice: Option<VoiceConnection>,
 	store: SqliteStore,
 	client: AppServerClient,
 	config: AgentConfig,
 	loaded_threads: std::collections::HashSet<String>,
-	closing_resumes: std::collections::HashMap<String, resume_recovery::ClosingResume>,
+	closing_resumes: std::collections::HashMap<String, ClosingResume>,
 	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
-	pending_file_changes: file_changes::PendingFileChanges,
-	native_generation: Option<decodex_core::ProcessGenerationId>,
+	pending_file_changes: PendingFileChanges,
+	native_generation: Option<ProcessGenerationId>,
 	dispatch_paused: bool,
 	async_recovery_queued: bool,
 	handled_question_revision: u64,
@@ -107,12 +123,15 @@ impl AgentCoordinator {
 	) -> Result<Self, AgentError> {
 		if config.model.trim().is_empty()
 			|| config.cwd.is_empty()
-			|| config.agent_effort.as_ref().is_some_and(|effort| {
-				decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
-			})
-			|| config.worker_effort.as_ref().is_some_and(|effort| {
-				decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
-			}) {
+			|| config
+				.agent_effort
+				.as_ref()
+				.is_some_and(|effort| ConversationReasoningEffort::new(effort).is_err())
+			|| config
+				.worker_effort
+				.as_ref()
+				.is_some_and(|effort| ConversationReasoningEffort::new(effort).is_err())
+		{
 			return Err(AgentError::Invalid(
 				"valid model, optional effort and cwd required".into(),
 			));
@@ -123,7 +142,7 @@ impl AgentCoordinator {
 
 		let connection_id = format!(
 			"{}:{}:{}",
-			std::process::id(),
+			process::id(),
 			std::time::SystemTime::now()
 				.duration_since(std::time::UNIX_EPOCH)
 				.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
@@ -149,11 +168,11 @@ impl AgentCoordinator {
 		})
 	}
 
-	pub(crate) fn bind_native_generation(&mut self, generation: decodex_core::ProcessGenerationId) {
+	pub(crate) fn bind_native_generation(&mut self, generation: ProcessGenerationId) {
 		self.native_generation = Some(generation);
 	}
 
-	pub(crate) fn native_generation(&self) -> Option<&decodex_core::ProcessGenerationId> {
+	pub(crate) fn native_generation(&self) -> Option<&ProcessGenerationId> {
 		self.native_generation.as_ref()
 	}
 
@@ -194,10 +213,7 @@ impl AgentCoordinator {
 				self.store.mark_agent_dispatch_unknown(item.id.clone()).await?;
 			}
 		}
-		for old in work
-			.into_iter()
-			.filter(|item| item.dispatch_state != decodex_database::AgentDispatchState::Idle)
-		{
+		for old in work.into_iter().filter(|item| item.dispatch_state != AgentDispatchState::Idle) {
 			let item = self.store.get_agent_work_item(old.id).await?;
 
 			self.recover_persisted_work(item, None, 0).await?;
@@ -242,7 +258,7 @@ impl AgentCoordinator {
 
 		self.observe_misalignment(&thread, &turn, &params["turn"]["error"]).await?;
 
-		if item.dispatch_state != decodex_database::AgentDispatchState::Running {
+		if item.dispatch_state != AgentDispatchState::Running {
 			self.store.reconcile_agent_dispatch(item.id.clone(), turn.clone()).await?;
 		}
 
@@ -435,7 +451,7 @@ impl AgentCoordinator {
 		workspace: Option<(String, String)>,
 	) -> Result<AgentWorkItem, AgentError> {
 		let workspace = if let Some((name, directory)) = workspace {
-			let directory = std::path::Path::new(&directory)
+			let directory = Path::new(&directory)
 				.canonicalize()
 				.map_err(|_| AgentError::Invalid("workspace directory must exist".into()))?;
 
@@ -468,7 +484,7 @@ impl AgentCoordinator {
 					created_at_micros: now,
 					updated_at_micros: now,
 					active_turn_id: None,
-					dispatch_state: decodex_database::AgentDispatchState::Idle,
+					dispatch_state: AgentDispatchState::Idle,
 				},
 				workspace,
 			)
@@ -656,7 +672,7 @@ impl AgentCoordinator {
 			.codex_thread_id
 			.ok_or_else(|| AgentError::Rejected("Task has no native thread".into()))?;
 
-		crate::agent_resources::add_link(&self.client, &thread, title, url).await
+		agent_resources::add_link(&self.client, &thread, title, url).await
 	}
 
 	pub(crate) async fn remove_resource(
@@ -719,8 +735,8 @@ impl AgentCoordinator {
 			return Err(AgentError::Invalid("a personal Agent already exists".into()));
 		}
 
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
+		let now = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
 			.as_micros() as i64;
 
@@ -732,7 +748,7 @@ impl AgentCoordinator {
 				title: "Main".into(),
 				instructions: prompt.into(),
 				codex_thread_id: None,
-				dispatch_state: decodex_database::AgentDispatchState::Idle,
+				dispatch_state: AgentDispatchState::Idle,
 				active_turn_id: None,
 				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
@@ -784,7 +800,7 @@ impl AgentCoordinator {
 				created_at_micros: agent.updated_at_micros,
 				updated_at_micros: agent.updated_at_micros,
 				active_turn_id: None,
-				dispatch_state: decodex_database::AgentDispatchState::Idle,
+				dispatch_state: AgentDispatchState::Idle,
 			})
 			.await
 			.map_err(Into::into)
@@ -818,8 +834,8 @@ impl AgentCoordinator {
 		prompt: &str,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, AgentError> {
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
+		let now = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
 			.as_micros() as i64;
 		let agent = parent.is_none();
@@ -838,7 +854,7 @@ impl AgentCoordinator {
 					created_at_micros: now,
 					updated_at_micros: now,
 					active_turn_id: None,
-					dispatch_state: decodex_database::AgentDispatchState::Idle,
+					dispatch_state: AgentDispatchState::Idle,
 				},
 				depends_on,
 			)
@@ -943,10 +959,10 @@ impl AgentCoordinator {
 				"a goal does not own a manager thread; create a worker for this goal".into(),
 			));
 		}
-		if item.dispatch_state == decodex_database::AgentDispatchState::Unknown {
+		if item.dispatch_state == AgentDispatchState::Unknown {
 			return Err(AgentError::UnknownDispatch);
 		}
-		if item.dispatch_state != decodex_database::AgentDispatchState::Idle {
+		if item.dispatch_state != AgentDispatchState::Idle {
 			return Err(AgentError::Busy);
 		}
 
@@ -963,7 +979,7 @@ impl AgentCoordinator {
 				self.store.get_agent_work_item(dependency.depends_on_id.clone()).await?;
 
 			if prerequisite.status != AgentWorkStatus::Resolved
-				|| prerequisite.dispatch_state != decodex_database::AgentDispatchState::Idle
+				|| prerequisite.dispatch_state != AgentDispatchState::Idle
 			{
 				unresolved.push(dependency.depends_on_id);
 			}
@@ -997,10 +1013,10 @@ impl AgentCoordinator {
 			.as_ref()
 			.ok_or_else(|| AgentError::Invalid("unbound work".into()))?;
 
-		if item.dispatch_state == decodex_database::AgentDispatchState::Unknown {
+		if item.dispatch_state == AgentDispatchState::Unknown {
 			return Err(AgentError::UnknownDispatch);
 		}
-		if item.dispatch_state != decodex_database::AgentDispatchState::Idle {
+		if item.dispatch_state != AgentDispatchState::Idle {
 			return Err(AgentError::Busy);
 		}
 		// Resume is idempotent hydration of the exact thread, never a turn retry.
@@ -1078,7 +1094,7 @@ impl AgentCoordinator {
 		item: &AgentWorkItem,
 		history_event: Option<i64>,
 		turn: Result<String, AgentError>,
-		execution: Option<decodex_database::AgentTurnExecution>,
+		execution: Option<AgentTurnExecution>,
 		no_prior_effects: bool,
 		retry_event: Option<i64>,
 	) -> Result<String, AgentError> {
@@ -1102,10 +1118,6 @@ impl AgentCoordinator {
 
 					let AgentError::Transport(ClientError::Remote(remote)) = &error else {
 						return None;
-					};
-
-					use decodex_codex::app_server_client::{
-						NativeDispatchRefusal, classify_dispatch_refusal,
 					};
 
 					Some(match classify_dispatch_refusal(remote.code, &remote.message)? {
@@ -1300,7 +1312,7 @@ impl AgentCoordinator {
 		expected_turn: &str,
 		key: &str,
 		text: &str,
-		attachments: &[decodex_protocol::AgentAttachmentDto],
+		attachments: &[AgentAttachmentDto],
 	) -> Result<(), AgentError> {
 		self.steer_work_with_references(
 			id,
@@ -1351,7 +1363,7 @@ impl AgentCoordinator {
 
 		let work = self.store.get_agent_work_item(id.into()).await?;
 
-		if work.dispatch_state != decodex_database::AgentDispatchState::Running
+		if work.dispatch_state != AgentDispatchState::Running
 			|| work.active_turn_id.as_deref() != Some(expected_turn)
 		{
 			return Err(AgentError::Invalid(
@@ -1487,14 +1499,13 @@ impl AgentCoordinator {
 			return Err(AgentError::Invalid("Async question target cannot accept input".into()));
 		}
 
-		let question: decodex_protocol::AgentAsyncQuestionDto =
-			serde_json::from_str(&source.question_json)
-				.map_err(|_| AgentError::Invalid("Invalid stored question".into()))?;
+		let question: AgentAsyncQuestionDto = serde_json::from_str(&source.question_json)
+			.map_err(|_| AgentError::Invalid("Invalid stored question".into()))?;
 		let reply = decodex_protocol::agent_async_question_reply(&question, answer)
 			.map_err(AgentError::Invalid)?;
 
 		match work.dispatch_state {
-			decodex_database::AgentDispatchState::Running => {
+			AgentDispatchState::Running => {
 				let turn = work.active_turn_id.as_deref().ok_or(AgentError::UnknownDispatch)?;
 
 				self.steer_work_with_question_reply(
@@ -1507,7 +1518,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 			},
-			decodex_database::AgentDispatchState::Idle => {
+			AgentDispatchState::Idle => {
 				let event = self
 					.store
 					.enqueue_agent_event(EnqueueAgentEvent {
@@ -1573,7 +1584,7 @@ impl AgentCoordinator {
 		}
 
 		self.store
-			.update_agent_output_record(decodex_database::AgentOutputUpdate {
+			.update_agent_output_record(AgentOutputUpdate {
 				thread_id: exact(params, "/threadId")?,
 				turn_id: exact(params, "/turnId")?,
 				item_id: exact(params, if completed { "/item/id" } else { "/itemId" })?,
@@ -1700,11 +1711,8 @@ impl AgentCoordinator {
 				self.pending_requests.clear();
 
 				for item in self.store.list_agent_work_items().await? {
-					if [
-						decodex_database::AgentDispatchState::Dispatching,
-						decodex_database::AgentDispatchState::Running,
-					]
-					.contains(&item.dispatch_state)
+					if [AgentDispatchState::Dispatching, AgentDispatchState::Running]
+						.contains(&item.dispatch_state)
 					{
 						self.store.mark_agent_dispatch_unknown(item.id).await?;
 					}
@@ -1879,7 +1887,7 @@ impl AgentCoordinator {
 				if work.kind != AgentWorkKind::Task
 					|| !belongs_to(&work, &agent.id, &all, &managers)
 					|| !belongs_to(&depends, &agent.id, &all, &managers)
-					|| work.dispatch_state != decodex_database::AgentDispatchState::Idle
+					|| work.dispatch_state != AgentDispatchState::Idle
 				{
 					return Err(AgentError::Invalid(
 						"dependency requires idle worker and work owned by this Agent".into(),
@@ -2125,7 +2133,7 @@ impl AgentCoordinator {
 		for candidate in work.iter().filter(|item| {
 			(item.kind == AgentWorkKind::Task || managers.contains(&item.id))
 				&& item.codex_thread_id.is_none()
-				&& item.dispatch_state == decodex_database::AgentDispatchState::Idle
+				&& item.dispatch_state == AgentDispatchState::Idle
 				&& item.status == AgentWorkStatus::Open
 				&& belongs_to(item, agent_id, &work, &managers)
 		}) {
@@ -2136,7 +2144,7 @@ impl AgentCoordinator {
 			let fresh = self.store.get_agent_work_item(candidate.id.clone()).await?;
 
 			if fresh.codex_thread_id.is_some()
-				|| fresh.dispatch_state != decodex_database::AgentDispatchState::Idle
+				|| fresh.dispatch_state != AgentDispatchState::Idle
 				|| fresh.status != AgentWorkStatus::Open
 			{
 				continue;
@@ -2250,7 +2258,7 @@ impl AgentCoordinator {
 		for agent in work.iter().filter(|item| {
 			managers.contains(&item.id)
 				&& item.kind == AgentWorkKind::Goal
-				&& item.dispatch_state == decodex_database::AgentDispatchState::Idle
+				&& item.dispatch_state == AgentDispatchState::Idle
 		}) {
 			if voice_calls.iter().any(|call| call.work_id == agent.id) {
 				continue;
@@ -2261,7 +2269,7 @@ impl AgentCoordinator {
 
 			let agent = self.store.get_agent_work_item(agent.id.clone()).await?;
 
-			if agent.dispatch_state != decodex_database::AgentDispatchState::Idle {
+			if agent.dispatch_state != AgentDispatchState::Idle {
 				continue;
 			}
 
@@ -2307,8 +2315,8 @@ impl AgentCoordinator {
 }
 
 pub(crate) struct AgentInputExtras<'a> {
-	pub attachments: &'a [decodex_protocol::AgentAttachmentDto],
-	pub task_references: &'a [decodex_protocol::AgentTaskReferenceDto],
+	pub attachments: &'a [AgentAttachmentDto],
+	pub task_references: &'a [AgentTaskReferenceDto],
 }
 
 /// A coordination failure, including uncertain external execution.
@@ -2337,13 +2345,13 @@ pub enum AgentError {
 	/// Required work has not yet resolved.
 	DependenciesPending(Vec<String>),
 }
-impl std::fmt::Display for AgentError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for AgentError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(f, "Agent: {self:?}")
 	}
 }
 
-impl std::error::Error for AgentError {}
+impl Error for AgentError {}
 
 impl From<ClientError> for AgentError {
 	fn from(error: ClientError) -> Self {
@@ -2366,25 +2374,23 @@ pub(super) fn apply_message_options(params: &mut Value, payload: &str) -> Result
 		return Ok(());
 	}
 	if !options["execution"].is_null() {
-		let execution: decodex_protocol::AgentExecutionOverrides =
+		let execution: AgentExecutionOverrides =
 			serde_json::from_value(options["execution"].clone())
 				.map_err(|_| AgentError::Invalid("invalid saved execution settings".into()))?;
 
 		execution.apply_to_native_turn(params);
 	}
 
-	let files: Vec<decodex_protocol::AgentAttachmentDto> =
-		serde_json::from_value(options["attachments"].clone())
-			.map_err(|_| AgentError::Invalid("invalid saved attachments".into()))?;
+	let files: Vec<AgentAttachmentDto> = serde_json::from_value(options["attachments"].clone())
+		.map_err(|_| AgentError::Invalid("invalid saved attachments".into()))?;
 
 	append_attachments(params["input"].as_array_mut().expect("turn input array"), &files);
 
-	let references: Vec<decodex_protocol::AgentTaskReferenceDto> =
-		match options.get("taskReferences") {
-			None => Vec::new(),
-			Some(value) => serde_json::from_value(value.clone())
-				.map_err(|_| AgentError::Invalid("invalid saved task references".into()))?,
-		};
+	let references: Vec<AgentTaskReferenceDto> = match options.get("taskReferences") {
+		None => Vec::new(),
+		Some(value) => serde_json::from_value(value.clone())
+			.map_err(|_| AgentError::Invalid("invalid saved task references".into()))?,
+	};
 
 	append_task_references(params["input"].as_array_mut().expect("turn input array"), &references);
 
@@ -2412,10 +2418,7 @@ fn work_identity_context(item: &AgentWorkItem, thread: &str) -> Value {
 	}})
 }
 
-fn append_task_references(
-	input: &mut Vec<Value>,
-	references: &[decodex_protocol::AgentTaskReferenceDto],
-) {
+fn append_task_references(input: &mut Vec<Value>, references: &[AgentTaskReferenceDto]) {
 	if references.is_empty() {
 		return;
 	}
@@ -2425,7 +2428,7 @@ fn append_task_references(
 		json!(references)),"text_elements":[]}));
 }
 
-fn append_attachments(input: &mut Vec<Value>, files: &[decodex_protocol::AgentAttachmentDto]) {
+fn append_attachments(input: &mut Vec<Value>, files: &[AgentAttachmentDto]) {
 	for file in files {
 		input.push(if let Some(name) = &file.skill_name {
 			json!({"type":"skill","name":name.as_str(),"path":file.path.as_str()})
@@ -2533,8 +2536,8 @@ fn exact(value: &Value, pointer: &str) -> Result<String, AgentError> {
 
 fn now_micros() -> Result<i64, AgentError> {
 	i64::try_from(
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
+		SystemTime::now()
+			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
 			.as_micros(),
 	)

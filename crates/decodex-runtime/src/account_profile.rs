@@ -5,16 +5,13 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
+use crate::host_credentials::{HostCredentialStore, StoredCredential};
 use decodex_codex::AccountApiProfile;
-
 use decodex_core::{AccountId, ProviderIdentity};
-
 use decodex_database::{
 	AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
 	AccountProfileSnapshot, SqliteStore,
 };
-
-use crate::host_credentials::{HostCredentialStore, StoredCredential};
 
 /// One profile result with current non-secret credential claims.
 pub(crate) enum AccountProfileRuntimeResult {
@@ -395,35 +392,34 @@ fn unix_micros() -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
+	use crate::account_profile::{self, AccountProfileRuntimeError};
 	use decodex_core::{AccountProvider, ProviderIdentity};
-
-	use super::{AccountProfileRuntimeError, claims_source_matches, recovery_profile_error};
 
 	#[test]
 	fn final_claims_require_the_exact_snapshot_revision_and_provider() {
 		let first = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-1").unwrap();
 		let second = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-2").unwrap();
 
-		assert!(claims_source_matches(Some(7), Some(&first), 7, &first));
-		assert!(!claims_source_matches(Some(7), Some(&first), 8, &first));
-		assert!(!claims_source_matches(Some(7), Some(&first), 7, &second));
-		assert!(claims_source_matches(None, None, 8, &second));
+		assert!(account_profile::claims_source_matches(Some(7), Some(&first), 7, &first));
+		assert!(!account_profile::claims_source_matches(Some(7), Some(&first), 8, &first));
+		assert!(!account_profile::claims_source_matches(Some(7), Some(&first), 7, &second));
+		assert!(account_profile::claims_source_matches(None, None, 8, &second));
 	}
 
 	#[test]
 	fn durable_refresh_recovery_restores_explicit_cached_profile_failure() {
 		assert_eq!(
-			recovery_profile_error(Some("provider_refresh_rejected")),
+			account_profile::recovery_profile_error(Some("provider_refresh_rejected")),
 			Some(AccountProfileRuntimeError::RefreshRejected)
 		);
 		assert_eq!(
-			recovery_profile_error(Some("provider_refresh_ambiguous")),
+			account_profile::recovery_profile_error(Some("provider_refresh_ambiguous")),
 			Some(AccountProfileRuntimeError::RefreshAmbiguous)
 		);
 		assert_eq!(
-			recovery_profile_error(Some("provider_access_rejected_after_refresh")),
+			account_profile::recovery_profile_error(Some("provider_access_rejected_after_refresh")),
 			Some(AccountProfileRuntimeError::AccessRejectedAfterRefresh)
 		);
-		assert_eq!(recovery_profile_error(Some("credential_rotate_failed")), None);
+		assert_eq!(account_profile::recovery_profile_error(Some("credential_rotate_failed")), None);
 	}
 }

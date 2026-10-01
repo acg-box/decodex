@@ -1,5 +1,9 @@
 //! Installed Code Mode observations must reach compaction and cold continuation.
-use super::*;
+use std::{env, fs, sync::Mutex};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::compaction::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and packaged Code Mode helper"]
@@ -9,17 +13,17 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 		"text(ALL_TOOLS.map(tool => tool.name));",
 		"throw new Error(\"empty-cell-error\");",
 	] {
-		let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+		let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 		let home = tempfile::tempdir().unwrap();
 		let fixture = home.path().join("mcp.py");
 		let gate = home.path().join("ready");
 
-		std::fs::write(&fixture, include_str!("native_mcp_delayed.py")).unwrap();
-		std::fs::write(&gate, b"ready").unwrap();
+		fs::write(&fixture, include_str!("native_mcp_delayed.py")).unwrap();
+		fs::write(&gate, b"ready").unwrap();
 
-		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
-		let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+		let bodies = Arc::new(Mutex::new(Vec::new()));
 		let backend = tokio::spawn(serve_fixture_usage(
 			listener,
 			Arc::new(AtomicUsize::new(0)),
@@ -39,11 +43,11 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 			},
 		));
 
-		std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\nmodel_auto_compact_token_limit=200000\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nexecuted_tool_call_metadata=true\nremote_compaction_v2=false\nenable_request_compression=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{}]\n",json!(fixture),json!(gate))).unwrap();
+		fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\nmodel_auto_compact_token_limit=200000\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nexecuted_tool_call_metadata=true\nremote_compaction_v2=false\nenable_request_compression=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{}]\n",json!(fixture),json!(gate))).unwrap();
 
 		let mut session = NativeSession::start(&binary, home.path());
 
-		tokio::time::timeout(Duration::from_secs(60), async {
+		time::timeout(Duration::from_secs(60), async {
 			let started = session
 				.client
 				.thread_start(

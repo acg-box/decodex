@@ -1,21 +1,22 @@
 //! Keep search configuration observations bound to the current native owner.
-use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
+use std::{future::Future, time::Duration};
 
-use decodex_codex::app_server_client::NativeSearchSettings;
-
-use decodex_protocol::{AgentSearchSettingsResult, EntityId, WireText};
-
+use AgentHostError::{Rejected, Unknown};
 use serde_json::json;
-
 use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
+use decodex_codex::app_server_client::NativeSearchSettings;
+use decodex_protocol::{AgentSearchSettingsResult, EntityId, WireText};
 
 pub(crate) async fn read<F, Fut>(source: F) -> AgentSearchSettingsResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else { return AgentSearchSettingsResult::Unavailable };
-	let result = tokio::time::timeout(std::time::Duration::from_secs(25), inspect(&before)).await;
+	let result = time::timeout(Duration::from_secs(25), inspect(&before)).await;
 
 	if source().await.is_none_or(|after| {
 		after.key != before.key
@@ -34,17 +35,14 @@ where
 pub(crate) async fn write<F, Fut>(source: F, review: &str, mode: &str) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	use AgentHostError::{Rejected, Unknown};
-
 	let before = source().await.ok_or(Rejected("Search settings are unavailable."))?;
-	let (settings, token) =
-		tokio::time::timeout(std::time::Duration::from_secs(25), inspect(&before))
-			.await
-			.ok()
-			.flatten()
-			.ok_or(Rejected("Refresh search settings before choosing a mode."))?;
+	let (settings, token) = time::timeout(Duration::from_secs(25), inspect(&before))
+		.await
+		.ok()
+		.flatten()
+		.ok_or(Rejected("Refresh search settings before choosing a mode."))?;
 
 	if token != review
 		|| source().await.is_none_or(|after| {

@@ -1,4 +1,10 @@
-use super::*;
+use std::iter;
+
+use rusqlite::Connection;
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
+use decodex_protocol::WireText;
 
 #[test]
 fn saved_task_references_are_rendered_on_queued_native_turn_input() {
@@ -39,7 +45,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 
 	assert_eq!(page["turns"][0]["items"][1]["aggregatedOutput"], "raw output");
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.len(), 4);
 	assert!(
@@ -93,11 +99,9 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 
 	complete(&mut agent, "agent").await;
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	// Seed a migration completed by an older release; current code never upgrades threads.
-	let database = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let database = Connection::open(root.paths().product_database_file()).unwrap();
 
 	database
 		.execute_batch(
@@ -191,7 +195,7 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 			.is_err()
 	);
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.len(), 2);
 	assert!(
@@ -263,10 +267,8 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 	let (mut agent, mut sent, directory) = fixture().await;
 	let work = agent.start_agent("agent", "Coordinate").await.unwrap();
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let connection = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let connection = Connection::open(root.paths().product_database_file()).unwrap();
 	let mut references = vec![decodex_protocol::AgentTaskReferenceDto {
 		work_id: decodex_protocol::EntityId::new("agent").unwrap(),
 		thread_id: decodex_protocol::WireText::new(work.codex_thread_id.unwrap()).unwrap(),
@@ -296,7 +298,7 @@ async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 		.execute("UPDATE agent_tool_versions SET version=3 WHERE work_id='agent'", [])
 		.unwrap();
 
-	references[0].thread_id = decodex_protocol::WireText::new("stale-thread").unwrap();
+	references[0].thread_id = WireText::new("stale-thread").unwrap();
 
 	assert!(matches!(
 		agent
@@ -357,7 +359,7 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 	assert_eq!(hits["occurrences"][0]["itemId"], "item-hit");
 	assert_eq!(hits["occurrences"][0]["rangeEncoding"], "utf16");
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.len(), 2);
 	assert_eq!(requests[0]["method"], "thread/search");

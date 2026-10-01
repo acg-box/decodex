@@ -1,19 +1,25 @@
 //! Qualify native prompt-audio preparation with an isolated provider.
-use super::*;
-use std::sync::atomic::AtomicUsize;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native audio preparation"]
 async fn installed_native_replaces_empty_tool_audio_without_losing_other_output() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("native audio fixture");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -29,11 +35,11 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated audio fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated audio fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"audio_fixture","description":"Return fixture audio","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread id");
 

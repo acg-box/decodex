@@ -7,20 +7,19 @@ use decodex_codex::app_server_client::{
 
 use decodex_database::{AgentConfigOwner, AgentHookAttempt, AgentHookReceipt, SqliteStore};
 
-use decodex_protocol::{
-	AgentHookChange as Change, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState as State,
-	EntityId, WireText,
-};
+use decodex_protocol::{AgentHookDto, AgentHookEditReceipt, EntityId, WireText};
 
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
 use sha2::{Digest as _, Sha256};
+
+use crate::agent_host::AgentHostError::{Rejected, Unknown};
 
 pub(crate) struct Selection<'a> {
 	pub thread: &'a str,
 	pub review: &'a str,
 	pub hook: &'a str,
-	pub change: Change,
+	pub change: decodex_protocol::AgentHookChange,
 	pub attempt_id: &'a str,
 }
 
@@ -29,10 +28,13 @@ struct Review {
 	guard: HistoryGuard,
 	scope: String,
 	prior: Option<AgentHookReceipt>,
-	state: State,
+	state: decodex_protocol::AgentHookSettingsState,
 }
 
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+) -> decodex_protocol::AgentHookSettingsState
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
@@ -41,7 +43,7 @@ where
 		.await
 		.ok()
 		.flatten()
-		.map_or(State::Unavailable, |(_, review)| review.state)
+		.map_or(decodex_protocol::AgentHookSettingsState::Unavailable, |(_, review)| review.state)
 }
 
 pub(crate) async fn write<F, Fut>(
@@ -53,15 +55,16 @@ where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
-	use crate::agent_host::AgentHostError::{Rejected, Unknown};
-
 	let (before, review) =
 		tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
 			.await
 			.ok()
 			.flatten()
 			.ok_or(Rejected("Current hook settings are unavailable."))?;
-	let State::Available { review_token, can_update: true, .. } = &review.state else {
+	let decodex_protocol::AgentHookSettingsState::Available {
+		review_token, can_update: true, ..
+	} = &review.state
+	else {
 		return Err(Rejected("A shared hook edit remains unconfirmed."));
 	};
 
@@ -70,8 +73,8 @@ where
 	}
 
 	let change = match selection.change {
-		Change::Trust => HookSettingsChange::Trust,
-		Change::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
+		decodex_protocol::AgentHookChange::Trust => HookSettingsChange::Trust,
+		decodex_protocol::AgentHookChange::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
 	};
 	let params = review
 		.native
@@ -167,10 +170,10 @@ fn owner(source: &Source) -> AgentConfigOwner {
 	}
 }
 
-fn field(change: Change) -> &'static str {
+fn field(change: decodex_protocol::AgentHookChange) -> &'static str {
 	match change {
-		Change::Trust => "trusted_hash",
-		Change::Enabled(_) => "enabled",
+		decodex_protocol::AgentHookChange::Trust => "trusted_hash",
+		decodex_protocol::AgentHookChange::Enabled(_) => "enabled",
 	}
 }
 
@@ -210,8 +213,11 @@ where
 	}
 
 	let guard = before.client.thread_settings_guard(&k.thread)?;
-	let thread =
-		before.client.thread_read(json!({"threadId":k.thread,"includeTurns":false})).await.ok()?;
+	let thread = before
+		.client
+		.thread_read(serde_json::json!({"threadId":k.thread,"includeTurns":false}))
+		.await
+		.ok()?;
 
 	if thread["thread"]["id"] != k.thread {
 		return None;
@@ -248,7 +254,7 @@ where
 		&& !shared.as_ref().is_some_and(crate::agent_config_settings::pending);
 	// Consent follows native config and content, not a temporary task-settings guard lifetime.
 	let token = digest(
-		&json!([
+		&serde_json::json!([
 			k.work,
 			k.thread,
 			k.generation.as_str(),
@@ -293,7 +299,7 @@ where
 		}),
 		None => None,
 	};
-	let state = State::Available {
+	let state = decodex_protocol::AgentHookSettingsState::Available {
 		work_id: EntityId::new(k.work.clone()).ok()?,
 		thread_id: EntityId::new(k.thread.clone()).ok()?,
 		review_token: WireText::new(token).ok()?,

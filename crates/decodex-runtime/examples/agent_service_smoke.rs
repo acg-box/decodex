@@ -15,24 +15,40 @@ use sha2 as _;
 use time as _;
 use tokio_tungstenite as _;
 use zeroize as _;
+
+use std::env;
+
+use std::{
+	collections::HashSet,
+	env::VarError,
+	path::Path,
+	time::{Instant, SystemTime, UNIX_EPOCH},
+};
+
+use tempfile::{Builder, TempDir};
+
+use decodex_protocol::{
+	AccountInspectResult, AccountProfileResult, AccountQuotaStateDto, AgentCapabilitiesResult,
+	AgentDispatchStateDto, AgentHistoryEntryDto, AgentSnapshotDto, AgentWorkStatusDto,
+	ResetCardClient, ResetCardInventoryResult, WireText,
+};
+
 // Uses a disposable database, enrolling the current Codex login through AccountClient.
 // Does not route accounts or replace the installed Decodex service.
 
 #[path = "agent_service_smoke/evidence.rs"] mod evidence;
 #[path = "agent_service_smoke/reliability.rs"] mod reliability;
 
-use decodex_core::{DecodexRoot, ProcessExecutionAuthorization, ServerIdentity};
+use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
 
+use decodex_core::{DecodexRoot, ProcessExecutionAuthorization, ServerIdentity};
 use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AgentActionDto, AgentClient, AgentCommandResponse,
 	AgentHistoryResult, AgentSandboxDto, AgentSnapshotResult, AgentStartDto, ClientProfile,
 	CommandPayload, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
 	EntityId, HistoryText, IdempotencyKey,
 };
-
 use decodex_runtime::{ServerConfig, ServiceComposition};
-
-use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
 
 type SmokeResult<T> = Result<T, Box<dyn Error>>;
 
@@ -56,8 +72,8 @@ impl SmokeScope {
 	}
 
 	fn selected() -> SmokeResult<Self> {
-		match std::env::var("DECODEX_SMOKE_SCOPE").as_deref() {
-			Err(std::env::VarError::NotPresent) | Ok("full") => Ok(Self::Full),
+		match env::var("DECODEX_SMOKE_SCOPE").as_deref() {
+			Err(VarError::NotPresent) | Ok("full") => Ok(Self::Full),
 			Ok("reconnect") => Ok(Self::Reconnect),
 			Ok("long-output") => Ok(Self::LongOutput),
 			Ok("hierarchy") => Ok(Self::Hierarchy),
@@ -75,14 +91,11 @@ fn id() -> EntityId {
 		.expect("valid bounded qualification fixture")
 }
 
-fn idle(graph: &decodex_protocol::AgentSnapshotDto) -> bool {
-	graph
-		.work_items
-		.iter()
-		.all(|work| work.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle)
+fn idle(graph: &AgentSnapshotDto) -> bool {
+	graph.work_items.iter().all(|work| work.dispatch_state == AgentDispatchStateDto::Idle)
 }
 
-fn choice_receipts(entries: &[decodex_protocol::AgentHistoryEntryDto]) -> usize {
+fn choice_receipts(entries: &[AgentHistoryEntryDto]) -> usize {
 	entries
 		.iter()
 		.filter(|entry| {
@@ -94,11 +107,11 @@ fn choice_receipts(entries: &[decodex_protocol::AgentHistoryEntryDto]) -> usize 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-	let model = std::env::args().nth(1).ok_or("explicit MODEL required")?;
+	let model = env::args().nth(1).ok_or("explicit MODEL required")?;
 	let scope = SmokeScope::selected()?;
 	// Production process admission requires a selected directory beneath the
 	// effective user's home. The disposable socket root is deliberately elsewhere.
-	let working_directory = std::env::current_dir()?.canonicalize()?;
+	let working_directory = env::current_dir()?.canonicalize()?;
 	let (_temporary, root) = disposable_profile()?;
 
 	println!("Bootstrapping disposable service (120-second deadline).");
@@ -192,7 +205,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		capture_before_restart().await;
 	}
 
-	let stopped = std::time::Instant::now();
+	let stopped = Instant::now();
 
 	tokio::time::timeout(Duration::from_secs(10), service.shutdown()).await??;
 
@@ -275,7 +288,7 @@ async fn agent_thread(root: &DecodexRoot) -> Result<String, Box<dyn Error>> {
 }
 
 async fn capture_before_restart() {
-	if let Some(seconds) = std::env::var("DECODEX_SMOKE_CAPTURE_SECONDS")
+	if let Some(seconds) = env::var("DECODEX_SMOKE_CAPTURE_SECONDS")
 		.ok()
 		.and_then(|value| value.parse::<u64>().ok())
 		.filter(|seconds| *seconds <= 60)
@@ -286,7 +299,7 @@ async fn capture_before_restart() {
 	}
 }
 
-async fn snapshot(client: &AgentClient) -> SmokeResult<decodex_protocol::AgentSnapshotDto> {
+async fn snapshot(client: &AgentClient) -> SmokeResult<AgentSnapshotDto> {
 	match client.query().await? {
 		AgentSnapshotResult::Available(snapshot) => {
 			reliability::record_threads(&snapshot);
@@ -297,10 +310,7 @@ async fn snapshot(client: &AgentClient) -> SmokeResult<decodex_protocol::AgentSn
 	}
 }
 
-async fn history(
-	client: &AgentClient,
-	work: &str,
-) -> SmokeResult<Vec<decodex_protocol::AgentHistoryEntryDto>> {
+async fn history(client: &AgentClient, work: &str) -> SmokeResult<Vec<AgentHistoryEntryDto>> {
 	match client.history(EntityId::new(work).expect("valid bounded qualification fixture")).await? {
 		AgentHistoryResult::Available { entries, .. } => Ok(entries),
 		_ => Err("Agent history unavailable".into()),
@@ -337,8 +347,8 @@ async fn accept(client: &AgentClient, action: AgentActionDto, key: &str) -> Smok
 async fn wait_graph(
 	client: &AgentClient,
 	label: &str,
-	predicate: impl Fn(&decodex_protocol::AgentSnapshotDto) -> bool,
-) -> SmokeResult<decodex_protocol::AgentSnapshotDto> {
+	predicate: impl Fn(&AgentSnapshotDto) -> bool,
+) -> SmokeResult<AgentSnapshotDto> {
 	wait_graph_for(client, label, Duration::from_secs(180), predicate).await
 }
 
@@ -346,8 +356,8 @@ async fn wait_graph_for(
 	client: &AgentClient,
 	label: &str,
 	deadline: Duration,
-	predicate: impl Fn(&decodex_protocol::AgentSnapshotDto) -> bool,
-) -> SmokeResult<decodex_protocol::AgentSnapshotDto> {
+	predicate: impl Fn(&AgentSnapshotDto) -> bool,
+) -> SmokeResult<AgentSnapshotDto> {
 	let result = tokio::time::timeout(deadline, async {
 		loop {
 			let graph = snapshot(client).await?;
@@ -396,7 +406,7 @@ async fn closed_loop_before_restart(
 			&& !graph.pending_events.iter().any(|event| event.event_kind == "worker_turn_completed")
 	})
 	.await?;
-	let threads: std::collections::HashSet<_> =
+	let threads: HashSet<_> =
 		initial.work_items.iter().filter_map(|work| work.codex_thread_id.as_ref()).collect();
 
 	if threads.len() != 3 {
@@ -475,7 +485,7 @@ async fn closed_loop_before_restart(
 	})
 	.await?;
 
-	let decision=AgentActionDto::AutomationResult {work_id:EntityId::new("service-a").expect("valid bounded qualification fixture"),source_event_id:decodex_protocol::WireText::new("service-choice-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(r#"{"observation":"Choose summary format A concise or B detailed; user selection is required."}"#).expect("valid bounded qualification fixture")};
+	let decision=AgentActionDto::AutomationResult {work_id:EntityId::new("service-a").expect("valid bounded qualification fixture"),source_event_id:WireText::new("service-choice-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(r#"{"observation":"Choose summary format A concise or B detailed; user selection is required."}"#).expect("valid bounded qualification fixture")};
 
 	accept(client, decision.clone(), "automation-choice-first").await?;
 	accept(client, decision.clone(), "automation-choice-duplicate").await?;
@@ -500,10 +510,9 @@ async fn closed_loop_before_restart(
 		return Err("disposed automation duplicate changed receipt count".into());
 	}
 
-	let due = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros()
-		+ 150_000_000;
+	let due = SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros() + 150_000_000;
 
-	accept(client,AgentActionDto::AutomationResult {work_id:EntityId::new("service-b").expect("valid bounded qualification fixture"),source_event_id:decodex_protocol::WireText::new("service-followup-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(serde_json::json!({"observation":"Check readiness after restart without worker dispatch","nextCheckAtMicros":due}).to_string()).expect("valid bounded qualification fixture")},"automation-followup").await?;
+	accept(client,AgentActionDto::AutomationResult {work_id:EntityId::new("service-b").expect("valid bounded qualification fixture"),source_event_id:WireText::new("service-followup-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(serde_json::json!({"observation":"Check readiness after restart without worker dispatch","nextCheckAtMicros":due}).to_string()).expect("valid bounded qualification fixture")},"automation-followup").await?;
 	wait_graph(client, "durable pending followup", |graph| {
 		idle(graph)
 			&& graph
@@ -551,9 +560,9 @@ mod tests {
 	}
 }
 
-fn disposable_profile() -> SmokeResult<(tempfile::TempDir, DecodexRoot)> {
+fn disposable_profile() -> SmokeResult<(TempDir, DecodexRoot)> {
 	// Short canonical path is required for the platform Unix socket limit.
-	let temporary = tempfile::Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
+	let temporary = Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
 	let root = DecodexRoot::new(temporary.path().join("p"))?;
 	let paths = root.paths();
 
@@ -575,7 +584,7 @@ fn disposable_profile() -> SmokeResult<(tempfile::TempDir, DecodexRoot)> {
 	Ok((temporary, root))
 }
 
-fn hierarchy_prompt(directory: &std::path::Path) -> String {
+fn hierarchy_prompt(directory: &Path) -> String {
 	format!(
 		"Read-only integration qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with agent_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Agent coordination tools, create exactly one subordinate Agent with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
 		directory.display()
@@ -584,7 +593,7 @@ fn hierarchy_prompt(directory: &std::path::Path) -> String {
 
 async fn closed_loop_after_restart(
 	client: &AgentClient,
-	original: &decodex_protocol::AgentSnapshotDto,
+	original: &AgentSnapshotDto,
 ) -> SmokeResult<()> {
 	use decodex_protocol::AgentWorkStatusDto as Status;
 
@@ -664,19 +673,16 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 	let _ = accounts.request_observation_refresh(0).await?;
 	let observed = tokio::time::timeout(Duration::from_secs(60), async {
 		loop {
-			if let decodex_protocol::AccountInspectResult::Available(row) =
-				accounts.inspect(account.clone()).await?
+			if let AccountInspectResult::Available(row) = accounts.inspect(account.clone()).await?
 				&& row.five_hour_quota.observed_at_unix_micros.is_some()
 				&& row.seven_day_quota.observed_at_unix_micros.is_some()
 				&& matches!(
 					row.five_hour_quota.result,
-					decodex_protocol::AccountQuotaStateDto::Current { .. }
+					AccountQuotaStateDto::Current { .. }
 						| decodex_protocol::AccountQuotaStateDto::NotApplicable
 				)
-				&& matches!(
-					row.seven_day_quota.result,
-					decodex_protocol::AccountQuotaStateDto::Current { .. }
-				) {
+				&& matches!(row.seven_day_quota.result, AccountQuotaStateDto::Current { .. })
+			{
 				break;
 			}
 
@@ -687,9 +693,7 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 	})
 	.await;
 
-	if let decodex_protocol::AccountInspectResult::Available(row) =
-		accounts.inspect(account.clone()).await?
-	{
+	if let AccountInspectResult::Available(row) = accounts.inspect(account.clone()).await? {
 		println!(
 			"Account readiness: {:?}; quota windows: {:?}, {:?}",
 			row.lifecycle_readiness, row.five_hour_quota, row.seven_day_quota
@@ -700,25 +704,22 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 		// These queries read daemon-owned cached observations. Print only closed
 		// error classes and quota facts, never profile identity or provider bytes.
 		match accounts.profile(account.clone(), false).await? {
-			decodex_protocol::AccountProfileResult::Current(_) => {
+			AccountProfileResult::Current(_) => {
 				println!("Cached profile observation: current")
 			},
-			decodex_protocol::AccountProfileResult::Cached { refresh_error, .. } => {
+			AccountProfileResult::Cached { refresh_error, .. } => {
 				println!("Cached profile refresh error: {refresh_error:?}")
 			},
-			decodex_protocol::AccountProfileResult::Unavailable { error, .. } => {
+			AccountProfileResult::Unavailable { error, .. } => {
 				println!("Cached profile unavailable: {error:?}")
 			},
 		}
-		match decodex_protocol::ResetCardClient::new(profile.clone()).list(account.clone()).await? {
-			decodex_protocol::ResetCardInventoryResult::Available {
-				five_hour_quota,
-				seven_day_quota,
-				..
-			} => println!(
-				"Cached quota observation available: {five_hour_quota:?}, {seven_day_quota:?}"
-			),
-			decodex_protocol::ResetCardInventoryResult::ObservationFailed {
+		match ResetCardClient::new(profile.clone()).list(account.clone()).await? {
+			ResetCardInventoryResult::Available { five_hour_quota, seven_day_quota, .. } =>
+				println!(
+					"Cached quota observation available: {five_hour_quota:?}, {seven_day_quota:?}"
+				),
+			ResetCardInventoryResult::ObservationFailed {
 				error,
 				five_hour_quota,
 				seven_day_quota,
@@ -726,7 +727,7 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 			} => println!(
 				"Cached quota observation failed: {error:?}; {five_hour_quota:?}, {seven_day_quota:?}"
 			),
-			decodex_protocol::ResetCardInventoryResult::Unavailable { error } => {
+			ResetCardInventoryResult::Unavailable { error } => {
 				println!("Cached quota observation unavailable: {error:?}")
 			},
 		}
@@ -738,7 +739,7 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 }
 
 async fn capture_after_restart(root: &DecodexRoot) {
-	if let Some(seconds) = std::env::var("DECODEX_SMOKE_FINAL_CAPTURE_SECONDS")
+	if let Some(seconds) = env::var("DECODEX_SMOKE_FINAL_CAPTURE_SECONDS")
 		.ok()
 		.and_then(|value| value.parse::<u64>().ok())
 		.filter(|seconds| *seconds <= 60)
@@ -764,7 +765,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 					.work_items
 					.iter()
 					.filter(|work| work.parent_goal_id.is_some())
-					.all(|work| work.status == decodex_protocol::AgentWorkStatusDto::Resolved)
+					.all(|work| work.status == AgentWorkStatusDto::Resolved)
 		},
 	)
 	.await?;
@@ -828,7 +829,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 
 async fn verify_capabilities(client: &AgentClient) -> SmokeResult<()> {
 	match client.capabilities().await? {
-		decodex_protocol::AgentCapabilitiesResult::Available { models, memory_enabled } => {
+		AgentCapabilitiesResult::Available { models, memory_enabled } => {
 			println!(
 				"NATIVE_CAPABILITIES models={} memory_configured={memory_enabled:?}",
 				models.len()

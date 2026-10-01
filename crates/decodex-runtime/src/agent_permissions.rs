@@ -7,37 +7,38 @@ use decodex_codex::app_server_client::{
 
 use decodex_database::{AgentPermissionAttempt, SqliteStore};
 
-use decodex_protocol::{
-	AgentPermissionOutcome as Outcome, AgentPermissionProfile, AgentPermissionState as State,
-};
-
-use serde_json::json;
+use decodex_protocol::AgentPermissionProfile;
 
 use sha2::{Digest as _, Sha256};
 
+use crate::agent_host::AgentHostError::{Rejected, Unknown};
+
 struct Inspection {
-	state: State,
+	state: decodex_protocol::AgentPermissionState,
 	settings_event: i64,
 	guard: Option<HistoryGuard>,
 }
 
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+) -> decodex_protocol::AgentPermissionState
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return State::Unavailable;
+		return decodex_protocol::AgentPermissionState::Unavailable;
 	};
 	let result = inspect(store, &before).await;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return State::Unavailable;
+		return decodex_protocol::AgentPermissionState::Unavailable;
 	}
 
 	result
 		.filter(|r| r.guard.as_ref().is_none_or(HistoryGuard::is_live))
-		.map_or(State::Unavailable, |r| r.state)
+		.map_or(decodex_protocol::AgentPermissionState::Unavailable, |r| r.state)
 }
 
 pub(crate) async fn write<F, Fut>(
@@ -52,8 +53,6 @@ where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
-	use crate::agent_host::AgentHostError::{Rejected, Unknown};
-
 	let before = source().await.ok_or(Rejected("The task source is unavailable."))?;
 
 	if before.key.thread != thread {
@@ -63,7 +62,13 @@ where
 	let inspected = inspect(store, &before)
 		.await
 		.ok_or(Rejected("Current native permissions are unavailable. Refresh the task."))?;
-	let State::Available { review_token, profiles, can_update, profile_id, .. } = &inspected.state
+	let decodex_protocol::AgentPermissionState::Available {
+		review_token,
+		profiles,
+		can_update,
+		profile_id,
+		..
+	} = &inspected.state
 	else {
 		return Err(Rejected("A permission selection is unavailable or remains unconfirmed."));
 	};
@@ -148,8 +153,13 @@ pub(crate) async fn persist_current(
 	let settings = observed.map(|(facts, _)| facts);
 	let encoded =
 		settings.as_ref().map(|facts| serde_json::to_string(facts).expect("permission facts"));
-	let identity =
-		json!([generation, thread, client.history_revision(), settings_revision, settings]);
+	let identity = serde_json::json!([
+		generation,
+		thread,
+		client.history_revision(),
+		settings_revision,
+		settings
+	]);
 	let digest: String = Sha256::digest(identity.to_string().as_bytes())
 		.iter()
 		.map(|b| format!("{b:02x}"))
@@ -166,14 +176,14 @@ pub(crate) async fn persist_current(
 	Ok(())
 }
 
-fn outcome(value: &str) -> Option<Outcome> {
+fn outcome(value: &str) -> Option<decodex_protocol::AgentPermissionOutcome> {
 	match value {
-		"reserved" => Some(Outcome::Reserved),
-		"queued" => Some(Outcome::Queued),
-		"unknown" => Some(Outcome::Unknown),
-		"rejected" => Some(Outcome::Rejected),
-		"target_observed" => Some(Outcome::TargetObserved),
-		"superseded" => Some(Outcome::Superseded),
+		"reserved" => Some(decodex_protocol::AgentPermissionOutcome::Reserved),
+		"queued" => Some(decodex_protocol::AgentPermissionOutcome::Queued),
+		"unknown" => Some(decodex_protocol::AgentPermissionOutcome::Unknown),
+		"rejected" => Some(decodex_protocol::AgentPermissionOutcome::Rejected),
+		"target_observed" => Some(decodex_protocol::AgentPermissionOutcome::TargetObserved),
+		"superseded" => Some(decodex_protocol::AgentPermissionOutcome::Superseded),
 		_ => None,
 	}
 }
@@ -206,10 +216,16 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	};
 
 	if let Some(prior) = &prior
-		&& matches!(last_outcome, Some(Outcome::Reserved | Outcome::Queued | Outcome::Unknown))
-	{
+		&& matches!(
+			last_outcome,
+			Some(
+				decodex_protocol::AgentPermissionOutcome::Reserved
+					| decodex_protocol::AgentPermissionOutcome::Queued
+					| decodex_protocol::AgentPermissionOutcome::Unknown
+			)
+		) {
 		return Some(Inspection {
-			state: State::Pending {
+			state: decodex_protocol::AgentPermissionState::Pending {
 				profile_id: decodex_protocol::WireText::new(prior.attempt.profile.clone()).ok()?,
 				state: last_outcome?,
 			},
@@ -236,7 +252,11 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let profiles = match source.client.permission_profiles(&native.cwd).await {
 		Ok(profiles) => profiles,
 		Err(ClientError::Remote(error)) if error.code == -32_601 =>
-			return Some(Inspection { state: State::Unsupported, settings_event: 0, guard: None }),
+			return Some(Inspection {
+				state: decodex_protocol::AgentPermissionState::Unsupported,
+				settings_event: 0,
+				guard: None,
+			}),
 		_ => return None,
 	};
 
@@ -268,7 +288,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			})
 		})
 		.collect::<Option<_>>()?;
-	let identity = json!([
+	let identity = serde_json::json!([
 		k.work,
 		k.thread,
 		k.generation.as_str(),
@@ -282,15 +302,12 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		last_outcome,
 		can_update
 	]);
-	let token: String = Sha256::digest(identity.to_string().as_bytes())
-		.iter()
-		.map(|b| format!("{b:02x}"))
-		.collect();
+	let token = review_token(&identity);
 
 	Some(Inspection {
 		settings_event: saved.id,
 		guard: Some(guard),
-		state: State::Available {
+		state: decodex_protocol::AgentPermissionState::Available {
 			work_id: decodex_protocol::EntityId::new(k.work.clone()).ok()?,
 			thread_id: decodex_protocol::EntityId::new(k.thread.clone()).ok()?,
 			review_token: decodex_protocol::WireText::new(token).ok()?,
@@ -302,4 +319,8 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			last_outcome,
 		},
 	})
+}
+
+fn review_token(identity: &serde_json::Value) -> String {
+	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }

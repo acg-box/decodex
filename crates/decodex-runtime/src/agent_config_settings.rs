@@ -1,9 +1,13 @@
 //! Shared native file recovery, independent of the initiating settings panel or request lifetime.
-use crate::agent_usage_estimate::Source;
-use decodex_database::{AgentConfigOwner, AgentConfigReceipt as Receipt, SqliteStore};
-use decodex_protocol::AgentConfigEditReceipt;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+
+use crate::agent_usage_estimate::Source;
+use decodex_codex::app_server_client::AppLinkSettings;
+use decodex_database::{
+	AgentAppSettingsObservation, AgentConfigOwner, AgentHookObservation, SqliteStore,
+};
+use decodex_protocol::AgentConfigEditReceipt;
 
 pub(super) fn digest(value: &str) -> String {
 	Sha256::digest(value.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
@@ -18,15 +22,15 @@ pub(super) fn owner(source: &Source) -> AgentConfigOwner {
 		account: k.account.as_str().into(),
 	}
 }
-pub(super) fn project(receipt: &Receipt) -> AgentConfigEditReceipt {
+pub(super) fn project(receipt: &decodex_database::AgentConfigReceipt) -> AgentConfigEditReceipt {
 	let (state, owner, target, version) = match receipt {
-		Receipt::Hook(r) => (
+		decodex_database::AgentConfigReceipt::Hook(r) => (
 			&r.state,
 			&r.attempt.owner,
 			format!("Hook {} · {}", r.attempt.hook, r.attempt.field),
 			None,
 		),
-		Receipt::App(r) => (
+		decodex_database::AgentConfigReceipt::App(r) => (
 			&r.state,
 			&r.attempt.owner,
 			if r.attempt.field == "omit_tools_from" {
@@ -49,18 +53,15 @@ pub(super) fn project(receipt: &Receipt) -> AgentConfigEditReceipt {
 		saved_version: version,
 	}
 }
-pub(super) fn pending(receipt: &Receipt) -> bool {
+pub(super) fn pending(receipt: &decodex_database::AgentConfigReceipt) -> bool {
 	let state = match receipt {
-		Receipt::Hook(r) => &r.state,
-		Receipt::App(r) => &r.state,
+		decodex_database::AgentConfigReceipt::Hook(r) => &r.state,
+		decodex_database::AgentConfigReceipt::App(r) => &r.state,
 	};
 
 	matches!(state.as_str(), "reserved" | "unknown")
 }
-pub(super) fn raw_app(
-	native: &decodex_codex::app_server_client::AppLinkSettings,
-	field: &str,
-) -> Option<Value> {
+pub(super) fn raw_app(native: &AppLinkSettings, field: &str) -> Option<Value> {
 	if field == "approvals_reviewer" { &native.user_reviewer } else { &native.user_mode }
 		.as_ref()
 		.map(|v| Value::String(v.clone()))
@@ -82,7 +83,7 @@ pub(super) async fn reconcile(
 	}
 
 	match receipt {
-		Receipt::Hook(r) => {
+		decodex_database::AgentConfigReceipt::Hook(r) => {
 			let native = source.client.hook_settings(cwd).await.ok()?;
 
 			if digest(native.config_file()) != scope {
@@ -92,7 +93,7 @@ pub(super) async fn reconcile(
 			store
 				.observe_agent_hook_setting(
 					r.id,
-					decodex_database::AgentHookObservation {
+					AgentHookObservation {
 						owner: owner(source),
 						scope: scope.into(),
 						hook: r.attempt.hook.clone(),
@@ -107,7 +108,7 @@ pub(super) async fn reconcile(
 				.await
 				.ok()?;
 		},
-		Receipt::App(r) => {
+		decodex_database::AgentConfigReceipt::App(r) => {
 			let (value, version) = if r.attempt.field == "omit_tools_from" {
 				let native =
 					source.client.app_tool_exposure(cwd, &r.attempt.connector).await.ok()?;
@@ -137,7 +138,7 @@ pub(super) async fn reconcile(
 			store
 				.observe_agent_app_settings(
 					r.id,
-					decodex_database::AgentAppSettingsObservation {
+					AgentAppSettingsObservation {
 						owner: owner(source),
 						scope: scope.into(),
 						connector: r.attempt.connector,

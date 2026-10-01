@@ -35,14 +35,31 @@
 #[path = "agent_process_native_summary_tests.rs"] mod summary;
 #[path = "agent_process_native_usage_tests.rs"] mod usage;
 
-use super::*;
-
-use serde_json::json;
-
 use std::{
+	collections::HashSet,
+	env,
+	ffi::OsStr,
+	fs,
 	io::{BufRead, BufReader},
+	path::Path,
 	process::{Child, Command, Stdio},
 	sync::mpsc as sync_mpsc,
+	thread,
+	time::Instant,
+};
+
+use mpsc::Receiver;
+use serde_json::json;
+use tokio::time;
+
+use crate::{
+	account_launch::agent_process::*,
+	agent::{timeline, timeline::media},
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_core::{AccountId, ProcessGenerationId};
+use decodex_protocol::{
+	AgentMediaRequest, AgentMediaResult, AgentTimelineContent, AgentTimelineEntry, EntityId,
 };
 
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
@@ -60,10 +77,10 @@ struct NativeSession {
 	reader: Option<JoinHandle<()>>,
 	bridge: AgentProcessBridge,
 	client: AppServerClient,
-	events: mpsc::Receiver<ServerEvent>,
+	events: Receiver<ServerEvent>,
 }
 impl NativeSession {
-	fn start(binary: &std::ffi::OsStr, home: &std::path::Path) -> Self {
+	fn start(binary: &OsStr, home: &Path) -> Self {
 		let mut child = NativeChild(
 			Command::new(binary)
 				.arg("app-server")
@@ -93,11 +110,11 @@ impl NativeSession {
 
 		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
 
-		let deadline = std::time::Instant::now() + Duration::from_secs(15);
+		let deadline = Instant::now() + Duration::from_secs(15);
 
 		loop {
 			let frame = receive
-				.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+				.recv_timeout(deadline.saturating_duration_since(Instant::now()))
 				.expect("native session setup")
 				.into_contiguous();
 			let value: Value = serde_json::from_slice(&frame).expect("native session setup");
@@ -112,8 +129,7 @@ impl NativeSession {
 		writeln!(stdin, "{}", json!({"method":"initialized"})).expect("native session setup");
 
 		let binding = AccountBinding::fixture(
-			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001")
-				.expect("native session setup"),
+			AccountId::new("10000000-0000-4000-8000-000000000001").expect("native session setup"),
 			home.into(),
 		);
 		let (bridge, client, events) = AgentProcessBridge::start(
@@ -153,7 +169,7 @@ async fn installed_native_history_reads_cross_retained_bridge_without_new_model_
 }
 
 async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -173,10 +189,10 @@ async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated history fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[features]\nomit_app_server_notification_media = {omit_media}\n")).expect("native notification media fixture");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated history fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[features]\nomit_app_server_notification_media = {omit_media}\n")).expect("native notification media fixture");
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let (id, before) = tokio::time::timeout(Duration::from_secs(30), async {
+	let (id, before) = time::timeout(Duration::from_secs(30), async {
 		let client = &session.client;
 		let started = client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native notification media fixture");
 		let id = started["thread"]["id"].as_str().expect("native notification media fixture");
@@ -197,12 +213,10 @@ async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 	drop(session);
 
 	let reopened = NativeSession::start(&binary, home.path());
-	let after = tokio::time::timeout(
-		Duration::from_secs(30),
-		read_history(&reopened.client, &id, &requests),
-	)
-	.await
-	.expect("native notification media fixture");
+	let after =
+		time::timeout(Duration::from_secs(30), read_history(&reopened.client, &id, &requests))
+			.await
+			.expect("native notification media fixture");
 
 	assert_eq!(
 		serde_json::to_value(before).expect("native notification media fixture"),
@@ -246,7 +260,7 @@ async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 
 async fn qualify_history(
 	client: &AppServerClient,
-	events: &mut mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	thread_id: &str,
 	requests: &std::sync::atomic::AtomicUsize,
 	omit_media: bool,
@@ -256,7 +270,7 @@ async fn qualify_history(
 			.turn_start(json!({"threadId":thread_id,"input":[{"type":"text","text":text},{"type":"image","url":format!("data:image/png;base64,{PNG}")}]}))
 			.await
 			.expect("native history fixture operation");
-		let mut user_events = std::collections::HashSet::new();
+		let mut user_events = HashSet::new();
 
 		loop {
 			let event = events.recv().await.expect("native event stream");
@@ -299,7 +313,7 @@ async fn read_history(
 	client: &AppServerClient,
 	thread_id: &str,
 	requests: &std::sync::atomic::AtomicUsize,
-) -> Vec<decodex_protocol::AgentTimelineEntry> {
+) -> Vec<AgentTimelineEntry> {
 	let mut cursor = None;
 	let mut entries = Vec::new();
 	let mut cursors = HashSet::new();
@@ -309,8 +323,8 @@ async fn read_history(
 			.thread_timeline_page(thread_id, cursor.as_deref(), 1)
 			.await
 			.expect("native history fixture operation");
-		let projected = crate::agent::timeline::project(thread_id, &page)
-			.expect("native history fixture operation");
+		let projected =
+			timeline::project(thread_id, &page).expect("native history fixture operation");
 
 		assert_eq!(projected.entries.len(), 1);
 
@@ -339,14 +353,8 @@ async fn read_history(
 	entries
 }
 
-async fn qualify_media(
-	client: &AppServerClient,
-	thread_id: &str,
-	entries: &[decodex_protocol::AgentTimelineEntry],
-) {
+async fn qualify_media(client: &AppServerClient, thread_id: &str, entries: &[AgentTimelineEntry]) {
 	use base64::Engine as _;
-
-	use decodex_protocol::{AgentMediaRequest, AgentMediaResult, AgentTimelineContent, EntityId};
 
 	let (turn_id, item_id, index) = entries
 		.iter()
@@ -371,23 +379,21 @@ async fn qualify_media(
 		offset: 0,
 		fingerprint: None,
 	};
-	let result = crate::agent::timeline::media::read(
+	let result = media::read(
 		|| {
 			let client = client.clone();
 
 			async move {
-				Some(crate::agent_usage_estimate::Source {
+				Some(Source {
 					client,
-					key: crate::agent_usage_estimate::SourceKey {
+					key: SourceKey {
 						history_revision: 0,
-						generation: decodex_core::ProcessGenerationId::new(
+						generation: ProcessGenerationId::new(
 							"10000000-0000-4000-8000-000000000002",
 						)
 						.expect("native history fixture operation"),
-						account: decodex_core::AccountId::new(
-							"10000000-0000-4000-8000-000000000001",
-						)
-						.expect("native history fixture operation"),
+						account: AccountId::new("10000000-0000-4000-8000-000000000001")
+							.expect("native history fixture operation"),
 						revision: 1,
 						thread: thread_id.into(),
 						work: "work".into(),

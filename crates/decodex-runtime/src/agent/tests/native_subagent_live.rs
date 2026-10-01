@@ -1,9 +1,17 @@
 //! Exercise child request routing through the real native app-server.
 #[path = "native_subagent_mcp.rs"] mod mcp;
 
-use super::*;
+use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
 
 use futures_util::FutureExt as _;
+use tokio::{
+	process::Command,
+	sync::{mpsc, mpsc::UnboundedSender},
+	time,
+};
+
+use crate::{agent::tests::*, native_agents};
+use decodex_protocol::NativeAgentsResult;
 
 fn response(body: &Value, serial: usize) -> Value {
 	if serial == 1 {
@@ -35,18 +43,18 @@ fn is_child(body: &Value) -> bool {
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY pointing to an installed Codex binary"]
 async fn native_child_approval_round_trip() {
-	let binary = std::env::var("DECODEX_NATIVE_BINARY").unwrap();
+	let binary = env::var("DECODEX_NATIVE_BINARY").unwrap();
 	let directory = tempfile::tempdir().unwrap();
 	let home = directory.path().canonicalize().unwrap();
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
-	let (requests_tx, mut requests_rx) = tokio::sync::mpsc::unbounded_channel();
+	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
 	let backend = tokio::spawn(serve(listener, requests_tx));
 
-	std::fs::write(home.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nservice_tier = \"priority\"\napprovals_reviewer = \"user\"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n[model_providers.fixture]\nname = \"Isolated child approval fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nservice_tier = \"priority\"\napprovals_reviewer = \"user\"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n[model_providers.fixture]\nname = \"Isolated child approval fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let (mut agent, _sent, _store_home) = fixture().await;
-	let mut command = tokio::process::Command::new(binary);
+	let mut command = Command::new(binary);
 
 	command
 		.arg("app-server")
@@ -63,7 +71,7 @@ async fn native_child_approval_round_trip() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
 	agent.config.sandbox = "read-only".into();
 
-	let outcome = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(60), async {
+	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(60), async {
 		agent.initialize().await.unwrap();
 		agent.start_agent("agent", "ROOT_SPAWN").await.unwrap();
 
@@ -84,13 +92,13 @@ async fn native_child_approval_round_trip() {
 			if let Some((id, child)) = request {
 				assert_ne!(child,root);
 
-                let listed=crate::native_agents::read(&agent.store,&agent.client,"agent",None,None).await;
+                let listed=native_agents::read(&agent.store,&agent.client,"agent",None,None).await;
 
-                assert!(matches!(&listed,decodex_protocol::NativeAgentsResult::Available{agents,..} if agents.iter().any(|agent|agent.thread_id==child && agent.parent_thread_id==root)), "native descendant missing: {listed:?}");
+                assert!(matches!(&listed,NativeAgentsResult::Available{agents,..} if agents.iter().any(|agent|agent.thread_id==child && agent.parent_thread_id==root)), "native descendant missing: {listed:?}");
 
-                let inspected=crate::native_agents::read(&agent.store,&agent.client,"agent",Some(&child),None).await;
+                let inspected=native_agents::read(&agent.store,&agent.client,"agent",Some(&child),None).await;
 
-                assert!(matches!(inspected,decodex_protocol::NativeAgentsResult::Conversation{can_input:false,..}), "native v2 input capability was not preserved: {inspected:?}");
+                assert!(matches!(inspected,NativeAgentsResult::Conversation{can_input:false,..}), "native v2 input capability was not preserved: {inspected:?}");
 
 				let pending = agent.pending_requests[&id];
 				let saved = agent.store.get_agent_inbox_event(pending).await.unwrap();
@@ -151,16 +159,13 @@ async fn native_child_approval_round_trip() {
 	outcome.expect("native child approval panicked").expect("native child approval timed out");
 }
 
-async fn serve(
-	listener: tokio::net::TcpListener,
-	requests: tokio::sync::mpsc::UnboundedSender<Value>,
-) {
+async fn serve(listener: tokio::net::TcpListener, requests: UnboundedSender<Value>) {
 	serve_with_response(listener, requests, response).await;
 }
 
 async fn serve_with_response(
 	listener: tokio::net::TcpListener,
-	requests: tokio::sync::mpsc::UnboundedSender<Value>,
+	requests: UnboundedSender<Value>,
 	response_fn: fn(&Value, usize) -> Value,
 ) {
 	let mut serial = 0;

@@ -1,11 +1,14 @@
 //! Read public native messages through the existing bounded item-page owner.
-use super::excerpts::Exchange;
-
-use decodex_codex::app_server_client::{AppServerClient, ClientError};
+use std::{collections::HashSet, mem, time::Duration};
 
 use serde_json::{Value, json};
+use tokio::time;
 
-use std::collections::HashSet;
+use crate::{
+	agent,
+	agent_recap::{excerpts, excerpts::Exchange},
+};
+use decodex_codex::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
 
 pub(super) struct History {
 	pub exchanges: Vec<Exchange>,
@@ -43,14 +46,14 @@ impl Recent {
 
 		self.bytes = self.bytes.saturating_add(items.to_string().len());
 
-		if self.bytes > decodex_codex::app_server_client::MAX_FRAME_BYTES {
+		if self.bytes > MAX_FRAME_BYTES {
 			return Err(ClientError::CapacityExceeded);
 		}
 
 		let items = items.as_array().ok_or(ClientError::InvalidFrame)?;
 		let filtered: Vec<_> = items
 			.iter()
-			.filter(|item| !self.voice || !crate::agent::voice_handoff(item))
+			.filter(|item| !self.voice || !agent::voice_handoff(item))
 			.cloned()
 			.collect();
 		let mut next = visible(&filtered)?;
@@ -95,7 +98,7 @@ pub(super) fn select(messages: &[Message]) -> Vec<Exchange> {
 		if !message.user && !current.user.is_empty() {
 			answered += usize::from(!current.assistant.is_empty());
 
-			exchanges.push(std::mem::take(&mut current));
+			exchanges.push(mem::take(&mut current));
 
 			if answered == 8 {
 				break;
@@ -125,7 +128,7 @@ pub(super) async fn read(
 	thread: &str,
 	voice: bool,
 ) -> Result<History, ClientError> {
-	tokio::time::timeout(std::time::Duration::from_secs(25), read_inner(client, thread, voice))
+	time::timeout(Duration::from_secs(25), read_inner(client, thread, voice))
 		.await
 		.map_err(|_| ClientError::Io)?
 }
@@ -138,7 +141,7 @@ fn turn_id(turn: &Value) -> Result<&str, ClientError> {
 }
 
 fn finish(exchanges: Vec<Exchange>, latest_turn: Option<String>) -> Result<History, ClientError> {
-	let history = super::excerpts::render(&exchanges);
+	let history = excerpts::render(&exchanges);
 
 	if history.is_empty() {
 		return Err(ClientError::InvalidFrame);
@@ -152,7 +155,7 @@ fn visible(items: &[Value]) -> Result<Vec<Message>, ClientError> {
 
 	for item in items {
 		// This internal handoff is not the visible voice transcript. Do not summarize it.
-		if crate::agent::voice_handoff(item) {
+		if agent::voice_handoff(item) {
 			return Err(ClientError::InvalidFrame);
 		}
 

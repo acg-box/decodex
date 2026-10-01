@@ -1,15 +1,20 @@
 //! Installed Guardian must receive verified user restrictions after a native process restart.
-use super::{super::serve_fixture_usage, *};
+use std::{env, fs, sync::Mutex};
+
+use crate::account_launch::agent_process::native_tests::{reviewer::*, serve_fixture_usage};
+use tokio::{net::TcpListener, time};
+
+use decodex_codex::{guardian, guardian::ReviewStatus};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Guardian evidence restart"]
 async fn installed_guardian_retains_answer_after_compaction_and_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture_usage(
 		listener,
 		requests.clone(),
@@ -34,9 +39,9 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nguardian_thread_context = true\ndefault_mode_request_user_input = true\nstep_model_switching = false\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nguardian_thread_context = true\ndefault_mode_request_user_input = true\nstep_model_switching = false\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
@@ -82,7 +87,7 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 			match session.events.recv().await.expect("native Guardian event stream") {
 				ServerEvent::Request { method, .. } => panic!("unexpected client request: {method}"),
 				ServerEvent::Notification { method, params } if method.starts_with("item/autoApprovalReview/") => {
-					denied |= decodex_codex::guardian::decode_review(&method, &params).unwrap().status == decodex_codex::guardian::ReviewStatus::Denied;
+					denied |= guardian::decode_review(&method, &params).unwrap().status == ReviewStatus::Denied;
 				},
 				ServerEvent::Notification { method, params } if method == "turn/completed" => {
 					assert_eq!(params["turn"]["status"], "completed");

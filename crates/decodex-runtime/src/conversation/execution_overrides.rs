@@ -1,11 +1,12 @@
 //! Keep displayed defaults separate from explicit native execution overrides.
-use super::{
+use crate::conversation::{
 	ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnStartRequest,
 };
+use decodex_protocol::ConversationExecutionOverrides;
 
 pub(super) fn apply_start_overrides(
 	mut request: ConversationThreadStartRequest,
-	intent: Option<decodex_protocol::ConversationExecutionOverrides>,
+	intent: Option<ConversationExecutionOverrides>,
 ) -> ConversationThreadStartRequest {
 	if let Some(intent) = intent {
 		if !intent.model {
@@ -27,7 +28,7 @@ pub(super) fn inherit_resume_settings(
 
 pub(super) fn apply_turn_overrides(
 	mut request: ConversationTurnStartRequest,
-	intent: Option<decodex_protocol::ConversationExecutionOverrides>,
+	intent: Option<ConversationExecutionOverrides>,
 ) -> ConversationTurnStartRequest {
 	if let Some(intent) = intent {
 		if !intent.model {
@@ -46,7 +47,12 @@ pub(super) fn apply_turn_overrides(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::iter;
+
+	use crate::conversation::execution_overrides::{
+		self, ConversationThreadResumeRequest, ConversationThreadStartRequest,
+		ConversationTurnStartRequest,
+	};
 	use decodex_codex::{ConversationTurnInput, ExactThreadId};
 	use decodex_protocol::ConversationExecutionOverrides;
 
@@ -59,14 +65,15 @@ mod tests {
 			"Stale creation instructions",
 		)
 		.unwrap();
-		let wire = serde_json::to_value(inherit_resume_settings(request)).unwrap();
+		let wire =
+			serde_json::to_value(execution_overrides::inherit_resume_settings(request)).unwrap();
 
 		assert_eq!(wire, serde_json::json!({"threadId":"native-thread", "excludeTurns":true}));
 	}
 
 	#[test]
 	fn legacy_and_each_field_choice_apply_across_resume_turn_and_fallback() {
-		let choices = std::iter::once(None).chain((0..8).map(|bits| {
+		let choices = iter::once(None).chain((0..8).map(|bits| {
 			Some(ConversationExecutionOverrides {
 				model: bits & 1 != 0,
 				reasoning: bits & 2 != 0,
@@ -94,9 +101,12 @@ mod tests {
 			)
 			.expect("turn");
 			let wires = [
-				serde_json::to_value(apply_start_overrides(start, intent)).expect("start wire"),
-				serde_json::to_value(inherit_resume_settings(resume)).expect("resume wire"),
-				serde_json::to_value(apply_turn_overrides(turn, intent)).expect("turn wire"),
+				serde_json::to_value(execution_overrides::apply_start_overrides(start, intent))
+					.expect("start wire"),
+				serde_json::to_value(execution_overrides::inherit_resume_settings(resume))
+					.expect("resume wire"),
+				serde_json::to_value(execution_overrides::apply_turn_overrides(turn, intent))
+					.expect("turn wire"),
 			];
 
 			for wire in [&wires[0], &wires[2]] {

@@ -1,33 +1,33 @@
 //! Memory-only voice signaling mailbox. The Agent actor owns every provider operation.
+use std::{
+	sync::Arc,
+	time::{Duration, Instant},
+};
+
+use tokio::sync::mpsc::{self, Receiver, Sender};
+
 use decodex_protocol::{
 	AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, EntityId, VoiceSdp, WireText,
 };
 
-use std::{
-	sync::{Arc, Mutex},
-	time::{Duration, Instant},
-};
-
-use tokio::sync::mpsc;
-
 #[derive(Clone)]
 pub(crate) struct VoiceGateway {
-	call: Arc<Mutex<Option<Call>>>,
-	sender: mpsc::Sender<AgentVoiceRequest>,
-	receiver: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<AgentVoiceRequest>>>>,
+	call: Arc<std::sync::Mutex<Option<Call>>>,
+	sender: Sender<AgentVoiceRequest>,
+	receiver: Arc<tokio::sync::Mutex<Option<Receiver<AgentVoiceRequest>>>>,
 }
 impl VoiceGateway {
 	pub(crate) fn new() -> Self {
 		let (sender, receiver) = mpsc::channel(8);
 
 		Self {
-			call: Arc::new(Mutex::new(None)),
+			call: Arc::new(std::sync::Mutex::new(None)),
 			sender,
 			receiver: Arc::new(tokio::sync::Mutex::new(Some(receiver))),
 		}
 	}
 
-	pub(crate) async fn take_receiver(&self) -> Option<mpsc::Receiver<AgentVoiceRequest>> {
+	pub(crate) async fn take_receiver(&self) -> Option<Receiver<AgentVoiceRequest>> {
 		self.receiver.lock().await.take()
 	}
 
@@ -228,7 +228,9 @@ pub(crate) fn provider_error_message(message: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent_voice::{
+		AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceGateway, VoiceSdp, WireText,
+	};
 	#[tokio::test]
 	async fn failure_survives_cleanup_before_poll_without_another_stop() {
 		let gateway = VoiceGateway::new();

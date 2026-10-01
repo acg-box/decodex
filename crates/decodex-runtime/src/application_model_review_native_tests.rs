@@ -1,16 +1,37 @@
 //! Installed-native discovery for a durable model-source review.
 #[path = "application_model_review_confirmation_tests.rs"] mod confirmation;
 
-use super::*;
+use std::{
+	env, fs,
+	fs::OpenOptions,
+	path::Path,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
-use crate::application::Application;
+use tokio::{net::TcpListener, task, time};
 
-use decodex_database::SqliteStore;
+use crate::{
+	account_launch,
+	account_launch::process::native_control_tests,
+	application::{
+		Application, ServiceApplication,
+		account_nudge::{native_tests::*, tests},
+	},
+	conversation::RecoverConversation,
+};
+use decodex_database::{
+	CreateConversationRecord, InitialModelSource, OrdinaryTaskConversationProjection,
+	RoutingControlOutcome, SqliteStore,
+};
+use decodex_protocol::{
+	ConversationHistoryResult, ConversationModelReviewResult, InitialModelCatalogResult,
+	MAX_HISTORY_PAGE_SIZE, QueryId, QueryPayload, QueryResultPayload,
+};
 
-fn add_project_warning(saved: &std::path::Path) {
+fn add_project_warning(saved: &Path) {
 	use std::io::Write as _;
 
-	let mut file = std::fs::OpenOptions::new()
+	let mut file = OpenOptions::new()
 		.append(true)
 		.open(saved.join(".codex/config.toml"))
 		.expect("fixture project config");
@@ -22,7 +43,7 @@ fn add_project_warning(saved: &std::path::Path) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone in an isolated fixture HOME below the OS account home and outside its .codex"]
 async fn native_model_review_uses_saved_directory_without_starting_a_turn() {
-	tokio::time::timeout(Duration::from_secs(90), qualify_review_discovery(false, false))
+	time::timeout(Duration::from_secs(90), qualify_review_discovery(false, false))
 		.await
 		.expect("bounded native model review");
 }
@@ -30,7 +51,7 @@ async fn native_model_review_uses_saved_directory_without_starting_a_turn() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone in an isolated fixture HOME below the OS account home and outside its .codex"]
 async fn native_model_review_confirmation_submits_once() {
-	tokio::time::timeout(Duration::from_secs(90), qualify_review_discovery(true, false))
+	time::timeout(Duration::from_secs(90), qualify_review_discovery(true, false))
 		.await
 		.expect("bounded native confirmation");
 }
@@ -38,31 +59,30 @@ async fn native_model_review_confirmation_submits_once() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated fixture HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn native_project_warning_does_not_block_ordinary_creation_and_survives_restart() {
-	tokio::time::timeout(Duration::from_secs(90), qualify_review_discovery(true, true))
+	time::timeout(Duration::from_secs(90), qualify_review_discovery(true, true))
 		.await
 		.expect("native warning qualification");
 }
 
 async fn qualify_review_discovery(confirm: bool, warning: bool) {
 	let home = isolated_home();
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let saved = home.join("saved-request");
 
-	std::fs::create_dir_all(saved.join(".codex")).expect("saved working directory");
-	std::fs::create_dir(home.join(".codex")).expect("isolated native home");
+	fs::create_dir_all(saved.join(".codex")).expect("saved working directory");
+	fs::create_dir(home.join(".codex")).expect("isolated native home");
 
-	let listener =
-		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback-only provider");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback-only provider");
 	let address = listener.local_addr().expect("fixture address");
 	let quoted = serde_json::to_string(saved.to_str().expect("saved cwd")).expect("quoted cwd");
 
-	std::fs::write(home.join(".codex/config.toml"), format!(
+	fs::write(home.join(".codex/config.toml"), format!(
         "model = \"gpt-6-astra\"\nmodel_reasoning_effort = \"low\"\nmodel_provider = \"fixture\"\nchatgpt_base_url = \"http://{address}\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Model review fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nsupports_websockets = false\n[projects.{quoted}]\ntrust_level = \"trusted\"\n[features]\napps = false\nremote_plugins = false\n[analytics]\nenabled = false\n"
     )).expect("isolated native configuration");
-	std::fs::write(
+	fs::write(
 		saved.join(".codex/config.toml"),
 		"model = \"gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\n",
 	)
@@ -76,7 +96,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 
 	root.paths().ensure_layout().expect("product layout");
 
-	let store = decodex_database::SqliteStore::open(&root.paths()).expect("product store");
+	let store = SqliteStore::open(&root.paths()).expect("product store");
 	let accounts = Arc::new(AccountService::new(
 		store.clone(),
 		Arc::new(SqliteCredentialStore::new(store.clone())),
@@ -84,11 +104,8 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 	));
 	let account = enroll(&store, &accounts, &home).await;
 	let profile_home = home.clone();
-	let profile = tokio::task::spawn_blocking(move || {
-		crate::account_launch::process::native_control_tests::attested_profile(
-			&binary,
-			&profile_home,
-		)
+	let profile = task::spawn_blocking(move || {
+		native_control_tests::attested_profile(&binary, &profile_home)
 	})
 	.await
 	.expect("native attestation owner");
@@ -104,7 +121,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 
 	assert_runtime_review_boundary(&runtime, &conversation).await;
 
-	let mut app = super::super::tests::application(store.clone());
+	let mut app = tests::application(store.clone());
 
 	app.conversations = ConversationCapability::Ready(runtime);
 	app.blob_store = Some(BlobStore::open(root.paths()).expect("fixture blob store"));
@@ -118,20 +135,20 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 
 	let query = decodex_protocol::QueryEnvelope {
 		version: CURRENT_VERSION,
-		query_id: decodex_protocol::QueryId::new("native-review-discovery").expect("query"),
-		payload: decodex_protocol::QueryPayload::GetConversationModelReview {
+		query_id: QueryId::new("native-review-discovery").expect("query"),
+		payload: QueryPayload::GetConversationModelReview {
 			conversation_id: id.clone(),
 			expected_revision: EntityRevision(1),
 		},
 	};
 	let result = tokio::select! {
-		_ = crate::account_launch::serve_native_nudge_fixture(&listener, "200 OK",
+		_ = account_launch::serve_native_nudge_fixture(&listener, "200 OK",
 			decodex_codex::app_server_client::AccountNudgeCreditType::Credits) => panic!("discovery cannot send a notification"),
 		result = app.query(&query) => result,
 	};
-	let decodex_protocol::QueryResultPayload::ConversationModelReview(
-		decodex_protocol::ConversationModelReviewResult::Available(review),
-	) = result
+	let QueryResultPayload::ConversationModelReview(ConversationModelReviewResult::Available(
+		review,
+	)) = result
 	else {
 		panic!("native review discovery must be available");
 	};
@@ -139,7 +156,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 	assert_eq!(review.message.as_str(), "Preserve the original request");
 	assert_eq!(review.execution.model.as_str(), "gpt-6-astra");
 
-	let decodex_protocol::InitialModelCatalogResult::Available {
+	let InitialModelCatalogResult::Available {
 		account_id,
 		account_revision,
 		working_directory,
@@ -164,7 +181,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 	assert_stale_review_unavailable(&app, query, id).await;
 
 	assert!(
-		tokio::time::timeout(Duration::from_millis(250), listener.accept()).await.is_err(),
+		time::timeout(Duration::from_millis(250), listener.accept()).await.is_err(),
 		"discovery must not call inference"
 	);
 
@@ -189,7 +206,7 @@ async fn assert_runtime_review_boundary(
 	id: &decodex_core::ConversationId,
 ) {
 	let outcome = runtime
-		.resume_routing(crate::conversation::RecoverConversation {
+		.resume_routing(RecoverConversation {
 			operation_key: "review-runtime-boundary".into(),
 			correlation_id: "review-runtime-boundary".into(),
 			causation_id: None,
@@ -203,13 +220,13 @@ async fn assert_runtime_review_boundary(
 }
 
 async fn assert_stale_review_unavailable(
-	app: &crate::application::ServiceApplication,
+	app: &ServiceApplication,
 	query: decodex_protocol::QueryEnvelope,
 	id: EntityId,
 ) {
 	let stale = decodex_protocol::QueryEnvelope {
-		query_id: decodex_protocol::QueryId::new("stale-review-discovery").expect("stale query"),
-		payload: decodex_protocol::QueryPayload::GetConversationModelReview {
+		query_id: QueryId::new("stale-review-discovery").expect("stale query"),
+		payload: QueryPayload::GetConversationModelReview {
 			conversation_id: id,
 			expected_revision: EntityRevision(2),
 		},
@@ -226,15 +243,15 @@ async fn assert_stale_review_unavailable(
 
 async fn assert_cold_warning(root: &DecodexRoot, conversation: &decodex_core::ConversationId) {
 	let reopened = SqliteStore::open(&root.paths()).expect("reopened fixture store");
-	let mut readback = super::super::tests::application(reopened);
+	let mut readback = tests::application(reopened);
 
 	readback.blob_store = Some(BlobStore::open(root.paths()).expect("fixture blob store"));
 
-	let decodex_protocol::ConversationHistoryResult::Page(page) = readback
+	let ConversationHistoryResult::Page(page) = readback
 		.conversation_history(
 			&EntityId::new(conversation.as_str()).expect("fixture conversation ID"),
 			None,
-			decodex_protocol::MAX_HISTORY_PAGE_SIZE,
+			MAX_HISTORY_PAGE_SIZE,
 		)
 		.await
 	else {
@@ -270,13 +287,10 @@ async fn seed_review(
 	store: &SqliteStore,
 	account: &AccountId,
 	revision: i64,
-	saved: &std::path::Path,
+	saved: &Path,
 ) -> decodex_core::ConversationId {
 	let now = i64::try_from(
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.expect("fixture clock")
-			.as_micros(),
+		SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_micros(),
 	)
 	.expect("fixture timestamp");
 
@@ -308,7 +322,7 @@ async fn seed_review(
 			.set_fixed_account_selection(control.revision, account, revision)
 			.await
 			.expect("fixed fixture account"),
-		decodex_database::RoutingControlOutcome::Updated { .. }
+		RoutingControlOutcome::Updated { .. }
 	));
 
 	let id = decodex_core::ConversationId::new("50000000-0000-4000-8000-000000000001")
@@ -317,7 +331,7 @@ async fn seed_review(
 	store
 		.create_conversation(
 			&CommandIdentity::new("native-review-create", b"original source").expect("command"),
-			&decodex_database::CreateConversationRecord {
+			&CreateConversationRecord {
 				conversation_id: id.clone(),
 				title: "Native model review".into(),
 				message: "Preserve the original request".into(),
@@ -326,7 +340,7 @@ async fn seed_review(
 				reasoning_effort: Some("low".into()),
 				fast: false,
 				service_tier: None,
-				initial_model_source: Some(decodex_database::InitialModelSource {
+				initial_model_source: Some(InitialModelSource {
 					account_id: account.clone(),
 					account_revision: revision + 1,
 				}),
@@ -355,7 +369,7 @@ async fn seed_review(
 async fn assert_review_still_unstarted(store: &SqliteStore, id: &decodex_core::ConversationId) {
 	let rows =
 		store.read_ordinary_task_conversations(Some(id), None, 1).await.expect("saved projection");
-	let decodex_database::OrdinaryTaskConversationProjection::Current(task) = &rows[0] else {
+	let OrdinaryTaskConversationProjection::Current(task) = &rows[0] else {
 		panic!("active task");
 	};
 

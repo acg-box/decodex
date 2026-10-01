@@ -1,21 +1,26 @@
 //! Exercise the public branch commands against the installed native app-server.
-use super::*;
-use decodex_protocol::{PromptForkBoundary as Boundary, PromptForkPhase, PromptForkResult};
+use std::{path::Path, sync::atomic::AtomicUsize};
+
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
 pub(super) async fn check(
 	client: &AgentClient,
-	native: &decodex_codex::app_server_client::AppServerClient,
+	native: &AppServerClient,
 	store: &SqliteStore,
 	work: &EntityId,
 	thread: &str,
-	requests: &std::sync::atomic::AtomicUsize,
-	home: &std::path::Path,
+	requests: &AtomicUsize,
+	home: &Path,
 ) {
 	let source = native.thread_turns_since(thread, None).await.expect("read source turns");
 	let count = requests.load(Ordering::Acquire);
 	let mut targets = Vec::new();
 
-	for (index, boundary) in [Boundary::BeforeInput, Boundary::AfterTurn].into_iter().enumerate() {
+	for (index, boundary) in
+		[PromptForkBoundary::BeforeInput, PromptForkBoundary::AfterTurn].into_iter().enumerate()
+	{
 		let selected = source[0]["id"].as_str().expect("source turn identity");
 		let items =
 			native.thread_read_turn_items(thread, selected).await.expect("read source input items");
@@ -76,7 +81,10 @@ pub(super) async fn check(
 
 		let turns = native.thread_turns_since(fork.as_str(), None).await.expect("read fork prefix");
 
-		assert_eq!(turns.len(), usize::from(boundary == Boundary::AfterTurn));
+		assert_eq!(
+			turns.len(),
+			usize::from(boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
+		);
 		assert_eq!(
 			native.thread_turns_since(thread, None).await.expect("reread unchanged source"),
 			source
@@ -87,7 +95,7 @@ pub(super) async fn check(
 
 		assert_eq!(metadata["thread"]["forkedFromId"], thread);
 
-		if boundary == Boundary::BeforeInput {
+		if boundary == PromptForkBoundary::BeforeInput {
 			let (status, restored) = client
 				.prompt_edit(target.clone(), fork.clone())
 				.await

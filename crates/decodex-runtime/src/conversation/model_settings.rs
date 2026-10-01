@@ -1,15 +1,16 @@
 //! Source-bound configured model reads on the existing ordinary process.
 #[path = "cold_model_settings.rs"] mod cold;
 
-use super::{ConversationRuntime, LocalSession, LocalTaskState, WorkerCommand, same_local_process};
+use std::time::Duration;
 
+use tokio::{sync::oneshot, task, time};
+
+use crate::conversation::{self, ConversationRuntime, LocalSession, LocalTaskState, WorkerCommand};
 use decodex_codex::app_server_client::NativeThreadModelSettings;
-
+use decodex_core::ServiceTier;
 use decodex_protocol::{
 	ConversationModel, ConversationModelSettingsResult as ResultDto, ConversationReasoningEffort,
 };
-
-use std::time::Duration;
 
 impl ConversationRuntime {
 	pub(crate) async fn model_settings(&self, key: &str, conversation: &str) -> ResultDto {
@@ -52,10 +53,10 @@ impl ConversationRuntime {
 			let result = if before.is_none() {
 				None
 			} else if let Some(commands) = commands {
-				let (reply, result) = tokio::sync::oneshot::channel();
+				let (reply, result) = oneshot::channel();
 
 				if commands.try_send(WorkerCommand::ModelSettings(reply)).is_ok() {
-					tokio::time::timeout(Duration::from_secs(10), result)
+					time::timeout(Duration::from_secs(10), result)
 						.await
 						.ok()
 						.and_then(Result::ok)
@@ -77,11 +78,11 @@ impl ConversationRuntime {
 			let Some(task) = local.get_mut(&conversation) else { return ResultDto::Unavailable };
 			let same = match &task.state {
 				LocalTaskState::CatalogReading(current) if idle =>
-					same_local_process(current, &source),
+					conversation::same_local_process(current, &source),
 				LocalTaskState::Ready(current)
 				| LocalTaskState::Active { session: current, .. }
 					if !idle =>
-					same_local_process(current, &source),
+					conversation::same_local_process(current, &source),
 				_ => false,
 			};
 
@@ -106,7 +107,7 @@ impl ConversationRuntime {
 				.unwrap_or(ResultDto::Unavailable)
 		});
 
-		tokio::time::timeout(Duration::from_secs(12), query)
+		time::timeout(Duration::from_secs(12), query)
 			.await
 			.ok()
 			.and_then(Result::ok)
@@ -121,7 +122,7 @@ impl ConversationRuntime {
 		let process = source.process.clone();
 		let thread = source.codex_thread_id.clone();
 
-		tokio::task::spawn_blocking(move || {
+		task::spawn_blocking(move || {
 			control.with_fenced_child(&process, |child| {
 				let (result, events) = child.read_ordinary_model_settings(&thread);
 
@@ -140,7 +141,7 @@ impl ConversationRuntime {
 
 fn project(
 	settings: NativeThreadModelSettings,
-	requested_service_tier: Option<decodex_core::ServiceTier>,
+	requested_service_tier: Option<ServiceTier>,
 ) -> Option<ResultDto> {
 	Some(ResultDto::Available {
 		requested_service_tier,
@@ -156,7 +157,15 @@ fn project(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::sync::mpsc;
+
+	use tokio::sync::oneshot;
+
+	use crate::{
+		account_launch::process::tests,
+		conversation::model_settings::{Duration, WorkerCommand},
+	};
+
 	#[test]
 	fn ordinary_settings_read_preserves_terminal_events_and_native_identity() {
 		for mode in [
@@ -165,8 +174,7 @@ mod tests {
 			"exact-settings-missing",
 			"exact-settings-rejected",
 		] {
-			let (_temp, mut child) =
-				crate::account_launch::process::tests::ordinary_catalog_child(mode);
+			let (_temp, mut child) = tests::ordinary_catalog_child(mode);
 			let (result, events) = child.read_ordinary_model_settings("settings-thread");
 
 			if mode == "exact-settings-valid" {
@@ -193,10 +201,9 @@ mod tests {
 	#[test]
 	fn active_settings_read_delivers_completion_once_on_success_and_rejection() {
 		for mode in ["exact-settings-valid", "exact-settings-rejected"] {
-			let (_temp, mut child) =
-				crate::account_launch::process::tests::ordinary_catalog_child(mode);
-			let (commands, receiver) = std::sync::mpsc::channel();
-			let (reply, mut result) = tokio::sync::oneshot::channel();
+			let (_temp, mut child) = tests::ordinary_catalog_child(mode);
+			let (commands, receiver) = mpsc::channel();
+			let (reply, mut result) = oneshot::channel();
 
 			commands.send(WorkerCommand::ModelSettings(reply)).unwrap();
 

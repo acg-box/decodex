@@ -1,10 +1,19 @@
 //! Interrupted streams remain display-only when Codex omits their unfinished items.
-use super::*;
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs, future,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{process::Command, time};
+
+use crate::{agent::tests::*, application};
+use decodex_core::DecodexRoot;
 
 const PARTIAL: &str = "Intro.\n\n$$\n\\frac{a+b+c+d+e+f}{g+h}";
 
@@ -24,10 +33,10 @@ async fn interrupted(plan: bool) {
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls), plan));
 
-	std::fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Interrupted output fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Interrupted output fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let (mut agent, _, store_home) = fixture().await;
-	let mut command = tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+	let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 	command
 		.arg("app-server")
@@ -41,7 +50,7 @@ async fn interrupted(plan: bool) {
 
 	agent.client = client;
 
-	let result = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(30), async {
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(30), async {
         agent.initialize().await.unwrap();
 
         let response = agent.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
@@ -90,13 +99,13 @@ async fn interrupted(plan: bool) {
 
         assert!(!history.as_array().unwrap().iter().any(|item| matches!(item["type"].as_str(),Some("agentMessage" | "plan"))));
 
-        let root = decodex_core::DecodexRoot::new(store_home.path().canonicalize().unwrap().join("root")).unwrap();
+        let root = DecodexRoot::new(store_home.path().canonicalize().unwrap().join("root")).unwrap();
         let reopened = SqliteStore::open(&root.paths()).unwrap();
         let (events, live) = reopened.read_agent_transcript("agent".into(),None,32).await.unwrap();
 
         assert!(live.is_empty());
 
-        let rendered = crate::application::render_agent_history_for_test(events);
+        let rendered = application::render_agent_history_for_test(events);
         let partial: Vec<_> = rendered.iter().filter(|entry| entry.kind==if plan {"partial_plan"} else {"partial_answer"}).collect();
 
         assert_eq!(partial.len(),1);
@@ -129,6 +138,6 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>, plan:
 		socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n{body}").as_bytes()).await.unwrap();
 		socket.flush().await.unwrap();
 		// Keep the provider stream unfinished until the test explicitly interrupts it.
-		std::future::pending::<()>().await;
+		future::pending::<()>().await;
 	}
 }
