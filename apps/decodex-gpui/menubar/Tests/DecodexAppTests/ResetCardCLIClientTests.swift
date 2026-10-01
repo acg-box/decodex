@@ -515,7 +515,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 
 	func testResponseSizeIsBoundedBeforeDecoding() async throws {
 		let client = DecodexNativeClient { _, _ in
-			Data(repeating: 0x20, count: 8 * 1024 * 1024 + 1)
+			Data(repeating: 0x20, count: 8 * 1_024 * 1_024 + 1)
 		}
 		do {
 			_ = try await client.accounts()

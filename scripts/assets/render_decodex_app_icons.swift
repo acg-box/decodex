@@ -6,7 +6,7 @@ import Foundation
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let appIconGenerated = root.appendingPathComponent("assets/app-icon/generated")
 let trayIconGenerated = root.appendingPathComponent("assets/tray-icon/generated")
-let canvasSize = 1024
+let canvasSize = 1_024
 
 func bitmap(size: Int = canvasSize, drawing: (CGContext) -> Void) throws -> NSBitmapImageRep {
 	guard let rep = NSBitmapImageRep(

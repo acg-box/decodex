@@ -43,13 +43,13 @@ final class DictationPCMEncoder: @unchecked Sendable {
             for index in 0..<Int(buffer.frameLength) {
                 let value = samples[index].isFinite ? min(1, max(-1, samples[index])) : 0
                 energy += value * value
-                pending.append(Int16(value * (value < 0 ? 32768 : 32767)))
+                pending.append(Int16(value * (value < 0 ? 32_768 : 32_767)))
             }
             if status != .haveData || buffer.frameLength == 0 { break }
         }
         var frames: [Data] = []
-        while pending.count >= 2048 || (final && !pending.isEmpty) {
-            let count = min(2048, pending.count)
+        while pending.count >= 2_048 || (final && !pending.isEmpty) {
+            let count = min(2_048, pending.count)
             let bytes = Array(pending.prefix(count)).map { $0.littleEndian }
             frames.append(bytes.withUnsafeBytes { Data($0) })
             pending.removeFirst(count)
@@ -113,7 +113,7 @@ final class DictationCapture: DictationCapturing {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.active else { return }
                 if frame.first {
-                    let elapsed = Date().timeIntervalSince(self.requestedAt) * 1000
+                    let elapsed = Date().timeIntervalSince(self.requestedAt) * 1_000
                     Self.logger.info("Microphone ready in \(elapsed, privacy: .public) ms")
                     self.emit(["type":"dictation_ready", "capture_ms":elapsed])
                 }
