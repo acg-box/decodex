@@ -7,7 +7,16 @@ use gpui::AnyElement;
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
+	Task, WireText, div, unique_command,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	ClientProfile, Render, Window, px,
+};
 use decodex_protocol::AgentNativeGoalResult as Result;
 use editor::Editor;
 

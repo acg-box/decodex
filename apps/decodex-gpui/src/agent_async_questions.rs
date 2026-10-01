@@ -1,9 +1,17 @@
 //! Nonblocking model questions are explicit user messages, not approval callbacks.
 use std::{cell::RefCell, collections::BTreeMap, mem};
 
-use gpui::{AnyElement, Bounds, Focusable, KeyDownEvent, Point};
+use gpui::{AnyElement, AppContext as _, Bounds, Focusable, KeyDownEvent, Point};
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ComposerInput, Context,
+	Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
+	StatefulInteractiveElement, Styled, SubmitComposer, Window, div, muted, px, rgba,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+};
 use decodex_protocol::{AgentAsyncQuestionDto, HistoryText, WireText};
 
 #[derive(Default)]
@@ -587,9 +595,15 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::async_questions::*;
-
 	use gpui::Focusable;
+
+	use crate::shell::agent_surface::async_questions::{
+		self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
+	};
+	#[cfg(test)]
+	use crate::shell::agent_surface::async_questions::{
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
 
 	#[gpui::test]
 	fn async_cold_restore_waits_for_history_and_prunes_resolved_questions(
@@ -744,7 +758,7 @@ mod tests {
 
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 		surface.read_with(visual, |s, cx| {
@@ -861,7 +875,7 @@ mod tests {
 				.update(cx, |input, cx| input.set_content("Answer draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -916,7 +930,7 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("Keep main draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -942,7 +956,7 @@ mod tests {
 
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -1001,7 +1015,7 @@ mod tests {
 		surface.update(visual, install_question_fixture);
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
 
 			let focus = surface.read_with(cx, |s, cx| {
 				s.async_question_inputs[&("root".into(), "q1".into())].focus_handle(cx)
@@ -1065,10 +1079,16 @@ mod tests {
 			(380.0, 1_200.0, false, true),
 			(1_180.0, 1_200.0, false, true),
 		] {
-			visual.simulate_resize(gpui::size(px(width), px(height)));
+			visual.simulate_resize(gpui::size(
+				async_questions::px(width),
+				async_questions::px(height),
+			));
 
 			visual.update(|window, cx| {
-				assert_eq!(window.viewport_size(), gpui::size(px(width), px(height)));
+				assert_eq!(
+					window.viewport_size(),
+					gpui::size(async_questions::px(width), async_questions::px(height))
+				);
 
 				window.draw(cx).clear();
 
@@ -1079,7 +1099,10 @@ mod tests {
 					if bottom {
 						scroll.scroll_to_bottom();
 					} else {
-						scroll.set_offset(gpui::point(px(0.0), px(0.0)));
+						scroll.set_offset(gpui::point(
+							async_questions::px(0.0),
+							async_questions::px(0.0),
+						));
 					}
 
 					s.feedback.clear();

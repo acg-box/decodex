@@ -647,7 +647,6 @@ mod tests {
 	};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
-
 	use tokio_tungstenite::tungstenite::Message;
 
 	use std::future;

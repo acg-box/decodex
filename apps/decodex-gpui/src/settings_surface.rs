@@ -924,13 +924,14 @@ fn quote_attribution() -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use gpui::AppContext as _;
-
-	use gpui::{self, TestAppContext};
-
-	use crate::settings_surface::*;
-
+	use gpui::{self, AppContext as _, TestAppContext};
 	use ui_theme::window_material::GlassStyle;
+
+	use crate::settings_surface::{
+		self, Context, DesktopSettingsCommandState, DesktopSettingsController,
+		DesktopSettingsLoadState, IntoElement, LaunchAtLoginState, MenuBarRuntimeState,
+		ParentElement, Render, SettingsCategory, SettingsSurface, Styled, Window, ui_theme,
+	};
 
 	#[gpui::test]
 	fn refresh_reads_external_login_item_changes(cx: &mut TestAppContext) {
@@ -949,7 +950,10 @@ mod tests {
 				s.refresh(cx);
 
 				assert_eq!(s.launch_at_login, expected);
-				assert_eq!(s.launch_at_login_detail.as_ref(), launch_at_login_detail(expected));
+				assert_eq!(
+					s.launch_at_login_detail.as_ref(),
+					settings_surface::launch_at_login_detail(expected)
+				);
 				assert!(!s.notifications().iter().any(|(title, _)| *title == "Launch at login"));
 			}
 		});
@@ -981,7 +985,11 @@ mod tests {
 
 		impl Render for ShortSettings {
 			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-				div().w(px(800.)).h(px(300.)).overflow_hidden().child(self.0.clone())
+				settings_surface::div()
+					.w(settings_surface::px(800.))
+					.h(settings_surface::px(300.))
+					.overflow_hidden()
+					.child(self.0.clone())
 			}
 		}
 
@@ -1000,7 +1008,10 @@ mod tests {
 
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position: viewport.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-1_000.))),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(
+				settings_surface::px(0.),
+				settings_surface::px(-1_000.),
+			)),
 			..Default::default()
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
@@ -1027,7 +1038,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(800.), px(700.)));
+			window.resize(gpui::size(settings_surface::px(800.), settings_surface::px(700.)));
 			window.draw(cx).clear();
 		});
 
@@ -1086,7 +1097,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(800.), px(600.)));
+			window.resize(gpui::size(settings_surface::px(800.), settings_surface::px(600.)));
 			window.draw(cx).clear();
 		});
 
@@ -1109,7 +1120,7 @@ mod tests {
 		let (_settings, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_490.0), px(1_055.0)));
+			window.resize(gpui::size(settings_surface::px(1_490.0), settings_surface::px(1_055.0)));
 			window.draw(cx).clear();
 		});
 	}

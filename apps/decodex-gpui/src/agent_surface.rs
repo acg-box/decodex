@@ -2606,16 +2606,20 @@ mod request_source_tests;
 mod wire_test_support;
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::*;
-
-	use decodex_protocol::AgentWorkKindDto;
-
-	use gpui::Focusable;
-
 	use std::{
 		fs,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	};
+
+	use gpui::{AppContext as _, Focusable};
+
+	use crate::shell::agent_surface::{
+		self, AgentActionDto, AgentCommandResponse, AgentDispatchStateDto, AgentHistoryResult,
+		AgentRequestResult, AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto,
+		AgentWorkStatusDto, ClientProfile, ConversationWorkingDirectory, EntityId, HistoryText,
+		LoadState, PendingCommand, WireText,
+	};
+	use decodex_protocol::AgentWorkKindDto;
 
 	struct BubbleGeometry {
 		text: String,
@@ -2664,7 +2668,7 @@ mod tests {
 			notice.kind = "execution_notice".into();
 			notice.text = "Codex warning: Under-development features enabled: chronicle.".into();
 
-			assert!(startup_feature_warning(&notice));
+			assert!(agent_surface::startup_feature_warning(&notice));
 
 			entries.extend([notice.clone(), notice]);
 			s.history_cache.insert("other-agent".into(), history.clone());
@@ -2781,12 +2785,12 @@ mod tests {
 
 	#[test]
 	fn snapshot_poll_requires_a_profile_and_no_in_flight_read() {
-		assert!(should_poll_snapshot(true, &LoadState::Unavailable));
-		assert!(should_poll_snapshot(true, &LoadState::Stale));
-		assert!(should_poll_snapshot(true, &LoadState::Idle));
-		assert!(!should_poll_snapshot(false, &LoadState::Unavailable));
-		assert!(!should_poll_snapshot(true, &LoadState::Loading));
-		assert!(should_poll_snapshot(true, &LoadState::Ready));
+		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Unavailable));
+		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Stale));
+		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Idle));
+		assert!(!agent_surface::should_poll_snapshot(false, &LoadState::Unavailable));
+		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Loading));
+		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Ready));
 	}
 
 	#[gpui::test]
@@ -2873,18 +2877,18 @@ mod tests {
 	#[test]
 	fn approval_buttons_use_only_the_exact_command_request_choices() {
 		assert_eq!(
-			offered_decisions(
+			agent_surface::offered_decisions(
 				"item/commandExecution/requestApproval",
 				r#"{"availableDecisions":["decline","accept","acceptForSession",{"acceptWithExecpolicyAmendment":{}}]}"#
 			),
 			vec!["decline", "accept", "acceptForSession"]
 		);
 		assert_eq!(
-			offered_decisions("item/commandExecution/requestApproval", "{}"),
+			agent_surface::offered_decisions("item/commandExecution/requestApproval", "{}"),
 			vec!["accept", "decline"]
 		);
 		assert!(
-			offered_decisions(
+			agent_surface::offered_decisions(
 				"item/permissions/requestApproval",
 				r#"{"availableDecisions":["accept"]}"#
 			)
@@ -2898,7 +2902,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(320.)));
+		visual.simulate_resize(gpui::size(agent_surface::px(1_400.), agent_surface::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -2913,7 +2917,8 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear());
 
 		surface.update(visual, |s, _| {
-			s.transcript_scroll["agent"].set_offset(gpui::point(px(0.), px(-20.)));
+			s.transcript_scroll["agent"]
+				.set_offset(gpui::point(agent_surface::px(0.), agent_surface::px(-20.)));
 
 			assert!(
 				!s.history_prefetch_needed(),
@@ -3019,7 +3024,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -3103,7 +3108,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(720.0)));
+			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(720.0)));
 			window.draw(cx).clear();
 		});
 	}
@@ -3347,7 +3352,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(720.0)));
+			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(720.0)));
 			window.draw(cx).clear();
 		});
 	}

@@ -111,7 +111,11 @@ impl AccountProfileController {
 
 #[cfg(test)]
 mod tests {
-	use crate::account_profile::*;
+	use crate::account_profile::{
+		AccountProfileController, AccountProfileEmailDto, AccountProfileResult,
+		AccountProfileRouteOutcome, CURRENT_VERSION, EntityId, EntityRevision, QueryPayload,
+		QueryResultEnvelope, QueryResultPayload, ServerId,
+	};
 
 	fn source() -> (AccountProfileController, ServerId, EntityId) {
 		let controller = AccountProfileController::production();

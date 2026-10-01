@@ -2,9 +2,17 @@
 use std::{cell::Cell, mem};
 
 use gpui::AnyElement;
-use ui_theme::USER_MESSAGE_ACTION_SIZE;
+#[cfg(test)] use gpui::AppContext as _;
 
-use crate::shell::agent_surface::*;
+#[cfg(test)] use crate::shell::agent_surface::AgentCommandResponse;
+#[cfg(test)] use crate::shell::agent_surface::EntityId;
+#[cfg(test)] use crate::shell::agent_surface::IdempotencyKey;
+#[cfg(test)] use crate::shell::agent_surface::native_timeline;
+use crate::shell::agent_surface::{
+	AgentHistoryResult, AgentSurface, FluentBuilder, InteractiveElement, IntoElement,
+	ParentElement, PendingCommand, Styled, div, history_entry_with_key, px,
+	ui_theme::USER_MESSAGE_ACTION_SIZE,
+};
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent};
 
 pub(super) struct Preview {

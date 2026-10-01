@@ -442,33 +442,21 @@ mod probe {
 
 // This probe shares the application's package dependency set.
 use decodex_protocol as _;
-
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
-
 use libc as _;
-
 use pulldown_cmark as _;
-
 use reqwest as _;
-
 use serde as _;
-
 use serde_json as _;
-
 use sha2 as _;
-
 use time as _;
-
 use tokio as _;
-
 use unicode_width as _;
-
 #[cfg(target_os = "macos")]
 use {
 	block2 as _, libwebrtc as _, objc2_audio_toolbox as _, objc2_avf_audio as _,
 	objc2_core_audio_types as _, rtrb as _,
 };
-
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
 #[cfg(not(target_os = "macos"))]

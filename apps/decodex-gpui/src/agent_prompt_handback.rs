@@ -3,7 +3,10 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 
-use crate::shell::agent_surface::prompt_edit::*;
+use crate::shell::agent_surface::prompt_edit::{
+	self, AgentActionDto, AgentClient, AgentHistoryResult, AgentSurface, Context,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft, PromptEditPhase,
+};
 use decodex_protocol::AgentTimelineResult;
 
 impl AgentSurface {
@@ -60,7 +63,7 @@ impl AgentSurface {
 										.ok_or("Missing edit receipt")?,
 									review_token: original.review_token.clone(),
 								},
-								IdempotencyKey::new(unique_command())
+								IdempotencyKey::new(prompt_edit::unique_command())
 									.map_err(|_| "Invalid handback identity")?,
 							)
 							.await;
@@ -170,7 +173,8 @@ async fn load_restored_history(
 				work_id: original.work_id.clone(),
 				thread_id: original.thread_id.clone(),
 			},
-			IdempotencyKey::new(unique_command()).map_err(|_| "Invalid recovery identity")?,
+			IdempotencyKey::new(prompt_edit::unique_command())
+				.map_err(|_| "Invalid recovery identity")?,
 		)
 		.await;
 	let (status, content) = client

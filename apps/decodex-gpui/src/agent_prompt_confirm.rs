@@ -7,7 +7,10 @@ use std::{
 
 use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
-use crate::shell::agent_surface::prompt_edit::*;
+use crate::shell::agent_surface::prompt_edit::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft, unique_command,
+};
 use decodex_protocol::{AgentExecutionOverrides, ClientFailure, PromptForkIntent};
 
 type ConfirmationReply = Result<AgentCommandResponse, ClientFailure>;

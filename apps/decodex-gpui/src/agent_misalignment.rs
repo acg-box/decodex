@@ -1,7 +1,15 @@
 //! Review provider findings before an explicit, source-bound continuation.
 use gpui::{AnyElement, KeyDownEvent};
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
+	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, div,
+	muted, px, rgba,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+};
 use decodex_protocol::WireText;
 
 impl AgentSurface {
@@ -121,7 +129,13 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::misalignment::*;
+	use crate::shell::agent_surface::misalignment::{
+		self, AgentHistoryResult, AgentSurface, AgentWorkItemDto,
+	};
+	#[cfg(test)]
+	use crate::shell::agent_surface::misalignment::{
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
 
 	#[gpui::test]
 	fn review_requires_second_click_and_stale_findings_cannot_continue(
@@ -173,7 +187,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(misalignment::px(1_180.0), misalignment::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 

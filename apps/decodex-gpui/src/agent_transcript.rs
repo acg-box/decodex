@@ -10,7 +10,10 @@ use std::{
 use gpui::{AnyElement, ClipboardItem};
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, IntoElement, ParentElement,
+	Styled, div,
+};
 use decodex_protocol::AgentTimelineContent;
 
 impl AgentSurface {
@@ -184,9 +187,9 @@ fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::transcript::*;
-
 	use std::fs;
+
+	use crate::shell::agent_surface::transcript::{self};
 
 	#[test]
 	fn transcript_file_preserves_markdown_and_does_not_overwrite() {
@@ -194,10 +197,10 @@ mod tests {
 		let file = directory.path().join("conversation.md");
 		let text = "# Conversation\n\n中文 **answer**\n```rust\nlet x = 1;\n```\n";
 
-		write_transcript(&file, text).unwrap();
+		transcript::write_transcript(&file, text).unwrap();
 
 		assert_eq!(fs::read_to_string(&file).unwrap(), text);
-		assert!(write_transcript(&file, "replacement").is_err());
+		assert!(transcript::write_transcript(&file, "replacement").is_err());
 		assert_eq!(fs::read_to_string(&file).unwrap(), text);
 	}
 }

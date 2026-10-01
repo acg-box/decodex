@@ -1,9 +1,15 @@
 //! Select native skill references for the existing composer and draft owner.
-use gpui::AnyElement;
+use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
-use ui_theme::TEXT_MUTED;
 
-use crate::shell::agent_surface::*;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
+use crate::shell::agent_surface::{
+	AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory, Entity,
+	EntityId, InteractiveElement, IntoElement, LoadState, ParentElement,
+	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, div, muted, px, rgb,
+	ui_theme::TEXT_MUTED,
+};
 use decodex_protocol::{
 	AgentAttachmentDto, AgentSkillDto, AgentSkillsResult, AgentSkillsTarget, AgentWorkKindDto,
 	InitialModelCatalogRequest, ModelCatalogPurpose,
