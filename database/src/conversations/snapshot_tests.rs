@@ -1,11 +1,23 @@
 //! Commit a second connection's update between the real projection queries.
-use super::{CreateConversationRecord, OrdinaryTaskConversationProjection};
-use crate::{CommandIdentity, SqliteStore};
+use std::{
+	ffi::{CStr, c_int, c_uint, c_void},
+	path::Path,
+	ptr,
+};
+
+use rusqlite::{
+	Connection,
+	ffi::{self, SQLITE_OK, SQLITE_TRACE_PROFILE},
+};
+
+use crate::{
+	CommandIdentity, SqliteStore,
+	conversations::{CreateConversationRecord, OrdinaryTaskConversationProjection},
+};
 use decodex_core::ConversationId;
-use std::ffi::{CStr, c_int, c_uint, c_void};
 
 struct Writer {
-	connection: rusqlite::Connection,
+	connection: Connection,
 	fired: bool,
 	error: Option<String>,
 }
@@ -14,13 +26,12 @@ struct ProjectionProbe {
 	store: SqliteStore,
 	writer: Box<Writer>,
 }
-
 impl ProjectionProbe {
-	fn install(store: &SqliteStore, path: &std::path::Path) -> Self {
+	fn install(store: &SqliteStore, path: &Path) -> Self {
 		let mut probe = Self {
 			store: store.clone(),
 			writer: Box::new(Writer {
-				connection: rusqlite::Connection::open(path).expect("second database connection"),
+				connection: Connection::open(path).expect("second database connection"),
 				fired: false,
 				error: None,
 			}),
@@ -32,15 +43,15 @@ impl ProjectionProbe {
 				// SAFETY: the boxed writer stays at this address until Drop unregisters the
 				// callback. The test accesses it only before or after the awaited store read.
 				let status = unsafe {
-					rusqlite::ffi::sqlite3_trace_v2(
+					ffi::sqlite3_trace_v2(
 						connection.handle(),
-						rusqlite::ffi::SQLITE_TRACE_PROFILE as c_uint,
+						SQLITE_TRACE_PROFILE as c_uint,
 						Some(commit_after_metadata),
-						std::ptr::from_mut(probe.writer.as_mut()).cast(),
+						ptr::from_mut(probe.writer.as_mut()).cast(),
 					)
 				};
 
-				assert_eq!(status, rusqlite::ffi::SQLITE_OK);
+				assert_eq!(status, SQLITE_OK);
 
 				Ok(())
 			})
@@ -57,12 +68,7 @@ impl Drop for ProjectionProbe {
 				// SAFETY: the retained store keeps this handle alive. Disable the callback
 				// before its boxed context is dropped, including during assertion unwinding.
 				unsafe {
-					rusqlite::ffi::sqlite3_trace_v2(
-						connection.handle(),
-						0,
-						None,
-						std::ptr::null_mut(),
-					);
+					ffi::sqlite3_trace_v2(connection.handle(), 0, None, ptr::null_mut());
 				}
 
 				Ok(())
@@ -80,7 +86,7 @@ unsafe extern "C" fn commit_after_metadata(
 	// SAFETY: SQLite supplies the installed context and active statement for a
 	// PROFILE callback. ProjectionProbe keeps the context alive until unregistering.
 	let writer = unsafe { &mut *context.cast::<Writer>() };
-	let sql = unsafe { rusqlite::ffi::sqlite3_sql(statement.cast()) };
+	let sql = unsafe { ffi::sqlite3_sql(statement.cast()) };
 
 	if writer.fired || sql.is_null() {
 		return 0;
