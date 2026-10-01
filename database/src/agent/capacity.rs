@@ -18,61 +18,6 @@ pub struct AgentCapacityRetry {
 	pub due_at_micros: i64,
 }
 
-fn retry_row(row: &Row<'_>) -> rusqlite::Result<AgentCapacityRetry> {
-	Ok(AgentCapacityRetry {
-		event_id: row.get("event_id")?,
-		work_item_id: row.get("work_item_id")?,
-		failed_turn_id: row.get("failed_turn_id")?,
-		attempt: row.get("attempt")?,
-		due_at_micros: row.get("due_at_micros")?,
-	})
-}
-
-pub(super) fn next_retry(
-	connection: &Connection,
-	work: &str,
-	turn: &str,
-	now: i64,
-) -> Result<Option<(i64, i64)>, StoreError> {
-	let previous: Option<i64> = connection.query_row("SELECT attempt FROM agent_capacity_retries WHERE work_item_id=?1 AND retry_turn_id=?2 AND state='submitted'",rusqlite::params![work,turn],|row| row.get(0)).optional().map_err(error::sqlite_error)?;
-	let attempt = previous.unwrap_or(0) + 1;
-	let delay = match attempt {
-		1 => 15_000_000,
-		2 => 30_000_000,
-		3 => 60_000_000,
-		_ => return Ok(None),
-	};
-
-	Ok(Some((
-		attempt,
-		now.checked_add(delay).ok_or(StoreError::InvalidInput("retry deadline overflow"))?,
-	)))
-}
-
-pub(crate) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
-	cancel_pending_with_note(
-		connection,
-		work,
-		"Automatic retry cancelled or superseded by new input.",
-	)
-}
-
-fn cancel_pending_with_note(
-	connection: &Connection,
-	work: &str,
-	note: &str,
-) -> Result<(), StoreError> {
-	connection.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note=?3, disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM agent_capacity_retries WHERE work_item_id=?1 AND state='pending')",rusqlite::params![work,crate::unix_micros()?,note]).map_err(error::sqlite_error)?;
-	connection
-		.execute(
-			"UPDATE agent_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",
-			[work],
-		)
-		.map_err(error::sqlite_error)?;
-
-	Ok(())
-}
-
 impl SqliteStore {
 	/// A native revert invalidates pending continuation intent, not claimed delivery receipts.
 	/// Do not publish a worker completion or wake its manager for this history observation.
@@ -188,4 +133,59 @@ impl SqliteStore {
             tx.commit().map_err(error::sqlite_error)?; Ok(())
         }).await
 	}
+}
+
+pub(crate) fn cancel_pending(connection: &Connection, work: &str) -> Result<(), StoreError> {
+	cancel_pending_with_note(
+		connection,
+		work,
+		"Automatic retry cancelled or superseded by new input.",
+	)
+}
+
+pub(super) fn next_retry(
+	connection: &Connection,
+	work: &str,
+	turn: &str,
+	now: i64,
+) -> Result<Option<(i64, i64)>, StoreError> {
+	let previous: Option<i64> = connection.query_row("SELECT attempt FROM agent_capacity_retries WHERE work_item_id=?1 AND retry_turn_id=?2 AND state='submitted'",rusqlite::params![work,turn],|row| row.get(0)).optional().map_err(error::sqlite_error)?;
+	let attempt = previous.unwrap_or(0) + 1;
+	let delay = match attempt {
+		1 => 15_000_000,
+		2 => 30_000_000,
+		3 => 60_000_000,
+		_ => return Ok(None),
+	};
+
+	Ok(Some((
+		attempt,
+		now.checked_add(delay).ok_or(StoreError::InvalidInput("retry deadline overflow"))?,
+	)))
+}
+
+fn retry_row(row: &Row<'_>) -> rusqlite::Result<AgentCapacityRetry> {
+	Ok(AgentCapacityRetry {
+		event_id: row.get("event_id")?,
+		work_item_id: row.get("work_item_id")?,
+		failed_turn_id: row.get("failed_turn_id")?,
+		attempt: row.get("attempt")?,
+		due_at_micros: row.get("due_at_micros")?,
+	})
+}
+
+fn cancel_pending_with_note(
+	connection: &Connection,
+	work: &str,
+	note: &str,
+) -> Result<(), StoreError> {
+	connection.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note=?3, disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND id IN (SELECT event_id FROM agent_capacity_retries WHERE work_item_id=?1 AND state='pending')",rusqlite::params![work,crate::unix_micros()?,note]).map_err(error::sqlite_error)?;
+	connection
+		.execute(
+			"UPDATE agent_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",
+			[work],
+		)
+		.map_err(error::sqlite_error)?;
+
+	Ok(())
 }
