@@ -1,5 +1,34 @@
-use super::*;
-use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent};
+use crate::{
+	AgentDispatchState, AgentPromptEditAttempt, AgentPromptUpload, AgentWorkItem, AgentWorkKind,
+	AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
+};
+use decodex_core::{BlobHash, MAX_NATIVE_MESSAGE_BYTES};
+
+fn attempt() -> AgentPromptEditAttempt {
+	AgentPromptEditAttempt {
+		work: "task".into(),
+		thread: "native".into(),
+		generation: None,
+		review_token: "a".repeat(64),
+		attempt_id: "attempt".into(),
+		before_turn_id: "edit".into(),
+		item_id: "input".into(),
+		turn_ids: vec!["prefix".into(), "edit".into(), "suffix".into()],
+		content: vec![
+			serde_json::json!({"type":"text","text":"Use $skill","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"skill"}]}),
+			serde_json::json!({"type":"localImage","path":"/fixture/image.png"}),
+		],
+	}
+}
+
+fn input(id: &str) -> EnqueueAgentEvent {
+	EnqueueAgentEvent {
+		source_event_id: id.into(),
+		work_item_id: "task".into(),
+		event_kind: "user_message".into(),
+		payload: serde_json::json!({"text":"New input"}).to_string(),
+	}
+}
 
 #[tokio::test]
 async fn upload_acknowledgements_survive_restart_without_repeating_input_submission() {
@@ -14,25 +43,25 @@ async fn upload_acknowledgements_survive_restart_without_repeating_input_submiss
 	store.observe_agent_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
 
 	let content = vec![
-		json!({"type":"text","text":"界\\\"".repeat(12000)}),
-		json!({"type":"image","fileId":"native-image"}),
+		serde_json::json!({"type":"text","text":"界\\\"".repeat(12_000)}),
+		serde_json::json!({"type":"image","fileId":"native-image"}),
 	];
 	let bytes = serde_json::to_string(&content).unwrap();
-	let upload = crate::AgentPromptUpload {
+	let upload = AgentPromptUpload {
 		upload_id: "upload".into(),
 		work: "task".into(),
 		thread: "native".into(),
 		edit_receipt_id: receipt,
-		sha256: decodex_core::BlobHash::digest(bytes.as_bytes()).to_hex(),
+		sha256: BlobHash::digest(bytes.as_bytes()).to_hex(),
 		total_bytes: bytes.len() as i64,
 	};
-	let mut cut = 60000;
+	let mut cut = 60_000;
 
 	while !bytes.is_char_boundary(cut) {
 		cut -= 1;
 	}
 
-	assert!(bytes.len() - cut <= 65536);
+	assert!(bytes.len() - cut <= 65_536);
 	assert!(store.append_agent_prompt_chunk(upload.clone(), 1, "[".into()).await.is_err());
 	assert_eq!(
 		store.append_agent_prompt_chunk(upload.clone(), 0, bytes[..cut].into()).await.unwrap(),
@@ -87,13 +116,13 @@ async fn a_bad_final_chunk_is_not_acknowledged_or_committed() {
 
 	store.observe_agent_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
 
-	let bytes = json!([{"type":"text","text":"original"}]).to_string();
-	let upload = crate::AgentPromptUpload {
+	let bytes = serde_json::json!([{"type":"text","text":"original"}]).to_string();
+	let upload = AgentPromptUpload {
 		upload_id: "upload".into(),
 		work: "task".into(),
 		thread: "native".into(),
 		edit_receipt_id: receipt,
-		sha256: decodex_core::BlobHash::digest(bytes.as_bytes()).to_hex(),
+		sha256: BlobHash::digest(bytes.as_bytes()).to_hex(),
 		total_bytes: bytes.len() as i64,
 	};
 
@@ -123,9 +152,9 @@ async fn canonical_prompt_input_is_durable_immutable_and_never_a_wake_event() {
 
 	let receipt = store.reserve_agent_prompt_edit(attempt()).await.unwrap().unwrap();
 	let content = vec![
-		json!({"type":"text","text":"Edited — 保留","text_elements":[]}),
-		json!({"type":"image","fileId":"native-file","detail":"original"}),
-		json!({"type":"mention","name":"App","path":"app://exact-id"}),
+		serde_json::json!({"type":"text","text":"Edited — 保留","text_elements":[]}),
+		serde_json::json!({"type":"image","fileId":"native-file","detail":"original"}),
+		serde_json::json!({"type":"mention","name":"App","path":"app://exact-id"}),
 	];
 
 	assert!(
@@ -213,7 +242,7 @@ async fn canonical_prompt_input_is_durable_immutable_and_never_a_wake_event() {
 
 	let mut changed = content;
 
-	changed[0]["text"] = json!("Another explicit edit");
+	changed[0]["text"] = serde_json::json!("Another explicit edit");
 
 	let next = store
 		.retain_agent_prompt_input("task".into(), "native".into(), receipt, changed)
@@ -236,7 +265,7 @@ async fn canonical_prompt_input_retains_large_media_and_rejects_oversized_conten
 	store.observe_agent_prompt_edit(receipt, None, vec!["prefix".into()]).await.unwrap();
 
 	let content = vec![
-		json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(1024 * 1024))}),
+		serde_json::json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(1_024 * 1_024))}),
 	];
 	let saved = store
 		.retain_agent_prompt_input("task".into(), "native".into(), receipt, content.clone())
@@ -251,7 +280,7 @@ async fn canonical_prompt_input_retains_large_media_and_rejects_oversized_conten
 				"native".into(),
 				receipt,
 				vec![
-					json!({"type":"text","text":"x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES)})
+					serde_json::json!({"type":"text","text":"x".repeat(MAX_NATIVE_MESSAGE_BYTES)})
 				]
 			)
 			.await
@@ -262,22 +291,6 @@ async fn canonical_prompt_input_retains_large_media_and_rejects_oversized_conten
 	);
 }
 
-fn attempt() -> AgentPromptEditAttempt {
-	AgentPromptEditAttempt {
-		work: "task".into(),
-		thread: "native".into(),
-		generation: None,
-		review_token: "a".repeat(64),
-		attempt_id: "attempt".into(),
-		before_turn_id: "edit".into(),
-		item_id: "input".into(),
-		turn_ids: vec!["prefix".into(), "edit".into(), "suffix".into()],
-		content: vec![
-			json!({"type":"text","text":"Use $skill","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"skill"}]}),
-			json!({"type":"localImage","path":"/fixture/image.png"}),
-		],
-	}
-}
 async fn seed(store: &SqliteStore, id: &str, thread: &str) {
 	store
 		.create_agent_work_item(AgentWorkItem {
@@ -298,15 +311,6 @@ async fn seed(store: &SqliteStore, id: &str, thread: &str) {
 		.unwrap();
 	store.bind_agent_thread(id.into(), thread.into()).await.unwrap();
 }
-fn input(id: &str) -> EnqueueAgentEvent {
-	EnqueueAgentEvent {
-		source_event_id: id.into(),
-		work_item_id: "task".into(),
-		event_kind: "user_message".into(),
-		payload: json!({"text":"New input"}).to_string(),
-	}
-}
-
 #[tokio::test]
 async fn restart_keeps_unknown_edit_fenced_until_exact_prefix_and_draft_release() {
 	let dir = tempfile::tempdir().unwrap();
