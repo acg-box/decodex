@@ -1,13 +1,16 @@
 //! Discrete reasoning slider. Values come from the selected model's capabilities.
 use gpui::{
 	AnyElement, App, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-	RenderOnce, Window, canvas, relative,
+	RenderOnce, Window,
 };
 
 use crate::{
-	shell::agent_surface::composer::controls::{
-		AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
-		StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme::TEXT,
+	shell::agent_surface::composer::{
+		controls,
+		controls::{
+			AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
+			StatefulInteractiveElement, Styled, level_label, px, ui_theme::TEXT,
+		},
 	},
 	ui_motion,
 };
@@ -30,18 +33,18 @@ impl AgentSurface {
 	}
 
 	fn configured_effort_label(&self) -> AnyElement {
-		div()
+		controls::div()
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
 			.text_size(px(12.))
-			.text_color(rgb(TEXT))
+			.text_color(controls::rgb(TEXT))
 			.child(format!("{} · configured", level_label(&self.composer_effort_value())))
 			.into_any_element()
 	}
 
 	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.root_id().is_none() && self.creation_inherit_effort {
-			return div().child("Inherited from native configuration").into_any_element();
+			return controls::div().child("Inherited from native configuration").into_any_element();
 		}
 
 		self.explicit_effort_scale(cx)
@@ -61,23 +64,23 @@ impl AgentSurface {
 		let measured = cx.entity().downgrade();
 		let events = measured.clone();
 
-		div()
+		controls::div()
 			.px(px(7.))
 			.py(px(3.))
 			.flex()
 			.items_center()
 			.gap(px(8.))
 			.child(
-				div()
+				controls::div()
 					.min_w(px(54.))
 					.flex_none()
 					.text_size(px(12.))
 					.whitespace_nowrap()
-					.text_color(rgb(TEXT))
+					.text_color(controls::rgb(TEXT))
 					.child(level_label(&self.composer_effort_value())),
 			)
 			.child(
-				div()
+				controls::div()
 					.id("reasoning-slider")
 					.debug_selector(|| "reasoning-slider".into())
 					.role(Role::Slider)
@@ -130,7 +133,7 @@ impl AgentSurface {
 						cx.notify();
 					}))
 					.child(
-						canvas(
+						gpui::canvas(
 							move |bounds, _, cx| {
 								let _ = measured
 									.update(cx, |s, _| s.effort_track_bounds = Some(bounds));
@@ -198,7 +201,7 @@ impl RenderOnce for SliderTrack {
 			ui_motion::value("reasoning-hover-motion", if active { 1. } else { 0. }, window, cx);
 		let thumb = 12. + 2. * feedback;
 
-		div()
+		controls::div()
 			.id("reasoning-feedback")
 			.absolute()
 			.inset_0()
@@ -210,46 +213,46 @@ impl RenderOnce for SliderTrack {
 				})
 			})
 			.child(
-				div()
+				controls::div()
 					.absolute()
 					.left_0()
 					.right_0()
 					.top(px(10. - feedback * 0.5))
 					.h(px(4. + feedback))
 					.rounded_full()
-					.bg(rgba(0xffffff18)),
+					.bg(controls::rgba(0xffffff18)),
 			)
 			.child(
-				div()
+				controls::div()
 					.absolute()
 					.left_0()
 					.top(px(10. - feedback * 0.5))
-					.w(relative(fraction))
+					.w(gpui::relative(fraction))
 					.h(px(4. + feedback))
 					.rounded_full()
-					.bg(rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
+					.bg(controls::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
 			)
 			.children((0..self.count).map(|i| {
-				div()
+				controls::div()
 					.absolute()
-					.left(relative(i as f32 / self.count.saturating_sub(1).max(1) as f32))
+					.left(gpui::relative(i as f32 / self.count.saturating_sub(1).max(1) as f32))
 					.top(px(20.))
 					.ml(px(-1.))
 					.w(px(2.))
 					.h(px(3.))
 					.rounded_full()
-					.bg(rgba(0xd5d5da85))
+					.bg(controls::rgba(0xd5d5da85))
 			}))
 			.child(
-				div()
+				controls::div()
 					.absolute()
-					.left(relative(fraction))
+					.left(gpui::relative(fraction))
 					.top(px(12. - thumb / 2.))
 					.ml(px(-thumb / 2.))
 					.w(px(thumb))
 					.h(px(thumb))
 					.rounded_full()
-					.bg(rgb(0xe7e7ea)),
+					.bg(controls::rgb(0xe7e7ea)),
 			)
 	}
 }
@@ -259,12 +262,14 @@ fn index_at(position: f32, count: usize) -> usize {
 }
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::composer::controls::effort_slider::{index_at, *};
-	use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
+	use std::thread;
 
 	use gpui::AppContext;
 
-	use std::thread;
+	use crate::shell::agent_surface::composer::controls::effort_slider::{
+		self, AgentSurface, MouseButton,
+	};
+	use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
 
 	#[gpui::test]
 	fn real_slider_drag_and_outside_dismiss(cx: &mut gpui::TestAppContext) {
@@ -272,7 +277,7 @@ mod tests {
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(900.)));
+		visual.simulate_resize(gpui::size(effort_slider::px(1_400.), effort_slider::px(900.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -327,16 +332,16 @@ mod tests {
 			assert_eq!(s.effort, Effort::High);
 		});
 		visual.simulate_mouse_move(
-			gpui::point(bounds.right() + px(30.), start.y),
+			gpui::point(bounds.right() + effort_slider::px(30.), start.y),
 			MouseButton::Left,
 			Default::default(),
 		);
 		surface.update(visual, |s, _| {
 			assert_eq!(s.effort, Effort::Persistent);
-			assert_eq!(level_label(s.effort.as_str()), "Persistent");
+			assert_eq!(effort_slider::level_label(s.effort.as_str()), "Persistent");
 		});
 		visual.simulate_mouse_move(
-			gpui::point(bounds.left() - px(30.), start.y),
+			gpui::point(bounds.left() - effort_slider::px(30.), start.y),
 			MouseButton::Left,
 			Default::default(),
 		);
@@ -367,7 +372,7 @@ mod tests {
 			w.draw(cx).clear();
 		});
 		visual.simulate_mouse_down(
-			gpui::point(px(400.), px(200.)),
+			gpui::point(effort_slider::px(400.), effort_slider::px(200.)),
 			MouseButton::Left,
 			Default::default(),
 		);
@@ -409,7 +414,7 @@ mod tests {
 			s.set_effort_position(1.0, cx);
 
 			assert_eq!(s.effort, custom);
-			assert_eq!(level_label(s.effort.as_str()), "provider-defined-effort");
+			assert_eq!(effort_slider::level_label(s.effort.as_str()), "provider-defined-effort");
 			assert_eq!(s.draft_profiles.execution.choice("agent").reasoning_effort, Some(custom));
 			assert!(s.composer_capability_error(cx).is_none());
 		});
@@ -417,11 +422,11 @@ mod tests {
 
 	#[test]
 	fn slider_snaps_and_clamps_to_supported_stops() {
-		assert_eq!(index_at(-1., 5), 0);
-		assert_eq!(index_at(0.37, 5), 1);
-		assert_eq!(index_at(0.38, 5), 2);
-		assert_eq!(index_at(1.5, 5), 4);
-		assert_eq!(index_at(0.9, 1), 0);
-		assert_eq!(index_at(0.9, 0), 0);
+		assert_eq!(effort_slider::index_at(-1., 5), 0);
+		assert_eq!(effort_slider::index_at(0.37, 5), 1);
+		assert_eq!(effort_slider::index_at(0.38, 5), 2);
+		assert_eq!(effort_slider::index_at(1.5, 5), 4);
+		assert_eq!(effort_slider::index_at(0.9, 1), 0);
+		assert_eq!(effort_slider::index_at(0.9, 0), 0);
 	}
 }

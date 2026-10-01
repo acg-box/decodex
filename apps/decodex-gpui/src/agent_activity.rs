@@ -830,12 +830,9 @@ fn current_mark(positions: &[f32], offset: f32) -> usize {
 mod tests {
 	use std::thread;
 
-	use crate::shell::agent_surface::{
-		activity,
-		activity::{
-			AgentHistoryResult, AgentSurface, BTreeMap, HistoryKey, HistoryScrollAnchor,
-			WheelScroll,
-		},
+	use crate::shell::agent_surface::activity::{
+		self, AgentHistoryResult, AgentSurface, BTreeMap, HistoryKey, HistoryScrollAnchor,
+		WheelScroll,
 	};
 
 	#[gpui::test]

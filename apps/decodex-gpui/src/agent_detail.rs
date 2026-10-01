@@ -342,17 +342,14 @@ impl AgentSurface {
 mod tests {
 	use std::thread;
 
+	use crate::shell::agent_surface::detail::{
+		self, AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
+		EntityId,
+	};
 	#[cfg(test)]
 	use crate::shell::agent_surface::detail::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
 		LoadState, native_timeline,
-	};
-	use crate::shell::agent_surface::{
-		detail,
-		detail::{
-			AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
-			EntityId,
-		},
 	};
 
 	fn prepare_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {

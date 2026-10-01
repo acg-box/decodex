@@ -914,10 +914,9 @@ mod tests {
 		ConversationWorkingDirectory, IdempotencyKey, LoadState,
 	};
 	use crate::shell::agent_surface::drafts::{
-		storage,
 		storage::{
-			AgentSurface, ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, Drafts,
-			Duration, EntityId, PendingCommand, SaveFailure, Storage, WireText,
+			self, AgentSurface, ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft,
+			Drafts, Duration, EntityId, PendingCommand, SaveFailure, Storage, WireText,
 		},
 		tests,
 	};

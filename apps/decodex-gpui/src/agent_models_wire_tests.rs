@@ -13,9 +13,8 @@ use crate::shell::agent_surface::models::{
 	AgentDispatchStateDto, AgentSnapshotResult, ClientProfile, Entity, Render, Window, WireText,
 };
 use crate::shell::agent_surface::{
-	models,
 	models::{
-		AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
+		self, AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
 		Context, ConversationModel, ConversationReasoningEffort, EntityId, IntoElement, Outcome,
 		State,
 	},
