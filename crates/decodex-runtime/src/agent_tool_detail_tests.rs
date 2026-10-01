@@ -1,4 +1,4 @@
-use crate::agent_detail::*;
+use crate::agent_detail::{self, AgentActivityDetailResult, Value};
 
 fn history(item: Value) -> Value {
 	serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}})
@@ -16,13 +16,13 @@ fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
 		{"type":"audio","data":"RAW_AUDIO_DO_NOT_RENDER"},
 		{"type":"future","text":"Future result","value":42}
 	]},"error":{"message":"Trailing failure diagnostic"}});
-	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(item), "thread", "turn", "item").unwrap();
 	let mut combined = String::new();
 	let mut cursor = None;
 
 	loop {
 		let AgentActivityDetailResult::Available { text, next, .. } =
-			page(&text, "scope", cursor.as_ref()).unwrap()
+			agent_detail::page(&text, "scope", cursor.as_ref()).unwrap()
 		else {
 			panic!("page")
 		};
@@ -63,7 +63,7 @@ fn structured_only_result_and_public_siblings_remain_visible() {
 		{"type":"text","text":"Bearer fixture-private-access-token-123456789"},
 		{"type":"text","text":"Public result"}
 	],"structuredContent":{"count":3,"items":["one","two","three"]},"_meta":{"private":"META_DO_NOT_RENDER"}}});
-	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(item), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("[Sensitive content omitted]"));
 	assert!(text.contains("Public result"));
@@ -73,7 +73,11 @@ fn structured_only_result_and_public_siblings_remain_visible() {
 
 	let item = serde_json::json!({"id":"item","type":"mcpToolCall","result":{"content":[],"structuredContent":{"count":0}}});
 
-	assert!(project_text(&history(item), "thread", "turn", "item").unwrap().contains("count"));
+	assert!(
+		agent_detail::project_text(&history(item), "thread", "turn", "item")
+			.unwrap()
+			.contains("count")
+	);
 }
 
 #[test]
@@ -84,7 +88,7 @@ fn dynamic_media_and_malformed_blocks_do_not_disappear() {
 		{"type":"inputAudio","audioUrl":"data:audio/wav;base64,RAW_DO_NOT_RENDER"},
 		{"type":"text","unexpected":"Malformed text result"}
 	]});
-	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(item), "thread", "turn", "item").unwrap();
 
 	for expected in [
 		"fixture",
@@ -110,7 +114,8 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 	 {"type":"input_text","text":"Bearer fixture-private-access-token-123456789"},
 	 {"type":"input_text","text":"Public tail"}
 	]});
-	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	let text =
+		agent_detail::project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
 
 	assert!(text.starts_with("tools/result"));
 	assert!(text.contains(&long));
@@ -123,7 +128,7 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 
 	loop {
 		let AgentActivityDetailResult::Available { text: chunk, next, .. } =
-			page(&text, "scope", cursor.as_ref()).unwrap()
+			agent_detail::page(&text, "scope", cursor.as_ref()).unwrap()
 		else {
 			panic!("page")
 		};
@@ -146,14 +151,16 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 	scalar["output"] = serde_json::json!("Plain result");
 
 	assert!(
-		project_text(&history(scalar), "thread", "turn", "item").unwrap().ends_with("Plain result")
+		agent_detail::project_text(&history(scalar), "thread", "turn", "item")
+			.unwrap()
+			.ends_with("Plain result")
 	);
 }
 
 #[test]
 fn image_path_and_app_context_are_descriptive_native_evidence() {
 	let item = serde_json::json!({"id":"item","type":"imageView","path":"/remote/image.png"});
-	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(item), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("/remote/image.png"));
 	assert!(text.contains("does not identify the executor"));
@@ -162,7 +169,8 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
   "connectorId":"app-fixture","appName":"Calendar","actionName":"Read event",
   "linkId":"link-fixture","resourceUri":"ui://event","private":"RAW_DO_NOT_RENDER"
  },"arguments":{"link_id":"ARGUMENT_MUST_NOT_AUTHORIZE"},"result":{"content":[{"type":"text","text":"Event found"}]}});
-	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	let text =
+		agent_detail::project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
 
 	for expected in [
 		"App: Calendar",
@@ -187,7 +195,7 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 	partial["appContext"] =
 		serde_json::json!({"appName":"Calendar","linkId":false,"resourceUri":null});
 
-	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(partial), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("App: Calendar"));
 	assert!(!text.contains("Link:"));
@@ -197,7 +205,8 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 #[test]
 fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
 	let item = serde_json::json!({"id":"item","type":"dynamicToolCall","tool":"read","arguments":{"path":"src/main.rs","lines":10},"contentItems":[{"type":"text","text":"Result"}]});
-	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	let text =
+		agent_detail::project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("Input\n{\n"));
 	assert!(text.contains("src/main.rs"));
@@ -207,7 +216,7 @@ fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
 	sensitive["arguments"] =
 		serde_json::json!({"token":"Bearer fixture-private-access-token-123456789"});
 
-	let text = project_text(&history(sensitive), "thread", "turn", "item").unwrap();
+	let text = agent_detail::project_text(&history(sensitive), "thread", "turn", "item").unwrap();
 
 	assert!(!text.contains("fixture-private-access-token"));
 	assert!(text.contains("[Sensitive content omitted]"));

@@ -1,14 +1,28 @@
 //! Exercise the production refresh response owner with synthetic credentials only.
 #[path = "process_refresh_native_tests.rs"] mod native;
 
+#[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
 use std::sync::{
 	Mutex,
 	atomic::{AtomicUsize, Ordering},
 };
 
-use serde_json::Value;
-
-use crate::account_launch::process::*;
+use crate::account_launch::process::{
+	AccountBinding, AccountId, AccountRefreshCallback, Arc, ChatgptRefreshProjection,
+	CredentialVaultError, Duration, Path, PathBuf, ProbeError, ProcessGenerationAccountBinding,
+	SupervisedProcess, Write, Zeroizing,
+	serde_json::{self, Value},
+	str,
+};
+#[cfg(target_os = "linux")]
+use crate::account_launch::process::{
+	F_ADD_SEALS, F_GET_SEALS, F_SEAL_EXEC, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
+	MFD_ALLOW_SEALING, MFD_CLOEXEC, MFD_EXEC, linux_execution_path,
+};
+#[cfg(not(target_os = "macos"))]
+use crate::account_launch::process::{
+	configured_app_server_process, configured_attested_app_server_process,
+};
 use decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,

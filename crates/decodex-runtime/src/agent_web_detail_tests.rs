@@ -1,16 +1,18 @@
 //! Native web actions and opaque results survive the exact-item detail projection.
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use crate::agent_detail::*;
+use crate::agent_detail::{self, AgentActivityDetailResult, AppServerClient, Value};
 
 fn detail(mut item: Value) -> (String, bool) {
 	item["id"] = serde_json::json!("i");
 	item["type"] = serde_json::json!("webSearch");
 
 	let history = serde_json::json!({"thread":{"id":"t","turns":[{"id":"u","items":[item]}]}});
-	let Some(AgentActivityDetailResult::Available { text, truncated, .. }) =
-		page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
-	else {
+	let Some(AgentActivityDetailResult::Available { text, truncated, .. }) = agent_detail::page(
+		&agent_detail::project_text(&history, "t", "u", "i").unwrap(),
+		"scope",
+		None,
+	) else {
 		panic!("web detail")
 	};
 
@@ -73,12 +75,12 @@ fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
 	let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{
 		"id":"patch","type":"fileChange","changes":[{"path":"file.rs","kind":{"type":"update"},"diff":diff}]
 	}]}]}});
-	let text = project_text(&history, "thread", "turn", "patch").unwrap();
+	let text = agent_detail::project_text(&history, "thread", "turn", "patch").unwrap();
 	let mut cursor = None;
 	let mut complete = String::new();
 
 	loop {
-		let result = page(&text, "source-a", cursor.as_ref()).unwrap();
+		let result = agent_detail::page(&text, "source-a", cursor.as_ref()).unwrap();
 
 		assert!(serde_json::to_vec(&result).unwrap().len() < 60 * 1_024);
 
@@ -98,18 +100,18 @@ fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
 		};
 
 		assert_eq!(next.offset as usize, complete.len());
-		assert!(page(&text, "source-b", Some(&next)).is_none());
-		assert!(page(&format!("{text}changed"), "source-a", Some(&next)).is_none());
+		assert!(agent_detail::page(&text, "source-b", Some(&next)).is_none());
+		assert!(agent_detail::page(&format!("{text}changed"), "source-a", Some(&next)).is_none());
 
 		let mut invalid = next.clone();
 
 		invalid.offset = u32::try_from(text.len() + 1).unwrap();
 
-		assert!(page(&text, "source-a", Some(&invalid)).is_none());
+		assert!(agent_detail::page(&text, "source-a", Some(&invalid)).is_none());
 
 		invalid.offset = u32::try_from(text.find('界').unwrap() + 1).unwrap();
 
-		assert!(page(&text, "source-a", Some(&invalid)).is_none());
+		assert!(agent_detail::page(&text, "source-a", Some(&invalid)).is_none());
 
 		cursor = Some(next);
 	}
@@ -154,7 +156,7 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 		}
 	});
 	let AgentActivityDetailResult::Available { text, truncated, .. } =
-		read(&client, "thread", "turn", "web").await
+		agent_detail::read(&client, "thread", "turn", "web").await
 	else {
 		panic!("native detail")
 	};

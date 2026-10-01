@@ -3,7 +3,9 @@ use std::{env, fs};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::catalog_auth::*;
+use crate::account_launch::agent_process::native_tests::catalog_auth::{
+	self, Arc, AuthSession, Duration, Mutex,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native creation defaults"]
@@ -20,7 +22,7 @@ async fn installed_creation_defaults_use_the_requested_trusted_directory() {
         let listener=TcpListener::bind("127.0.0.1:0").await.expect("listener");
         let address=listener.local_addr().expect("address");
         let calls=Arc::new(Mutex::new(Vec::new()));
-        let server=tokio::spawn(serve(listener,calls.clone()));
+        let server=tokio::spawn(catalog_auth::serve(listener,calls.clone()));
 
         fs::write(root.join("config.toml"),format!("model=\"global-model\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n[projects.{}]\ntrust_level=\"trusted\"\n",serde_json::json!(workspace))).expect("global config");
         fs::write(workspace.join(".codex/config.toml"),"model=\"project-model\"\nmodel_reasoning_effort=\"high\"\nservice_tier=\"flex\"\n").expect("project config");

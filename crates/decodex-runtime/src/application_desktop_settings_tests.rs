@@ -1,5 +1,9 @@
 //! Exercise the settings command owner without a native process or provider.
-use crate::application::*;
+
+use crate::application::{
+	CommandEnvelope, CommandPayload, ConversationCapability, DesktopSettingsResult, DoctorCheck,
+	DoctorReport, EventPayload, ProductStore, ResultPayload, ServiceApplication, SqliteStore,
+};
 use decodex_core::DecodexRoot;
 use decodex_protocol::{
 	CURRENT_VERSION, ClientCommandId, ConversationUnavailableReason, CorrelationId,

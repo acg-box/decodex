@@ -1,7 +1,10 @@
 //! Reopen and verify actual stored provider outcomes, including missing evidence.
 use rusqlite::Connection;
 
-use crate::application::turn_outcomes::*;
+use crate::application::turn_outcomes::{
+	self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
+	ConversationTurnOutcomeState, ProductStore, TurnId,
+};
 use decodex_core::{
 	DecodexRoot, ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence,
 	ProviderRequestId, ProviderRequestKey, ProviderTerminalOutcome,
@@ -26,7 +29,7 @@ fn seed(root: &DecodexRoot, request: &ConversationTurnOutcomeRequest) {
 		.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
 		.unwrap();
 
-	let id = ordinary_provider_attempt_id(
+	let id = turn_outcomes::ordinary_provider_attempt_id(
 		request.idempotency_key.as_str(),
 		&TurnId::new(request.turn_id.as_str()).unwrap(),
 	)
@@ -73,7 +76,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 		};
 
 		assert_eq!(
-			query_turn_outcome(&owner, &request).await,
+			turn_outcomes::query_turn_outcome(&owner, &request).await,
 			observed(ConversationTurnOutcomeState::Unknown),
 			"local failed turn is not provider failure"
 		);
@@ -83,11 +86,11 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 		foreign.conversation_id = EntityId::new("44000000-0000-4000-8000-000000000099").unwrap();
 
 		assert_eq!(
-			query_turn_outcome(&owner, &foreign).await,
+			turn_outcomes::query_turn_outcome(&owner, &foreign).await,
 			ConversationTurnOutcomeResult::Conflict
 		);
 
-		let attempt = ordinary_provider_attempt_id(
+		let attempt = turn_outcomes::ordinary_provider_attempt_id(
 			request.idempotency_key.as_str(),
 			&TurnId::new(request.turn_id.as_str()).unwrap(),
 		)
@@ -116,7 +119,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 
 		let owner = ProductStore::Available(SqliteStore::open(&root.paths()).unwrap());
 
-		assert_eq!(query_turn_outcome(&owner, &request).await, observed(expected));
+		assert_eq!(turn_outcomes::query_turn_outcome(&owner, &request).await, observed(expected));
 
 		let connection = Connection::open(root.paths().product_database_file()).unwrap();
 
@@ -128,7 +131,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 			.unwrap();
 
 		assert_eq!(
-			query_turn_outcome(&owner, &request).await,
+			turn_outcomes::query_turn_outcome(&owner, &request).await,
 			ConversationTurnOutcomeResult::Unavailable,
 			"a dangling evidence ID is not positive evidence"
 		);
