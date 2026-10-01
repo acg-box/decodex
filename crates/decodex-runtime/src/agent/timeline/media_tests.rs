@@ -3,12 +3,24 @@ use std::{
 	sync::atomic::{AtomicUsize, Ordering},
 };
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::Value;
 use tempfile::NamedTempFile;
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
 
-use crate::agent::timeline::{attachments, media::*, promotions};
+use crate::{
+	agent::timeline::{
+		attachments,
+		media::{self, Media},
+		promotions,
+	},
+	agent_usage_estimate::{Source, SourceKey},
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
+use decodex_protocol::{
+	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, EntityId, MAX_AGENT_MEDIA_BYTES,
+};
 
 fn key() -> SourceKey {
 	SourceKey {
@@ -37,7 +49,7 @@ fn request() -> AgentMediaRequest {
 fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 	let bytes = vec![255; AGENT_MEDIA_CHUNK_BYTES + 17];
 	let mut request = request();
-	let first = chunk(&key(), &request, "image/png".into(), bytes.clone());
+	let first = media::chunk(&key(), &request, "image/png".into(), bytes.clone());
 
 	assert!(serde_json::to_vec(&first).unwrap().len() < 256 * 1_024);
 
@@ -53,10 +65,10 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 	request.fingerprint = Some(fingerprint);
 
 	assert!(
-		matches!(chunk(&key(), &request, "image/png".into(), bytes.clone()), AgentMediaResult::Available { bytes, .. } if bytes == vec![255;17])
+		matches!(media::chunk(&key(), &request, "image/png".into(), bytes.clone()), AgentMediaResult::Available { bytes, .. } if bytes == vec![255;17])
 	);
 	assert_eq!(
-		chunk(&key(), &request, "image/jpeg".into(), bytes.clone()),
+		media::chunk(&key(), &request, "image/jpeg".into(), bytes.clone()),
 		AgentMediaResult::Unavailable
 	);
 
@@ -64,20 +76,26 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 
 	changed[0] = 0;
 
-	assert_eq!(chunk(&key(), &request, "image/png".into(), changed), AgentMediaResult::Unavailable);
+	assert_eq!(
+		media::chunk(&key(), &request, "image/png".into(), changed),
+		AgentMediaResult::Unavailable
+	);
 
 	let mut other = key();
 
 	other.revision += 1;
 
 	assert_eq!(
-		chunk(&other, &request, "image/png".into(), bytes.clone()),
+		media::chunk(&other, &request, "image/png".into(), bytes.clone()),
 		AgentMediaResult::Unavailable
 	);
 
 	request.offset = total_bytes;
 
-	assert_eq!(chunk(&key(), &request, "image/png".into(), bytes), AgentMediaResult::Unavailable);
+	assert_eq!(
+		media::chunk(&key(), &request, "image/png".into(), bytes),
+		AgentMediaResult::Unavailable
+	);
 }
 
 #[test]
@@ -92,9 +110,9 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 	)
 	.unwrap();
 
-	assert!(matches!(locate(item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
-	assert!(matches!(locate(item, 0), Err(AgentMediaResult::Unsupported)));
-	assert!(matches!(locate(item, 2), Err(AgentMediaResult::Unavailable)));
+	assert!(matches!(media::locate(item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
+	assert!(matches!(media::locate(item, 0), Err(AgentMediaResult::Unsupported)));
+	assert!(matches!(media::locate(item, 2), Err(AgentMediaResult::Unavailable)));
 
 	req.thread_id = EntityId::new("another").unwrap();
 
@@ -107,14 +125,14 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 		)
 		.is_none()
 	);
-	assert_eq!(decode("image/svg+xml", "AQID"), Err(AgentMediaResult::Unsupported));
-	assert_eq!(decode("image/png", "INVALID"), Err(AgentMediaResult::Unavailable));
-	assert_eq!(decode("image/png", ""), Err(AgentMediaResult::Unavailable));
+	assert_eq!(media::decode("image/svg+xml", "AQID"), Err(AgentMediaResult::Unsupported));
+	assert_eq!(media::decode("image/png", "INVALID"), Err(AgentMediaResult::Unavailable));
+	assert_eq!(media::decode("image/png", ""), Err(AgentMediaResult::Unavailable));
 	assert_eq!(
-		decode("image/png", &"A".repeat(MAX_AGENT_MEDIA_BYTES.div_ceil(3) * 4 + 4)),
+		media::decode("image/png", &"A".repeat(MAX_AGENT_MEDIA_BYTES.div_ceil(3) * 4 + 4)),
 		Err(AgentMediaResult::CapacityExceeded)
 	);
-	assert_eq!(sniff(b"<html>not an image</html>"), None);
+	assert_eq!(media::sniff(b"<html>not an image</html>"), None);
 
 	for (item, index) in [
 		(
@@ -127,7 +145,7 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 		),
 		(serde_json::json!({"type":"imageGeneration","savedPath":null,"result":"AQID"}), 0),
 	] {
-		assert!(locate(&item, index).is_ok());
+		assert!(media::locate(&item, index).is_ok());
 	}
 }
 
@@ -140,14 +158,14 @@ fn standalone_tool_media_uses_native_indices_without_exposing_encrypted_parts() 
 		{"type":"encrypted_content","encrypted_content":"opaque"}
 	]});
 
-	assert!(matches!(locate(&item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
-	assert!(matches!(locate(&item, 2), Ok(Media::Uri("data:audio/wav;base64,AQID"))));
+	assert!(matches!(media::locate(&item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
+	assert!(matches!(media::locate(&item, 2), Ok(Media::Uri("data:audio/wav;base64,AQID"))));
 
 	for index in [0, 3] {
-		assert!(matches!(locate(&item, index), Err(AgentMediaResult::Unsupported)));
+		assert!(matches!(media::locate(&item, index), Err(AgentMediaResult::Unsupported)));
 	}
 
-	assert!(matches!(locate(&item, 4), Err(AgentMediaResult::Unavailable)));
+	assert!(matches!(media::locate(&item, 4), Err(AgentMediaResult::Unavailable)));
 }
 
 #[test]
@@ -159,7 +177,7 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 
 	let item = serde_json::json!({"id":"image","type":"imageView","path":path});
 
-	assert!(matches!(locate(&item, 0), Err(AgentMediaResult::Unsupported)));
+	assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
 
 	let (descriptors, _) = attachments::project(&item);
 
@@ -218,7 +236,7 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 			};
 			let server = tokio::spawn(server(remote, native_path));
 			let calls = AtomicUsize::new(0);
-			let result = read(
+			let result = media::read(
 				|| {
 					let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 					let client = client.clone();
@@ -311,7 +329,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 				.unwrap();
 		}
 	});
-	let result = read(
+	let result = media::read(
 		|| future::ready(Some(Source { key: key(), client: client.clone() })),
 		|_| None,
 		&request(),
@@ -329,12 +347,12 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 
 #[tokio::test]
 async fn local_reads_reject_relative_paths_and_non_files() {
-	assert_eq!(local_media("relative.png").await, Err(AgentMediaResult::Unavailable));
+	assert_eq!(media::local_media("relative.png").await, Err(AgentMediaResult::Unavailable));
 
 	let directory = tempfile::tempdir().unwrap();
 
 	assert_eq!(
-		local_media(directory.path().to_str().unwrap()).await,
+		media::local_media(directory.path().to_str().unwrap()).await,
 		Err(AgentMediaResult::Unsupported)
 	);
 
@@ -351,7 +369,7 @@ async fn local_reads_reject_relative_paths_and_non_files() {
 		assert_eq!(
 			tokio::time::timeout(
 				std::time::Duration::from_secs(1),
-				local_media(path.to_str().unwrap())
+				media::local_media(path.to_str().unwrap())
 			)
 			.await
 			.unwrap(),
@@ -371,20 +389,20 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	let mut item = serde_json::json!({"type":"imageGeneration","savedPath":path,"result":STANDARD.encode(expected)});
 
 	assert_eq!(
-		resolve(locate(&item, 0).unwrap(), None).await,
+		media::resolve(media::locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 
 	fs::remove_file(&path).unwrap();
 
 	assert_eq!(
-		resolve(locate(&item, 0).unwrap(), None).await,
+		media::resolve(media::locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 
 	item["result"] = serde_json::json!("");
 
-	assert!(matches!(locate(&item, 0), Err(AgentMediaResult::Unsupported)));
+	assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
 }
 
 #[tokio::test]
@@ -396,13 +414,13 @@ async fn relative_media_requires_an_absolute_admitted_process_directory() {
 
 	for base in [None, Some("relative-base")] {
 		assert_eq!(
-			resolve(Media::Local("photo.png"), base).await,
+			media::resolve(Media::Local("photo.png"), base).await,
 			Err(AgentMediaResult::Unavailable)
 		);
 	}
 
 	assert_eq!(
-		resolve(Media::Local("photo.png"), directory.path().to_str()).await,
+		media::resolve(Media::Local("photo.png"), directory.path().to_str()).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 }

@@ -7,11 +7,16 @@ use tokio::{
 	time,
 };
 
-use crate::{agent_native_goal::*, agent_usage_estimate::SourceKey};
+use crate::{
+	agent_native_goal,
+	agent_usage_estimate::{Source, SourceKey},
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
-use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
-use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit};
+use decodex_database::{
+	AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, SqliteStore,
+};
+use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit, AgentNativeGoalResult};
 
 #[tokio::test]
 async fn native_goal_observation_checks_source_ownership_and_absence() {
@@ -67,7 +72,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 		let target = if matches!(case, "child" | "unowned") { "child" } else { "root" };
 		let server = tokio::spawn(serve(remote, target, case));
 		let calls = AtomicUsize::new(0);
-		let result = read(
+		let result = agent_native_goal::read(
 			&store,
 			|| {
 				let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
@@ -232,8 +237,8 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 		};
 		let raw = serde_json::json!({"threadId":"root","objective":"Original","status":"paused","tokenBudget":50,"tokensUsed":1,"timeUsedSeconds":1,"createdAt":1,"updatedAt":1});
 		let goal = serde_json::from_value(raw.clone()).unwrap();
-		let review =
-			review_token(&Source { key: key.clone(), client: client.clone() }, "root", Some(&goal));
+		let source = Source { key: key.clone(), client: client.clone() };
+		let review = agent_native_goal::review_token(&source, "root", Some(&goal));
 		let (release, done) = oneshot::channel();
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = io::split(remote);
@@ -290,7 +295,7 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			let _ = done.await;
 		});
 		let calls = AtomicUsize::new(0);
-		let result = write(
+		let result = agent_native_goal::write(
 			&store,
 			|| {
 				let mut key = key.clone();
