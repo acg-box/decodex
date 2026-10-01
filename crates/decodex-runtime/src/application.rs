@@ -1,7 +1,11 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
+#[path = "application_account_nudge.rs"] mod account_nudge;
+#[path = "application_conversation_receipts.rs"] mod conversation_receipts;
+#[path = "application_turn_outcomes.rs"] mod turn_outcomes;
+
 use std::{
-	collections::{HashMap, HashSet},
+	collections::HashMap,
 	future::{self, Future},
 	pin::Pin,
 	sync::{
@@ -12,6 +16,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use tokio::{
 	runtime::Handle,
 	sync::watch::{self, Receiver, Sender},
@@ -40,7 +45,6 @@ use crate::{
 	agent_voice,
 	conversation::{
 		ControlConversation, ConversationCapability, ConversationControlOutcome,
-		ConversationExecutionSettings as RuntimeConversationExecutionSettings,
 		ConversationLocalState, ConversationManualRecovery, ConversationOutcome,
 		ConversationProjection, ConversationReadback, ConversationRuntime,
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
@@ -63,13 +67,12 @@ use decodex_database::{
 	AccountCommandReceiptLease, AccountLifecycleRejection, AgentCapacityRetry, AgentDispatchState,
 	AgentDisposition, AgentInboxEvent, AgentLiveOutput, AgentStoreSnapshot, AgentWorkItem,
 	AgentWorkKind, AgentWorkStatus, CommandIdentity, ConversationNativeSettingsObservation,
-	ConversationRequest, DatabaseError, DesktopSettings as StoreDesktopSettings, HistoryCursor,
-	HistoryEntry, InitialModelReviewOutcome, OrdinaryTaskConversationCursor,
-	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
-	OrdinaryTaskPreSessionState, ProgramClaimRecord, ProgramCycleRecord, ProgramEvidenceRecord,
-	ProgramObjectiveRecord, ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord,
-	ProgramSummaryRecord, ProgramWorkItemRecord, ReviewInitialModelSettings, RoutingControlOutcome,
-	SqliteStore, StoreError,
+	ConversationRequest, DatabaseError, DesktopSettings, HistoryCursor, HistoryEntry,
+	InitialModelReviewOutcome, OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramClaimRecord,
+	ProgramCycleRecord, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
+	ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
+	ReviewInitialModelSettings, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -84,27 +87,25 @@ use decodex_protocol::{
 	AccountUnsettledOperationDto, AccountsResult, AgentActivityDetailCursor,
 	AgentAppExposureResult, AgentAppSettingsResult, AgentAppUiCallReview, AgentAppUiReceiptResult,
 	AgentAppUiResult, AgentArchiveResult, AgentAsyncQuestionDto, AgentCapabilitiesResult,
-	AgentDependencyDto, AgentDispatchStateDto, AgentGuardianDetailResult, AgentHistoryResult,
-	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
-	AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
-	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
-	AgentPermissionState, AgentPluginSelectionState, AgentRequestResult, AgentRequestText,
-	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSnapshotResult,
-	AgentSteerIdentity, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
+	AgentDependencyDto, AgentDispatchStateDto, AgentGuardianDetailResult, AgentHookSettingsState,
+	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveMessageKind,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentMisalignmentDto,
+	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
+	AgentPendingAppUiCall, AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState,
+	AgentRequestText, AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
+	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
 	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
 	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AgentWorkspaceDto, CausationId,
 	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
-	ConversationExecutionSettings as ConversationExecutionSettingsDto, ConversationHistoryPage,
-	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
-	ConversationListResult, ConversationModel, ConversationModelReviewResult,
+	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
+	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
 	ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult, ConversationState,
 	ConversationSummary, ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory,
 	CorrelationId, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult,
 	DictationRequest, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
-	EntityId, EntityRevision, EventPayload, HistoryArtifactId, HistoryArtifactReference,
+	EntityRevision, EventPayload, HistoryArtifactId, HistoryArtifactReference,
 	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
 	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
 	HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
@@ -117,7 +118,7 @@ use decodex_protocol::{
 	PromptEditStatus, PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus,
 	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
 	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -204,7 +205,7 @@ pub struct ApplicationPublication {
 	/// Logical channel for the resulting event.
 	pub channel: Channel,
 	/// Stable identity of the changed entity.
-	pub entity_id: EntityId,
+	pub entity_id: decodex_protocol::EntityId,
 	/// Entity revision after execution.
 	pub entity_revision: EntityRevision,
 	/// Typed success result returned to the caller.
@@ -237,7 +238,7 @@ pub struct ApplicationEventPublication {
 	/// Logical channel for this event.
 	pub channel: Channel,
 	/// Stable identity of the changed or appended entity.
-	pub entity_id: EntityId,
+	pub entity_id: decodex_protocol::EntityId,
 	/// Positive entity revision after persistence.
 	pub entity_revision: EntityRevision,
 	/// Typed event payload.
@@ -359,7 +360,7 @@ impl ServiceApplication {
 
 	async fn query_output(
 		&self,
-		work_id: &EntityId,
+		work_id: &decodex_protocol::EntityId,
 		after_revision: Option<u64>,
 	) -> QueryResultPayload {
 		let result = match &self.store {
@@ -382,7 +383,7 @@ impl ServiceApplication {
 
 	async fn query_native_agents(
 		&self,
-		work: &EntityId,
+		work: &decodex_protocol::EntityId,
 		thread: Option<&WireText>,
 		cursor: Option<&WireText>,
 	) -> QueryResultPayload {
@@ -424,6 +425,70 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_skills(
+		&self,
+		query_id: &str,
+		target: &AgentSkillsTarget,
+		filter: &str,
+	) -> QueryResultPayload {
+		QueryResultPayload::AgentSkills(match target {
+			AgentSkillsTarget::Existing { work_id } => match &self.agent {
+				Some(agent) => agent.skills(work_id.as_str(), filter).await,
+				None => AgentSkillsResult::Unavailable,
+			},
+			AgentSkillsTarget::New { request } => match (
+				self.conversations.runtime(),
+				self.agent.as_ref().and_then(|agent| agent.skill_roots()),
+			) {
+				(Some(runtime), Some(roots)) =>
+					runtime.initial_skills(query_id, request.clone(), filter.into(), roots).await,
+				_ => AgentSkillsResult::Unavailable,
+			},
+		})
+	}
+
+	async fn query_product_state(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::GetDesktopSettings =>
+				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
+			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
+			QueryPayload::GetProgramCycle { program_id } =>
+				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
+			QueryPayload::ListConversations { after, page_size } =>
+				QueryResultPayload::Conversations(
+					self.conversation_list(after.as_ref(), page_size.get()).await,
+				),
+			QueryPayload::GetConversation { conversation_id } =>
+				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
+			QueryPayload::GetDoctorStatus =>
+				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
+			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
+				QueryResultPayload::ConversationHistory(
+					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
+				),
+			QueryPayload::GetResetCards { account_id } =>
+				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
+			QueryPayload::GetAccountResetCardOperation { account_id } =>
+				QueryResultPayload::AccountResetCardOperation(
+					self.account_reset_card_operation(account_id).await,
+				),
+			QueryPayload::GetResetCardOperation { idempotency_key } =>
+				QueryResultPayload::ResetCardOperation(
+					self.reset_card_operation(idempotency_key.as_str()).await,
+				),
+			QueryPayload::ListAccounts
+			| QueryPayload::InspectAccount { .. }
+			| QueryPayload::PrepareAccountRecovery { .. }
+			| QueryPayload::GetAccountRecovery { .. }
+			| QueryPayload::GetAccountRecoveryNudge { .. }
+			| QueryPayload::GetAccountProfile { .. }
+			| QueryPayload::GetInitialAccountSelection
+			| QueryPayload::GetCodexAuthProjection
+			| QueryPayload::WaitForAccountObservation { .. } => self.query_accounts(payload).await,
+			_ => unreachable!("product-state dispatch accepts only product-state queries"),
+		}
+	}
+
 	async fn query_input_receipts(&self, work: &str, after: Option<i64>) -> QueryResultPayload {
 		QueryResultPayload::AgentInputReceipts(
 			query_agent_input_receipts(&self.store, work, after).await,
@@ -435,11 +500,12 @@ impl ServiceApplication {
 			Some(agent) => agent.runtime_source().await,
 			None => None,
 		};
-		let mut result = query_agent_snapshot(&self.store).await;
+		let result = query_agent_snapshot(&self.store).await;
 		let after = match &self.agent {
 			Some(agent) => agent.runtime_source().await,
 			None => None,
 		};
+		let mut result = result;
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			snapshot.runtime_source = if before == after { after } else { None };
@@ -478,7 +544,7 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_recap(&self, work: EntityId) -> QueryResultPayload {
+	async fn query_recap(&self, work: decodex_protocol::EntityId) -> QueryResultPayload {
 		QueryResultPayload::AgentRecap(match &self.agent {
 			Some(agent) => agent.recap_status(work).await,
 			None => Recaps::default().status(work, None),
@@ -507,8 +573,6 @@ impl ServiceApplication {
 	}
 
 	async fn query_steer_receipt(&self, identity: &AgentSteerIdentity) -> QueryResultPayload {
-		use decodex_protocol::AgentSteerReceiptResult as Receipt;
-
 		let result = match &self.store {
 			ProductStore::Available(store) => match store
 				.agent_steer_confirmed(
@@ -519,11 +583,11 @@ impl ServiceApplication {
 				)
 				.await
 			{
-				Ok(true) => Receipt::Confirmed { identity: identity.clone() },
-				Ok(false) => Receipt::Unconfirmed,
-				Err(_) => Receipt::Unavailable,
+				Ok(true) => AgentSteerReceiptResult::Confirmed { identity: identity.clone() },
+				Ok(false) => AgentSteerReceiptResult::Unconfirmed,
+				Err(_) => AgentSteerReceiptResult::Unavailable,
 			},
-			_ => Receipt::Unavailable,
+			_ => AgentSteerReceiptResult::Unavailable,
 		};
 
 		QueryResultPayload::AgentSteerReceipt(result)
@@ -618,7 +682,7 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn invalidate_account_observation(&self, entity_id: &EntityId) {
+	async fn invalidate_account_observation(&self, entity_id: &decodex_protocol::EntityId) {
 		let Some(observations) = &self.account_observations else {
 			return;
 		};
@@ -707,7 +771,7 @@ impl ServiceApplication {
 
 		let settings = desktop_settings_dto(settings)
 			.map_err(|_| application_unavailable("desktop settings projection is invalid"))?;
-		let entity_id = EntityId::new(DESKTOP_SETTINGS_ENTITY_ID)
+		let entity_id = decodex_protocol::EntityId::new(DESKTOP_SETTINGS_ENTITY_ID)
 			.expect("desktop settings entity identity is bounded");
 
 		Ok(ApplicationPublication {
@@ -742,7 +806,10 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn account_inspect(&self, account_id: &EntityId) -> AccountInspectResult {
+	async fn account_inspect(
+		&self,
+		account_id: &decodex_protocol::EntityId,
+	) -> AccountInspectResult {
 		let Some(service) = &self.accounts else {
 			return AccountInspectResult::Unavailable;
 		};
@@ -772,7 +839,7 @@ impl ServiceApplication {
 				projection_digest,
 			} => {
 				let result = (
-					EntityId::new(account_id.as_str().to_owned()),
+					decodex_protocol::EntityId::new(account_id.as_str().to_owned()),
 					u64::try_from(account_revision).map(EntityRevision),
 					Sha256Digest::new(projection_digest),
 				);
@@ -841,7 +908,7 @@ impl ServiceApplication {
 
 	async fn account_recovery(
 		&self,
-		account_id: &EntityId,
+		account_id: &decodex_protocol::EntityId,
 		account_revision: EntityRevision,
 	) -> QueryResultPayload {
 		QueryResultPayload::AccountRecovery(match &self.account_observations {
@@ -857,7 +924,7 @@ impl ServiceApplication {
 
 	async fn account_profile(
 		&self,
-		account_id: &EntityId,
+		account_id: &decodex_protocol::EntityId,
 		include_email: bool,
 	) -> AccountProfileResult {
 		let Ok(account_id) = AccountId::new(account_id.as_str()) else {
@@ -903,7 +970,7 @@ impl ServiceApplication {
 
 		match service.select_initial(now_unix_micros).await {
 			Ok(selected) => match (
-				EntityId::new(selected.account.account_id.as_str().to_owned()),
+				decodex_protocol::EntityId::new(selected.account.account_id.as_str().to_owned()),
 				u64::try_from(selected.account.revision).map(EntityRevision),
 			) {
 				(Ok(account_id), Ok(account_revision)) =>
@@ -913,7 +980,9 @@ impl ServiceApplication {
 			Err(failure) => {
 				let account_id = failure
 					.account_id
-					.map(|account_id| EntityId::new(account_id.as_str().to_owned()))
+					.map(|account_id| {
+						decodex_protocol::EntityId::new(account_id.as_str().to_owned())
+					})
 					.transpose();
 
 				match account_id {
@@ -964,7 +1033,6 @@ impl ServiceApplication {
 		self.execute_atomic_account_command(command, lease).await
 	}
 
-	#[allow(clippy::too_many_lines)] // One closed dispatch maps all account commands into the same receipt boundary.
 	async fn execute_atomic_account_command(
 		&self,
 		command: &CommandEnvelope,
@@ -974,63 +1042,9 @@ impl ServiceApplication {
 			return Err(CommandError::AcceptanceUnknown);
 		};
 		let value = match &command.payload {
-			CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, enabled } => {
-				let operation_id = operation_id_from_wire(operation_id)?;
-				let account_id = account_id_from_wire(account_id)?;
-				let requested_account_id = account_id.clone();
-
-				service
-					.enroll_from_shared_codex_command(
-						lease,
-						operation_id,
-						account_id,
-						*enabled,
-						move |result| {
-							encode_account_command_receipt(
-								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| {
-										account_enrollment_publication(
-											&requested_account_id,
-											account.clone(),
-										)
-									},
-								),
-							)
-						},
-					)
-					.await
-			},
-			CommandPayload::ImportAccountCredentialFile {
-				operation_id,
-				account_id,
-				enabled,
-				source_descriptor,
-			} => {
-				let operation_id = operation_id_from_wire(operation_id)?;
-				let account_id = account_id_from_wire(account_id)?;
-				let requested_account_id = account_id.clone();
-
-				service
-					.import_credential_file_command(
-						lease,
-						operation_id,
-						account_id,
-						*enabled,
-						source_descriptor.as_str(),
-						move |result| {
-							encode_account_command_receipt(
-								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| {
-										account_enrollment_publication(
-											&requested_account_id,
-											account.clone(),
-										)
-									},
-								),
-							)
-						},
-					)
-					.await
+			CommandPayload::EnrollAccountFromSharedCodex { .. }
+			| CommandPayload::ImportAccountCredentialFile { .. } => {
+				return execute_account_enrollment(service, command, lease).await;
 			},
 			CommandPayload::LogoutAccount { operation_id, account_id } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
@@ -1074,12 +1088,7 @@ impl ServiceApplication {
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
-				let action = match action {
-					AccountManualRecoveryActionDto::ReconcileExactStoreState =>
-						AccountManualRecoveryAction::ReconcileExactStoreState,
-					AccountManualRecoveryActionDto::CancelBeforeEffect =>
-						AccountManualRecoveryAction::CancelBeforeEffect,
-				};
+				let action = account_manual_recovery_action(action);
 				let publication_operation_id = operation_id.clone();
 
 				service
@@ -1114,22 +1123,7 @@ impl ServiceApplication {
 						&account_id,
 						expected,
 						*enabled,
-						|outcome, account| {
-							let result = match outcome {
-								AccountAdministrationOutcome::Updated { .. } => account
-									.cloned()
-									.ok_or_else(|| {
-										application_unavailable(
-											"account command result is unavailable",
-										)
-									})
-									.and_then(account_changed_publication),
-								AccountAdministrationOutcome::Rejected { rejection, revision } =>
-									Err(lifecycle_rejection(*rejection, *revision)),
-							};
-
-							encode_account_command_receipt(&result)
-						},
+						encode_account_enablement_receipt,
 					)
 					.await
 			},
@@ -1157,14 +1151,15 @@ impl ServiceApplication {
 					.await
 			},
 			_ => unreachable!("account command validation accepts only account mutations"),
-		}
-		.map_err(account_operation_command_error)?;
+		};
 
-		decode_account_command_receipt(value)
-			.map_err(|_| application_unavailable("account command receipt is incompatible"))?
+		decode_completed_account_command(value)
 	}
 
-	async fn reset_card_inventory(&self, account_id: &EntityId) -> ResetCardInventoryResult {
+	async fn reset_card_inventory(
+		&self,
+		account_id: &decodex_protocol::EntityId,
+	) -> ResetCardInventoryResult {
 		let Some(observations) = &self.account_observations else {
 			return ResetCardInventoryResult::Unavailable {
 				error: ResetCardError::ProductStateUnavailable,
@@ -1177,7 +1172,8 @@ impl ServiceApplication {
 		match observations.reset_card_inventory(&account_id).await {
 			Ok(ResetCardInventoryObservation::Available(inventory)) => {
 				let account_id =
-					EntityId::new(inventory.account_id.as_str().to_owned()).map_err(|_| ());
+					decodex_protocol::EntityId::new(inventory.account_id.as_str().to_owned())
+						.map_err(|_| ());
 				let account_revision =
 					u64::try_from(inventory.account_revision).map(EntityRevision).map_err(|_| ());
 				let cards = inventory
@@ -1217,7 +1213,8 @@ impl ServiceApplication {
 				}
 			},
 			Ok(ResetCardInventoryObservation::ObservationFailed(failure)) => {
-				let account_id = EntityId::new(failure.account_id.as_str().to_owned());
+				let account_id =
+					decodex_protocol::EntityId::new(failure.account_id.as_str().to_owned());
 				let account_revision = u64::try_from(failure.account_revision).map(EntityRevision);
 				let five_hour_quota = quota_dto(failure.five_hour_quota);
 				let seven_day_quota = quota_dto(failure.seven_day_quota);
@@ -1257,30 +1254,37 @@ impl ServiceApplication {
 
 	async fn account_reset_card_operation(
 		&self,
-		account_id: &EntityId,
+		account_id: &decodex_protocol::EntityId,
 	) -> AccountResetCardOperationResult {
-		use decodex_protocol::{AccountResetCardOperationResult as Result, ResetCardOperationView};
-
 		let Some(runtime) = &self.reset_cards else {
-			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+			return AccountResetCardOperationResult::Unavailable {
+				error: ResetCardError::ProductStateUnavailable,
+			};
 		};
 		let Ok(account) = AccountId::new(account_id.as_str()) else {
-			return Result::Unavailable { error: ResetCardError::InvalidRequest };
+			return AccountResetCardOperationResult::Unavailable {
+				error: ResetCardError::InvalidRequest,
+			};
 		};
 		let operation = match runtime.latest_operation(&account).await {
 			Ok(Some(operation)) => operation,
-			Ok(None) => return Result::NotFound,
-			Err(error) => return Result::Unavailable { error: protocol_reset_error(error) },
+			Ok(None) => return AccountResetCardOperationResult::NotFound,
+			Err(error) =>
+				return AccountResetCardOperationResult::Unavailable {
+					error: protocol_reset_error(error),
+				},
 		};
 		let (Ok(key), Ok(descriptor), Ok(revision)) = (
 			IdempotencyKey::new(operation.key.clone()),
 			ResetCardDescriptorDto::new(operation.granted_at, operation.expires_at),
 			u64::try_from(operation.account_revision),
 		) else {
-			return Result::Unavailable { error: ResetCardError::ProductStateUnavailable };
+			return AccountResetCardOperationResult::Unavailable {
+				error: ResetCardError::ProductStateUnavailable,
+			};
 		};
 
-		Result::Found(ResetCardOperationView {
+		AccountResetCardOperationResult::Found(ResetCardOperationView {
 			account_id: account_id.clone(),
 			account_revision: EntityRevision(revision),
 			idempotency_key: key,
@@ -1291,7 +1295,7 @@ impl ServiceApplication {
 
 	async fn conversation_history(
 		&self,
-		conversation_id: &EntityId,
+		conversation_id: &decodex_protocol::EntityId,
 		after: Option<&HistoryCursorToken>,
 		page_size: u16,
 	) -> ConversationHistoryResult {
@@ -1374,7 +1378,7 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn program_cycle(&self, program_id: &EntityId) -> ProgramCycleResult {
+	async fn program_cycle(&self, program_id: &decodex_protocol::EntityId) -> ProgramCycleResult {
 		let ProductStore::Available(store) = &self.store else {
 			return ProgramCycleResult::Unavailable;
 		};
@@ -1402,7 +1406,8 @@ impl ServiceApplication {
 			let Some(conversation_id) = work_item.conversation_id.as_ref() else {
 				continue;
 			};
-			let entity_id = EntityId::new(conversation_id.as_str()).map_err(|_| ())?;
+			let entity_id =
+				decodex_protocol::EntityId::new(conversation_id.as_str()).map_err(|_| ())?;
 			let state = match self.conversation_get(&entity_id).await {
 				ConversationResult::Available(summary) => {
 					if let Some(thread_id) = summary.codex_thread_id {
@@ -1515,7 +1520,7 @@ impl ServiceApplication {
 			rows.last().and_then(|row| {
 				ConversationListCursor::new(
 					row.updated_at_micros,
-					EntityId::new(row.conversation_id.as_str()).ok()?,
+					decodex_protocol::EntityId::new(row.conversation_id.as_str()).ok()?,
 				)
 				.ok()
 			})
@@ -1551,7 +1556,10 @@ impl ServiceApplication {
 		}
 	}
 
-	async fn conversation_get(&self, conversation_id: &EntityId) -> ConversationResult {
+	async fn conversation_get(
+		&self,
+		conversation_id: &decodex_protocol::EntityId,
+	) -> ConversationResult {
 		let Ok(conversation_id) = ConversationId::new(conversation_id.as_str()) else {
 			return ConversationResult::Unavailable {
 				error: ConversationReadError::InvalidRequest,
@@ -1583,9 +1591,9 @@ impl ServiceApplication {
 				successor_conversation_id,
 				successor_conversation_revision,
 			} => match (
-				EntityId::new(source_conversation_id.as_str()),
+				decodex_protocol::EntityId::new(source_conversation_id.as_str()),
 				u64::try_from(source_revision),
-				EntityId::new(successor_conversation_id.as_str()),
+				decodex_protocol::EntityId::new(successor_conversation_id.as_str()),
 				u64::try_from(successor_conversation_revision),
 			) {
 				(Ok(source), Ok(source_revision), Ok(successor), Ok(successor_revision)) =>
@@ -1604,7 +1612,7 @@ impl ServiceApplication {
 				conversation_revision,
 			} => {
 				match (
-					EntityId::new(conversation_id.as_str()),
+					decodex_protocol::EntityId::new(conversation_id.as_str()),
 					u64::try_from(conversation_revision),
 				) {
 					(Ok(conversation_id), Ok(revision)) if revision > 0 =>
@@ -1628,9 +1636,10 @@ impl ServiceApplication {
 		successor_revision: i64,
 	) -> Result<ApplicationPublication, CommandError> {
 		let successor_id =
-			EntityId::new(successor_conversation_id.as_str().to_owned()).map_err(|_| {
-				application_unavailable("Conversation successor identity is incompatible")
-			})?;
+			decodex_protocol::EntityId::new(successor_conversation_id.as_str().to_owned())
+				.map_err(|_| {
+					application_unavailable("Conversation successor identity is incompatible")
+				})?;
 		let ConversationResult::Available(successor) = self.conversation_get(&successor_id).await
 		else {
 			return Err(application_unavailable("Conversation successor readback is unavailable"));
@@ -2134,7 +2143,7 @@ impl ServiceApplication {
 			_ => return Err(conversation_conflict()),
 		};
 		let (conversation_id, interrupt) = conversation_command_projection(outcome)?;
-		let conversation_id = EntityId::new(conversation_id.as_str().to_owned())
+		let conversation_id = decodex_protocol::EntityId::new(conversation_id.as_str().to_owned())
 			.map_err(|_| application_unavailable("Conversation projection is unavailable"))?;
 		let ConversationResult::Available(conversation) =
 			self.conversation_get(&conversation_id).await
@@ -2162,10 +2171,13 @@ impl ServiceApplication {
 						.transpose()
 						.ok()?,
 					channel: Channel::ConversationStream,
-					entity_id: EntityId::new(history_item_id.as_str()).ok()?,
+					entity_id: decodex_protocol::EntityId::new(history_item_id.as_str()).ok()?,
 					entity_revision: EntityRevision(1),
 					event: EventPayload::ConversationHistoryChanged {
-						conversation_id: EntityId::new(readback.conversation_id.as_str()).ok()?,
+						conversation_id: decodex_protocol::EntityId::new(
+							readback.conversation_id.as_str(),
+						)
+						.ok()?,
 					},
 				}),
 			ConversationOutcome::Streaming { readback, history_item_id, text } => {
@@ -2174,9 +2186,13 @@ impl ServiceApplication {
 				let causation_id =
 					readback.causation_id.as_deref().map(CausationId::new).transpose().ok()?;
 				let conversation_id =
-					EntityId::new(readback.conversation_id.as_str().to_owned()).ok()?;
-				let turn_id = EntityId::new(readback.active_turn_id?.as_str().to_owned()).ok()?;
-				let entity_id = EntityId::new(history_item_id.as_str().to_owned()).ok()?;
+					decodex_protocol::EntityId::new(readback.conversation_id.as_str().to_owned())
+						.ok()?;
+				let turn_id =
+					decodex_protocol::EntityId::new(readback.active_turn_id?.as_str().to_owned())
+						.ok()?;
+				let entity_id =
+					decodex_protocol::EntityId::new(history_item_id.as_str().to_owned()).ok()?;
 
 				Some(ApplicationEventPublication {
 					correlation_id,
@@ -2219,7 +2235,8 @@ impl ServiceApplication {
 		&self,
 		readback: &ConversationReadback,
 	) -> Option<ConversationSummary> {
-		let conversation_id = EntityId::new(readback.conversation_id.as_str().to_owned()).ok()?;
+		let conversation_id =
+			decodex_protocol::EntityId::new(readback.conversation_id.as_str().to_owned()).ok()?;
 
 		match self.conversation_get(&conversation_id).await {
 			ConversationResult::Available(summary) => Some(summary),
@@ -2339,12 +2356,12 @@ impl ServiceApplication {
 	async fn conversation_model_review(
 		&self,
 		key: &str,
-		conversation_id: &EntityId,
+		conversation_id: &decodex_protocol::EntityId,
 		revision: EntityRevision,
 	) -> Option<Box<decodex_protocol::ConversationModelReview>> {
 		let id = ConversationId::new(conversation_id.as_str()).ok()?;
 		let saved = self.saved_model_review_request(&id, revision).await?;
-		let execution = ConversationExecutionSettingsDto {
+		let execution = decodex_protocol::ConversationExecutionSettings {
 			model: ConversationModel::new(saved.model.clone()).ok()?,
 			reasoning_effort: saved
 				.reasoning_effort
@@ -2523,7 +2540,8 @@ impl Application for ServiceApplication {
 
 	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
 		Some(vec![SnapshotItem::SystemState {
-			entity_id: EntityId::new("decodex-service").expect("service entity ID is bounded"),
+			entity_id: decodex_protocol::EntityId::new("decodex-service")
+				.expect("service entity ID is bounded"),
 			revision: EntityRevision(0),
 			status: WireText::new("typed doctor/status is available through the daemon protocol")
 				.expect("service status is bounded"),
@@ -2560,7 +2578,7 @@ impl Application for ServiceApplication {
 						AgentHostError::Rejected(reason) => application_unavailable(reason),
 						AgentHostError::Unknown(_) => CommandError::AcceptanceUnknown,
 					})?;
-				let work_id = EntityId::new(id)
+				let work_id = decodex_protocol::EntityId::new(id)
 					.map_err(|_| application_unavailable("invalid Agent identity"))?;
 
 				agent_command_publication(&self.agent_publication_revision, work_id)
@@ -2624,8 +2642,9 @@ impl Application for ServiceApplication {
 					)
 					.await
 					.map_err(|error| command_reset_error(error, expected))?;
-				let entity_id = EntityId::new(prepared.account_id.as_str().to_owned())
-					.expect("canonical account UUID is bounded");
+				let entity_id =
+					decodex_protocol::EntityId::new(prepared.account_id.as_str().to_owned())
+						.expect("canonical account UUID is bounded");
 				let entity_revision = EntityRevision(
 					u64::try_from(prepared.account_revision)
 						.expect("stored account revision is positive"),
@@ -2655,7 +2674,6 @@ impl Application for ServiceApplication {
 		}
 	}
 
-	#[allow(clippy::too_many_lines)] // Keep the exhaustive query-to-owner dispatch in one match.
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
 			QueryPayload::GetConversationTurnOutcome { .. }
@@ -2666,13 +2684,10 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentCapabilities
 			| QueryPayload::GetConversationModelSettings { .. }
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
-
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
-
 			QueryPayload::GetAgentResources { work_id } =>
 				self.query_resources(work_id.as_str()).await,
-
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
@@ -2707,27 +2722,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentSkills { target, filter } =>
-				QueryResultPayload::AgentSkills(match target {
-					AgentSkillsTarget::Existing { work_id } => match &self.agent {
-						Some(agent) => agent.skills(work_id.as_str(), filter.as_str()).await,
-						None => AgentSkillsResult::Unavailable,
-					},
-					AgentSkillsTarget::New { request } => match (
-						self.conversations.runtime(),
-						self.agent.as_ref().and_then(|agent| agent.skill_roots()),
-					) {
-						(Some(runtime), Some(roots)) =>
-							runtime
-								.initial_skills(
-									query.query_id.as_str(),
-									request.clone(),
-									filter.as_str().into(),
-									roots,
-								)
-								.await,
-						_ => AgentSkillsResult::Unavailable,
-					},
-				}),
+				self.query_skills(query.query_id.as_str(), target, filter.as_str()).await,
 			QueryPayload::GetAgentSearchSettings { work_id } =>
 				self.query_search_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>
@@ -2774,34 +2769,17 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
-			QueryPayload::GetDesktopSettings =>
-				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
-			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
-			QueryPayload::GetProgramCycle { program_id } =>
-				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
-			QueryPayload::ListConversations { after, page_size } =>
-				QueryResultPayload::Conversations(
-					self.conversation_list(after.as_ref(), page_size.get()).await,
-				),
-			QueryPayload::GetConversation { conversation_id } =>
-				QueryResultPayload::Conversation(self.conversation_get(conversation_id).await),
-			QueryPayload::GetDoctorStatus =>
-				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
-			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
-				QueryResultPayload::ConversationHistory(
-					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
-				),
-			QueryPayload::GetResetCards { account_id } =>
-				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
-			QueryPayload::GetAccountResetCardOperation { account_id } =>
-				QueryResultPayload::AccountResetCardOperation(
-					self.account_reset_card_operation(account_id).await,
-				),
-			QueryPayload::GetResetCardOperation { idempotency_key } =>
-				QueryResultPayload::ResetCardOperation(
-					self.reset_card_operation(idempotency_key.as_str()).await,
-				),
-			QueryPayload::ListAccounts
+			QueryPayload::GetDesktopSettings
+			| QueryPayload::ListPrograms
+			| QueryPayload::GetProgramCycle { .. }
+			| QueryPayload::ListConversations { .. }
+			| QueryPayload::GetConversation { .. }
+			| QueryPayload::GetDoctorStatus
+			| QueryPayload::GetConversationHistory { .. }
+			| QueryPayload::GetResetCards { .. }
+			| QueryPayload::GetAccountResetCardOperation { .. }
+			| QueryPayload::GetResetCardOperation { .. }
+			| QueryPayload::ListAccounts
 			| QueryPayload::InspectAccount { .. }
 			| QueryPayload::PrepareAccountRecovery { .. }
 			| QueryPayload::GetAccountRecovery { .. }
@@ -2809,7 +2787,8 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAccountProfile { .. }
 			| QueryPayload::GetInitialAccountSelection
 			| QueryPayload::GetCodexAuthProjection
-			| QueryPayload::WaitForAccountObservation { .. } => self.query_accounts(&query.payload).await,
+			| QueryPayload::WaitForAccountObservation { .. } =>
+				self.query_product_state(&query.payload).await,
 		}
 	}
 
@@ -2893,7 +2872,7 @@ impl ProductState for ProductStore {
 enum StoredAccountCommandOutcome {
 	Succeeded {
 		schema: String,
-		entity_id: EntityId,
+		entity_id: decodex_protocol::EntityId,
 		entity_revision: EntityRevision,
 		result: Box<ResultPayload>,
 		event: Box<EventPayload>,
@@ -2932,8 +2911,9 @@ pub(crate) fn account_enrollment_publication(
 		return account_changed_publication(account);
 	}
 
-	let requested_account_id = EntityId::new(requested_account_id.as_str().to_owned())
-		.map_err(|_| application_unavailable("account enrollment result is incompatible"))?;
+	let requested_account_id =
+		decodex_protocol::EntityId::new(requested_account_id.as_str().to_owned())
+			.map_err(|_| application_unavailable("account enrollment result is incompatible"))?;
 	let account = account_dto(account)
 		.map_err(|_| application_unavailable("account enrollment result is incompatible"))?;
 
@@ -3051,9 +3031,34 @@ pub(crate) fn decode_account_command_receipt(
 
 #[cfg(test)]
 pub(crate) fn render_agent_history_for_test(
-	events: Vec<decodex_database::AgentInboxEvent>,
+	events: Vec<AgentInboxEvent>,
 ) -> Vec<decodex_protocol::AgentHistoryEntryDto> {
 	render_agent_history(events, 0, None).entries
+}
+
+fn encode_account_enablement_receipt(
+	outcome: &AccountAdministrationOutcome,
+	account: Option<&AccountRecord>,
+) -> Result<serde_json::Value, StoreError> {
+	let result = match outcome {
+		AccountAdministrationOutcome::Updated { .. } => account
+			.cloned()
+			.ok_or_else(|| application_unavailable("account command result is unavailable"))
+			.and_then(account_changed_publication),
+		AccountAdministrationOutcome::Rejected { rejection, revision } =>
+			Err(lifecycle_rejection(*rejection, *revision)),
+	};
+
+	encode_account_command_receipt(&result)
+}
+
+fn decode_completed_account_command(
+	value: Result<serde_json::Value, AccountLifecycleError>,
+) -> Result<ApplicationPublication, CommandError> {
+	let value = value.map_err(account_operation_command_error)?;
+
+	decode_account_command_receipt(value)
+		.map_err(|_| application_unavailable("account command receipt is incompatible"))?
 }
 
 fn conversation_read_error(error: &StoreError) -> ConversationReadError {
@@ -3100,12 +3105,14 @@ fn native_conversation_settings(
 			.transpose()
 			.map_err(|_| ())?,
 		observed_at_micros: observed.observed_at_micros,
-		source_account_id: EntityId::new(observed.account_id).map_err(|_| ())?,
+		source_account_id: decodex_protocol::EntityId::new(observed.account_id).map_err(|_| ())?,
 		source_account_revision: EntityRevision(
 			u64::try_from(observed.account_revision).map_err(|_| ())?,
 		),
-		source_process_generation_id: EntityId::new(observed.process_generation_id)
-			.map_err(|_| ())?,
+		source_process_generation_id: decodex_protocol::EntityId::new(
+			observed.process_generation_id,
+		)
+		.map_err(|_| ())?,
 	}
 	.validate()
 	.map_err(|_| ())
@@ -3161,7 +3168,8 @@ fn conversation_summary_without_original_directory(
 		let (state, recovery_action) = pre_session_presentation(pre_session_state);
 
 		return ConversationSummary::new(
-			EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+			decodex_protocol::EntityId::new(row.conversation_id.as_str().to_owned())
+				.map_err(|_| ())?,
 			title,
 			codex_thread_id,
 			program,
@@ -3227,17 +3235,20 @@ fn conversation_summary_without_original_directory(
 	};
 
 	ConversationSummary::new(
-		EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		decodex_protocol::EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
 		title,
 		codex_thread_id,
 		program,
 		EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
 		projection_updated_at_micros,
-		Some(EntityId::new(runtime_session_id.as_str().to_owned()).map_err(|_| ())?),
+		Some(
+			decodex_protocol::EntityId::new(runtime_session_id.as_str().to_owned())
+				.map_err(|_| ())?,
+		),
 		Some(EntityRevision(u64::try_from(runtime_session_revision).map_err(|_| ())?)),
 		state,
 		active_turn_id
-			.map(|turn_id| EntityId::new(turn_id.as_str().to_owned()))
+			.map(|turn_id| decodex_protocol::EntityId::new(turn_id.as_str().to_owned()))
 			.transpose()
 			.map_err(|_| ())?,
 		recovery_action,
@@ -3256,7 +3267,7 @@ fn conversation_summary_from_readback(
 	let conversation_revision = readback.conversation_revision.ok_or(())?;
 	let runtime_session_id = readback
 		.runtime_session_id
-		.map(|id| EntityId::new(id.as_str().to_owned()))
+		.map(|id| decodex_protocol::EntityId::new(id.as_str().to_owned()))
 		.transpose()
 		.map_err(|_| ())?;
 	let runtime_session_revision = readback
@@ -3279,7 +3290,8 @@ fn conversation_summary_from_readback(
 	};
 
 	ConversationSummary::new(
-		EntityId::new(readback.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		decodex_protocol::EntityId::new(readback.conversation_id.as_str().to_owned())
+			.map_err(|_| ())?,
 		title,
 		codex_thread_id,
 		program,
@@ -3290,7 +3302,7 @@ fn conversation_summary_from_readback(
 		state,
 		readback
 			.active_turn_id
-			.map(|turn_id| EntityId::new(turn_id.as_str().to_owned()))
+			.map(|turn_id| decodex_protocol::EntityId::new(turn_id.as_str().to_owned()))
 			.transpose()
 			.map_err(|_| ())?,
 		match state {
@@ -3318,8 +3330,10 @@ fn conversation_presentation(
 		.as_ref()
 		.map(|context| {
 			ConversationProgramContext::new(
-				EntityId::new(context.program_id.as_str().to_owned()).map_err(|_| ())?,
-				EntityId::new(context.work_item_id.as_str().to_owned()).map_err(|_| ())?,
+				decodex_protocol::EntityId::new(context.program_id.as_str().to_owned())
+					.map_err(|_| ())?,
+				decodex_protocol::EntityId::new(context.work_item_id.as_str().to_owned())
+					.map_err(|_| ())?,
 				title.clone(),
 				WireText::new(context.instructions.clone()).map_err(|_| ())?,
 				context.state,
@@ -3330,6 +3344,17 @@ fn conversation_presentation(
 		.transpose()?;
 
 	Ok((title, codex_thread_id, program))
+}
+
+const fn account_manual_recovery_action(
+	action: &AccountManualRecoveryActionDto,
+) -> AccountManualRecoveryAction {
+	match action {
+		AccountManualRecoveryActionDto::ReconcileExactStoreState =>
+			AccountManualRecoveryAction::ReconcileExactStoreState,
+		AccountManualRecoveryActionDto::CancelBeforeEffect =>
+			AccountManualRecoveryAction::CancelBeforeEffect,
+	}
 }
 
 const fn conversation_recovery_action(
@@ -3434,9 +3459,9 @@ fn conversation_command_publication(
 }
 
 fn runtime_execution_settings(
-	settings: &ConversationExecutionSettingsDto,
-) -> RuntimeConversationExecutionSettings {
-	RuntimeConversationExecutionSettings {
+	settings: &decodex_protocol::ConversationExecutionSettings,
+) -> crate::conversation::ConversationExecutionSettings {
+	crate::conversation::ConversationExecutionSettings {
 		model: settings.model.as_str().to_owned(),
 		reasoning_effort: settings
 			.reasoning_effort
@@ -3524,7 +3549,7 @@ fn append_historical_semantics(
 	claims: Vec<ProgramClaimRecord>,
 	proposals: Vec<ProgramProposalRecord>,
 	objectives: Vec<ProgramObjectiveRecord>,
-	program_id: &EntityId,
+	program_id: &decodex_protocol::EntityId,
 	nodes: &mut Vec<ProgramNodeDto>,
 	edges: &mut Vec<ProgramEdgeDto>,
 ) -> Result<(), ()> {
@@ -3687,7 +3712,7 @@ fn append_historical_executions(
 fn append_historical_evidence(
 	evidence: Vec<ProgramEvidenceRecord>,
 	reviews: Vec<ProgramReviewRecord>,
-	program_id: &EntityId,
+	program_id: &decodex_protocol::EntityId,
 	nodes: &mut Vec<ProgramNodeDto>,
 	edges: &mut Vec<ProgramEdgeDto>,
 ) -> Result<(), ()> {
@@ -3746,6 +3771,21 @@ fn append_historical_evidence(
 	Ok(())
 }
 
+fn unique_program_records<T>(
+	records: &[T],
+	key: impl Fn(&T) -> &str,
+) -> Result<HashMap<&str, &T>, ()> {
+	let mut indexed = HashMap::new();
+
+	for record in records {
+		if indexed.insert(key(record), record).is_some() {
+			return Err(());
+		}
+	}
+
+	Ok(indexed)
+}
+
 fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 	let roots = record
 		.signals
@@ -3767,46 +3807,14 @@ fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 		}
 	}
 
-	let mut claims = HashMap::new();
-
-	for claim in &record.claims {
-		if claims.insert(claim.signal_id.as_str(), claim).is_some() {
-			return Err(());
-		}
-	}
-
-	let mut proposals = HashMap::new();
-
-	for proposal in &record.proposals {
-		if proposals.insert(proposal.claim_id.as_str(), proposal).is_some() {
-			return Err(());
-		}
-	}
-
-	let mut objectives = HashMap::new();
-
-	for objective in &record.objectives {
-		if objectives.insert(objective.proposal_id.as_str(), objective).is_some() {
-			return Err(());
-		}
-	}
-
-	let mut work_items = HashMap::new();
-
-	for work_item in &record.work_items {
-		if work_items.insert(work_item.objective_id.as_str(), work_item).is_some() {
-			return Err(());
-		}
-	}
-
-	let mut reviews = HashMap::new();
-
-	for review in &record.reviews {
-		if reviews.insert(review.work_item_id.as_str(), review).is_some() {
-			return Err(());
-		}
-	}
-
+	let claims = unique_program_records(&record.claims, |claim| claim.signal_id.as_str())?;
+	let proposals =
+		unique_program_records(&record.proposals, |proposal| proposal.claim_id.as_str())?;
+	let objectives =
+		unique_program_records(&record.objectives, |objective| objective.proposal_id.as_str())?;
+	let work_items =
+		unique_program_records(&record.work_items, |work_item| work_item.objective_id.as_str())?;
+	let reviews = unique_program_records(&record.reviews, |review| review.work_item_id.as_str())?;
 	let mut evidence = HashMap::<&str, Vec<_>>::new();
 
 	for item in &record.evidence {
@@ -3814,7 +3822,7 @@ fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 	}
 
 	let mut order = Vec::new();
-	let mut visited_signals = HashSet::new();
+	let mut visited_signals = std::collections::HashSet::new();
 	let mut signal = roots[0];
 
 	loop {
@@ -3853,8 +3861,10 @@ fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 
 			break;
 		};
-		let evidence_ids =
-			item_evidence.iter().map(|item| item.evidence_id.as_str()).collect::<HashSet<_>>();
+		let evidence_ids = item_evidence
+			.iter()
+			.map(|item| item.evidence_id.as_str())
+			.collect::<std::collections::HashSet<_>>();
 
 		if item_evidence.len() != 2
 			|| !evidence_ids.contains(review.deterministic_evidence_id.as_str())
@@ -3884,7 +3894,8 @@ fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 		+ record.reviews.len();
 
 	if order.len() != expected
-		|| order.iter().map(String::as_str).collect::<HashSet<_>>().len() != expected
+		|| order.iter().map(String::as_str).collect::<std::collections::HashSet<_>>().len()
+			!= expected
 	{
 		return Err(());
 	}
@@ -3896,8 +3907,8 @@ fn field(label: &str, value: impl Into<String>) -> Result<ProgramNodeFieldDto, (
 	Ok(ProgramNodeFieldDto { label: wire(label)?, value: wire(value)? })
 }
 
-fn entity(value: &str) -> Result<EntityId, ()> {
-	EntityId::new(value.to_owned()).map_err(|_| ())
+fn entity(value: &str) -> Result<decodex_protocol::EntityId, ()> {
+	decodex_protocol::EntityId::new(value.to_owned()).map_err(|_| ())
 }
 
 fn wire(value: impl Into<String>) -> Result<WireText, ()> {
@@ -3935,8 +3946,9 @@ fn conversation_routing_successor_publication(
 		return Err(conversation_conflict());
 	}
 
-	let source_conversation_id = EntityId::new(source_conversation_id.as_str().to_owned())
-		.map_err(|_| conversation_conflict())?;
+	let source_conversation_id =
+		decodex_protocol::EntityId::new(source_conversation_id.as_str().to_owned())
+			.map_err(|_| conversation_conflict())?;
 	let source_conversation_revision =
 		EntityRevision(u64::try_from(source_revision).map_err(|_| conversation_conflict())?);
 
@@ -3966,7 +3978,7 @@ fn conversation_terminal_publication(
 
 	publication.event = EventPayload::ConversationTurnFinished {
 		conversation,
-		turn_id: EntityId::new(turn_id.as_str().to_owned()).ok()?,
+		turn_id: decodex_protocol::EntityId::new(turn_id.as_str().to_owned()).ok()?,
 		outcome: match state {
 			ConversationTerminalState::Succeeded => ConversationTurnOutcome::Succeeded,
 			ConversationTerminalState::Failed => ConversationTurnOutcome::Failed,
@@ -3982,9 +3994,11 @@ fn conversation_summary_publication(
 	phase: &'static str,
 ) -> Option<ApplicationEventPublication> {
 	let correlation_id = CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;
-	let entity_id =
-		EntityId::new(format!("conversation-event/{}/{phase}", readback.operation_key.as_deref()?))
-			.ok()?;
+	let entity_id = decodex_protocol::EntityId::new(format!(
+		"conversation-event/{}/{phase}",
+		readback.operation_key.as_deref()?
+	))
+	.ok()?;
 	let causation_id = readback.causation_id.as_deref().map(CausationId::new).transpose().ok()?;
 
 	Some(ApplicationEventPublication {
@@ -4032,7 +4046,8 @@ fn account_profile_dto(profile: AccountProfileView) -> Result<AccountProfileDto,
 		.collect::<Result<Vec<_>, ()>>()?;
 
 	Ok(AccountProfileDto {
-		account_id: EntityId::new(snapshot.account_id.as_str().to_owned()).map_err(|_| ())?,
+		account_id: decodex_protocol::EntityId::new(snapshot.account_id.as_str().to_owned())
+			.map_err(|_| ())?,
 		account_revision: EntityRevision(u64::try_from(snapshot.account_revision).map_err(|_| ())?),
 		observed_at_unix_micros: snapshot.observed_at_unix_micros,
 		email,
@@ -4155,8 +4170,10 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 		.unsettled_operation
 		.map(|operation| {
 			Ok(AccountUnsettledOperationDto {
-				operation_id: EntityId::new(operation.operation_id.as_str().to_owned())
-					.map_err(|_| ())?,
+				operation_id: decodex_protocol::EntityId::new(
+					operation.operation_id.as_str().to_owned(),
+				)
+				.map_err(|_| ())?,
 				kind: match operation.kind {
 					AccountOperationKind::Enroll => AccountOperationKindDto::Enroll,
 					AccountOperationKind::Import => AccountOperationKindDto::Import,
@@ -4184,7 +4201,8 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 		.transpose()?;
 
 	Ok(AccountDto {
-		account_id: EntityId::new(account.account_id.as_str().to_owned()).map_err(|_| ())?,
+		account_id: decodex_protocol::EntityId::new(account.account_id.as_str().to_owned())
+			.map_err(|_| ())?,
 		alias: WireText::new(alias).map_err(|_| ())?,
 		enabled: account.enabled,
 		account_revision: EntityRevision(u64::try_from(account.revision).map_err(|_| ())?),
@@ -4209,14 +4227,16 @@ fn routing_dto(routing: AccountRoutingControl) -> Result<AccountRoutingControlDt
 		revision: EntityRevision(u64::try_from(routing.revision).map_err(|_| ())?),
 		mode: match routing.mode {
 			AccountSelectionMode::Fixed(account_id) => AccountSelectionModeDto::Fixed(
-				EntityId::new(account_id.as_str().to_owned()).map_err(|_| ())?,
+				decodex_protocol::EntityId::new(account_id.as_str().to_owned()).map_err(|_| ())?,
 			),
 			AccountSelectionMode::Balanced => AccountSelectionModeDto::Balanced,
 		},
 		order: routing
 			.order
 			.into_iter()
-			.map(|account_id| EntityId::new(account_id.as_str().to_owned()).map_err(|_| ()))
+			.map(|account_id| {
+				decodex_protocol::EntityId::new(account_id.as_str().to_owned()).map_err(|_| ())
+			})
 			.collect::<Result<Vec<_>, _>>()?,
 	})
 }
@@ -4357,12 +4377,16 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 	Ok(())
 }
 
-fn account_id_from_wire(account_id: &EntityId) -> Result<AccountId, CommandError> {
+fn account_id_from_wire(
+	account_id: &decodex_protocol::EntityId,
+) -> Result<AccountId, CommandError> {
 	AccountId::new(account_id.as_str())
 		.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
 }
 
-fn operation_id_from_wire(operation_id: &EntityId) -> Result<AccountOperationId, CommandError> {
+fn operation_id_from_wire(
+	operation_id: &decodex_protocol::EntityId,
+) -> Result<AccountOperationId, CommandError> {
 	AccountOperationId::new(operation_id.as_str())
 		.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
 }
@@ -4382,7 +4406,7 @@ fn account_logout_publication(
 		return Err(application_unavailable("account logout result is incompatible"));
 	}
 
-	let account_id = EntityId::new(account.account_id.as_str().to_owned())
+	let account_id = decodex_protocol::EntityId::new(account.account_id.as_str().to_owned())
 		.map_err(|_| application_unavailable("account logout result is incompatible"))?;
 	let tombstone_revision = EntityRevision(
 		u64::try_from(account.revision)
@@ -4404,7 +4428,8 @@ fn account_logout_publication(
 fn account_routing_publication(
 	routing: AccountRoutingControlDto,
 ) -> Result<ApplicationPublication, CommandError> {
-	let entity_id = EntityId::new("account-routing").expect("account routing entity is bounded");
+	let entity_id = decodex_protocol::EntityId::new("account-routing")
+		.expect("account routing entity is bounded");
 
 	Ok(ApplicationPublication {
 		channel: Channel::AccountsHealth,
@@ -4429,7 +4454,8 @@ fn account_routed_publication(
 
 	let projection_digest = Sha256Digest::new(commit.projection_digest)
 		.map_err(|_| application_unavailable("account Route result is incompatible"))?;
-	let entity_id = EntityId::new("account-routing").expect("account routing entity is bounded");
+	let entity_id = decodex_protocol::EntityId::new("account-routing")
+		.expect("account routing entity is bounded");
 
 	Ok(ApplicationPublication {
 		channel: Channel::AccountsHealth,
@@ -4510,9 +4536,9 @@ fn account_recovery_publication(
 	outcome: AccountManualRecoveryOutcome,
 	account: AccountRecord,
 ) -> Result<ApplicationPublication, CommandError> {
-	let operation_id = EntityId::new(operation_id.as_str().to_owned())
+	let operation_id = decodex_protocol::EntityId::new(operation_id.as_str().to_owned())
 		.map_err(|_| application_unavailable("account recovery result is incompatible"))?;
-	let entity_id = EntityId::new(account.account_id.as_str().to_owned())
+	let entity_id = decodex_protocol::EntityId::new(account.account_id.as_str().to_owned())
 		.map_err(|_| application_unavailable("account recovery result is incompatible"))?;
 	let entity_revision = EntityRevision(
 		u64::try_from(account.revision)
@@ -4734,12 +4760,10 @@ fn page_agent_request(
 	expected_digest: Option<&str>,
 	offset: usize,
 ) -> decodex_protocol::AgentRequestResult {
-	use decodex_protocol::AgentRequestResult as Request;
-
-	use sha2::{Digest as _, Sha256};
-
-	let Request::Available { event_id, work_id, method, request_json } = &request else {
-		return Request::Unavailable;
+	let decodex_protocol::AgentRequestResult::Available { event_id, work_id, method, request_json } =
+		&request
+	else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
 	};
 	let content = request_json.as_str();
 
@@ -4747,7 +4771,7 @@ fn page_agent_request(
 		return if expected_digest.is_none() && offset == 0 {
 			request
 		} else {
-			Request::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		};
 	}
 
@@ -4763,7 +4787,7 @@ fn page_agent_request(
 		|| offset >= content.len()
 		|| !content.is_char_boundary(offset)
 	{
-		return Request::Unavailable;
+		return decodex_protocol::AgentRequestResult::Unavailable;
 	}
 
 	let mut end = offset.saturating_add(8_192).min(content.len());
@@ -4772,7 +4796,7 @@ fn page_agent_request(
 		end -= 1;
 	}
 
-	Request::Page {
+	decodex_protocol::AgentRequestResult::Page {
 		event_id: *event_id,
 		work_id: work_id.clone(),
 		method: method.clone(),
@@ -4947,6 +4971,40 @@ fn completed_agent_history(
 	}
 }
 
+fn agent_request_field_names(method: &str) -> Option<&'static [&'static str]> {
+	let keys: &[&str] = match method {
+		"item/commandExecution/requestApproval" => &[
+			"kind",
+			"command",
+			"cwd",
+			"environmentId",
+			"reason",
+			"availableDecisions",
+			"additionalPermissions",
+			"networkApprovalContext",
+			"proposedExecpolicyAmendment",
+			"proposedNetworkPolicyAmendments",
+		],
+		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
+		"item/permissions/requestApproval" => &["cwd", "reason", "permissions", "environmentId"],
+		"item/tool/requestUserInput" => &["questions", "isBlocking"],
+		"mcpServer/elicitation/request" => &[
+			"serverName",
+			"mode",
+			"message",
+			"requestedSchema",
+			"url",
+			"elicitationId",
+			"title",
+			"description",
+			"_meta",
+		],
+		_ => return None,
+	};
+
+	Some(keys)
+}
+
 fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 	kind == "unsent_input"
 		|| !matches!(
@@ -4970,6 +5028,66 @@ fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 		)
 }
 
+fn agent_history_event_display(
+	event: &AgentInboxEvent,
+	value: &serde_json::Value,
+	rendered_messages: &std::collections::HashSet<(String, String)>,
+	rendered_sources: &std::collections::HashSet<(String, String, String)>,
+	has_more: &mut bool,
+	pending_retry: Option<&AgentCapacityRetry>,
+	completed_message_ids: &mut Vec<(String, String)>,
+) -> Option<(&'static str, String)> {
+	Some(match event.event_kind.as_str() {
+			"reasoning_voice_handoff" => return None,
+			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
+			"partial_output" => partial_history_text(event, value, rendered_sources)?,
+			"plan_updated" => ("checklist", value["text"].as_str().unwrap_or("Checklist unavailable.").to_owned()),
+			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
+			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
+			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
+			"activity_started" | "activity_completed" => ("activity", String::new()),
+            "user_message" if event.disposition == Some(AgentDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
+                ("unsent_input", agent_user_message_text(value)),
+			"user_message" | "async_question_answer" | "voice_user" =>
+				("user", agent_user_message_text(value)),
+			"voice_assistant" => ("assistant", agent_user_message_text(value)),
+
+			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
+			"assistant_message" => {
+				if let (Some(turn), Some(item)) =
+					(value["turnId"].as_str(), value["item"]["id"].as_str())
+					&& rendered_messages.contains(&(turn.to_owned(), item.to_owned()))
+				{
+					return None;
+				}
+
+				*has_more |= value["truncated"] == true;
+
+				("assistant", value["item"]["text"].as_str().unwrap_or("").to_owned())
+			},
+			"context_compacted" => ("system", "Codex compacted the thread context.".into()),
+			"agent_turn_completed" | "worker_turn_completed" | "capacity_retry" =>
+				completed_agent_history(
+					value,
+					has_more,
+					pending_retry,
+					event.id,
+					completed_message_ids,
+				),
+			"automation_result" =>
+				("automation", value.as_str().unwrap_or(&event.payload).to_owned()),
+			"steer_pending"
+			| "configuration_needs_attention"
+			| "reconnection_needs_attention"
+			| "recovery_needs_attention"
+			| "wake_failed"
+			| "event_processing_failed"
+			| "followup_processing_failed"
+			| "connection_needs_attention" => ("system", agent_history_notice(&event.event_kind, value)),
+			_ => ("system", event.event_kind.clone()),
+		})
+}
+
 fn render_agent_history(
 	events: Vec<AgentInboxEvent>,
 	question_bytes: usize,
@@ -4986,58 +5104,16 @@ fn render_agent_history(
 	for event in events.into_iter().rev().take(32) {
 		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap_or_default();
 		let mut completed_message_ids = Vec::new();
-		let (kind, mut text) = match event.event_kind.as_str() {
-			"reasoning_voice_handoff" => continue,
-			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
-			"partial_output" => {
-				let Some(display) = partial_history_text(&event, &value, &rendered_sources) else { continue; };
-
-				display
-			},
-			"plan_updated" => ("checklist", value["text"].as_str().unwrap_or("Checklist unavailable.").to_owned()),
-			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
-			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
-			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
-			"activity_started" | "activity_completed" => ("activity", String::new()),
-            "user_message" if event.disposition == Some(AgentDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
-                ("unsent_input", agent_user_message_text(&value)),
-			"user_message" | "async_question_answer" | "voice_user" =>
-				("user", agent_user_message_text(&value)),
-			"voice_assistant" => ("assistant", agent_user_message_text(&value)),
-
-			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
-			"assistant_message" => {
-				if let (Some(turn), Some(item)) =
-					(value["turnId"].as_str(), value["item"]["id"].as_str())
-					&& rendered_messages.contains(&(turn.to_owned(), item.to_owned()))
-				{
-					continue;
-				}
-
-				has_more |= value["truncated"] == true;
-
-				("assistant", value["item"]["text"].as_str().unwrap_or("").to_owned())
-			},
-			"context_compacted" => ("system", "Codex compacted the thread context.".into()),
-			"agent_turn_completed" | "worker_turn_completed" | "capacity_retry" =>
-				completed_agent_history(
-					&value,
-					&mut has_more,
-					pending_retry.as_ref(),
-					event.id,
-					&mut completed_message_ids,
-				),
-			"automation_result" =>
-				("automation", value.as_str().unwrap_or(&event.payload).to_owned()),
-			"steer_pending"
-			| "configuration_needs_attention"
-			| "reconnection_needs_attention"
-			| "recovery_needs_attention"
-			| "wake_failed"
-			| "event_processing_failed"
-			| "followup_processing_failed"
-			| "connection_needs_attention" => ("system", agent_history_notice(&event.event_kind, &value)),
-			_ => ("system", event.event_kind.clone()),
+		let Some((kind, mut text)) = agent_history_event_display(
+			&event,
+			&value,
+			&rendered_messages,
+			&rendered_sources,
+			&mut has_more,
+			pending_retry.as_ref(),
+			&mut completed_message_ids,
+		) else {
+			continue;
 		};
 
 		if let Some(note) = event
@@ -5137,406 +5213,6 @@ fn append_task_reference_labels(text: &mut String, value: &serde_json::Value) {
 
 			text.push(if character.is_control() { ' ' } else { character });
 		}
-	}
-}
-
-async fn query_agent_request_with_details(
-	store: &ProductStore,
-	event_id: i64,
-	agent: Option<&crate::agent_host::AgentHost>,
-) -> decodex_protocol::AgentRequestResult {
-	let (Some(agent), ProductStore::Available(database)) = (agent, store) else {
-		return AgentRequestResult::Unavailable;
-	};
-	let Ok(event) = database.get_agent_inbox_event(event_id).await else {
-		return AgentRequestResult::Unavailable;
-	};
-	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
-		return AgentRequestResult::Unavailable;
-	};
-
-	if !agent.request_is_live(&payload) {
-		return AgentRequestResult::Unavailable;
-	}
-
-	let request = query_agent_request_scoped(store, event_id, true).await;
-
-	if !agent.request_is_live(&payload) {
-		return AgentRequestResult::Unavailable;
-	}
-	if !matches!(&request, AgentRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
-	{
-		return request;
-	}
-	if agent_detail::saved_file_changes(&payload).is_some() {
-		return request;
-	}
-
-	let params = &payload["params"];
-	let (Some(thread), Some(turn), Some(item)) =
-		(params["threadId"].as_str(), params["turnId"].as_str(), params["itemId"].as_str())
-	else {
-		return request;
-	};
-	let detail = agent.file_approval_detail(thread, turn, item).await;
-	// A native read can overlap connection replacement or request resolution.
-	let current = query_agent_request_scoped(store, event_id, true).await;
-
-	if current != request || !agent.request_is_live(&payload) {
-		return AgentRequestResult::Unavailable;
-	}
-
-	attach_file_approval_detail(request, detail)
-}
-
-async fn query_mcp_login(
-	agent: Option<&crate::agent_host::AgentHost>,
-	request: &McpLoginRequest,
-) -> McpLoginStatus {
-	match agent {
-		Some(agent) => agent.mcp_login(request).await,
-		None => mcp_login::status(request, McpLoginPhase::Disconnected, "Agent is not connected."),
-	}
-}
-
-async fn query_guardian_reviews(
-	store: &ProductStore,
-	agent: Option<&crate::agent_host::AgentHost>,
-	work: &str,
-	before: Option<i64>,
-) -> decodex_protocol::AgentGuardianReviewsResult {
-	match store {
-		ProductStore::Available(store) =>
-			agent_guardian::read(
-				store,
-				work,
-				before,
-				agent.and_then(|host| host.guardian_generation()),
-			)
-			.await,
-		ProductStore::Unavailable(_) => decodex_protocol::AgentGuardianReviewsResult::Unavailable,
-	}
-}
-
-#[cfg(test)]
-async fn query_agent_request(
-	store: &ProductStore,
-	event_id: i64,
-) -> decodex_protocol::AgentRequestResult {
-	query_agent_request_scoped(store, event_id, false).await
-}
-
-async fn query_agent_request_scoped(
-	store: &ProductStore,
-	event_id: i64,
-	native_live: bool,
-) -> decodex_protocol::AgentRequestResult {
-	let ProductStore::Available(store) = store else {
-		return AgentRequestResult::Unavailable;
-	};
-	let Ok(event) = store.get_agent_inbox_event(event_id).await else {
-		return AgentRequestResult::Unavailable;
-	};
-
-	if event.disposition.is_some()
-		|| !matches!(
-			event.event_kind.as_str(),
-			"permission_pending" | "user_input_pending" | "server_request_pending"
-		) {
-		return AgentRequestResult::Unavailable;
-	}
-
-	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
-		return AgentRequestResult::Unavailable;
-	};
-	let Some(params) = payload["params"].as_object() else {
-		return AgentRequestResult::Unavailable;
-	};
-	let Ok(work) = store.get_agent_work_item(event.work_item_id.clone()).await else {
-		return AgentRequestResult::Unavailable;
-	};
-
-	if !request_belongs_to_work(&payload, &work, native_live) {
-		return AgentRequestResult::Unavailable;
-	}
-
-	let Some(method) = payload["method"].as_str() else {
-		return AgentRequestResult::Unavailable;
-	};
-	let keys: &[&str] = match method {
-		"item/commandExecution/requestApproval" => &[
-			"kind",
-			"command",
-			"cwd",
-			"environmentId",
-			"reason",
-			"availableDecisions",
-			"additionalPermissions",
-			"networkApprovalContext",
-			"proposedExecpolicyAmendment",
-			"proposedNetworkPolicyAmendments",
-		],
-		"item/fileChange/requestApproval" => &["reason", "grantRoot"],
-		"item/permissions/requestApproval" => &["cwd", "reason", "permissions", "environmentId"],
-		"item/tool/requestUserInput" => &["questions", "isBlocking"],
-		"mcpServer/elicitation/request" => &[
-			"serverName",
-			"mode",
-			"message",
-			"requestedSchema",
-			"url",
-			"elicitationId",
-			"title",
-			"description",
-			"_meta",
-		],
-		_ => return AgentRequestResult::Unavailable,
-	};
-	let mut selected = serde_json::Map::new();
-
-	for key in keys {
-		if let Some(value) = params.get(*key) {
-			if *key == "_meta" {
-				if let Some(meta) = agent_request_metadata(value) {
-					selected.insert("_meta".into(), meta);
-				}
-
-				continue;
-			}
-
-			let valid = match *key {
-				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
-				"command" | "cwd" | "reason" | "grantRoot" | "environmentId" =>
-					value.is_null() || value.is_string(),
-				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
-				| "description" => value.is_string(),
-				// OpenAI form schemas are opaque JSON. Preserve unsupported shapes so
-				// the client can offer decline/cancel instead of hiding the request.
-				"requestedSchema" => true,
-				"questions" => value.is_array(),
-				"isBlocking" => value.is_boolean(),
-				"availableDecisions"
-				| "proposedExecpolicyAmendment"
-				| "proposedNetworkPolicyAmendments" => value.is_null() || value.is_array(),
-				"additionalPermissions" | "networkApprovalContext" =>
-					value.is_null() || value.is_object(),
-				"permissions" => value.is_object(),
-				_ => false,
-			};
-
-			if !valid {
-				return AgentRequestResult::Unavailable;
-			}
-
-			selected.insert((*key).into(), value.clone());
-		}
-	}
-
-	if method == "item/commandExecution/requestApproval" && !selected.contains_key("kind") {
-		selected.insert("kind".into(), serde_json::json!("command"));
-	}
-
-	if let Some(text) = agent_detail::saved_file_changes(&payload) {
-		selected.insert("changeDetails".into(), serde_json::json!(text));
-		selected.insert("changeDetailsTruncated".into(), serde_json::json!(false));
-	}
-
-	let Ok(request_json) = AgentRequestText::new(serde_json::Value::Object(selected).to_string())
-	else {
-		return AgentRequestResult::Unavailable;
-	};
-
-	AgentRequestResult::Available {
-		event_id,
-		work_id: event.work_item_id,
-		method: method.into(),
-		request_json,
-	}
-}
-
-#[cfg(test)]
-async fn query_agent_history(
-	store: &ProductStore,
-	id: &str,
-) -> decodex_protocol::AgentHistoryResult {
-	query_agent_history_page(store, id, None, None).await
-}
-
-async fn query_agent_input_receipts(
-	store: &ProductStore,
-	work: &str,
-	after: Option<i64>,
-) -> AgentInputReceiptsResult {
-	use decodex_protocol::AgentInputReceiptsResult as Result;
-
-	let ProductStore::Available(store) = store else {
-		return Result::Unavailable;
-	};
-	let Ok(events) = store.read_agent_unconfirmed_inputs(work.into(), after, 33).await else {
-		return Result::Unavailable;
-	};
-	let Ok(work_id) = decodex_protocol::EntityId::new(work) else {
-		return Result::Unavailable;
-	};
-	let total = events.len();
-	let mut entries = Vec::new();
-	let mut remaining = 60 * 1_024_usize;
-	let mut shortened = false;
-
-	for event in events.into_iter().take(32) {
-		let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
-			return Result::Unavailable;
-		};
-		let (kind, text) = if event.event_kind == "work_instruction" {
-			("instruction", value["text"].as_str().unwrap_or_default().to_owned())
-		} else {
-			("user", agent_user_message_text(&value))
-		};
-		let mut entry = agent_history_entry(&event, &value, kind, String::new());
-		let Ok(metadata) = serde_json::to_vec(&entry) else {
-			return Result::Unavailable;
-		};
-
-		if metadata.len() + 4 >= remaining {
-			break;
-		}
-
-		let (text, trimmed) = bound_agent_text(text, (remaining - metadata.len() - 4).min(8_192));
-
-		shortened |= trimmed;
-		entry.text = text;
-
-		let Ok(encoded) = serde_json::to_vec(&entry) else {
-			return Result::Unavailable;
-		};
-
-		remaining = remaining.saturating_sub(encoded.len() + 1);
-
-		entries.push(entry);
-	}
-
-	let next_after =
-		(entries.len() < total).then(|| entries.last().map(|entry| entry.id)).flatten();
-
-	Result::Available { work_id, entries, next_after, shortened }
-}
-
-async fn query_agent_history_page(
-	store: &ProductStore,
-	id: &str,
-	before: Option<i64>,
-	agent: Option<&crate::agent_host::AgentHost>,
-) -> AgentHistoryResult {
-	let ProductStore::Available(store) = store else {
-		return AgentHistoryResult::Unavailable;
-	};
-	let Ok((events, partial)) = store.read_agent_transcript(id.into(), before, 33).await else {
-		return AgentHistoryResult::Unavailable;
-	};
-	let Ok(precaution) = store.agent_misalignment(id.into()).await else {
-		return AgentHistoryResult::Unavailable;
-	};
-	let misalignment = precaution
-		.map(|saved| {
-			let live_token = agent.and_then(|agent| agent.misalignment_review_token(&saved));
-			let details: serde_json::Value = saved
-				.details_json
-				.as_deref()
-				.and_then(|value| serde_json::from_str(value).ok())
-				.unwrap_or_default();
-
-			AgentMisalignmentDto {
-				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
-				explanation: details["detailedExplanation"]
-					.as_str()
-					.filter(|text| !text.trim().is_empty() && text.len() <= 65_536)
-					.map(str::to_owned),
-				continuation: details
-					.pointer("/steer/message")
-					.and_then(serde_json::Value::as_str)
-					.filter(|_| live_token.is_some())
-					.filter(|text| !text.trim().is_empty() && text.len() <= 1_024)
-					.map(str::to_owned),
-			}
-		})
-		.map(Box::new);
-	let Ok(questions_recovering) = store.agent_async_questions_recovering(id.into()).await else {
-		return AgentHistoryResult::Unavailable;
-	};
-	let Ok(pending_questions) = store.read_agent_async_questions(id.into()).await else {
-		return AgentHistoryResult::Unavailable;
-	};
-	let mut questions = Vec::new();
-	let mut questions_truncated = false;
-	let mut question_bytes = 2;
-
-	for pending in pending_questions {
-		let Ok(mut question) =
-			serde_json::from_str::<AgentAsyncQuestionDto>(&pending.question_json)
-		else {
-			return AgentHistoryResult::Unavailable;
-		};
-
-		question.arrived_live = pending.arrived_live;
-
-		let cost = serde_json::to_vec(&question).expect("serializable question").len() + 1;
-
-		if questions.len() >= 32 || question_bytes + cost > MAX_HISTORY_INLINE_BYTES {
-			questions_truncated = true;
-
-			break;
-		}
-
-		question_bytes += cost;
-
-		questions.push(question);
-	}
-
-	let pending_retry = store.pending_agent_capacity_retry(id.into()).await.ok().flatten();
-	let RenderedAgentHistory { entries, has_more, next_before } =
-		render_agent_history(events, question_bytes, pending_retry);
-	let live = query_agent_live(partial);
-
-	AgentHistoryResult::Available {
-		questions,
-		questions_truncated,
-		questions_recovering,
-		misalignment,
-		entries,
-		has_more,
-		next_before,
-		live,
-		usage: store
-			.read_agent_usage(id.into())
-			.await
-			.ok()
-			.flatten()
-			.and_then(|json| serde_json::from_str(&json).ok()),
-	}
-}
-
-#[cfg(test)]
-mod task_reference_display_tests {
-	#[test]
-	fn referenced_titles_are_literal_history_data_and_empty_options_leave_text_alone() {
-		let mut text = "Prompt".to_owned();
-
-		super::append_task_reference_labels(
-			&mut text,
-			&serde_json::json!({"options":{"taskReferences":[
-				{"workId":"target","threadId":"thread","title":"[Title](https://example.test)\nnext"}
-			]}}),
-		);
-
-		assert!(text.starts_with("Prompt\n\nReferenced tasks: @"));
-		assert!(text.contains("\\[Title\\]"));
-		assert!(!text.contains(")\nnext"));
-
-		let before = text.clone();
-
-		super::append_task_reference_labels(&mut text, &serde_json::json!({}));
-
-		assert_eq!(text, before);
 	}
 }
 
@@ -5670,6 +5346,834 @@ fn agent_voice_receipt_session(event: &AgentInboxEvent) -> Option<String> {
 	(kind == "voice_transcript" && !session.is_empty() && session.len() <= 512).then_some(session)
 }
 
+fn bound_agent_text(mut text: String, encoded_budget: usize) -> (String, bool) {
+	if serde_json::to_vec(&text).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
+		return (text, false);
+	}
+
+	let mut low = 0;
+	let mut high = text.len();
+
+	while low < high {
+		let middle = low + (high - low).div_ceil(2);
+		let mut end = middle;
+
+		while !text.is_char_boundary(end) {
+			end -= 1;
+		}
+
+		if serde_json::to_vec(&text[..end]).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
+			low = middle;
+		} else {
+			high = middle - 1;
+		}
+	}
+	while !text.is_char_boundary(low) {
+		low -= 1;
+	}
+
+	text.truncate(low);
+
+	(text, true)
+}
+
+fn query_agent_live(partial: Vec<AgentLiveOutput>) -> Vec<decodex_protocol::AgentLiveMessageDto> {
+	let mut live = Vec::new();
+	let mut budget = 65_536_usize;
+
+	for mut output in partial {
+		let kind = match output.kind.as_str() {
+			"agentMessage" => AgentLiveMessageKind::AgentMessage,
+			"plan" => AgentLiveMessageKind::Plan,
+			"reasoningSummary" => AgentLiveMessageKind::ReasoningSummary,
+			_ => continue,
+		};
+
+		if kind == AgentLiveMessageKind::ReasoningSummary
+			&& decodex_core::contains_credential_material(&output.text)
+		{
+			output.text = "Sensitive details omitted".into();
+			output.truncated = true;
+		}
+		if budget == 0 {
+			break;
+		}
+
+		let metadata = serde_json::to_vec(&(&output.turn_id, &output.item_id))
+			.map_or(budget, |encoded| encoded.len())
+			+ 160;
+
+		if metadata >= budget {
+			break;
+		}
+
+		let (text, shortened) = bound_agent_text(output.text, budget - metadata);
+		let truncated = output.truncated || shortened;
+
+		budget = budget.saturating_sub(
+			serde_json::to_vec(&text).map_or(budget, |encoded| encoded.len()) + metadata,
+		);
+
+		live.push(decodex_protocol::AgentLiveMessageDto {
+			kind,
+			turn_id: output.turn_id,
+			item_id: output.item_id,
+			text,
+			truncated,
+		});
+	}
+
+	live
+}
+
+fn desktop_settings_dto(settings: DesktopSettings) -> Result<DesktopSettingsDto, ()> {
+	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
+	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
+
+	dto.auto_activate_quota = settings.auto_activate_quota;
+	dto.auto_recap = settings.auto_recap;
+
+	Ok(dto)
+}
+
+fn desktop_settings_command_error(error: StoreError) -> CommandError {
+	match error {
+		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } =>
+			match (u64::try_from(expected), u64::try_from(actual)) {
+				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
+					expected: EntityRevision(expected),
+					actual: EntityRevision(actual),
+				},
+				_ => application_unavailable("desktop settings revision is invalid"),
+			},
+		_ => application_unavailable("desktop settings store is unavailable"),
+	}
+}
+
+// Agent notifications have no durable row revision. This counter belongs to the
+// service publication lifetime; reconnecting to another publication requires a snapshot.
+fn agent_command_publication(
+	revision: &AtomicU64,
+	work_id: decodex_protocol::EntityId,
+) -> Result<ApplicationPublication, CommandError> {
+	let previous = revision
+		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+		.map_err(|_| CommandError::AcceptanceUnknown)?;
+
+	Ok(ApplicationPublication {
+		channel: Channel::ProjectWork,
+		entity_id: work_id.clone(),
+		entity_revision: EntityRevision(previous + 1),
+		result: ResultPayload::AgentAccepted { work_id: work_id.clone() },
+		event: EventPayload::AgentChanged { work_id },
+	})
+}
+
+fn application_unavailable(message: &'static str) -> CommandError {
+	CommandError::ApplicationUnavailable {
+		message: WireText::new(message).expect("static application message is bounded"),
+	}
+}
+
+const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
+	match error {
+		ResetCardServiceError::InvalidRequest => "reset-card request is invalid",
+		ResetCardServiceError::AccountNotFound => "reset-card account is not configured",
+		ResetCardServiceError::AccountStateRejected =>
+			"reset-card account state rejects manual use",
+		ResetCardServiceError::AccountChanged
+		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
+		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
+		ResetCardServiceError::SchemaUnsupported =>
+			"stored reset-card result is incompatible with the current provider API",
+		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
+		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
+		ResetCardServiceError::InventoryChanged => "selected reset card changed",
+		ResetCardServiceError::RequestTimedOut => "reset-card provider observation timed out",
+		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
+		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
+		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
+		ResetCardServiceError::AcceptanceUnknown =>
+			"reset-card durable acceptance could not be established",
+	}
+}
+
+const fn protocol_reset_error(error: ResetCardServiceError) -> ResetCardError {
+	match error {
+		ResetCardServiceError::InvalidRequest
+		| ResetCardServiceError::IdempotencyConflict
+		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => ResetCardError::InvalidRequest,
+		ResetCardServiceError::AccountNotFound => ResetCardError::AccountNotFound,
+		ResetCardServiceError::AccountStateRejected => ResetCardError::AccountStateRejected,
+		ResetCardServiceError::AccountChanged => ResetCardError::InventoryChanged,
+		ResetCardServiceError::VaultUnavailable => ResetCardError::VaultUnavailable,
+		ResetCardServiceError::SchemaUnsupported => ResetCardError::SchemaUnsupported,
+		ResetCardServiceError::ProviderUnavailable => ResetCardError::ProviderUnavailable,
+		ResetCardServiceError::InventoryIncomplete => ResetCardError::InventoryIncomplete,
+		ResetCardServiceError::InventoryChanged => ResetCardError::InventoryChanged,
+		ResetCardServiceError::RequestTimedOut => ResetCardError::RequestTimedOut,
+		ResetCardServiceError::ResourceExhausted => ResetCardError::ResourceExhausted,
+		ResetCardServiceError::ProductStateUnavailable => ResetCardError::ProductStateUnavailable,
+		ResetCardServiceError::AcceptanceUnknown => ResetCardError::ProductStateUnavailable,
+	}
+}
+
+fn operation_query_result(
+	result: Result<ResetCardOperationStatus, ResetCardServiceError>,
+) -> ResetCardOperationResult {
+	match result {
+		Ok(status) => operation_result(status),
+		Err(error) => ResetCardOperationResult::Unavailable { error: protocol_reset_error(error) },
+	}
+}
+
+const fn operation_result(status: ResetCardOperationStatus) -> ResetCardOperationResult {
+	match status {
+		ResetCardOperationStatus::NotFound => ResetCardOperationResult::NotFound,
+		ResetCardOperationStatus::Prepared => ResetCardOperationResult::Prepared,
+		ResetCardOperationStatus::EffectAmbiguous => ResetCardOperationResult::EffectAmbiguous,
+		ResetCardOperationStatus::Completed(outcome) =>
+			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) },
+		ResetCardOperationStatus::FailedBeforeEffect(error) =>
+			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) },
+	}
+}
+
+const fn protocol_outcome(outcome: ResetCardConsumeOutcome) -> ResetCardOutcome {
+	match outcome {
+		ResetCardConsumeOutcome::Reset => ResetCardOutcome::Reset,
+		ResetCardConsumeOutcome::NothingToReset => ResetCardOutcome::NothingToReset,
+		ResetCardConsumeOutcome::NoCredit => ResetCardOutcome::NoCredit,
+		ResetCardConsumeOutcome::AlreadyRedeemed => ResetCardOutcome::AlreadyRedeemed,
+	}
+}
+
+const fn failure_reset_error(failure: ResetCardFailureCode) -> ResetCardError {
+	match failure {
+		ResetCardFailureCode::AccountChanged => ResetCardError::InventoryChanged,
+		ResetCardFailureCode::VaultUnavailable => ResetCardError::VaultUnavailable,
+		ResetCardFailureCode::SchemaUnsupported => ResetCardError::SchemaUnsupported,
+		ResetCardFailureCode::InventoryIncomplete => ResetCardError::InventoryIncomplete,
+		ResetCardFailureCode::InventoryChanged => ResetCardError::InventoryChanged,
+		ResetCardFailureCode::ProviderUnavailable => ResetCardError::ProviderUnavailable,
+		ResetCardFailureCode::ResourceExhausted => ResetCardError::ResourceExhausted,
+	}
+}
+
+fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
+	let artifact = entry
+		.artifact
+		.map(|(id, revision)| {
+			Ok::<HistoryArtifactReference, ()>(HistoryArtifactReference {
+				artifact_id: HistoryArtifactId::new(id.as_str().to_owned()).ok_or(())?,
+				revision: HistoryArtifactRevision::new(revision).ok_or(())?,
+			})
+		})
+		.transpose()?;
+	let payload = match (entry.inline_text, entry.blob_hash, entry.blob_byte_length) {
+		(Some(text), None, None) =>
+			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? },
+		(None, Some(hash), Some(byte_length)) => HistoryPayloadDto::Blob(HistoryBlobReference {
+			sha256: Sha256Digest::new(hash.to_hex()).map_err(|_| ())?,
+			byte_length: HistoryBlobLength::new(byte_length).map_err(|_| ())?,
+		}),
+		_ => return Err(()),
+	};
+
+	Ok(HistoryItemDto {
+		history_item_id: decodex_protocol::EntityId::new(entry.history_item_id).map_err(|_| ())?,
+		turn_id: decodex_protocol::EntityId::new(entry.turn_id).map_err(|_| ())?,
+		runtime_session_id: decodex_protocol::EntityId::new(entry.runtime_session_id)
+			.map_err(|_| ())?,
+		turn_role: match entry.turn_role {
+			TurnRole::User => HistoryTurnRole::User,
+			TurnRole::Assistant => HistoryTurnRole::Assistant,
+			TurnRole::System => HistoryTurnRole::System,
+			TurnRole::Tool => HistoryTurnRole::Tool,
+		},
+		possible_side_effects: match entry.possible_side_effects {
+			PossibleSideEffects::None => HistorySideEffectState::None,
+			PossibleSideEffects::Possible => HistorySideEffectState::Possible,
+			PossibleSideEffects::Unknown => HistorySideEffectState::Unknown,
+		},
+		kind: match entry.kind {
+			HistoryItemKind::Message => HistoryItemKindDto::Message,
+			HistoryItemKind::Reasoning => HistoryItemKindDto::Reasoning,
+			HistoryItemKind::ToolCall => HistoryItemKindDto::ToolCall,
+			HistoryItemKind::ToolResult => HistoryItemKindDto::ToolResult,
+			HistoryItemKind::Artifact => HistoryItemKindDto::Artifact,
+			HistoryItemKind::Status => HistoryItemKindDto::Status,
+		},
+		status: match entry.status {
+			ItemStatus::Streaming => HistoryItemStatusDto::Streaming,
+			ItemStatus::Completed => HistoryItemStatusDto::Completed,
+			ItemStatus::Failed => HistoryItemStatusDto::Failed,
+		},
+		payload,
+		media_type: entry.media_type,
+		metadata: entry.metadata,
+		artifact,
+		revision: EntityRevision(u64::try_from(entry.revision).map_err(|_| ())?),
+	})
+}
+
+fn runtime_initial_model_source(
+	source: Option<&decodex_protocol::InitialModelSource>,
+) -> Result<Option<decodex_database::InitialModelSource>, ()> {
+	source
+		.map(|source| {
+			if source.account_revision <= 0 {
+				return Err(());
+			}
+
+			Ok(decodex_database::InitialModelSource {
+				account_id: AccountId::new(source.account_id.as_str()).map_err(|_| ())?,
+				account_revision: source.account_revision,
+			})
+		})
+		.transpose()
+}
+
+async fn query_agent_request_with_details(
+	store: &ProductStore,
+	event_id: i64,
+	agent: Option<&crate::agent_host::AgentHost>,
+) -> decodex_protocol::AgentRequestResult {
+	let (Some(agent), ProductStore::Available(database)) = (agent, store) else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Ok(event) = database.get_agent_inbox_event(event_id).await else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+
+	if !agent.request_is_live(&payload) {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	}
+
+	let request = query_agent_request_scoped(store, event_id, true).await;
+
+	if !agent.request_is_live(&payload) {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	}
+	if !matches!(&request, decodex_protocol::AgentRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
+	{
+		return request;
+	}
+	if agent_detail::saved_file_changes(&payload).is_some() {
+		return request;
+	}
+
+	let params = &payload["params"];
+	let (Some(thread), Some(turn), Some(item)) =
+		(params["threadId"].as_str(), params["turnId"].as_str(), params["itemId"].as_str())
+	else {
+		return request;
+	};
+	let detail = agent.file_approval_detail(thread, turn, item).await;
+	// A native read can overlap connection replacement or request resolution.
+	let current = query_agent_request_scoped(store, event_id, true).await;
+
+	if current != request || !agent.request_is_live(&payload) {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	}
+
+	attach_file_approval_detail(request, detail)
+}
+
+async fn query_mcp_login(
+	agent: Option<&crate::agent_host::AgentHost>,
+	request: &McpLoginRequest,
+) -> McpLoginStatus {
+	match agent {
+		Some(agent) => agent.mcp_login(request).await,
+		None => mcp_login::status(request, McpLoginPhase::Disconnected, "Agent is not connected."),
+	}
+}
+
+async fn query_guardian_reviews(
+	store: &ProductStore,
+	agent: Option<&crate::agent_host::AgentHost>,
+	work: &str,
+	before: Option<i64>,
+) -> decodex_protocol::AgentGuardianReviewsResult {
+	match store {
+		ProductStore::Available(store) =>
+			agent_guardian::read(
+				store,
+				work,
+				before,
+				agent.and_then(|host| host.guardian_generation()),
+			)
+			.await,
+		ProductStore::Unavailable(_) => decodex_protocol::AgentGuardianReviewsResult::Unavailable,
+	}
+}
+
+#[cfg(test)]
+async fn query_agent_request(
+	store: &ProductStore,
+	event_id: i64,
+) -> decodex_protocol::AgentRequestResult {
+	query_agent_request_scoped(store, event_id, false).await
+}
+
+async fn execute_account_enrollment(
+	service: &AccountService,
+	command: &CommandEnvelope,
+	lease: AccountCommandReceiptLease,
+) -> Result<ApplicationPublication, CommandError> {
+	let value = match &command.payload {
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, enabled } => {
+			let operation_id = operation_id_from_wire(operation_id)?;
+			let account_id = account_id_from_wire(account_id)?;
+			let requested_account_id = account_id.clone();
+
+			service
+				.enroll_from_shared_codex_command(
+					lease,
+					operation_id,
+					account_id,
+					*enabled,
+					move |result| {
+						encode_account_command_receipt(
+							&result.map_err(account_lifecycle_command_error).and_then(|account| {
+								account_enrollment_publication(
+									&requested_account_id,
+									account.clone(),
+								)
+							}),
+						)
+					},
+				)
+				.await
+		},
+		CommandPayload::ImportAccountCredentialFile {
+			operation_id,
+			account_id,
+			enabled,
+			source_descriptor,
+		} => {
+			let operation_id = operation_id_from_wire(operation_id)?;
+			let account_id = account_id_from_wire(account_id)?;
+			let requested_account_id = account_id.clone();
+
+			service
+				.import_credential_file_command(
+					lease,
+					operation_id,
+					account_id,
+					*enabled,
+					source_descriptor.as_str(),
+					move |result| {
+						encode_account_command_receipt(
+							&result.map_err(account_lifecycle_command_error).and_then(|account| {
+								account_enrollment_publication(
+									&requested_account_id,
+									account.clone(),
+								)
+							}),
+						)
+					},
+				)
+				.await
+		},
+		_ => unreachable!("enrollment dispatch accepts only enrollment commands"),
+	};
+
+	decode_completed_account_command(value)
+}
+
+async fn query_agent_request_scoped(
+	store: &ProductStore,
+	event_id: i64,
+	native_live: bool,
+) -> decodex_protocol::AgentRequestResult {
+	let ProductStore::Available(store) = store else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Ok(event) = store.get_agent_inbox_event(event_id).await else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+
+	if event.disposition.is_some()
+		|| !matches!(
+			event.event_kind.as_str(),
+			"permission_pending" | "user_input_pending" | "server_request_pending"
+		) {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	}
+
+	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Some(params) = payload["params"].as_object() else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Ok(work) = store.get_agent_work_item(event.work_item_id.clone()).await else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+
+	if !request_belongs_to_work(&payload, &work, native_live) {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	}
+
+	let Some(method) = payload["method"].as_str() else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let Some(keys) = agent_request_field_names(method) else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+	let mut selected = serde_json::Map::new();
+
+	for key in keys {
+		if let Some(value) = params.get(*key) {
+			if *key == "_meta" {
+				if let Some(meta) = agent_request_metadata(value) {
+					selected.insert("_meta".into(), meta);
+				}
+
+				continue;
+			}
+
+			let valid = match *key {
+				"kind" => matches!(value.as_str(), Some("command" | "writeStdin")),
+				"command" | "cwd" | "reason" | "grantRoot" | "environmentId" =>
+					value.is_null() || value.is_string(),
+				"serverName" | "mode" | "message" | "url" | "elicitationId" | "title"
+				| "description" => value.is_string(),
+				// OpenAI form schemas are opaque JSON. Preserve unsupported shapes so
+				// the client can offer decline/cancel instead of hiding the request.
+				"requestedSchema" => true,
+				"questions" => value.is_array(),
+				"isBlocking" => value.is_boolean(),
+				"availableDecisions"
+				| "proposedExecpolicyAmendment"
+				| "proposedNetworkPolicyAmendments" => value.is_null() || value.is_array(),
+				"additionalPermissions" | "networkApprovalContext" =>
+					value.is_null() || value.is_object(),
+				"permissions" => value.is_object(),
+				_ => false,
+			};
+
+			if !valid {
+				return decodex_protocol::AgentRequestResult::Unavailable;
+			}
+
+			selected.insert((*key).into(), value.clone());
+		}
+	}
+
+	if method == "item/commandExecution/requestApproval" && !selected.contains_key("kind") {
+		selected.insert("kind".into(), serde_json::json!("command"));
+	}
+
+	if let Some(text) = agent_detail::saved_file_changes(&payload) {
+		selected.insert("changeDetails".into(), serde_json::json!(text));
+		selected.insert("changeDetailsTruncated".into(), serde_json::json!(false));
+	}
+
+	let Ok(request_json) = AgentRequestText::new(serde_json::Value::Object(selected).to_string())
+	else {
+		return decodex_protocol::AgentRequestResult::Unavailable;
+	};
+
+	decodex_protocol::AgentRequestResult::Available {
+		event_id,
+		work_id: event.work_item_id,
+		method: method.into(),
+		request_json,
+	}
+}
+
+#[cfg(test)]
+async fn query_agent_history(
+	store: &ProductStore,
+	id: &str,
+) -> decodex_protocol::AgentHistoryResult {
+	query_agent_history_page(store, id, None, None).await
+}
+
+async fn query_agent_input_receipts(
+	store: &ProductStore,
+	work: &str,
+	after: Option<i64>,
+) -> AgentInputReceiptsResult {
+	let ProductStore::Available(store) = store else {
+		return AgentInputReceiptsResult::Unavailable;
+	};
+	let Ok(events) = store.read_agent_unconfirmed_inputs(work.into(), after, 33).await else {
+		return AgentInputReceiptsResult::Unavailable;
+	};
+	let Ok(work_id) = decodex_protocol::EntityId::new(work) else {
+		return AgentInputReceiptsResult::Unavailable;
+	};
+	let total = events.len();
+	let mut entries = Vec::new();
+	let mut remaining = 60 * 1_024_usize;
+	let mut shortened = false;
+
+	for event in events.into_iter().take(32) {
+		let Ok(value) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
+			return AgentInputReceiptsResult::Unavailable;
+		};
+		let (kind, text) = if event.event_kind == "work_instruction" {
+			("instruction", value["text"].as_str().unwrap_or_default().to_owned())
+		} else {
+			("user", agent_user_message_text(&value))
+		};
+		let mut entry = agent_history_entry(&event, &value, kind, String::new());
+		let Ok(metadata) = serde_json::to_vec(&entry) else {
+			return AgentInputReceiptsResult::Unavailable;
+		};
+
+		if metadata.len() + 4 >= remaining {
+			break;
+		}
+
+		let (text, trimmed) = bound_agent_text(text, (remaining - metadata.len() - 4).min(8_192));
+
+		shortened |= trimmed;
+		entry.text = text;
+
+		let Ok(encoded) = serde_json::to_vec(&entry) else {
+			return AgentInputReceiptsResult::Unavailable;
+		};
+
+		remaining = remaining.saturating_sub(encoded.len() + 1);
+
+		entries.push(entry);
+	}
+
+	let next_after =
+		(entries.len() < total).then(|| entries.last().map(|entry| entry.id)).flatten();
+
+	AgentInputReceiptsResult::Available { work_id, entries, next_after, shortened }
+}
+
+async fn query_agent_history_page(
+	store: &ProductStore,
+	id: &str,
+	before: Option<i64>,
+	agent: Option<&crate::agent_host::AgentHost>,
+) -> decodex_protocol::AgentHistoryResult {
+	let ProductStore::Available(store) = store else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let Ok((events, partial)) = store.read_agent_transcript(id.into(), before, 33).await else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let Ok(precaution) = store.agent_misalignment(id.into()).await else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let misalignment = precaution
+		.map(|saved| {
+			let live_token = agent.and_then(|agent| agent.misalignment_review_token(&saved));
+			let details: serde_json::Value = saved
+				.details_json
+				.as_deref()
+				.and_then(|value| serde_json::from_str(value).ok())
+				.unwrap_or_default();
+
+			AgentMisalignmentDto {
+				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
+				explanation: details["detailedExplanation"]
+					.as_str()
+					.filter(|text| !text.trim().is_empty() && text.len() <= 65_536)
+					.map(str::to_owned),
+				continuation: details
+					.pointer("/steer/message")
+					.and_then(serde_json::Value::as_str)
+					.filter(|_| live_token.is_some())
+					.filter(|text| !text.trim().is_empty() && text.len() <= 1_024)
+					.map(str::to_owned),
+			}
+		})
+		.map(Box::new);
+	let Ok(questions_recovering) = store.agent_async_questions_recovering(id.into()).await else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let Ok(pending_questions) = store.read_agent_async_questions(id.into()).await else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let mut questions = Vec::new();
+	let mut questions_truncated = false;
+	let mut question_bytes = 2;
+
+	for pending in pending_questions {
+		let Ok(mut question) =
+			serde_json::from_str::<AgentAsyncQuestionDto>(&pending.question_json)
+		else {
+			return decodex_protocol::AgentHistoryResult::Unavailable;
+		};
+
+		question.arrived_live = pending.arrived_live;
+
+		let cost = serde_json::to_vec(&question).expect("serializable question").len() + 1;
+
+		if questions.len() >= 32 || question_bytes + cost > MAX_HISTORY_INLINE_BYTES {
+			questions_truncated = true;
+
+			break;
+		}
+
+		question_bytes += cost;
+
+		questions.push(question);
+	}
+
+	let pending_retry = store.pending_agent_capacity_retry(id.into()).await.ok().flatten();
+	let RenderedAgentHistory { entries, has_more, next_before } =
+		render_agent_history(events, question_bytes, pending_retry);
+	let live = query_agent_live(partial);
+
+	decodex_protocol::AgentHistoryResult::Available {
+		questions,
+		questions_truncated,
+		questions_recovering,
+		misalignment,
+		entries,
+		has_more,
+		next_before,
+		live,
+		usage: store
+			.read_agent_usage(id.into())
+			.await
+			.ok()
+			.flatten()
+			.and_then(|json| serde_json::from_str(&json).ok()),
+	}
+}
+
+async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
+	let ProductStore::Available(store) = store else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
+	};
+	let records = match store
+		.read_agent_snapshot(MAX_AGENT_WORK_ITEMS, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS)
+		.await
+	{
+		Ok(records) => records,
+		Err(_) => return decodex_protocol::AgentSnapshotResult::Unavailable,
+	};
+	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
+		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+			return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
+				work_items,
+				dependencies,
+				pending_events,
+			};
+		},
+		AgentStoreSnapshot::Complete {
+			work_items,
+			dependencies,
+			pending_events,
+			managers,
+			workspaces,
+		} => (work_items, dependencies, pending_events, managers, workspaces),
+	};
+	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
+	let snapshot = AgentSnapshotDto {
+		runtime_source: None,
+		workspaces: workspaces
+			.into_iter()
+			.map(|(agent_id, name, directory)| AgentWorkspaceDto { agent_id, name, directory })
+			.collect(),
+		work_items: work_items
+			.into_iter()
+			.map(|item| AgentWorkItemDto {
+				id: item.id.clone(),
+				parent_goal_id: item.parent_goal_id.clone(),
+				kind: match item.kind {
+					AgentWorkKind::Goal =>
+						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
+							AgentWorkKindDto::Manager
+						} else {
+							AgentWorkKindDto::Goal
+						},
+					AgentWorkKind::Task => AgentWorkKindDto::Task,
+				},
+				title: item.title,
+				codex_thread_id: item.codex_thread_id,
+				active_turn_id: item.active_turn_id,
+				dispatch_state: match item.dispatch_state {
+					AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
+					AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
+					AgentDispatchState::Running => AgentDispatchStateDto::Running,
+					AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
+				},
+				status: match item.status {
+					AgentWorkStatus::Open => AgentWorkStatusDto::Open,
+					AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
+					AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
+					AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
+					AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
+				},
+				next_check_at_micros: item.next_check_at_micros,
+				created_at_micros: item.created_at_micros,
+				updated_at_micros: item.updated_at_micros,
+			})
+			.collect(),
+		dependencies: dependencies
+			.into_iter()
+			.map(|edge| AgentDependencyDto {
+				work_item_id: edge.work_item_id,
+				depends_on_id: edge.depends_on_id,
+			})
+			.collect(),
+		pending_events: pending_events
+			.into_iter()
+			.map(|event| AgentPendingEventDto {
+				id: event.id,
+				source_event_id: event.source_event_id,
+				work_item_id: event.work_item_id,
+				event_kind: event.event_kind,
+				created_at_micros: event.created_at_micros,
+				delivery_claimed: event.delivered_turn_id.is_some(),
+			})
+			.collect(),
+	};
+
+	if serde_json::to_vec(&snapshot).is_ok_and(|bytes| bytes.len() > MAX_AGENT_SNAPSHOT_BYTES) {
+		return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
+			work_items: counts.0,
+			dependencies: counts.1,
+			pending_events: counts.2,
+		};
+	}
+	if snapshot.is_valid() {
+		decodex_protocol::AgentSnapshotResult::Available(snapshot)
+	} else {
+		decodex_protocol::AgentSnapshotResult::Unavailable
+	}
+}
+
+#[cfg(test)]
+mod task_reference_display_tests {
+	#[test]
+	fn referenced_titles_are_literal_history_data_and_empty_options_leave_text_alone() {
+		let mut text = "Prompt".to_owned();
+
+		super::append_task_reference_labels(
+			&mut text,
+			&serde_json::json!({"options":{"taskReferences":[
+				{"workId":"target","threadId":"thread","title":"[Title](https://example.test)\nnext"}
+			]}}),
+		);
+
+		assert!(text.starts_with("Prompt\n\nReferenced tasks: @"));
+		assert!(text.contains("\\[Title\\]"));
+		assert!(!text.contains(")\nnext"));
+
+		let before = text.clone();
+
+		super::append_task_reference_labels(&mut text, &serde_json::json!({}));
+
+		assert_eq!(text, before);
+	}
+}
 #[cfg(test)]
 mod history_receipt_tests {
 
@@ -5851,380 +6355,6 @@ mod history_receipt_tests {
 		}
 	}
 }
-
-fn bound_agent_text(mut text: String, encoded_budget: usize) -> (String, bool) {
-	if serde_json::to_vec(&text).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
-		return (text, false);
-	}
-
-	let mut low = 0;
-	let mut high = text.len();
-
-	while low < high {
-		let middle = low + (high - low).div_ceil(2);
-		let mut end = middle;
-
-		while !text.is_char_boundary(end) {
-			end -= 1;
-		}
-
-		if serde_json::to_vec(&text[..end]).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
-			low = middle;
-		} else {
-			high = middle - 1;
-		}
-	}
-	while !text.is_char_boundary(low) {
-		low -= 1;
-	}
-
-	text.truncate(low);
-
-	(text, true)
-}
-
-fn query_agent_live(partial: Vec<AgentLiveOutput>) -> Vec<decodex_protocol::AgentLiveMessageDto> {
-	let mut live = Vec::new();
-	let mut budget = 65_536_usize;
-
-	for mut output in partial {
-		let kind = match output.kind.as_str() {
-			"agentMessage" => AgentLiveMessageKind::AgentMessage,
-			"plan" => AgentLiveMessageKind::Plan,
-			"reasoningSummary" => AgentLiveMessageKind::ReasoningSummary,
-			_ => continue,
-		};
-
-		if kind == AgentLiveMessageKind::ReasoningSummary
-			&& decodex_core::contains_credential_material(&output.text)
-		{
-			output.text = "Sensitive details omitted".into();
-			output.truncated = true;
-		}
-		if budget == 0 {
-			break;
-		}
-
-		let metadata = serde_json::to_vec(&(&output.turn_id, &output.item_id))
-			.map_or(budget, |encoded| encoded.len())
-			+ 160;
-
-		if metadata >= budget {
-			break;
-		}
-
-		let (text, shortened) = bound_agent_text(output.text, budget - metadata);
-		let truncated = output.truncated || shortened;
-
-		budget = budget.saturating_sub(
-			serde_json::to_vec(&text).map_or(budget, |encoded| encoded.len()) + metadata,
-		);
-
-		live.push(decodex_protocol::AgentLiveMessageDto {
-			kind,
-			turn_id: output.turn_id,
-			item_id: output.item_id,
-			text,
-			truncated,
-		});
-	}
-
-	live
-}
-
-fn desktop_settings_dto(settings: StoreDesktopSettings) -> Result<DesktopSettingsDto, ()> {
-	let revision = u64::try_from(settings.revision).map(EntityRevision).map_err(|_| ())?;
-	let mut dto = DesktopSettingsDto::new(settings.show_in_menu_bar, revision).map_err(|_| ())?;
-
-	dto.auto_activate_quota = settings.auto_activate_quota;
-	dto.auto_recap = settings.auto_recap;
-
-	Ok(dto)
-}
-
-fn desktop_settings_command_error(error: StoreError) -> CommandError {
-	match error {
-		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } =>
-			match (u64::try_from(expected), u64::try_from(actual)) {
-				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
-					expected: EntityRevision(expected),
-					actual: EntityRevision(actual),
-				},
-				_ => application_unavailable("desktop settings revision is invalid"),
-			},
-		_ => application_unavailable("desktop settings store is unavailable"),
-	}
-}
-
-// Agent notifications have no durable row revision. This counter belongs to the
-// service publication lifetime; reconnecting to another publication requires a snapshot.
-fn agent_command_publication(
-	revision: &AtomicU64,
-	work_id: EntityId,
-) -> Result<ApplicationPublication, CommandError> {
-	let previous = revision
-		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
-		.map_err(|_| CommandError::AcceptanceUnknown)?;
-
-	Ok(ApplicationPublication {
-		channel: Channel::ProjectWork,
-		entity_id: work_id.clone(),
-		entity_revision: EntityRevision(previous + 1),
-		result: ResultPayload::AgentAccepted { work_id: work_id.clone() },
-		event: EventPayload::AgentChanged { work_id },
-	})
-}
-
-fn application_unavailable(message: &'static str) -> CommandError {
-	CommandError::ApplicationUnavailable {
-		message: WireText::new(message).expect("static application message is bounded"),
-	}
-}
-
-const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
-	match error {
-		ResetCardServiceError::InvalidRequest => "reset-card request is invalid",
-		ResetCardServiceError::AccountNotFound => "reset-card account is not configured",
-		ResetCardServiceError::AccountStateRejected =>
-			"reset-card account state rejects manual use",
-		ResetCardServiceError::AccountChanged
-		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
-		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
-		ResetCardServiceError::SchemaUnsupported =>
-			"stored reset-card result is incompatible with the current provider API",
-		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
-		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
-		ResetCardServiceError::InventoryChanged => "selected reset card changed",
-		ResetCardServiceError::RequestTimedOut => "reset-card provider observation timed out",
-		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
-		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
-		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
-		ResetCardServiceError::AcceptanceUnknown =>
-			"reset-card durable acceptance could not be established",
-	}
-}
-
-const fn protocol_reset_error(error: ResetCardServiceError) -> ResetCardError {
-	match error {
-		ResetCardServiceError::InvalidRequest
-		| ResetCardServiceError::IdempotencyConflict
-		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => ResetCardError::InvalidRequest,
-		ResetCardServiceError::AccountNotFound => ResetCardError::AccountNotFound,
-		ResetCardServiceError::AccountStateRejected => ResetCardError::AccountStateRejected,
-		ResetCardServiceError::AccountChanged => ResetCardError::InventoryChanged,
-		ResetCardServiceError::VaultUnavailable => ResetCardError::VaultUnavailable,
-		ResetCardServiceError::SchemaUnsupported => ResetCardError::SchemaUnsupported,
-		ResetCardServiceError::ProviderUnavailable => ResetCardError::ProviderUnavailable,
-		ResetCardServiceError::InventoryIncomplete => ResetCardError::InventoryIncomplete,
-		ResetCardServiceError::InventoryChanged => ResetCardError::InventoryChanged,
-		ResetCardServiceError::RequestTimedOut => ResetCardError::RequestTimedOut,
-		ResetCardServiceError::ResourceExhausted => ResetCardError::ResourceExhausted,
-		ResetCardServiceError::ProductStateUnavailable => ResetCardError::ProductStateUnavailable,
-		ResetCardServiceError::AcceptanceUnknown => ResetCardError::ProductStateUnavailable,
-	}
-}
-
-fn operation_query_result(
-	result: Result<ResetCardOperationStatus, ResetCardServiceError>,
-) -> ResetCardOperationResult {
-	match result {
-		Ok(status) => operation_result(status),
-		Err(error) => ResetCardOperationResult::Unavailable { error: protocol_reset_error(error) },
-	}
-}
-
-const fn operation_result(status: ResetCardOperationStatus) -> ResetCardOperationResult {
-	match status {
-		ResetCardOperationStatus::NotFound => ResetCardOperationResult::NotFound,
-		ResetCardOperationStatus::Prepared => ResetCardOperationResult::Prepared,
-		ResetCardOperationStatus::EffectAmbiguous => ResetCardOperationResult::EffectAmbiguous,
-		ResetCardOperationStatus::Completed(outcome) =>
-			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) },
-		ResetCardOperationStatus::FailedBeforeEffect(error) =>
-			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) },
-	}
-}
-
-const fn protocol_outcome(outcome: ResetCardConsumeOutcome) -> ResetCardOutcome {
-	match outcome {
-		ResetCardConsumeOutcome::Reset => ResetCardOutcome::Reset,
-		ResetCardConsumeOutcome::NothingToReset => ResetCardOutcome::NothingToReset,
-		ResetCardConsumeOutcome::NoCredit => ResetCardOutcome::NoCredit,
-		ResetCardConsumeOutcome::AlreadyRedeemed => ResetCardOutcome::AlreadyRedeemed,
-	}
-}
-
-const fn failure_reset_error(failure: ResetCardFailureCode) -> ResetCardError {
-	match failure {
-		ResetCardFailureCode::AccountChanged => ResetCardError::InventoryChanged,
-		ResetCardFailureCode::VaultUnavailable => ResetCardError::VaultUnavailable,
-		ResetCardFailureCode::SchemaUnsupported => ResetCardError::SchemaUnsupported,
-		ResetCardFailureCode::InventoryIncomplete => ResetCardError::InventoryIncomplete,
-		ResetCardFailureCode::InventoryChanged => ResetCardError::InventoryChanged,
-		ResetCardFailureCode::ProviderUnavailable => ResetCardError::ProviderUnavailable,
-		ResetCardFailureCode::ResourceExhausted => ResetCardError::ResourceExhausted,
-	}
-}
-
-fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
-	let artifact = entry
-		.artifact
-		.map(|(id, revision)| {
-			Ok::<HistoryArtifactReference, ()>(HistoryArtifactReference {
-				artifact_id: HistoryArtifactId::new(id.as_str().to_owned()).ok_or(())?,
-				revision: HistoryArtifactRevision::new(revision).ok_or(())?,
-			})
-		})
-		.transpose()?;
-	let payload = match (entry.inline_text, entry.blob_hash, entry.blob_byte_length) {
-		(Some(text), None, None) =>
-			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? },
-		(None, Some(hash), Some(byte_length)) => HistoryPayloadDto::Blob(HistoryBlobReference {
-			sha256: Sha256Digest::new(hash.to_hex()).map_err(|_| ())?,
-			byte_length: HistoryBlobLength::new(byte_length).map_err(|_| ())?,
-		}),
-		_ => return Err(()),
-	};
-
-	Ok(HistoryItemDto {
-		history_item_id: EntityId::new(entry.history_item_id).map_err(|_| ())?,
-		turn_id: EntityId::new(entry.turn_id).map_err(|_| ())?,
-		runtime_session_id: EntityId::new(entry.runtime_session_id).map_err(|_| ())?,
-		turn_role: match entry.turn_role {
-			TurnRole::User => HistoryTurnRole::User,
-			TurnRole::Assistant => HistoryTurnRole::Assistant,
-			TurnRole::System => HistoryTurnRole::System,
-			TurnRole::Tool => HistoryTurnRole::Tool,
-		},
-		possible_side_effects: match entry.possible_side_effects {
-			PossibleSideEffects::None => HistorySideEffectState::None,
-			PossibleSideEffects::Possible => HistorySideEffectState::Possible,
-			PossibleSideEffects::Unknown => HistorySideEffectState::Unknown,
-		},
-		kind: match entry.kind {
-			HistoryItemKind::Message => HistoryItemKindDto::Message,
-			HistoryItemKind::Reasoning => HistoryItemKindDto::Reasoning,
-			HistoryItemKind::ToolCall => HistoryItemKindDto::ToolCall,
-			HistoryItemKind::ToolResult => HistoryItemKindDto::ToolResult,
-			HistoryItemKind::Artifact => HistoryItemKindDto::Artifact,
-			HistoryItemKind::Status => HistoryItemKindDto::Status,
-		},
-		status: match entry.status {
-			ItemStatus::Streaming => HistoryItemStatusDto::Streaming,
-			ItemStatus::Completed => HistoryItemStatusDto::Completed,
-			ItemStatus::Failed => HistoryItemStatusDto::Failed,
-		},
-		payload,
-		media_type: entry.media_type,
-		metadata: entry.metadata,
-		artifact,
-		revision: EntityRevision(u64::try_from(entry.revision).map_err(|_| ())?),
-	})
-}
-
-async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
-	let ProductStore::Available(store) = store else {
-		return AgentSnapshotResult::Unavailable;
-	};
-	let records = match store
-		.read_agent_snapshot(MAX_AGENT_WORK_ITEMS, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS)
-		.await
-	{
-		Ok(records) => records,
-		Err(_) => return AgentSnapshotResult::Unavailable,
-	};
-	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
-		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
-			return AgentSnapshotResult::CapacityExceeded {
-				work_items,
-				dependencies,
-				pending_events,
-			};
-		},
-		AgentStoreSnapshot::Complete {
-			work_items,
-			dependencies,
-			pending_events,
-			managers,
-			workspaces,
-		} => (work_items, dependencies, pending_events, managers, workspaces),
-	};
-	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
-	let snapshot = AgentSnapshotDto {
-		runtime_source: None,
-		workspaces: workspaces
-			.into_iter()
-			.map(|(agent_id, name, directory)| AgentWorkspaceDto { agent_id, name, directory })
-			.collect(),
-		work_items: work_items
-			.into_iter()
-			.map(|item| AgentWorkItemDto {
-				id: item.id.clone(),
-				parent_goal_id: item.parent_goal_id.clone(),
-				kind: match item.kind {
-					AgentWorkKind::Goal =>
-						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
-							AgentWorkKindDto::Manager
-						} else {
-							AgentWorkKindDto::Goal
-						},
-					AgentWorkKind::Task => AgentWorkKindDto::Task,
-				},
-				title: item.title,
-				codex_thread_id: item.codex_thread_id,
-				active_turn_id: item.active_turn_id,
-				dispatch_state: match item.dispatch_state {
-					AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
-					AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
-					AgentDispatchState::Running => AgentDispatchStateDto::Running,
-					AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
-				},
-				status: match item.status {
-					AgentWorkStatus::Open => AgentWorkStatusDto::Open,
-					AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
-					AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
-					AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
-					AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
-				},
-				next_check_at_micros: item.next_check_at_micros,
-				created_at_micros: item.created_at_micros,
-				updated_at_micros: item.updated_at_micros,
-			})
-			.collect(),
-		dependencies: dependencies
-			.into_iter()
-			.map(|edge| AgentDependencyDto {
-				work_item_id: edge.work_item_id,
-				depends_on_id: edge.depends_on_id,
-			})
-			.collect(),
-		pending_events: pending_events
-			.into_iter()
-			.map(|event| AgentPendingEventDto {
-				id: event.id,
-				source_event_id: event.source_event_id,
-				work_item_id: event.work_item_id,
-				event_kind: event.event_kind,
-				created_at_micros: event.created_at_micros,
-				delivery_claimed: event.delivered_turn_id.is_some(),
-			})
-			.collect(),
-	};
-
-	if serde_json::to_vec(&snapshot).is_ok_and(|bytes| bytes.len() > MAX_AGENT_SNAPSHOT_BYTES) {
-		return AgentSnapshotResult::CapacityExceeded {
-			work_items: counts.0,
-			dependencies: counts.1,
-			pending_events: counts.2,
-		};
-	}
-	if snapshot.is_valid() {
-		AgentSnapshotResult::Available(snapshot)
-	} else {
-		AgentSnapshotResult::Unavailable
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use std::collections::HashMap;
@@ -6252,9 +6382,8 @@ mod tests {
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
-		AgentActivityDetailResult, AgentHistoryResult, AgentRequestResult, AgentSnapshotResult,
-		CommandError, ConversationRecoveryAction, ConversationState, ProgramNodeKind,
-		ProgramRelationKind, ResetCardError, ResetCardOperationResult,
+		AgentActivityDetailResult, CommandError, ConversationRecoveryAction, ConversationState,
+		ProgramNodeKind, ProgramRelationKind, ResetCardError, ResetCardOperationResult,
 	};
 
 	#[test]
@@ -6307,7 +6436,7 @@ mod tests {
 	#[test]
 	fn file_approval_details_preserve_request_identity_and_do_not_enrich_other_methods() {
 		for method in ["item/fileChange/requestApproval", "item/tool/requestUserInput"] {
-			let request = AgentRequestResult::Available {
+			let request = decodex_protocol::AgentRequestResult::Available {
 				event_id: 7,
 				work_id: "work".into(),
 				method: method.into(),
@@ -6339,7 +6468,12 @@ mod tests {
 				continue;
 			}
 
-			let AgentRequestResult::Available { event_id, work_id, request_json, .. } = enriched
+			let decodex_protocol::AgentRequestResult::Available {
+				event_id,
+				work_id,
+				request_json,
+				..
+			} = enriched
 			else {
 				panic!("request");
 			};
@@ -6365,7 +6499,7 @@ mod tests {
 
 			assert_eq!(
 				super::page_agent_request(oversized, None, 0),
-				AgentRequestResult::Unavailable
+				decodex_protocol::AgentRequestResult::Unavailable
 			);
 		}
 	}
@@ -6835,7 +6969,8 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		let AgentSnapshotResult::Available(empty) = super::query_agent_snapshot(&owner).await
+		let decodex_protocol::AgentSnapshotResult::Available(empty) =
+			super::query_agent_snapshot(&owner).await
 		else {
 			panic!("empty store must be available");
 		};
@@ -6869,7 +7004,8 @@ mod tests {
 			.await
 			.unwrap();
 
-		let AgentSnapshotResult::Available(snapshot) = super::query_agent_snapshot(&owner).await
+		let decodex_protocol::AgentSnapshotResult::Available(snapshot) =
+			super::query_agent_snapshot(&owner).await
 		else {
 			panic!("real work must be available");
 		};
@@ -6887,23 +7023,24 @@ mod tests {
 
 		store.close();
 
-		assert_eq!(super::query_agent_snapshot(&owner).await, AgentSnapshotResult::Unavailable);
+		assert_eq!(
+			super::query_agent_snapshot(&owner).await,
+			decodex_protocol::AgentSnapshotResult::Unavailable
+		);
 	}
 
 	async fn agent_query_work(store: &SqliteStore, id: &str) {
-		use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
-
 		store
-			.create_agent_work_item(AgentWorkItem {
+			.create_agent_work_item(decodex_database::AgentWorkItem {
 				id: id.into(),
 				parent_goal_id: None,
-				kind: AgentWorkKind::Goal,
+				kind: decodex_database::AgentWorkKind::Goal,
 				title: id.into(),
 				instructions: "private instructions".into(),
 				codex_thread_id: None,
-				dispatch_state: AgentDispatchState::Idle,
+				dispatch_state: decodex_database::AgentDispatchState::Idle,
 				active_turn_id: None,
-				status: AgentWorkStatus::Open,
+				status: decodex_database::AgentWorkStatus::Open,
 				next_check_at_micros: None,
 				created_at_micros: 1,
 				updated_at_micros: 1,
@@ -6912,21 +7049,7 @@ mod tests {
 			.unwrap();
 	}
 
-	#[tokio::test]
-	async fn unconfirmed_input_pages_survive_history_eviction_restart_and_delivery_changes() {
-		use decodex_database::{AgentDisposition, EnqueueAgentEvent};
-
-		use decodex_protocol::{AgentHistoryResult, AgentInputReceiptsResult as Receipts};
-
-		let directory = tempfile::tempdir().unwrap();
-		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
-		let store = SqliteStore::open(&root.paths()).unwrap();
-
-		agent_query_work(&store, "chosen").await;
-		agent_query_work(&store, "peer").await;
-
-		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
-
+	async fn seed_evicted_unconfirmed_inputs(store: &SqliteStore) -> Vec<i64> {
 		let mut ids = Vec::new();
 
 		for n in 0..40 {
@@ -6934,7 +7057,7 @@ mod tests {
 
 			ids.push(
 				store
-					.enqueue_agent_event(EnqueueAgentEvent {
+					.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 						source_event_id: format!("input-{n}"),
 						work_item_id: "chosen".into(),
 						event_kind: ["user_message", "async_question_answer", "work_instruction"]
@@ -6950,7 +7073,7 @@ mod tests {
 
 		store.begin_agent_dispatch_with_events("chosen".into(), vec![ids[0]]).await.unwrap();
 		store
-			.enqueue_agent_event(EnqueueAgentEvent {
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id: "peer-input".into(),
 				work_item_id: "peer".into(),
 				event_kind: "user_message".into(),
@@ -6961,7 +7084,7 @@ mod tests {
 
 		for n in 0..50 {
 			store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("output-{n}"),
 					work_item_id: "chosen".into(),
 					event_kind: "assistant_message".into(),
@@ -6971,11 +7094,27 @@ mod tests {
 				.unwrap();
 		}
 
+		ids
+	}
+
+	#[tokio::test]
+	async fn unconfirmed_input_pages_survive_history_eviction_restart_and_delivery_changes() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+
+		agent_query_work(&store, "chosen").await;
+		agent_query_work(&store, "peer").await;
+
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+
+		let ids = seed_evicted_unconfirmed_inputs(&store).await;
+
 		drop(store);
 
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(reopened.clone());
-		let AgentHistoryResult::Available { entries, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history")
@@ -6983,8 +7122,12 @@ mod tests {
 
 		assert!(entries.iter().all(|entry| entry.kind != "user"));
 
-		let Receipts::Available { entries, next_after, shortened, .. } =
-			super::query_agent_input_receipts(&owner, "chosen", None).await
+		let decodex_protocol::AgentInputReceiptsResult::Available {
+			entries,
+			next_after,
+			shortened,
+			..
+		} = super::query_agent_input_receipts(&owner, "chosen", None).await
 		else {
 			panic!("pending inputs")
 		};
@@ -7003,7 +7146,13 @@ mod tests {
 
 		assert!(serde_json::to_vec(&second).unwrap().len() < 64 * 1_024);
 
-		let Receipts::Available { entries, next_after, shortened, .. } = second else {
+		let decodex_protocol::AgentInputReceiptsResult::Available {
+			entries,
+			next_after,
+			shortened,
+			..
+		} = second
+		else {
 			panic!("second page")
 		};
 
@@ -7016,11 +7165,16 @@ mod tests {
 
 		other.acknowledge_agent_dispatch("chosen".into(), "accepted-turn".into()).await.unwrap();
 		other
-			.dispose_agent_event(ids[1], AgentDisposition::Resolved, "Handled".into(), None)
+			.dispose_agent_event(
+				ids[1],
+				decodex_database::AgentDisposition::Resolved,
+				"Handled".into(),
+				None,
+			)
 			.await
 			.unwrap();
 
-		let Receipts::Available { entries, .. } =
+		let decodex_protocol::AgentInputReceiptsResult::Available { entries, .. } =
 			super::query_agent_input_receipts(&owner, "chosen", None).await
 		else {
 			panic!("fresh inputs")
@@ -7030,11 +7184,11 @@ mod tests {
 		assert_eq!(entries[0].id, ids[2]);
 		assert_eq!(
 			super::query_agent_input_receipts(&owner, "chosen", Some(0)).await,
-			Receipts::Unavailable
+			decodex_protocol::AgentInputReceiptsResult::Unavailable
 		);
 		assert_eq!(
 			super::query_agent_input_receipts(&owner, "missing", None).await,
-			Receipts::Unavailable
+			decodex_protocol::AgentInputReceiptsResult::Unavailable
 		);
 	}
 
@@ -7153,8 +7307,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_history_deduplicates_async_questions_against_terminal_readback() {
-		use decodex_database::EnqueueAgentEvent;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7169,7 +7321,7 @@ mod tests {
 		let question = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown"});
 
 		store
-			.record_agent_observation(EnqueueAgentEvent {
+			.record_agent_observation(decodex_database::EnqueueAgentEvent {
 				source_event_id: "question".into(),
 				work_item_id: "chosen".into(),
 				event_kind: "assistant_message".into(),
@@ -7183,7 +7335,7 @@ mod tests {
 		let usage = serde_json::json!({"total":counts,"last":counts,"modelContextWindow":128_000});
 
 		store
-			.record_agent_observation(EnqueueAgentEvent {
+			.record_agent_observation(decodex_database::EnqueueAgentEvent {
 				source_event_id: "usage".into(),
 				work_item_id: "chosen".into(),
 				event_kind: "token_usage".into(),
@@ -7194,7 +7346,7 @@ mod tests {
 			.await
 			.unwrap();
 
-		let AgentHistoryResult::Available { entries, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
@@ -7202,12 +7354,12 @@ mod tests {
 
 		assert!(entries.iter().any(|entry| entry.text.contains("Which format?")));
 
-		store.complete_agent_turn_with_event("chosen".into(), "turn".into(), EnqueueAgentEvent {
+		store.complete_agent_turn_with_event("chosen".into(), "turn".into(), decodex_database::EnqueueAgentEvent {
 			source_event_id:"completed".into(),work_item_id:"chosen".into(),event_kind:"agent_turn_completed".into(),
 			payload:serde_json::json!({"threadReadback":{"turnId":"turn","assistantMessages":[question],"tokenUsage":usage}}).to_string()
 		}).await.unwrap();
 
-		let AgentHistoryResult::Available { entries, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
@@ -7337,8 +7489,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_history_query_selects_latest_work_and_bounds_utf8_content() {
-		use decodex_database::EnqueueAgentEvent;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7349,12 +7499,12 @@ mod tests {
 
 		assert_eq!(
 			super::query_agent_history(&owner, "missing").await,
-			AgentHistoryResult::Unavailable
+			decodex_protocol::AgentHistoryResult::Unavailable
 		);
 
 		for index in 0..35 {
 			store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("chosen-{index}"),
 					work_item_id: "chosen".into(),
 					event_kind: "user_message".into(),
@@ -7365,7 +7515,7 @@ mod tests {
 		}
 
 		store
-			.enqueue_agent_event(EnqueueAgentEvent {
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id: "other-1".into(),
 				work_item_id: "other".into(),
 				event_kind: "user_message".into(),
@@ -7374,7 +7524,7 @@ mod tests {
 			.await
 			.unwrap();
 
-		let AgentHistoryResult::Available { entries, has_more, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, has_more, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("selected history");
@@ -7387,8 +7537,12 @@ mod tests {
 		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
 
 		let before = entries.first().unwrap().id;
-		let AgentHistoryResult::Available { entries: older, next_before, live, .. } =
-			super::query_agent_history_page(&owner, "chosen", Some(before), None).await
+		let decodex_protocol::AgentHistoryResult::Available {
+			entries: older,
+			next_before,
+			live,
+			..
+		} = super::query_agent_history_page(&owner, "chosen", Some(before), None).await
 		else {
 			panic!("older page");
 		};
@@ -7403,7 +7557,7 @@ mod tests {
 
 		for index in 0..9 {
 			store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("large-{index}"),
 					work_item_id: "chosen".into(),
 					event_kind: "user_message".into(),
@@ -7413,7 +7567,7 @@ mod tests {
 				.unwrap();
 		}
 
-		let AgentHistoryResult::Available { entries, has_more, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, has_more, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("bounded history");
@@ -7427,8 +7581,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_history_reads_structured_and_legacy_assistant_results() {
-		use decodex_database::EnqueueAgentEvent;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7440,14 +7592,14 @@ mod tests {
 			(0, serde_json::json!([{ "text": "legacy result" }]).to_string().into(), false),
 			(1, serde_json::json!([{ "text": "界🙂\"\\\n".repeat(4_000) }]), true),
 		] {
-			store.enqueue_agent_event(EnqueueAgentEvent {
+			store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id: format!("assistant-{index}"), work_item_id: "chosen".into(),
 				event_kind: "agent_turn_completed".into(),
 				payload: serde_json::json!({"threadReadback": {"assistantMessages":messages,"truncated":truncated}}).to_string(),
 			}).await.unwrap();
 		}
 
-		let AgentHistoryResult::Available { entries, has_more, .. } =
+		let decodex_protocol::AgentHistoryResult::Available { entries, has_more, .. } =
 			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history available");
@@ -7586,10 +7738,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn live_background_approval_is_visible_after_its_origin_turn_ends() {
-		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentRequestResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7603,25 +7751,25 @@ mod tests {
 		let owner = ProductStore::Available(store.clone());
 
 		for (index, thread) in ["thread", "foreign"].into_iter().enumerate() {
-			let event = store.enqueue_agent_event(EnqueueAgentEvent {
+			let event = store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id:format!("background-approval-{index}"),work_item_id:"worker".into(),event_kind:"permission_pending".into(),
 				payload:serde_json::json!({"id":index,"method":"item/commandExecution/requestApproval","params":{"threadId":thread,"turnId":"old-turn","command":"curl https://example.test","cwd":"/original","environmentId":"original-executor","networkApprovalContext":{"host":"example.test","protocol":"https"},"availableDecisions":["accept","decline"]}}).to_string(),
 			}).await.unwrap();
 
 			assert_eq!(
 				super::query_agent_request_scoped(&owner, event.id, false).await,
-				AgentRequestResult::Unavailable
+				decodex_protocol::AgentRequestResult::Unavailable
 			);
 
 			let live = super::query_agent_request_scoped(&owner, event.id, true).await;
 
 			if index == 1 {
-				assert_eq!(live, AgentRequestResult::Unavailable);
+				assert_eq!(live, decodex_protocol::AgentRequestResult::Unavailable);
 
 				continue;
 			}
 
-			let AgentRequestResult::Available { request_json, .. } = live else {
+			let decodex_protocol::AgentRequestResult::Available { request_json, .. } = live else {
 				panic!("still-live background approval")
 			};
 			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
@@ -7634,14 +7782,14 @@ mod tests {
 
 			assert_eq!(
 				super::query_agent_request_scoped(&owner, event.id, true).await,
-				AgentRequestResult::Unavailable
+				decodex_protocol::AgentRequestResult::Unavailable
 			);
 		}
 	}
 
 	#[tokio::test]
 	async fn complete_file_approval_pages_bind_the_enriched_diff() {
-		let request = AgentRequestResult::Available {
+		let request = decodex_protocol::AgentRequestResult::Available {
 			event_id: 77,
 			work_id: "work".into(),
 			method: "item/fileChange/requestApproval".into(),
@@ -7664,7 +7812,8 @@ mod tests {
 		let mut complete = String::new();
 
 		loop {
-			let AgentRequestResult::Page { text, digest, next_offset, .. } = page else {
+			let decodex_protocol::AgentRequestResult::Page { text, digest, next_offset, .. } = page
+			else {
 				panic!("file detail page")
 			};
 
@@ -7674,7 +7823,7 @@ mod tests {
 
 			assert_eq!(
 				super::page_agent_request(request.clone(), Some(&digest), offset),
-				AgentRequestResult::Unavailable
+				decodex_protocol::AgentRequestResult::Unavailable
 			);
 
 			page = super::page_agent_request(enriched.clone(), Some(&digest), offset);
@@ -7694,24 +7843,21 @@ mod tests {
 				next: None,
 			},
 		);
-		let AgentRequestResult::Page { digest, next_offset: Some(offset), .. } =
-			super::page_agent_request(enriched, None, 0)
+		let decodex_protocol::AgentRequestResult::Page {
+			digest, next_offset: Some(offset), ..
+		} = super::page_agent_request(enriched, None, 0)
 		else {
 			panic!("first page")
 		};
 
 		assert_eq!(
 			super::page_agent_request(changed, Some(&digest), offset),
-			AgentRequestResult::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
 	}
 
 	#[tokio::test]
 	async fn saved_child_file_approval_projects_exact_diff_without_parent_active_turn() {
-		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentRequestResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7731,7 +7877,7 @@ mod tests {
 			payload["ownerThreadId"] = serde_json::json!(owner_thread);
 
 			let event = store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("child-file-{index}"),
 					work_item_id: "parent".into(),
 					event_kind: "permission_pending".into(),
@@ -7743,12 +7889,14 @@ mod tests {
 			let projected = super::query_agent_request_scoped(&owner, event.id, true).await;
 
 			if index == 1 {
-				assert_eq!(projected, AgentRequestResult::Unavailable);
+				assert_eq!(projected, decodex_protocol::AgentRequestResult::Unavailable);
 
 				continue;
 			}
 
-			let AgentRequestResult::Available { work_id, request_json, .. } = projected else {
+			let decodex_protocol::AgentRequestResult::Available { work_id, request_json, .. } =
+				projected
+			else {
 				panic!("saved child detail")
 			};
 
@@ -7763,7 +7911,7 @@ mod tests {
 
 			assert_eq!(
 				super::query_agent_request_scoped(&owner, event.id, true).await,
-				AgentRequestResult::Unavailable
+				decodex_protocol::AgentRequestResult::Unavailable
 			);
 		}
 	}
@@ -7796,8 +7944,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn saved_file_approval_pages_keep_complete_diff_and_reject_changed_evidence() {
-		use decodex_protocol::AgentRequestResult as Request;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7818,8 +7964,12 @@ mod tests {
 		let mut assembled = String::new();
 
 		loop {
-			let Request::Page { text, digest: current, next_offset, .. } =
-				super::page_agent_request(request.clone(), digest.as_deref(), offset)
+			let decodex_protocol::AgentRequestResult::Page {
+				text,
+				digest: current,
+				next_offset,
+				..
+			} = super::page_agent_request(request.clone(), digest.as_deref(), offset)
 			else {
 				panic!("file page")
 			};
@@ -7839,10 +7989,12 @@ mod tests {
 		assert!(fields["changeDetails"].as_str().unwrap().contains(&diff));
 		assert_eq!(fields["changeDetailsTruncated"], false);
 
-		let Request::Available { event_id, work_id, method, .. } = request else {
+		let decodex_protocol::AgentRequestResult::Available { event_id, work_id, method, .. } =
+			request
+		else {
 			panic!("selected file")
 		};
-		let changed = Request::Available {
+		let changed = decodex_protocol::AgentRequestResult::Available {
 			event_id,
 			work_id,
 			method,
@@ -7852,15 +8004,14 @@ mod tests {
 			.unwrap(),
 		};
 
-		assert_eq!(super::page_agent_request(changed, digest.as_deref(), 0), Request::Unavailable);
+		assert_eq!(
+			super::page_agent_request(changed, digest.as_deref(), 0),
+			decodex_protocol::AgentRequestResult::Unavailable
+		);
 	}
 
 	#[tokio::test]
 	async fn large_request_pages_preserve_selected_action_and_recheck_liveness() {
-		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentRequestResult as Request;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7874,7 +8025,7 @@ mod tests {
 
 		let command = "echo 界🙂\\\"\n".repeat(20_000) + "REQUIRED SUFFIX";
 		let event = store
-			.enqueue_agent_event(EnqueueAgentEvent {
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id: "large-request".into(),
 				work_item_id: "worker".into(),
 				event_kind: "permission_pending".into(),
@@ -7889,7 +8040,7 @@ mod tests {
 
 		assert_eq!(
 			super::query_agent_request_with_details(&owner, event.id, None).await,
-			Request::Unavailable,
+			decodex_protocol::AgentRequestResult::Unavailable,
 			"Stored content alone is not a live request"
 		);
 
@@ -7903,7 +8054,7 @@ mod tests {
 
 			assert!(serde_json::to_vec(&page).unwrap().len() < 64 * 1_024);
 
-			let Request::Page {
+			let decodex_protocol::AgentRequestResult::Page {
 				event_id,
 				text,
 				digest: returned,
@@ -7938,7 +8089,7 @@ mod tests {
 				Some("wrong"),
 				8_192
 			),
-			Request::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
 
 		store.acknowledge_agent_request_event(event.id).await.unwrap();
@@ -7949,16 +8100,45 @@ mod tests {
 				digest.as_deref(),
 				offset
 			),
-			Request::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
+	}
+
+	async fn assert_stdin_request_projection(
+		store: &SqliteStore,
+		owner: &ProductStore,
+		payload: &serde_json::Value,
+	) {
+		let mut stdin = payload.clone();
+
+		stdin["params"]["kind"] = serde_json::json!("writeStdin");
+		stdin["params"]["command"] = serde_json::json!("yes\\n");
+		stdin["params"]["availableDecisions"] = serde_json::Value::Null;
+		stdin["params"]["additionalPermissions"] = serde_json::json!({"network":{"enabled":true}});
+
+		let stdin = store
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+				source_event_id: "stdin-request".into(),
+				work_item_id: "worker".into(),
+				event_kind: "permission_pending".into(),
+				payload: stdin.to_string(),
+			})
+			.await
+			.unwrap();
+		let decodex_protocol::AgentRequestResult::Available { request_json, .. } =
+			super::query_agent_request(owner, stdin.id).await
+		else {
+			panic!("stdin request");
+		};
+		let selected: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
+
+		assert_eq!(selected["kind"], "writeStdin");
+		assert_eq!(selected["additionalPermissions"]["network"]["enabled"], true);
+		assert!(!request_json.as_str().contains("private"));
 	}
 
 	#[tokio::test]
 	async fn agent_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
-		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentRequestResult;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
@@ -7975,7 +8155,7 @@ mod tests {
 			"availableDecisions":["accept","decline"], "authorization":"private-credential", "env":{"SECRET":"private-env"}
 		}});
 		let event = store
-			.enqueue_agent_event(EnqueueAgentEvent {
+			.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 				source_event_id: "request-1".into(),
 				work_item_id: "worker".into(),
 				event_kind: "permission_pending".into(),
@@ -7983,8 +8163,9 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let AgentRequestResult::Available { event_id, work_id, request_json, .. } =
-			super::query_agent_request(&owner, event.id).await
+		let decodex_protocol::AgentRequestResult::Available {
+			event_id, work_id, request_json, ..
+		} = super::query_agent_request(&owner, event.id).await
 		else {
 			panic!("live request");
 		};
@@ -8000,39 +8181,13 @@ mod tests {
 		assert!(selected.get("threadId").is_none());
 
 		assert_question_metadata_projection(&store, &owner).await;
-
-		let mut stdin = payload.clone();
-
-		stdin["params"]["kind"] = serde_json::json!("writeStdin");
-		stdin["params"]["command"] = serde_json::json!("yes\\n");
-		stdin["params"]["availableDecisions"] = serde_json::Value::Null;
-		stdin["params"]["additionalPermissions"] = serde_json::json!({"network":{"enabled":true}});
-
-		let stdin = store
-			.enqueue_agent_event(EnqueueAgentEvent {
-				source_event_id: "stdin-request".into(),
-				work_item_id: "worker".into(),
-				event_kind: "permission_pending".into(),
-				payload: stdin.to_string(),
-			})
-			.await
-			.unwrap();
-		let AgentRequestResult::Available { request_json, .. } =
-			super::query_agent_request(&owner, stdin.id).await
-		else {
-			panic!("stdin request");
-		};
-		let selected: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
-
-		assert_eq!(selected["kind"], "writeStdin");
-		assert_eq!(selected["additionalPermissions"]["network"]["enabled"], true);
-		assert!(!request_json.as_str().contains("private"));
+		assert_stdin_request_projection(&store, &owner, &payload).await;
 
 		store.acknowledge_agent_request_event(event.id).await.unwrap();
 
 		assert_eq!(
 			super::query_agent_request(&owner, event.id).await,
-			AgentRequestResult::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
 
 		let mut invalids = Vec::new();
@@ -8069,7 +8224,7 @@ mod tests {
 
 		for (index, payload) in invalids.into_iter().enumerate() {
 			let event = store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("invalid-{index}"),
 					work_item_id: "worker".into(),
 					event_kind: "permission_pending".into(),
@@ -8080,14 +8235,14 @@ mod tests {
 
 			assert_eq!(
 				super::query_agent_request(&owner, event.id).await,
-				AgentRequestResult::Unavailable,
+				decodex_protocol::AgentRequestResult::Unavailable,
 				"case {index}"
 			);
 		}
 
 		assert_eq!(
 			super::query_agent_request(&owner, 99_999).await,
-			AgentRequestResult::Unavailable
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
 	}
 
@@ -8149,10 +8304,6 @@ mod tests {
 	}
 
 	async fn assert_question_metadata_projection(store: &SqliteStore, owner: &ProductStore) {
-		use decodex_database::EnqueueAgentEvent;
-
-		use decodex_protocol::AgentRequestResult;
-
 		for (index, blocking) in
 			[serde_json::json!(false), serde_json::json!(true), serde_json::json!("false")]
 				.into_iter()
@@ -8160,7 +8311,7 @@ mod tests {
 		{
 			let request = serde_json::json!({"method":"item/tool/requestUserInput","params":{"threadId":"thread","turnId":"turn","questions":[],"isBlocking":blocking,"autoResolutionMs":1}});
 			let event = store
-				.enqueue_agent_event(EnqueueAgentEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("question-{index}"),
 					work_item_id: "worker".into(),
 					event_kind: "user_input_pending".into(),
@@ -8171,7 +8322,8 @@ mod tests {
 			let result = super::query_agent_request(owner, event.id).await;
 
 			if blocking.is_boolean() {
-				let AgentRequestResult::Available { request_json, .. } = result else {
+				let decodex_protocol::AgentRequestResult::Available { request_json, .. } = result
+				else {
 					panic!("question metadata");
 				};
 				let fields: serde_json::Value =
@@ -8180,31 +8332,11 @@ mod tests {
 				assert_eq!(fields["isBlocking"], blocking);
 				assert!(fields.get("autoResolutionMs").is_none());
 			} else {
-				assert_eq!(result, AgentRequestResult::Unavailable);
+				assert_eq!(result, decodex_protocol::AgentRequestResult::Unavailable);
 			}
 		}
 	}
 }
-#[path = "application_account_nudge.rs"] mod account_nudge;
-#[path = "application_conversation_receipts.rs"] mod conversation_receipts;
 #[cfg(test)]
 #[path = "application_desktop_settings_tests.rs"]
 mod desktop_settings_tests;
-#[path = "application_turn_outcomes.rs"] mod turn_outcomes;
-
-fn runtime_initial_model_source(
-	source: Option<&decodex_protocol::InitialModelSource>,
-) -> Result<Option<decodex_database::InitialModelSource>, ()> {
-	source
-		.map(|source| {
-			if source.account_revision <= 0 {
-				return Err(());
-			}
-
-			Ok(decodex_database::InitialModelSource {
-				account_id: AccountId::new(source.account_id.as_str()).map_err(|_| ())?,
-				account_revision: source.account_revision,
-			})
-		})
-		.transpose()
-}
