@@ -16,7 +16,10 @@ mod state;
 
 pub use output::{Role, Span};
 
-use std::fmt;
+use std::{
+	error::Error,
+	fmt::{self, Display, Formatter},
+};
 
 const MAX_SOURCE: usize = 16 * 1_024;
 const MAX_NODES: usize = 16;
@@ -34,10 +37,10 @@ pub enum RenderError {
 	/// The complete diagram exceeds the supplied display width.
 	TooWide,
 }
-impl std::error::Error for RenderError {}
+impl Error for RenderError {}
 
-impl fmt::Display for RenderError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for RenderError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str(match self {
 			Self::Unsupported => "unsupported Mermaid syntax or label",
 			Self::Limit => "diagram exceeds prototype limits",

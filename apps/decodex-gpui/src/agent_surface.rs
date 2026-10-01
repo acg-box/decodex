@@ -55,24 +55,60 @@ mod native_composer;
 #[path = "agent_workspace.rs"] mod workspace;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
 
-use decodex_protocol::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto, AgentHistoryResult,
-	AgentRequestResult, AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
-	AgentWorkItemDto, AgentWorkStatusDto, ClientProfile, ConversationModel,
-	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
-	IdempotencyKey, WireText,
+use std::{
+	collections::HashSet,
+	process,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use gpui::{
-	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
-	Window, div, prelude::*, px, rgb, rgba,
+	AnyElement, Bounds, ClipboardItem, Context, Div, Entity, FocusHandle, FontWeight, KeyDownEvent,
+	Pixels, Point, Render, Role, ScrollHandle, SharedString, Task, Window, div, prelude::*, px,
+	rgb, rgba,
 };
+use tokio::runtime::Builder;
 
 use crate::{
-	composer_input::{ComposerInput, SubmitComposer},
+	composer_input::{ComposerEvent, ComposerInput, SubmitComposer},
+	panel_preferences::PanelDefaults,
+	shell::{workspace_symbols, workspace_symbols::Symbol},
+	ui_loading,
 	ui_motion::{SmoothControl, disclosure},
-	ui_theme,
+	ui_theme::{
+		self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, METADATA_GAP, TEXT_MUTED,
+	},
+	ui_working::Working,
 };
+use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
+use async_questions::ChoiceDraft;
+use capabilities::CatalogContext;
+use creation_setup::DEFAULT_MODEL;
+use decodex_protocol::{
+	AgentActionDto, AgentAttachmentDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+	AgentExecutionOverrides, AgentHistoryEntryDto, AgentHistoryResult, AgentIntegrationsResult,
+	AgentLiveMessageKind, AgentPendingEventDto, AgentRequestResult, AgentRequestedDecision,
+	AgentResourcesResult, AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
+	AgentTaskReferenceDto, AgentUsageEstimateResult, AgentWorkItemDto, AgentWorkKindDto,
+	AgentWorkStatusDto, ClientProfile, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, DesktopCreationIntent, DesktopQuestionDraft,
+	DesktopRecoveredDraft, EntityId, HistoryText, IdempotencyKey, InitialModelCatalogResult,
+	MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText,
+};
+use detail::ActivityDetailState;
+use dictation::DictationUi;
+use drafts::{Profiles, SubmissionState};
+use native_agents::NativeAgents;
+use native_timeline::Timeline;
+use output_stream::OutputStream;
+use question_notices::QuestionNotices;
+use recap::Automatic;
+use requests::{QuestionTimer, RequestReader};
+use response_metrics::ResponseMetrics;
+use selectable_text::SelectableText;
+use skills::Picker;
+use text_reveal::StreamingText;
+use voice::{CaptionHistory, VoiceUi};
+use workspace::PageView;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum LoadState {
@@ -87,43 +123,43 @@ enum LoadState {
 pub(crate) struct AgentSurface {
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_composer: native_composer::NativeComposer,
-	voice: Option<voice::VoiceUi>,
-	retired_voice_captions: Vec<voice::CaptionHistory>,
+	voice: Option<VoiceUi>,
+	retired_voice_captions: Vec<CaptionHistory>,
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	search_settings: search_settings::Panel,
-	skills: skills::Picker,
+	skills: Picker,
 	recap: recap::Panel,
 	prompt_edit: prompt_edit::Panel,
-	automatic_recap: recap::Automatic,
+	automatic_recap: Automatic,
 	audio_inputs: Vec<String>,
 	audio_input: String,
-	dictation: Option<dictation::DictationUi>,
+	dictation: Option<DictationUi>,
 	dictation_task: Option<Task<()>>,
-	activity_detail: detail::ActivityDetailState,
-	resources: Option<(String, Option<decodex_protocol::AgentResourcesResult>)>,
+	activity_detail: ActivityDetailState,
+	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
-	usage_estimate: Option<(String, Option<decodex_protocol::AgentUsageEstimateResult>)>,
+	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
 	usage_estimate_epoch: u64,
-	native_history: native_timeline::Timeline,
-	integrations: Option<(String, Option<decodex_protocol::AgentIntegrationsResult>)>,
+	native_history: Timeline,
+	integrations: Option<(String, Option<AgentIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	resource_mutation_task: Option<Task<()>>,
 	resource_feedback: String,
 	resource_title: Entity<ComposerInput>,
 	resource_url: Entity<ComposerInput>,
 	capabilities: Option<decodex_protocol::AgentCapabilitiesResult>,
-	capabilities_context: Option<capabilities::CatalogContext>,
+	capabilities_context: Option<CatalogContext>,
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
 	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
-	closing_pages: std::collections::HashSet<String>,
+	closing_pages: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
-	page_views: std::collections::BTreeMap<String, workspace::PageView>,
+	page_views: std::collections::BTreeMap<String, PageView>,
 	timeline_visible: bool,
 	graph_scope: Option<String>,
 	graph_selected: Option<String>,
@@ -131,18 +167,18 @@ pub(crate) struct AgentSurface {
 	graph_display_zoom: f32,
 	graph_pan: (f32, f32),
 	graph_inset: (f32, f32),
-	graph_drag: Option<gpui::Point<gpui::Pixels>>,
-	history_marks: std::collections::BTreeMap<activity::HistoryKey, activity::HistoryMark>,
+	graph_drag: Option<Point<Pixels>>,
+	history_marks: std::collections::BTreeMap<HistoryKey, HistoryMark>,
 	history_marks_work: Option<(String, bool)>,
 	history_marks_revision: Option<(u64, u64)>,
-	history_selected: Option<activity::HistoryKey>,
+	history_selected: Option<HistoryKey>,
 	latest_follow_work: Option<String>,
 	connection_details_expanded: bool,
 	history_hover: Option<usize>,
-	history_navigation: Option<activity::HistoryNavigation>,
-	wheel_scroll: Option<activity::WheelScroll>,
-	native_agents: native_agents::NativeAgents,
-	output_stream: output_stream::OutputStream,
+	history_navigation: Option<HistoryNavigation>,
+	wheel_scroll: Option<WheelScroll>,
+	native_agents: NativeAgents,
+	output_stream: OutputStream,
 	history_read_at: Option<std::time::Instant>,
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
@@ -153,7 +189,7 @@ pub(crate) struct AgentSurface {
 	focused_panel: Option<workspace_size::Panel>,
 	sidebar_drag: Option<(f32, f32)>,
 	history_cache: std::collections::BTreeMap<String, AgentHistoryResult>,
-	transcript_scroll: std::collections::BTreeMap<String, gpui::ScrollHandle>,
+	transcript_scroll: std::collections::BTreeMap<String, ScrollHandle>,
 	history_follow_paused: std::collections::BTreeSet<String>,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
@@ -167,13 +203,13 @@ pub(crate) struct AgentSurface {
 	composer: Entity<ComposerInput>,
 	composer_footer_height: f32,
 	fast: bool,
-	service_tier: Option<decodex_protocol::ServiceTier>,
+	service_tier: Option<ServiceTier>,
 	steer: bool,
-	effort_focus: gpui::FocusHandle,
+	effort_focus: FocusHandle,
 	effort_drag: Option<(f32, f32)>,
 	effort_pointer: Option<f32>,
-	effort_track_bounds: Option<gpui::Bounds<gpui::Pixels>>,
-	menu_trigger_bounds: std::collections::BTreeMap<&'static str, gpui::Bounds<gpui::Pixels>>,
+	effort_track_bounds: Option<Bounds<Pixels>>,
+	menu_trigger_bounds: std::collections::BTreeMap<&'static str, Bounds<Pixels>>,
 	composer_menu: Option<&'static str>,
 	escape_stop: Option<(String, String, std::time::Instant)>,
 	interrupting: Option<(String, String)>,
@@ -181,10 +217,10 @@ pub(crate) struct AgentSurface {
 	composer_menu_content: Option<&'static str>,
 	context_tip_visible: bool,
 	expanded_records: std::collections::BTreeSet<String>,
-	attachments: Vec<decodex_protocol::AgentAttachmentDto>,
-	task_references: Vec<decodex_protocol::AgentTaskReferenceDto>,
+	attachments: Vec<AgentAttachmentDto>,
+	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
-	draft_profiles: drafts::Profiles,
+	draft_profiles: Profiles,
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
 	live_reviewer: live_settings::Panel,
@@ -199,11 +235,11 @@ pub(crate) struct AgentSurface {
 	effort: ConversationReasoningEffort,
 	creation_setup_present: bool,
 	creation_inherit_effort: bool,
-	creation_intent: decodex_protocol::DesktopCreationIntent,
+	creation_intent: DesktopCreationIntent,
 	creation_defaults_applied: bool,
-	creation_defaults: Option<decodex_protocol::InitialModelCatalogResult>,
+	creation_defaults: Option<InitialModelCatalogResult>,
 	sandbox: AgentSandboxDto,
-	submission: drafts::SubmissionState,
+	submission: SubmissionState,
 	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
@@ -211,17 +247,14 @@ pub(crate) struct AgentSurface {
 	history: Option<(String, AgentHistoryResult)>,
 	history_task: Option<Task<()>>,
 	history_requested_for: Option<String>,
-	older_history: std::collections::BTreeMap<
-		String,
-		(Vec<decodex_protocol::AgentHistoryEntryDto>, Option<i64>),
-	>,
+	older_history: std::collections::BTreeMap<String, (Vec<AgentHistoryEntryDto>, Option<i64>)>,
 	older_task: Option<Task<()>>,
 	loading_older: bool,
 	older_retry_after: Option<std::time::Instant>,
 	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
 	poll_task: Option<Task<()>>,
 	request: Option<AgentRequestResult>,
-	request_reader: requests::RequestReader,
+	request_reader: RequestReader,
 	request_task: Option<Task<()>>,
 	misalignment_reviewed: Option<(String, String)>,
 	guardian: guardian::Panel,
@@ -230,14 +263,13 @@ pub(crate) struct AgentSurface {
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
-	question_timers: std::collections::BTreeMap<i64, requests::QuestionTimer>,
+	question_timers: std::collections::BTreeMap<i64, QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
-	question_notices: question_notices::QuestionNotices,
-	restored_question_drafts: Vec<decodex_protocol::DesktopQuestionDraft>,
+	question_notices: QuestionNotices,
+	restored_question_drafts: Vec<DesktopQuestionDraft>,
 	collapsed_async_questions: std::collections::BTreeSet<String>,
 	async_question_threads: std::collections::BTreeMap<String, String>,
-	async_question_choices:
-		std::collections::BTreeMap<(String, String), async_questions::ChoiceDraft>,
+	async_question_choices: std::collections::BTreeMap<(String, String), ChoiceDraft>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
 	transcript_busy: bool,
@@ -399,9 +431,9 @@ impl AgentSurface {
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
-			sidebar_width: crate::panel_preferences::PanelDefaults::configured().sidebar.into(),
-			agent_panel_width: crate::panel_preferences::PanelDefaults::configured().sidebar.into(),
-			graph_panel_height: crate::panel_preferences::PanelDefaults::configured().dock.into(),
+			sidebar_width: PanelDefaults::configured().sidebar.into(),
+			agent_panel_width: PanelDefaults::configured().sidebar.into(),
+			graph_panel_height: PanelDefaults::configured().dock.into(),
 			focused_panel: None,
 			sidebar_drag: None,
 			history_cache: Default::default(),
@@ -482,7 +514,7 @@ impl AgentSurface {
 		let model =
 			cx.new(|cx| ComposerInput::with_placeholder(31, "Select model", "Agent model", cx));
 
-		model.update(cx, |input, cx| input.set_content(creation_setup::DEFAULT_MODEL, cx));
+		model.update(cx, |input, cx| input.set_content(DEFAULT_MODEL, cx));
 
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
@@ -496,7 +528,7 @@ impl AgentSurface {
 			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Agent message", cx));
 
 		cx.subscribe(&composer, |s, _, event, cx| {
-			if let crate::composer_input::ComposerEvent::Attach(item) = event {
+			if let ComposerEvent::Attach(item) = event {
 				s.attach_clipboard(item, cx);
 			}
 
@@ -547,8 +579,7 @@ impl AgentSurface {
 			return;
 		};
 		let request = cx.background_executor().spawn(async move {
-			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
-			else {
+			let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 				return AgentHistoryResult::Unavailable;
 			};
 
@@ -708,8 +739,7 @@ impl AgentSurface {
 		self.request = None;
 
 		let request = cx.background_executor().spawn(async move {
-			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
-			else {
+			let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 				return AgentRequestResult::Unavailable;
 			};
 
@@ -784,12 +814,12 @@ impl AgentSurface {
 
 		let Ok(work_id) = EntityId::new(work_id.clone()) else { return };
 
-		if json.len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES
+		if json.len() > MAX_HISTORY_INLINE_BYTES
 			&& let (Ok(params), Ok(response)) =
 				(serde_json::from_str(request_json.as_str()), serde_json::from_str(&json))
-			&& let Some(decision) = decodex_protocol::AgentRequestedDecision::matching_response(
-				method, &params, &response,
-			) {
+			&& let Some(decision) =
+				AgentRequestedDecision::matching_response(method, &params, &response)
+		{
 			self.execute(
 				AgentActionDto::RespondWithRequestedDecision {
 					work_id,
@@ -876,7 +906,7 @@ impl AgentSurface {
 					.iter()
 					.find(|work| {
 						Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
-							&& work.kind == decodex_protocol::AgentWorkKindDto::Manager
+							&& work.kind == AgentWorkKindDto::Manager
 					})
 					.or_else(|| {
 						snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none())
@@ -919,7 +949,7 @@ impl AgentSurface {
 				let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else {
 					return;
 				};
-				let execution = decodex_protocol::AgentExecutionOverrides {
+				let execution = AgentExecutionOverrides {
 					model: Some(model),
 					reasoning_effort: self.creation_effort(),
 					fast: Some(self.fast),
@@ -1082,7 +1112,7 @@ impl AgentSurface {
 		}
 
 		let request = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
+			let runtime = Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Cannot create client runtime".to_string())?;
@@ -1336,7 +1366,7 @@ impl AgentSurface {
 		self.state = LoadState::Idle;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
-				cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+				cx.background_executor().timer(Duration::from_millis(500)).await;
 
 				if surface
 					.update(cx, |surface, cx| {
@@ -1424,10 +1454,7 @@ impl AgentSurface {
 
 		let generation = self.generation;
 		let request = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
-				.enable_all()
-				.build()
-				.map_err(|_| ())?;
+			let runtime = Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
 
 			runtime.block_on(AgentClient::new(profile).query()).map_err(|_| ())
 		});
@@ -1715,7 +1742,7 @@ impl AgentSurface {
 		snapshot: &AgentSnapshotDto,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let target = cx.entity();
 		let status = graph::state_in(snapshot, work).0;
 
@@ -1736,7 +1763,7 @@ impl AgentSurface {
 					.child(div().flex_1().min_w_0().child(if self.pages.is_empty() {
 						div()
 							.text_size(px(12.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child(format!("{} · {status}", self.work_label(work)))
 							.into_any_element()
 					} else {
@@ -1875,8 +1902,7 @@ impl AgentSurface {
 		self.loading_older = true;
 
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).history_page(work, Some(before))).ok()
 		});
@@ -1914,8 +1940,7 @@ impl AgentSurface {
 
 					page.1 = next_before;
 				} else {
-					s.older_retry_after =
-						Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+					s.older_retry_after = Some(std::time::Instant::now() + Duration::from_secs(3));
 				}
 
 				cx.notify();
@@ -1932,7 +1957,7 @@ impl AgentSurface {
 			.flex_none()
 			.flex()
 			.flex_col()
-			.gap(px(ui_theme::MESSAGE_GAP))
+			.gap(px(MESSAGE_GAP))
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 
@@ -1990,11 +2015,10 @@ impl AgentSurface {
 							.w_full()
 							.py(px(2.))
 							.children(
-								(message.kind
-									== decodex_protocol::AgentLiveMessageKind::ReasoningSummary)
+								(message.kind == AgentLiveMessageKind::ReasoningSummary)
 									.then(|| muted("Reasoning summary")),
 							)
-							.child(text_reveal::StreamingText {
+							.child(StreamingText {
 								text: message.text.clone(),
 								key: format!(
 									"live-{}-{}-{}",
@@ -2015,13 +2039,13 @@ impl AgentSurface {
 			},
 			Some(AgentHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
-			None => panel = panel.child(crate::ui_loading::conversation("Loading conversation")),
+			None => panel = panel.child(ui_loading::conversation("Loading conversation")),
 		}
 
 		self.history_activity(panel, work)
 	}
 
-	fn history_activity(&self, mut panel: gpui::Div, work: &AgentWorkItemDto) -> gpui::Div {
+	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto) -> Div {
 		let active = matches!(
 			work.dispatch_state,
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
@@ -2032,7 +2056,7 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		panel = panel.child(crate::ui_working::Working {
+		panel = panel.child(Working {
 			key: format!("working-{}", work.id),
 			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
 		});
@@ -2093,7 +2117,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Review request")
 					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
+					.text_color(rgb(BLUE))
 					.on_click(cx.listener(move |s, _, _, cx| s.load_request(id, cx)))
 					.child(if event.event_kind == "user_input_pending" {
 						"Answer a question"
@@ -2122,12 +2146,12 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(28)
 			.cursor_pointer()
-			.text_color(rgb(ui_theme::BLUE))
+			.text_color(rgb(BLUE))
 			.on_click(cx.listener(move |surface, _, _, cx| {
 				surface.open_page(&selected, cx);
 				cx.notify();
 			}))
-			.on_key_down(cx.listener(move |surface, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |surface, event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					surface.open_page(&keyboard_id, cx);
 					cx.notify();
@@ -2176,13 +2200,13 @@ impl AgentSurface {
 					.items_center()
 					.cursor_pointer()
 					.rounded(px(6.0))
-					.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+					.hover(|s| s.bg(rgba(HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.setup_expanded = !s.setup_expanded;
 
 						cx.notify();
 					}))
-					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 							s.setup_expanded = !s.setup_expanded;
 
@@ -2192,9 +2216,7 @@ impl AgentSurface {
 					.w_full()
 					.justify_between()
 					.child("New agent defaults")
-					.child(super::workspace_symbols::icon(
-						super::workspace_symbols::Symbol::ChevronDown,
-					))
+					.child(workspace_symbols::icon(Symbol::ChevronDown))
 					.smooth(),
 			)
 			.children(match self.current_model_catalog(cx) {
@@ -2304,22 +2326,22 @@ struct QueuedCommand {
 
 #[derive(Clone)]
 struct PendingCommand {
-	recovery: Option<decodex_protocol::DesktopRecoveredDraft>,
+	recovery: Option<DesktopRecoveredDraft>,
 	key: Option<IdempotencyKey>,
 	steer: Option<decodex_protocol::AgentSteerIdentity>,
 	epoch: u64,
 	execution_intent: Option<(String, u64)>,
 	draft: Option<String>,
 	owner: Option<String>,
-	attachments: Option<Vec<decodex_protocol::AgentAttachmentDto>>,
-	references: Option<Vec<decodex_protocol::AgentTaskReferenceDto>>,
+	attachments: Option<Vec<AgentAttachmentDto>>,
+	references: Option<Vec<AgentTaskReferenceDto>>,
 }
 
 #[derive(Clone)]
 struct RequestReadSource {
 	profile_epoch: u64,
 	runtime_source: Option<EntityId>,
-	event: decodex_protocol::AgentPendingEventDto,
+	event: AgentPendingEventDto,
 }
 
 pub(crate) fn compact_tokens(value: u64) -> String {
@@ -2343,7 +2365,7 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
 
 // This startup advisory describes the Codex environment, not a failed turn.
 // Keep the original stored record, but present it once in the notification center.
-fn startup_feature_warning(entry: &decodex_protocol::AgentHistoryEntryDto) -> bool {
+fn startup_feature_warning(entry: &AgentHistoryEntryDto) -> bool {
 	entry.kind == "execution_notice"
 		&& entry.text.starts_with("Codex warning: Under-development features enabled:")
 }
@@ -2351,14 +2373,11 @@ fn startup_feature_warning(entry: &decodex_protocol::AgentHistoryEntryDto) -> bo
 fn unique_command() -> String {
 	static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-	let time = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap_or_default()
-		.as_nanos();
+	let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
 
 	format!(
 		"gpui-agent-{}-{time}-{}",
-		std::process::id(),
+		process::id(),
 		NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 	)
 }
@@ -2388,8 +2407,8 @@ fn offered_decisions(method: &str, request: &str) -> Vec<String> {
 }
 
 fn next_check_text(due: i64) -> String {
-	let now = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
+	let now = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
 		.map(|time| time.as_micros() as i64)
 		.unwrap_or(0);
 	let seconds = due.saturating_sub(now) / 1_000_000;
@@ -2408,13 +2427,10 @@ fn next_check_text(due: i64) -> String {
 }
 
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
-	div()
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
-		.child(text.into())
+	div().text_size(px(CAPTION_SIZE)).text_color(rgb(TEXT_MUTED)).child(text.into())
 }
 
-fn auth_recovery_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::Div {
+fn auth_recovery_entry(entry: &AgentHistoryEntryDto) -> Div {
 	let id = entry.id;
 
 	div()
@@ -2427,7 +2443,7 @@ fn auth_recovery_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::
 		.child(entry.text.clone())
 }
 
-fn history_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::Div {
+fn history_entry(entry: &AgentHistoryEntryDto) -> Div {
 	if entry.kind == "auth_recovery" {
 		return auth_recovery_entry(entry);
 	}
@@ -2435,18 +2451,15 @@ fn history_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::Div {
 	history_entry_with_key(entry, &entry.id.to_string())
 }
 
-fn history_entry_with_key(
-	entry: &decodex_protocol::AgentHistoryEntryDto,
-	identity: &str,
-) -> gpui::Div {
+fn history_entry_with_key(entry: &AgentHistoryEntryDto, identity: &str) -> Div {
 	history_entry_with_metrics(entry, identity, None)
 }
 
 fn history_entry_with_metrics(
-	entry: &decodex_protocol::AgentHistoryEntryDto,
+	entry: &AgentHistoryEntryDto,
 	identity: &str,
-	metrics: Option<gpui::AnyElement>,
-) -> gpui::Div {
+	metrics: Option<AnyElement>,
+) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
 
@@ -2486,12 +2499,8 @@ fn history_entry_with_metrics(
 			.w_full()
 			.py_2()
 			.text_size(px(11.))
-			.text_color(rgb(if entry.kind == "stopped" {
-				ui_theme::TEXT_MUTED
-			} else {
-				ui_theme::AMBER
-			}))
-			.child(selectable_text::SelectableText {
+			.text_color(rgb(if entry.kind == "stopped" { TEXT_MUTED } else { AMBER }))
+			.child(SelectableText {
 				key: format!("notice-{identity}"),
 				text: entry.text.clone(),
 				highlights: vec![],
@@ -2521,7 +2530,7 @@ fn history_entry_with_metrics(
 				.when(entry.kind == "instruction", |body| {
 					body.pl_3()
 						.border_l_2()
-						.border_color(rgb(ui_theme::BLUE))
+						.border_color(rgb(BLUE))
 						.child(muted("Agent instructions"))
 				})
 				.child(markdown::render(&visible_text, &format!("message-{identity}")))
@@ -2535,7 +2544,7 @@ fn history_entry_with_metrics(
 				.when(!user, |body| {
 					body.child(
 						div()
-							.mt(px(ui_theme::METADATA_GAP))
+							.mt(px(METADATA_GAP))
 							.flex()
 							.items_center()
 							.gap(px(2.))
@@ -2567,8 +2576,8 @@ fn history_entry_with_metrics(
 		)
 }
 
-fn reply_metrics(entry: &decodex_protocol::AgentHistoryEntryDto) -> impl IntoElement {
-	response_metrics::ResponseMetrics {
+fn reply_metrics(entry: &AgentHistoryEntryDto) -> impl IntoElement {
+	ResponseMetrics {
 		key: format!("local-{}", entry.id),
 		duration_ms: entry.duration_ms,
 		status: None,
@@ -2598,7 +2607,10 @@ mod tests {
 
 	use gpui::Focusable;
 
-	use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+	use std::{
+		fs,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	};
 
 	struct BubbleGeometry {
 		text: String,
@@ -3097,15 +3109,14 @@ mod tests {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
 
-		std::fs::create_dir(path.join("server")).unwrap();
-		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
-			.unwrap();
+		fs::create_dir(path.join("server")).unwrap();
+		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
 
-		let uid = std::fs::metadata(&path).unwrap().uid();
+		let uid = fs::metadata(&path).unwrap().uid();
 		let config = path.join("config.toml");
 
-		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
 
 		let profile = ClientProfile::load(&path, None).unwrap();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

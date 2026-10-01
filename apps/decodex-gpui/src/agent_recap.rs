@@ -4,18 +4,18 @@
 
 pub(super) use automatic::Automatic;
 
+use gpui::AnyElement;
+use tokio::sync::watch::{self, Sender};
+
 use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
-
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
-
-use tokio::sync::watch;
 
 #[derive(Default)]
 pub(super) struct Panel {
 	automatic: bool,
 	work: Option<String>,
 	state: Option<TaskRecapStatus>,
-	cancel: Option<watch::Sender<bool>>,
+	cancel: Option<Sender<bool>>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
@@ -200,7 +200,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn recap_panel(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn recap_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}

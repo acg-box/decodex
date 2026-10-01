@@ -19,7 +19,15 @@ use gpui::{
 	prelude::*, px, relative, rgb, rgba, size,
 };
 
-use crate::ui_theme;
+use crate::ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL};
+
+use gpui::{NoAction, ScrollWheelEvent};
+
+use cursor::Cursor;
+use decodex_protocol::PromptDraft;
+use edit::Snapshot;
+use native::MAX_NATIVE_EDITOR_BYTES;
+use text::ComposerTextElement;
 
 actions!(
 	decodex_composer_input,
@@ -62,12 +70,12 @@ enum ComposerAppearance {
 
 /// Conversation composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
-	cursor: cursor::Cursor,
+	cursor: Cursor,
 	focus_handle: FocusHandle,
 	placeholder: SharedString,
 	aria_label: SharedString,
 	content: String,
-	native_part: Option<decodex_protocol::PromptDraft>,
+	native_part: Option<PromptDraft>,
 	selected_range: Range<usize>,
 	selection_reversed: bool,
 	marked_range: Option<Range<usize>>,
@@ -78,8 +86,8 @@ pub(crate) struct ComposerInput {
 	is_selecting: bool,
 	appearance: ComposerAppearance,
 	secret: bool,
-	undo: Vec<edit::Snapshot>,
-	redo: Vec<edit::Snapshot>,
+	undo: Vec<Snapshot>,
+	redo: Vec<Snapshot>,
 }
 impl ComposerInput {
 	pub(crate) fn new(tab_index: isize, cx: &mut Context<Self>) -> Self {
@@ -223,10 +231,8 @@ impl ComposerInput {
 	fn vertical(&mut self, direction: f32, cx: &mut Context<Self>) {
 		if let Some(lines) = &self.last_layout {
 			let position = text::position_at(lines, self.cursor_offset());
-			let index = text::index_at(
-				lines,
-				position + point(px(0.0), px(ui_theme::BODY_LINE_HEIGHT * direction)),
-			);
+			let index =
+				text::index_at(lines, position + point(px(0.0), px(BODY_LINE_HEIGHT * direction)));
 
 			self.move_to(index, cx);
 		}
@@ -463,11 +469,8 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let retained = self.content.len().saturating_sub(range.end.saturating_sub(range.start));
-		let maximum = if self.native_part.is_some() {
-			native::MAX_NATIVE_EDITOR_BYTES
-		} else {
-			MAX_COMPOSER_BYTES
-		};
+		let maximum =
+			if self.native_part.is_some() { MAX_NATIVE_EDITOR_BYTES } else { MAX_COMPOSER_BYTES };
 		let replacement = bounded_input(new_text, maximum.saturating_sub(retained));
 		let mut native_part = self.native_part.clone();
 
@@ -599,7 +602,7 @@ impl EntityInputHandler for ComposerInput {
 
 		Some(Bounds::new(
 			origin + start,
-			size((end.x - start.x).max(px(1.0)), px(ui_theme::BODY_LINE_HEIGHT)),
+			size((end.x - start.x).max(px(1.0)), px(BODY_LINE_HEIGHT)),
 		))
 	}
 
@@ -684,11 +687,10 @@ impl Render for ComposerInput {
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
-			.on_scroll_wheel(cx.listener(|s, e: &gpui::ScrollWheelEvent, _, cx| {
+			.on_scroll_wheel(cx.listener(|s, e: &ScrollWheelEvent, _, cx| {
 				if s.appearance == ComposerAppearance::Workbench {
-					s.text_offset = (s.text_offset
-						- e.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT)).y)
-						.max(px(0.0));
+					s.text_offset =
+						(s.text_offset - e.delta.pixel_delta(px(BODY_LINE_HEIGHT)).y).max(px(0.0));
 					s.scroll_manually = true;
 
 					cx.stop_propagation();
@@ -712,10 +714,10 @@ impl Render for ComposerInput {
 			} else {
 				rgb(0x3c3744)
 			})
-			.bg(if workbench { rgba(0x00000000) } else { rgba(ui_theme::FIELD_MATERIAL) })
-			.text_size(px(ui_theme::BODY_SIZE))
+			.bg(if workbench { rgba(0x00000000) } else { rgba(FIELD_MATERIAL) })
+			.text_size(px(BODY_SIZE))
 			.text_color(rgb(0xeeeaf0))
-			.child(text::ComposerTextElement { input: entity })
+			.child(ComposerTextElement { input: entity })
 	}
 }
 
@@ -741,8 +743,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
 		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
 		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
-		KeyBinding::new("enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
-		KeyBinding::new("cmd-enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
+		KeyBinding::new("enter", NoAction, Some("AsyncQuestion > ComposerInput")),
+		KeyBinding::new("cmd-enter", NoAction, Some("AsyncQuestion > ComposerInput")),
 		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
 		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
 	]);

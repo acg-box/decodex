@@ -606,7 +606,6 @@ mod timing_tests {
 	};
 
 	use crate::shell::agent_surface::requests::QuestionTimer;
-	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
 	#[test]
 	fn nonblocking_timeout_has_grace_countdown_and_single_empty_response_claim() {

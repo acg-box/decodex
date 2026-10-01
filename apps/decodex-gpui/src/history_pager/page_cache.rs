@@ -24,7 +24,7 @@ use std::{mem::MaybeUninit, str};
 use libc::{
 	AT_FDCWD, EAGAIN, EEXIST, EINTR, ENOENT, EWOULDBLOCK, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
 	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDWR, S_IFDIR, S_IFMT, S_IFREG,
-	S_ISVTX, c_uint, mode_t, off_t, stat, uid_t,
+	S_ISVTX, c_int, c_uint, mode_t, off_t, stat, uid_t,
 };
 
 const CACHE_DIRECTORY_NAME: &CStr = c"history-page-cache-v1";
@@ -38,9 +38,9 @@ const CACHE_SCHEMA_GENERATION: u32 = 1;
 const PRIVATE_DIRECTORY_MODE: mode_t = 0o700;
 const PRIVATE_FILE_MODE: mode_t = 0o600;
 #[cfg(target_vendor = "apple")]
-const ANCESTOR_DIRECTORY_ACCESS: libc::c_int = libc::O_SEARCH;
+const ANCESTOR_DIRECTORY_ACCESS: c_int = libc::O_SEARCH;
 #[cfg(not(target_vendor = "apple"))]
-const ANCESTOR_DIRECTORY_ACCESS: libc::c_int = libc::O_RDONLY;
+const ANCESTOR_DIRECTORY_ACCESS: c_int = libc::O_RDONLY;
 const MAX_PAGE_ITEMS: usize = 8;
 const MAX_PAGE_BYTES: usize = 256 * 1_024;
 const MAX_CONVERSATION_PAGES: usize = 4;
@@ -1587,11 +1587,7 @@ fn open_search_directory_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 	open_directory_with_access_at(parent, name, ANCESTOR_DIRECTORY_ACCESS)
 }
 
-fn open_directory_with_access_at(
-	parent: RawFd,
-	name: &CStr,
-	access: libc::c_int,
-) -> io::Result<File> {
+fn open_directory_with_access_at(parent: RawFd, name: &CStr, access: c_int) -> io::Result<File> {
 	loop {
 		let descriptor = unsafe {
 			libc::openat(parent, name.as_ptr(), access | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -1625,7 +1621,7 @@ fn create_directory_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 	}
 }
 
-fn open_file_at(parent: RawFd, name: &CStr, access: libc::c_int) -> io::Result<File> {
+fn open_file_at(parent: RawFd, name: &CStr, access: c_int) -> io::Result<File> {
 	loop {
 		let descriptor = unsafe {
 			libc::openat(parent, name.as_ptr(), access | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
