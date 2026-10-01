@@ -2244,7 +2244,6 @@ impl AccountService {
 
 	/// Refresh one account and atomically commit the exact final registry result with its logical
 	/// command receipt.
-	#[allow(clippy::too_many_lines)] // Keep the journaled refresh and recovery transitions in one auditable sequence.
 	pub(crate) async fn refresh_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -2260,17 +2259,10 @@ impl AccountService {
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
-		let mut build_response = Some(build_response);
 		let account = match self.load_account(account_id).await {
 			Ok(account) => account,
 			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
+				return self.complete_account_command_error(lease, error, build_response).await;
 			},
 		};
 		let current = match account.credential.clone() {
@@ -2280,7 +2272,7 @@ impl AccountService {
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::CredentialAbsent,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2292,139 +2284,18 @@ impl AccountService {
 				account_id,
 				AccountOperationKind::Refresh,
 			) {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
+				return self.complete_account_command_error(lease, error, build_response).await;
 			}
 
-			match operation.phase {
-				AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
-					if operation.phase == AccountOperationPhase::StoreApplied {
-						self.commit_and_project_refresh_result(
-							&operation_id,
-							account_id,
-							None,
-							None,
-						)
-						.await?;
-					} else {
-						self.project_committed_refresh_result(&operation_id, account_id, None)
-							.await?;
-					}
-
-					return self
-						.complete_account_operation_success(
-							lease,
-							&operation_id,
-							AccountOperationPhase::StoreApplied,
-							AccountOperationPhase::Committed,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				AccountOperationPhase::Cancelled => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							operation.phase,
-							operation.phase,
-							None,
-							AccountLifecycleError::InvalidOperation,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				AccountOperationPhase::RecoveryRequired => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							operation.phase,
-							operation.phase,
-							None,
-							AccountLifecycleError::NotReady(
-								AccountLifecycleReadiness::OperationUnsettled,
-							),
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				AccountOperationPhase::Prepared => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							operation.phase,
-							AccountOperationPhase::Cancelled,
-							None,
-							AccountLifecycleError::InvalidOperation,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				AccountOperationPhase::ProviderEffectPending => {
-					let Some(target) = operation.target.as_ref() else {
-						return self
-							.complete_account_operation_error(
-								lease,
-								&operation_id,
-								operation.phase,
-								AccountOperationPhase::RecoveryRequired,
-								Some(PROVIDER_REFRESH_OUTCOME_UNKNOWN),
-								AccountLifecycleError::NotReady(
-									AccountLifecycleReadiness::OperationUnsettled,
-								),
-								build_response.take().expect("builder is retained"),
-							)
-							.await;
-					};
-
-					if self.credentials.read_exact(account_id, target).is_err() {
-						return self
-							.complete_account_operation_error(
-								lease,
-								&operation_id,
-								operation.phase,
-								AccountOperationPhase::RecoveryRequired,
-								Some("credential_refresh_reconciliation"),
-								AccountLifecycleError::NotReady(
-									AccountLifecycleReadiness::OperationUnsettled,
-								),
-								build_response.take().expect("builder is retained"),
-							)
-							.await;
-					}
-
-					accepted_phase(
-						self.store
-							.advance_account_operation(
-								&operation_id,
-								operation.phase,
-								AccountOperationPhase::StoreApplied,
-								None,
-							)
-							.await?,
-					)?;
-
-					self.commit_and_project_refresh_result(&operation_id, account_id, None, None)
-						.await?;
-
-					return self
-						.complete_account_operation_success(
-							lease,
-							&operation_id,
-							AccountOperationPhase::StoreApplied,
-							AccountOperationPhase::Committed,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-			}
+			return self
+				.replay_refresh_command(
+					lease,
+					&operation_id,
+					account_id,
+					&operation,
+					build_response,
+				)
+				.await;
 		}
 
 		if account.revision != expected_account_revision {
@@ -2432,7 +2303,7 @@ impl AccountService {
 				.complete_account_command_error(
 					lease,
 					AccountLifecycleError::StaleAccount,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -2440,13 +2311,7 @@ impl AccountService {
 		let stored = match self.read_exact_for_admission(&account).await {
 			Ok(stored) => stored,
 			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
+				return self.complete_account_command_error(lease, error, build_response).await;
 			},
 		};
 		let preparation = AccountOperationPreparation {
@@ -2461,7 +2326,166 @@ impl AccountService {
 			provider: current.provider.clone(),
 		};
 
-		match self.store.prepare_account_operation(&preparation).await? {
+		self.prepare_refresh_command(lease, &preparation, &current, stored, build_response).await
+	}
+
+	async fn replay_refresh_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		operation: &AccountOperation,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		match operation.phase {
+			AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
+				if operation.phase == AccountOperationPhase::StoreApplied {
+					self.commit_and_project_refresh_result(operation_id, account_id, None, None)
+						.await?;
+				} else {
+					self.project_committed_refresh_result(operation_id, account_id, None).await?;
+				}
+
+				self.complete_account_operation_success(
+					lease,
+					operation_id,
+					AccountOperationPhase::StoreApplied,
+					AccountOperationPhase::Committed,
+					build_response,
+				)
+				.await
+			},
+			AccountOperationPhase::Cancelled =>
+				self.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					operation.phase,
+					None,
+					AccountLifecycleError::InvalidOperation,
+					build_response,
+				)
+				.await,
+			AccountOperationPhase::RecoveryRequired =>
+				self.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					operation.phase,
+					None,
+					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
+					build_response,
+				)
+				.await,
+			AccountOperationPhase::Prepared =>
+				self.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::Cancelled,
+					None,
+					AccountLifecycleError::InvalidOperation,
+					build_response,
+				)
+				.await,
+			AccountOperationPhase::ProviderEffectPending =>
+				self.reconcile_pending_refresh_command(
+					lease,
+					operation_id,
+					account_id,
+					operation,
+					build_response,
+				)
+				.await,
+		}
+	}
+
+	async fn reconcile_pending_refresh_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		operation: &AccountOperation,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let Some(target) = operation.target.as_ref() else {
+			return self
+				.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::RecoveryRequired,
+					Some(PROVIDER_REFRESH_OUTCOME_UNKNOWN),
+					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
+					build_response,
+				)
+				.await;
+		};
+
+		if self.credentials.read_exact(account_id, target).is_err() {
+			return self
+				.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::RecoveryRequired,
+					Some("credential_refresh_reconciliation"),
+					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
+					build_response,
+				)
+				.await;
+		}
+
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await?,
+		)?;
+
+		self.commit_and_project_refresh_result(operation_id, account_id, None, None).await?;
+
+		self.complete_account_operation_success(
+			lease,
+			operation_id,
+			AccountOperationPhase::StoreApplied,
+			AccountOperationPhase::Committed,
+			build_response,
+		)
+		.await
+	}
+
+	async fn prepare_refresh_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		preparation: &AccountOperationPreparation,
+		current: &CredentialBinding,
+		stored: StoredCredential,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let operation_id = &preparation.operation_id;
+		let account_id = &preparation.account_id;
+
+		match self.store.prepare_account_operation(preparation).await? {
 			AccountLifecycleMutationOutcome::Applied(mutation)
 			| AccountLifecycleMutationOutcome::Replayed(mutation)
 				if mutation.phase == AccountOperationPhase::Prepared => {},
@@ -2470,7 +2494,7 @@ impl AccountService {
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::OperationRejected(rejection),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2479,7 +2503,7 @@ impl AccountService {
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::InvalidOperation,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2488,7 +2512,7 @@ impl AccountService {
 		accepted_phase(
 			self.store
 				.advance_account_operation(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::Prepared,
 					AccountOperationPhase::ProviderEffectPending,
 					None,
@@ -2499,23 +2523,49 @@ impl AccountService {
 		let refreshed = self
 			.refresh_or_reconcile_shared(
 				account_id,
-				&current,
+				current,
 				stored,
 				SharedFamilyRefreshPolicy::Guard,
 			)
 			.await;
+
+		self.resolve_refresh_command(
+			lease,
+			operation_id,
+			account_id,
+			current,
+			refreshed,
+			build_response,
+		)
+		.await
+	}
+
+	async fn resolve_refresh_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		current: &CredentialBinding,
+		refreshed: Result<RefreshResolution, CredentialRefreshError>,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let resolution = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(error @ CredentialRefreshError::Rejected) => {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						AccountOperationPhase::RecoveryRequired,
 						Some("provider_refresh_rejected"),
 						AccountLifecycleError::Refresh(error),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2523,12 +2573,12 @@ impl AccountService {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						AccountOperationPhase::Cancelled,
 						None,
 						AccountLifecycleError::Refresh(error),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2536,12 +2586,12 @@ impl AccountService {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						AccountOperationPhase::Cancelled,
 						None,
 						AccountLifecycleError::Refresh(error),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -2549,16 +2599,42 @@ impl AccountService {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						AccountOperationPhase::RecoveryRequired,
 						Some("provider_refresh_ambiguous"),
 						AccountLifecycleError::Refresh(error),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
 		};
+
+		self.commit_refresh_command(
+			lease,
+			operation_id,
+			account_id,
+			current,
+			resolution,
+			build_response,
+		)
+		.await
+	}
+
+	async fn commit_refresh_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		current: &CredentialBinding,
+		resolution: RefreshResolution,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let (refreshed, projected_source) = match resolution {
 			RefreshResolution::Rotate { refreshed, projected_source } =>
 				(refreshed, projected_source),
@@ -2566,50 +2642,47 @@ impl AccountService {
 				return self
 					.complete_account_operation_success(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						AccountOperationPhase::Cancelled,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
 		};
 		let target =
-			match refreshed_credential_target(&current, account_id, &operation_id, &refreshed) {
+			match refreshed_credential_target(current, account_id, operation_id, &refreshed) {
 				Ok(target) => target,
 				Err(AccountLifecycleError::ProviderMismatch) => {
 					return self
 						.complete_account_operation_error(
 							lease,
-							&operation_id,
+							operation_id,
 							AccountOperationPhase::ProviderEffectPending,
 							AccountOperationPhase::RecoveryRequired,
 							Some(PROVIDER_REFRESH_OUTCOME_UNKNOWN),
 							AccountLifecycleError::ProviderMismatch,
-							build_response.take().expect("builder is retained"),
+							build_response,
 						)
 						.await;
 				},
 				Err(error) => return Err(error),
 			};
 
-		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
+		accepted_phase(self.store.set_account_operation_target(operation_id, &target).await?)?;
 
-		if let Err(error) = self.credentials.compare_and_swap_rotate(
-			account_id,
-			&current,
-			&target,
-			refreshed.bundle,
-		) {
+		if let Err(error) =
+			self.credentials.compare_and_swap_rotate(account_id, current, &target, refreshed.bundle)
+		{
 			return self
 				.complete_account_operation_error(
 					lease,
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					AccountOperationPhase::RecoveryRequired,
 					Some("credential_rotate_failed"),
 					error.into(),
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -2617,7 +2690,7 @@ impl AccountService {
 		accepted_phase(
 			self.store
 				.advance_account_operation(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					AccountOperationPhase::StoreApplied,
 					None,
@@ -2625,15 +2698,15 @@ impl AccountService {
 				.await?,
 		)?;
 
-		self.commit_and_project_refresh_result(&operation_id, account_id, None, projected_source)
+		self.commit_and_project_refresh_result(operation_id, account_id, None, projected_source)
 			.await?;
 
 		self.complete_account_operation_success(
 			lease,
-			&operation_id,
+			operation_id,
 			AccountOperationPhase::StoreApplied,
 			AccountOperationPhase::Committed,
-			build_response.take().expect("builder is retained"),
+			build_response,
 		)
 		.await
 	}
