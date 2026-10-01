@@ -1,4 +1,4 @@
-use super::*;
+use crate::agent::tests::*;
 
 #[tokio::test]
 async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed() {

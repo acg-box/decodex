@@ -1,8 +1,11 @@
 //! Native model selection, inference and cold persistence through the retained bridge.
 #[path = "agent_process_native_model_store.rs"] mod journal;
 
-use super::*;
+use std::{env, fs, path::Path};
 
+use tokio::{task::JoinHandle, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 use decodex_codex::app_server_client::ThreadModelSelection;
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
@@ -11,7 +14,7 @@ fn start_backend(
 	listener: tokio::net::TcpListener,
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	bodies: Arc<std::sync::Mutex<Vec<Value>>>,
-) -> tokio::task::JoinHandle<()> {
+) -> JoinHandle<()> {
 	tokio::spawn(serve_fixture(
 		listener,
 		requests,
@@ -53,7 +56,7 @@ fn assert_inference_sequence(
 	}
 }
 
-fn write_catalog(catalog: &std::path::Path, no_effort_choices: bool) {
+fn write_catalog(catalog: &Path, no_effort_choices: bool) {
 	let mut target = effort::fixture_model("fixture-b", EFFORT);
 
 	if no_effort_choices {
@@ -63,7 +66,7 @@ fn write_catalog(catalog: &std::path::Path, no_effort_choices: bool) {
 
 	let models = [effort::fixture_model("fixture-a", EFFORT), target];
 
-	std::fs::write(
+	fs::write(
 		catalog,
 		serde_json::to_vec(&json!({"models":models})).expect("native model fixture operation"),
 	)
@@ -73,7 +76,7 @@ fn write_catalog(catalog: &std::path::Path, no_effort_choices: bool) {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native model selection qualification"]
 async fn installed_model_selection_changes_next_inference_and_survives_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false, false, false))
+	time::timeout(Duration::from_secs(45), qualify(false, false, false))
 		.await
 		.expect("bounded fixture");
 }
@@ -81,7 +84,7 @@ async fn installed_model_selection_changes_next_inference_and_survives_restart()
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated active model selection qualification"]
 async fn installed_active_model_selection_preserves_admitted_inference() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(true, false, false))
+	time::timeout(Duration::from_secs(45), qualify(true, false, false))
 		.await
 		.expect("bounded fixture");
 }
@@ -89,7 +92,7 @@ async fn installed_active_model_selection_preserves_admitted_inference() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated model without effort choices"]
 async fn installed_model_without_effort_choices_remains_selectable() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false, true, false))
+	time::timeout(Duration::from_secs(45), qualify(false, true, false))
 		.await
 		.expect("bounded fixture");
 }
@@ -97,13 +100,13 @@ async fn installed_model_without_effort_choices_remains_selectable() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; preserve explicit effort on a model with no effort choices"]
 async fn installed_model_without_effort_choices_preserves_explicit_configuration() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false, true, true))
+	time::timeout(Duration::from_secs(45), qualify(false, true, true))
 		.await
 		.expect("bounded fixture");
 }
 
 async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -135,7 +138,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 		String::new()
 	};
 
-	std::fs::write(home.path().join("config.toml"), format!("model=\"fixture-a\"\n{configured_effort}model_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("native model fixture operation"))).expect("native model fixture operation");
+	fs::write(home.path().join("config.toml"), format!("model=\"fixture-a\"\n{configured_effort}model_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("native model fixture operation"))).expect("native model fixture operation");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let started = session.client.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only","model":"fixture-a","developerInstructions":"Keep fixture instructions"})).await.expect("native model fixture operation");
@@ -298,7 +301,7 @@ async fn wait_selection(session: &mut NativeSession, thread: &str, model: &str) 
 	}
 }
 
-async fn qualify_independent_task(session: &mut NativeSession, home: &std::path::Path) {
+async fn qualify_independent_task(session: &mut NativeSession, home: &Path) {
 	let started=session.client.thread_start(json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only","developerInstructions":"Keep fixture instructions"})).await.expect("independent task");
 	let thread = started["thread"]["id"].as_str().expect("independent thread");
 

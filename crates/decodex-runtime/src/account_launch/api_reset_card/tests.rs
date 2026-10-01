@@ -1,22 +1,22 @@
 //! Entirely in-memory provider; no network client, real account, or real credit is created.
-use super::{
+use std::{future::Future, pin::Pin, sync::atomic::AtomicUsize};
+
+use tempfile::TempDir;
+use tokio::time;
+
+use crate::account_launch::api_reset_card::{
 	provider::{ResetCardProvider, ResetCardSession},
 	*,
 };
-use decodex_core::DecodexRoot;
-use std::{
-	future::Future,
-	pin::Pin,
-	sync::{Mutex as StdMutex, atomic::AtomicUsize},
-};
+use decodex_core::{DecodexRoot, ResetCardTimestamp};
 
 type TestFuture<'a, T> =
 	Pin<Box<dyn Future<Output = Result<T, ResetCardServiceError>> + Send + 'a>>;
 struct Fake {
-	inventory: StdMutex<AccountApiInventory>,
-	outcome: StdMutex<Result<ResetCardConsumeOutcome, ResetCardServiceError>>,
+	inventory: std::sync::Mutex<AccountApiInventory>,
+	outcome: std::sync::Mutex<Result<ResetCardConsumeOutcome, ResetCardServiceError>>,
 	sends: AtomicUsize,
-	identities: StdMutex<Vec<(String, String)>>,
+	identities: std::sync::Mutex<Vec<(String, String)>>,
 	unavailable: AtomicBool,
 	pause_send: AtomicBool,
 	entered: Notify,
@@ -63,8 +63,7 @@ impl ResetCardProvider for Arc<Fake> {
 	}
 }
 fn fixture()
--> (tempfile::TempDir, SqliteStore, Arc<Fake>, ApiResetCardRuntime, AccountId, ResetCardDescriptor)
-{
+-> (TempDir, SqliteStore, Arc<Fake>, ApiResetCardRuntime, AccountId, ResetCardDescriptor) {
 	let dir = tempfile::tempdir().expect("isolated reset fixture");
 	let paths = DecodexRoot::new(dir.path().canonicalize().expect("isolated reset fixture"))
 		.expect("isolated reset fixture")
@@ -74,7 +73,7 @@ fn fixture()
 	let descriptor = credits.credits[0].descriptor();
 	let usage = decodex_codex::decode_account_api_usage(br#"{"rate_limit":{"primary_window":{"used_percent":100,"limit_window_seconds":18000,"reset_at":4102444800},"secondary_window":{"used_percent":100,"limit_window_seconds":604800,"reset_at":4102444800}}}"#).expect("isolated reset fixture");
 	let fake = Arc::new(Fake {
-		inventory: StdMutex::new(AccountApiInventory {
+		inventory: std::sync::Mutex::new(AccountApiInventory {
 			banner: Default::default(),
 			recovery_context: None,
 			account_revision: 1,
@@ -85,9 +84,9 @@ fn fixture()
 			details_complete: true,
 			credits: credits.credits,
 		}),
-		outcome: StdMutex::new(Ok(ResetCardConsumeOutcome::Reset)),
+		outcome: std::sync::Mutex::new(Ok(ResetCardConsumeOutcome::Reset)),
 		sends: AtomicUsize::new(0),
-		identities: StdMutex::new(Vec::new()),
+		identities: std::sync::Mutex::new(Vec::new()),
 		unavailable: AtomicBool::new(false),
 		pause_send: AtomicBool::new(false),
 		entered: Notify::new(),
@@ -320,15 +319,13 @@ async fn shutdown_drains_a_send_without_cancelling_or_replaying_it() {
 		worker.process_pending().await;
 	});
 
-	tokio::time::timeout(Duration::from_secs(2), fake.entered.notified())
+	time::timeout(Duration::from_secs(2), fake.entered.notified())
 		.await
 		.expect("fake send started");
 
 	runtime.begin_shutdown();
 
-	assert!(
-		tokio::time::timeout(Duration::from_millis(20), runtime.wait_for_shutdown()).await.is_err()
-	);
+	assert!(time::timeout(Duration::from_millis(20), runtime.wait_for_shutdown()).await.is_err());
 
 	fake.release.notify_one();
 	task.await.expect("drained fake send");
@@ -365,8 +362,8 @@ async fn account_recovery_discovers_the_original_key_without_provider_access() {
 async fn expired_cards_and_known_no_effect_outcomes_remain_distinct() {
 	let (_dir, _store, fake, runtime, account, _) = fixture();
 	let expired = decodex_core::ResetCardDescriptor::new(
-		decodex_core::ResetCardTimestamp::from_unix_seconds(1).expect("grant"),
-		decodex_core::ResetCardTimestamp::from_unix_seconds(2).expect("expiry"),
+		ResetCardTimestamp::from_unix_seconds(1).expect("grant"),
+		ResetCardTimestamp::from_unix_seconds(2).expect("expiry"),
 	)
 	.expect("descriptor");
 

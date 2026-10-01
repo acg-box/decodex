@@ -1,18 +1,13 @@
 //! Bounded durable readback. Reads never repeat a native tool call.
+use sha2::{Digest, Sha256};
+
 use decodex_database::SqliteStore;
 use decodex_protocol::{
 	AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, AgentAppUiReceiptResult as Result,
-	EntityId, MAX_AGENT_APP_UI_RECEIPT_BYTES,
+	AgentPendingAppUiCall, EntityId, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 };
-use serde_json::json;
-use sha2::{Digest, Sha256};
 
-pub(crate) async fn pending(
-	store: &SqliteStore,
-	work_id: &EntityId,
-) -> decodex_protocol::AgentPendingAppUiCall {
-	use decodex_protocol::AgentPendingAppUiCall;
-
+pub(crate) async fn pending(store: &SqliteStore, work_id: &EntityId) -> AgentPendingAppUiCall {
 	match store.pending_agent_app_ui_call(work_id.as_str().into()).await {
 		Ok(receipt) => {
 			let operation_id = match receipt {
@@ -56,7 +51,7 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 		return Result::Unavailable;
 	};
 	let a = receipt.attempt;
-	let document = json!({"reservationId":receipt.id,"operationId":a.attempt_id,"workId":a.owner.work,"threadId":a.owner.thread,"accountId":a.owner.account,"sourceFingerprint":a.source_fingerprint,"turnId":a.turn,"itemId":a.item,"server":a.server,"tool":a.tool,"arguments":a.arguments,"state":receipt.state,"uncertaintyAcknowledged":receipt.uncertainty_acknowledged,"result":receipt.result});
+	let document = serde_json::json!({"reservationId":receipt.id,"operationId":a.attempt_id,"workId":a.owner.work,"threadId":a.owner.thread,"accountId":a.owner.account,"sourceFingerprint":a.source_fingerprint,"turnId":a.turn,"itemId":a.item,"server":a.server,"tool":a.tool,"arguments":a.arguments,"state":receipt.state,"uncertaintyAcknowledged":receipt.uncertainty_acknowledged,"result":receipt.result});
 
 	chunk(request, serde_json::to_vec(&document).expect("saved JSON serializes"))
 }
@@ -90,7 +85,9 @@ fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> Result {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent_app_ui_receipt::{
+		self, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, EntityId, Result,
+	};
 	#[test]
 	fn result_chunks_cannot_mix_saved_outcomes() {
 		let mut request = AgentAppUiReceiptRequest {
@@ -100,7 +97,9 @@ mod tests {
 			fingerprint: None,
 		};
 		let document = vec![b'a'; AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 7];
-		let Result::Available { fingerprint, bytes, .. } = chunk(&request, document.clone()) else {
+		let Result::Available { fingerprint, bytes, .. } =
+			agent_app_ui_receipt::chunk(&request, document.clone())
+		else {
 			panic!("first chunk")
 		};
 
@@ -110,13 +109,13 @@ mod tests {
 		request.fingerprint = Some(fingerprint);
 
 		assert!(
-			matches!(chunk(&request,document.clone()),Result::Available{bytes,..} if bytes.len()==7)
+			matches!(agent_app_ui_receipt::chunk(&request,document.clone()),Result::Available{bytes,..} if bytes.len()==7)
 		);
 
 		let mut changed = document;
 
 		changed[0] = b'b';
 
-		assert_eq!(chunk(&request, changed), Result::Unavailable);
+		assert_eq!(agent_app_ui_receipt::chunk(&request, changed), Result::Unavailable);
 	}
 }

@@ -6,6 +6,7 @@
 //! cannot replay it.
 
 use std::{
+	error::Error,
 	fmt::{Display, Formatter},
 	future::{self, Future},
 	pin::Pin,
@@ -13,22 +14,21 @@ use std::{
 	time::Duration,
 };
 
-use decodex_codex::ExactThreadId;
+use tokio::{sync::watch::Receiver, time};
 
+use crate::process_supervisor::FencedProcess;
+use decodex_codex::ExactThreadId;
 use decodex_core::{
 	AccountId, ContinuationPlanKind, ExecutionConsumer, ProcessExecutionEpochId,
 	ProcessGenerationId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptId,
 	ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
 	ProviderEvidenceId, ProviderPositiveEvidence, ProviderRequestId, RuntimeSessionId,
 };
-
 use decodex_database::{
 	AuthorizeProviderDispatchOutcome, ContinuationPlanEffect, FreshPreparedProviderAttempt,
 	PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, RuntimeSessionBindingReceipt,
 	RuntimeSessionThreadBindingReadback, SqliteStore,
 };
-
-use crate::process_supervisor::FencedProcess;
 
 const RECONCILIATION_PAGE_SIZE: u16 = 256;
 const RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
@@ -93,7 +93,7 @@ impl ProviderAttemptControl {
 	/// Build the periodic reconciler for direct ownership by the server lifecycle.
 	pub(crate) fn reconciliation_task(
 		&self,
-		mut stop: tokio::sync::watch::Receiver<bool>,
+		mut stop: Receiver<bool>,
 	) -> impl Future<Output = ()> + Send + 'static {
 		let weak = Arc::downgrade(&self.inner);
 
@@ -111,7 +111,7 @@ impl ProviderAttemptControl {
 
 						continue;
 					},
-					_ = tokio::time::sleep(RECONCILIATION_INTERVAL) => {},
+					_ = time::sleep(RECONCILIATION_INTERVAL) => {},
 				}
 
 				if *stop.borrow_and_update() {
@@ -243,7 +243,7 @@ impl ProviderAttemptControl {
 			});
 		}
 
-		let evidence = tokio::time::timeout(
+		let evidence = time::timeout(
 			EVIDENCE_LOOKUP_TIMEOUT,
 			self.inner.evidence_source.positive_evidence(&attempt),
 		)
@@ -338,7 +338,7 @@ pub struct ProviderAttemptDiagnostic {
 	/// Selected account.
 	pub account_id: AccountId,
 	/// Bound ProcessGeneration identity.
-	pub process_generation_id: decodex_core::ProcessGenerationId,
+	pub process_generation_id: ProcessGenerationId,
 	/// Exact ready generation revision retained before authorization.
 	pub process_generation_revision: i64,
 	/// Exact external execution epoch of the bound generation.
@@ -664,7 +664,7 @@ pub enum ProviderEvidenceLookupError {
 	/// The source returned a malformed or cross-linked positive receipt.
 	InvalidEvidence,
 }
-impl std::error::Error for ProviderEvidenceLookupError {}
+impl Error for ProviderEvidenceLookupError {}
 
 impl Display for ProviderEvidenceLookupError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -682,7 +682,7 @@ pub enum ProviderAttemptServiceError {
 	/// The positive provider evidence source was unavailable or returned invalid evidence.
 	EvidenceUnavailable,
 }
-impl std::error::Error for ProviderAttemptServiceError {}
+impl Error for ProviderAttemptServiceError {}
 
 impl Display for ProviderAttemptServiceError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -749,6 +749,15 @@ fn is_lower_sha256(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use rusqlite::Connection;
+
+	use crate::{
+		process_supervisor::FencedProcess,
+		provider_attempt_service::{
+			self, FreshRuntimeSessionResume, RuntimeSessionResumeRequest,
+			SuccessfulRuntimeSessionResume,
+		},
+	};
 	use decodex_core::{
 		AccountId, ContinuationPlan, ConversationId, ExecutionConsumer, ProcessExecutionEpochId,
 		ProcessGenerationId, ProviderAttemptConsumer, ProviderAttemptId,
@@ -756,14 +765,6 @@ mod tests {
 		ProviderRequestKey, ProviderRequestKeys, RuntimeSessionId, TurnId,
 	};
 	use decodex_database::{ContinuationPlanEffect, PrepareProviderAttemptOutcome, SqliteStore};
-	use rusqlite::Connection;
-	use tempfile::tempdir;
-
-	use super::{
-		FreshRuntimeSessionResume, RuntimeSessionResumeRequest, SuccessfulRuntimeSessionResume,
-		existing_session_resume_matches,
-	};
-	use crate::process_supervisor::FencedProcess;
 
 	#[test]
 	fn opaque_provider_thread_resume_crosses_the_real_post_restart_authority_gate() {
@@ -821,7 +822,9 @@ mod tests {
 			uncertain_predecessor_attempt_id: None,
 		};
 
-		assert!(existing_session_resume_matches(&plan, &process, &resume));
+		assert!(provider_attempt_service::existing_session_resume_matches(
+			&plan, &process, &resume
+		));
 	}
 
 	#[test]
@@ -851,7 +854,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn reconstructed_service_executes_real_opaque_resume_preparation_once() {
-		let directory = tempdir().expect("temporary product root");
+		let directory = tempfile::tempdir().expect("temporary product root");
 		let canonical = directory.path().canonicalize().expect("canonical temporary root");
 		let root = decodex_core::DecodexRoot::new(canonical).expect("typed Decodex root");
 		let paths = root.paths();

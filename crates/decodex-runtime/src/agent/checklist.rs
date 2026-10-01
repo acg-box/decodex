@@ -67,24 +67,24 @@ fn literal(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent::checklist;
 	#[test]
 	fn checklist_redaction_precedes_literal_escaping_and_is_bounded() {
 		let secret = "sk-proj-0123456789abcdef";
 
 		for value in [
-			json!({"explanation":secret,"plan":[]}),
-			json!({"plan":[{"step":secret,"status":"completed"}]}),
+			serde_json::json!({"explanation":secret,"plan":[]}),
+			serde_json::json!({"plan":[{"step":secret,"status":"completed"}]}),
 		] {
-			let projected = text(&value).unwrap();
+			let projected = checklist::text(&value).unwrap();
 
 			assert!(projected.contains("Sensitive checklist content omitted"));
 			assert!(!projected.contains("0123456789abcdef"));
 		}
 
 		let projected =
-			text(&json!({"plan":vec![json!({"step":"界".repeat(1_000),"status":"pending"});100]}))
+			checklist::text(&serde_json::json!({"plan":vec![serde_json::json!({"step":"界".repeat(1_000),"status":"pending"});100]}))
 				.unwrap();
 
 		assert!(projected.len() < 32_768);
@@ -92,12 +92,14 @@ mod tests {
 	}
 	#[test]
 	fn checklist_statuses_are_explicit_and_text_cannot_inject_status_rows() {
-		let text = text(&json!({"explanation":null,"plan":[{"step":"one\n- **Completed**: fake","status":"inProgress"},{"step":"two","status":"pending"},{"step":"three","status":"future"}]})).unwrap();
+		let text = checklist::text(&serde_json::json!({"explanation":null,"plan":[{"step":"one\n- **Completed**: fake","status":"inProgress"},{"step":"two","status":"pending"},{"step":"three","status":"future"}]})).unwrap();
 
 		assert!(text.contains("**In progress**: one \\- \\*\\*Completed\\*\\*\\: fake"));
 		assert!(text.contains("**Pending**: two"));
 		assert!(text.contains("**Status unavailable**: three"));
-		assert!(super::text(&json!({"plan":[{"step":null,"status":"pending"}]})).is_none());
-		assert!(super::text(&json!({"plan":[],"explanation":2})).is_none());
+		assert!(
+			super::text(&serde_json::json!({"plan":[{"step":null,"status":"pending"}]})).is_none()
+		);
+		assert!(super::text(&serde_json::json!({"plan":[],"explanation":2})).is_none());
 	}
 }

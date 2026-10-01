@@ -1,12 +1,12 @@
 //! Retain the requested selection, rather than substituting startup defaults on retry.
-use super::{AgentCoordinator, AgentError, Value, json};
-use decodex_database::AgentTurnExecution;
+use crate::agent::{self, AgentCoordinator, AgentError, ClientError, HistoryGuard, Value};
+use decodex_database::{AgentTurnExecution, AgentWorkItem};
 
 impl AgentCoordinator {
 	pub(super) async fn select_turn_execution(
 		&self,
 		params: &mut Value,
-		guard: super::HistoryGuard,
+		guard: HistoryGuard,
 	) -> Result<Option<AgentTurnExecution>, AgentError> {
 		if params.get("model").is_none() || params.get("effort").is_none() {
 			let thread = params["threadId"]
@@ -21,16 +21,16 @@ impl AgentCoordinator {
 			if params.get("model").is_none() {
 				let Some(model) = settings.model else { return Ok(None) };
 
-				params["model"] = json!(model);
+				params["model"] = agent::json!(model);
 			}
 			if params.get("effort").is_none()
 				&& let Some(effort) = settings.reasoning_effort
 			{
-				params["effort"] = json!(effort);
+				params["effort"] = agent::json!(effort);
 			}
 		}
 		if !guard.is_live() {
-			return Err(super::ClientError::StaleHistory.into());
+			return Err(ClientError::StaleHistory.into());
 		}
 
 		Ok(Some(AgentTurnExecution {
@@ -44,7 +44,7 @@ impl AgentCoordinator {
 
 	pub(super) async fn validate_capacity_execution(
 		&self,
-		item: &decodex_database::AgentWorkItem,
+		item: &AgentWorkItem,
 		event: i64,
 		execution: Option<&AgentTurnExecution>,
 	) -> Result<(), AgentError> {

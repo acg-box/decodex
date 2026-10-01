@@ -1,14 +1,23 @@
 //! Qualify explicit continuation with an installed native process and synthetic provider.
-use super::{fixture, native_task_references};
-use crate::agent::{AgentConfig, AgentCoordinator};
-use decodex_codex::app_server_client::{AppServerClient, ServerEvent};
-use futures_util::FutureExt as _;
-use serde_json::{Value, json};
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
-use tokio::io::AsyncWriteExt as _;
+
+use futures_util::FutureExt as _;
+use serde_json::{self, Value};
+use tokio::{io::AsyncWriteExt as _, process::Command, sync::mpsc::Receiver, time};
+
+use crate::agent::{
+	AgentConfig, AgentCoordinator, misalignment,
+	tests::{self, native_task_references},
+};
+use decodex_codex::app_server_client::{AppServerClient, ServerEvent};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native misalignment qualification"]
@@ -20,11 +29,11 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-	std::fs::write(path.join("config.toml"), format!(
+	fs::write(path.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated continuation fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
 	)).unwrap();
 
-	let mut command = tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+	let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 	command
 		.arg("app-server")
@@ -35,50 +44,47 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 		.env("PATH", "/usr/bin:/bin");
 
 	let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
-	let (mut agent, _, _database) = fixture().await;
+	let (mut agent, _, _database) = tests::fixture().await;
 
 	agent.client = client;
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
 	agent.config.sandbox = "read-only".into();
 
-	let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
-		std::time::Duration::from_secs(40),
-		async {
-			agent.initialize().await.unwrap();
-			agent.start_agent("agent", "Inspect the synthetic fixture.").await.unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
+		agent.initialize().await.unwrap();
+		agent.start_agent("agent", "Inspect the synthetic fixture.").await.unwrap();
 
-			finish_turn(&mut agent, &mut events, "failed").await;
+		finish_turn(&mut agent, &mut events, "failed").await;
 
-			let review = agent.store.agent_misalignment("agent".into()).await.unwrap().unwrap();
+		let review = agent.store.agent_misalignment("agent".into()).await.unwrap().unwrap();
 
-			assert!(review.details_json.as_deref().unwrap().contains("Review the fixture scope."));
+		assert!(review.details_json.as_deref().unwrap().contains("Review the fixture scope."));
 
-			let (_, guard) =
-				agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
-			let token = crate::agent::misalignment::review_token(&review, &guard).unwrap();
+		let (_, guard) =
+			agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
+		let token = misalignment::review_token(&review, &guard).unwrap();
 
-			assert_eq!(calls.load(Ordering::Acquire), 1);
-			assert!(
-				agent
-					.continue_misalignment("agent", review.clone(), "stale", "old-review")
-					.await
-					.is_err()
-			);
-			assert_eq!(calls.load(Ordering::Acquire), 1);
-
+		assert_eq!(calls.load(Ordering::Acquire), 1);
+		assert!(
 			agent
-				.continue_misalignment("agent", review.clone(), "explicit-confirmation", &token)
+				.continue_misalignment("agent", review.clone(), "stale", "old-review")
 				.await
-				.unwrap();
+				.is_err()
+		);
+		assert_eq!(calls.load(Ordering::Acquire), 1);
 
-			finish_turn(&mut agent, &mut events, "completed").await;
+		agent
+			.continue_misalignment("agent", review.clone(), "explicit-confirmation", &token)
+			.await
+			.unwrap();
 
-			assert!(agent.store.agent_misalignment("agent".into()).await.unwrap().is_none());
-			assert!(agent.continue_misalignment("agent", review, "repeat", &token).await.is_err());
-			assert_eq!(calls.load(Ordering::Acquire), 2);
-		},
-	))
+		finish_turn(&mut agent, &mut events, "completed").await;
+
+		assert!(agent.store.agent_misalignment("agent".into()).await.unwrap().is_none());
+		assert!(agent.continue_misalignment("agent", review, "repeat", &token).await.is_err());
+		assert_eq!(calls.load(Ordering::Acquire), 2);
+	}))
 	.catch_unwind()
 	.await;
 
@@ -89,7 +95,7 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 
 async fn finish_turn(
 	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	status: &str,
 ) {
 	loop {
@@ -116,8 +122,8 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 		let serial = calls.fetch_add(1, Ordering::AcqRel);
 		let frames: Vec<Value> = if serial == 0 {
 			vec![
-				json!({"type":"response.created","response":{"id":"first"}}),
-				json!({"type":"response.failed","response":{"id":"first","status":"failed","error":{
+				serde_json::json!({"type":"response.created","response":{"id":"first"}}),
+				serde_json::json!({"type":"response.failed","response":{"id":"first","status":"failed","error":{
 					"code":"misalignment_policy_violation","message":"Synthetic fixture requires review.",
 					"misalignment":{"error_type":"unsafe_activity","detailed_explanation":"Review the fixture scope.","steer":{"message":"Continue within the fixture scope."}}
 				}}}),
@@ -127,9 +133,9 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 			assert!(body.to_string().contains("Continue within the fixture scope."));
 
 			vec![
-				json!({"type":"response.created","response":{"id":"continued"}}),
-				json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Completed within scope."}]}}),
-				json!({"type":"response.completed","response":{"id":"continued"}}),
+				serde_json::json!({"type":"response.created","response":{"id":"continued"}}),
+				serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Completed within scope."}]}}),
+				serde_json::json!({"type":"response.completed","response":{"id":"continued"}}),
 			]
 		};
 		let data = frames

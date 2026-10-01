@@ -1,14 +1,17 @@
 //! Optional host-owned skill directories, captured once for the service lifetime.
 //! DECODEX_SKILL_ROOTS uses the platform path-list separator (colon on macOS).
 //! These directories apply to each fresh retained Agent process, across its tasks.
+use std::{env, ffi::OsStr, time::Duration};
+
+use tokio::time;
+
 use decodex_codex::app_server_client::AppServerClient;
-use std::{ffi::OsStr, time::Duration};
 
 #[derive(Clone)]
 pub(crate) struct RuntimeSkillRoots(Option<Vec<String>>);
 impl RuntimeSkillRoots {
 	pub(crate) fn from_environment() -> Result<Self, &'static str> {
-		Self::parse(std::env::var_os("DECODEX_SKILL_ROOTS").as_deref())
+		Self::parse(env::var_os("DECODEX_SKILL_ROOTS").as_deref())
 	}
 
 	fn parse(value: Option<&OsStr>) -> Result<Self, &'static str> {
@@ -18,7 +21,7 @@ impl RuntimeSkillRoots {
 		let mut roots = Vec::new();
 
 		if !value.is_empty() {
-			for path in std::env::split_paths(value) {
+			for path in env::split_paths(value) {
 				let Some(path) = path.to_str().filter(|_| path.is_absolute()) else {
 					return Err("DECODEX_SKILL_ROOTS must contain absolute UTF-8 paths");
 				};
@@ -41,7 +44,7 @@ impl RuntimeSkillRoots {
 			return Ok(());
 		};
 		// Native owns discovery, watching, and replacement. Never edit plugin configuration.
-		match tokio::time::timeout(
+		match time::timeout(
 			Duration::from_secs(15),
 			client.request("skills/extraRoots/set", serde_json::json!({"extraRoots":roots})),
 		)
@@ -57,9 +60,9 @@ impl RuntimeSkillRoots {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::{Value, json};
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::agent_skill_roots::{AppServerClient, OsStr, RuntimeSkillRoots};
+	use serde_json::{self, Value};
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[tokio::test]
 	async fn runtime_skill_roots_are_explicit_and_reapplied_to_each_connection() {
@@ -83,13 +86,13 @@ mod tests {
 				assert_eq!(request["method"], "skills/extraRoots/set");
 				assert_eq!(
 					request["params"],
-					json!({"extraRoots":["/runtime/shared skills","/runtime/team"]})
+					serde_json::json!({"extraRoots":["/runtime/shared skills","/runtime/team"]})
 				);
 
 				let response = if refused {
-					json!({"id":request["id"],"error":{"code":-32_601,"message":"unsupported"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_601,"message":"unsupported"}})
 				} else {
-					json!({"id":request["id"],"result":{}})
+					serde_json::json!({"id":request["id"],"result":{}})
 				};
 
 				w.write_all(format!("{response}\n").as_bytes()).await.unwrap();

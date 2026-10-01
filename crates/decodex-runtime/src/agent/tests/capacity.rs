@@ -1,4 +1,9 @@
-use super::*;
+use std::iter;
+
+use tokio::io;
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 fn failed(turn: &str, code: &str) -> Value {
 	json!({"id":turn,"status":"failed","error":{"message":"Selected model is at capacity.","codexErrorInfo":code},"items":[{"id":"input","type":"userMessage","content":[{"type":"text","text":"original request"}]}]})
@@ -26,7 +31,7 @@ async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|frame| frame["method"] == "turn/start")
 		.collect();
 
@@ -79,7 +84,7 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 	assert_eq!(inputs[0].delivered_turn_id.as_deref(), Some("opaque turn/2"));
 	assert_eq!(inputs[0].disposition, Some(AgentDisposition::Resolved));
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|frame| frame["method"] == "turn/start")
 		.collect();
 
@@ -122,8 +127,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 			.unwrap();
 
 		assert!(
-			!std::iter::from_fn(|| sent.try_recv().ok())
-				.any(|frame| frame["method"] == "turn/start")
+			!iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
 		);
 
 		let retry =
@@ -144,7 +148,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 
 		agent.wake_pending().await.unwrap();
 
-		let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 			.filter(|frame| frame["method"] == "turn/start")
 			.collect();
 
@@ -290,9 +294,7 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 	agent.wake_pending().await.unwrap();
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	assert!(
-		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
-	);
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start"));
 
 	let history = agent.store.read_agent_work_events("agent".into(), 100).await.unwrap();
 	let inputs: Vec<_> =
@@ -305,7 +307,7 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 	agent.enqueue_user_message("agent", "retry", "Try again now").await.unwrap();
 	agent.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|frame| frame["method"] == "turn/start")
 		.collect();
 
@@ -330,11 +332,11 @@ async fn lost_retry_submission_is_unknown_and_never_replayed() {
 		.await
 		.unwrap();
 
-	let (io, remote) = tokio::io::duplex(8_192);
-	let (reader, writer) = tokio::io::split(io);
+	let (io, remote) = io::duplex(8_192);
+	let (reader, writer) = io::split(io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -416,7 +418,7 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 			"managed={managed}, result={result:?}"
 		);
 
-		let requests = std::iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+		let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
 
 		assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 1);
 		assert!(requests.iter().all(|request| request["method"] != "thread/inject_items"));
@@ -424,15 +426,12 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 		agent.check_due_followups(i64::MAX).await.unwrap();
 
 		assert!(
-			std::iter::from_fn(|| sent.try_recv().ok())
-				.all(|request| request["method"] != "turn/start")
+			iter::from_fn(|| sent.try_recv().ok()).all(|request| request["method"] != "turn/start")
 		);
 
 		drop(agent);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let work = store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -527,13 +526,11 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 
 		agent.check_due_followups(i64::MAX).await.unwrap();
 
-		assert!(std::iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"));
+		assert!(iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"));
 
 		drop(agent);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 
 		assert!(store.pending_agent_capacity_retry("agent".into()).await.unwrap().is_none());
@@ -595,9 +592,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 		.await
 		.unwrap();
 
-	assert!(
-		!std::iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start")
-	);
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|frame| frame["method"] == "turn/start"));
 
 	let retry = agent.store.pending_agent_capacity_retry("worker".into()).await.unwrap().unwrap();
 
@@ -611,7 +606,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 	agent.check_due_followups(i64::MAX).await.unwrap();
 	agent.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|frame| frame["method"] == "turn/start")
 		.collect();
 
@@ -664,7 +659,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
 	assert!(agent.store.pending_agent_capacity_retry("agent".into()).await.unwrap().is_none());
 	assert_eq!(
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().dispatch_state,
@@ -673,7 +668,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
 }
 
 #[tokio::test]
@@ -699,9 +694,7 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 		.await
 		.unwrap();
 
-	let paths = decodex_core::DecodexRoot::new(dir.path().canonicalize().unwrap().join("root"))
-		.unwrap()
-		.paths();
+	let paths = DecodexRoot::new(dir.path().canonicalize().unwrap().join("root")).unwrap().paths();
 	let client = agent.client.clone();
 	let mut config = agent.config.clone();
 
@@ -718,9 +711,8 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["model"], "user-selected");
@@ -762,7 +754,7 @@ async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	assert!(!std::iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|v| v["method"] == "turn/start"));
 	assert!(agent.store.pending_agent_capacity_retry("agent".into()).await.unwrap().is_none());
 }
 
@@ -787,9 +779,8 @@ async fn ordinary_continuation_binds_current_task_choice_instead_of_initial_defa
 
 	agent.continue_worker("agent", "next user request").await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["model"], "recovered-task-model");
@@ -828,9 +819,8 @@ async fn effort_only_input_preserves_native_model_and_tier_after_recovery() {
 
 	agent.wake_pending().await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|v| v["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["model"], "recovered-native");

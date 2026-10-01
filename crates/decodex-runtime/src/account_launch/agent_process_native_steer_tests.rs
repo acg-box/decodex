@@ -1,22 +1,45 @@
 //! Installed-native client-message identity, durable receipt and cold recovery.
-use super::*;
-use crate::agent::{AgentConfig, AgentCoordinator};
+use std::{
+	env,
+	fs::{self, Permissions},
+	path::PathBuf,
+	sync::atomic::AtomicUsize,
+};
+
+use mpsc::Receiver;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	process::Command,
+	time,
+};
+
+use crate::{
+	ProtocolServer, ServerConfig,
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator},
+	application::{ProductStore, ServiceApplication},
+	conversation::ConversationCapability,
+};
+use decodex_core::LocalTrustPolicy;
 use decodex_database::SqliteStore;
-use std::sync::atomic::AtomicUsize;
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+use decodex_protocol::{
+	AgentClient, AgentSteerIdentity, AgentSteerReceiptResult, CURRENT_VERSION, ClientProfile,
+	ConversationUnavailableReason, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
+	DoctorStatus, EntityId, IdempotencyKey, LocalTransportAuthority, ServerId, WireText,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native steering receipt qualification"]
 async fn installed_native_steer_receipt_confirms_live_and_cold_without_replay() {
 	for cold in [false, true] {
-		tokio::time::timeout(Duration::from_secs(50), qualify(cold))
+		time::timeout(Duration::from_secs(50), qualify(cold))
 			.await
 			.expect("bounded native steering qualification");
 	}
 }
 
 async fn qualify(cold: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -30,7 +53,7 @@ async fn qualify(cold: bool) {
 	let count = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, seen.clone(), release.clone(), count.clone()));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Steering receipt fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native steering fixture operation");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Steering receipt fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native steering fixture operation");
 
 	let root = decodex_core::DecodexRoot::new(
 		home.path().canonicalize().expect("native steering fixture operation").join("product"),
@@ -157,7 +180,7 @@ async fn qualify(cold: bool) {
 
 async fn consume_receipt(
 	agent: &mut AgentCoordinator,
-	events: &mut mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	thread_id: &str,
 	turn: &str,
 	key: &str,
@@ -198,7 +221,7 @@ async fn serve(
 	count: Arc<AtomicUsize>,
 ) {
 	while let Ok((socket, _)) = listener.accept().await {
-		let mut socket = tokio::io::BufReader::new(socket);
+		let mut socket = BufReader::new(socket);
 		let mut length = 0;
 
 		loop {
@@ -256,17 +279,6 @@ async fn qualify_query(
 	turn: &str,
 	key: &str,
 ) {
-	use crate::{
-		ProtocolServer, ServerConfig,
-		application::{ProductStore, ServiceApplication},
-	};
-
-	use decodex_protocol::{
-		AgentClient, AgentSteerIdentity, AgentSteerReceiptResult, CURRENT_VERSION, ClientProfile,
-		DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
-		IdempotencyKey, LocalTransportAuthority, ServerId, WireText,
-	};
-
 	use std::os::unix::fs::PermissionsExt as _;
 
 	let server_id =
@@ -287,26 +299,21 @@ async fn qualify_query(
 		None,
 		None,
 		None,
-		crate::conversation::ConversationCapability::Unavailable(
-			decodex_protocol::ConversationUnavailableReason::AppServerProfile,
-		),
+		ConversationCapability::Unavailable(ConversationUnavailableReason::AppServerProfile),
 		doctor,
 	);
 	let uid = unsafe { libc::geteuid() };
-	let authority = LocalTransportAuthority::new(
-		root.paths(),
-		decodex_core::LocalTrustPolicy::SameUid,
-		Some(uid),
-	)
-	.expect("fixture transport authority");
+	let authority =
+		LocalTransportAuthority::new(root.paths(), LocalTrustPolicy::SameUid, Some(uid))
+			.expect("fixture transport authority");
 	let mut server = ProtocolServer::new(server_id, app, ServerConfig::default())
 		.bind(authority)
 		.await
 		.expect("real service query transport");
 	let config = root.as_path().join("config.toml");
 
-	std::fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("fixture client configuration");
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600))
+	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("fixture client configuration");
+	fs::set_permissions(config, Permissions::from_mode(0o600))
 		.expect("private fixture configuration");
 
 	let profile = ClientProfile::load(root.as_path(), None).expect("fixture client profile");
@@ -332,11 +339,11 @@ async fn qualify_query(
 		AgentSteerReceiptResult::Unconfirmed
 	);
 
-	if let Some(binary) = std::env::var_os("DECODEX_TEST_STEER_VISUAL_BINARY") {
-		let output = std::env::var_os("DECODEX_TEST_STEER_VISUAL_OUTPUT")
+	if let Some(binary) = env::var_os("DECODEX_TEST_STEER_VISUAL_BINARY") {
+		let output = env::var_os("DECODEX_TEST_STEER_VISUAL_OUTPUT")
 			.expect("explicit visual output directory");
-		let output = std::path::PathBuf::from(output).join(format!("{thread}.png"));
-		let result = tokio::process::Command::new(binary)
+		let output = PathBuf::from(output).join(format!("{thread}.png"));
+		let result = Command::new(binary)
 			.kill_on_drop(true)
 			.env("DECODEX_VISUAL_AGENT_ROOT", root.as_path())
 			.env("DECODEX_VISUAL_AGENT_WORK", "agent")
@@ -356,7 +363,7 @@ async fn qualify_query(
 		);
 
 		let evidence: Value = serde_json::from_slice(
-			&std::fs::read(output.with_extension("steer.json")).expect("visual receipt evidence"),
+			&fs::read(output.with_extension("steer.json")).expect("visual receipt evidence"),
 		)
 		.expect("visual evidence JSON");
 

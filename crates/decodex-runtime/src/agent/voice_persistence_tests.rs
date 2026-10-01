@@ -1,5 +1,16 @@
 //! Persistence of received voice text is separate from replay and call lifetime.
-use super::*;
+use std::iter;
+
+use tempfile::TempDir;
+use tokio::sync::mpsc::UnboundedReceiver;
+
+use crate::{
+	agent::{tests, voice::*},
+	agent_model_settings::tests::OwnedReviewer,
+};
+use decodex_core::DecodexRoot;
+use decodex_database::{AgentDispatchState, AgentVoiceCall, SqliteStore};
+use decodex_protocol::EntityId;
 
 #[tokio::test]
 async fn disconnected_voice_preserves_received_tail_without_replay() {
@@ -44,45 +55,30 @@ async fn disconnected_voice_preserves_received_tail_without_replay() {
 	assert!(sent.try_recv().is_err(), "received text must not become new native input");
 }
 
-async fn fixture() -> (
-	AgentCoordinator,
-	tokio::sync::mpsc::UnboundedReceiver<Value>,
-	tempfile::TempDir,
-	rusqlite::Connection,
-) {
+async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir, rusqlite::Connection) {
 	fixture_with_history(json!({})).await
 }
 
 async fn fixture_with_history(
 	history: Value,
-) -> (
-	AgentCoordinator,
-	tokio::sync::mpsc::UnboundedReceiver<Value>,
-	tempfile::TempDir,
-	rusqlite::Connection,
-) {
-	let (mut agent, mut sent, directory) = super::super::tests::fixture_with_history(history).await;
-	let owner = crate::agent_model_settings::tests::OwnedReviewer::new(
-		directory.path(),
-		&agent.client,
-		"opaque thread/1",
-		"opaque turn/1",
-	)
-	.await;
+) -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir, rusqlite::Connection) {
+	let (mut agent, mut sent, directory) = tests::fixture_with_history(history).await;
+	let owner =
+		OwnedReviewer::new(directory.path(), &agent.client, "opaque thread/1", "opaque turn/1")
+			.await;
 	let generation = owner.key.generation.as_str().to_owned();
 
 	agent.store = owner.store;
 
-	let root = decodex_core::DecodexRoot::new(
-		directory.path().canonicalize().expect("fixture home").join("state"),
-	)
-	.expect("fixture root");
+	let root =
+		DecodexRoot::new(directory.path().canonicalize().expect("fixture home").join("state"))
+			.expect("fixture root");
 	let database =
 		rusqlite::Connection::open(root.paths().product_database_file()).expect("fixture database");
 
 	agent
 		.store
-		.begin_agent_voice_call(decodex_database::AgentVoiceCall {
+		.begin_agent_voice_call(AgentVoiceCall {
 			session_id: "voice".into(),
 			work_id: "root".into(),
 			thread_id: "opaque thread/1".into(),
@@ -229,7 +225,7 @@ async fn precaution_stop_preserves_text_before_retiring_the_call() {
 	assert_eq!(saved["complete"], false);
 	assert!(agent.store.open_agent_voice_calls().await.expect("call state").is_empty());
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.len(), 1);
 	assert_eq!(requests[0]["method"], "thread/realtime/stop");
@@ -277,15 +273,13 @@ async fn precaution_storage_failure_does_not_prevent_native_stop() {
 
 #[tokio::test]
 async fn voice_start_rejects_independent_manager_before_native_requests() {
-	use decodex_protocol::EntityId;
-
 	let (mut agent, mut sent, _directory, _database) = fixture().await;
 	let mut manager = agent.store.get_agent_work_item("root".into()).await.unwrap();
 
 	manager.id = "independent".into();
 	manager.parent_goal_id = Some("root".into());
 	manager.codex_thread_id = None;
-	manager.dispatch_state = decodex_database::AgentDispatchState::Idle;
+	manager.dispatch_state = AgentDispatchState::Idle;
 	manager.active_turn_id = None;
 
 	agent.store.create_agent_manager(manager, None).await.unwrap();
@@ -326,9 +320,8 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 		}
 
 		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("state"))
-				.unwrap();
-		let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+			DecodexRoot::new(directory.path().canonicalize().unwrap().join("state")).unwrap();
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let mut cold =
 			AgentCoordinator::new(reopened, agent.client.clone(), agent.config.clone()).unwrap();
 
@@ -373,7 +366,7 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 		assert_eq!(receipt["terminal"]["turn"]["id"], "spoken-turn");
 		assert!(receipts[0].contains("Saved spoken reply"));
 
-		let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 		assert!(requests.iter().any(|r| r["method"] == "thread/resume"));
 		assert!(requests.iter().all(|r| matches!(

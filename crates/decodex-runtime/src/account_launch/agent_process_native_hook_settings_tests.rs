@@ -1,36 +1,36 @@
 //! Real config writes must control hook execution, preserve hash trust and survive restart.
-use super::*;
+use std::{env, fs, net::SocketAddr, path::Path, sync::atomic::AtomicUsize};
 
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::{reviewer, *};
 use decodex_codex::app_server_client::{HookSettingsChange, HookSettingsWrite};
 
-fn setup(root: &std::path::Path, address: std::net::SocketAddr) {
+fn setup(root: &Path, address: SocketAddr) {
 	let plugin = root.join("plugins/cache/test/sample/local");
 
-	std::fs::create_dir_all(plugin.join(".codex-plugin")).expect("plugin");
-	std::fs::create_dir_all(plugin.join("hooks")).expect("hooks");
-	std::fs::create_dir(root.join(".git")).expect("repository");
-	std::fs::create_dir_all(root.join(".agents/plugins")).expect("marketplace");
-	std::fs::write(plugin.join(".codex-plugin/plugin.json"), r#"{"name":"sample"}"#)
-		.expect("manifest");
-	std::fs::write(plugin.join("hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo isolated-plugin-hook"}]}]}}).to_string()).expect("hook");
-	std::fs::write(root.join(".agents/plugins/marketplace.json"),json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
-	std::fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(root))).expect("config");
+	fs::create_dir_all(plugin.join(".codex-plugin")).expect("plugin");
+	fs::create_dir_all(plugin.join("hooks")).expect("hooks");
+	fs::create_dir(root.join(".git")).expect("repository");
+	fs::create_dir_all(root.join(".agents/plugins")).expect("marketplace");
+	fs::write(plugin.join(".codex-plugin/plugin.json"), r#"{"name":"sample"}"#).expect("manifest");
+	fs::write(plugin.join("hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo isolated-plugin-hook"}]}]}}).to_string()).expect("hook");
+	fs::write(root.join(".agents/plugins/marketplace.json"),json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
+	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(root))).expect("config");
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated hook configuration"]
 async fn installed_hook_trust_enablement_and_modified_content_are_independent() {
-	tokio::time::timeout(Duration::from_secs(60), qualify_hooks())
-		.await
-		.expect("bounded hook fixture");
+	time::timeout(Duration::from_secs(60), qualify_hooks()).await.expect("bounded hook fixture");
 }
 
 async fn qualify_hooks() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("binary");
 	let home = tempfile::tempdir().expect("home");
 	let root = home.path().canonicalize().expect("canonical home");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
+	let calls = Arc::new(AtomicUsize::new(0));
 
 	setup(&root, listener.local_addr().expect("address"));
 
@@ -45,7 +45,7 @@ async fn qualify_hooks() {
 
 	assert_eq!(turn(&mut session, &thread).await, 0, "untrusted hook must not execute");
 
-	super::reviewer::trust_hook(&session.client, &root, &thread).await;
+	reviewer::trust_hook(&session.client, &root, &thread).await;
 
 	assert_eq!(turn(&mut session, &thread).await, 1, "native reload activates reviewed hook");
 
@@ -69,7 +69,7 @@ async fn qualify_hooks() {
 		"enable does not require new trust for unchanged content"
 	);
 
-	std::fs::write(root.join("plugins/cache/test/sample/local/hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo modified-isolated-plugin-hook"}]}]}}).to_string()).expect("modify fixture hook");
+	fs::write(root.join("plugins/cache/test/sample/local/hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo modified-isolated-plugin-hook"}]}]}}).to_string()).expect("modify fixture hook");
 
 	drop(session);
 
@@ -101,12 +101,7 @@ async fn qualify_hooks() {
 	backend.abort();
 }
 
-async fn change(
-	session: &NativeSession,
-	root: &std::path::Path,
-	thread: &str,
-	change: HookSettingsChange,
-) {
+async fn change(session: &NativeSession, root: &Path, thread: &str, change: HookSettingsChange) {
 	let review = session.client.hook_settings(root.to_str().expect("cwd")).await.expect("review");
 	let hook = &review.inventory["hooks"][0];
 

@@ -1,17 +1,25 @@
 //! Permission command ownership tests use disposable process records, not kernel admission.
-use super::*;
-use decodex_protocol::AgentPermissionState;
-use serde_json::{Value, json};
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
+	time,
+};
+
+use crate::{account_launch::agent_process::native_tests::reviewer::store::*, agent_permissions};
+use decodex_protocol::{AgentPermissionState, WireText};
 
 #[tokio::test]
 async fn permission_service_preserves_unknown_receipts_and_never_replays_a_review() {
 	for outcome in ["queued", "rejected", "unknown"] {
-		tokio::time::timeout(std::time::Duration::from_secs(15), scenario(outcome))
+		time::timeout(Duration::from_secs(15), scenario(outcome))
 			.await
 			.expect("bounded permission service");
 	}
@@ -19,17 +27,17 @@ async fn permission_service_preserves_unknown_receipts_and_never_replays_a_revie
 
 async fn scenario(outcome: &'static str) {
 	let home = tempfile::tempdir().expect("fixture home");
-	let (local, remote) = tokio::io::duplex(32_768);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(32_768);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(remote, writes.clone(), outcome));
 
-	client.thread_resume(json!({"threadId":"thread"})).await.expect("hydrate");
+	client.thread_resume(serde_json::json!({"threadId":"thread"})).await.expect("hydrate");
 
 	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let source = || async { Some(owned.source(&owned.key)) };
-	let state = crate::agent_permissions::read(&owned.store, source).await;
+	let state = agent_permissions::read(&owned.store, source).await;
 	let AgentPermissionState::Available { mut review_token, profiles, can_update, .. } = state
 	else {
 		panic!("available permission review")
@@ -46,7 +54,7 @@ async fn scenario(outcome: &'static str) {
 	assert!(profiles.iter().any(|p| p.id.as_str() == "scoped" && p.can_select));
 	assert!(profiles.iter().any(|p| p.id.as_str() == "forbidden" && !p.can_select));
 	assert!(
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&owned.store,
 			source,
 			"foreign",
@@ -58,7 +66,7 @@ async fn scenario(outcome: &'static str) {
 		.is_err()
 	);
 	assert!(
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&owned.store,
 			source,
 			"thread",
@@ -71,7 +79,7 @@ async fn scenario(outcome: &'static str) {
 	);
 	assert_eq!(writes.load(Ordering::Acquire), 0);
 
-	let result = crate::agent_permissions::write(
+	let result = agent_permissions::write(
 		&owned.store,
 		source,
 		"thread",
@@ -85,7 +93,7 @@ async fn scenario(outcome: &'static str) {
 	assert_eq!(writes.load(Ordering::Acquire), 1);
 
 	if outcome == "queued" {
-		let state = crate::agent_permissions::read(&owned.store, source).await;
+		let state = agent_permissions::read(&owned.store, source).await;
 
 		assert!(matches!(
 			state,
@@ -106,7 +114,7 @@ async fn scenario(outcome: &'static str) {
 
 	assert_eq!(receipt.state, expected);
 	assert!(
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&owned.store,
 			source,
 			"thread",
@@ -135,8 +143,8 @@ async fn scenario(outcome: &'static str) {
 	backend.abort();
 }
 
-async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {
-	let (r, mut w) = tokio::io::split(remote);
+async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {
+	let (r, mut w) = io::split(remote);
 	let mut lines = BufReader::new(r).lines();
 
 	while let Some(line) = lines.next_line().await.expect("request") {
@@ -144,35 +152,38 @@ async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcom
 		let id = &request["id"];
 		let reply = match request["method"].as_str().expect("method") {
 			"test/bounce" => {
-				for excluded in [json!("temporary"), json!(":read-only")] {
-					let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"activePermissionProfile":{"id":excluded}}}});
+				for excluded in [serde_json::json!("temporary"), serde_json::json!(":read-only")] {
+					let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"activePermissionProfile":{"id":excluded}}}});
 
 					w.write_all(format!("{event}\n").as_bytes())
 						.await
 						.expect("settings publication");
 				}
 
-				json!({"id":id,"result":{}})
+				serde_json::json!({"id":id,"result":{}})
 			},
 			"thread/resume" =>
-				json!({"id":id,"result":{"thread":{"id":"thread"},"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":":read-only"}}}),
+				serde_json::json!({"id":id,"result":{"thread":{"id":"thread"},"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":":read-only"}}}),
 			"permissionProfile/list" =>
-				json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true},{"id":"forbidden","allowed":false}],"nextCursor":null}}),
+				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true},{"id":"forbidden","allowed":false}],"nextCursor":null}}),
 			"thread/settings/update" => {
 				writes.fetch_add(1, Ordering::AcqRel);
 
-				assert_eq!(request["params"], json!({"threadId":"thread","permissions":"scoped"}));
+				assert_eq!(
+					request["params"],
+					serde_json::json!({"threadId":"thread","permissions":"scoped"})
+				);
 
 				match outcome {
 					"queued" => {
-						let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"activePermissionProfile":{"id":"scoped"}}}});
+						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"activePermissionProfile":{"id":"scoped"}}}});
 
 						w.write_all(format!("{event}\n").as_bytes()).await.expect("publication");
 
-						json!({"id":id,"result":{}})
+						serde_json::json!({"id":id,"result":{}})
 					},
 					"rejected" =>
-						json!({"id":id,"error":{"code":-32_602,"message":"Native policy refused"}}),
+						serde_json::json!({"id":id,"error":{"code":-32_602,"message":"Native policy refused"}}),
 					_ => return,
 				}
 			},
@@ -218,7 +229,7 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 		};
 
 		assert_eq!(
-			crate::agent_permissions::read(&owned.store, source).await,
+			agent_permissions::read(&owned.store, source).await,
 			AgentPermissionState::Unavailable,
 			"{change}"
 		);
@@ -227,15 +238,8 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 
 		assert!(
 			matches!(
-				crate::agent_permissions::write(
-					&owned.store,
-					source,
-					"thread",
-					review,
-					"scoped",
-					"stale"
-				)
-				.await,
+				agent_permissions::write(&owned.store, source, "thread", review, "scoped", "stale")
+					.await,
 				Err(crate::agent_host::AgentHostError::Rejected(_))
 			),
 			"{change}"
@@ -243,16 +247,13 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 	}
 }
 
-async fn reject_restored_settings(
-	owned: &OwnedReviewer,
-	old: decodex_protocol::WireText,
-) -> decodex_protocol::WireText {
-	owned.client.request("test/bounce", json!({})).await.expect("wire barrier");
+async fn reject_restored_settings(owned: &OwnedReviewer, old: WireText) -> WireText {
+	owned.client.request("test/bounce", serde_json::json!({})).await.expect("wire barrier");
 
 	let source = || async { Some(owned.source(&owned.key)) };
 
 	assert!(
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&owned.store,
 			source,
 			"thread",
@@ -266,7 +267,7 @@ async fn reject_restored_settings(
 	);
 
 	let AgentPermissionState::Available { review_token, .. } =
-		crate::agent_permissions::read(&owned.store, source).await
+		agent_permissions::read(&owned.store, source).await
 	else {
 		panic!("fresh review")
 	};

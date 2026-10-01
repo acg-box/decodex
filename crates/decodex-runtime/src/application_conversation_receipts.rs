@@ -1,6 +1,8 @@
 //! Read durable local creation evidence without starting a runtime or replaying input.
-use super::{ProductStore, runtime_execution_settings};
-use crate::conversation::CreateConversation;
+use crate::{
+	application::{ProductStore, runtime_execution_settings},
+	conversation::CreateConversation,
+};
 use decodex_core::ConversationId;
 use decodex_database::StoreError;
 use decodex_protocol::{
@@ -55,7 +57,10 @@ pub(super) async fn query_creation_receipt(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::application::conversation_receipts::{
+		self, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+		ConversationId, CreateConversation, EntityId, EntityRevision, ProductStore,
+	};
 	#[tokio::test]
 	async fn creation_query_distinguishes_exact_local_record_from_missing_and_conflict() {
 		let temp = tempfile::tempdir().unwrap();
@@ -80,7 +85,7 @@ mod tests {
 		};
 
 		assert_eq!(
-			query_creation_receipt(&owner, &request).await,
+			conversation_receipts::query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::NotRecorded
 		);
 
@@ -95,7 +100,7 @@ mod tests {
 			conversation_id: ConversationId::new(request.conversation_id.as_str()).unwrap(),
 			message: request.message.as_str().into(),
 			working_directory: "/tmp".into(),
-			execution: runtime_execution_settings(&request.execution),
+			execution: conversation_receipts::runtime_execution_settings(&request.execution),
 		};
 
 		store
@@ -117,7 +122,7 @@ mod tests {
 			.unwrap();
 
 		assert_eq!(
-			query_creation_receipt(&owner, &request).await,
+			conversation_receipts::query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::Recorded {
 				conversation_id: request.conversation_id.clone(),
 				creation_revision: EntityRevision(1),
@@ -129,21 +134,21 @@ mod tests {
 		changed_source.initial_model_source.as_mut().unwrap().account_revision = 8;
 
 		assert_eq!(
-			query_creation_receipt(&owner, &changed_source).await,
+			conversation_receipts::query_creation_receipt(&owner, &changed_source).await,
 			ConversationCreationReceiptResult::Conflict
 		);
 
 		changed_source.initial_model_source = None;
 
 		assert_eq!(
-			query_creation_receipt(&owner, &changed_source).await,
+			conversation_receipts::query_creation_receipt(&owner, &changed_source).await,
 			ConversationCreationReceiptResult::Conflict
 		);
 
 		request.message = decodex_protocol::HistoryText::new("Later composer text").unwrap();
 
 		assert_eq!(
-			query_creation_receipt(&owner, &request).await,
+			conversation_receipts::query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::Conflict
 		);
 
@@ -151,7 +156,7 @@ mod tests {
 			ProductStore::Unavailable(super::super::ProductStoreUnavailableReason::Unreachable);
 
 		assert_eq!(
-			query_creation_receipt(&unavailable, &request).await,
+			conversation_receipts::query_creation_receipt(&unavailable, &request).await,
 			ConversationCreationReceiptResult::Unavailable
 		);
 		assert_eq!(

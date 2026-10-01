@@ -1,17 +1,19 @@
-use super::*;
+use mpsc::Receiver;
+use tokio::io::{self, DuplexStream};
+
+use crate::{agent_recap::*, agent_usage_estimate::SourceKey};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
-use serde_json::json;
 
-fn source() -> (Source, tokio::io::DuplexStream, mpsc::Receiver<ServerEvent>) {
-	let (local, remote) = tokio::io::duplex(4_096);
-	let (read, write) = tokio::io::split(local);
+fn source() -> (Source, DuplexStream, Receiver<ServerEvent>) {
+	let (local, remote) = io::duplex(4_096);
+	let (read, write) = io::split(local);
 	let (client, events) = AppServerClient::from_io(read, write);
 
 	(
 		Source {
 			client,
-			key: crate::agent_usage_estimate::SourceKey {
+			key: SourceKey {
 				generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001")
 					.expect("fixture id"),
 				account: AccountId::new("20000000-0000-4000-8000-000000000002")
@@ -38,10 +40,14 @@ fn recap_requires_nullable_next_action_and_character_bounds() {
 	assert!(parse(r#"{"summary":"done"}"#).is_none());
 	assert!(parse(r#"{"summary":"done","next_action":null,"extra":true}"#).is_none());
 
-	let long = json!({"summary":"字".repeat(700),"next_action":"步".repeat(200)}).to_string();
+	let long =
+		serde_json::json!({"summary":"字".repeat(700),"next_action":"步".repeat(200)}).to_string();
 
 	assert!(parse(&long).is_some());
-	assert!(parse(&json!({"summary":"字".repeat(701),"next_action":null}).to_string()).is_none());
+	assert!(
+		parse(&serde_json::json!({"summary":"字".repeat(701),"next_action":null}).to_string())
+			.is_none()
+	);
 	assert!(parse(r#"{"summary":"  ","next_action":null}"#).is_none());
 	assert_eq!(
 		parse(r#"{"summary":" done ","next_action":" "}"#).expect("trimmed recap").next_action,
@@ -106,7 +112,7 @@ async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_so
 	let mut routed = recaps.register("temporary").expect("route");
 	let event = |thread: &str, method: &str| ServerEvent::Notification {
 		method: method.into(),
-		params: json!({"threadId":thread,"item":{"type":"userMessage"}}),
+		params: serde_json::json!({"threadId":thread,"item":{"type":"userMessage"}}),
 	};
 
 	assert!(recaps.route(event("temporary", "turn/completed")).is_none());
@@ -148,7 +154,7 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
 
 	recaps.finish("work", "one", None, Some(result()));
-	remote.write_all(format!("{}\n",json!({"method":"turn/started","params":{"threadId":"native","turn":{"id":"new","status":"inProgress"}}})).as_bytes()).await.expect("native notification");
+	remote.write_all(format!("{}\n",serde_json::json!({"method":"turn/started","params":{"threadId":"native","turn":{"id":"new","status":"inProgress"}}})).as_bytes()).await.expect("native notification");
 
 	let _queued = events.recv().await.expect("transport observed event");
 	// The service has not routed this event. Its readonly query still rejects the stale result.
@@ -180,12 +186,15 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 			("native", "", Phase::Ready),
 			("native", "Spoken correction", Phase::Cancelled),
 		] {
-			let mut params = json!({"threadId":thread,"role":role});
+			let mut params = serde_json::json!({"threadId":thread,"role":role});
 
-			params[field] = json!(text);
+			params[field] = serde_json::json!(text);
 
 			remote
-				.write_all(format!("{}\n", json!({"method":method,"params":params})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"method":method,"params":params}))
+						.as_bytes(),
+				)
 				.await
 				.expect("native voice notification");
 

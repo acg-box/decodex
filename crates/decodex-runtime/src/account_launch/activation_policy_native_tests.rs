@@ -1,5 +1,10 @@
 //! Isolated installed-native control launch with production executable attestation.
-use super::{
+use std::sync::atomic::AtomicUsize;
+
+use reqwest::Client;
+use tokio::task;
+
+use crate::account_launch::process::{
 	native_control_tests::{SyntheticVault, attested_profile},
 	*,
 };
@@ -47,8 +52,6 @@ fn control_child(binary: &OsStr, home: &Path) -> AttestedProcessChild {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated attested native policy discovery"]
 async fn installed_native_activation_policy_uses_selected_workspace_and_fails_closed() {
-	use std::sync::atomic::AtomicUsize;
-
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(Path::new(&binary).is_absolute());
@@ -74,7 +77,7 @@ async fn installed_native_activation_policy_uses_selected_workspace_and_fails_cl
 		let binary = binary.clone();
 		let directory = directory.clone();
 
-		tokio::task::spawn_blocking(move || {
+		task::spawn_blocking(move || {
 			let mut child = control_child(&binary, &directory);
 			let id =
 				AccountId::new("10000000-0000-4000-8000-000000000001").expect("fixture account");
@@ -89,7 +92,7 @@ async fn installed_native_activation_policy_uses_selected_workspace_and_fails_cl
 			} else {
 				let request = result
 					.expect("native activation policy")
-					.request(&reqwest::Client::new())
+					.request(&Client::new())
 					.build()
 					.expect("routed request");
 
@@ -116,8 +119,8 @@ async fn installed_native_activation_policy_uses_selected_workspace_and_fails_cl
 
 async fn serve_policy(
 	listener: tokio::net::TcpListener,
-	mode: Arc<std::sync::atomic::AtomicUsize>,
-	reads: Arc<std::sync::atomic::AtomicUsize>,
+	mode: Arc<AtomicUsize>,
+	reads: Arc<AtomicUsize>,
 ) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
@@ -175,8 +178,6 @@ async fn serve_policy(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; attested selected-directory model defaults"]
 async fn installed_attested_model_defaults_preserve_selected_directory_and_sources() {
-	use std::sync::atomic::AtomicUsize;
-
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir().expect("home");
 	let directory = home.path().canonicalize().expect("directory");
@@ -201,7 +202,7 @@ async fn installed_attested_model_defaults_preserve_selected_directory_and_sourc
 	)
 	.expect("project defaults");
 
-	tokio::task::spawn_blocking(move || {
+	task::spawn_blocking(move || {
 		let mut child = control_child(&binary, &directory);
 		let id = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
 

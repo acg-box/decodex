@@ -1,4 +1,7 @@
-use super::*;
+use std::iter;
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn only_local_refusals_without_prior_effects_release_input_after_restart() {
@@ -53,9 +56,7 @@ async fn only_local_refusals_without_prior_effects_release_input_after_restart()
 				.is_err()
 		);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let saved = reopened.get_agent_inbox_event(event.id).await.unwrap();
 
@@ -77,7 +78,7 @@ async fn only_local_refusals_without_prior_effects_release_input_after_restart()
 		}
 
 		assert!(
-			std::iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"),
+			iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"),
 			"a refusal is not retry authority"
 		);
 	}

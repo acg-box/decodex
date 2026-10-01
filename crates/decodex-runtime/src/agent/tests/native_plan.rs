@@ -1,10 +1,20 @@
 //! Native proposed plans retain completed text through paged history and restart.
-use super::*;
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{process::Command, time};
+
+use crate::agent::{tests::*, timeline};
+use decodex_protocol::AgentTimelineContent;
+
 const FINAL_PLAN: &str = "# Final plan\n1. Inspect source\n2. Verify changes\n";
 
 #[tokio::test]
@@ -17,14 +27,13 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-	std::fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Isolated plan fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Isolated plan fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let mut thread = String::new();
 
 	for cold in [false, true] {
 		let (mut agent, _, _store_home) = fixture().await;
-		let mut command =
-			tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command
 			.arg("app-server")
@@ -38,7 +47,7 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 
 		agent.client = client;
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(20),async {
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(20),async {
    agent.initialize().await.unwrap();
 
    if !cold {
@@ -89,12 +98,12 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 
    for _ in 0..20 {
     let page = agent.client.thread_timeline_page(&thread,cursor.as_deref(),1).await.unwrap();
-    let projected = super::super::timeline::project(&thread,&page).unwrap();
+    let projected = timeline::project(&thread,&page).unwrap();
 
     for entry in projected.entries {
      observed.push(format!("{:?}",entry.content));
 
-     if let decodex_protocol::AgentTimelineContent::Item {kind,text,..} = entry.content && kind == "plan" { plans.push(text); }
+     if let AgentTimelineContent::Item {kind,text,..} = entry.content && kind == "plan" { plans.push(text); }
     }
 
     cursor = projected.next_cursor;

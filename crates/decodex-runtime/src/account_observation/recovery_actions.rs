@@ -1,5 +1,7 @@
 //! Revalidate backend recovery destinations without sending a purchase, reset, or nudge.
-use super::{AccountId, AccountObservationService};
+use reqwest::Url;
+
+use crate::account_observation::{AccountId, AccountObservationService};
 use decodex_codex::AccountApiRecoveryContext;
 use decodex_protocol::{
 	AccountRecoveryAction as A, AccountRecoveryBanner, AccountRecoveryDestination as D,
@@ -77,7 +79,7 @@ fn destination(
 			workspace(plan)?;
 
 			let target = if matches!(plan, "plus" | "prolite") { "pro" } else { "plus" };
-			let mut url = reqwest::Url::parse("https://chatgpt.com/").ok()?;
+			let mut url = Url::parse("https://chatgpt.com/").ok()?;
 
 			url.query_pairs_mut()
 				.append_pair("cta_tab", "personal")
@@ -92,7 +94,7 @@ fn destination(
 			url.into()
 		},
 	};
-	let mut url = reqwest::Url::parse(&url).ok()?;
+	let mut url = Url::parse(&url).ok()?;
 
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
@@ -131,7 +133,7 @@ fn workspace(plan: &str) -> Option<bool> {
 }
 
 fn validated_url(raw: &str) -> Option<D> {
-	let url = reqwest::Url::parse(raw).ok()?;
+	let url = Url::parse(raw).ok()?;
 
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
@@ -146,7 +148,9 @@ fn validated_url(raw: &str) -> Option<D> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::account_observation::recovery_actions::{
+		self, A, AccountApiRecoveryContext, AccountRecoveryBanner, D, WireText,
+	};
 	fn banner() -> AccountRecoveryBanner {
 		AccountRecoveryBanner {
 			banner_type: WireText::new("limit").unwrap(),
@@ -166,7 +170,9 @@ mod tests {
 		banner: &AccountRecoveryBanner,
 		action: A,
 	) -> reqwest::Url {
-		let Some(D::OpenUrl(url)) = destination(context, banner, action) else { panic!("url") };
+		let Some(D::OpenUrl(url)) = recovery_actions::destination(context, banner, action) else {
+			panic!("url")
+		};
 
 		reqwest::Url::parse(url.as_str()).unwrap()
 	}
@@ -198,8 +204,8 @@ mod tests {
 
 		context.plan_type = Some("future-plan".into());
 
-		assert!(destination(&context, &banner, A::AddCredits).is_none());
-		assert!(destination(&context, &banner, A::Pricing).is_none());
+		assert!(recovery_actions::destination(&context, &banner, A::AddCredits).is_none());
+		assert!(recovery_actions::destination(&context, &banner, A::Pricing).is_none());
 	}
 	#[test]
 	fn request_url_does_not_change_effect_or_leak_workspace_identity() {
@@ -210,11 +216,17 @@ mod tests {
 		let mut banner = banner();
 
 		assert_eq!(
-			destination(&context, &banner, A::RequestIncrease),
+			recovery_actions::destination(&context, &banner, A::RequestIncrease),
 			Some(D::RequestUsageIncrease)
 		);
-		assert_eq!(destination(&context, &banner, A::ResetUsage), Some(D::ResetPicker));
-		assert_eq!(destination(&context, &banner, A::NotifyOwner), Some(D::RequestCredits));
+		assert_eq!(
+			recovery_actions::destination(&context, &banner, A::ResetUsage),
+			Some(D::ResetPicker)
+		);
+		assert_eq!(
+			recovery_actions::destination(&context, &banner, A::NotifyOwner),
+			Some(D::RequestCredits)
+		);
 
 		banner.request_url =
 			Some(WireText::new("https://chatgpt.com/admin/custom?ticket=1").unwrap());
@@ -226,7 +238,7 @@ mod tests {
 		for invalid in ["javascript:alert(1)", "https://user@host/path", "file:///tmp/example"] {
 			banner.request_url = Some(WireText::new(invalid).unwrap());
 
-			assert!(destination(&context, &banner, A::RequestIncrease).is_none());
+			assert!(recovery_actions::destination(&context, &banner, A::RequestIncrease).is_none());
 		}
 	}
 }

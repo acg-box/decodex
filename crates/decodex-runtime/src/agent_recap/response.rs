@@ -1,6 +1,7 @@
-use decodex_protocol::{TaskRecap, WireText};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{self, Value};
+
+use decodex_protocol::{TaskRecap, WireText};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -20,5 +21,5 @@ pub(super) fn parse(value: &str) -> Option<TaskRecap> {
 	recap.is_valid().then_some(recap)
 }
 pub(super) fn schema() -> Value {
-	json!({"type":"object","properties":{"summary":{"type":"string","minLength":1,"maxLength":700},"next_action":{"type":["string","null"],"maxLength":200}},"required":["summary","next_action"],"additionalProperties":false})
+	serde_json::json!({"type":"object","properties":{"summary":{"type":"string","minLength":1,"maxLength":700},"next_action":{"type":["string","null"],"maxLength":200}},"required":["summary","next_action"],"additionalProperties":false})
 }

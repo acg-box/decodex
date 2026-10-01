@@ -1,12 +1,26 @@
 //! Transport outcomes must survive durable recording without replay.
-use super::{AgentLiveReviewerState, AgentReviewer, OwnedReviewer, SqliteStore};
-use decodex_codex::app_server_client::AppServerClient;
-use serde_json::{Value, json};
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::{mpsc, oneshot},
+	task, time,
+};
+
+use crate::{
+	account_launch::agent_process::native_tests::reviewer::store::{
+		AgentLiveReviewerState, AgentReviewer, OwnedReviewer, SqliteStore,
+	},
+	agent_live_settings,
+};
+use decodex_codex::app_server_client::AppServerClient;
 
 #[tokio::test]
 async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_replay() {
@@ -19,22 +33,21 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 		("source_changed", "unknown"),
 	] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (read, write) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (read, write) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(read, write);
 		let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-		let state = crate::agent_live_settings::read(&owned.store, || async {
-			Some(owned.source(&owned.key))
-		})
-		.await;
+		let state =
+			agent_live_settings::read(&owned.store, || async { Some(owned.source(&owned.key)) })
+				.await;
 		let AgentLiveReviewerState::Available { review_token, .. } = state else {
 			panic!("review")
 		};
 		let changed = Arc::new(AtomicBool::new(false));
 		let server_changed = changed.clone();
-		let (release, held) = tokio::sync::oneshot::channel::<()>();
+		let (release, held) = oneshot::channel::<()>();
 		let server = tokio::spawn(async move {
-			let (read, mut write) = tokio::io::split(remote);
+			let (read, mut write) = io::split(remote);
 			let mut lines = BufReader::new(read).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -42,7 +55,7 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 			assert_eq!(request["method"], "turn/settings/update");
 			assert_eq!(
 				request["params"],
-				json!({"threadId":"thread","turnId":"turn","approvalsReviewer":"user"})
+				serde_json::json!({"threadId":"thread","turnId":"turn","approvalsReviewer":"user"})
 			);
 
 			if scenario == "lost" {
@@ -51,11 +64,12 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 
 			let response = match scenario {
 				"rejected" =>
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"managed requirement"}}),
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"managed requirement"}}),
 				"unavailable" =>
-					json!({"id":request["id"],"result":{"status":"targetUnavailable"}}),
-				"malformed" => json!({"id":request["id"],"result":{"status":"unexpected"}}),
-				_ => json!({"id":request["id"],"result":{"status":"applied"}}),
+					serde_json::json!({"id":request["id"],"result":{"status":"targetUnavailable"}}),
+				"malformed" =>
+					serde_json::json!({"id":request["id"],"result":{"status":"unexpected"}}),
+				_ => serde_json::json!({"id":request["id"],"result":{"status":"applied"}}),
 			};
 
 			server_changed.store(scenario == "source_changed", Ordering::Release);
@@ -64,13 +78,13 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 			let _ = held.await;
 
 			assert!(
-				tokio::time::timeout(std::time::Duration::from_millis(30), lines.next_line())
+				time::timeout(std::time::Duration::from_millis(30), lines.next_line())
 					.await
 					.is_err(),
 				"no automatic or duplicate publication"
 			);
 		});
-		let result = crate::agent_live_settings::write(
+		let result = agent_live_settings::write(
 			&owned.store,
 			|| async {
 				let mut key = owned.key.clone();
@@ -98,7 +112,7 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 		assert_eq!(receipt.outcome, expected, "{scenario}");
 		assert!(reopened.list_pending_agent_events(10).await.unwrap().is_empty());
 		assert!(
-			crate::agent_live_settings::write(
+			agent_live_settings::write(
 				&owned.store,
 				|| async { Some(owned.source(&owned.key)) },
 				"turn",
@@ -119,27 +133,29 @@ async fn reviewer_publication_records_remote_and_uncertain_outcomes_without_repl
 #[tokio::test]
 async fn local_queue_refusal_is_durably_rejected_even_if_source_changes_afterward() {
 	let home = tempfile::tempdir().unwrap();
-	let (incoming, frames) = tokio::sync::mpsc::channel(4);
-	let (outgoing, mut requests) = tokio::sync::mpsc::channel(1);
+	let (incoming, frames) = mpsc::channel(4);
+	let (outgoing, mut requests) = mpsc::channel(1);
 	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let state =
-		crate::agent_live_settings::read(&owned.store, || async { Some(owned.source(&owned.key)) })
-			.await;
+		agent_live_settings::read(&owned.store, || async { Some(owned.source(&owned.key)) }).await;
 	let AgentLiveReviewerState::Available { review_token, .. } = state else { panic!("review") };
 	let peer = client.clone();
-	let pending = tokio::spawn(async move { peer.thread_read(json!({"threadId":"other"})).await });
+	let pending =
+		tokio::spawn(
+			async move { peer.thread_read(serde_json::json!({"threadId":"other"})).await },
+		);
 
-	tokio::time::timeout(std::time::Duration::from_secs(2), async {
+	time::timeout(Duration::from_secs(2), async {
 		while requests.is_empty() {
-			tokio::task::yield_now().await;
+			task::yield_now().await;
 		}
 	})
 	.await
 	.unwrap();
 
-	let observations = std::sync::atomic::AtomicUsize::new(0);
-	let result = crate::agent_live_settings::write(
+	let observations = AtomicUsize::new(0);
+	let result = agent_live_settings::write(
 		&owned.store,
 		|| async {
 			(observations.fetch_add(1, Ordering::AcqRel) < 3).then(|| owned.source(&owned.key))
@@ -168,7 +184,7 @@ async fn local_queue_refusal_is_durably_rejected_even_if_source_changes_afterwar
 	assert_eq!(request["params"]["threadId"], "other");
 	assert!(requests.try_recv().is_err(), "reviewer update never left the local queue");
 
-	incoming.send(Ok(json!({"id":request["id"],"result":{}}))).await.unwrap();
+	incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{}}))).await.unwrap();
 	pending.await.unwrap().unwrap();
 
 	assert!(owned.store.list_pending_agent_events(10).await.unwrap().is_empty());

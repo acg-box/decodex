@@ -7,11 +7,11 @@ use decodex_codex::app_server_client::{
 
 use decodex_database::{AgentLiveSettingsAttempt, AgentLiveSettingsEdit, SqliteStore};
 
-use decodex_protocol::{AgentLiveReviewerState as State, AgentReviewer};
-
-use serde_json::json;
+use decodex_protocol::AgentReviewer;
 
 use sha2::{Digest as _, Sha256};
+
+use crate::agent_host::AgentHostError::{Rejected, Unknown};
 
 pub(crate) enum LiveEdit {
 	Reviewer(AgentReviewer),
@@ -27,12 +27,15 @@ impl From<AgentReviewer> for LiveEdit {
 }
 
 struct Inspection {
-	state: State,
+	state: decodex_protocol::AgentLiveReviewerState,
 	previous_id: Option<i64>,
 }
 
 #[cfg(test)]
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+) -> decodex_protocol::AgentLiveReviewerState
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
@@ -44,13 +47,13 @@ pub(crate) async fn read_options<F, Fut>(
 	store: &SqliteStore,
 	include_models: bool,
 	source: F,
-) -> State
+) -> decodex_protocol::AgentLiveReviewerState
 where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return State::Unavailable;
+		return decodex_protocol::AgentLiveReviewerState::Unavailable;
 	};
 	let mut result = inspect(store, &before).await;
 
@@ -81,24 +84,26 @@ where
 		.ok()
 		.flatten();
 
-		if let State::Available { model_choices, .. } = &mut inspected.state {
+		if let decodex_protocol::AgentLiveReviewerState::Available { model_choices, .. } =
+			&mut inspected.state
+		{
 			*model_choices = choices;
 		}
 	}
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return State::Unavailable;
+		return decodex_protocol::AgentLiveReviewerState::Unavailable;
 	}
 	if include_models {
 		let current = inspect(store, &before).await;
 		let unchanged = matches!((&result,&current), (Some(a),Some(b)) if matches!((&a.state,&b.state),
-            (State::Available { review_token:a,.. },State::Available { review_token:b,.. }) if a==b));
+            (decodex_protocol::AgentLiveReviewerState::Available { review_token:a,.. },decodex_protocol::AgentLiveReviewerState::Available { review_token:b,.. }) if a==b));
 
 		if !unchanged {
-			return State::Unavailable;
+			return decodex_protocol::AgentLiveReviewerState::Unavailable;
 		}
 	}
 
-	result.map_or(State::Unavailable, |v| v.state)
+	result.map_or(decodex_protocol::AgentLiveReviewerState::Unavailable, |v| v.state)
 }
 
 pub(crate) async fn write<F, Fut>(
@@ -113,13 +118,17 @@ where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<Source>>,
 {
-	use crate::agent_host::AgentHostError::{Rejected, Unknown};
-
 	let before = source().await.ok_or(Rejected("Live task source is unavailable."))?;
 	let inspected = inspect(store, &before)
 		.await
 		.ok_or(Rejected("Refresh the live task before changing its settings."))?;
-	let State::Available { turn_id, review_token, can_update, .. } = &inspected.state else {
+	let decodex_protocol::AgentLiveReviewerState::Available {
+		turn_id,
+		review_token,
+		can_update,
+		..
+	} = &inspected.state
+	else {
 		return Err(Rejected("Live task is unavailable."));
 	};
 
@@ -132,22 +141,7 @@ where
 		.history_guard(before.key.history_revision)
 		.ok_or(Rejected("Native history changed. Refresh the task."))?;
 	let model_update = prepare_model_update(&before, turn, &edit).await?;
-	let stored_edit = match &edit {
-		LiveEdit::Reviewer(reviewer) => AgentLiveSettingsEdit::Reviewer {
-			reviewer: match reviewer {
-				AgentReviewer::User => "user",
-				AgentReviewer::AutoReview => "auto_review",
-			}
-			.into(),
-		},
-		LiveEdit::Model { model, effort } => AgentLiveSettingsEdit::Model {
-			model: model.as_str().into(),
-			effort: serde_json::to_value(effort)
-				.ok()
-				.and_then(|v| v.as_str().map(str::to_owned))
-				.ok_or(Rejected("Invalid reasoning effort."))?,
-		},
-	};
+	let stored_edit = persisted_edit(&edit)?;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return Err(Rejected("The task source changed before dispatch."));
@@ -236,6 +230,27 @@ where
 	}
 }
 
+fn persisted_edit(
+	edit: &LiveEdit,
+) -> Result<AgentLiveSettingsEdit, crate::agent_host::AgentHostError> {
+	Ok(match edit {
+		LiveEdit::Reviewer(reviewer) => AgentLiveSettingsEdit::Reviewer {
+			reviewer: match reviewer {
+				AgentReviewer::User => "user",
+				AgentReviewer::AutoReview => "auto_review",
+			}
+			.into(),
+		},
+		LiveEdit::Model { model, effort } => AgentLiveSettingsEdit::Model {
+			model: model.as_str().into(),
+			effort: serde_json::to_value(effort)
+				.ok()
+				.and_then(|v| v.as_str().map(str::to_owned))
+				.ok_or(Rejected("Invalid reasoning effort."))?,
+		},
+	})
+}
+
 async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let key = &source.key;
 
@@ -272,7 +287,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		.as_ref()
 		.and_then(|p| match &p.edit {
 			AgentLiveSettingsEdit::Reviewer { reviewer } =>
-				Some(serde_json::from_value(json!(reviewer))),
+				Some(serde_json::from_value(serde_json::json!(reviewer))),
 			AgentLiveSettingsEdit::Model { .. } => None,
 		})
 		.transpose()
@@ -286,12 +301,15 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		.and_then(|(model, effort)| {
 			Some(decodex_protocol::AgentLiveModelSelection {
 				model: decodex_protocol::ConversationModel::new(model.clone()).ok()?,
-				effort: serde_json::from_value(json!(effort)).ok()?,
+				effort: serde_json::from_value(serde_json::json!(effort)).ok()?,
 			})
 		});
-	let last_outcome =
-		prior.as_ref().map(|p| serde_json::from_value(json!(p.outcome))).transpose().ok()?;
-	let facts = json!([
+	let last_outcome = prior
+		.as_ref()
+		.map(|p| serde_json::from_value(serde_json::json!(p.outcome)))
+		.transpose()
+		.ok()?;
+	let facts = serde_json::json!([
 		key.generation.as_str(),
 		key.account.as_str(),
 		key.revision,
@@ -307,7 +325,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 
 	Some(Inspection {
 		previous_id,
-		state: State::Available {
+		state: decodex_protocol::AgentLiveReviewerState::Available {
 			thread_id: decodex_protocol::EntityId::new(key.thread.clone()).ok()?,
 			turn_id: decodex_protocol::EntityId::new(turn).ok()?,
 			review_token: decodex_protocol::WireText::new(token).ok()?,

@@ -1,5 +1,9 @@
 //! Explicit desired-state archive restoration; native Codex owns persistence.
-use super::{AgentCoordinator, AgentError, ClientError, json};
+use std::time::Duration;
+
+use tokio::time;
+
+use crate::agent::{self, AgentCoordinator, AgentError, ClientError};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl AgentCoordinator {
@@ -66,7 +70,7 @@ impl AgentCoordinator {
 	// An archive can interrupt a turn while this client is disconnected. Recover
 	// only positive terminal history; restoration itself never proves completion.
 	async fn reconcile_restored_turn(&mut self, work: &str, thread: &str) {
-		let _ = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+		let _ = time::timeout(Duration::from_secs(8), async {
 			let item = self.store.get_agent_work_item(work.into()).await?;
 			let Some(turn) = item.active_turn_id.as_ref() else {
 				return Ok::<(), AgentError>(());
@@ -108,8 +112,12 @@ impl AgentCoordinator {
 				return Ok(());
 			}
 
-			self.record_terminal(json!({"threadId":thread,"turn":exact_turn}), Ok(history), false)
-				.await
+			self.record_terminal(
+				agent::json!({"threadId":thread,"turn":exact_turn}),
+				Ok(history),
+				false,
+			)
+			.await
 		})
 		.await;
 	}

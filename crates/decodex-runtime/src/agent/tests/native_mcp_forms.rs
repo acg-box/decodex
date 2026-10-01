@@ -1,26 +1,30 @@
 //! Verify the declared form extension through real native MCP and Agent replies.
-use super::{fixture, native_task_references};
-
-use crate::agent::{AgentConfig, AgentCoordinator};
-
-use decodex_codex::app_server_client::{AppServerClient, RequestId, ServerEvent};
-
-use futures_util::FutureExt as _;
-
-use serde_json::{Value, json};
-
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	path::Path,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
 
-use tokio::io::AsyncWriteExt as _;
+use futures_util::FutureExt as _;
+use serde_json::{self, Value};
+use tokio::{io::AsyncWriteExt as _, process::Command, time};
 
-fn assert_record(path: &std::path::Path, action: &str) {
+use crate::agent::{
+	AgentConfig, AgentCoordinator,
+	tests::{self, native_task_references},
+};
+use decodex_codex::app_server_client::{AppServerClient, RequestId, ServerEvent};
+
+fn assert_record(path: &Path, action: &str) {
 	let recorded: Value =
-		serde_json::from_slice(&std::fs::read(path).expect("fixture record")).expect("record JSON");
+		serde_json::from_slice(&fs::read(path).expect("fixture record")).expect("record JSON");
 
-	assert_eq!(recorded["capabilities"]["extensions"], json!({"openai/form":{}}));
+	assert_eq!(recorded["capabilities"]["extensions"], serde_json::json!({"openai/form":{}}));
 
 	let replies = recorded["replies"].as_array().expect("MCP replies");
 
@@ -39,7 +43,7 @@ fn assert_record(path: &std::path::Path, action: &str) {
 	assert_eq!(replies[0]["result"]["action"], action);
 	assert_eq!(
 		replies[0]["result"]["content"],
-		if action == "accept" { json!({"answer":"wire-value"}) } else { Value::Null }
+		if action == "accept" { serde_json::json!({"answer":"wire-value"}) } else { Value::Null }
 	);
 }
 
@@ -52,25 +56,25 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 		("never", "danger-full-access", false, false),
 		("on-request", "read-only", false, true),
 	] {
-		let binary = std::env::var("DECODEX_NATIVE_BINARY").unwrap();
+		let binary = env::var("DECODEX_NATIVE_BINARY").unwrap();
 		let home = tempfile::tempdir().unwrap();
 		let home_path = home.path().canonicalize().unwrap();
 		let server_path = home_path.join("form_server.py");
 		let record = home_path.join("mcp_record.json");
 
-		std::fs::write(&server_path, include_str!("native_form_server.py")).unwrap();
+		fs::write(&server_path, include_str!("native_form_server.py")).unwrap();
 
 		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
 		let calls = Arc::new(AtomicUsize::new(0));
 		let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-		std::fs::write(home_path.join("config.toml"), format!(
+		fs::write(home_path.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated form fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, {}, {}]\nrequired = true\n",
-		json!(server_path),json!(record),json!(opaque.to_string()),json!(verification.to_string()))).unwrap();
+		serde_json::json!(server_path),serde_json::json!(record),serde_json::json!(opaque.to_string()),serde_json::json!(verification.to_string()))).unwrap();
 
-		let (mut agent, _, _store_home) = fixture().await;
-		let mut command = tokio::process::Command::new(binary);
+		let (mut agent, _, _store_home) = tests::fixture().await;
+		let mut command = Command::new(binary);
 
 		command
 			.arg("app-server")
@@ -89,11 +93,9 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 			home_path.display().to_string(),
 		);
 		agent.config.sandbox = sandbox.into();
-		agent.config.approval_policy = json!(approval);
+		agent.config.approval_policy = serde_json::json!(approval);
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
-		std::time::Duration::from_secs(40),
-		async {
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
 			agent.initialize().await.unwrap();
 			agent.start_agent("agent", "Call the fixture MCP tool.").await.unwrap();
 
@@ -105,13 +107,21 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 					ServerEvent::Request { id, method, params }
 						if method == "mcpServer/elicitation/request" =>
 					{
-						assert!(!verification, "undeclared verification must not become a Agent form");
+						assert!(
+							!verification,
+							"undeclared verification must not become a Agent form"
+						);
 						assert_eq!(params["mode"], "openai/form");
 						assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
 
-						if opaque { assert_eq!(params["requestedSchema"], true); } else {
-                            assert_eq!(params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"], "wire-value");
-                        }
+						if opaque {
+							assert_eq!(params["requestedSchema"], true);
+						} else {
+							assert_eq!(
+								params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"],
+								"wire-value"
+							);
+						}
 
 						Some(id.clone())
 					},
@@ -136,21 +146,38 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 				}
 			}
 
-            if approval == "on-request" && !verification {
-                let event = agent.store.get_agent_inbox_event(saved.expect("native form forwarded")).await.unwrap();
+			if approval == "on-request" && !verification {
+				let event = agent
+					.store
+					.get_agent_inbox_event(saved.expect("native form forwarded"))
+					.await
+					.unwrap();
 
-                assert!(event.disposition.is_some());
-            } else {
-                assert!(saved.is_none(), "native policy and capability gates must remain authoritative");
-            }
+				assert!(event.disposition.is_some());
+			} else {
+				assert!(
+					saved.is_none(),
+					"native policy and capability gates must remain authoritative"
+				);
+			}
 
-            assert_record(&record, if verification {"error"} else if approval == "never" {"decline"} else if opaque {"cancel"} else {"accept"});
+			assert_record(
+				&record,
+				if verification {
+					"error"
+				} else if approval == "never" {
+					"decline"
+				} else if opaque {
+					"cancel"
+				} else {
+					"accept"
+				},
+			);
 
 			assert_eq!(calls.load(Ordering::Acquire), 2);
-		},
-	))
-	.catch_unwind()
-	.await;
+		}))
+		.catch_unwind()
+		.await;
 
 		process.shutdown().await.unwrap();
 		backend.abort();
@@ -174,19 +201,18 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 		let script = path.join("server.py");
 		let record = path.join("record.json");
 
-		std::fs::write(&script, include_str!("native_form_server.py")).unwrap();
+		fs::write(&script, include_str!("native_form_server.py")).unwrap();
 
 		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
 		let calls = Arc::new(AtomicUsize::new(0));
 		let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-		std::fs::write(path.join("config.toml"), format!(
+		fs::write(path.join("config.toml"), format!(
 			"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated MCP review\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [{}, {}, \"false\", \"false\", {}]\nrequired = true\n",
-			json!(script), json!(record), json!(mode))).unwrap();
+			serde_json::json!(script), serde_json::json!(record), serde_json::json!(mode))).unwrap();
 
-		let mut command =
-			tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command
 			.arg("app-server")
@@ -197,16 +223,16 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 			.env("PATH", "/usr/bin:/bin");
 
 		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
-		let (mut agent, _, _store_home) = fixture().await;
+		let (mut agent, _, _store_home) = tests::fixture().await;
 
 		agent.client = client;
 		agent.config =
 			AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
 		agent.config.sandbox = sandbox.into();
-		agent.config.approval_policy = json!(approval);
+		agent.config.approval_policy = serde_json::json!(approval);
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
-			std::time::Duration::from_secs(30), async {
+		let result = AssertUnwindSafe(time::timeout(
+			Duration::from_secs(30), async {
 				agent.initialize().await.unwrap();
 				agent.start_agent("agent", "Call the fixture and ask for my decision.").await.unwrap();
 
@@ -220,7 +246,7 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 
 							if mode == "url" { assert_eq!(params["url"], "https://example.test/approval"); }
 
-							else { assert_eq!(params["requestedSchema"]["required"], json!(["answer"])); }
+							else { assert_eq!(params["requestedSchema"]["required"], serde_json::json!(["answer"])); }
 
 							Some(id.clone())
 						},
@@ -241,10 +267,10 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 
 						let saved = agent.pending_requests[&id];
 
-						agent.respond_pending_event(saved, json!({"action":"decline","content":null})).await.unwrap();
+						agent.respond_pending_event(saved, serde_json::json!({"action":"decline","content":null})).await.unwrap();
 
 						assert!(agent.store.get_agent_inbox_event(saved).await.unwrap().disposition.is_some());
-						assert!(agent.respond_pending_event(saved, json!({"action":"accept"})).await.is_err());
+						assert!(agent.respond_pending_event(saved, serde_json::json!({"action":"accept"})).await.is_err());
 					}
 
 					if done { break; }
@@ -269,16 +295,16 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 		let body = native_task_references::read_http_body(&mut socket).await;
 		let serial = calls.fetch_add(1, Ordering::AcqRel);
 		let item = if serial == 0 {
-			json!({"type":"function_call","id":"form-call","call_id":"form-call","namespace":"mcp__fixture","name":"form_fixture","arguments":"{}"})
+			serde_json::json!({"type":"function_call","id":"form-call","call_id":"form-call","namespace":"mcp__fixture","name":"form_fixture","arguments":"{}"})
 		} else {
 			assert!(body.to_string().contains("Fixture form action:"));
 
-			json!({"type":"message","role":"assistant","id":"form-answer","content":[{"type":"output_text","text":"Form complete"}]})
+			serde_json::json!({"type":"message","role":"assistant","id":"form-answer","content":[{"type":"output_text","text":"Form complete"}]})
 		};
 		let frames = [
-			json!({"type":"response.created","response":{"id":format!("form-{serial}")}}),
-			json!({"type":"response.output_item.done","item":item}),
-			json!({"type":"response.completed","response":{"id":format!("form-{serial}")}}),
+			serde_json::json!({"type":"response.created","response":{"id":format!("form-{serial}")}}),
+			serde_json::json!({"type":"response.output_item.done","item":item}),
+			serde_json::json!({"type":"response.completed","response":{"id":format!("form-{serial}")}}),
 		];
 		let data = frames
 			.iter()
@@ -300,7 +326,7 @@ async fn answer_form(agent: &mut AgentCoordinator, id: &RequestId, opaque: bool)
 		agent
 			.respond_pending_event(
 				event_id,
-				json!({"action":"accept","content":{"answer":"Display label"}})
+				serde_json::json!({"action":"accept","content":{"answer":"Display label"}})
 			)
 			.await
 			.is_err()
@@ -309,23 +335,26 @@ async fn answer_form(agent: &mut AgentCoordinator, id: &RequestId, opaque: bool)
 	if opaque {
 		assert!(
 			agent
-				.respond_pending_event(event_id, json!({"action":"accept","content":null}))
+				.respond_pending_event(
+					event_id,
+					serde_json::json!({"action":"accept","content":null})
+				)
 				.await
 				.is_err()
 		);
 	}
 
 	let response = if opaque {
-		json!({"action":"cancel","content":null})
+		serde_json::json!({"action":"cancel","content":null})
 	} else {
-		json!({"action":"accept","content":{"answer":"wire-value"},"_meta":null})
+		serde_json::json!({"action":"accept","content":{"answer":"wire-value"},"_meta":null})
 	};
 
 	agent.respond_pending_event(event_id, response).await.expect("explicit native form reply");
 
 	assert!(
 		agent
-			.respond_pending_event(event_id, json!({"action":"cancel","content":null}))
+			.respond_pending_event(event_id, serde_json::json!({"action":"cancel","content":null}))
 			.await
 			.is_err()
 	);

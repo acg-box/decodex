@@ -1,5 +1,7 @@
 //! Preserve the signed bundle context of a CLI image during static attestation.
-use super::*;
+use io::Error;
+
+use crate::account_launch::process::*;
 
 struct Budget {
 	bytes: u64,
@@ -40,7 +42,7 @@ fn copy_context(
 	depth: usize,
 ) -> io::Result<()> {
 	if depth > 32 || budget.entries == 0 {
-		return Err(io::Error::other("bundle context limit"));
+		return Err(Error::other("bundle context limit"));
 	}
 
 	budget.entries -= 1;
@@ -55,7 +57,7 @@ fn copy_context(
 		let link = fs::read_link(source)?;
 
 		if link.is_absolute() || !source.canonicalize()?.starts_with(root) {
-			return Err(io::Error::other("bundle link escapes its owner"));
+			return Err(Error::other("bundle link escapes its owner"));
 		}
 
 		return std::os::unix::fs::symlink(link, target);
@@ -79,7 +81,7 @@ fn copy_context(
 		return Ok(());
 	}
 	if !metadata.is_file() {
-		return Err(io::Error::other("unsupported bundle entry"));
+		return Err(Error::other("unsupported bundle entry"));
 	}
 
 	let mut input = File::open(source)?.take(budget.bytes + 1);
@@ -89,7 +91,7 @@ fn copy_context(
 	budget.bytes = budget
 		.bytes
 		.checked_sub(copied)
-		.ok_or_else(|| io::Error::other("bundle context byte limit"))?;
+		.ok_or_else(|| Error::other("bundle context byte limit"))?;
 
 	output.sync_all()?;
 
@@ -98,12 +100,15 @@ fn copy_context(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::account_launch::process::bundle_snapshot::*;
+
+	use std::env;
+
 	#[test]
 	#[ignore = "requires DECODEX_TEST_CODEX_BINARY; installed signed CLI bundle"]
 	fn installed_cli_bundle_has_an_exact_valid_snapshot_identity() {
 		let image =
-			PathBuf::from(std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("installed binary"));
+			PathBuf::from(env::var_os("DECODEX_TEST_CODEX_BINARY").expect("installed binary"));
 		let (snapshot, _) = capture_executable_snapshot(&image).expect("capture installed bundle");
 
 		AttestedCodeIdentity::capture(&snapshot.execution_path(), &image)

@@ -1,6 +1,13 @@
-use super::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use crate::{
+	agent::timeline::promotions::*,
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_core::{AccountId, ProcessGenerationId};
+use decodex_protocol::{AgentTimelineEntry, AgentTimelineResult};
 
 fn page() -> AgentTimelinePage {
 	super::super::project("thread", &json!({"data":[
@@ -26,11 +33,11 @@ fn exact_reference_rejects_ambiguous_turns_items_and_wrong_thread() {
 
 #[tokio::test]
 async fn off_page_references_share_one_native_read_and_keep_exact_media_indices() {
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
 		for include in [false, true] {
@@ -82,15 +89,15 @@ async fn off_page_references_share_one_native_read_and_keep_exact_media_indices(
 
 #[tokio::test]
 async fn loaded_reference_does_not_need_transport_and_failure_preserves_reference() {
-	let (local, remote) = tokio::io::duplex(64);
+	let (local, remote) = io::duplex(64);
 
 	drop(remote);
 
-	let (reader, writer) = tokio::io::split(local);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let mut page = page();
 
-	page.entries.push(decodex_protocol::AgentTimelineEntry {
+	page.entries.push(AgentTimelineEntry {
 		position: 7,
 		content: ordinary(
 			&json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":"Loaded"}}),
@@ -110,16 +117,16 @@ async fn loaded_reference_does_not_need_transport_and_failure_preserves_referenc
 
 #[tokio::test]
 async fn duplicate_loaded_identity_never_selects_an_arbitrary_message() {
-	let (local, remote) = tokio::io::duplex(64);
+	let (local, remote) = io::duplex(64);
 
 	drop(remote);
 
-	let (reader, writer) = tokio::io::split(local);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let mut page = page();
 
 	for (position, text) in [(7, "First"), (8, "Second"), (9, "Third")] {
-		page.entries.push(decodex_protocol::AgentTimelineEntry {
+		page.entries.push(AgentTimelineEntry {
 			position,
 			content: ordinary(
 				&json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":text}}),
@@ -135,14 +142,12 @@ async fn duplicate_loaded_identity_never_selects_an_arbitrary_message() {
 
 #[tokio::test]
 async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference_read() {
-	use std::sync::atomic::{AtomicUsize, Ordering};
-
 	for changed in [false, true] {
-		let (local, remote) = tokio::io::duplex(512 * 1_024);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(512 * 1_024);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for limit in if changed { vec![30] } else { vec![30, 15, 7] } {
@@ -186,18 +191,16 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 				let client = client.clone();
 
 				async move {
-					Some(crate::agent_usage_estimate::Source {
+					Some(Source {
 						client,
-						key: crate::agent_usage_estimate::SourceKey {
+						key: SourceKey {
 							history_revision: 0,
-							generation: decodex_core::ProcessGenerationId::new(
+							generation: ProcessGenerationId::new(
 								"10000000-0000-4000-8000-000000000001",
 							)
 							.unwrap(),
-							account: decodex_core::AccountId::new(
-								"30000000-0000-4000-8000-000000000003",
-							)
-							.unwrap(),
+							account: AccountId::new("30000000-0000-4000-8000-000000000003")
+								.unwrap(),
 							revision,
 							work: "work".into(),
 							thread: "thread".into(),
@@ -214,7 +217,7 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 		if changed {
 			assert_eq!(result, decodex_protocol::AgentTimelineResult::Unavailable);
 		} else {
-			let decodex_protocol::AgentTimelineResult::Available { page, .. } = result else {
+			let AgentTimelineResult::Available { page, .. } = result else {
 				panic!("missing adaptive page")
 			};
 

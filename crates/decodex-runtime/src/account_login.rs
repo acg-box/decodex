@@ -3,42 +3,31 @@
 use std::{
 	path::Path,
 	sync::{
-		Arc, Mutex, MutexGuard,
+		Arc, Mutex, MutexGuard, PoisonError,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{self, JoinHandle},
+	thread::{Builder, JoinHandle},
 	time::Duration,
 };
 
-use decodex_account_login::{
-	Cancellation, Config, Error as ProviderError, LoginEvent, LoginHome,
-	LoginMethod as ProviderLoginMethod, cleanup_stale_login_homes, run as run_provider_login,
+use serde::Serialize;
+use tokio::{runtime::Handle, task, time};
+
+use crate::{
+	ApplicationPublication,
+	account_observation::AccountObservationService,
+	account_service::{AccountLifecycleError, AccountService},
+	application::{self, account_lifecycle_command_error},
 };
-
+use decodex_account_login::{self, Cancellation, Config, LoginEvent, LoginHome, LoginMethod};
 use decodex_core::{AccountId, AccountOperationId};
-
 use decodex_database::{
 	AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity, SqliteStore,
 };
-
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountLoginFailure, AccountLoginInstallMode, AccountLoginMethod,
 	AccountLoginPrompt, AccountLoginRequest, AccountLoginStart, AccountLoginState,
 	AccountLoginStatus, AccountLoginUrl, CommandError, EntityId, ResultPayload, WireText,
-};
-
-use serde::Serialize;
-
-use tokio::runtime::Handle;
-
-use crate::{
-	account_observation::AccountObservationService,
-	account_service::{AccountLifecycleError, AccountService},
-	application::{
-		account_changed_publication, account_enrollment_publication,
-		account_lifecycle_command_error, decode_account_command_receipt,
-		encode_account_command_receipt, map_account_store_command_error as map_store_error,
-	},
 };
 
 const INSTALL_DISPATCH_ATTEMPTS: usize = 3;
@@ -60,7 +49,7 @@ impl AccountLoginManager {
 		observations: Option<AccountObservationService>,
 		system_proxy_fallback: bool,
 	) -> Self {
-		let provider = cleanup_stale_login_homes()
+		let provider = decodex_account_login::cleanup_stale_login_homes()
 			.and_then(|()| Config::production())
 			.map(|config| config.with_system_proxy_fallback(system_proxy_fallback))
 			.ok();
@@ -129,18 +118,17 @@ impl AccountLoginManager {
 		let worker_start = start.clone();
 		let authority = self.authority.clone();
 		let provider = self.provider.clone();
-		let worker =
-			thread::Builder::new().name("decodex-account-login".to_owned()).spawn(move || {
-				let result = run_login_session(
-					&worker_shared,
-					worker_start,
-					runtime,
-					authority.as_ref(),
-					provider.as_ref(),
-				);
+		let worker = Builder::new().name("decodex-account-login".to_owned()).spawn(move || {
+			let result = run_login_session(
+				&worker_shared,
+				worker_start,
+				runtime,
+				authority.as_ref(),
+				provider.as_ref(),
+			);
 
-				worker_shared.set_status(result);
-			});
+			worker_shared.set_status(result);
+		});
 		let worker = match worker {
 			Ok(worker) => Some(worker),
 			Err(_) => {
@@ -238,7 +226,7 @@ impl AccountLoginManager {
 	}
 
 	fn lock_session(&self) -> MutexGuard<'_, Option<Session>> {
-		self.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.session.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
 	#[cfg(test)]
@@ -257,23 +245,19 @@ impl Drop for AccountLoginManager {
 	fn drop(&mut self) {
 		self.closed.store(true, Ordering::Release);
 
-		let worker = self
-			.session
-			.get_mut()
-			.unwrap_or_else(std::sync::PoisonError::into_inner)
-			.as_mut()
-			.and_then(|session| {
-				session.shared.cancellation.cancel();
+		let worker =
+			self.session.get_mut().unwrap_or_else(PoisonError::into_inner).as_mut().and_then(
+				|session| {
+					session.shared.cancellation.cancel();
 
-				session.worker.take()
-			});
-
-		if let Some(worker) = worker {
-			let _ = thread::Builder::new().name("decodex-account-login-drop".to_owned()).spawn(
-				move || {
-					let _ = worker.join();
+					session.worker.take()
 				},
 			);
+
+		if let Some(worker) = worker {
+			let _ = Builder::new().name("decodex-account-login-drop".to_owned()).spawn(move || {
+				let _ = worker.join();
+			});
 		}
 	}
 }
@@ -304,7 +288,7 @@ impl Shared {
 	}
 
 	fn lock_status(&self) -> MutexGuard<'_, AccountLoginStatus> {
-		self.status.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.status.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -341,7 +325,7 @@ impl AccountLoginInstallAuthority {
 					return Ok(resolved);
 				},
 				Err(CommandError::AcceptanceUnknown) if attempt + 1 < INSTALL_DISPATCH_ATTEMPTS => {
-					tokio::time::sleep(INSTALL_REPLAY_DELAY).await;
+					time::sleep(INSTALL_REPLAY_DELAY).await;
 				},
 				Err(CommandError::AcceptanceUnknown) => {
 					return Err(AccountLoginFailure::OutcomeUnknown);
@@ -357,25 +341,25 @@ impl AccountLoginInstallAuthority {
 		&self,
 		start: &AccountLoginStart,
 		credential_path: &Path,
-	) -> Result<crate::ApplicationPublication, CommandError> {
+	) -> Result<ApplicationPublication, CommandError> {
 		let (identity, kind, entity_id, expected_revision) = install_identity(start)?;
 		let request = serde_json::to_vec(&identity).map_err(|_| invalid_request())?;
 		let idempotency_key = match &start.install_mode {
 			AccountLoginInstallMode::Enroll { idempotency_key, .. }
 			| AccountLoginInstallMode::Reauthenticate { idempotency_key, .. } => idempotency_key,
 		};
-		let identity =
-			CommandIdentity::new(idempotency_key.as_str(), &request).map_err(map_store_error)?;
+		let identity = CommandIdentity::new(idempotency_key.as_str(), &request)
+			.map_err(crate::application::map_account_store_command_error)?;
 		let claim = self
 			.store
 			.reserve_account_command(&identity, kind, &entity_id, expected_revision)
 			.await
-			.map_err(map_store_error)?;
+			.map_err(crate::application::map_account_store_command_error)?;
 		let lease = match claim {
 			AccountCommandReceiptClaim::Owned(lease) => lease,
 			AccountCommandReceiptClaim::Pending(value)
 			| AccountCommandReceiptClaim::Replayed(value) => {
-				return decode_account_command_receipt(value)
+				return application::decode_account_command_receipt(value)
 					.map_err(|_| CommandError::AcceptanceUnknown)?;
 			},
 		};
@@ -396,10 +380,10 @@ impl AccountLoginInstallAuthority {
 						*enabled,
 						source,
 						move |result| {
-							encode_account_command_receipt(
+							application::encode_account_command_receipt(
 								&result.map_err(account_lifecycle_command_error).and_then(
 									|account| {
-										account_enrollment_publication(
+										application::account_enrollment_publication(
 											&requested_account_id,
 											account.clone(),
 										)
@@ -440,9 +424,11 @@ impl AccountLoginInstallAuthority {
 						recovery_operation_id.as_ref(),
 						source,
 						|result| {
-							encode_account_command_receipt(
+							application::encode_account_command_receipt(
 								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| account_changed_publication(account.clone()),
+									|account| {
+										application::account_changed_publication(account.clone())
+									},
 								),
 							)
 						},
@@ -452,7 +438,8 @@ impl AccountLoginInstallAuthority {
 		}
 		.map_err(|_error: AccountLifecycleError| CommandError::AcceptanceUnknown)?;
 
-		decode_account_command_receipt(value).map_err(|_| CommandError::AcceptanceUnknown)?
+		application::decode_account_command_receipt(value)
+			.map_err(|_| CommandError::AcceptanceUnknown)?
 	}
 }
 
@@ -495,10 +482,10 @@ fn run_login_session(
 	};
 	let event_session_id = start.session_id.clone();
 	let provider_method = match start.method {
-		AccountLoginMethod::BrowserRedirect => ProviderLoginMethod::BrowserRedirect,
-		AccountLoginMethod::DeviceCode => ProviderLoginMethod::DeviceCode,
+		AccountLoginMethod::BrowserRedirect => LoginMethod::BrowserRedirect,
+		AccountLoginMethod::DeviceCode => LoginMethod::DeviceCode,
 	};
-	let provider_result = run_provider_login(
+	let provider_result = decodex_account_login::run(
 		provider,
 		provider_method,
 		home.path(),
@@ -511,7 +498,7 @@ fn run_login_session(
 		let current = shared.status();
 		let status = if is_terminal(&current) {
 			current
-		} else if error == ProviderError::Cancelled {
+		} else if error == decodex_account_login::Error::Cancelled {
 			status(session_id.clone(), AccountLoginState::Cancelled, None, None, None, None)
 		} else {
 			failed(session_id.clone(), map_provider_error(error))
@@ -618,16 +605,16 @@ fn finalize_login_status(
 	failed(session_id, failure)
 }
 
-fn map_provider_error(error: ProviderError) -> AccountLoginFailure {
+fn map_provider_error(error: decodex_account_login::Error) -> AccountLoginFailure {
 	match error {
-		ProviderError::TimedOut => AccountLoginFailure::LoginTimedOut,
-		ProviderError::DeviceAuthorizationRejected =>
+		decodex_account_login::Error::TimedOut => AccountLoginFailure::LoginTimedOut,
+		decodex_account_login::Error::DeviceAuthorizationRejected =>
 			AccountLoginFailure::DeviceAuthorizationRejected,
-		ProviderError::Persistence => AccountLoginFailure::ServiceUnavailable,
-		ProviderError::Cancelled
-		| ProviderError::Unavailable
-		| ProviderError::Rejected
-		| ProviderError::InvalidResponse => AccountLoginFailure::LoginFailed,
+		decodex_account_login::Error::Persistence => AccountLoginFailure::ServiceUnavailable,
+		decodex_account_login::Error::Cancelled
+		| decodex_account_login::Error::Unavailable
+		| decodex_account_login::Error::Rejected
+		| decodex_account_login::Error::InvalidResponse => AccountLoginFailure::LoginFailed,
 	}
 }
 
@@ -783,16 +770,21 @@ fn is_terminal(status: &AccountLoginStatus) -> bool {
 }
 
 async fn join_worker(worker: JoinHandle<()>) -> bool {
-	tokio::task::spawn_blocking(move || worker.join().is_ok()).await.unwrap_or(false)
+	task::spawn_blocking(move || worker.join().is_ok()).await.unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{sync::atomic::AtomicBool, thread};
 
+	use tokio::{sync::oneshot, task, time};
+
+	use crate::account_login::{
+		self, AccountLoginFailure, AccountLoginInstallMode, AccountLoginManager,
+		AccountLoginMethod, AccountLoginStart, AccountLoginState, Arc, Duration, EntityId, Handle,
+		Ordering, ResultPayload, Session, Shared, WireText,
+	};
 	use decodex_protocol::{EntityRevision, IdempotencyKey};
-
-	use std::sync::atomic::AtomicBool;
 
 	fn entity(value: &str) -> EntityId {
 		EntityId::new(value).expect("fixture identity")
@@ -897,7 +889,7 @@ mod tests {
 			}),
 		};
 
-		assert_eq!(resolved_account_id(&start, &result), Ok(restored));
+		assert_eq!(account_login::resolved_account_id(&start, &result), Ok(restored));
 	}
 
 	#[tokio::test(flavor = "current_thread")]
@@ -931,7 +923,7 @@ mod tests {
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = start.session_id.clone();
 		let runtime = Handle::current();
-		let (release_sender, release_receiver) = tokio::sync::oneshot::channel();
+		let (release_sender, release_receiver) = oneshot::channel();
 		let worker = thread::spawn(move || {
 			while !worker_shared.cancellation.is_cancelled() {
 				thread::yield_now();
@@ -941,7 +933,7 @@ mod tests {
 				let _ = release_receiver.await;
 			});
 
-			worker_shared.set_status(status(
+			worker_shared.set_status(account_login::status(
 				worker_session_id,
 				AccountLoginState::Cancelled,
 				None,
@@ -954,15 +946,14 @@ mod tests {
 		*manager.lock_session() =
 			Some(Session { start: start.clone(), shared, worker: Some(worker) });
 		tokio::spawn(async move {
-			tokio::task::yield_now().await;
+			task::yield_now().await;
 
 			let _ = release_sender.send(());
 		});
 
-		let result =
-			tokio::time::timeout(Duration::from_secs(1), manager.cancel(&start.session_id))
-				.await
-				.expect("current-thread cancellation must not deadlock");
+		let result = time::timeout(Duration::from_secs(1), manager.cancel(&start.session_id))
+			.await
+			.expect("current-thread cancellation must not deadlock");
 
 		assert_eq!(result.state, AccountLoginState::Cancelled);
 		assert!(manager.lock_session().as_ref().is_some_and(|session| session.worker.is_none()));
@@ -975,7 +966,7 @@ mod tests {
 		let shared = Arc::new(Shared::new(start.session_id.clone(), start.method));
 		let worker_shared = Arc::clone(&shared);
 		let runtime = Handle::current();
-		let (release_sender, release_receiver) = tokio::sync::oneshot::channel();
+		let (release_sender, release_receiver) = oneshot::channel();
 		let worker = thread::spawn(move || {
 			while !worker_shared.cancellation.is_cancelled() {
 				thread::yield_now();
@@ -991,12 +982,12 @@ mod tests {
 		manager.begin_shutdown();
 
 		tokio::spawn(async move {
-			tokio::task::yield_now().await;
+			task::yield_now().await;
 
 			let _ = release_sender.send(());
 		});
 
-		tokio::time::timeout(Duration::from_secs(1), manager.wait_for_shutdown())
+		time::timeout(Duration::from_secs(1), manager.wait_for_shutdown())
 			.await
 			.expect("current-thread shutdown must not deadlock");
 

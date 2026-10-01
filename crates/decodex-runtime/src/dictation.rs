@@ -2,22 +2,20 @@
 #[path = "dictation_native.rs"] mod native;
 #[path = "dictation_transcript.rs"] mod transcript;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-
-use decodex_codex::app_server_client::AppServerClient;
-
-use decodex_protocol::{
-	DictationBuffer, DictationPhase, DictationRequest, DictationStatus, EntityId, WireText,
-};
-
-use serde_json::{Value, json};
-
 use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
 
-use tokio::sync::Mutex;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::{self, Value};
+use tokio::{sync::Mutex, time};
+
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_protocol::{
+	DictationBuffer, DictationPhase, DictationRequest, DictationStatus, EntityId, WireText,
+};
+use transcript::Transcript;
 
 #[derive(Clone, Default)]
 pub(crate) struct DictationGateway(Arc<Mutex<Option<Session>>>);
@@ -50,9 +48,12 @@ impl DictationGateway {
 			};
 			// Native authentication stays in this service and its same-process URLSession adapter.
 			// Release the session lock before the caller's five-second query deadline.
-			let Ok(Ok(mut auth)) = tokio::time::timeout(
+			let Ok(Ok(mut auth)) = time::timeout(
 				Duration::from_secs(4),
-				client.request("getAuthStatus", json!({"includeToken":true,"refreshToken":false})),
+				client.request(
+					"getAuthStatus",
+					serde_json::json!({"includeToken":true,"refreshToken":false}),
+				),
 			)
 			.await
 			else {
@@ -63,8 +64,8 @@ impl DictationGateway {
 				return failed(id, "Dictation requires a ChatGPT subscription connection.");
 			}
 
-			let token = auth.get_mut("authToken").map(serde_json::Value::take);
-			let Some(serde_json::Value::String(token)) = token else {
+			let token = auth.get_mut("authToken").map(Value::take);
+			let Some(Value::String(token)) = token else {
 				return failed(id, "Sign in with a ChatGPT subscription to use dictation.");
 			};
 			let Ok(transport) = native::Stream::new(&token, start_message()) else {
@@ -101,7 +102,7 @@ impl DictationGateway {
 			{
 				if !valid_audio(audio.as_str())
 					|| !session.transport.as_mut().is_some_and(|s| {
-						s.command(json!({"type":"audio.append","audio":audio.as_str()}))
+						s.command(serde_json::json!({"type":"audio.append","audio":audio.as_str()}))
 					}) {
 					session.fail(
 						"Audio could not be delivered. Your received text remains in the draft.",
@@ -121,7 +122,7 @@ impl DictationGateway {
 					if session
 						.transport
 						.as_mut()
-						.is_some_and(|s| s.command(json!({"type":"session.close"})))
+						.is_some_and(|s| s.command(serde_json::json!({"type":"session.close"})))
 					{
 						session.status.phase = DictationPhase::Finalizing;
 					} else {
@@ -160,7 +161,7 @@ struct Session {
 	status: DictationStatus,
 	transport: Option<native::Stream>,
 	seen: Instant,
-	transcript: transcript::Transcript,
+	transcript: Transcript,
 }
 impl Session {
 	fn poll(&mut self) {
@@ -234,7 +235,7 @@ pub(crate) fn failed(session_id: EntityId, message: &str) -> DictationStatus {
 }
 
 fn start_message() -> Value {
-	json!({"type":"session.start", "config":{
+	serde_json::json!({"type":"session.start", "config":{
 		"input_audio_format":"pcm16", "sample_rate_hz":24_000, "num_channels":1,
 		"max_buffer_size_bytes":4_194_304, "max_utterance_duration_ms":30_000,
 		"session_ttl_ms":300_000, "provider_mode":"streaming_sse", "transcript_delivery_mode":"segment",
@@ -250,11 +251,12 @@ fn valid_audio(audio: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{DictationGateway, DictationPhase, DictationRequest};
-	use decodex_codex::app_server_client::AppServerClient;
-	use serde_json::json;
 	use std::time::Duration;
-	use tokio::{sync::mpsc, time::timeout};
+
+	use tokio::{sync::mpsc, time};
+
+	use crate::dictation::{DictationGateway, DictationPhase, DictationRequest};
+	use decodex_codex::app_server_client::AppServerClient;
 
 	#[test]
 	fn subscription_frames_update_one_draft_and_preserve_it_on_disconnect() {
@@ -268,30 +270,31 @@ mod tests {
 		session.status.phase = DictationPhase::Connecting;
 		session.status.message = None;
 
-		let frame =
-			|value: serde_json::Value| json!({"kind":"message","message":value.to_string()});
+		let frame = |value: serde_json::Value| serde_json::json!({"kind":"message","message":value.to_string()});
 
-		session.receive(frame(json!({"type":"session.started"})));
+		session.receive(frame(serde_json::json!({"type":"session.started"})));
 
 		assert_eq!(session.status.phase, DictationPhase::Listening);
 
 		session.receive(frame(
-			json!({"type":"transcript.segment","utterance_id":"a","revision":1,"text":"draft"}),
+			serde_json::json!({"type":"transcript.segment","utterance_id":"a","revision":1,"text":"draft"}),
 		));
 		session.receive(frame(
-			json!({"type":"transcript.final","utterance_id":"a","revision":2,"text":"Final draft."}),
+			serde_json::json!({"type":"transcript.final","utterance_id":"a","revision":2,"text":"Final draft."}),
 		));
 
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
-		session.receive(frame(json!({"type":"session.updated","session":{"status":"closed"}})));
+		session.receive(frame(
+			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
+		));
 
 		assert_eq!(session.status.phase, DictationPhase::Complete);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
 		session.status.phase = DictationPhase::Listening;
 
-		session.receive(json!({"kind":"message","message":"invalid JSON"}));
+		session.receive(serde_json::json!({"kind":"message","message":"invalid JSON"}));
 
 		assert_eq!(session.status.phase, DictationPhase::Failed);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
@@ -320,12 +323,12 @@ mod tests {
 		let session_id = decodex_protocol::EntityId::new("dictation-timeout").unwrap();
 		let request = DictationRequest::Start { session_id };
 		let start = tokio::spawn(async move { owner.exchange(&request, Some(client)).await });
-		let frame = timeout(Duration::from_secs(1), writes.recv()).await.unwrap().unwrap();
+		let frame = time::timeout(Duration::from_secs(1), writes.recv()).await.unwrap().unwrap();
 
 		assert_eq!(frame["method"], "getAuthStatus");
-		assert_eq!(frame["params"], json!({"includeToken":true,"refreshToken":false}));
+		assert_eq!(frame["params"], serde_json::json!({"includeToken":true,"refreshToken":false}));
 
-		let status = timeout(Duration::from_secs(5), start)
+		let status = time::timeout(Duration::from_secs(5), start)
 			.await
 			.expect("authorization must finish before the client deadline")
 			.unwrap();
@@ -334,9 +337,9 @@ mod tests {
 		assert!(status.text.as_str().is_empty());
 		assert!(status.message.is_some());
 
-		timeout(Duration::from_secs(1), gateway.expire()).await.unwrap();
+		time::timeout(Duration::from_secs(1), gateway.expire()).await.unwrap();
 
-		assert!(!timeout(Duration::from_secs(1), gateway.active()).await.unwrap());
+		assert!(!time::timeout(Duration::from_secs(1), gateway.active()).await.unwrap());
 
 		let poll =
 			gateway.exchange(&DictationRequest::Poll { session_id: status.session_id }, None).await;

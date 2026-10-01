@@ -1,12 +1,13 @@
 //! Subscription transcript revisions belong to the Rust session, not the audio adapter.
-use decodex_protocol::DictationBuffer;
-
 use serde::Deserialize;
+use serde_json::Value;
+
+use decodex_protocol::DictationBuffer;
 
 #[derive(Default)]
 pub(super) struct Transcript(Vec<Segment>);
 impl Transcript {
-	pub(super) fn apply(&mut self, event: serde_json::Value) -> Result<DictationBuffer, ()> {
+	pub(super) fn apply(&mut self, event: Value) -> Result<DictationBuffer, ()> {
 		let incoming: Segment = serde_json::from_value(event).map_err(|_| ())?;
 
 		if incoming.id.chars().count() > 256 || incoming.text.len() > 32_768 {
@@ -45,15 +46,17 @@ struct Segment {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::dictation::transcript::Transcript;
 
 	#[test]
 	fn final_correction_preserves_order_and_rejects_stale_or_late_revisions() {
 		let mut transcript = Transcript::default();
 		let mut apply = |id, revision, text, finalized| {
 			transcript
-				.apply(json!({"id":id,"revision":revision,"text":text,"finalized":finalized}))
+				.apply(
+					serde_json::json!({"id":id,"revision":revision,"text":text,"finalized":finalized}),
+				)
 				.unwrap()
 		};
 
@@ -70,20 +73,26 @@ mod tests {
 	fn invalid_and_oversized_segments_fail_instead_of_replacing_the_draft() {
 		let mut transcript = Transcript::default();
 
-		assert!(transcript.apply(json!({"id":"a","text":"missing revision"})).is_err());
+		assert!(transcript.apply(serde_json::json!({"id":"a","text":"missing revision"})).is_err());
 		assert!(
 			transcript
-				.apply(json!({"id":"a","revision":1,"text":"x".repeat(32_769),"finalized":false}))
+				.apply(
+					serde_json::json!({"id":"a","revision":1,"text":"x".repeat(32_769),"finalized":false})
+				)
 				.is_err()
 		);
 
 		transcript
-			.apply(json!({"id":"a","revision":1,"text":"x".repeat(20_000),"finalized":true}))
+			.apply(
+				serde_json::json!({"id":"a","revision":1,"text":"x".repeat(20_000),"finalized":true}),
+			)
 			.unwrap();
 
 		assert!(
 			transcript
-				.apply(json!({"id":"b","revision":1,"text":"x".repeat(20_000),"finalized":true}))
+				.apply(
+					serde_json::json!({"id":"b","revision":1,"text":"x".repeat(20_000),"finalized":true})
+				)
 				.is_err()
 		);
 	}

@@ -1,22 +1,31 @@
 //! Qualify restoration of persisted active goals whose native thread is unloaded.
-use super::*;
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native goal cold recovery"]
 async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submission() {
 	let native_home = tempfile::tempdir().unwrap();
 	let home = native_home.path().canonicalize().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(native_goal_fixture::serve(listener, Arc::clone(&calls)));
 
-	std::fs::write(home.join("config.toml"),format!(
+	fs::write(home.join("config.toml"),format!(
   "model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ngoals = true\n[model_providers.fixture]\nname = \"Isolated goal recovery\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
  )).unwrap();
 
@@ -27,16 +36,13 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
 
 	for phase in 0..3 {
 		if phase > 0 {
-			let root = decodex_core::DecodexRoot::new(
-				store_home.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(store_home.path().canonicalize().unwrap().join("root")).unwrap();
 
 			agent.store = SqliteStore::open(&root.paths()).unwrap();
 		}
 
-		let mut command =
-			tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command
 			.arg("app-server")
@@ -50,7 +56,7 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
 
 		agent = AgentCoordinator::new(agent.store.clone(), client, agent.config.clone()).unwrap();
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(15), async {
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(15), async {
    agent.initialize().await.unwrap();
 
    if phase == 0 {
@@ -74,7 +80,7 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
 
     agent.recover_persisted().await.unwrap();
 
-    tokio::time::timeout(std::time::Duration::from_secs(3), finish(&mut agent, &mut events)).await.expect("persisted active goal must resume");
+    time::timeout(Duration::from_secs(3), finish(&mut agent, &mut events)).await.expect("persisted active goal must resume");
 
     assert_eq!(calls.load(Ordering::Acquire), 2);
 
@@ -102,10 +108,7 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
 	backend.abort();
 }
 
-async fn finish(
-	agent: &mut AgentCoordinator,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
-) {
+async fn finish(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>) {
 	loop {
 		let event = events.recv().await.unwrap();
 		let done = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");

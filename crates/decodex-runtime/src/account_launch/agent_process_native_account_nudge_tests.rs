@@ -1,13 +1,17 @@
 //! Exercise native notifications through the retained bridge with synthetic credentials.
-use super::{NativeSession, json};
+use crate::account_launch::agent_process::native_tests::{self, NativeSession};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 use decodex_codex::app_server_client::{AccountNudgeCreditType, AccountNudgeOutcome};
 
-use std::{io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
+use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _, time::Duration};
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
+
+use std::{env, fs};
+
+use tokio::time;
 
 pub(crate) async fn serve_notification(
 	listener: &tokio::net::TcpListener,
@@ -40,7 +44,7 @@ pub(crate) async fn serve_notification_with_gate(
 }
 
 fn write_fixture_credentials(home: &std::path::Path) {
-	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,
+	let claims = native_tests::json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture",
 		"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
@@ -48,7 +52,7 @@ fn write_fixture_credentials(home: &std::path::Path) {
 		URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
 		URL_SAFE_NO_PAD.encode(claims.to_string())
 	);
-	let auth = json!({"auth_mode":"chatgpt","tokens":{"id_token":token,
+	let auth = native_tests::json!({"auth_mode":"chatgpt","tokens":{"id_token":token,
 		"access_token":"fixture-only","refresh_token":"fixture-only","account_id":"workspace-fixture"},
 		"last_refresh":"2026-09-21T15:00:00Z"});
 	let mut file = std::fs::OpenOptions::new()
@@ -94,7 +98,7 @@ async fn installed_native_account_nudge_uses_attested_control_and_ephemeral_auth
 
 		assert_eq!(
 			account["workspaceRouting"],
-			json!({
+			native_tests::json!({
 				"chatgptAccountId": "workspace-fixture",
 				"backendOrigin": format!("https://{address}"),
 				"accountRoutingOverride": "NO_CONSTRAINT"
@@ -137,7 +141,7 @@ async fn installed_native_account_nudge_uses_attested_control_and_ephemeral_auth
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native account notification qualification"]
 async fn installed_native_account_nudge_crosses_bridge_without_retry() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -147,7 +151,7 @@ async fn installed_native_account_nudge_crosses_bridge_without_retry() {
 
 	write_fixture_credentials(home.path());
 
-	std::fs::write(
+	fs::write(
 		home.path().join("config.toml"),
 		format!("chatgpt_base_url = \"http://{address}\"\ncli_auth_credentials_store = \"file\"\n"),
 	)
@@ -168,7 +172,7 @@ async fn installed_native_account_nudge_crosses_bridge_without_retry() {
 			AccountNudgeOutcome::Uncertain,
 		),
 	] {
-		let (actual, ()) = tokio::time::timeout(Duration::from_secs(20), async {
+		let (actual, ()) = time::timeout(Duration::from_secs(20), async {
 			tokio::join!(
 				session.client.send_account_nudge(purpose),
 				serve_notification(&listener, status, purpose)
@@ -181,7 +185,7 @@ async fn installed_native_account_nudge_crosses_bridge_without_retry() {
 	}
 	// Keep the bridge alive while checking that no fourth request follows the failure.
 	assert!(
-		tokio::time::timeout(
+		time::timeout(
 			Duration::from_millis(300),
 			serve_notification(&listener, "200 OK", AccountNudgeCreditType::Credits)
 		)
@@ -235,7 +239,7 @@ async fn handle_request(
 		assert_eq!(account.as_deref(), Some("workspace-fixture"));
 
 		let origin = format!("https://{}", stream.get_ref().local_addr().expect("loopback origin"));
-		let body = json!({"default_account_id":"other-workspace", "accounts":[
+		let body = native_tests::json!({"default_account_id":"other-workspace", "accounts":[
 			{"id":"other-workspace", "workspace_backend_origin":"https://other-workspace.invalid",
 			"account_routing_override":"us_cr"},
 			{"id":"workspace-fixture", "workspace_backend_origin":origin,
@@ -268,7 +272,7 @@ async fn handle_request(
 
 	assert_eq!(
 		serde_json::from_slice::<serde_json::Value>(&body).expect("JSON body"),
-		json!({"credit_type":purpose})
+		native_tests::json!({"credit_type":purpose})
 	);
 
 	stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").as_bytes())

@@ -2,42 +2,40 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-	fs,
+	fs::{self, Permissions},
 	future::{self, Future},
-	os::unix::{fs::PermissionsExt as _, net::UnixListener as StandardUnixListener},
+	os::unix::{fs::PermissionsExt as _, net::UnixListener},
 	pin::Pin,
 	sync::{Arc, Mutex},
 	time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-
 use tempfile::TempDir;
-
 use tokio::{
-	sync::{Notify, watch},
+	sync::{Notify, watch::Receiver},
 	time,
 };
-
 use tokio_tungstenite::{
 	self, WebSocketStream,
 	tungstenite::{Message, protocol::frame::coding::CloseCode},
 };
 
 use decodex_core::{DecodexRoot, LocalTrustPolicy};
-
 use decodex_protocol::{
 	AccountLoginInstallMode, AccountLoginMethod, AccountLoginRequest, AccountLoginRequestEnvelope,
 	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountsResult, CURRENT_VERSION,
 	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
-	CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, IdempotencyKey,
-	LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode,
-	Refusal, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor,
-	ServerId, ServerInstanceId, ServerMessage, SnapshotItem, WireText,
+	CommandError, CommandPayload, ConversationExecutionSettings, ConversationModel,
+	ConversationReasoningEffort, ConversationRecoveryAction, ConversationState,
+	ConversationSummary, ConversationWorkingDirectory, CorrelationId, Cursor, DoctorCheck,
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
+	EventPayload, HistoryText, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
+	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResetCardDescriptorDto,
+	ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
+	ServerMessage, SnapshotItem, WireText,
 };
-
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
 	ServerError, TerminationPrimary, TerminationReceipt,
@@ -51,7 +49,7 @@ const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 #[derive(Clone, Default)]
 struct FixtureApplication {
-	conversation_result: Option<(decodex_protocol::ConversationSummary, bool)>,
+	conversation_result: Option<(ConversationSummary, bool)>,
 	state: Arc<Mutex<FixtureState>>,
 	execution_delay: Duration,
 	static_snapshot: bool,
@@ -112,7 +110,7 @@ impl Application for FixtureApplication {
 
 	fn daemon_service_tasks(
 		&self,
-		mut stop: watch::Receiver<bool>,
+		mut stop: Receiver<bool>,
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		let Some(service) = self.daemon_service.clone() else {
 			return Vec::new();
@@ -417,9 +415,9 @@ fn reset_card_command(version: ProtocolVersion, number: u64, key: &str) -> Clien
 }
 
 fn conversation_fixture(
-	state: decodex_protocol::ConversationState,
-	recovery: Option<decodex_protocol::ConversationRecoveryAction>,
-) -> decodex_protocol::ConversationSummary {
+	state: ConversationState,
+	recovery: Option<ConversationRecoveryAction>,
+) -> ConversationSummary {
 	use decodex_protocol::{ConversationState as State, ConversationSummary, ConversationTitle};
 
 	let has_session = matches!(state, State::Ready | State::Running | State::Establishing);
@@ -448,7 +446,7 @@ fn conversation_fixture(
 }
 
 fn conversation_fixture_command(
-	conversation: &decodex_protocol::ConversationSummary,
+	conversation: &ConversationSummary,
 	interrupt: bool,
 ) -> ClientMessage {
 	let ClientMessage::Command(mut command) = command(CURRENT_VERSION, 1, "conversation") else {
@@ -466,14 +464,13 @@ fn conversation_fixture_command(
 	} else {
 		CommandPayload::CreateConversation {
 			conversation_id,
-			message: decodex_protocol::HistoryText::new("Observe this conversation")
+			message: HistoryText::new("Observe this conversation")
 				.expect("conversation observer fixture"),
-			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp")
+			working_directory: ConversationWorkingDirectory::new("/tmp")
 				.expect("conversation observer fixture"),
-			execution: decodex_protocol::ConversationExecutionSettings::new(
-				decodex_protocol::ConversationModel::new("fixture-model")
-					.expect("conversation observer fixture"),
-				decodex_protocol::ConversationReasoningEffort::Low,
+			execution: ConversationExecutionSettings::new(
+				ConversationModel::new("fixture-model").expect("conversation observer fixture"),
+				ConversationReasoningEffort::Low,
 				false,
 			),
 			initial_model_source: None,
@@ -1745,10 +1742,9 @@ async fn replacement_publication_stops_service_without_unlinking_replacement() {
 
 	fs::rename(&socket_path, &retained_path).expect("move owned publication aside");
 
-	let replacement =
-		StandardUnixListener::bind(&socket_path).expect("publish unowned replacement socket");
+	let replacement = UnixListener::bind(&socket_path).expect("publish unowned replacement socket");
 
-	fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
+	fs::set_permissions(&socket_path, Permissions::from_mode(0o600))
 		.expect("scope replacement socket");
 
 	let error = time::timeout(Duration::from_secs(2), bound.wait())

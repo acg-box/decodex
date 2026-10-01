@@ -1,8 +1,16 @@
 //! Installed external-auth retries with synthetic unsigned JWTs and loopback HTTP only.
-use super::*;
+use std::{env, ffi::OsStr, fs, process::Stdio};
+
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use decodex_codex::app_server_client::{AppServerClient, RequestId, ServerEvent};
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	process::{Child, Command},
+	sync::mpsc::Receiver,
+	time,
+};
+
+use crate::account_launch::process::refresh_tests::*;
+use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent};
 
 fn token(serial: u8) -> String {
 	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
@@ -13,20 +21,17 @@ fn token(serial: u8) -> String {
 		URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).expect("fixture claims"))
 	)
 }
-async fn start(
-	binary: &std::ffi::OsStr,
-	home: &Path,
-) -> (AppServerClient, tokio::sync::mpsc::Receiver<ServerEvent>, tokio::process::Child) {
-	let mut child = tokio::process::Command::new(binary)
+async fn start(binary: &OsStr, home: &Path) -> (AppServerClient, Receiver<ServerEvent>, Child) {
+	let mut child = Command::new(binary)
 		.arg("app-server")
 		.env_clear()
 		.env("HOME", home)
 		.env("CODEX_HOME", home)
 		.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
 		.current_dir(home)
-		.stdin(std::process::Stdio::piped())
-		.stdout(std::process::Stdio::piped())
-		.stderr(std::process::Stdio::null())
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
 		.kill_on_drop(true)
 		.spawn()
 		.expect("native fixture");
@@ -40,11 +45,11 @@ async fn start(
 	(client, events, child)
 }
 async fn login(client: &AppServerClient, access: &str) {
-	client.request("account/login/start",json!({"type":"chatgptAuthTokens","accessToken":access,"chatgptAccountId":PROVIDER,"chatgptPlanType":"pro"})).await.unwrap_or_else(|error| {if let decodex_codex::app_server_client::ClientError::Remote(remote)=error {panic!("external fixture login: {}",remote.message.replace(access,"[synthetic-token]"));}panic!("external fixture transport");});
+	client.request("account/login/start",json!({"type":"chatgptAuthTokens","accessToken":access,"chatgptAccountId":PROVIDER,"chatgptPlanType":"pro"})).await.unwrap_or_else(|error| {if let ClientError::Remote(remote)=error {panic!("external fixture login: {}",remote.message.replace(access,"[synthetic-token]"));}panic!("external fixture transport");});
 }
 async fn turn(
 	client: &AppServerClient,
-	events: &mut tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	thread: &str,
 	binding: &AccountBinding,
 	completed: bool,
@@ -105,20 +110,16 @@ async fn turn(
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; synthetic native401 refresh qualification"]
 async fn installed_native_401_uses_production_refresh_reply_and_reauthenticates_after_restart() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(false))
-		.await
-		.expect("bounded native refresh");
+	time::timeout(Duration::from_secs(45), qualify(false)).await.expect("bounded native refresh");
 }
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; synthetic native refresh refusal"]
 async fn installed_native_401_refresh_refusal_fails_without_replaying_inference() {
-	tokio::time::timeout(Duration::from_secs(45), qualify(true))
-		.await
-		.expect("bounded refused fixture");
+	time::timeout(Duration::from_secs(45), qualify(true)).await.expect("bounded refused fixture");
 }
 
 async fn qualify(fail: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 
 	assert!(Path::new(&binary).is_absolute());
 
@@ -130,7 +131,7 @@ async fn qualify(fail: bool) {
 	let seen = Arc::new(Mutex::new(Vec::new()));
 	let server = tokio::spawn(serve(listener, initial.clone(), refreshed.clone(), seen.clone()));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"routing\"\ncli_auth_credentials_store=\"file\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.routing]\nname=\"OpenAI\"\nbase_url=\"http://{address}/v1\"\nrequires_openai_auth=true\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"routing\"\ncli_auth_credentials_store=\"file\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.routing]\nname=\"OpenAI\"\nbase_url=\"http://{address}/v1\"\nrequires_openai_auth=true\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n")).expect("fixture config");
 
 	let (binding, calls) = binding(&refreshed, PROVIDER, fail);
 	let (client, mut events, mut child) = start(&binary, home.path()).await;
@@ -185,7 +186,7 @@ async fn serve(
 	seen: Arc<Mutex<Vec<bool>>>,
 ) {
 	'connections: while let Ok((socket, _)) = listener.accept().await {
-		let mut socket = tokio::io::BufReader::new(socket);
+		let mut socket = BufReader::new(socket);
 		let mut first = String::new();
 
 		if socket.read_line(&mut first).await.expect("request line") == 0 {

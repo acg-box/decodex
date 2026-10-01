@@ -1,7 +1,6 @@
+pub use decodex_codex::app_server_client::InitializeCapabilities;
 #[doc(hidden)]
 pub use decodex_codex::app_server_client::MAX_FRAME_BYTES as MAX_APP_SERVER_FRAME_BYTES;
-
-pub use decodex_codex::app_server_client::InitializeCapabilities;
 
 use std::{
 	fmt::{Debug, Formatter},
@@ -9,7 +8,6 @@ use std::{
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
-
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{

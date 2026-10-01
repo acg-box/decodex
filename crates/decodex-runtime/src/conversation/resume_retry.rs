@@ -1,6 +1,9 @@
 //! Retry only exact, rejected native resumes; each attempt rechecks process ownership.
-use super::{ConversationProcessError, ConversationRejectionReason};
 use std::{future::Future, time::Duration};
+
+use tokio::time;
+
+use crate::conversation::{ConversationProcessError, ConversationRejectionReason};
 
 pub(super) async fn retry<T, F, Fut>(mut attempt: F) -> Result<T, ConversationProcessError>
 where
@@ -20,7 +23,7 @@ where
 			break;
 		}
 		// No supervisor lock is held while waiting. The closure fences each send.
-		tokio::time::sleep(Duration::from_secs(delay)).await;
+		time::sleep(Duration::from_secs(delay)).await;
 
 		result = attempt().await;
 	}
@@ -30,8 +33,11 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{ConversationProcessError, ConversationRejectionReason, retry};
-	use std::cell::Cell;
+	use std::{cell::Cell, future};
+
+	use crate::conversation::resume_retry::{
+		self, ConversationProcessError, ConversationRejectionReason,
+	};
 
 	fn closing() -> ConversationProcessError {
 		ConversationProcessError::Rejected {
@@ -56,12 +62,12 @@ mod tests {
 			}),
 		] {
 			let count = Cell::new(0);
-			let result = retry(|| {
+			let result = resume_retry::retry(|| {
 				let n = count.get();
 
 				count.set(n + 1);
 
-				std::future::ready(if n == 0 { Err(closing()) } else { end.clone() })
+				future::ready(if n == 0 { Err(closing()) } else { end.clone() })
 			})
 			.await;
 
@@ -73,10 +79,10 @@ mod tests {
 	#[tokio::test]
 	async fn persistent_closing_has_five_attempt_limit_and_retains_last_witness() {
 		let count = Cell::new(0);
-		let result: Result<(), _> = retry(|| {
+		let result: Result<(), _> = resume_retry::retry(|| {
 			count.set(count.get() + 1);
 
-			std::future::ready(Err(ConversationProcessError::Rejected {
+			future::ready(Err(ConversationProcessError::Rejected {
 				witness_digest: format!("{:064x}", count.get()),
 				reason: ConversationRejectionReason::ClosingThread,
 			}))

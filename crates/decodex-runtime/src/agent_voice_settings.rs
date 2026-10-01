@@ -1,21 +1,22 @@
 //! Keep voice configuration observations bound to the current native owner.
-use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
+use std::{future::Future, time::Duration};
 
-use decodex_codex::app_server_client::NativeVoiceSettings;
-
-use decodex_protocol::{AgentVoiceSettingsResult, EntityId, WireText};
-
+use AgentHostError::{Rejected, Unknown};
 use serde_json::json;
-
 use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
+use decodex_codex::app_server_client::NativeVoiceSettings;
+use decodex_protocol::{AgentVoiceSettingsResult, EntityId, WireText};
 
 pub(crate) async fn read<F, Fut>(source: F) -> AgentVoiceSettingsResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else { return AgentVoiceSettingsResult::Unavailable };
-	let result = tokio::time::timeout(std::time::Duration::from_secs(25), inspect(&before)).await;
+	let result = time::timeout(Duration::from_secs(25), inspect(&before)).await;
 
 	if source().await.is_none_or(|after| {
 		after.key != before.key
@@ -38,17 +39,14 @@ pub(crate) async fn write<F, Fut>(
 ) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	use AgentHostError::{Rejected, Unknown};
-
 	let before = source().await.ok_or(Rejected("Voice settings are unavailable."))?;
-	let (settings, token) =
-		tokio::time::timeout(std::time::Duration::from_secs(25), inspect(&before))
-			.await
-			.ok()
-			.flatten()
-			.ok_or(Rejected("Refresh voice settings before choosing a voice."))?;
+	let (settings, token) = time::timeout(Duration::from_secs(25), inspect(&before))
+		.await
+		.ok()
+		.flatten()
+		.ok_or(Rejected("Refresh voice settings before choosing a voice."))?;
 
 	if token != review
 		|| source().await.is_none_or(|after| {

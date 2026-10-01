@@ -1,21 +1,31 @@
 //! Temporary recap transport qualification against the installed native server.
-use super::*;
+use std::{
+	env, fs, mem,
+	sync::{Mutex, atomic::AtomicUsize},
+};
+
+use tokio::{
+	net::TcpListener,
+	sync::{mpsc, oneshot, watch},
+	time,
+};
+
+use crate::account_launch::agent_process::native_tests::*;
 use decodex_codex::app_server_client::TemporaryStructuredOptions;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated temporary structured request"]
 async fn installed_temporary_requests_disable_tools_and_preserve_custom_permissions() {
-	tokio::time::timeout(Duration::from_secs(60), qualify()).await.expect("bounded native fixture");
+	time::timeout(Duration::from_secs(60), qualify()).await.expect("bounded native fixture");
 }
 
 async fn qualify() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native temporary fixture");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native temporary fixture");
 	let home = tempfile::tempdir().expect("native temporary fixture");
-	let listener =
-		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native temporary fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native temporary fixture");
 	let address = listener.local_addr().expect("native temporary fixture");
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let calls = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		calls.clone(),
@@ -28,7 +38,7 @@ async fn qualify() {
 		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
 	);
 
-	std::fs::write(home.path().join("config.toml"), &config).expect("native temporary fixture");
+	fs::write(home.path().join("config.toml"), &config).expect("native temporary fixture");
 
 	let mut session = NativeSession::start(&binary, home.path());
 
@@ -48,11 +58,11 @@ async fn qualify() {
 				_ => panic!("fixture: {error}"),
 			});
 		let id = thread.id().to_owned();
-		let (_cancel, watch) = tokio::sync::watch::channel(false);
-		let (_placeholder, empty) = tokio::sync::mpsc::channel(1);
-		let mut events = std::mem::replace(&mut session.events, empty);
-		let (send, receive) = tokio::sync::mpsc::channel(64);
-		let (stop, mut stopped) = tokio::sync::oneshot::channel::<()>();
+		let (_cancel, watch) = watch::channel(false);
+		let (_placeholder, empty) = mpsc::channel(1);
+		let mut events = mem::replace(&mut session.events, empty);
+		let (send, receive) = mpsc::channel(64);
+		let (stop, mut stopped) = oneshot::channel::<()>();
 		let forward = tokio::spawn(async move {
 			loop {
 				tokio::select! {
@@ -79,7 +89,7 @@ async fn qualify() {
 		// Unsubscribe detaches this connection; it is not an immediate thread shutdown.
 		let _ = stop.send(());
 
-		session.events = tokio::time::timeout(Duration::from_secs(5), forward)
+		session.events = time::timeout(Duration::from_secs(5), forward)
 			.await
 			.expect("event route stopped")
 			.expect("native temporary fixture");
@@ -110,7 +120,7 @@ async fn qualify() {
 	}
 
 	assert_eq!(
-		std::fs::read_to_string(home.path().join("config.toml")).expect("native temporary fixture"),
+		fs::read_to_string(home.path().join("config.toml")).expect("native temporary fixture"),
 		config
 	);
 

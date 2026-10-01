@@ -1,12 +1,14 @@
 //! Read each integration source independently, scoped to the native task directory.
-use decodex_codex::app_server_client::{AppServerClient, ClientError};
+use std::{collections::HashSet, path::Path, time::Duration};
 
+use serde_json::{Value, json};
+use tokio::time;
+
+use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_protocol::{
 	AgentAppInventory, AgentAppStatusDto, AgentIntegrationsResult, AgentMcpInventory,
 	AgentMcpStatusDto, AgentPluginInventory, AgentPluginStatusDto,
 };
-
-use serde_json::{Value, json};
 
 pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPluginInventory {
 	let value = match result {
@@ -20,7 +22,7 @@ pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPlugin
 		return AgentPluginInventory::Unavailable;
 	};
 	let mut plugins = Vec::new();
-	let mut ids = std::collections::HashSet::new();
+	let mut ids = HashSet::new();
 
 	for market in markets {
 		let Some(rows) = market["plugins"].as_array() else {
@@ -78,7 +80,7 @@ pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPlugin
 }
 
 pub(crate) async fn read(client: &AppServerClient, thread: &str) -> AgentIntegrationsResult {
-	let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
+	let result = time::timeout(Duration::from_secs(35), async {
 		let guard = client.thread_settings_guard(thread)?;
 		let before = client.thread_read(json!({"threadId":thread})).await.ok()?;
 		let cwd = thread_cwd(&before, thread)?.to_owned();
@@ -116,7 +118,7 @@ fn thread_cwd<'a>(value: &'a Value, thread: &str) -> Option<&'a str> {
 		return None;
 	}
 
-	value["thread"]["cwd"].as_str().filter(|cwd| std::path::Path::new(cwd).is_absolute())
+	value["thread"]["cwd"].as_str().filter(|cwd| Path::new(cwd).is_absolute())
 }
 
 fn text(value: &str) -> String {
@@ -244,30 +246,41 @@ fn server_presentation(info: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent_integrations::{
+		self, AgentAppInventory, AgentIntegrationsResult, AgentMcpInventory, AgentPluginInventory,
+		AppServerClient, ClientError, Value,
+	};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[test]
 	fn initialized_server_presentation_uses_public_fields_without_fetching_icons() {
-		let info = json!({"name":"server-id","title":"Reference docs","version":"1.2","description":"Read documentation","websiteUrl":"https://example.invalid","icons":[{"src":"PRIVATE_ICON"}],"private":"PRIVATE_METADATA"});
+		let info = agent_integrations::json!({"name":"server-id","title":"Reference docs","version":"1.2","description":"Read documentation","websiteUrl":"https://example.invalid","icons":[{"src":"PRIVATE_ICON"}],"private":"PRIVATE_METADATA"});
 
 		assert_eq!(
-			server_presentation(&info).as_deref(),
+			agent_integrations::server_presentation(&info).as_deref(),
 			Some("Reference docs · 1.2\nRead documentation\nhttps://example.invalid")
 		);
 		assert_eq!(
-			server_presentation(&json!({"name":"server-id","version":"1"})).as_deref(),
+			agent_integrations::server_presentation(
+				&agent_integrations::json!({"name":"server-id","version":"1"})
+			)
+			.as_deref(),
 			Some("server-id · 1")
 		);
-		assert!(server_presentation(&Value::Null).is_none());
-		assert!(server_presentation(&json!({"title":"Partial"})).is_none());
+		assert!(agent_integrations::server_presentation(&Value::Null).is_none());
+		assert!(
+			agent_integrations::server_presentation(
+				&agent_integrations::json!({"title":"Partial"})
+			)
+			.is_none()
+		);
 	}
 
 	#[test]
 	fn failed_discovery_and_plugin_policy_are_not_readiness() {
-		let mcp = project_mcp(Ok(vec![
-			json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
+		let mcp = agent_integrations::project_mcp(Ok(vec![
+			agent_integrations::json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
 		]));
 		let AgentMcpInventory::Available { servers } = mcp else {
 			panic!("inventory");
@@ -282,8 +295,8 @@ mod tests {
 		);
 		assert!(!serde_json::to_string(&servers).unwrap().contains("private-fixture-value"));
 
-		let plugins = project_plugins(Ok(
-			json!({"marketplaces":[{"plugins":[{"id":"example@market","name":"Example","installed":true,"enabled":false,"availability":"DISABLED_BY_ADMIN","disabledReason":"disabled_by_admin"}]}],"marketplaceLoadErrors":[{"message":"Another marketplace failed"}]}),
+		let plugins = agent_integrations::project_plugins(Ok(
+			agent_integrations::json!({"marketplaces":[{"plugins":[{"id":"example@market","name":"Example","installed":true,"enabled":false,"availability":"DISABLED_BY_ADMIN","disabledReason":"disabled_by_admin"}]}],"marketplaceLoadErrors":[{"message":"Another marketplace failed"}]}),
 		));
 		let AgentPluginInventory::Available { plugins, errors } = plugins else {
 			panic!("catalog");
@@ -293,23 +306,36 @@ mod tests {
 		assert!(!plugins[0].enabled);
 		assert_eq!(plugins[0].availability, "DISABLED_BY_ADMIN");
 		assert_eq!(errors.len(), 1);
-		assert_eq!(project_mcp(Err(ClientError::Closed)), AgentMcpInventory::Unavailable);
-		assert_eq!(project_plugins(Err(ClientError::Closed)), AgentPluginInventory::Unavailable);
+		assert_eq!(
+			agent_integrations::project_mcp(Err(ClientError::Closed)),
+			AgentMcpInventory::Unavailable
+		);
+		assert_eq!(
+			agent_integrations::project_plugins(Err(ClientError::Closed)),
+			AgentPluginInventory::Unavailable
+		);
 	}
 
 	#[test]
 	fn apps_project_runtime_eligibility_and_keep_inventory_bounded() {
-		let row =
-			json!({"id":"connector","runtimeName":"Calendar","enabled":true,"callable":false});
-		let AgentAppInventory::Available { apps } = project_apps(Ok(vec![row.clone()])) else {
+		let row = agent_integrations::json!({"id":"connector","runtimeName":"Calendar","enabled":true,"callable":false});
+		let AgentAppInventory::Available { apps } =
+			agent_integrations::project_apps(Ok(vec![row.clone()]))
+		else {
 			panic!("snapshot")
 		};
 
 		assert!(apps[0].enabled);
 		assert!(!apps[0].callable);
 		assert_eq!(apps[0].runtime_name.as_deref(), Some("Calendar"));
-		assert_eq!(project_apps(Ok(vec![row; 129])), AgentAppInventory::CapacityExceeded);
-		assert_eq!(project_apps(Err(ClientError::Closed)), AgentAppInventory::Unavailable);
+		assert_eq!(
+			agent_integrations::project_apps(Ok(vec![row; 129])),
+			AgentAppInventory::CapacityExceeded
+		);
+		assert_eq!(
+			agent_integrations::project_apps(Err(ClientError::Closed)),
+			AgentAppInventory::Unavailable
+		);
 	}
 
 	#[tokio::test]
@@ -342,39 +368,42 @@ mod tests {
 								let target =
 									if scenario == "settings" { "thread" } else { "another" };
 
-								writer.write_all(format!("{}\n", json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"cwd":"/repo"}}})).as_bytes()).await.unwrap();
+								writer.write_all(format!("{}\n", agent_integrations::json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"cwd":"/repo"}}})).as_bytes()).await.unwrap();
 							}
 
 							assert_eq!(request["params"]["threadId"], "thread");
 
-							json!({"thread":{"id":"thread","cwd":if scenario == "directory" && metadata==2 {"/different"} else {"/repo"}}})
+							agent_integrations::json!({"thread":{"id":"thread","cwd":if scenario == "directory" && metadata==2 {"/different"} else {"/repo"}}})
 						},
 						"mcpServerStatus/list" => {
 							assert_eq!(request["params"]["threadId"], "thread");
 
-							json!({"data":[],"nextCursor":null})
+							agent_integrations::json!({"data":[],"nextCursor":null})
 						},
 						"app/installed" => {
 							assert_eq!(
 								request["params"],
-								json!({"threadId":"thread","forceRefresh":false})
+								agent_integrations::json!({"threadId":"thread","forceRefresh":false})
 							);
 
-							json!({"apps":[]})
+							agent_integrations::json!({"apps":[]})
 						},
 						"plugin/installed" => {
-							assert_eq!(request["params"]["cwds"], json!(["/repo"]));
+							assert_eq!(
+								request["params"]["cwds"],
+								agent_integrations::json!(["/repo"])
+							);
 
-							json!({"marketplaces":[],"marketplaceLoadErrors":[]})
+							agent_integrations::json!({"marketplaces":[],"marketplaceLoadErrors":[]})
 						},
 						_ => panic!("unexpected request"),
 					};
 					let reply = if request["method"] == "app/installed"
 						&& scenario.starts_with("apps_")
 					{
-						json!({"id":request["id"],"error":{"code":if scenario == "apps_unsupported" {-32_601} else {-32_603},"message":"Fixture Apps failure"}})
+						agent_integrations::json!({"id":request["id"],"error":{"code":if scenario == "apps_unsupported" {-32_601} else {-32_603},"message":"Fixture Apps failure"}})
 					} else {
-						json!({"id":request["id"],"result":result})
+						agent_integrations::json!({"id":request["id"],"result":result})
 					};
 
 					writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
@@ -382,7 +411,7 @@ mod tests {
 
 				let _ = finished.await;
 			});
-			let result = read(&client, "thread").await;
+			let result = agent_integrations::read(&client, "thread").await;
 
 			if matches!(scenario, "directory" | "settings") {
 				assert_eq!(result, AgentIntegrationsResult::Unavailable);

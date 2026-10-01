@@ -2,26 +2,34 @@
 #[path = "agent_process_native_recap_socket_tests.rs"] mod recap_socket;
 #[path = "agent_process_native_runtime_submit_tests.rs"] mod submit;
 
-use super::*;
+use std::{
+	env, fs,
+	fs::OpenOptions,
+	path::{Path, PathBuf},
+};
+
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use rusqlite::Connection;
+use tokio::{net::TcpStream, task, time};
 
 use crate::{
+	account_launch::{RunnerCapacity, agent_process::native_tests::*},
 	account_service::{
 		AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
 	},
 	conversation::ConversationRuntime,
 	host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
+	process_supervisor::ProcessGenerationControl,
+	provider_attempt_service::ProviderAttemptControl,
 };
-
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-
 use decodex_core::{
-	AccountId, AccountOperationId, BlobStore, DecodexRoot, ProcessExecutionAuthorization,
-	ProcessExecutionEpochId,
+	AccountId, AccountOperationId, BlobStore, ConversationId, DecodexRoot,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId,
 };
-
 use decodex_database::{
 	AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity, SqliteStore,
 };
+use decodex_protocol::ConversationModelSettingsResult;
 
 struct NoRefresh;
 impl CredentialRefreshPort for NoRefresh {
@@ -33,7 +41,7 @@ impl CredentialRefreshPort for NoRefresh {
 	}
 }
 
-fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &std::path::Path) {
+fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &Path) {
 	let source = include_str!("../../tests/fixtures/opaque_resume_authority.sql");
 	let operations = &source[source
 		.find("INSERT INTO account_operations")
@@ -46,7 +54,7 @@ fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &std::
 		.replace("opaque-restart-provider", "workspace-fixture")
 		.replace("sha256:fixture", &format!("sha256:{}", "a".repeat(64)))
 		.replace("provider/thread?after#restart%opaque", thread);
-	let connection = rusqlite::Connection::open(root.paths().product_database_file())
+	let connection = Connection::open(root.paths().product_database_file())
 		.expect("settled conversation history fixture");
 
 	connection.execute_batch(&sql).expect("settled conversation history fixture");
@@ -103,35 +111,29 @@ fn counter_output(input: &Value) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
-	let home = std::path::PathBuf::from(
-		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"),
-	)
-	.canonicalize()
-	.expect("isolated fixture home");
+	let home = PathBuf::from(env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"))
+		.canonicalize()
+		.expect("isolated fixture home");
 
+	assert_eq!(std::path::PathBuf::from(env::var_os("HOME").expect("isolated fixture home")), home);
 	assert_eq!(
-		std::path::PathBuf::from(std::env::var_os("HOME").expect("isolated fixture home")),
-		home
-	);
-	assert_eq!(
-		std::fs::read_to_string(home.join(".decodex-cold-settings-fixture"))
+		fs::read_to_string(home.join(".decodex-cold-settings-fixture"))
 			.expect("isolated fixture home"),
 		"isolated-native-settings\n"
 	);
 	assert!(!home.join(".codex").exists());
 
-	tokio::time::timeout(Duration::from_secs(90), qualify(&home))
+	time::timeout(Duration::from_secs(90), qualify(&home))
 		.await
 		.expect("bounded native cold runtime fixture");
 }
 
-async fn qualify(home: &std::path::Path) {
+async fn qualify(home: &Path) {
 	let native_home = home.join(".codex");
 
-	std::fs::create_dir(&native_home).expect("native cold-read qualification");
+	fs::create_dir(&native_home).expect("native cold-read qualification");
 
-	let binary =
-		std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native cold-read qualification");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native cold-read qualification");
 	let listener =
 		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native cold-read qualification");
 	let address = listener.local_addr().expect("native cold-read qualification");
@@ -140,7 +142,7 @@ async fn qualify(home: &std::path::Path) {
 	let backend = tokio::spawn(serve(listener, requests.clone(), metadata_requests.clone(), None));
 	let catalog = native_home.join("models.json");
 
-	std::fs::write(
+	fs::write(
 		&catalog,
 		serde_json::to_vec(
 			&json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
@@ -148,7 +150,7 @@ async fn qualify(home: &std::path::Path) {
 		.expect("native cold-read qualification"),
 	)
 	.expect("native cold-read qualification");
-	std::fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", json!(catalog))).expect("native cold-read qualification");
+	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", json!(catalog))).expect("native cold-read qualification");
 
 	let mut native = NativeSession::start(&binary, &native_home);
 	let started = native
@@ -177,9 +179,9 @@ async fn qualify(home: &std::path::Path) {
 	// The saved fixture turn did not need authentication. The production reader
 	// uses the enrolled ChatGPT account and must admit native token projection.
 	let config = native_home.join("config.toml");
-	let text = std::fs::read_to_string(&config).expect("native cold-read qualification");
+	let text = fs::read_to_string(&config).expect("native cold-read qualification");
 
-	std::fs::write(config, text.replace("requires_openai_auth=false", "requires_openai_auth=true"))
+	fs::write(config, text.replace("requires_openai_auth=false", "requires_openai_auth=true"))
 		.expect("native cold-read qualification");
 
 	assert_eq!(requests.load(Ordering::Acquire), 1);
@@ -196,7 +198,7 @@ async fn qualify(home: &std::path::Path) {
 	));
 	let account = enroll(&store, &accounts, home).await;
 	let directory = home.to_owned();
-	let profile = tokio::task::spawn_blocking(move || {
+	let profile = task::spawn_blocking(move || {
 		crate::account_launch::process::AttestedAppServerProfile::attest(
 			directory,
 			Duration::from_secs(15),
@@ -214,7 +216,7 @@ async fn qualify(home: &std::path::Path) {
 	seed(&root, &account, &thread, home);
 
 	let runtime = runtime(&root, &store, accounts.clone(), profile.clone()).await;
-	let id = decodex_core::ConversationId::new("44000000-0000-4000-8000-000000000001")
+	let id = ConversationId::new("44000000-0000-4000-8000-000000000001")
 		.expect("native cold-read qualification");
 	let before = store
 		.read_ordinary_runtime_session_for_resume(&id)
@@ -225,7 +227,7 @@ async fn qualify(home: &std::path::Path) {
 	let result = runtime.model_settings("cold-model-query", id.as_str()).await;
 
 	assert!(
-		matches!(result, decodex_protocol::ConversationModelSettingsResult::Available { model: Some(ref model), reasoning_effort: Some(ref effort), requested_service_tier: None, .. } if model.as_str() == "cold-native-model" && effort.as_str() == "provider-effort"),
+		matches!(result, ConversationModelSettingsResult::Available{ model: Some(ref model), reasoning_effort: Some(ref effort), requested_service_tier: None, .. } if model.as_str() == "cold-native-model" && effort.as_str() == "provider-effort"),
 		"cold owned settings read: {result:?}"
 	);
 	assert_eq!(
@@ -271,7 +273,7 @@ async fn qualify(home: &std::path::Path) {
 async fn restart_and_submit(
 	root: &DecodexRoot,
 	profile: crate::account_launch::AttestedAppServerProfile,
-	home: &std::path::Path,
+	home: &Path,
 ) {
 	let store = SqliteStore::open(&root.paths()).expect("reopen product store");
 	let accounts = Arc::new(AccountService::new(
@@ -302,18 +304,14 @@ async fn restart_and_submit(
 	restarted.wait_for_shutdown().await;
 }
 
-async fn enroll(
-	store: &SqliteStore,
-	service: &AccountService,
-	home: &std::path::Path,
-) -> AccountId {
+async fn enroll(store: &SqliteStore, service: &AccountService, home: &Path) -> AccountId {
 	enroll_numbered(store, service, home, 1).await
 }
 
 async fn enroll_numbered(
 	store: &SqliteStore,
 	service: &AccountService,
-	home: &std::path::Path,
+	home: &Path,
 	number: u64,
 ) -> AccountId {
 	use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
@@ -333,7 +331,7 @@ async fn enroll_numbered(
 	);
 	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,"refresh_token":"fixture-only","account_id":workspace},"last_refresh":"2026-09-24T00:00:00Z"});
 	let path = home.join("synthetic-credential.json");
-	let mut file = std::fs::OpenOptions::new()
+	let mut file = OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
@@ -372,7 +370,7 @@ async fn enroll_numbered(
 		.await
 		.expect("synthetic account enrollment");
 
-	std::fs::remove_file(path).expect("synthetic account enrollment");
+	fs::remove_file(path).expect("synthetic account enrollment");
 
 	account
 }
@@ -387,12 +385,8 @@ async fn runtime(
 		store.clone(),
 		BlobStore::open(root.paths()).expect("production runtime fixture"),
 		accounts,
-		crate::process_supervisor::ProcessGenerationControl::start(store.clone())
-			.await
-			.expect("production runtime fixture"),
-		crate::provider_attempt_service::ProviderAttemptControl::start(store.clone())
-			.await
-			.expect("production runtime fixture"),
+		ProcessGenerationControl::start(store.clone()).await.expect("production runtime fixture"),
+		ProviderAttemptControl::start(store.clone()).await.expect("production runtime fixture"),
 		ProcessExecutionAuthorization::new(
 			ProcessExecutionEpochId::new("30000000-0000-4000-8000-000000000001")
 				.expect("production runtime fixture"),
@@ -400,7 +394,7 @@ async fn runtime(
 		)
 		.expect("production runtime fixture"),
 		profile,
-		crate::account_launch::RunnerCapacity::daemon().expect("production runtime fixture"),
+		RunnerCapacity::daemon().expect("production runtime fixture"),
 	)
 }
 
@@ -501,9 +495,7 @@ async fn serve(
 			} else {
 				"Saved native answer"
 			};
-			let output = if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1")
-				&& serial == 0
-			{
+			let output = if env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") && serial == 0 {
 				counter_output(&input)
 			} else {
 				json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
@@ -533,16 +525,14 @@ async fn serve(
 	}
 }
 
-async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::TcpStream>) -> bool {
+async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<TcpStream>) -> bool {
 	use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
+	if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
 		return false;
 	}
 
-	let home = std::path::PathBuf::from(
-		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"),
-	);
+	let home = PathBuf::from(env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"));
 
 	socket
 		.get_mut()
@@ -552,7 +542,7 @@ async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::Tc
 		.await
 		.expect("pending fixture response");
 
-	std::fs::write(home.join("active-provider-started"), "pending\n").expect("active witness");
+	fs::write(home.join("active-provider-started"), "pending\n").expect("active witness");
 
 	let mut byte = [0];
 	let read = socket.read(&mut byte).await;
@@ -563,7 +553,7 @@ async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::Tc
 		"provider did not observe cancellation: {read:?}"
 	);
 
-	std::fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
+	fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
 
 	true
 }

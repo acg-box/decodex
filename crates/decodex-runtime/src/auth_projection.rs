@@ -1,15 +1,17 @@
 //! Exact owner-safe projection of one daemon-held account into Codex shared auth.
 
 use std::{
+	env,
 	ffi::{CStr, CString},
 	fs::File,
-	io::{self, Read, Write},
+	io::{self, Error, Read as _, Write as _},
 	mem::MaybeUninit,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, RawFd},
 		unix::{ffi::OsStrExt as _, fs::MetadataExt as _},
 	},
 	path::{Component, Path, PathBuf},
+	process,
 	sync::{
 		Mutex,
 		atomic::{AtomicU64, Ordering},
@@ -17,14 +19,16 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
+use libc::{
+	AT_SYMLINK_NOFOLLOW, EEXIST, ENOENT, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW,
+	O_RDONLY, O_RDWR, S_IFMT, S_IFREG, stat, time_t, tm,
+};
 use serde::{Deserialize, Serialize, de::IgnoredAny};
-
 use sha2::{Digest as _, Sha256};
-
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
-	account_import::{CredentialSource, ImportedCredential, parse_shared_codex_source},
+	account_import::{self, CredentialSource, ImportedCredential},
 	host_credentials::CredentialSecretBundle,
 };
 
@@ -409,11 +413,11 @@ fn project_shared_codex_auth_with_precondition_at(
 }
 
 fn codex_home() -> Result<PathBuf, CodexAuthProjectionError> {
-	if std::env::var_os("CODEX_HOME").is_some_and(|value| !value.is_empty()) {
+	if env::var_os("CODEX_HOME").is_some_and(|value| !value.is_empty()) {
 		return Err(CodexAuthProjectionError::UnsafePath);
 	}
 
-	std::env::var_os("HOME")
+	env::var_os("HOME")
 		.filter(|value| !value.is_empty())
 		.map(PathBuf::from)
 		.ok_or(CodexAuthProjectionError::UnsafePath)
@@ -650,7 +654,7 @@ fn current_auth_matches(
 
 	if bundle.is_personal_access_token() {
 		return Ok(
-			matches!(parse_shared_codex_source(&bytes), Ok(CredentialSource::PersonalAccessToken(token)) if token.as_str() == bundle.access_token()),
+			matches!(account_import::parse_shared_codex_source(&bytes), Ok(CredentialSource::PersonalAccessToken(token)) if token.as_str() == bundle.access_token()),
 		);
 	}
 
@@ -743,7 +747,9 @@ fn read_snapshot_from_directory(
 		return Ok(SharedCodexAuthSnapshot::Unmanaged { version });
 	}
 
-	match parse_shared_codex_source(&bytes).map_err(|_| CodexAuthProjectionError::Unavailable)? {
+	match account_import::parse_shared_codex_source(&bytes)
+		.map_err(|_| CodexAuthProjectionError::Unavailable)?
+	{
 		CredentialSource::Oauth(credential) =>
 			Ok(SharedCodexAuthSnapshot::Managed { version, credential }),
 		CredentialSource::PersonalAccessToken(token) =>
@@ -824,9 +830,8 @@ fn now_rfc3339() -> Result<String, CodexAuthProjectionError> {
 		.duration_since(UNIX_EPOCH)
 		.map_err(|_| CodexAuthProjectionError::Unavailable)?
 		.as_secs();
-	let seconds: libc::time_t =
-		seconds.try_into().map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	let mut broken_down = MaybeUninit::<libc::tm>::zeroed();
+	let seconds: time_t = seconds.try_into().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	let mut broken_down = MaybeUninit::<tm>::zeroed();
 
 	if unsafe { libc::gmtime_r(&seconds, broken_down.as_mut_ptr()) }.is_null() {
 		return Err(CodexAuthProjectionError::Unavailable);
@@ -1011,12 +1016,8 @@ fn directory_entry_matches(parent: &File, name: &CStr, expected: &File) -> bool 
 fn open_directory_path(path: &Path) -> Result<File, CodexAuthProjectionError> {
 	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| CodexAuthProjectionError::UnsafePath)?;
-	let descriptor = unsafe {
-		libc::open(
-			path.as_ptr(),
-			libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-		)
-	};
+	let descriptor =
+		unsafe { libc::open(path.as_ptr(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW) };
 
 	file_from_descriptor(descriptor)
 }
@@ -1024,11 +1025,7 @@ fn open_directory_path(path: &Path) -> Result<File, CodexAuthProjectionError> {
 fn open_directory_at(parent: RawFd, name: &[u8]) -> Result<File, CodexAuthProjectionError> {
 	let name = CString::new(name).map_err(|_| CodexAuthProjectionError::UnsafePath)?;
 	let descriptor = unsafe {
-		libc::openat(
-			parent,
-			name.as_ptr(),
-			libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-		)
+		libc::openat(parent, name.as_ptr(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
 	};
 
 	file_from_descriptor(descriptor)
@@ -1075,18 +1072,18 @@ fn file_identity(file: &File) -> Result<TargetIdentity, CodexAuthProjectionError
 }
 
 fn inspect_target(directory: &File) -> Result<Option<TargetIdentity>, CodexAuthProjectionError> {
-	let mut status = MaybeUninit::<libc::stat>::zeroed();
+	let mut status = MaybeUninit::<stat>::zeroed();
 
 	if unsafe {
 		libc::fstatat(
 			directory.as_raw_fd(),
 			AUTH_FILE_NAME.as_ptr(),
 			status.as_mut_ptr(),
-			libc::AT_SYMLINK_NOFOLLOW,
+			AT_SYMLINK_NOFOLLOW,
 		)
 	} != 0
 	{
-		return if io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT) {
+		return if Error::last_os_error().raw_os_error() == Some(ENOENT) {
 			Ok(None)
 		} else {
 			Err(CodexAuthProjectionError::UnsafePath)
@@ -1096,7 +1093,7 @@ fn inspect_target(directory: &File) -> Result<Option<TargetIdentity>, CodexAuthP
 	let status = unsafe { status.assume_init() };
 	let effective_uid = unsafe { libc::geteuid() };
 
-	if status.st_mode & libc::S_IFMT != libc::S_IFREG
+	if status.st_mode & S_IFMT != S_IFREG
 		|| status.st_uid != effective_uid
 		|| status.st_mode & 0o7777 != 0o600
 		|| status.st_nlink != 1
@@ -1110,14 +1107,13 @@ fn inspect_target(directory: &File) -> Result<Option<TargetIdentity>, CodexAuthP
 fn create_temporary(directory: &File) -> Result<(File, CString), CodexAuthProjectionError> {
 	for _ in 0..TEMP_CREATE_ATTEMPTS {
 		let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-		let name =
-			CString::new(format!(".auth.json.decodex-{}-{sequence}.tmp", std::process::id()))
-				.expect("fixed temporary name contains no NUL");
+		let name = CString::new(format!(".auth.json.decodex-{}-{sequence}.tmp", process::id()))
+			.expect("fixed temporary name contains no NUL");
 		let descriptor = unsafe {
 			libc::openat(
 				directory.as_raw_fd(),
 				name.as_ptr(),
-				libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+				O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
 				0o600,
 			)
 		};
@@ -1125,7 +1121,7 @@ fn create_temporary(directory: &File) -> Result<(File, CString), CodexAuthProjec
 		if descriptor >= 0 {
 			return Ok((unsafe { File::from_raw_fd(descriptor) }, name));
 		}
-		if io::Error::last_os_error().raw_os_error() != Some(libc::EEXIST) {
+		if Error::last_os_error().raw_os_error() != Some(EEXIST) {
 			return Err(CodexAuthProjectionError::Unavailable);
 		}
 	}
@@ -1138,7 +1134,7 @@ fn open_target(directory: &File) -> Result<File, CodexAuthProjectionError> {
 		libc::openat(
 			directory.as_raw_fd(),
 			AUTH_FILE_NAME.as_ptr(),
-			libc::O_RDWR | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+			O_RDWR | O_CLOEXEC | O_NOFOLLOW,
 		)
 	};
 
@@ -1154,7 +1150,7 @@ fn open_target_readonly(directory: &File) -> Result<File, CodexAuthProjectionErr
 		libc::openat(
 			directory.as_raw_fd(),
 			AUTH_FILE_NAME.as_ptr(),
-			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+			O_RDONLY | O_CLOEXEC | O_NOFOLLOW,
 		)
 	};
 
@@ -1193,7 +1189,7 @@ fn readback_exact(file: &mut File, expected: &[u8]) -> io::Result<()> {
 	file.take((MAX_AUTH_FILE_BYTES + 1) as u64).read_to_end(&mut actual)?;
 
 	if actual.as_slice() != expected {
-		return Err(io::Error::other("Codex auth readback differs"));
+		return Err(Error::other("Codex auth readback differs"));
 	}
 
 	Ok(())
@@ -1202,24 +1198,20 @@ fn readback_exact(file: &mut File, expected: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
 	use std::{
-		fs,
+		env, fs,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink},
 		path::Path,
 	};
 
 	use serde_json::Value;
-	use tempfile::tempdir_in;
 
-	use super::{
-		CodexAuthProjectionError, PinnedSandboxFixtureHome, ProjectionFault,
-		SharedCodexAuthIdentity, current_auth_matches, open_codex_directory,
-		open_exact_sandbox_root, open_exact_sandbox_root_after_metadata,
-		open_pinned_sandbox_codex_directory, project_shared_codex_auth_at,
-		project_shared_codex_auth_cas_at, project_shared_codex_auth_with_precondition_at,
-		project_to_directory, read_file_stamp, read_identity_from_directory,
-		read_snapshot_from_directory,
+	use crate::{
+		auth_projection::{
+			self, CodexAuthProjectionError, PinnedSandboxFixtureHome, ProjectionFault,
+			SharedCodexAuthIdentity,
+		},
+		host_credentials::CredentialSecretBundle,
 	};
-	use crate::host_credentials::CredentialSecretBundle;
 
 	enum FixtureHome {
 		Ordinary(tempfile::TempDir),
@@ -1249,12 +1241,10 @@ mod tests {
 	}
 
 	fn fixture_home() -> FixtureHome {
-		if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref()
-			== Some(std::ffi::OsStr::new("1"))
-		{
+		if env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(std::ffi::OsStr::new("1")) {
 			FixtureHome::Sandboxed(PinnedSandboxFixtureHome::new().unwrap())
 		} else {
-			let home = tempdir_in(std::env::current_dir().unwrap()).unwrap();
+			let home = tempfile::tempdir_in(env::current_dir().unwrap()).unwrap();
 
 			fs::create_dir(home.path().join(".codex")).unwrap();
 
@@ -1272,14 +1262,15 @@ mod tests {
 		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
 		fs::create_dir(&home).unwrap();
 		fs::create_dir(home.join(".codex")).unwrap();
+		auth_projection::open_pinned_sandbox_codex_directory(&home, &root).unwrap();
 
-		open_pinned_sandbox_codex_directory(&home, &root).unwrap();
-
-		assert!(open_pinned_sandbox_codex_directory(fixture.path(), &root).is_err());
+		assert!(
+			auth_projection::open_pinned_sandbox_codex_directory(fixture.path(), &root).is_err()
+		);
 
 		fs::set_permissions(&root, fs::Permissions::from_mode(0o1700)).unwrap();
 
-		assert!(open_pinned_sandbox_codex_directory(&home, &root).is_err());
+		assert!(auth_projection::open_pinned_sandbox_codex_directory(&home, &root).is_err());
 
 		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
 
@@ -1287,14 +1278,14 @@ mod tests {
 
 		symlink(&root, &root_link).unwrap();
 
-		assert!(open_exact_sandbox_root(&root_link).is_err());
+		assert!(auth_projection::open_exact_sandbox_root(&root_link).is_err());
 
 		fs::remove_file(&root_link).unwrap();
 
 		let retained = fixture.path().join("retained-root");
 
 		assert!(
-			open_exact_sandbox_root_after_metadata(&root, || {
+			auth_projection::open_exact_sandbox_root_after_metadata(&root, || {
 				fs::rename(&root, &retained).unwrap();
 
 				symlink(&retained, &root).unwrap();
@@ -1309,7 +1300,9 @@ mod tests {
 
 		symlink(&home, &symlink_home).unwrap();
 
-		assert!(open_pinned_sandbox_codex_directory(&symlink_home, &root).is_err());
+		assert!(
+			auth_projection::open_pinned_sandbox_codex_directory(&symlink_home, &root).is_err()
+		);
 
 		fs::remove_file(symlink_home).unwrap();
 
@@ -1319,7 +1312,10 @@ mod tests {
 
 		symlink(home.join(".codex"), linked_codex_home.join(".codex")).unwrap();
 
-		assert!(open_pinned_sandbox_codex_directory(&linked_codex_home, &root).is_err());
+		assert!(
+			auth_projection::open_pinned_sandbox_codex_directory(&linked_codex_home, &root)
+				.is_err()
+		);
 
 		fs::remove_file(linked_codex_home.join(".codex")).unwrap();
 		fs::remove_dir(linked_codex_home).unwrap();
@@ -1337,13 +1333,23 @@ mod tests {
 	#[test]
 	fn projection_writes_only_the_native_codex_auth_shape_and_is_idempotent() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
-		project_to_directory(&directory, &bundle(Some("id-one"), "one"), "provider-one").unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-one"), "one"),
+			"provider-one",
+		)
+		.unwrap();
 
 		let first_inode = fs::metadata(home.path().join(".codex/auth.json")).unwrap().ino();
 
-		project_to_directory(&directory, &bundle(Some("id-one"), "one"), "provider-one").unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-one"), "one"),
+			"provider-one",
+		)
+		.unwrap();
 
 		let second_inode = fs::metadata(home.path().join(".codex/auth.json")).unwrap().ino();
 		let auth = read_auth(home.path());
@@ -1374,17 +1380,22 @@ mod tests {
 	#[test]
 	fn identity_readback_distinguishes_absent_and_managed_without_returning_tokens() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
 		assert_eq!(
-			read_identity_from_directory(&directory).unwrap(),
+			auth_projection::read_identity_from_directory(&directory).unwrap(),
 			SharedCodexAuthIdentity::Unmanaged,
 		);
 
-		project_to_directory(&directory, &bundle(Some("id-one"), "one"), "provider-one").unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-one"), "one"),
+			"provider-one",
+		)
+		.unwrap();
 
 		assert_eq!(
-			read_identity_from_directory(&directory).unwrap(),
+			auth_projection::read_identity_from_directory(&directory).unwrap(),
 			SharedCodexAuthIdentity::Chatgpt { provider_account_id: "provider-one".to_owned() },
 		);
 	}
@@ -1392,7 +1403,7 @@ mod tests {
 	#[test]
 	fn pat_projection_uses_native_shape_and_preserves_changed_source() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 		let bundle = CredentialSecretBundle::personal_access_token(
 			"synthetic-pat".into(),
 			"pat-user".into(),
@@ -1400,11 +1411,13 @@ mod tests {
 			None,
 		)
 		.unwrap();
-		let absent =
-			read_snapshot_from_directory(&directory, &read_file_stamp(&directory).unwrap())
-				.unwrap();
+		let absent = auth_projection::read_snapshot_from_directory(
+			&directory,
+			&auth_projection::read_file_stamp(&directory).unwrap(),
+		)
+		.unwrap();
 
-		project_shared_codex_auth_cas_at(
+		auth_projection::project_shared_codex_auth_cas_at(
 			home.path(),
 			&bundle,
 			"pat-account",
@@ -1418,8 +1431,11 @@ mod tests {
 			serde_json::json!({"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"synthetic-pat"})
 		);
 
-		let first = read_snapshot_from_directory(&directory, &read_file_stamp(&directory).unwrap())
-			.unwrap();
+		let first = auth_projection::read_snapshot_from_directory(
+			&directory,
+			&auth_projection::read_file_stamp(&directory).unwrap(),
+		)
+		.unwrap();
 
 		assert!(
 			matches!(&first, super::SharedCodexAuthSnapshot::PersonalAccessToken { token, .. } if token.as_str() == "synthetic-pat")
@@ -1428,7 +1444,7 @@ mod tests {
 		let target = home.path().join(".codex/auth.json");
 		let inode = fs::metadata(&target).unwrap().ino();
 
-		project_shared_codex_auth_cas_at(
+		auth_projection::project_shared_codex_auth_cas_at(
 			home.path(),
 			&bundle,
 			"pat-account",
@@ -1442,7 +1458,7 @@ mod tests {
 		fs::write(&target, br#"{"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"external-pat"}"#).unwrap();
 
 		assert_eq!(
-			project_shared_codex_auth_cas_at(
+			auth_projection::project_shared_codex_auth_cas_at(
 				home.path(),
 				&bundle,
 				"pat-account",
@@ -1457,12 +1473,17 @@ mod tests {
 	#[test]
 	fn exact_readback_rejects_stale_tokens_for_the_same_provider_identity() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
-		project_to_directory(&directory, &bundle(Some("id-one"), "one"), "provider-one").unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-one"), "one"),
+			"provider-one",
+		)
+		.unwrap();
 
 		assert!(
-			current_auth_matches(
+			auth_projection::current_auth_matches(
 				&directory,
 				&bundle(Some("id-one"), "one"),
 				Some("id-one"),
@@ -1471,7 +1492,7 @@ mod tests {
 			.unwrap()
 		);
 		assert!(
-			!current_auth_matches(
+			!auth_projection::current_auth_matches(
 				&directory,
 				&bundle(Some("id-two"), "two"),
 				Some("id-two"),
@@ -1484,28 +1505,50 @@ mod tests {
 	#[test]
 	fn later_projection_replaces_a_stale_bundle_for_the_same_provider_identity() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 		let initial = bundle(Some("id-one"), "one");
 		let rotated = bundle(Some("id-two"), "two");
 
-		project_to_directory(&directory, &initial, "provider-one").unwrap();
-		project_to_directory(&directory, &rotated, "provider-one").unwrap();
+		auth_projection::project_to_directory(&directory, &initial, "provider-one").unwrap();
+		auth_projection::project_to_directory(&directory, &rotated, "provider-one").unwrap();
 
 		assert!(
-			current_auth_matches(&directory, &rotated, Some("id-two"), "provider-one").unwrap()
+			auth_projection::current_auth_matches(
+				&directory,
+				&rotated,
+				Some("id-two"),
+				"provider-one"
+			)
+			.unwrap()
 		);
 		assert!(
-			!current_auth_matches(&directory, &initial, Some("id-one"), "provider-one").unwrap()
+			!auth_projection::current_auth_matches(
+				&directory,
+				&initial,
+				Some("id-one"),
+				"provider-one"
+			)
+			.unwrap()
 		);
 	}
 
 	#[test]
 	fn projection_atomically_replaces_another_account() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
-		project_to_directory(&directory, &bundle(Some("id-one"), "one"), "provider-one").unwrap();
-		project_to_directory(&directory, &bundle(Some("id-two"), "two"), "provider-two").unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-one"), "one"),
+			"provider-one",
+		)
+		.unwrap();
+		auth_projection::project_to_directory(
+			&directory,
+			&bundle(Some("id-two"), "two"),
+			"provider-two",
+		)
+		.unwrap();
 
 		let auth = read_auth(home.path());
 
@@ -1516,13 +1559,13 @@ mod tests {
 	#[test]
 	fn conditional_projection_preserves_a_source_that_changed_before_replace() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 		let first = bundle(Some("id-one"), "one");
 		let second = bundle(Some("id-two"), "two");
 		let concurrent = bundle(Some("id-three"), "three");
 
-		project_to_directory(&directory, &first, "provider-one").unwrap();
-		project_shared_codex_auth_with_precondition_at(
+		auth_projection::project_to_directory(&directory, &first, "provider-one").unwrap();
+		auth_projection::project_shared_codex_auth_with_precondition_at(
 			home.path(),
 			&second,
 			"provider-two",
@@ -1533,10 +1576,10 @@ mod tests {
 
 		assert_eq!(read_auth(home.path())["tokens"]["account_id"], "provider-two");
 
-		project_to_directory(&directory, &concurrent, "provider-three").unwrap();
+		auth_projection::project_to_directory(&directory, &concurrent, "provider-three").unwrap();
 
 		assert_eq!(
-			project_shared_codex_auth_with_precondition_at(
+			auth_projection::project_shared_codex_auth_with_precondition_at(
 				home.path(),
 				&second,
 				"provider-two",
@@ -1551,16 +1594,17 @@ mod tests {
 	#[test]
 	fn exact_version_cas_preserves_changed_unmanaged_and_absent_sources() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 		let target = home.path().join(".codex/auth.json");
-		let absent_stamp = read_file_stamp(&directory).unwrap();
-		let absent = read_snapshot_from_directory(&directory, &absent_stamp).unwrap();
+		let absent_stamp = auth_projection::read_file_stamp(&directory).unwrap();
+		let absent =
+			auth_projection::read_snapshot_from_directory(&directory, &absent_stamp).unwrap();
 
 		fs::write(&target, br#"{"auth_mode":"apikey","OPENAI_API_KEY":null}"#).unwrap();
 		fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
 
 		assert_eq!(
-			project_shared_codex_auth_cas_at(
+			auth_projection::project_shared_codex_auth_cas_at(
 				home.path(),
 				&bundle(Some("id-target"), "target"),
 				"provider-target",
@@ -1570,13 +1614,14 @@ mod tests {
 			Err(CodexAuthProjectionError::SourceChanged),
 		);
 
-		let unmanaged_stamp = read_file_stamp(&directory).unwrap();
-		let unmanaged = read_snapshot_from_directory(&directory, &unmanaged_stamp).unwrap();
+		let unmanaged_stamp = auth_projection::read_file_stamp(&directory).unwrap();
+		let unmanaged =
+			auth_projection::read_snapshot_from_directory(&directory, &unmanaged_stamp).unwrap();
 
 		fs::write(&target, br#"{"auth_mode":"apikey","OPENAI_API_KEY":"changed"}"#).unwrap();
 
 		assert_eq!(
-			project_shared_codex_auth_cas_at(
+			auth_projection::project_shared_codex_auth_cas_at(
 				home.path(),
 				&bundle(Some("id-target"), "target"),
 				"provider-target",
@@ -1591,16 +1636,16 @@ mod tests {
 	#[test]
 	fn partial_shared_auth_is_unavailable_and_is_never_interpreted_as_absent() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 		let target = home.path().join(".codex/auth.json");
 
 		fs::write(&target, b"{").unwrap();
 		fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
 
-		let stamp = read_file_stamp(&directory).unwrap();
+		let stamp = auth_projection::read_file_stamp(&directory).unwrap();
 
 		assert!(matches!(
-			read_snapshot_from_directory(&directory, &stamp),
+			auth_projection::read_snapshot_from_directory(&directory, &stamp),
 			Err(CodexAuthProjectionError::Unavailable)
 		));
 		assert_eq!(fs::read(&target).unwrap(), b"{");
@@ -1610,18 +1655,22 @@ mod tests {
 	fn temporary_write_failure_removes_credentials_and_preserves_existing_auth() {
 		for existing in [false, true] {
 			let home = fixture_home();
-			let directory = open_codex_directory(home.path()).unwrap();
+			let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 			let target = home.path().join(".codex/auth.json");
 
 			if existing {
-				project_to_directory(&directory, &bundle(Some("old-id"), "old"), "old-account")
-					.unwrap();
+				auth_projection::project_to_directory(
+					&directory,
+					&bundle(Some("old-id"), "old"),
+					"old-account",
+				)
+				.unwrap();
 			}
 
 			let before = fs::read(&target).ok();
 
 			assert_eq!(
-				project_shared_codex_auth_at(
+				auth_projection::project_shared_codex_auth_at(
 					home.path(),
 					&bundle(Some("new-id"), "new"),
 					"new-account",
@@ -1642,7 +1691,7 @@ mod tests {
 		let home = fixture_home();
 
 		assert_eq!(
-			project_shared_codex_auth_at(
+			auth_projection::project_shared_codex_auth_at(
 				home.path(),
 				&bundle(Some("id-before"), "before"),
 				"provider-before",
@@ -1666,15 +1715,20 @@ mod tests {
 			let bundle = bundle(Some("id-reconcile"), "reconcile");
 
 			assert_eq!(
-				project_shared_codex_auth_at(home.path(), &bundle, "provider-reconcile", fault,),
+				auth_projection::project_shared_codex_auth_at(
+					home.path(),
+					&bundle,
+					"provider-reconcile",
+					fault,
+				),
 				Err(CodexAuthProjectionError::OutcomeUnknown),
 				"{fault:?}",
 			);
 
-			let directory = open_codex_directory(home.path()).unwrap();
+			let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
 			assert!(
-				current_auth_matches(
+				auth_projection::current_auth_matches(
 					&directory,
 					&bundle,
 					Some("id-reconcile"),
@@ -1684,7 +1738,7 @@ mod tests {
 				"{fault:?}",
 			);
 
-			project_shared_codex_auth_at(
+			auth_projection::project_shared_codex_auth_at(
 				home.path(),
 				&bundle,
 				"provider-reconcile",
@@ -1697,10 +1751,14 @@ mod tests {
 	#[test]
 	fn projection_rejects_missing_id_token() {
 		let home = fixture_home();
-		let directory = open_codex_directory(home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(home.path()).unwrap();
 
 		assert_eq!(
-			project_to_directory(&directory, &bundle(None, "missing"), "provider-missing"),
+			auth_projection::project_to_directory(
+				&directory,
+				&bundle(None, "missing"),
+				"provider-missing"
+			),
 			Err(CodexAuthProjectionError::MissingIdentityToken),
 		);
 		assert!(!home.path().join(".codex/auth.json").exists());
@@ -1715,10 +1773,14 @@ mod tests {
 
 		symlink(&outside, symlink_home.path().join(".codex/auth.json")).unwrap();
 
-		let directory = open_codex_directory(symlink_home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(symlink_home.path()).unwrap();
 
 		assert_eq!(
-			project_to_directory(&directory, &bundle(Some("id"), "symlink"), "provider"),
+			auth_projection::project_to_directory(
+				&directory,
+				&bundle(Some("id"), "symlink"),
+				"provider"
+			),
 			Err(CodexAuthProjectionError::UnsafePath),
 		);
 		assert_eq!(fs::read(&outside).unwrap(), b"outside");
@@ -1729,10 +1791,14 @@ mod tests {
 		fs::write(&auth, b"{}").unwrap();
 		fs::set_permissions(&auth, fs::Permissions::from_mode(0o644)).unwrap();
 
-		let directory = open_codex_directory(mode_home.path()).unwrap();
+		let directory = auth_projection::open_codex_directory(mode_home.path()).unwrap();
 
 		assert_eq!(
-			project_to_directory(&directory, &bundle(Some("id"), "mode"), "provider"),
+			auth_projection::project_to_directory(
+				&directory,
+				&bundle(Some("id"), "mode"),
+				"provider"
+			),
 			Err(CodexAuthProjectionError::UnsafePath),
 		);
 		assert_eq!(fs::metadata(auth).unwrap().permissions().mode() & 0o777, 0o644);
@@ -1746,7 +1812,7 @@ mod tests {
 		fs::set_permissions(&codex, fs::Permissions::from_mode(0o777)).unwrap();
 
 		assert!(matches!(
-			open_codex_directory(home.path()),
+			auth_projection::open_codex_directory(home.path()),
 			Err(CodexAuthProjectionError::UnsafePath)
 		));
 	}

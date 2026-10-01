@@ -1,4 +1,6 @@
 //! Narrow provider session keeps the account lock alive across preflight and send.
+use std::{future::Future, pin::Pin};
+
 use crate::{
 	account_api::{AccountApiInventory, AccountApiRuntime, AccountApiRuntimeError},
 	account_launch::ResetCardServiceError,
@@ -6,7 +8,6 @@ use crate::{
 };
 use decodex_codex::{ExactResetCreditId, ResetCardIdempotencyKey};
 use decodex_core::{AccountId, ResetCardConsumeOutcome};
-use std::{future::Future, pin::Pin};
 
 type ResultFuture<'a, T> =
 	Pin<Box<dyn Future<Output = Result<T, ResetCardServiceError>> + Send + 'a>>;

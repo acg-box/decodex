@@ -4,21 +4,21 @@
 
 use std::time::Duration;
 
-use decodex_core::{AccountId, ProcessGenerationAccountBinding};
-
-use reqwest::{RequestBuilder, Url};
-
+use reqwest::{Client, RequestBuilder, Url};
 use serde_json::Value;
+use tokio::task;
 
-use super::{
-	AttestedAppServerLaunch, AttestedAppServerProfile, RunnerCapacity,
-	process::{
-		AccountBinding, AccountIdentity, CredentialProjection, CredentialVault,
-		CredentialVaultError,
+use crate::{
+	account_launch::{
+		AttestedAppServerLaunch, AttestedAppServerProfile, RunnerCapacity,
+		process::{
+			AccountBinding, AccountIdentity, CredentialProjection, CredentialVault,
+			CredentialVaultError,
+		},
 	},
+	account_service::AccountApiCredential,
 };
-
-use crate::account_service::AccountApiCredential;
+use decodex_core::{AccountId, ProcessGenerationAccountBinding};
 
 const POLICY_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -83,7 +83,7 @@ impl ActivationPolicy {
 		Ok(Self { responses_url, routing, residency })
 	}
 
-	pub(crate) fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+	pub(crate) fn request(&self, client: &Client) -> RequestBuilder {
 		let mut request = client.post(self.responses_url.clone());
 
 		if let Some(routing) = self.routing {
@@ -134,7 +134,7 @@ pub(crate) async fn read_activation_policy(
 	account_id: AccountId,
 	credential: AccountApiCredential,
 ) -> Result<(ActivationPolicy, AccountApiCredential), ()> {
-	tokio::task::spawn_blocking(move || {
+	task::spawn_blocking(move || {
 		let binding = ProcessGenerationAccountBinding::new(
 			credential.account_revision,
 			credential.binding.clone(),
@@ -182,16 +182,16 @@ fn https_url(value: &str) -> Result<Url, ()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::account_launch::activation_policy::{ActivationPolicy, Value};
 
 	fn account(origin: &str, routing: &str) -> Value {
-		json!({"workspaceRouting":{"chatgptAccountId":"selected", "backendOrigin":origin,"accountRoutingOverride":routing}})
+		serde_json::json!({"workspaceRouting":{"chatgptAccountId":"selected", "backendOrigin":origin,"accountRoutingOverride":routing}})
 	}
 
 	#[test]
 	fn native_route_keeps_path_and_both_independent_policy_headers() {
-		let requirements = json!({"requirements":{"chatgptBaseUrl":"https://gov.example/custom", "enforceResidency":"us"}});
+		let requirements = serde_json::json!({"requirements":{"chatgptBaseUrl":"https://gov.example/custom", "enforceResidency":"us"}});
 		let policy = ActivationPolicy::decode(
 			&account("https://gov.example", "us_cr"),
 			&requirements,
@@ -206,7 +206,7 @@ mod tests {
 
 		let policy = ActivationPolicy::decode(
 			&account("https://chatgpt.com", "NO_CONSTRAINT"),
-			&json!({"requirements":null}),
+			&serde_json::json!({"requirements":null}),
 			"selected",
 		)
 		.unwrap();
@@ -217,19 +217,23 @@ mod tests {
 	#[test]
 	fn incomplete_mismatched_or_changed_native_policy_cannot_authorize_a_request() {
 		let route = account("https://gov.example", "us");
-		let unrestricted = json!({"requirements":null});
+		let unrestricted = serde_json::json!({"requirements":null});
 
 		assert!(ActivationPolicy::decode(&route, &unrestricted, "other").is_err());
 		assert!(
-			ActivationPolicy::decode(&json!({"workspaceRouting":null}), &unrestricted, "selected")
-				.is_err()
+			ActivationPolicy::decode(
+				&serde_json::json!({"workspaceRouting":null}),
+				&unrestricted,
+				"selected"
+			)
+			.is_err()
 		);
 
 		for requirements in [
-			json!({}),
-			json!({"requirements":{}}),
-			json!({"requirements":{"chatgptBaseUrl":"https://other.example", "enforceResidency":null}}),
-			json!({"requirements":{"chatgptBaseUrl":null,"enforceResidency":"future"}}),
+			serde_json::json!({}),
+			serde_json::json!({"requirements":{}}),
+			serde_json::json!({"requirements":{"chatgptBaseUrl":"https://other.example", "enforceResidency":null}}),
+			serde_json::json!({"requirements":{"chatgptBaseUrl":null,"enforceResidency":"future"}}),
 		] {
 			assert!(ActivationPolicy::decode(&route, &requirements, "selected").is_err());
 		}

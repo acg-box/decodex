@@ -16,7 +16,7 @@ use std::{
 	ffi::{CStr, CString, OsStr},
 	fmt::{Debug, Formatter},
 	fs::{File, Metadata},
-	mem::MaybeUninit,
+	mem::{self, MaybeUninit},
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _},
 		unix::{ffi::OsStrExt as _, fs::MetadataExt as _},
@@ -35,7 +35,7 @@ use decodex_codex::{
 };
 
 use decodex_core::{
-	AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
+	self, AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
 	ContextPackPolicy, ContextPackSource, ContextSourceKind, ContinuationRejection, ConversationId,
 	ExecutionConsumer, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
 	ItemStatus, MAX_CONTEXT_PACK_BYTES, MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES,
@@ -44,11 +44,11 @@ use decodex_core::{
 	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
 	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
 	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
-	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
+	RuntimeSessionState, TurnId, TurnRole,
 };
 
 use decodex_database::{
-	AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
+	self, AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
 	ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
 	AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome, CommandIdentity,
 	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
@@ -61,17 +61,13 @@ use decodex_database::{
 	ReconcileStrandedConversationTurnOutcome, RecordHistoryItem, RecoverUnknownConversationTurn,
 	RecoverUnknownConversationTurnOutcome, RoleProfileRole, SqliteStore, StoreError,
 	TerminalizeConversationTurn, TurnReservationOutcome, UnknownConversationAttemptReadback,
-	bounded_conversation_title,
 };
 
 use decodex_protocol::{ConversationUnavailableReason, HistoryText, MAX_HISTORY_INLINE_BYTES};
 
 use sha2::{Digest as _, Sha256};
 
-use tokio::{
-	sync::{Mutex as AsyncMutex, mpsc as tokio_mpsc},
-	task::{self, JoinSet},
-};
+use tokio::task::{self, JoinSet};
 
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl, ProviderAttemptReconciliation,
@@ -90,16 +86,21 @@ use crate::{
 };
 
 use crate::account_launch::process::{
-	AccountBinding, AccountIdentity, AccountRefreshCallback as ProcessAccountRefreshCallback,
+	self, AccountBinding, AccountIdentity, AccountRefreshCallback as ProcessAccountRefreshCallback,
 	AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
 	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
 	ConversationProcessEvent, ConversationRejectionReason, CredentialProjection, CredentialVault,
 	CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart,
-	ResumedOrdinaryThread, StartedOrdinaryTurn, spawn_admitted_agent_process,
-	spawn_admitted_conversation_process,
+	ResumedOrdinaryThread, StartedOrdinaryTurn,
 };
 
-use execution_overrides::{apply_start_overrides, apply_turn_overrides, inherit_resume_settings};
+use decodex_protocol::AgentCapabilitiesResult;
+use execution_overrides::inherit_resume_settings;
+
+use tokio::{
+	sync::{oneshot, watch},
+	time,
+};
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -236,8 +237,8 @@ impl ConversationRuntime {
 		launch_profile: AttestedAppServerProfile,
 		capacity: Arc<RunnerCapacity>,
 	) -> Self {
-		let (events, event_receiver) = tokio_mpsc::channel(EVENT_QUEUE_CAPACITY);
-		let (event_stream_closed, _) = tokio::sync::watch::channel(false);
+		let (events, event_receiver) = tokio::sync::mpsc::channel(EVENT_QUEUE_CAPACITY);
+		let (event_stream_closed, _) = watch::channel(false);
 
 		Self {
 			inner: Arc::new(ConversationRuntimeInner {
@@ -251,13 +252,13 @@ impl ConversationRuntime {
 				capacity,
 				local: Mutex::new(BTreeMap::new()),
 				events,
-				event_receiver: AsyncMutex::new(event_receiver),
+				event_receiver: tokio::sync::Mutex::new(event_receiver),
 				event_stream_closed,
-				workers: AsyncMutex::new(JoinSet::new()),
+				workers: tokio::sync::Mutex::new(JoinSet::new()),
 				shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-				agent_launch: AsyncMutex::new(()),
+				agent_launch: tokio::sync::Mutex::new(()),
 				agent_process: Mutex::new(None),
-				initial_catalog: Arc::new(AsyncMutex::new(())),
+				initial_catalog: Arc::new(tokio::sync::Mutex::new(())),
 			}),
 		}
 	}
@@ -305,7 +306,7 @@ impl ConversationRuntime {
 				runtime.idle_model_capabilities(conversation, session).await
 			});
 
-			return tokio::time::timeout(Duration::from_secs(12), query)
+			return time::timeout(Duration::from_secs(12), query)
 				.await
 				.ok()
 				.and_then(Result::ok)
@@ -320,8 +321,6 @@ impl ConversationRuntime {
 		conversation: String,
 		session: LocalSession,
 	) -> decodex_protocol::AgentCapabilitiesResult {
-		use decodex_protocol::AgentCapabilitiesResult;
-
 		let before =
 			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
 		let control = self.inner.process_generations.clone();
@@ -388,8 +387,6 @@ impl ConversationRuntime {
 		&self,
 		conversation: &str,
 	) -> decodex_protocol::AgentCapabilitiesResult {
-		use decodex_protocol::AgentCapabilitiesResult;
-
 		let (source, commands) = {
 			let local = self.local();
 			let Some(LocalTask { state: LocalTaskState::Active { session, commands, .. }, .. }) =
@@ -403,14 +400,13 @@ impl ConversationRuntime {
 		let Ok(before) = self.inner.accounts.inspect(&source.account_id).await else {
 			return AgentCapabilitiesResult::Unavailable;
 		};
-		let (reply, result) = tokio::sync::oneshot::channel();
+		let (reply, result) = oneshot::channel();
 
 		if commands.try_send(WorkerCommand::ModelCatalog(reply)).is_err() {
 			return AgentCapabilitiesResult::Unavailable;
 		}
 
-		let Ok(Ok(Some(models))) = tokio::time::timeout(Duration::from_secs(12), result).await
-		else {
+		let Ok(Ok(Some(models))) = time::timeout(Duration::from_secs(12), result).await else {
 			return AgentCapabilitiesResult::Unavailable;
 		};
 		let Ok(after) = self.inner.accounts.inspect(&source.account_id).await else {
@@ -833,7 +829,7 @@ impl ConversationRuntime {
 
 	#[allow(clippy::too_many_lines)]
 	async fn create_inner(&self, command: CreateConversation) -> ConversationOutcome {
-		let title = bounded_conversation_title(&command.message);
+		let title = decodex_database::bounded_conversation_title(&command.message);
 		let conversation_command = match command.creation_identity() {
 			Ok(command) => command,
 			Err(()) => return ConversationOutcome::Conflict,
@@ -1599,7 +1595,7 @@ impl ConversationRuntime {
 			runtime_session.profile_snapshot.instructions.clone(),
 		)
 		.map(|request| {
-			apply_start_overrides(
+			execution_overrides::apply_start_overrides(
 				request.with_service_tier(command.execution.service_tier.clone()),
 				command.overrides,
 			)
@@ -1922,7 +1918,7 @@ impl ConversationRuntime {
 		)
 		.map_err(|_| StoreError::InvalidInput("Conversation Context Pack pin is invalid"))?;
 
-		compile_context_pack(ContextPackInput {
+		decodex_core::compile_context_pack(ContextPackInput {
 			conversation_id: conversation_id.clone(),
 			possible_side_effects: PossibleSideEffects::Unknown,
 			policy,
@@ -2362,7 +2358,7 @@ impl ConversationRuntime {
 		)
 		.and_then(|request| request.with_client_user_message_id(turn_id.as_str()))
 		.map(|request| {
-			apply_turn_overrides(
+			execution_overrides::apply_turn_overrides(
 				request.with_user_trigger().with_service_tier(session.service_tier.clone()),
 				session.execution_overrides,
 			)
@@ -2759,7 +2755,7 @@ impl ConversationRuntime {
 			return;
 		}
 
-		let (output, mut outputs) = tokio_mpsc::channel(EVENT_QUEUE_CAPACITY);
+		let (output, mut outputs) = tokio::sync::mpsc::channel(EVENT_QUEUE_CAPACITY);
 		let control = self.inner.process_generations.clone();
 		let process = context.session.process.clone();
 		let thread_id = context.session.codex_thread_id.clone();
@@ -4073,7 +4069,7 @@ impl ConversationRuntime {
 		let mut workers = {
 			let mut shared = self.inner.workers.lock().await;
 
-			std::mem::take(&mut *shared)
+			mem::take(&mut *shared)
 		};
 
 		while workers.join_next().await.is_some() {}
@@ -4375,7 +4371,7 @@ impl ConversationRuntime {
 			.map_err(|_| ConversationManualRecovery::ProcessUnavailable)??;
 		let mut process = match admission {
 			AccountLaunchAdmission::Conversation(admission) =>
-				spawn_admitted_conversation_process(
+				process::spawn_admitted_conversation_process(
 					&self.inner.process_generations,
 					admission,
 					self.inner.execution_authorization.clone(),
@@ -4384,7 +4380,7 @@ impl ConversationRuntime {
 				)
 				.await,
 			AccountLaunchAdmission::Agent { root_id, operation_key, generation_id } =>
-				spawn_admitted_agent_process(
+				process::spawn_admitted_agent_process(
 					&self.inner.process_generations,
 					root_id,
 					operation_key,
@@ -4993,7 +4989,7 @@ impl ConversationRuntime {
 				action: ConversationManualRecovery::MissingLocalProcess,
 			}));
 		};
-		let current = std::mem::replace(&mut task.state, LocalTaskState::Establishing);
+		let current = mem::replace(&mut task.state, LocalTaskState::Establishing);
 
 		match current {
 			LocalTaskState::Ready(mut session) => {
@@ -5515,7 +5511,7 @@ pub(crate) struct StartAgentProcess {
 /// Already authenticated and initialized; the runtime retains process ownership.
 pub(crate) struct AgentConnection {
 	pub client: decodex_codex::app_server_client::AppServerClient,
-	pub events: tokio_mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+	pub events: tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
 	pub account_id: AccountId,
 	pub process_generation_id: ProcessGenerationId,
 }
@@ -5619,14 +5615,14 @@ struct ConversationRuntimeInner {
 	launch_profile: AttestedAppServerProfile,
 	capacity: Arc<RunnerCapacity>,
 	local: Mutex<BTreeMap<String, LocalTask>>,
-	events: tokio_mpsc::Sender<ConversationOutcome>,
-	event_receiver: AsyncMutex<tokio_mpsc::Receiver<ConversationOutcome>>,
+	events: tokio::sync::mpsc::Sender<ConversationOutcome>,
+	event_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<ConversationOutcome>>,
 	event_stream_closed: tokio::sync::watch::Sender<bool>,
-	workers: AsyncMutex<JoinSet<()>>,
+	workers: tokio::sync::Mutex<JoinSet<()>>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
-	agent_launch: AsyncMutex<()>,
+	agent_launch: tokio::sync::Mutex<()>,
 	agent_process: Mutex<Option<RetainedAgentProcess>>,
-	initial_catalog: Arc<AsyncMutex<()>>,
+	initial_catalog: Arc<tokio::sync::Mutex<()>>,
 }
 
 struct RetainedAgentProcess {
@@ -6257,7 +6253,7 @@ fn run_event_worker(
 	provider_turn_id: String,
 	commands: mpsc::Receiver<WorkerCommand>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
-	output: tokio_mpsc::Sender<WorkerOutput>,
+	output: tokio::sync::mpsc::Sender<WorkerOutput>,
 ) {
 	let result = control.with_fenced_child(&process, |child| {
 		run_event_loop(child, thread_id, provider_turn_id, commands, &shutting_down, &output)
@@ -6274,7 +6270,7 @@ fn run_event_loop(
 	provider_turn_id: String,
 	commands: mpsc::Receiver<WorkerCommand>,
 	shutting_down: &std::sync::atomic::AtomicBool,
-	output: &tokio_mpsc::Sender<WorkerOutput>,
+	output: &tokio::sync::mpsc::Sender<WorkerOutput>,
 ) -> Result<(), ConversationProcessError> {
 	let thread_id =
 		ExactThreadId::new(thread_id).map_err(|_| ConversationProcessError::Incompatible)?;
@@ -6705,20 +6701,21 @@ async fn retire_agent_process_slot<F: std::future::Future<Output = bool>>(
 
 #[cfg(test)]
 mod tests {
-	use decodex_core::{ContinuationRejection, TurnId, TurnStatus};
+	use std::{future, sync::mpsc};
 
-	use decodex_database::{TurnReservationOutcome, TurnReservationReadback};
+	use tokio::{io, sync::oneshot};
 
-	use super::{
-		ConversationManualRecovery, account_recovery, continuation_recovery, derived_uuid,
-		request_digest, scoped_key, turn_admits_execution,
+	use crate::{
+		account_launch::process::tests,
+		account_service::AccountLifecycleError,
+		conversation::{self, ConversationManualRecovery},
 	};
-
-	use crate::account_service::AccountLifecycleError;
+	use decodex_core::{ContinuationRejection, TurnId, TurnStatus};
+	use decodex_database::{TurnReservationOutcome, TurnReservationReadback};
 
 	fn reservation(status: TurnStatus, revision: i64) -> TurnReservationReadback {
 		TurnReservationReadback {
-			turn_id: TurnId::new(derived_uuid("test-turn", &["ordinary-task"]))
+			turn_id: TurnId::new(conversation::derived_uuid("test-turn", &["ordinary-task"]))
 				.expect("derived test Turn UUID is valid"),
 			sequence: 1,
 			status,
@@ -6729,10 +6726,9 @@ mod tests {
 	#[test]
 	fn active_catalog_query_delivers_completion_once_even_when_catalog_is_rejected() {
 		for mode in ["exact", "exact-catalog-rejected"] {
-			let (_temp, mut child) =
-				crate::account_launch::process::tests::ordinary_catalog_child(mode);
-			let (commands, receiver) = std::sync::mpsc::channel();
-			let (reply, mut result) = tokio::sync::oneshot::channel();
+			let (_temp, mut child) = tests::ordinary_catalog_child(mode);
+			let (commands, receiver) = mpsc::channel();
+			let (reply, mut result) = oneshot::channel();
 
 			commands.send(super::WorkerCommand::ModelCatalog(reply)).unwrap();
 
@@ -6763,19 +6759,18 @@ mod tests {
 
 	#[test]
 	fn only_active_revision_one_turn_authority_admits_execution() {
-		assert!(turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+		assert!(conversation::turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
 			TurnStatus::Active,
 			1,
 		))));
-		assert!(turn_admits_execution(&TurnReservationOutcome::Replayed(reservation(
-			TurnStatus::Active,
-			1,
-		))));
-		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+		assert!(conversation::turn_admits_execution(&TurnReservationOutcome::Replayed(
+			reservation(TurnStatus::Active, 1,)
+		)));
+		assert!(!conversation::turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
 			TurnStatus::Active,
 			2,
 		))));
-		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+		assert!(!conversation::turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
 			TurnStatus::Completed,
 			1,
 		))));
@@ -6783,16 +6778,25 @@ mod tests {
 
 	#[test]
 	fn ordinary_task_identities_are_deterministic_and_scope_separated() {
-		let digest = request_digest(&["account", "conversation"]);
+		let digest = conversation::request_digest(&["account", "conversation"]);
 
-		assert_eq!(digest, request_digest(&["account", "conversation"]));
-		assert_ne!(digest, request_digest(&["conversation", "account"]));
-		assert_ne!(scoped_key("route", "command"), scoped_key("continue", "command"));
+		assert_eq!(digest, conversation::request_digest(&["account", "conversation"]));
+		assert_ne!(digest, conversation::request_digest(&["conversation", "account"]));
+		assert_ne!(
+			conversation::scoped_key("route", "command"),
+			conversation::scoped_key("continue", "command")
+		);
 
-		let first = derived_uuid("provider-attempt", &["account", "conversation"]);
+		let first = conversation::derived_uuid("provider-attempt", &["account", "conversation"]);
 
-		assert_eq!(first, derived_uuid("provider-attempt", &["account", "conversation"]));
-		assert_ne!(first, derived_uuid("runtime-session", &["account", "conversation"]));
+		assert_eq!(
+			first,
+			conversation::derived_uuid("provider-attempt", &["account", "conversation"])
+		);
+		assert_ne!(
+			first,
+			conversation::derived_uuid("runtime-session", &["account", "conversation"])
+		);
 		assert_eq!(first.as_bytes()[14], b'4');
 		assert!(matches!(first.as_bytes()[19], b'8' | b'9' | b'a' | b'b'));
 	}
@@ -6800,19 +6804,19 @@ mod tests {
 	#[test]
 	fn account_failures_preserve_typed_manual_recovery() {
 		assert_eq!(
-			account_recovery(AccountLifecycleError::AccountDisabled),
+			conversation::account_recovery(AccountLifecycleError::AccountDisabled),
 			ConversationManualRecovery::EnableAccount
 		);
 		assert_eq!(
-			account_recovery(AccountLifecycleError::ProviderMismatch),
+			conversation::account_recovery(AccountLifecycleError::ProviderMismatch),
 			ConversationManualRecovery::RestoreProviderAgreement
 		);
 		assert_eq!(
-			account_recovery(AccountLifecycleError::StaleAccount),
+			conversation::account_recovery(AccountLifecycleError::StaleAccount),
 			ConversationManualRecovery::SelectedAccountDrift
 		);
 		assert_eq!(
-			account_recovery(AccountLifecycleError::AccountMissing),
+			conversation::account_recovery(AccountLifecycleError::AccountMissing),
 			ConversationManualRecovery::MissingLocalProcess
 		);
 	}
@@ -6820,18 +6824,25 @@ mod tests {
 	#[test]
 	fn continuation_account_recovery_is_typed_without_reselection() {
 		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountDrift),
+			conversation::continuation_recovery(ContinuationRejection::SelectedAccountDrift),
 			Some(ConversationManualRecovery::SelectedAccountDrift),
 		);
 		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountReadinessRequired),
+			conversation::continuation_recovery(
+				ContinuationRejection::SelectedAccountReadinessRequired
+			),
 			Some(ConversationManualRecovery::SelectedAccountReadiness),
 		);
 		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountQuotaRequired),
+			conversation::continuation_recovery(
+				ContinuationRejection::SelectedAccountQuotaRequired
+			),
 			Some(ConversationManualRecovery::RefreshQuota),
 		);
-		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
+		assert_eq!(
+			conversation::continuation_recovery(ContinuationRejection::SameThreadUnavailable),
+			None
+		);
 	}
 
 	#[tokio::test]
@@ -6908,13 +6919,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn cancelled_agent_retirement_keeps_the_revoked_slot_for_exact_retry() {
-		let generation = decodex_core::ProcessGenerationId::new(derived_uuid(
+		let generation = decodex_core::ProcessGenerationId::new(conversation::derived_uuid(
 			"generation",
 			&["cancelled-retirement"],
 		))
 		.unwrap();
-		let (io, _server) = tokio::io::duplex(4_096);
-		let (reader, writer) = tokio::io::split(io);
+		let (io, _server) = io::duplex(4_096);
+		let (reader, writer) = io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 		let slot = std::sync::Mutex::new(Some(super::RetainedAgentProcess {
@@ -6926,7 +6937,7 @@ mod tests {
 		let mut retirement = Box::pin(super::retire_agent_process_slot(&slot, |id| {
 			assert_eq!(id, generation);
 
-			std::future::pending::<bool>()
+			future::pending::<bool>()
 		}));
 
 		assert!(futures_util::poll!(retirement.as_mut()).is_pending());
@@ -6950,7 +6961,7 @@ mod tests {
 			super::retire_agent_process_slot(&slot, |id| {
 				assert_eq!(id, generation);
 
-				std::future::ready(true)
+				future::ready(true)
 			})
 			.await
 		);
@@ -6962,7 +6973,7 @@ mod tests {
 		let mut slot = super::RetainedAgentProcess {
 			working_directory: "/fixture".into(),
 			root_id: "agent".into(),
-			generation_id: decodex_core::ProcessGenerationId::new(derived_uuid(
+			generation_id: decodex_core::ProcessGenerationId::new(conversation::derived_uuid(
 				"generation",
 				&["old"],
 			))
@@ -6977,8 +6988,8 @@ mod tests {
 
 		assert!(super::agent_retirement_retry(Some(&slot), "other").is_err());
 
-		let (io, _server) = tokio::io::duplex(4_096);
-		let (reader, writer) = tokio::io::split(io);
+		let (io, _server) = io::duplex(4_096);
+		let (reader, writer) = io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 

@@ -1,18 +1,25 @@
 //! Qualify restored native token counters through the real Agent and SQLite owners.
-use super::*;
-use crate::agent::{AgentConfig, AgentCoordinator};
+use std::{env, fs, sync::atomic::AtomicUsize};
+
+use mpsc::Receiver;
+use tokio::{net::TcpListener, time};
+
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator},
+};
+use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
-use std::sync::atomic::AtomicUsize;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native usage qualification"]
 async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture_usage(
@@ -28,10 +35,9 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native usage answer"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated usage fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated usage fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -45,7 +51,7 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 	let mut session = NativeSession::start(&binary, home.path());
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
-	let first = tokio::time::timeout(Duration::from_secs(30), async {
+	let first = time::timeout(Duration::from_secs(30), async {
 		agent.start_agent("agent", "Complete the first usage fixture turn.").await.unwrap();
 
 		let (turn, raw) = finish(&mut agent, &mut session.events).await;
@@ -73,7 +79,7 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 	let mut session = NativeSession::start(&binary, home.path());
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		agent.recover_persisted().await.unwrap();
 
 		assert_eq!(requests.load(Ordering::Acquire), 1, "idle recovery must not replay input");
@@ -140,7 +146,7 @@ async fn assert_usage(store: &SqliteStore, input: u64, output: u64) {
 
 async fn finish(
 	agent: &mut AgentCoordinator,
-	events: &mut mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 ) -> (String, usize) {
 	let mut raw = 0;
 

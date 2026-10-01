@@ -1,15 +1,19 @@
 //! Keep voice provenance without inventing a total voice/native ordering.
-use super::{excerpts, history, prompt};
+use crate::agent_recap::{
+	excerpts,
+	history::{self, History, Message},
+	prompt::{self, HISTORY_MAX_BYTES},
+};
 use decodex_database::AgentVoiceHistory;
 
 const PROVENANCE: &str = "Source notes: Native task turns and spoken dialogue are separate sources. Voice sequence is recording order within a call. Partial or unknown-completeness captions may be flushed by role on close and do not establish spoken sentence order. A call baseline identifies the native turn before the call began; it does not date each sentence relative to later task turns. Section order does not establish which correction is newer. If conflicting instructions cannot be ordered from these facts, preserve that uncertainty. Native task output may also be spoken; repeated wording is not additional completed work. Internal voice delegation instructions are omitted.\n\n";
 
-pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> Option<String> {
+pub(super) fn compose(native: &History, voice: &AgentVoiceHistory) -> Option<String> {
 	let mut messages = Vec::new();
 
 	for call in &voice.calls {
 		for entry in &call.entries {
-			messages.push(history::Message {
+			messages.push(Message {
 				user: entry.role == "user",
 				text: format!(
 					"[Voice call {}, sequence {}, baseline native turn {}, caption {}]\n{}",
@@ -47,7 +51,7 @@ pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> O
 	};
 	let headers = format!("{PROVENANCE}{omitted}{missing}Native task messages:\n");
 	let separator = "\n\nSpoken dialogue:\n";
-	let budget = prompt::HISTORY_MAX_BYTES - headers.len() - separator.len();
+	let budget = HISTORY_MAX_BYTES - headers.len() - separator.len();
 	let voice_budget = if native.exchanges.is_empty() {
 		budget
 	} else {
@@ -61,7 +65,7 @@ pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> O
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::agent_recap::voice::{self, AgentVoiceHistory, excerpts, history, prompt};
 	use decodex_database::{
 		AgentVoiceHistoryRevision, AgentVoiceTranscript, AgentVoiceTranscriptCall,
 	};
@@ -91,7 +95,7 @@ mod tests {
 			}],
 		};
 		let voice = snapshot(format!("SPOKEN START{}DO NOT PUBLISH", "声".repeat(20_000)));
-		let rendered = compose(&native, &voice).expect("combined recap input");
+		let rendered = voice::compose(&native, &voice).expect("combined recap input");
 
 		assert!(rendered.len() <= prompt::MAX_BYTES);
 
@@ -110,8 +114,9 @@ mod tests {
 	#[test]
 	fn voice_only_history_can_supply_the_recap_without_fabricating_native_messages() {
 		let native = history::History { latest_turn: None, exchanges: vec![] };
-		let rendered = compose(&native, &snapshot("Summarize what we agreed in voice.".into()))
-			.expect("voice context");
+		let rendered =
+			voice::compose(&native, &snapshot("Summarize what we agreed in voice.".into()))
+				.expect("voice context");
 
 		assert!(rendered.contains("Pending user request:"));
 		assert!(rendered.contains("Summarize what we agreed in voice."));
@@ -119,7 +124,7 @@ mod tests {
 }
 #[cfg(test)]
 mod missing_tests {
-	use super::*;
+	use crate::agent_recap::voice::{self, AgentVoiceHistory, excerpts, history};
 	#[test]
 	fn missing_voice_transcript_is_disclosed_instead_of_inferred_empty() {
 		let native = history::History {
@@ -141,7 +146,7 @@ mod missing_tests {
 				entries: vec![],
 			}],
 		};
-		let rendered = compose(&native, &voice).expect("partial native evidence");
+		let rendered = voice::compose(&native, &voice).expect("partial native evidence");
 
 		assert!(rendered.contains("Tests passed"));
 		assert!(rendered.contains("no stored transcript"));

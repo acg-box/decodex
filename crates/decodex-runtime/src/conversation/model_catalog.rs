@@ -1,17 +1,25 @@
 //! One bounded account-bound metadata process, with the same owner as thread controls.
-use super::{
-	AccountBinding, AccountId, AccountProcessCredential, AttestedAppServerLaunch,
-	AttestedProcessChild, ConversationCredentialVault, ConversationRefreshCallback,
-	ConversationRuntime, ProcessAccountRefreshCallback, ProcessGenerationId,
-	SelectedWorkingDirectory, derived_uuid,
-};
-use decodex_protocol::{
-	AgentModelDto, EntityId, InitialExecutionDefaults, InitialModelCatalogRequest,
-	InitialModelCatalogResult, InitialModelDefaults, ModelCatalogPurpose,
-};
 use std::{
 	sync::Arc,
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+
+use tokio::{runtime::Handle, sync::oneshot, task, time};
+
+use crate::{
+	agent_capabilities::ModelCatalogPages,
+	conversation::{
+		self, AccountBinding, AccountId, AccountProcessCredential, AttestedAppServerLaunch,
+		AttestedProcessChild, ConversationCredentialVault, ConversationRefreshCallback,
+		ConversationRuntime, ProcessAccountRefreshCallback, ProcessGenerationId,
+		SelectedWorkingDirectory,
+	},
+};
+use decodex_codex::app_server_client::NativeExecutionDefaults;
+use decodex_protocol::{
+	AgentModelDto, ConversationReasoningEffort, ConversationWorkingDirectory, EntityId,
+	InitialExecutionDefaults, InitialModelCatalogRequest, InitialModelCatalogResult,
+	InitialModelDefaults, ModelCatalogPurpose, ServiceTier,
 };
 
 impl ConversationRuntime {
@@ -23,7 +31,7 @@ impl ConversationRuntime {
 		let Ok(permit) = self.inner.initial_catalog.clone().try_lock_owned() else {
 			return InitialModelCatalogResult::Unavailable;
 		};
-		let (reply, received) = tokio::sync::oneshot::channel();
+		let (reply, received) = oneshot::channel();
 		let mut workers = self.inner.workers.lock().await;
 
 		if self.is_shutting_down() {
@@ -43,7 +51,7 @@ impl ConversationRuntime {
 
 		drop(workers);
 
-		tokio::time::timeout(Duration::from_secs(35), received)
+		time::timeout(Duration::from_secs(35), received)
 			.await
 			.ok()
 			.and_then(Result::ok)
@@ -78,7 +86,7 @@ impl ConversationRuntime {
 		key: &str,
 		request: InitialModelCatalogRequest,
 		read: impl FnOnce(&mut AttestedProcessChild, &str) -> Option<T> + Send + 'static,
-	) -> Option<(EntityId, i64, decodex_protocol::ConversationWorkingDirectory, T)> {
+	) -> Option<(EntityId, i64, ConversationWorkingDirectory, T)> {
 		let preferred =
 			request.account_id.as_ref().map(|id| AccountId::new(id.as_str())).transpose().ok()?;
 		let now =
@@ -92,7 +100,7 @@ impl ConversationRuntime {
 		};
 		let account = selected.account.account_id;
 		let revision = selected.account.revision;
-		let credential = tokio::time::timeout(
+		let credential = time::timeout(
 			Duration::from_secs(10),
 			self.inner.accounts.process_credential(&account, revision),
 		)
@@ -108,8 +116,8 @@ impl ConversationRuntime {
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
 				accounts: self.inner.accounts.clone(),
-				runtime: tokio::runtime::Handle::current(),
-				generation_id: ProcessGenerationId::new(derived_uuid(
+				runtime: Handle::current(),
+				generation_id: ProcessGenerationId::new(conversation::derived_uuid(
 					"model-catalog-process",
 					&[key, account.as_str()],
 				))
@@ -117,7 +125,7 @@ impl ConversationRuntime {
 			});
 		let source = account.clone();
 		let directory = request.working_directory.as_str().to_owned();
-		let value = tokio::task::spawn_blocking(move || {
+		let value = task::spawn_blocking(move || {
 			runtime.read_metadata_process(
 				&source,
 				revision,
@@ -209,7 +217,7 @@ fn read_catalog_with_default(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
 ) -> Option<(Vec<AgentModelDto>, Option<decodex_protocol::ConversationModel>)> {
-	let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
+	let mut pages = ModelCatalogPages::default();
 	let mut cursor = None;
 	let mut default_model = None;
 	let deadline = Instant::now() + Duration::from_secs(8);
@@ -245,21 +253,15 @@ fn read_catalog_with_default(
 	None
 }
 
-fn project_native_defaults(
-	value: decodex_codex::app_server_client::NativeExecutionDefaults,
-) -> Option<InitialExecutionDefaults> {
+fn project_native_defaults(value: NativeExecutionDefaults) -> Option<InitialExecutionDefaults> {
 	Some(InitialExecutionDefaults {
 		model: value.model.map(decodex_protocol::ConversationModel::new).transpose().ok()?,
 		reasoning_effort: value
 			.reasoning_effort
-			.map(decodex_protocol::ConversationReasoningEffort::new)
+			.map(ConversationReasoningEffort::new)
 			.transpose()
 			.ok()?,
-		service_tier: value
-			.service_tier
-			.map(decodex_protocol::ServiceTier::new)
-			.transpose()
-			.ok()?,
+		service_tier: value.service_tier.map(ServiceTier::new).transpose().ok()?,
 	})
 }
 
@@ -294,17 +296,13 @@ fn read_initial_defaults(
 
 #[cfg(test)]
 mod tests {
-	use super::read_catalog;
 
-	use crate::account_launch::process::tests::ordinary_catalog_child;
+	use crate::{account_launch::process::tests, conversation::model_catalog};
+	use decodex_codex::app_server_client::NativeExecutionDefaults;
 
 	#[test]
 	fn defaults_projection_distinguishes_absent_from_invalid() {
-		use serde_json::json;
-
 		let project_defaults = |value: &serde_json::Value, managed| {
-			use decodex_codex::app_server_client::NativeExecutionDefaults;
-
 			let native = if managed {
 				NativeExecutionDefaults::from_requirements_response(value)
 			} else {
@@ -315,25 +313,25 @@ mod tests {
 		};
 
 		assert_eq!(
-			project_defaults(&json!({"requirements":null}), true),
+			project_defaults(&serde_json::json!({"requirements":null}), true),
 			Some(decodex_protocol::InitialExecutionDefaults::default())
 		);
 		assert_eq!(
-			project_defaults(&json!({"config":{}}), false),
+			project_defaults(&serde_json::json!({"config":{}}), false),
 			Some(decodex_protocol::InitialExecutionDefaults::default())
 		);
 
 		for invalid in [
-			json!({}),
-			json!({"requirements":false}),
-			json!({"requirements":{"models":false}}),
-			json!({"requirements":{"models":{"newThread":{"model":42}}}}),
+			serde_json::json!({}),
+			serde_json::json!({"requirements":false}),
+			serde_json::json!({"requirements":{"models":false}}),
+			serde_json::json!({"requirements":{"models":{"newThread":{"model":42}}}}),
 		] {
 			assert!(project_defaults(&invalid, true).is_none());
 		}
 
 		let custom = project_defaults(
-			&json!({"config":{"model_reasoning_effort":"provider-defined-effort"}}),
+			&serde_json::json!({"config":{"model_reasoning_effort":"provider-defined-effort"}}),
 			false,
 		)
 		.expect("native custom default");
@@ -344,11 +342,11 @@ mod tests {
 		);
 
 		for config in [
-			json!({"model":"bad\nmodel"}),
-			json!({"model_reasoning_effort":"bad\neffort"}),
-			json!({"service_tier":42}),
+			serde_json::json!({"model":"bad\nmodel"}),
+			serde_json::json!({"model_reasoning_effort":"bad\neffort"}),
+			serde_json::json!({"service_tier":42}),
 		] {
-			assert!(project_defaults(&json!({"config":config}), false).is_none());
+			assert!(project_defaults(&serde_json::json!({"config":config}), false).is_none());
 		}
 	}
 
@@ -373,7 +371,7 @@ mod tests {
 
 	#[test]
 	fn initial_defaults_preserve_distinct_sources_and_interleaved_events() {
-		let (_temp, mut child) = ordinary_catalog_child("exact");
+		let (_temp, mut child) = tests::ordinary_catalog_child("exact");
 		let (models, defaults) =
 			super::read_initial_defaults(&mut child, "/tmp", || false).expect("complete defaults");
 
@@ -389,7 +387,7 @@ mod tests {
 		child.shutdown().unwrap();
 
 		for mode in ["exact-defaults-rejected", "exact-config-defaults-rejected"] {
-			let (_temp, mut child) = ordinary_catalog_child(mode);
+			let (_temp, mut child) = tests::ordinary_catalog_child(mode);
 
 			assert!(super::read_initial_defaults(&mut child, "/tmp", || false).is_none());
 
@@ -399,8 +397,9 @@ mod tests {
 
 	#[test]
 	fn metadata_catalog_preserves_tiers_and_interleaved_events() {
-		let (_temp, mut child) = ordinary_catalog_child("exact");
-		let models = read_catalog(&mut child, || false).expect("complete native catalog");
+		let (_temp, mut child) = tests::ordinary_catalog_child("exact");
+		let models =
+			model_catalog::read_catalog(&mut child, || false).expect("complete native catalog");
 
 		assert_eq!(models.len(), 1);
 		assert_eq!(models[0].model.as_str(), "catalog-model");
@@ -417,9 +416,9 @@ mod tests {
 
 	#[test]
 	fn cancelled_or_rejected_catalog_never_returns_partial_models() {
-		let (_temp, mut child) = ordinary_catalog_child("exact");
+		let (_temp, mut child) = tests::ordinary_catalog_child("exact");
 
-		assert!(read_catalog(&mut child, || true).is_none());
+		assert!(model_catalog::read_catalog(&mut child, || true).is_none());
 		assert!(
 			child
 				.next_ordinary_turn_event(std::time::Duration::ZERO)
@@ -429,9 +428,9 @@ mod tests {
 
 		child.shutdown().expect("cancelled process closes");
 
-		let (_temp, mut child) = ordinary_catalog_child("exact-catalog-rejected");
+		let (_temp, mut child) = tests::ordinary_catalog_child("exact-catalog-rejected");
 
-		assert!(read_catalog(&mut child, || false).is_none());
+		assert!(model_catalog::read_catalog(&mut child, || false).is_none());
 
 		child.shutdown().expect("rejected process closes");
 	}

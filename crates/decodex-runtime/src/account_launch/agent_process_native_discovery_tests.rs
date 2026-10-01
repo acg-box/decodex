@@ -1,5 +1,9 @@
 //! Retain independent native discovery and directory policy evidence.
-use super::*;
+use std::{env, fs};
+
+use tokio::time;
+
+use crate::account_launch::agent_process::native_tests::*;
 
 struct NativeChild(Child);
 impl Drop for NativeChild {
@@ -12,14 +16,14 @@ impl Drop for NativeChild {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native MCP discovery"]
 async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
 	let fixture = home.path().join("mcp.py");
 
-	std::fs::write(&fixture, include_str!("native_mcp_capabilities.py")).unwrap();
+	fs::write(&fixture, include_str!("native_mcp_capabilities.py")).unwrap();
 
 	let mut config = String::from("cli_auth_credentials_store = \"file\"\n");
 
@@ -30,12 +34,12 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 		));
 	}
 
-	std::fs::write(home.path().join("config.toml"), config).unwrap();
+	fs::write(home.path().join("config.toml"), config).unwrap();
 
 	for _ in 0..2 {
 		let session = NativeSession::start(&binary, home.path());
 
-		tokio::time::timeout(Duration::from_secs(40), async {
+		time::timeout(Duration::from_secs(40), async {
 			let started = session
 				.client
 				.thread_start(
@@ -101,14 +105,14 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; native profile catalog path context"]
 async fn installed_native_permission_catalog_uses_each_requested_working_directory() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let root = tempfile::tempdir().unwrap();
 	let home = root.path().join("home");
 	let ordinary = root.path().join("workspace");
 	let brackets = root.path().join("[workspace]");
 
 	for path in [&home, &ordinary, &brackets] {
-		std::fs::create_dir(path).unwrap();
+		fs::create_dir(path).unwrap();
 	}
 
 	let config = r#"default_permissions = ":workspace"
@@ -118,7 +122,7 @@ async fn installed_native_permission_catalog_uses_each_requested_working_directo
 ":workspace_roots" = "write"
 "#;
 
-	std::fs::write(home.join("config.toml"), config).unwrap();
+	fs::write(home.join("config.toml"), config).unwrap();
 
 	let session = NativeSession::start(&binary, &home.canonicalize().unwrap());
 
@@ -133,20 +137,20 @@ async fn installed_native_permission_catalog_uses_each_requested_working_directo
 		);
 	}
 
-	assert_eq!(std::fs::read_to_string(home.join("config.toml")).unwrap(), config);
+	assert_eq!(fs::read_to_string(home.join("config.toml")).unwrap(), config);
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated enterprise MCP policy"]
 async fn installed_native_enterprise_mcp_rejects_oauth_and_project_downgrade() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let root = tempfile::tempdir().unwrap();
 	let home = root.path().join("home");
 	let project = root.path().join("project");
 
-	std::fs::create_dir(&home).unwrap();
-	std::fs::create_dir_all(project.join(".codex")).unwrap();
-	std::fs::create_dir(project.join(".git")).unwrap();
+	fs::create_dir(&home).unwrap();
+	fs::create_dir_all(project.join(".codex")).unwrap();
+	fs::create_dir(project.join(".git")).unwrap();
 
 	let project = project.canonicalize().unwrap();
 	let config = format!(
@@ -166,14 +170,14 @@ auth = "ema_auth"
 		serde_json::to_string(&project).unwrap()
 	);
 
-	std::fs::write(home.join("config.toml"), &config).unwrap();
+	fs::write(home.join("config.toml"), &config).unwrap();
 
 	for _ in 0..2 {
-		std::fs::write(project.join(".codex/config.toml"), "").unwrap();
+		fs::write(project.join(".codex/config.toml"), "").unwrap();
 
 		let session = NativeSession::start(&binary, &home);
 
-		tokio::time::timeout(Duration::from_secs(30), async {
+		time::timeout(Duration::from_secs(30), async {
 			let login = session.client.request("mcpServer/oauth/login", json!({"name":"enterprise"})).await;
 
 			assert!(matches!(login, Err(ClientError::Remote(error)) if error.message.contains("EMA MCP connections are not enabled")));
@@ -187,7 +191,7 @@ auth = "ema_auth"
 				"oauth.client_id = \"other-client\"",
 				"oauth.authorization_server_issuer = \"https://other.invalid\"",
 			] {
-				std::fs::write(project.join(".codex/config.toml"), format!("[mcp_servers.enterprise]\n{change}\n")).unwrap();
+				fs::write(project.join(".codex/config.toml"), format!("[mcp_servers.enterprise]\n{change}\n")).unwrap();
 
 				let result = session.client.thread_start(json!({"cwd":project,"approvalPolicy":"never","sandbox":"read-only"})).await;
 
@@ -196,5 +200,5 @@ auth = "ema_auth"
 		}).await.unwrap();
 	}
 
-	assert_eq!(std::fs::read_to_string(home.join("config.toml")).unwrap(), config);
+	assert_eq!(fs::read_to_string(home.join("config.toml")).unwrap(), config);
 }

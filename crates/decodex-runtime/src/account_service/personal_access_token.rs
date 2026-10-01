@@ -1,17 +1,16 @@
 //! Hydrate an explicitly selected PAT with the native ChatGPT whoami authority.
 
-use std::time::Duration;
+use std::{mem, time::Duration};
 
-use decodex_core::{AccountProvider, ProviderIdentity};
-
+use reqwest::{Client, redirect::Policy, retry};
 use serde::Deserialize;
-
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
 	account_import::{CredentialImportError, CredentialSource, ImportedCredential},
 	host_credentials::CredentialSecretBundle,
 };
+use decodex_core::{AccountProvider, ProviderIdentity};
 
 const WHOAMI_ENDPOINT: &str = "https://auth.openai.com/api/accounts/v1/user-auth-credential/whoami";
 const MAX_METADATA_BYTES: usize = 64 * 1_024;
@@ -38,11 +37,11 @@ async fn hydrate(
 	mut token: Zeroizing<String>,
 	endpoint: &str,
 ) -> Result<ImportedCredential, CredentialImportError> {
-	let client = reqwest::Client::builder()
+	let client = Client::builder()
 		.connect_timeout(Duration::from_secs(5))
 		.timeout(Duration::from_secs(10))
-		.redirect(reqwest::redirect::Policy::none())
-		.retry(reqwest::retry::never())
+		.redirect(Policy::none())
+		.retry(retry::never())
 		.user_agent("decodex")
 		.build()
 		.map_err(|_| CredentialImportError::Unavailable)?;
@@ -86,13 +85,13 @@ async fn hydrate(
 
 	let provider = ProviderIdentity::new(
 		AccountProvider::Chatgpt,
-		std::mem::take(&mut metadata.chatgpt_account_id),
+		mem::take(&mut metadata.chatgpt_account_id),
 	)
 	.map_err(|_| CredentialImportError::InvalidCredential)?;
 	let bundle = CredentialSecretBundle::personal_access_token(
-		std::mem::take(&mut *token),
-		std::mem::take(&mut metadata.chatgpt_user_id),
-		Some(std::mem::take(&mut metadata.chatgpt_plan_type)),
+		mem::take(&mut *token),
+		mem::take(&mut metadata.chatgpt_user_id),
+		Some(mem::take(&mut metadata.chatgpt_plan_type)),
 		metadata.email.take(),
 	)
 	.map_err(|_| CredentialImportError::InvalidCredential)?;
@@ -108,7 +107,7 @@ mod tests {
 		thread,
 	};
 
-	use super::*;
+	use crate::account_service::personal_access_token::{self, Duration, Zeroizing};
 
 	fn server(status: &str, body: &str) -> (String, thread::JoinHandle<String>) {
 		let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -148,7 +147,10 @@ mod tests {
 	#[tokio::test]
 	async fn pat_identity_comes_from_whoami_without_jwt_or_refresh_material() {
 		let (url, request) = server("200 OK", &metadata().to_string());
-		let credential = hydrate(Zeroizing::new("synthetic-pat".into()), &url).await.unwrap();
+		let credential =
+			personal_access_token::hydrate(Zeroizing::new("synthetic-pat".into()), &url)
+				.await
+				.unwrap();
 
 		assert_eq!(credential.provider.account_id(), "pat-account");
 		assert_eq!(credential.bundle.personal_access_token_user_id(), Some("pat-user"));
@@ -180,7 +182,11 @@ mod tests {
 		] {
 			let (url, request) = server(status, &body);
 
-			assert!(hydrate(Zeroizing::new("synthetic-pat".into()), &url).await.is_err());
+			assert!(
+				personal_access_token::hydrate(Zeroizing::new("synthetic-pat".into()), &url)
+					.await
+					.is_err()
+			);
 
 			request.join().unwrap();
 		}

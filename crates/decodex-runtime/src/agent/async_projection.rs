@@ -1,7 +1,8 @@
 //! Build a complete question projection off-store before replacing durable state.
-use super::{AgentError, Value, observations::is_plain_user_prompt};
-use decodex_database::AgentAsyncQuestion;
 use std::collections::BTreeSet;
+
+use crate::agent::{AgentError, Value, observations};
+use decodex_database::AgentAsyncQuestion;
 
 #[derive(Default)]
 pub(super) struct Projection {
@@ -40,7 +41,7 @@ impl Projection {
 					question_json: serde_json::to_string(&question).expect("serializable question"),
 				});
 			}
-		} else if is_plain_user_prompt(item) {
+		} else if observations::is_plain_user_prompt(item) {
 			self.answers.extend(self.seen.iter().cloned());
 		} else if item["type"] == "userMessage" {
 			let mut content = item["content"]

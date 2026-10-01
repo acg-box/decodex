@@ -1,4 +1,6 @@
-use super::*;
+use crate::agent::tests::*;
+use decodex_codex::app_server_client::RpcError;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
@@ -106,11 +108,7 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 			let error = if lost_response {
 				ClientError::Closed
 			} else {
-				ClientError::Remote(decodex_codex::app_server_client::RpcError {
-					code: -32_600,
-					message: message.into(),
-					data: None,
-				})
+				ClientError::Remote(RpcError { code: -32_600, message: message.into(), data: None })
 			};
 			let result = agent
 				.finish_dispatch_attempt(
@@ -150,10 +148,8 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 
 			drop(agent);
 
-			let root = decodex_core::DecodexRoot::new(
-				directory.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 			let store = SqliteStore::open(&root.paths()).unwrap();
 			let work = store.get_agent_work_item("agent".into()).await.unwrap();
 			let saved = store.get_agent_inbox_event(event.id).await.unwrap();

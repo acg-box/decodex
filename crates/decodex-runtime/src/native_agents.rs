@@ -1,11 +1,13 @@
 //! Native observations only: never promote spawned threads into manager authority.
-use decodex_codex::app_server_client::AppServerClient;
-
-use decodex_database::SqliteStore;
-
-use decodex_protocol::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
+use std::time::Duration;
 
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::agent::native_subagents;
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_database::SqliteStore;
+use decodex_protocol::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -14,14 +16,14 @@ pub(crate) async fn read(
 	thread: Option<&str>,
 	cursor: Option<&str>,
 ) -> NativeAgentsResult {
-	let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+	let result = time::timeout(Duration::from_secs(10), async {
         let owner = store.get_agent_work_item(work.into()).await.ok()?;
         let root = owner.codex_thread_id?;
 
         if let Some(thread) = thread {
             if thread == root { return None; }
 
-            let verified = crate::agent::native_subagents::request_owner(store,client,thread).await.ok()?;
+            let verified = native_subagents::request_owner(store,client,thread).await.ok()?;
 
             if verified.id != work { return None; }
 
@@ -156,12 +158,12 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 }
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::native_agents::{self, NativeAgentsResult};
 	#[test]
 	fn native_preview_keeps_roles_and_does_not_guess_input_capability() {
-		let v = json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
+		let v = native_agents::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
 		let Some(NativeAgentsResult::Conversation { can_input, active_turn, messages, .. }) =
-			conversation(&v, "child")
+			native_agents::conversation(&v, "child")
 		else {
 			panic!()
 		};
@@ -170,6 +172,6 @@ mod tests {
 		assert_eq!(active_turn.as_deref(), Some("t"));
 		assert_eq!(messages[0].role, "user");
 		assert_eq!(messages[1].text, "Result");
-		assert!(conversation(&v, "other").is_none());
+		assert!(native_agents::conversation(&v, "other").is_none());
 	}
 }

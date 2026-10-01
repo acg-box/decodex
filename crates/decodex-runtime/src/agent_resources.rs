@@ -1,4 +1,8 @@
 //! Display native associations without creating a second persistence owner.
+use reqwest::Url;
+use sha2::{Digest, Sha256};
+
+use crate::agent::AgentError;
 use decodex_codex::app_server_client::{AppServerClient, ClientError, ThreadAttachment};
 use decodex_protocol::{AgentResourceDto, AgentResourcesResult};
 
@@ -45,8 +49,8 @@ fn project(resources: Vec<ThreadAttachment>) -> AgentResourcesResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent_resources::{self, AgentResourcesResult, ThreadAttachment};
 	fn resource(payload: serde_json::Value) -> ThreadAttachment {
 		ThreadAttachment {
 			id: "native-resource".into(),
@@ -58,13 +62,13 @@ mod tests {
 	}
 	#[test]
 	fn complete_list_keeps_identity_and_marks_unavailable_payloads() {
-		let empty = project(vec![]);
+		let empty = agent_resources::project(vec![]);
 
 		assert!(matches!(empty,AgentResourcesResult::Available{resources} if resources.is_empty()));
 
-		let result = project(vec![
-			resource(json!({"title":"Review"})),
-			resource(json!({"text":"x".repeat(17_000)})),
+		let result = agent_resources::project(vec![
+			resource(serde_json::json!({"title":"Review"})),
+			resource(serde_json::json!({"text":"x".repeat(17_000)})),
 		]);
 		let AgentResourcesResult::Available { resources } = result else {
 			panic!("complete list");
@@ -80,11 +84,13 @@ mod tests {
 	#[test]
 	fn oversized_list_is_not_reported_as_partial_or_empty() {
 		assert_eq!(
-			project((0..129).map(|_| resource(json!({}))).collect()),
+			agent_resources::project((0..129).map(|_| resource(serde_json::json!({}))).collect()),
 			AgentResourcesResult::CapacityExceeded
 		);
 		assert_eq!(
-			project((0..8).map(|_| resource(json!({"text":"x".repeat(10_000)}))).collect()),
+			agent_resources::project(
+				(0..8).map(|_| resource(serde_json::json!({"text":"x".repeat(10_000)}))).collect()
+			),
 			AgentResourcesResult::CapacityExceeded
 		);
 	}
@@ -95,13 +101,8 @@ pub(crate) async fn add_link(
 	thread: &str,
 	title: &str,
 	url: &str,
-) -> Result<(), crate::agent::AgentError> {
-	use crate::agent::AgentError;
-
-	use sha2::{Digest, Sha256};
-
-	let url = reqwest::Url::parse(url)
-		.map_err(|_| AgentError::Rejected("Invalid resource URL".into()))?;
+) -> Result<(), AgentError> {
+	let url = Url::parse(url).map_err(|_| AgentError::Rejected("Invalid resource URL".into()))?;
 
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
@@ -135,17 +136,18 @@ pub(crate) async fn add_link(
 
 #[cfg(test)]
 mod link_tests {
-	use super::*;
-	use serde_json::{Value, json};
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use serde_json::{self, Value};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::agent_resources::{self, AppServerClient};
 
 	#[tokio::test]
 	async fn links_use_stable_native_identity_without_replacing_existing_metadata() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut first = None;
 
@@ -158,12 +160,12 @@ mod link_tests {
 				assert_eq!(request["params"]["attachmentType"], "decodex.link");
 				assert_eq!(request["params"]["payload"]["url"], "https://example.test/");
 
-				let current = json!({"id":"resource","attachmentType":request["params"]["attachmentType"],"identityKey":request["params"]["identityKey"],"payload":request["params"]["payload"],"createdAt":1});
+				let current = serde_json::json!({"id":"resource","attachmentType":request["params"]["attachmentType"],"identityKey":request["params"]["identityKey"],"payload":request["params"]["payload"],"createdAt":1});
 				let original = first.get_or_insert(current);
 
 				assert_eq!(original["identityKey"], request["params"]["identityKey"]);
 
-				let reply = json!({"id":request["id"],"result":{"outcome":if index==0 {"created"} else {"existing"},"attachment":original}});
+				let reply = serde_json::json!({"id":request["id"],"result":{"outcome":if index==0 {"created"} else {"existing"},"attachment":original}});
 
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 			}
@@ -171,13 +173,17 @@ mod link_tests {
 
 		for url in ["file:///tmp/private", "https://user:password@example.test/", "not a URL"] {
 			assert!(matches!(
-				add_link(&client, "thread-exact", "Title", url).await,
+				agent_resources::add_link(&client, "thread-exact", "Title", url).await,
 				Err(crate::agent::AgentError::Rejected(_))
 			));
 		}
 
-		add_link(&client, "thread-exact", "Original", "https://EXAMPLE.test").await.unwrap();
-		add_link(&client, "thread-exact", "Changed", "https://example.test/").await.unwrap();
+		agent_resources::add_link(&client, "thread-exact", "Original", "https://EXAMPLE.test")
+			.await
+			.unwrap();
+		agent_resources::add_link(&client, "thread-exact", "Changed", "https://example.test/")
+			.await
+			.unwrap();
 
 		server.await.unwrap();
 	}

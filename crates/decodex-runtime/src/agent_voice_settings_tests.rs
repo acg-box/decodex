@@ -1,12 +1,20 @@
-use super::*;
-use crate::agent_usage_estimate::SourceKey;
+use std::{
+	future,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+};
+
+use serde_json::Value;
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	task::JoinHandle,
+};
+
+use crate::{agent_usage_estimate::SourceKey, agent_voice_settings::*};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
-};
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 fn source(client: AppServerClient, revision: usize) -> Source {
 	Source {
@@ -22,20 +30,18 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 	}
 }
 
-fn fixture(
-	fail_readback: bool,
-) -> (AppServerClient, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
-	let (local, remote) = tokio::io::duplex(8_192);
-	let (read, write) = tokio::io::split(local);
+fn fixture(fail_readback: bool) -> (AppServerClient, Arc<AtomicUsize>, JoinHandle<()>) {
+	let (local, remote) = io::duplex(8_192);
+	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let count = writes.clone();
 	let task = tokio::spawn(async move {
-		let (read, mut write) = tokio::io::split(remote);
+		let (read, mut write) = io::split(remote);
 		let mut lines = BufReader::new(read).lines();
 
 		while let Some(line) = lines.next_line().await.unwrap() {
-			let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+			let request: Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
 			let version = if saved { "v2" } else { "v1" };
 			let mut response = match request["method"].as_str().unwrap() {
@@ -75,7 +81,7 @@ fn fixture(
 async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 	for fail_readback in [false, true] {
 		let (client, writes, task) = fixture(fail_readback);
-		let read_source = || std::future::ready(Some(source(client.clone(), 1)));
+		let read_source = || future::ready(Some(source(client.clone(), 1)));
 		let AgentVoiceSettingsResult::Available { review_token, .. } = read(read_source).await
 		else {
 			panic!("settings")
@@ -83,7 +89,7 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 
 		assert!(
 			write(
-				|| std::future::ready(Some(source(client.clone(), 2))),
+				|| future::ready(Some(source(client.clone(), 2))),
 				review_token.as_str(),
 				"juniper"
 			)
@@ -118,10 +124,9 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 async fn voice_settings_discard_observation_when_source_changes_during_read() {
 	let (client, writes, task) = fixture(false);
 	let calls = AtomicUsize::new(0);
-	let result = read(|| {
-		std::future::ready(Some(source(client.clone(), calls.fetch_add(1, Ordering::SeqCst))))
-	})
-	.await;
+	let result =
+		read(|| future::ready(Some(source(client.clone(), calls.fetch_add(1, Ordering::SeqCst)))))
+			.await;
 
 	assert_eq!(result, AgentVoiceSettingsResult::Unavailable);
 	assert_eq!(writes.load(Ordering::SeqCst), 0);
@@ -133,19 +138,15 @@ async fn voice_settings_discard_observation_when_source_changes_during_read() {
 async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 	let (first, first_writes, first_task) = fixture(false);
 	let (second, second_writes, second_task) = fixture(false);
-	let before = || std::future::ready(Some(source(first.clone(), 1)));
+	let before = || future::ready(Some(source(first.clone(), 1)));
 	let AgentVoiceSettingsResult::Available { review_token, .. } = read(before).await else {
 		panic!("voice review")
 	};
 
 	assert!(
-		write(
-			|| std::future::ready(Some(source(second.clone(), 1))),
-			review_token.as_str(),
-			"juniper"
-		)
-		.await
-		.is_err()
+		write(|| future::ready(Some(source(second.clone(), 1))), review_token.as_str(), "juniper")
+			.await
+			.is_err()
 	);
 
 	let calls = AtomicUsize::new(0);
@@ -153,7 +154,7 @@ async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 		let client =
 			if calls.fetch_add(1, Ordering::SeqCst) == 0 { first.clone() } else { second.clone() };
 
-		std::future::ready(Some(source(client, 1)))
+		future::ready(Some(source(client, 1)))
 	})
 	.await;
 

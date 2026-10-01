@@ -1,5 +1,10 @@
 //! Explicit approval of one exact observed Guardian denial.
-use super::{AgentCoordinator, AgentError, ClientError, Value, json};
+use std::time::Duration;
+
+use tokio::time;
+
+use crate::agent::{self, AgentCoordinator, AgentError, ClientError, Value};
+use decodex_codex::guardian;
 
 impl AgentCoordinator {
 	/// Submit user approval context. This never starts a turn or retries the action.
@@ -33,10 +38,9 @@ impl AgentCoordinator {
 		}
 
 		let value: Value = serde_json::from_str(&review.event_json).map_err(|_| stale())?;
-		let observed =
-			decodex_codex::guardian::decode_review("item/autoApprovalReview/completed", &value)
-				.ok_or_else(stale)?;
-		let event = decodex_codex::guardian::core_denial_event(&observed).ok_or_else(|| {
+		let observed = guardian::decode_review("item/autoApprovalReview/completed", &value)
+			.ok_or_else(stale)?;
+		let event = guardian::core_denial_event(&observed).ok_or_else(|| {
 			AgentError::Rejected(
 				"This review cannot be converted without losing action details.".into(),
 			)
@@ -48,13 +52,11 @@ impl AgentCoordinator {
 		}
 		if !self.loaded_threads.contains(&review.thread_id) {
 			let params = Self::resume_params(&review.thread_id);
-			let response = tokio::time::timeout(
-				std::time::Duration::from_secs(20),
-				self.client.thread_resume(params),
-			)
-			.await
-			.map_err(|_| stale())?
-			.map_err(|_| stale())?;
+			let response =
+				time::timeout(Duration::from_secs(20), self.client.thread_resume(params))
+					.await
+					.map_err(|_| stale())?
+					.map_err(|_| stale())?;
 
 			if !Self::hydrated_thread_matches(&response, &review.thread_id) {
 				return Err(stale());
@@ -63,8 +65,8 @@ impl AgentCoordinator {
 			self.loaded_threads.insert(review.thread_id.clone());
 		}
 
-		let latest = tokio::time::timeout(
-			std::time::Duration::from_secs(20),
+		let latest = time::timeout(
+			Duration::from_secs(20),
 			self.client.thread_latest_turn_id(&review.thread_id),
 		)
 		.await
@@ -87,11 +89,11 @@ impl AgentCoordinator {
 			)
 			.await
 			.map_err(|_| stale())?;
-		let result = tokio::time::timeout(
-			std::time::Duration::from_secs(20),
+		let result = time::timeout(
+			Duration::from_secs(20),
 			self.client.request(
 				"thread/approveGuardianDeniedAction",
-				json!({"threadId":review.thread_id,"event":event}),
+				agent::json!({"threadId":review.thread_id,"event":event}),
 			),
 		)
 		.await;

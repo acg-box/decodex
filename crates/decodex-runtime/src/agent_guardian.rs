@@ -1,4 +1,8 @@
 //! Bounded review projection; only the daemon can retrieve original approval payloads.
+use serde_json::Value;
+
+use decodex_codex::guardian;
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 use decodex_database::{AgentGuardianReview, SqliteStore};
 use decodex_protocol::{
 	AgentGuardianDetailResult as Detail, AgentGuardianReviewDto, AgentGuardianReviewsResult,
@@ -22,7 +26,7 @@ pub(crate) async fn detail(
 		return Detail::Unavailable;
 	}
 
-	let Ok(event) = serde_json::from_str::<serde_json::Value>(&row.event_json) else {
+	let Ok(event) = serde_json::from_str::<Value>(&row.event_json) else {
 		return Detail::Unavailable;
 	};
 	let method = if row.status == "inProgress" {
@@ -31,7 +35,7 @@ pub(crate) async fn detail(
 		"item/autoApprovalReview/completed"
 	};
 
-	if decodex_codex::guardian::decode_review(method, &event).is_none() {
+	if guardian::decode_review(method, &event).is_none() {
 		return Detail::Unavailable;
 	}
 
@@ -49,7 +53,7 @@ pub(crate) async fn detail(
 
 	let text = format!("Action\n{action}\n\nFindings\n{rationale}");
 
-	if text.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES
+	if text.len() > MAX_NATIVE_MESSAGE_BYTES
 		|| offset >= text.len()
 		|| !text.is_char_boundary(offset)
 	{
@@ -133,7 +137,7 @@ pub(crate) async fn read(
 
 fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentGuardianReviewDto> {
 	let event = serde_json::from_str(&row.event_json).ok()?;
-	let observed = decodex_codex::guardian::decode_review(
+	let observed = guardian::decode_review(
 		if row.status == "inProgress" {
 			"item/autoApprovalReview/started"
 		} else {
@@ -204,7 +208,7 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 				Some("An approval submission is already recorded.".into())
 			} else if result.details_unavailable.is_some() {
 				Some("Complete action details are required before approval.".into())
-			} else if decodex_codex::guardian::core_denial_event(&observed).is_none() {
+			} else if guardian::core_denial_event(&observed).is_none() {
 				Some("This action format cannot be submitted without losing review details.".into())
 			} else {
 				None
@@ -217,18 +221,18 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent_guardian::{self, AgentGuardianReview, Status};
 	fn denial() -> AgentGuardianReview {
 		AgentGuardianReview {id:1,thread_id:"thread".into(),turn_id:"turn".into(),review_id:"review".into(),
 			connection_id:"connection".into(),generation_id:Some("generation".into()),status:"denied".into(),
-			event_json:json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"User did not request this action."},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string(),
+			event_json:serde_json::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"User did not request this action."},"action":{"type":"command","source":"shell","command":"echo fixture","cwd":"/tmp"}}).to_string(),
 			conflicted:false,approval_state:None,approval_key:None}
 	}
 	#[test]
 	fn review_and_user_submission_are_separate_and_bound_to_exact_evidence() {
 		let mut row = denial();
-		let result = project(&row, Some("generation")).unwrap();
+		let result = agent_guardian::project(&row, Some("generation")).unwrap();
 
 		assert!(result.can_approve && result.current_process);
 		assert_eq!(result.digest, row.digest());
@@ -237,7 +241,7 @@ mod tests {
 			row.approval_state = Some(state.into());
 			row.approval_key = Some("exact-command".into());
 
-			let result = project(&row, Some("new-generation")).unwrap();
+			let result = agent_guardian::project(&row, Some("new-generation")).unwrap();
 
 			assert_eq!(result.status, Status::Denied);
 			assert!(!result.current_process);
@@ -247,7 +251,7 @@ mod tests {
 
 		row.conflicted = true;
 
-		assert!(!project(&row, None).unwrap().can_approve);
+		assert!(!agent_guardian::project(&row, None).unwrap().can_approve);
 	}
 	#[test]
 	fn withheld_or_unknown_action_details_cannot_be_approved() {
@@ -256,10 +260,10 @@ mod tests {
 			let mut row = denial();
 			let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
 
-			event["action"]["command"] = json!(command);
+			event["action"]["command"] = serde_json::json!(command);
 			row.event_json = event.to_string();
 
-			let result = project(&row, None).unwrap();
+			let result = agent_guardian::project(&row, None).unwrap();
 
 			assert!(
 				!result.can_approve
@@ -272,10 +276,10 @@ mod tests {
 		let mut row = denial();
 		let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
 
-		event["action"]["futureField"] = json!(true);
+		event["action"]["futureField"] = serde_json::json!(true);
 		row.event_json = event.to_string();
 
-		let result = project(&row, None).unwrap();
+		let result = agent_guardian::project(&row, None).unwrap();
 
 		assert!(!result.can_approve && result.action_json.unwrap().contains("futureField"));
 	}
@@ -286,10 +290,10 @@ mod tests {
 			let mut row = denial();
 			let mut event: serde_json::Value = serde_json::from_str(&row.event_json).unwrap();
 
-			event["action"]["command"] = json!(command);
+			event["action"]["command"] = serde_json::json!(command);
 			row.event_json = event.to_string();
 
-			let result = project(&row, None).unwrap();
+			let result = agent_guardian::project(&row, None).unwrap();
 
 			assert!(result.can_approve && result.details_paged);
 			assert!(result.action_json.is_none() && result.rationale.is_none());

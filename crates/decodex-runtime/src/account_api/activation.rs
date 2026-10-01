@@ -4,9 +4,14 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use decodex_core::{AccountId, AccountQuotaWindow};
+use reqwest::RequestBuilder;
+use serde_json::Value;
 
-use super::{AccountApiInventory, AccountApiObservation, AccountApiRuntime};
+use crate::{
+	account_api::{AccountApiInventory, AccountApiObservation, AccountApiRuntime},
+	account_launch,
+};
+use decodex_core::{AccountId, AccountQuotaWindow};
 
 const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_STREAM_BYTES: usize = 256 * 1_024;
@@ -80,8 +85,7 @@ impl AccountApiRuntime {
 		}
 
 		let Ok((policy, credential)) =
-			crate::account_launch::read_activation_policy(profile, account_id.clone(), credential)
-				.await
+			account_launch::read_activation_policy(profile, account_id.clone(), credential).await
 		else {
 			// No model request was made. Preserve the existing bounded rejection backoff.
 			let _ = self.store.finish_quota_activation(account_id, now, false).await;
@@ -147,8 +151,7 @@ impl CompletionStream {
 					continue;
 				}
 
-				let event =
-					serde_json::from_slice::<serde_json::Value>(&self.data).map_err(|_| ())?;
+				let event = serde_json::from_slice::<Value>(&self.data).map_err(|_| ())?;
 
 				self.data.clear();
 
@@ -195,7 +198,7 @@ fn can_activate(inventory: &AccountApiInventory, now: i64) -> bool {
 	})
 }
 
-fn activation_request() -> serde_json::Value {
+fn activation_request() -> Value {
 	serde_json::json!({
 		"model": ACTIVATION_MODEL,
 		"instructions": "Reply exactly OK. Do not use tools.",
@@ -205,7 +208,7 @@ fn activation_request() -> serde_json::Value {
 	})
 }
 
-async fn send_activation(request: reqwest::RequestBuilder) -> ActivationOutcome {
+async fn send_activation(request: RequestBuilder) -> ActivationOutcome {
 	let mut response = match request.send().await {
 		Ok(response) => response,
 		Err(error) if error.is_connect() || error.is_builder() =>
@@ -236,11 +239,13 @@ async fn send_activation(request: reqwest::RequestBuilder) -> ActivationOutcome 
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		ActivationOutcome, CompletionStream, MAX_STREAM_BYTES, activation_request, send_activation,
-	};
+	use std::{thread, time::Duration};
 
-	use std::time::Duration;
+	use tokio::time;
+
+	use crate::account_api::activation::{
+		self, ActivationOutcome, CompletionStream, MAX_STREAM_BYTES,
+	};
 
 	#[test]
 	fn ordinary_denial_blocks_activation_even_after_the_displayed_reset() {
@@ -340,9 +345,9 @@ mod tests {
 		let request = reqwest::Client::new()
 			.post(format!("http://{address}/responses"))
 			.timeout(Duration::from_secs(2))
-			.json(&activation_request());
+			.json(&activation::activation_request());
 
-		assert_eq!(send_activation(request).await, ActivationOutcome::Rejected);
+		assert_eq!(activation::send_activation(request).await, ActivationOutcome::Rejected);
 	}
 
 	#[tokio::test]
@@ -363,18 +368,16 @@ mod tests {
 				drop(socket);
 
 				assert!(
-					tokio::time::timeout(Duration::from_millis(300), listener.accept())
-						.await
-						.is_err(),
+					time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
 					"no redirect or replay"
 				);
 			});
 			let request = super::super::account_http_client()
 				.expect("production client")
 				.post(format!("http://{address}/responses"))
-				.json(&activation_request());
+				.json(&activation::activation_request());
 
-			assert_eq!(send_activation(request).await, ActivationOutcome::Unknown);
+			assert_eq!(activation::send_activation(request).await, ActivationOutcome::Unknown);
 
 			server.await.expect("single request verified");
 		}
@@ -400,7 +403,7 @@ mod tests {
 		] {
 			let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("valid test fixture");
 			let address = listener.local_addr().expect("valid test fixture");
-			let server = std::thread::spawn(move || {
+			let server = thread::spawn(move || {
 				let (mut socket, _) = listener.accept().expect("valid test fixture");
 
 				socket.set_read_timeout(Some(Duration::from_secs(5))).expect("valid test fixture");
@@ -445,9 +448,9 @@ mod tests {
 			let request = reqwest::Client::new()
 				.post(format!("http://{address}/responses"))
 				.timeout(Duration::from_secs(5))
-				.json(&activation_request());
+				.json(&activation::activation_request());
 
-			assert_eq!(send_activation(request).await, expected);
+			assert_eq!(activation::send_activation(request).await, expected);
 
 			server.join().expect("valid test fixture");
 		}

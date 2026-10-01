@@ -1,19 +1,23 @@
 //! Opt-in interactive signed desktop acceptance against the isolated real service.
-use super::*;
+use std::{env, fs, fs::OpenOptions, path::Path, sync::atomic::AtomicUsize};
+
+use tokio::{process::Command, time};
+
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
 
 pub(super) async fn check(
 	client: &AgentClient,
-	home: &std::path::Path,
+	home: &Path,
 	account: &AccountId,
-	requests: &std::sync::atomic::AtomicUsize,
+	requests: &AtomicUsize,
 ) {
-	let binary = std::env::var_os("DECODEX_TEST_DESKTOP_APP").expect("explicit desktop executable");
+	let binary = env::var_os("DECODEX_TEST_DESKTOP_APP").expect("explicit desktop executable");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let workspace = home.join("workspace");
 
-	std::fs::create_dir(&workspace).expect("create isolated workspace");
+	fs::create_dir(&workspace).expect("create isolated workspace");
 
 	accepted(
 		client,
@@ -37,7 +41,7 @@ pub(super) async fn check(
 	.await;
 
 	let thread = settled(client).await;
-	let background_recap = std::env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some();
+	let background_recap = env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some();
 
 	if background_recap {
 		for index in 1..=2 {
@@ -59,14 +63,14 @@ pub(super) async fn check(
 	}
 
 	let launch = || {
-		let log = std::fs::OpenOptions::new()
+		let log = OpenOptions::new()
 			.create(true)
 			.append(true)
 			.open(home.join("desktop.log"))
 			.expect("open desktop log");
 		let error = log.try_clone().expect("clone desktop log");
 
-		tokio::process::Command::new(&binary)
+		Command::new(&binary)
 			.current_dir(home)
 			.stdout(log)
 			.stderr(error)
@@ -79,7 +83,7 @@ pub(super) async fn check(
 	let mut exits = 0;
 	let mut exited = false;
 	let write = |pid, launches, exits| {
-		std::fs::write(home.join("desktop-ready.json"), serde_json::to_vec_pretty(&json!({"pid":pid,"launches":launches,"exits":exits,"thread":thread,"root":home.join(".decodex"),"model_requests":requests.load(Ordering::Acquire)})).expect("serialize desktop process evidence")).expect("write desktop process evidence");
+		fs::write(home.join("desktop-ready.json"), serde_json::to_vec_pretty(&json!({"pid":pid,"launches":launches,"exits":exits,"thread":thread,"root":home.join(".decodex"),"model_requests":requests.load(Ordering::Acquire)})).expect("serialize desktop process evidence")).expect("write desktop process evidence");
 	};
 
 	write(child.id(), launches, exits);
@@ -105,7 +109,7 @@ pub(super) async fn check(
 		if home.join("desktop-relaunch").exists() {
 			assert!(exited, "quit the exact desktop before relaunch");
 
-			std::fs::remove_file(home.join("desktop-relaunch"))
+			fs::remove_file(home.join("desktop-relaunch"))
 				.expect("consume desktop relaunch marker");
 
 			child = launch();
@@ -132,6 +136,6 @@ pub(super) async fn check(
 			break;
 		}
 
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		time::sleep(Duration::from_millis(100)).await;
 	}
 }

@@ -1,16 +1,20 @@
 //! Resolve exact native media and keep each byte chunk bound to the same source and content.
-use crate::agent_usage_estimate::{Source, SourceKey};
+use std::{fs::OpenOptions, future::Future, io::Read, path::Path, time::Duration};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use tokio::{task, time};
 
+use crate::{
+	agent::timeline::promotions,
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_codex::app_server_client::ClientError;
 use decodex_protocol::{
 	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult as Result, EntityId,
 	MAX_AGENT_MEDIA_BYTES,
 };
-
-use serde_json::{Value, json};
-
-use sha2::{Digest, Sha256};
 
 enum Media<'a> {
 	Uri(&'a str),
@@ -25,7 +29,7 @@ pub(crate) async fn read<F, Fut>(
 ) -> Result
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	if request.offset as usize >= MAX_AGENT_MEDIA_BYTES
 		|| (request.offset > 0 && request.fingerprint.is_none())
@@ -41,13 +45,13 @@ where
 		return Result::Unavailable;
 	}
 
-	let response = tokio::time::timeout(std::time::Duration::from_secs(25), async {
+	let response = time::timeout(Duration::from_secs(25), async {
 		let history = before
 			.client
 			.thread_read_turn(request.thread_id.as_str(), request.turn_id.as_str())
 			.await
 			.map_err(client_error)?;
-		let item = super::promotions::exact_item(
+		let item = promotions::exact_item(
 			&history,
 			request.thread_id.as_str(),
 			request.turn_id.as_str(),
@@ -149,16 +153,15 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, Result> 
 }
 
 fn local_media_sync(path: &str) -> std::result::Result<(String, Vec<u8>), Result> {
-	use std::io::Read;
 	#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt;
 	// The admitted Codex child runs on this service host (account_launch/agent_process).
 	// Native fs/readFile returns an unbounded base64 frame; fs/getMetadata has no size.
 	// Read only the path recovered from the exact native item, never a UI-supplied path.
-	if path.len() > 4_096 || path.contains('\0') || !std::path::Path::new(path).is_absolute() {
+	if path.len() > 4_096 || path.contains('\0') || !Path::new(path).is_absolute() {
 		return Err(Result::Unavailable);
 	}
 
-	let mut options = std::fs::OpenOptions::new();
+	let mut options = OpenOptions::new();
 
 	options.read(true);
 	#[cfg(unix)]
@@ -189,9 +192,7 @@ fn local_media_sync(path: &str) -> std::result::Result<(String, Vec<u8>), Result
 	Ok((mime.into(), bytes))
 }
 
-fn client_error(error: decodex_codex::app_server_client::ClientError) -> Result {
-	use decodex_codex::app_server_client::ClientError;
-
+fn client_error(error: ClientError) -> Result {
 	match error {
 		ClientError::CapacityExceeded
 		| ClientError::FrameTooLarge
@@ -321,7 +322,7 @@ async fn resolve(
 			decode(mime, encoded)
 		},
 		Media::Local(path) => {
-			let original = std::path::Path::new(path);
+			let original = Path::new(path);
 
 			if original.is_absolute() {
 				return local_media(path).await;
@@ -329,7 +330,7 @@ async fn resolve(
 			// Relative user input is interpreted by the admitted native process,
 			// not by this service or a child thread's configured directory.
 			let base = directory
-				.map(std::path::Path::new)
+				.map(Path::new)
 				.filter(|base| base.is_absolute())
 				.ok_or(Result::Unavailable)?;
 			let resolved = base.join(original);
@@ -342,9 +343,7 @@ async fn resolve(
 async fn local_media(path: &str) -> std::result::Result<(String, Vec<u8>), Result> {
 	let path = path.to_owned();
 
-	tokio::task::spawn_blocking(move || local_media_sync(&path))
-		.await
-		.map_err(|_| Result::Unavailable)?
+	task::spawn_blocking(move || local_media_sync(&path)).await.map_err(|_| Result::Unavailable)?
 }
 
 #[cfg(test)]

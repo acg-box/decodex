@@ -1,7 +1,7 @@
 //! URLSession adapter in the signed app's existing native library.
 #[cfg(target_os = "macos")]
 mod macos {
-	use super::Value;
+	use crate::dictation::native::Value;
 
 	use std::{
 		ffi::{CStr, CString, c_char, c_void},

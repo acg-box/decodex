@@ -1,18 +1,17 @@
 //! Bounded native history for positive submitted-message reconciliation.
 
-use super::{
-	ExactReconciliationError, ExactThreadId, ExactThreadReadParams, Instant, LossyThreadHistory,
-	MAX_APP_SERVER_FRAME_BYTES, MAX_EXACT_THREAD_READ_ITEMS, MAX_EXACT_THREAD_READ_TURNS,
-	SupervisedProcess, ThreadReadResponse,
-};
-
-use crate::account_launch::protocol::{
-	ProtocolThread, ProtocolThreadItem, ProtocolTurn, SensitiveString,
-};
+use std::{collections::HashSet, time::Duration};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use std::{collections::HashSet, time::Duration};
+use crate::account_launch::{
+	process::{
+		ExactReconciliationError, ExactThreadId, ExactThreadReadParams, Instant,
+		LossyThreadHistory, MAX_APP_SERVER_FRAME_BYTES, MAX_EXACT_THREAD_READ_ITEMS,
+		MAX_EXACT_THREAD_READ_TURNS, SupervisedProcess, ThreadReadResponse,
+	},
+	protocol::{ProtocolThread, ProtocolThreadItem, ProtocolTurn, SensitiveString},
+};
 
 const PAGE_SIZE: usize = 100;
 

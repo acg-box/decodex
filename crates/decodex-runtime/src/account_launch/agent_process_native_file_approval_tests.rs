@@ -1,11 +1,21 @@
 //! Qualify pending patch evidence through the installed native process and coordinator.
-use super::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+	env, fs,
+	sync::atomic::{AtomicUsize, Ordering},
+};
+
+use tokio::{net::TcpListener, time};
+
+use crate::{
+	AgentConfig, AgentCoordinator, account_launch::agent_process::native_tests::*, agent_detail,
+};
+use decodex_core::DecodexRoot;
+use decodex_database::SqliteStore;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native file approval"]
 async fn installed_native_file_approval_saves_live_diff_before_history_and_declines_once() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -16,7 +26,7 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 		target.display(),
 		"界".repeat(30_000)
 	);
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture(
@@ -34,27 +44,22 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let root = decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("decodex"))
-		.unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("decodex")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
-	let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
-	let mut config = crate::AgentConfig::new(
-		"gpt-5.6-sol".into(),
-		"medium".into(),
-		home.path().display().to_string(),
-	);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let mut config =
+		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
 
 	config.sandbox = "read-only".into();
 
-	let mut agent =
-		crate::AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
+	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		agent.start_agent("agent", "Propose the synthetic patch for user review.").await.unwrap();
 
 		let mut approved_event = None;
@@ -74,13 +79,13 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 
 				assert!(event.payload.len() < 4_096);
 
-				let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+				let reopened = SqliteStore::open(&root.paths()).unwrap();
 				let saved = reopened.get_agent_inbox_event(event.id).await.unwrap();
 				let payload: Value = serde_json::from_str(&saved.payload).unwrap();
 
 				assert_eq!(payload["params"], params);
 
-				let diff = crate::agent_detail::saved_file_changes(&payload).expect("live patch retained");
+				let diff = agent_detail::saved_file_changes(&payload).expect("live patch retained");
 
 				assert!(diff.len() > 90_000 && diff.contains("REQUIRED FILE SUFFIX"));
 

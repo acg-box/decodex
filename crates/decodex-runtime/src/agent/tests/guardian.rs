@@ -1,4 +1,20 @@
-use super::*;
+use std::{collections::BTreeSet, iter, time::Duration};
+
+use tokio::{io, time};
+
+use crate::{
+	agent::tests::*,
+	agent_guardian,
+	application::{Application, ProductStore},
+	conversation::ConversationCapability,
+};
+use decodex_core::{DecodexRoot, ProcessGenerationId};
+use decodex_database::AgentGuardianObservation;
+use decodex_protocol::{
+	AgentActivityDto, AgentGuardianReviewsResult, CURRENT_VERSION, ConversationUnavailableReason,
+	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, QueryEnvelope,
+	QueryId, QueryPayload, QueryResultPayload, ServerId, WireText,
+};
 
 fn review(id: &str, status: &str) -> Value {
 	let mut value = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
@@ -21,11 +37,9 @@ fn approval_history() -> Value {
 }
 
 fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication {
-	use decodex_protocol::{DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus};
-
 	let doctor = DoctorReport::new(
-		decodex_protocol::ServerId::new("guardian-fixture").unwrap(),
-		decodex_protocol::CURRENT_VERSION,
+		ServerId::new("guardian-fixture").unwrap(),
+		CURRENT_VERSION,
 		DoctorComponent::ALL
 			.into_iter()
 			.map(|component| {
@@ -36,13 +50,11 @@ fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication 
 	.unwrap();
 
 	crate::application::ServiceApplication::new(
-		crate::application::ProductStore::Available(store),
+		ProductStore::Available(store),
 		None,
 		None,
 		None,
-		crate::conversation::ConversationCapability::Unavailable(
-			decodex_protocol::ConversationUnavailableReason::AppServerProfile,
-		),
+		ConversationCapability::Unavailable(ConversationUnavailableReason::AppServerProfile),
 		doctor,
 	)
 }
@@ -79,9 +91,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	assert!(row.event_json.len() > 256 * 1_024);
 
 	let digest = row.digest();
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
@@ -90,8 +100,8 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 
 	assert_eq!(saved.event_json, event.to_string());
 
-	let summary = crate::agent_guardian::read(&store, "agent", None, None).await;
-	let decodex_protocol::AgentGuardianReviewsResult::Available { reviews, .. } = summary else {
+	let summary = agent_guardian::read(&store, "agent", None, None).await;
+	let AgentGuardianReviewsResult::Available { reviews, .. } = summary else {
 		panic!("saved review missing");
 	};
 
@@ -105,18 +115,17 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	let mut complete = String::new();
 
 	loop {
-		let query = decodex_protocol::QueryEnvelope {
-			version: decodex_protocol::CURRENT_VERSION,
-			query_id: decodex_protocol::QueryId::new("guardian-page").unwrap(),
-			payload: decodex_protocol::QueryPayload::GetAgentGuardianDetail {
-				work_id: decodex_protocol::EntityId::new("agent").unwrap(),
+		let query = QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("guardian-page").unwrap(),
+			payload: QueryPayload::GetAgentGuardianDetail {
+				work_id: EntityId::new("agent").unwrap(),
 				review_row: row.id,
-				review_digest: decodex_protocol::WireText::new(&digest).unwrap(),
+				review_digest: WireText::new(&digest).unwrap(),
 				offset,
 			},
 		};
-		let decodex_protocol::QueryResultPayload::AgentGuardianDetail(page) =
-			crate::application::Application::query(&app, &query).await
+		let QueryResultPayload::AgentGuardianDetail(page) = Application::query(&app, &query).await
 		else {
 			panic!("detail result");
 		};
@@ -153,7 +162,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 		("agent", digest.as_str(), complete.find('中').unwrap() + 1),
 	] {
 		assert_eq!(
-			crate::agent_guardian::detail(&peer, work, row.id, expected, offset).await,
+			agent_guardian::detail(&peer, work, row.id, expected, offset).await,
 			Detail::Unavailable
 		);
 	}
@@ -161,7 +170,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	event["action"]["command"] = json!("different action");
 
 	store
-		.record_agent_guardian_review(decodex_database::AgentGuardianObservation {
+		.record_agent_guardian_review(AgentGuardianObservation {
 			thread_id: saved.thread_id.clone(),
 			turn_id: saved.turn_id.clone(),
 			review_id: saved.review_id.clone(),
@@ -173,7 +182,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 		.unwrap();
 
 	assert_eq!(
-		crate::agent_guardian::detail(&peer, "agent", saved.id, &digest, 0).await,
+		agent_guardian::detail(&peer, "agent", saved.id, &digest, 0).await,
 		Detail::Unavailable
 	);
 }
@@ -184,17 +193,14 @@ async fn deliver(agent: &mut AgentCoordinator, value: Value) {
 	} else {
 		"item/autoApprovalReview/completed"
 	};
-	let (io, mut write) = tokio::io::duplex(8_192);
-	let (read, writer) = tokio::io::split(io);
+	let (io, mut write) = io::duplex(8_192);
+	let (read, writer) = io::split(io);
 	let (_client, mut events) = AppServerClient::from_io(read, writer);
 	let wire = json!({"method":method,"params":value});
 
 	write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-	let event = tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
-		.await
-		.unwrap()
-		.unwrap();
+	let event = time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 
 	agent.handle_event(event).await.unwrap();
 }
@@ -260,9 +266,7 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	assert!(agent.store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 
 	let connection = agent.connection_id.clone();
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
@@ -328,7 +332,7 @@ async fn guardian_review_from_unbound_native_generation_is_not_retained() {
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 	agent.bind_native_generation(
-		decodex_core::ProcessGenerationId::new("30000000-0000-4000-8000-000000000001").unwrap(),
+		ProcessGenerationId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 	);
 
 	deliver(&mut agent, review("wrong-process", "denied")).await;
@@ -422,7 +426,7 @@ async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a
 
 	agent.approve_guardian_denial("agent", saved.id, &saved.digest(), "cold-click").await.unwrap();
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert!(requests.iter().all(|r| r["method"] != "turn/start" && r["method"] != "thread/start"));
 
@@ -490,9 +494,7 @@ async fn guardian_rejection_and_lost_reply_have_distinct_durable_outcomes() {
 
 		assert_eq!(calls, 1);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 		drop(agent);
 
@@ -629,16 +631,15 @@ async fn guardian_query_pages_preserve_all_reviews_and_frame_budget() {
 		deliver(&mut agent, value).await;
 	}
 
-	let mut seen = std::collections::BTreeSet::new();
+	let mut seen = BTreeSet::new();
 	let mut before = None;
 
 	loop {
-		let page = crate::agent_guardian::read(&agent.store, "agent", before, None).await;
+		let page = agent_guardian::read(&agent.store, "agent", before, None).await;
 
 		assert!(serde_json::to_vec(&page).unwrap().len() < 140 * 1_024);
 
-		let decodex_protocol::AgentGuardianReviewsResult::Available { reviews, next_before } = page
-		else {
+		let AgentGuardianReviewsResult::Available { reviews, next_before } = page else {
 			panic!("available reviews")
 		};
 
@@ -705,7 +706,7 @@ async fn strict_review_from_unbound_native_generation_is_not_retained() {
 	while sent.try_recv().is_ok() {}
 
 	agent.bind_native_generation(
-		decodex_core::ProcessGenerationId::new("30000000-0000-4000-8000-000000000001").unwrap(),
+		ProcessGenerationId::new("30000000-0000-4000-8000-000000000001").unwrap(),
 	);
 	agent
 		.handle_event(ServerEvent::Notification {
@@ -739,15 +740,13 @@ async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
 
 	assert!(sent.try_recv().is_err(), "review failure must not replay the action");
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
-	let decodex_protocol::AgentGuardianReviewsResult::Available { reviews, .. } =
-		crate::agent_guardian::read(&store, "agent", None, None).await
+	let AgentGuardianReviewsResult::Available { reviews, .. } =
+		agent_guardian::read(&store, "agent", None, None).await
 	else {
 		panic!("saved review missing");
 	};
@@ -814,9 +813,7 @@ async fn finished_command_survives_late_network_review_cancellation() {
 
 	assert!(agent.pending_requests.is_empty());
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
@@ -830,7 +827,7 @@ async fn finished_command_survives_late_network_review_cancellation() {
 	assert_eq!(serde_json::from_str::<Value>(&rows[0].event_json).unwrap(), cancelled);
 
 	let (events, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-	let activities: Vec<decodex_protocol::AgentActivityDto> = events
+	let activities: Vec<AgentActivityDto> = events
 		.iter()
 		.filter(|event| event.event_kind.starts_with("activity_"))
 		.map(|event| serde_json::from_str(&event.payload).unwrap())
@@ -963,9 +960,7 @@ async fn foreign_guardian_paths_survive_storage_and_explicit_approval() {
 		}
 	}
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 

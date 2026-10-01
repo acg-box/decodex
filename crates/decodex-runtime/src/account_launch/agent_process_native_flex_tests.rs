@@ -1,27 +1,33 @@
 //! Preserve explicit Flex through native settings and cold resume with fast mode disabled.
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 use decodex_codex::app_server_client::ThreadModelRecoveryUpdate;
-use std::sync::atomic::AtomicUsize;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Flex request qualification"]
 async fn installed_native_flex_survives_settings_and_cold_resume() {
-	tokio::time::timeout(Duration::from_secs(30), qualify(false)).await.expect("Flex deadline");
+	time::timeout(Duration::from_secs(30), qualify(false)).await.expect("Flex deadline");
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated configured Flex qualification"]
 async fn installed_native_configured_flex_survives_cold_resume() {
-	tokio::time::timeout(Duration::from_secs(30), qualify(true)).await.expect("Flex deadline");
+	time::timeout(Duration::from_secs(30), qualify(true)).await.expect("Flex deadline");
 }
 
 async fn qualify(configured: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("isolated home");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let count = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture_usage(
 		listener,
 		count.clone(),
@@ -32,7 +38,7 @@ async fn qualify(configured: bool) {
 	));
 	let tier = if configured { "service_tier=\"flex\"\n" } else { "" };
 
-	std::fs::write(home.path().join("config.toml"),format!("{tier}model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"Fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"),format!("{tier}model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"Fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let started = session

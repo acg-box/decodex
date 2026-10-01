@@ -5,26 +5,55 @@
 #[path = "agent_recap/host.rs"] mod recap;
 
 use std::{
+	fmt::{Display, Formatter},
+	future::{self, Future},
+	path::Path,
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use decodex_codex::app_server_client::{ClientError, ServerEvent};
-
-use decodex_core::AccountId;
-
-use decodex_database::{EnqueueAgentEvent, SqliteStore};
-
-use decodex_protocol::{AgentActionDto, AgentSandboxDto, AgentStartDto};
-
-use serde_json::json;
-
-use tokio::sync::{Mutex, mpsc, oneshot, watch};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use tokio::{
+	sync::{Mutex, mpsc, oneshot, watch},
+	time::{self, MissedTickBehavior},
+};
 
 use crate::{
 	AgentConfig, AgentCoordinator, AgentError,
+	account_observation::AccountObservationService,
+	agent::{AgentInputExtras, misalignment, native_subagents, timeline, timeline::media},
+	agent_app_exposure, agent_capabilities, agent_detail, agent_hooks, agent_integrations,
+	agent_live_settings, agent_model_settings, agent_models, agent_native_goal, agent_permissions,
+	agent_recap::Recaps,
+	agent_resources, agent_search_settings, agent_skills,
+	agent_transcript::Transcripts,
+	agent_usage_estimate::{self, SourceKey},
+	agent_voice, agent_voice_settings,
 	conversation::{ConversationRuntime, StartAgentProcess},
+	dictation::DictationGateway,
+	mcp_login::{self, McpLoginGateway},
+	native_agents, native_config_warning, native_diagnostics,
 };
+use decodex_codex::app_server_client::{AppServerClient, ClientError, ServerEvent};
+use decodex_core::AccountId;
+use decodex_database::{
+	AgentDispatchState, AgentMisalignment, AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
+	StoreError,
+};
+use decodex_protocol::{
+	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
+	AgentAttachmentDto, AgentCapabilitiesResult, AgentHookSettingsState, AgentIntegrationsResult,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentPermissionState, AgentRequestedDecision,
+	AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult,
+	AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
+	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
+	McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
+};
+use prompt_edit::Reviews;
+use weather::CachedWeather;
 
 type Reply = oneshot::Sender<Result<String, AgentHostError>>;
 
@@ -37,8 +66,8 @@ pub(crate) enum AgentHostError {
 	Rejected(&'static str),
 	Unknown(&'static str),
 }
-impl std::fmt::Display for AgentHostError {
-	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for AgentHostError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Rejected(message) | Self::Unknown(message) => formatter.write_str(message),
 		}
@@ -54,15 +83,15 @@ impl From<&'static str> for AgentHostError {
 #[derive(Clone)]
 pub(crate) struct AgentHost {
 	skill_roots: Result<crate::agent_skill_roots::RuntimeSkillRoots, &'static str>,
-	observations: Option<crate::account_observation::AccountObservationService>,
+	observations: Option<AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
-	prompt_edits: prompt_edit::Reviews,
-	recaps: crate::agent_recap::Recaps,
-	transcripts: crate::agent_transcript::Transcripts,
-	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
+	prompt_edits: Reviews,
+	recaps: Recaps,
+	transcripts: Transcripts,
+	weather_cache: Arc<Mutex<Option<CachedWeather>>>,
 	voice: crate::agent_voice::VoiceGateway,
-	dictation: crate::dictation::DictationGateway,
-	mcp_login: crate::mcp_login::McpLoginGateway,
+	dictation: DictationGateway,
+	mcp_login: McpLoginGateway,
 	store: SqliteStore,
 	runtime: ConversationRuntime,
 	sender: mpsc::Sender<Request>,
@@ -92,7 +121,7 @@ impl AgentHost {
 
 	pub(crate) fn with_observations(
 		mut self,
-		observations: Option<crate::account_observation::AccountObservationService>,
+		observations: Option<AccountObservationService>,
 	) -> Self {
 		self.observations = observations;
 
@@ -118,8 +147,8 @@ impl AgentHost {
 			.await?
 			.into_iter()
 			.filter(|work| {
-				work.status != decodex_database::AgentWorkStatus::Resolved
-					&& work.dispatch_state == decodex_database::AgentDispatchState::Idle
+				work.status != AgentWorkStatus::Resolved
+					&& work.dispatch_state == AgentDispatchState::Idle
 					&& work.codex_thread_id.is_some()
 			})
 			.collect();
@@ -141,9 +170,9 @@ impl AgentHost {
 
 			let thread = work.codex_thread_id.as_deref().expect("filtered native thread");
 
-			tokio::time::timeout(
+			time::timeout(
 				Duration::from_secs(12),
-				crate::agent_models::recover_ordinary_model(
+				agent_models::recover_ordinary_model(
 					&self.store,
 					|| async {
 						let source = self.timeline_source(&work.id, thread).await?;
@@ -162,43 +191,29 @@ impl AgentHost {
 		Ok(())
 	}
 
-	pub(crate) fn voice(
-		&self,
-		request: &decodex_protocol::AgentVoiceRequest,
-	) -> decodex_protocol::AgentVoiceStatus {
+	pub(crate) fn voice(&self, request: &AgentVoiceRequest) -> AgentVoiceStatus {
 		self.voice.exchange(request)
 	}
 
-	pub(crate) fn misalignment_review_token(
-		&self,
-		review: &decodex_database::AgentMisalignment,
-	) -> Option<String> {
+	pub(crate) fn misalignment_review_token(&self, review: &AgentMisalignment) -> Option<String> {
 		let (_, client) = self.runtime.agent_catalog_client()?;
 
 		client.live_misalignment_review(&review.thread_id, &review.turn_id).and_then(
 			|(error, guard)| {
-				(crate::agent::misalignment::details(&error) == review.details_json)
-					.then(|| crate::agent::misalignment::review_token(review, &guard))
+				(misalignment::details(&error) == review.details_json)
+					.then(|| misalignment::review_token(review, &guard))
 					.flatten()
 			},
 		)
 	}
 
-	pub(crate) async fn dictation(
-		&self,
-		request: &decodex_protocol::DictationRequest,
-	) -> decodex_protocol::DictationStatus {
+	pub(crate) async fn dictation(&self, request: &DictationRequest) -> DictationStatus {
 		self.dictation.exchange(request, self.runtime.agent_client()).await
 	}
 
-	pub(crate) async fn mcp_login(
-		&self,
-		request: &decodex_protocol::McpLoginRequest,
-	) -> decodex_protocol::McpLoginStatus {
-		use decodex_protocol::McpLoginPhase;
-
+	pub(crate) async fn mcp_login(&self, request: &McpLoginRequest) -> McpLoginStatus {
 		let unavailable = || {
-			crate::mcp_login::status(
+			mcp_login::status(
 				request,
 				McpLoginPhase::Disconnected,
 				"The selected task connection is unavailable.",
@@ -241,9 +256,7 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn resources(&self, work: &str) -> decodex_protocol::AgentResourcesResult {
-		use decodex_protocol::AgentResourcesResult;
-
+	pub(crate) async fn resources(&self, work: &str) -> AgentResourcesResult {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return AgentResourcesResult::Unavailable;
 		};
@@ -253,7 +266,7 @@ impl AgentHost {
 		let Some(thread) = owner.codex_thread_id else {
 			return AgentResourcesResult::Unavailable;
 		};
-		let result = crate::agent_resources::read(&client, &thread).await;
+		let result = agent_resources::read(&client, &thread).await;
 		let still_owned = self
 			.store
 			.get_agent_work_item(work.into())
@@ -270,7 +283,7 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn archive_state(&self, work: &str) -> decodex_protocol::AgentArchiveResult {
+	pub(crate) async fn archive_state(&self, work: &str) -> AgentArchiveResult {
 		use decodex_codex::app_server_client::ThreadArchiveState as State;
 
 		use decodex_protocol::AgentArchiveResult as Result;
@@ -316,13 +329,11 @@ impl AgentHost {
 		self.runtime.agent_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
 
-	pub(crate) async fn process_diagnostics(&self) -> decodex_protocol::NativeProcessDiagnostics {
-		crate::native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
+	pub(crate) async fn process_diagnostics(&self) -> NativeProcessDiagnostics {
+		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
 	}
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
-		use sha2::{Digest, Sha256};
-
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 		let value = serde_json::to_vec(&(
 			generation.as_str(),
@@ -337,16 +348,13 @@ impl AgentHost {
 		decodex_protocol::EntityId::new(digest).ok()
 	}
 
-	pub(crate) async fn usage_estimate(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentUsageEstimateResult {
-		crate::agent_usage_estimate::read(|| async {
+	pub(crate) async fn usage_estimate(&self, work: &str) -> AgentUsageEstimateResult {
+		agent_usage_estimate::read(|| async {
 			let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			Some(crate::agent_usage_estimate::Source {
-				key: crate::agent_usage_estimate::SourceKey {
+				key: SourceKey {
 					history_revision: client.history_revision(),
 					generation,
 					account,
@@ -360,12 +368,8 @@ impl AgentHost {
 		.await
 	}
 
-	pub(crate) async fn native_goal(
-		&self,
-		work: &str,
-		thread: &str,
-	) -> decodex_protocol::AgentNativeGoalResult {
-		crate::agent_native_goal::read(
+	pub(crate) async fn native_goal(&self, work: &str, thread: &str) -> AgentNativeGoalResult {
+		agent_native_goal::read(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -377,11 +381,8 @@ impl AgentHost {
 		.await
 	}
 
-	pub(crate) async fn hook_settings(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentHookSettingsState {
-		crate::agent_hooks::read(&self.store, || async {
+	pub(crate) async fn hook_settings(&self, work: &str) -> AgentHookSettingsState {
+		agent_hooks::read(&self.store, || async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, &owner.codex_thread_id?).await
@@ -394,7 +395,7 @@ impl AgentHost {
 		work: &str,
 		change: crate::agent_hooks::Selection<'_>,
 	) -> Result<String, AgentHostError> {
-		crate::agent_hooks::write(
+		agent_hooks::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -408,11 +409,8 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
-	pub(crate) async fn model_selection(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentModelSelectionState {
-		crate::agent_models::read(&self.store, || async {
+	pub(crate) async fn model_selection(&self, work: &str) -> AgentModelSelectionState {
+		agent_models::read(&self.store, || async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, &owner.codex_thread_id?).await
@@ -425,7 +423,7 @@ impl AgentHost {
 		work: &str,
 		change: crate::agent_models::Change<'_>,
 	) -> Result<String, AgentHostError> {
-		crate::agent_models::write(
+		agent_models::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -439,11 +437,8 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
-	pub(crate) async fn permission_profiles(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentPermissionState {
-		crate::agent_permissions::read(&self.store, || async {
+	pub(crate) async fn permission_profiles(&self, work: &str) -> AgentPermissionState {
+		agent_permissions::read(&self.store, || async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, &owner.codex_thread_id?).await
@@ -459,7 +454,7 @@ impl AgentHost {
 		profile: &str,
 		key: &str,
 	) -> Result<String, AgentHostError> {
-		crate::agent_permissions::write(
+		agent_permissions::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -480,8 +475,8 @@ impl AgentHost {
 		&self,
 		work: &str,
 		connector: &str,
-	) -> decodex_protocol::AgentAppExposureResult {
-		crate::agent_app_exposure::read(
+	) -> AgentAppExposureResult {
+		agent_app_exposure::read(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -500,14 +495,14 @@ impl AgentHost {
 			&decodex_protocol::WireText,
 			&decodex_protocol::WireText,
 		),
-		omit: Option<Vec<decodex_protocol::AgentToolExposureSurface>>,
+		omit: Option<Vec<AgentToolExposureSurface>>,
 		attempt: &str,
 	) -> Result<String, AgentHostError> {
 		let (work, connector, review) =
 			(identity.0.as_str(), identity.1.as_str(), identity.2.as_str());
 		let change = crate::agent_app_exposure::Change { connector, review, omit, attempt };
 
-		crate::agent_app_exposure::write(
+		agent_app_exposure::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -525,8 +520,8 @@ impl AgentHost {
 		&self,
 		work: &str,
 		include_models: bool,
-	) -> decodex_protocol::AgentLiveReviewerState {
-		crate::agent_live_settings::read_options(&self.store, include_models, || async {
+	) -> AgentLiveReviewerState {
+		agent_live_settings::read_options(&self.store, include_models, || async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, &owner.codex_thread_id?).await
@@ -546,7 +541,7 @@ impl AgentHost {
 	) -> Result<String, AgentHostError> {
 		let (work, turn, review) = (ids.0.as_str(), ids.1.as_str(), ids.2.as_str());
 
-		crate::agent_live_settings::write(
+		agent_live_settings::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -586,18 +581,15 @@ impl AgentHost {
 
 		let after = self.timeline_source(work, thread).await?;
 
-		if before.key != after.key || !std::path::Path::new(&directory).is_absolute() {
+		if before.key != after.key || !Path::new(&directory).is_absolute() {
 			return None;
 		}
 
 		decodex_protocol::WireText::new(directory).ok()
 	}
 
-	pub(crate) async fn model_settings(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentModelSettingsResult {
-		crate::agent_model_settings::read(&self.store, || async {
+	pub(crate) async fn model_settings(&self, work: &str) -> AgentModelSettingsResult {
+		agent_model_settings::read(&self.store, || async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
@@ -618,7 +610,7 @@ impl AgentHost {
 		}
 
 		Some(crate::agent_usage_estimate::Source {
-			key: crate::agent_usage_estimate::SourceKey {
+			key: SourceKey {
 				history_revision: client.history_revision(),
 				generation,
 				account,
@@ -636,12 +628,8 @@ impl AgentHost {
 		thread: &str,
 		cursor: Option<&str>,
 	) -> decodex_protocol::AgentTimelineResult {
-		let mut result = crate::agent::timeline::read(
-			Some(&self.store),
-			|| self.timeline_source(work, thread),
-			cursor,
-		)
-		.await;
+		let mut result =
+			timeline::read(Some(&self.store), || self.timeline_source(work, thread), cursor).await;
 
 		if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut result {
 			self.enrich_timeline_weather(page).await;
@@ -681,8 +669,8 @@ impl AgentHost {
 
 	pub(crate) async fn transcript(
 		&self,
-		request: &decodex_protocol::AgentTranscriptRequest,
-	) -> decodex_protocol::AgentTranscriptResult {
+		request: &AgentTranscriptRequest,
+	) -> AgentTranscriptResult {
 		self.transcripts
 			.read(
 				|| async {
@@ -693,13 +681,10 @@ impl AgentHost {
 						self.timeline_source(work, owner.codex_thread_id.as_deref()?).await?;
 
 					if source.key.thread != thread {
-						let child_owner = crate::agent::native_subagents::request_owner(
-							&self.store,
-							&source.client,
-							thread,
-						)
-						.await
-						.ok()?;
+						let child_owner =
+							native_subagents::request_owner(&self.store, &source.client, thread)
+								.await
+								.ok()?;
 
 						if child_owner.id != work {
 							return None;
@@ -715,11 +700,8 @@ impl AgentHost {
 			.await
 	}
 
-	pub(crate) async fn media(
-		&self,
-		request: &decodex_protocol::AgentMediaRequest,
-	) -> decodex_protocol::AgentMediaResult {
-		crate::agent::timeline::media::read(
+	pub(crate) async fn media(&self, request: &AgentMediaRequest) -> AgentMediaResult {
+		media::read(
 			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
 			|key| self.runtime.agent_input_directory(&key.generation),
 			request,
@@ -727,12 +709,7 @@ impl AgentHost {
 		.await
 	}
 
-	pub(crate) async fn integrations(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentIntegrationsResult {
-		use decodex_protocol::AgentIntegrationsResult;
-
+	pub(crate) async fn integrations(&self, work: &str) -> AgentIntegrationsResult {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return AgentIntegrationsResult::Unavailable;
 		};
@@ -742,7 +719,7 @@ impl AgentHost {
 		let Some(thread) = owner.codex_thread_id else {
 			return AgentIntegrationsResult::Unavailable;
 		};
-		let result = crate::agent_integrations::read(&client, &thread).await;
+		let result = agent_integrations::read(&client, &thread).await;
 		let still_owned = self
 			.store
 			.get_agent_work_item(work.into())
@@ -768,7 +745,7 @@ impl AgentHost {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return decodex_protocol::NativeAgentsResult::Unavailable;
 		};
-		let result = crate::native_agents::read(&self.store, &client, work, thread, cursor).await;
+		let result = native_agents::read(&self.store, &client, work, thread, cursor).await;
 
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
 			result
@@ -782,9 +759,9 @@ impl AgentHost {
 		work: &str,
 		turn: &str,
 		item: &str,
-		cursor: Option<&decodex_protocol::AgentActivityDetailCursor>,
+		cursor: Option<&AgentActivityDetailCursor>,
 	) -> decodex_protocol::AgentActivityDetailResult {
-		crate::agent_detail::read_bound(
+		agent_detail::read_bound(
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -807,15 +784,15 @@ impl AgentHost {
 			return decodex_protocol::AgentActivityDetailResult::Unavailable;
 		};
 
-		crate::agent_detail::read_file_changes(&client, thread, turn, item).await
+		agent_detail::read_file_changes(&client, thread, turn, item).await
 	}
 
-	pub(crate) fn request_is_live(&self, payload: &serde_json::Value) -> bool {
+	pub(crate) fn request_is_live(&self, payload: &Value) -> bool {
 		self.runtime.agent_client().is_some_and(|client| request_is_live_on(&client, payload))
 	}
 
-	pub(crate) async fn capabilities(&self) -> decodex_protocol::AgentCapabilitiesResult {
-		crate::agent_capabilities::read_scoped(|| async {
+	pub(crate) async fn capabilities(&self) -> AgentCapabilitiesResult {
+		agent_capabilities::read_scoped(|| async {
 			let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 
 			if !self.store.account_is_ready_at_revision(&account, revision).await.ok()? {
@@ -834,7 +811,7 @@ impl AgentHost {
 	) -> Result<String, AgentHostError> {
 		let (reply, result) = oneshot::channel();
 
-		tokio::time::timeout(COMMAND_DEADLINE, self.sender.send(Request { key, action, reply }))
+		time::timeout(COMMAND_DEADLINE, self.sender.send(Request { key, action, reply }))
 			.await
 			.map_err(|_| AgentHostError::Rejected("Agent command queue is full"))?
 			.map_err(|_| AgentHostError::Rejected("Agent service is stopped"))?;
@@ -855,9 +832,9 @@ impl AgentHost {
 			active = self.restore().await;
 
 			let mut recovery = RecoverySchedule::new();
-			let mut tick = tokio::time::interval(Duration::from_secs(15));
+			let mut tick = time::interval(Duration::from_secs(15));
 
-			tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+			tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
 			loop {
 				tokio::select! {
@@ -896,7 +873,7 @@ impl AgentHost {
 
 								if let ServerEvent::Notification { method, params } = event
 									&& matches!(method.as_str(), "configWarning" | "warning" | "mcpServer/startupStatus/updated")
-									&& crate::native_config_warning::record_notification(&self.store, root, generation, method, params).await.is_err() {
+									&& native_config_warning::record_notification(&self.store, root, generation, method, params).await.is_err() {
 									self.record_error(root,"event_processing_failed").await;
 								}
 							}
@@ -970,14 +947,14 @@ impl AgentHost {
 
 	async fn handle_voice(
 		&self,
-		request: decodex_protocol::AgentVoiceRequest,
+		request: AgentVoiceRequest,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) {
 		let id = request.session_id().as_str().to_owned();
-		let speech = matches!(&request, decodex_protocol::AgentVoiceRequest::Speak { .. });
+		let speech = matches!(&request, AgentVoiceRequest::Speak { .. });
 		let result = match active.as_mut() {
 			Some((_, agent, _)) =>
-				tokio::time::timeout(Duration::from_secs(30), agent.voice_request(request))
+				time::timeout(Duration::from_secs(30), agent.voice_request(request))
 					.await
 					.unwrap_or_else(|_| {
 						Err(AgentError::Invalid(
@@ -996,13 +973,13 @@ impl AgentHost {
 
 			let detail = match error {
 				AgentError::Transport(ClientError::Remote(error)) =>
-					crate::agent_voice::provider_error_message(&error.message).into(),
+					agent_voice::provider_error_message(&error.message).into(),
 				AgentError::Invalid(message) => message,
 				AgentError::Store(_) => "Voice session state could not be saved.".into(),
 				_ => "Voice could not connect to this Agent. Check connection status.".into(),
 			};
 
-			self.voice.update(&id, decodex_protocol::AgentVoicePhase::Failed, None, Some(&detail));
+			self.voice.update(&id, AgentVoicePhase::Failed, None, Some(&detail));
 		}
 	}
 
@@ -1029,9 +1006,7 @@ impl AgentHost {
 			return;
 		};
 
-		if work.iter().any(|item| item.dispatch_state != decodex_database::AgentDispatchState::Idle)
-			|| !exhausted
-		{
+		if work.iter().any(|item| item.dispatch_state != AgentDispatchState::Idle) || !exhausted {
 			return;
 		}
 
@@ -1048,9 +1023,9 @@ impl AgentHost {
 	async fn accept_message(
 		&self,
 		root_id: &decodex_protocol::EntityId,
-		text: &decodex_protocol::HistoryText,
+		text: &HistoryText,
 		key: &str,
-		input_options: Option<&serde_json::Value>,
+		input_options: Option<&Value>,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		let root = self
@@ -1116,8 +1091,7 @@ impl AgentHost {
 	) -> Result<String, AgentHostError> {
 		let (work, thread) = ids;
 		let client = self.runtime.agent_client().ok_or("Agent connection unavailable")?;
-		let result =
-			crate::native_agents::read(&self.store, &client, work, Some(thread), None).await;
+		let result = native_agents::read(&self.store, &client, work, Some(thread), None).await;
 		let decodex_protocol::NativeAgentsResult::Conversation {
 			can_input: true, active_turn, ..
 		} = result
@@ -1184,11 +1158,8 @@ impl AgentHost {
 		Ok(work_id.as_str().into())
 	}
 
-	pub(crate) async fn voice_settings(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentVoiceSettingsResult {
-		crate::agent_voice_settings::read(|| async {
+	pub(crate) async fn voice_settings(&self, work: &str) -> AgentVoiceSettingsResult {
+		agent_voice_settings::read(|| async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
@@ -1202,7 +1173,7 @@ impl AgentHost {
 		review: &str,
 		voice: &str,
 	) -> Result<String, AgentHostError> {
-		crate::agent_voice_settings::write(
+		agent_voice_settings::write(
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -1220,12 +1191,8 @@ impl AgentHost {
 		self.skill_roots.as_ref().ok().cloned()
 	}
 
-	pub(crate) async fn skills(
-		&self,
-		work: &str,
-		filter: &str,
-	) -> decodex_protocol::AgentSkillsResult {
-		crate::agent_skills::read(
+	pub(crate) async fn skills(&self, work: &str, filter: &str) -> AgentSkillsResult {
+		agent_skills::read(
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -1236,11 +1203,8 @@ impl AgentHost {
 		.await
 	}
 
-	pub(crate) async fn search_settings(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentSearchSettingsResult {
-		crate::agent_search_settings::read(|| async {
+	pub(crate) async fn search_settings(&self, work: &str) -> AgentSearchSettingsResult {
+		agent_search_settings::read(|| async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
 			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
@@ -1254,7 +1218,7 @@ impl AgentHost {
 		review: &str,
 		mode: &str,
 	) -> Result<String, AgentHostError> {
-		crate::agent_search_settings::write(
+		agent_search_settings::write(
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -1279,7 +1243,7 @@ impl AgentHost {
 					"Configure connector approvals in Codex for this account.",
 				)),
 			AgentActionDto::EditNativeGoal { work_id, thread_id, review_token, edit } => {
-				crate::agent_native_goal::write(
+				agent_native_goal::write(
 					&self.store,
 					|| async {
 						let owner =
@@ -1530,7 +1494,7 @@ impl AgentHost {
 		&self,
 		work_id: decodex_protocol::EntityId,
 		source_event_id: decodex_protocol::WireText,
-		payload: decodex_protocol::HistoryText,
+		payload: HistoryText,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		self.store
@@ -1570,10 +1534,7 @@ impl AgentHost {
 				turn_id.as_str(),
 				key,
 				text.as_str(),
-				crate::agent::AgentInputExtras {
-					attachments: &attachments,
-					task_references: &task_references,
-				},
+				AgentInputExtras { attachments: &attachments, task_references: &task_references },
 			)
 			.await
 			.map_err(steer_input_error)?;
@@ -1585,7 +1546,7 @@ impl AgentHost {
 		&self,
 		work: &str,
 		event_id: i64,
-		decision: &decodex_protocol::AgentRequestedDecision,
+		decision: &AgentRequestedDecision,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		let event = self
@@ -1598,7 +1559,7 @@ impl AgentHost {
 			return Err("request identity or state changed; refresh state".into());
 		}
 
-		let payload: serde_json::Value =
+		let payload: Value =
 			serde_json::from_str(&event.payload).map_err(|_| "stored request is unavailable")?;
 		let response = decodex_protocol::requested_decision_response(
 			payload["method"].as_str().unwrap_or_default(),
@@ -1631,7 +1592,7 @@ impl AgentHost {
 			return Err("request identity or state changed; refresh state".into());
 		}
 
-		let response: serde_json::Value =
+		let response: Value =
 			serde_json::from_str(response_json).map_err(|_| "response must be valid JSON")?;
 
 		if !response.is_object() {
@@ -1660,7 +1621,7 @@ impl AgentHost {
 		&self,
 		draft: AgentStartDto,
 		key: &str,
-		input_options: Option<&serde_json::Value>,
+		input_options: Option<&Value>,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		let root = draft.root_id.as_str().to_owned();
@@ -1889,7 +1850,7 @@ impl RecoverySchedule {
 		&mut self,
 		active: &mut Option<T>,
 		now: tokio::time::Instant,
-		restore: impl std::future::Future<Output = Option<T>>,
+		restore: impl Future<Output = Option<T>>,
 	) {
 		if active.is_some() {
 			*self = Self::new();
@@ -1955,10 +1916,7 @@ pub(crate) async fn queue_start_for_native_test(
 	config
 }
 
-fn request_is_live_on(
-	client: &decodex_codex::app_server_client::AppServerClient,
-	payload: &serde_json::Value,
-) -> bool {
+fn request_is_live_on(client: &AppServerClient, payload: &Value) -> bool {
 	if payload["connectionId"].as_str() != Some(client.connection_identity()) {
 		return false;
 	}
@@ -1986,7 +1944,7 @@ fn event_failure_needs_attention(closed: bool, error: &AgentError) -> bool {
 }
 
 fn decode_settings(encoded: &str) -> Option<(AgentConfig, Option<AccountId>)> {
-	let settings: serde_json::Value = serde_json::from_str(encoded).ok()?;
+	let settings: Value = serde_json::from_str(encoded).ok()?;
 	let config = serde_json::from_value::<AgentConfig>(settings.clone()).ok()?;
 	let account = match settings.get("account_id") {
 		None => None,
@@ -1998,7 +1956,7 @@ fn decode_settings(encoded: &str) -> Option<(AgentConfig, Option<AccountId>)> {
 
 fn normalize_input(
 	action: AgentActionDto,
-) -> Result<(AgentActionDto, Option<serde_json::Value>), AgentHostError> {
+) -> Result<(AgentActionDto, Option<Value>), AgentHostError> {
 	let normalized = match action {
 		AgentActionDto::StartConfigured { start, execution, attachments, task_references } => {
 			validate_attachments(&attachments)?;
@@ -2032,9 +1990,7 @@ fn normalize_input(
 	Ok(normalized)
 }
 
-fn validate_attachments(
-	files: &[decodex_protocol::AgentAttachmentDto],
-) -> Result<(), &'static str> {
+fn validate_attachments(files: &[AgentAttachmentDto]) -> Result<(), &'static str> {
 	if files.len() > 16 {
 		return Err("Select at most 16 files, folders or skills");
 	}
@@ -2048,7 +2004,7 @@ fn validate_attachments(
 			return Err("The selected skill reference is invalid");
 		}
 
-		let path = std::path::Path::new(file.path.as_str());
+		let path = Path::new(file.path.as_str());
 
 		if file.skill_name.is_some() && !path.is_file() {
 			return Err("The selected skill is no longer available");
@@ -2137,7 +2093,7 @@ async fn await_acceptance(
 	result: oneshot::Receiver<Result<String, AgentHostError>>,
 	deadline: Duration,
 ) -> Result<String, AgentHostError> {
-	tokio::time::timeout(deadline, result)
+	time::timeout(deadline, result)
 		.await
 		.map_err(|_| {
 			AgentHostError::Unknown(
@@ -2163,7 +2119,7 @@ async fn persist_input(
 	root: &str,
 	key: &str,
 	text: &str,
-	options: Option<&serde_json::Value>,
+	options: Option<&Value>,
 ) -> Result<(), &'static str> {
 	store
   .enqueue_agent_event(EnqueueAgentEvent {
@@ -2174,7 +2130,7 @@ async fn persist_input(
 		})
 		.await
 		.map_err(|error| match error {
-			decodex_database::StoreError::AgentThreadInUse =>
+			StoreError::AgentThreadInUse =>
 				"This conversation is in use in another app. No message was queued.",
 			_ => "Agent input could not be accepted",
 		})?;
@@ -2188,14 +2144,22 @@ async fn receive(
 	match active {
 		Some((_, _, events)) =>
 			Some(events.recv().await.unwrap_or(ServerEvent::Closed(ClientError::Closed))),
-		None => std::future::pending().await,
+		None => future::pending().await,
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{fs, future};
 
+	use tokio::{io, time};
+
+	use crate::agent_host::{
+		self, AgentConfig, AgentCoordinator, AgentError, AgentHostError, ClientError, Duration,
+		EnqueueAgentEvent, RECOVERY_MIN_DELAY, RecoverySchedule, ServerEvent, SqliteStore, mpsc,
+		oneshot, question_input_error, steer_input_error, watch,
+	};
+	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_core::DecodexRoot;
 
 	#[test]
@@ -2203,7 +2167,7 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("folder.png");
 
-		std::fs::create_dir(&path).unwrap();
+		fs::create_dir(&path).unwrap();
 
 		let mut reference = decodex_protocol::AgentAttachmentDto {
 			path: decodex_protocol::ConversationWorkingDirectory::new(path.to_str().unwrap())
@@ -2220,7 +2184,7 @@ mod tests {
 
 		reference.image = false;
 
-		std::fs::remove_dir(&path).unwrap();
+		fs::remove_dir(&path).unwrap();
 
 		assert!(super::validate_attachments(&[reference]).is_err());
 	}
@@ -2252,20 +2216,30 @@ mod tests {
 
 	#[test]
 	fn expected_transport_close_does_not_hide_real_processing_failures() {
-		assert!(!event_failure_needs_attention(true, &AgentError::Transport(ClientError::Closed)));
-		assert!(!event_failure_needs_attention(true, &AgentError::Transport(ClientError::Io)));
-		assert!(event_failure_needs_attention(false, &AgentError::Transport(ClientError::Closed)));
-		assert!(event_failure_needs_attention(
+		assert!(!agent_host::event_failure_needs_attention(
+			true,
+			&AgentError::Transport(ClientError::Closed)
+		));
+		assert!(!agent_host::event_failure_needs_attention(
+			true,
+			&AgentError::Transport(ClientError::Io)
+		));
+		assert!(agent_host::event_failure_needs_attention(
+			false,
+			&AgentError::Transport(ClientError::Closed)
+		));
+		assert!(agent_host::event_failure_needs_attention(
 			true,
 			&AgentError::Store("fence write failed".into())
 		));
-		assert!(event_failure_needs_attention(true, &AgentError::Invalid("bad evidence".into())));
+		assert!(agent_host::event_failure_needs_attention(
+			true,
+			&AgentError::Invalid("bad evidence".into())
+		));
 	}
 
 	#[tokio::test]
 	async fn request_liveness_rejects_reused_rpc_identity_after_reconnect() {
-		use decodex_codex::app_server_client::AppServerClient;
-
 		let params = serde_json::json!({"threadId":"thread","turnId":"turn","command":"pwd"});
 		let mut retained = None;
 
@@ -2354,16 +2328,16 @@ mod tests {
 			let mut active = None::<()>;
 
 			tokio::select! {
-				_ = stopped(&mut receiver) => {},
+				_ = agent_host::stopped(&mut receiver) => {},
 				_ = schedule.restore_if_due(
-					&mut active, schedule.next, std::future::pending()
+					&mut active, schedule.next, future::pending()
 				) => panic!("pending recovery completed"),
 			}
 		});
 
 		sender.send(true).unwrap();
 
-		tokio::time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
+		time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
 	}
 
 	#[tokio::test]
@@ -2377,24 +2351,30 @@ mod tests {
 		let config = AgentConfig::new("gpt-6-astra".into(), "medium".into(), "/tmp".into());
 		let mut settings = serde_json::to_value(&config).unwrap();
 
-		settings["account_id"] = json!("00000000-0000-4000-8000-000000000001");
+		settings["account_id"] = agent_host::json!("00000000-0000-4000-8000-000000000001");
 
 		store.bind_agent_root_settings("agent", &settings.to_string()).await.unwrap();
 
 		drop(store);
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		let (_, account) =
-			decode_settings(&store.read_agent_root_settings("agent").await.unwrap().unwrap())
-				.unwrap();
+		let (_, account) = agent_host::decode_settings(
+			&store.read_agent_root_settings("agent").await.unwrap().unwrap(),
+		)
+		.unwrap();
 
 		assert_eq!(account.unwrap().as_str(), "00000000-0000-4000-8000-000000000001");
 		assert!(store.read_agent_process_binding("agent").await.unwrap().is_none());
-		assert!(decode_settings(&serde_json::to_string(&config).unwrap()).unwrap().1.is_none());
+		assert!(
+			agent_host::decode_settings(&serde_json::to_string(&config).unwrap())
+				.unwrap()
+				.1
+				.is_none()
+		);
 
-		settings["account_id"] = json!("invalid");
+		settings["account_id"] = agent_host::json!("invalid");
 
-		assert!(decode_settings(&settings.to_string()).is_none());
+		assert!(agent_host::decode_settings(&settings.to_string()).is_none());
 	}
 
 	#[tokio::test]
@@ -2404,14 +2384,14 @@ mod tests {
 		drop(sender);
 
 		assert!(matches!(
-			await_acceptance(receiver, Duration::from_secs(1)).await,
+			agent_host::await_acceptance(receiver, Duration::from_secs(1)).await,
 			Err(AgentHostError::Unknown(_))
 		));
 
 		let (_sender, receiver) = oneshot::channel();
 
 		assert!(matches!(
-			await_acceptance(receiver, Duration::from_millis(10)).await,
+			agent_host::await_acceptance(receiver, Duration::from_millis(10)).await,
 			Err(AgentHostError::Unknown(_))
 		));
 
@@ -2420,7 +2400,7 @@ mod tests {
 		sender.send(Err(AgentHostError::Rejected("invalid identity"))).unwrap();
 
 		assert!(matches!(
-			await_acceptance(receiver, Duration::from_secs(1)).await,
+			agent_host::await_acceptance(receiver, Duration::from_secs(1)).await,
 			Err(AgentHostError::Rejected("invalid identity"))
 		));
 	}
@@ -2436,8 +2416,8 @@ mod tests {
 		store.bind_agent_thread("agent".into(), "opaque-thread".into()).await.unwrap();
 		store.begin_agent_dispatch("agent".into()).await.unwrap();
 
-		let (io, _server) = tokio::io::duplex(4_096);
-		let (reader, writer) = tokio::io::split(io);
+		let (io, _server) = io::duplex(4_096);
+		let (reader, writer) = io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 		let coordinator = AgentCoordinator::new(
@@ -2451,13 +2431,13 @@ mod tests {
 		drop(sender);
 
 		let mut active = Some(("agent".into(), coordinator, events));
-		let event = receive(&mut active).await.unwrap();
+		let event = agent_host::receive(&mut active).await.unwrap();
 
 		assert!(matches!(event, ServerEvent::Closed(ClientError::Closed)));
 
 		let error = active.as_mut().unwrap().1.handle_event(event).await.unwrap_err();
 
-		assert!(!event_failure_needs_attention(true, &error));
+		assert!(!agent_host::event_failure_needs_attention(true, &error));
 		assert_eq!(
 			store.get_agent_work_item("agent".into()).await.unwrap().dispatch_state,
 			decodex_database::AgentDispatchState::Unknown
@@ -2486,7 +2466,9 @@ mod tests {
 
 		store.record_agent_thread_in_use("agent".into(), "Open elsewhere".into()).await.unwrap();
 
-		assert!(persist_input(&store, "agent", "blocked", "Do this", None).await.is_err());
+		assert!(
+			agent_host::persist_input(&store, "agent", "blocked", "Do this", None).await.is_err()
+		);
 		assert!(
 			!store
 				.list_agent_wake_events("agent".into(), 100)
@@ -2498,7 +2480,7 @@ mod tests {
 
 		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
 
-		persist_input(&store, "agent", "new-send", "Do this", None).await.unwrap();
+		agent_host::persist_input(&store, "agent", "new-send", "Do this", None).await.unwrap();
 
 		assert_eq!(
 			store
@@ -2527,16 +2509,29 @@ mod tests {
 			.await
 			.unwrap();
 
-		persist_input(&store, "personal-agent", "start-command", "Original input", None)
-			.await
-			.unwrap();
+		agent_host::persist_input(
+			&store,
+			"personal-agent",
+			"start-command",
+			"Original input",
+			None,
+		)
+		.await
+		.unwrap();
+
 		drop(store);
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		// A retried command cannot duplicate the crash-surviving input.
-		persist_input(&store, "personal-agent", "start-command", "Original input", None)
-			.await
-			.unwrap();
+		agent_host::persist_input(
+			&store,
+			"personal-agent",
+			"start-command",
+			"Original input",
+			None,
+		)
+		.await
+		.unwrap();
 
 		let events = store.list_undelivered_agent_events(20).await.unwrap();
 
@@ -2554,14 +2549,14 @@ mod tests {
 		let (sender, mut receiver) = watch::channel(false);
 		let actor = tokio::spawn(async move {
 			tokio::select! {
-				_ = stopped(&mut receiver) => {},
-				_ = std::future::pending::<()>() => panic!("pending operation completed"),
+				_ = agent_host::stopped(&mut receiver) => {},
+				_ = future::pending::<()>() => panic!("pending operation completed"),
 			}
 		});
 
 		sender.send(true).unwrap();
 
-		tokio::time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
+		time::timeout(Duration::from_secs(1), actor).await.unwrap().unwrap();
 	}
 
 	#[tokio::test]
@@ -2571,12 +2566,14 @@ mod tests {
 		sender.send(false).unwrap();
 
 		assert!(
-			tokio::time::timeout(Duration::from_millis(10), stopped(&mut receiver)).await.is_err()
+			time::timeout(Duration::from_millis(10), agent_host::stopped(&mut receiver))
+				.await
+				.is_err()
 		);
 
 		drop(sender);
 
-		tokio::time::timeout(Duration::from_secs(1), stopped(&mut receiver)).await.unwrap();
+		time::timeout(Duration::from_secs(1), agent_host::stopped(&mut receiver)).await.unwrap();
 	}
 }
 #[path = "agent_weather.rs"] mod weather;

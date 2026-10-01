@@ -1,8 +1,7 @@
 //! Preserve an exact native pre-dispatch refusal through the existing provider evidence owner.
-use super::{
-	ConversationAmbiguity, ConversationLocalState, ConversationManualRecovery, ConversationOutcome,
-	ConversationRuntime, LocalSession, ProviderAttemptReconciliation, derived_uuid,
-	session_readback,
+use crate::conversation::{
+	self, ConversationAmbiguity, ConversationLocalState, ConversationManualRecovery,
+	ConversationOutcome, ConversationRuntime, LocalSession, ProviderAttemptReconciliation,
 };
 use decodex_core::{
 	HistoryItemId, ProviderAttemptId, ProviderAttemptState, ProviderEvidenceId,
@@ -21,7 +20,7 @@ impl ConversationRuntime {
 		witness_digest: String,
 	) -> ConversationOutcome {
 		let evidence = ProviderPositiveEvidence::new(
-			ProviderEvidenceId::new(derived_uuid(
+			ProviderEvidenceId::new(conversation::derived_uuid(
 				"provider-non-submission",
 				&[attempt_id.as_str()],
 			))
@@ -76,11 +75,12 @@ impl ConversationRuntime {
 					.await,
 		}
 
-		let readback = session_readback(&session, ConversationLocalState::ManualRecovery, None);
+		let readback =
+			conversation::session_readback(&session, ConversationLocalState::ManualRecovery, None);
 
 		self.emit(ConversationOutcome::HistoryChanged {
 			readback: readback.clone(),
-			history_item_id: HistoryItemId::new(derived_uuid(
+			history_item_id: HistoryItemId::new(conversation::derived_uuid(
 				"provider-non-submission",
 				&[attempt_id.as_str()],
 			))

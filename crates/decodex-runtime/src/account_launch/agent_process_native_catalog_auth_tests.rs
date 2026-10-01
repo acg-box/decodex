@@ -2,25 +2,31 @@
 //! Upstream: 2b842962883f2e01526b9c64e383cb2375123a5d and models_identity.rs at 595cc91.
 #[path = "agent_process_native_defaults_tests.rs"] mod defaults;
 
-use super::*;
+use std::{env, ffi::OsStr, fs, path::Path, sync::Mutex};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use mpsc::Receiver;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _},
+	net::TcpStream,
+	process::{Child, Command},
+	time,
+};
 
-use std::sync::Mutex;
-
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+use crate::{account_launch::agent_process::native_tests::*, agent_capabilities};
+use decodex_protocol::AgentCapabilitiesResult;
 
 const FIRST: &str = "123e4567-e89b-42d3-a456-426614174011";
 const SECOND: &str = "123e4567-e89b-42d3-a456-426614174012";
 
 struct AuthSession {
 	client: AppServerClient,
-	events: mpsc::Receiver<ServerEvent>,
-	child: tokio::process::Child,
+	events: Receiver<ServerEvent>,
+	child: Child,
 }
 impl AuthSession {
-	async fn start(binary: &std::ffi::OsStr, home: &std::path::Path) -> Self {
-		let mut child = tokio::process::Command::new(binary)
+	async fn start(binary: &OsStr, home: &Path) -> Self {
+		let mut child = Command::new(binary)
 			.arg("app-server")
 			.env_clear()
 			.env("HOME", home)
@@ -110,20 +116,18 @@ fn response(
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native account catalog identity"]
 async fn installed_catalog_auth_change_reports_refresh_behavior() {
-	tokio::time::timeout(Duration::from_secs(45), qualify())
-		.await
-		.expect("bounded catalog auth fixture");
+	time::timeout(Duration::from_secs(45), qualify()).await.expect("bounded catalog auth fixture");
 }
 
 async fn qualify() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let address = listener.local_addr().expect("address");
 	let calls = Arc::new(Mutex::new(Vec::new()));
 	let server = tokio::spawn(serve(listener, calls.clone()));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"catalog-auth-model\"\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n")).expect("config");
+	fs::write(home.path().join("config.toml"),format!("model=\"catalog-auth-model\"\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n")).expect("config");
 
 	let mut session = AuthSession::start(&binary, home.path()).await;
 
@@ -151,8 +155,8 @@ async fn qualify() {
 			assert_eq!(window, 258_400, "known bundled unknown-model fallback");
 			eprintln!("catalog account change: bundled fallback until explicit model/list");
 
-			let decodex_protocol::AgentCapabilitiesResult::Available { models, .. } =
-				crate::agent_capabilities::read(&session.client).await
+			let AgentCapabilitiesResult::Available { models, .. } =
+				agent_capabilities::read(&session.client).await
 			else {
 				panic!("fresh native catalog")
 			};
@@ -245,9 +249,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>)
 	}
 }
 
-async fn request(
-	socket: &mut tokio::io::BufReader<tokio::net::TcpStream>,
-) -> Option<(String, String, Value)> {
+async fn request(socket: &mut tokio::io::BufReader<TcpStream>) -> Option<(String, String, Value)> {
 	let mut line = String::new();
 
 	if socket.read_line(&mut line).await.expect("request") == 0 {
@@ -302,8 +304,8 @@ async fn request(
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated effective native login policy"]
 async fn installed_login_policy_reports_and_enforces_running_restrictions() {
-	tokio::time::timeout(Duration::from_secs(45), async {
-        let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	time::timeout(Duration::from_secs(45), async {
+        let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 
         for method in ["api", "chatgpt"] {
             let home = tempfile::tempdir_in("/tmp").expect("fixture home");
@@ -313,16 +315,16 @@ async fn installed_login_policy_reports_and_enforces_running_restrictions() {
             let server = tokio::spawn(serve(listener, calls.clone()));
             let config = home.path().join("config.toml");
 
-            std::fs::write(&config,format!("forced_login_method=\"{method}\"\nchatgpt_base_url=\"http://{address}/backend-api\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
+            fs::write(&config,format!("forced_login_method=\"{method}\"\nchatgpt_base_url=\"http://{address}/backend-api\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
 
             let mut session = AuthSession::start(&binary,home.path()).await;
             let before = session.client.request("configRequirements/read",json!({})).await.expect("requirements");
 
             assert_eq!(before["requirements"]["allowedLoginMethods"],json!([method]));
             // Changing disk config cannot rewrite the running authentication manager's policy.
-            let changed = std::fs::read_to_string(&config).expect("config").replace(&format!("forced_login_method=\"{method}\""),"");
+            let changed = fs::read_to_string(&config).expect("config").replace(&format!("forced_login_method=\"{method}\""),"");
 
-            std::fs::write(&config,changed).expect("changed config");
+            fs::write(&config,changed).expect("changed config");
 
             let after = session.client.request("configRequirements/read",json!({})).await.expect("running requirements");
 

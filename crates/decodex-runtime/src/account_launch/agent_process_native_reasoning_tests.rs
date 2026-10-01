@@ -1,15 +1,24 @@
 //! A synthetic Responses summary crosses native history and the retained coordinator.
-use super::*;
-use crate::agent::{AgentConfig, AgentCoordinator};
+use std::{env, fs, future, sync::atomic::AtomicUsize};
+
+use tokio::{net::TcpListener, time};
+
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator, timeline},
+	agent_usage_estimate::{Source, SourceKey},
+};
+use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
+use decodex_protocol::AgentTimelineResult;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated public reasoning history"]
 async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
-	let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture(listener, calls.clone(), None, None, None, |_| {
 		json!([
 			{"type":"reasoning","id":"reasoning-fixture","summary":[{"type":"summary_text","text":"Public summary fixture."}],"content":[{"type":"reasoning_text","text":"PRIVATE_RAW_FIXTURE"}]},
@@ -17,10 +26,9 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 		])
 	}));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -37,7 +45,7 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 	let thread = work.codex_thread_id.unwrap();
 	let mut observed = false;
 
-	tokio::time::timeout(Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		loop {
 			let event = session.events.recv().await.unwrap();
 			let done =
@@ -86,29 +94,27 @@ async fn read(
 	client: &AppServerClient,
 	thread: &str,
 ) -> String {
-	let result = crate::agent::timeline::read(
+	let result = timeline::read(
 		Some(store),
 		|| {
-			std::future::ready(Some(crate::agent_usage_estimate::Source {
+			future::ready(Some(Source {
 				client: client.clone(),
-				key: crate::agent_usage_estimate::SourceKey {
+				key: SourceKey {
 					work: "agent".into(),
 					thread: thread.into(),
 					revision: 1,
 					history_revision: client.history_revision(),
-					account: decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001")
+					account: AccountId::new("10000000-0000-4000-8000-000000000001")
 						.expect("native reasoning fixture"),
-					generation: decodex_core::ProcessGenerationId::new(
-						"20000000-0000-4000-8000-000000000002",
-					)
-					.expect("native reasoning fixture"),
+					generation: ProcessGenerationId::new("20000000-0000-4000-8000-000000000002")
+						.expect("native reasoning fixture"),
 				},
 			}))
 		},
 		None,
 	)
 	.await;
-	let decodex_protocol::AgentTimelineResult::Available { page, .. } = result else {
+	let AgentTimelineResult::Available { page, .. } = result else {
 		panic!("native summary projection unavailable")
 	};
 

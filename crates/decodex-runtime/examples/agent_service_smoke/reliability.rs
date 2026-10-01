@@ -1,21 +1,21 @@
 //! Disposable-profile fault qualification; never exposed through the product API.
 
-use super::{SmokeResult, accept, history, idle, send, snapshot, wait_graph, wait_graph_for};
-
-use decodex_core::DecodexRoot;
-
-use decodex_protocol::{
-	AgentActionDto, AgentClient, AgentSnapshotDto, EntityId, HistoryText, WireText,
+use std::{
+	collections::HashSet,
+	path::Path,
+	process::Command,
+	sync::{Mutex, OnceLock},
+	time::{Duration, Instant},
 };
 
 use rusqlite::{Connection, OpenFlags};
+use serde_json::{self, Value};
+use tokio::time;
 
-use serde_json::json;
-
-use std::{
-	collections::HashSet,
-	sync::{Mutex, OnceLock},
-	time::Duration,
+use crate::SmokeResult;
+use decodex_core::DecodexRoot;
+use decodex_protocol::{
+	AgentActionDto, AgentClient, AgentSnapshotDto, EntityId, HistoryText, WireText,
 };
 
 #[derive(Debug, PartialEq)]
@@ -37,16 +37,16 @@ pub(super) fn record_threads(graph: &AgentSnapshotDto) {
 		{
 			println!(
 				"QUALIFICATION_EVIDENCE {}",
-				json!({"kind":"created_thread","workId":work.id,"threadId":thread})
+				serde_json::json!({"kind":"created_thread","workId":work.id,"threadId":thread})
 			);
 		}
 	}
 }
 
 pub(super) async fn timer_reconnect(client: &AgentClient, root: &DecodexRoot) -> SmokeResult<()> {
-	let before = snapshot(client).await?;
+	let before = crate::snapshot(client).await?;
 
-	if !idle(&before) {
+	if !crate::idle(&before) {
 		return Err("fault injection requires all work idle".into());
 	}
 
@@ -54,9 +54,9 @@ pub(super) async fn timer_reconnect(client: &AgentClient, root: &DecodexRoot) ->
 
 	disconnect_owned_child(root, &original)?;
 
-	let started = std::time::Instant::now();
+	let started = Instant::now();
 	let mut diagnostics = [5, 15, 60].into_iter().peekable();
-	let restored = tokio::time::timeout(Duration::from_secs(120), async {
+	let restored = time::timeout(Duration::from_secs(120), async {
 		loop {
 			if let Ok(next) = generation(root)
 				&& next.id != original.id
@@ -70,7 +70,7 @@ pub(super) async fn timer_reconnect(client: &AgentClient, root: &DecodexRoot) ->
 				record_process_group(root, &original, started.elapsed().as_secs());
 			}
 
-			tokio::time::sleep(Duration::from_millis(500)).await;
+			time::sleep(Duration::from_millis(500)).await;
 		}
 	})
 	.await
@@ -80,7 +80,7 @@ pub(super) async fn timer_reconnect(client: &AgentClient, root: &DecodexRoot) ->
 		return Err("timer restore changed bound account".into());
 	}
 
-	let after = snapshot(client).await?;
+	let after = crate::snapshot(client).await?;
 
 	if before.work_items.iter().map(|work| (&work.id, &work.codex_thread_id)).collect::<Vec<_>>()
 		!= after.work_items.iter().map(|work| (&work.id, &work.codex_thread_id)).collect::<Vec<_>>()
@@ -90,21 +90,22 @@ pub(super) async fn timer_reconnect(client: &AgentClient, root: &DecodexRoot) ->
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"timer_only_reconnect","profile":root.as_path(),"oldGenerationId":original.id,"newGenerationId":restored.id,"newPid":restored.pid,"sameAccount":true,"sendCommandsDuringRecovery":0})
+		serde_json::json!({"kind":"timer_only_reconnect","profile":root.as_path(),"oldGenerationId":original.id,"newGenerationId":restored.id,"newPid":restored.pid,"sameAccount":true,"sendCommandsDuringRecovery":0})
 	);
 
 	Ok(())
 }
 
 pub(super) async fn carryover(client: &AgentClient, root: &DecodexRoot) -> SmokeResult<()> {
-	send(client,"carryover-policy","Read-only recovery qualification: the next service-b automation event CARRYOVER_PROBE must deliberately remain undisposed for exactly its first Agent turn. Do not call agent_disposition on that event yet; reply CARRYOVER_HELD and end the turn. On the next explicit user message use agent_list_work to find and resolve that same saved event; do not create or dispatch workers.").await?;
-	wait_graph(client, "carryover policy", |graph| {
-		idle(graph) && !graph.pending_events.iter().any(|event| event.event_kind == "user_message")
+	crate::send(client,"carryover-policy","Read-only recovery qualification: the next service-b automation event CARRYOVER_PROBE must deliberately remain undisposed for exactly its first Agent turn. Do not call agent_disposition on that event yet; reply CARRYOVER_HELD and end the turn. On the next explicit user message use agent_list_work to find and resolve that same saved event; do not create or dispatch workers.").await?;
+	crate::wait_graph(client, "carryover policy", |graph| {
+		crate::idle(graph)
+			&& !graph.pending_events.iter().any(|event| event.event_kind == "user_message")
 	})
 	.await?;
-	accept(client,AgentActionDto::AutomationResult {work_id:EntityId::new("service-b").expect("bounded fixture"),source_event_id:WireText::new("service-carryover-1").expect("bounded fixture"),payload:HistoryText::new(r#"{"observation":"CARRYOVER_PROBE: hold this exact result undisposed for this turn; next explicit user input will ask you to resolve it."}"#).expect("bounded fixture")},"carryover-result").await?;
-	wait_graph(client, "carryover held", |graph| {
-		idle(graph)
+	crate::accept(client,AgentActionDto::AutomationResult {work_id:EntityId::new("service-b").expect("bounded fixture"),source_event_id:WireText::new("service-carryover-1").expect("bounded fixture"),payload:HistoryText::new(r#"{"observation":"CARRYOVER_PROBE: hold this exact result undisposed for this turn; next explicit user input will ask you to resolve it."}"#).expect("bounded fixture")},"carryover-result").await?;
+	crate::wait_graph(client, "carryover held", |graph| {
+		crate::idle(graph)
 			&& graph.pending_events.iter().any(|event| event.event_kind == "automation_result")
 			&& carryover_event(root).is_ok_and(|event| {
 				event.1.as_deref().is_some_and(|turn| !turn.is_empty()) && event.2.is_none()
@@ -118,9 +119,9 @@ pub(super) async fn carryover(client: &AgentClient, root: &DecodexRoot) -> Smoke
 		return Err("model did not leave a delivered result pending".into());
 	}
 
-	send(client,"carryover-resolve","Now call agent_list_work, find the earlier CARRYOVER_PROBE automation result in the inbox, and resolve that exact event with agent_disposition. Do not dispatch workers. Summarize CARRYOVER_RESOLVED.").await?;
-	wait_graph(client, "carryover resolved", |graph| {
-		idle(graph)
+	crate::send(client,"carryover-resolve","Now call agent_list_work, find the earlier CARRYOVER_PROBE automation result in the inbox, and resolve that exact event with agent_disposition. Do not dispatch workers. Summarize CARRYOVER_RESOLVED.").await?;
+	crate::wait_graph(client, "carryover resolved", |graph| {
+		crate::idle(graph)
 			&& !graph.pending_events.iter().any(|event| {
 				event.event_kind == "automation_result" || event.event_kind == "user_message"
 			})
@@ -135,16 +136,16 @@ pub(super) async fn carryover(client: &AgentClient, root: &DecodexRoot) -> Smoke
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"result_carryover","eventId":held.0,"firstTurn":held.1,"resolvedTurn":resolved.1,"disposition":resolved.2})
+		serde_json::json!({"kind":"result_carryover","eventId":held.0,"firstTurn":held.1,"resolvedTurn":resolved.1,"disposition":resolved.2})
 	);
 
 	Ok(())
 }
 
 pub(super) async fn long_result(client: &AgentClient, root: &DecodexRoot) -> SmokeResult<()> {
-	send(client,"long-result","Read-only output retention qualification. Continue existing service-b exactly once: request a text-only final answer beginning LONG_OUTPUT_BEGIN, followed by roughly 60,000 lowercase a characters (line breaks optional), then LONG_OUTPUT_END. Approximate length is enough: do not spend time counting exactly; aim for 58–65KB total and stop before 70KB. No tools. Do not create work. On its completion, resolve the exact worker event and summarize LONG_OUTPUT_ACCEPTED. This tests bounded retention of a real response above48KB.").await?;
-	wait_graph_for(client, "long result retained", Duration::from_secs(600), |graph| {
-		idle(graph)
+	crate::send(client,"long-result","Read-only output retention qualification. Continue existing service-b exactly once: request a text-only final answer beginning LONG_OUTPUT_BEGIN, followed by roughly 60,000 lowercase a characters (line breaks optional), then LONG_OUTPUT_END. Approximate length is enough: do not spend time counting exactly; aim for 58–65KB total and stop before 70KB. No tools. Do not create work. On its completion, resolve the exact worker event and summarize LONG_OUTPUT_ACCEPTED. This tests bounded retention of a real response above48KB.").await?;
+	crate::wait_graph_for(client, "long result retained", Duration::from_secs(600), |graph| {
+		crate::idle(graph)
 			&& !graph.pending_events.iter().any(|event| {
 				event.event_kind == "worker_turn_completed" || event.event_kind == "user_message"
 			})
@@ -153,7 +154,7 @@ pub(super) async fn long_result(client: &AgentClient, root: &DecodexRoot) -> Smo
 
 	let db = database(root)?;
 	let (event_id,payload):(i64,String) = db.query_row("SELECT id,payload FROM agent_inbox_events WHERE work_item_id='service-b' AND event_kind='worker_turn_completed' ORDER BY id DESC LIMIT 1",[],|row|Ok((row.get(0)?,row.get(1)?)))?;
-	let saved: serde_json::Value = serde_json::from_str(&payload)?;
+	let saved: Value = serde_json::from_str(&payload)?;
 	let readback = &saved["threadReadback"];
 	let messages =
 		readback["assistantMessages"].as_array().ok_or("saved messages are not structured JSON")?;
@@ -165,7 +166,7 @@ pub(super) async fn long_result(client: &AgentClient, root: &DecodexRoot) -> Smo
 		return Err("real model output did not exercise the durable truncation boundary".into());
 	}
 
-	let public = history(client, "service-b").await?;
+	let public = crate::history(client, "service-b").await?;
 
 	if !public
 		.iter()
@@ -176,14 +177,14 @@ pub(super) async fn long_result(client: &AgentClient, root: &DecodexRoot) -> Smo
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"long_result_retained","eventId":event_id,"threadId":readback["threadId"],"turnId":readback["turnId"],"savedPayloadBytes":payload.len(),"structuredMessageCount":messages.len(),"truncated":true,"publicHistoryReadable":true})
+		serde_json::json!({"kind":"long_result_retained","eventId":event_id,"threadId":readback["threadId"],"turnId":readback["turnId"],"savedPayloadBytes":payload.len(),"structuredMessageCount":messages.len(),"truncated":true,"publicHistoryReadable":true})
 	);
 
 	Ok(())
 }
 
 pub(super) async fn no_stale_host_errors(client: &AgentClient) -> SmokeResult<()> {
-	let graph = snapshot(client).await?;
+	let graph = crate::snapshot(client).await?;
 
 	if graph
 		.pending_events
@@ -195,7 +196,7 @@ pub(super) async fn no_stale_host_errors(client: &AgentClient) -> SmokeResult<()
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"reconnect_attention","pendingHostErrors":0})
+		serde_json::json!({"kind":"reconnect_attention","pendingHostErrors":0})
 	);
 
 	Ok(())
@@ -207,7 +208,7 @@ fn database(root: &DecodexRoot) -> SmokeResult<Connection> {
 	let parent = path.parent().ok_or("missing disposable parent")?;
 
 	if path.file_name().and_then(|name| name.to_str()) != Some("p")
-		|| parent.parent() != Some(std::path::Path::new("/private/tmp"))
+		|| parent.parent() != Some(Path::new("/private/tmp"))
 		|| !parent
 			.file_name()
 			.and_then(|name| name.to_str())
@@ -262,7 +263,7 @@ fn disconnect_owned_child(root: &DecodexRoot, expected: &Generation) -> SmokeRes
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"disconnect_owned_child","profile":root.as_path(),"generationId":expected.id,"pid":expected.pid,"parentPid":info.pbi_ppid,"startId":start})
+		serde_json::json!({"kind":"disconnect_owned_child","profile":root.as_path(),"generationId":expected.id,"pid":expected.pid,"parentPid":info.pbi_ppid,"startId":start})
 	);
 	// SAFETY: the exact persisted generation, start identity, user, direct parent,
 	// process group and session were verified immediately above. Signal one PID only.
@@ -288,7 +289,7 @@ fn record_process_group(root: &DecodexRoot, original: &Generation, elapsed: u64)
 		.ok()
 	});
 	// Inspect only numeric identities and executable names, never arguments or environment.
-	let rows = std::process::Command::new("/bin/ps")
+	let rows = Command::new("/bin/ps")
 		.args(["-axo", "pid,ppid,pgid,comm"])
 		.output()
 		.ok()
@@ -299,12 +300,12 @@ fn record_process_group(root: &DecodexRoot, original: &Generation, elapsed: u64)
 			let parent = fields.next()?.parse::<i32>().ok()?;
 			let group = fields.next()?.parse::<i32>().ok()?;
 
-			(group == original.pid).then(|| json!({"pid":pid,"parentPid":parent,"processGroup":group,"executable":fields.collect::<Vec<_>>().join(" ")}))
+			(group == original.pid).then(|| serde_json::json!({"pid":pid,"parentPid":parent,"processGroup":group,"executable":fields.collect::<Vec<_>>().join(" ")}))
 		}).collect::<Vec<_>>());
 
 	println!(
 		"QUALIFICATION_EVIDENCE {}",
-		json!({"kind":"recovery_process_group","elapsedSeconds":elapsed,"generationId":original.id,"persistedState":state,"processes":rows})
+		serde_json::json!({"kind":"recovery_process_group","elapsedSeconds":elapsed,"generationId":original.id,"persistedState":state,"processes":rows})
 	);
 }
 

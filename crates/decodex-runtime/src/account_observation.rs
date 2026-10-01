@@ -3,25 +3,19 @@
 mod recovery;
 mod recovery_actions;
 
-use recovery::CachedAccountBanner;
-
 use std::{
 	collections::{HashMap, HashSet},
-	future,
+	future, mem,
 	sync::Arc,
-	time::Duration,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-use decodex_core::{
-	AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
-	AccountQuotaWindowObservation,
-};
-
-use decodex_protocol::AccountObservationSignal;
 
 use tokio::{
-	sync::{Notify, RwLock, watch},
-	task::{Id as TaskId, JoinSet},
+	sync::{
+		Notify, RwLock, watch,
+		watch::{Receiver, Sender},
+	},
+	task::{Id, JoinError, JoinSet},
 	time::{self, MissedTickBehavior},
 };
 
@@ -29,13 +23,23 @@ use crate::{
 	account_api::{
 		AccountApiInventory, AccountApiObservation, AccountApiRuntime, AccountApiRuntimeError,
 	},
-	account_launch::{ApiResetCardRuntime, ResetCardInventoryObservation, ResetCardServiceError},
+	account_launch::{
+		ApiResetCardRuntime, ResetCardInventoryObservation, ResetCardInventoryView,
+		ResetCardObservationFailure, ResetCardServiceError,
+	},
 	account_profile::{
 		AccountProfileRefreshStatus, AccountProfileRuntime, AccountProfileRuntimeError,
 		AccountProfileRuntimeResult,
 	},
 	account_service::AccountService,
 };
+use decodex_codex::AccountApiQuotaWindow;
+use decodex_core::{
+	AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+	AccountQuotaWindowObservation, AccountRecord, AccountUsageObservation,
+};
+use decodex_protocol::{AccountObservationSignal, AccountRecoveryResult, EntityId, EntityRevision};
+use recovery::CachedAccountBanner;
 
 const OBSERVATION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 const OBSERVATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -122,7 +126,7 @@ impl AccountObservationState {
 
 			changed
 		} else if let Some(old) = self.banners.get_mut(&observation.account_id) {
-			std::mem::replace(&mut old.current, false)
+			mem::replace(&mut old.current, false)
 		} else {
 			false
 		};
@@ -187,10 +191,7 @@ struct AccountObservationOutcome {
 	profile: Option<AccountProfileRefreshStatus>,
 }
 
-fn has_optional_five_absence(
-	windows: &[decodex_codex::AccountApiQuotaWindow; 2],
-	now: i64,
-) -> bool {
+fn has_optional_five_absence(windows: &[AccountApiQuotaWindow; 2], now: i64) -> bool {
 	windows.iter().any(|window|window.duration_minutes==AccountQuotaWindow::FIVE_HOURS_MINUTES && matches!(window.result,Ok(None)))
 		&& windows.iter().any(|window|window.duration_minutes==AccountQuotaWindow::SEVEN_DAYS_MINUTES
 			&& matches!(window.result,Ok(Some(fact)) if fact.duration_minutes==AccountQuotaWindow::SEVEN_DAYS_MINUTES && fact.resets_at_unix_micros>now))
@@ -238,8 +239,8 @@ fn quota_error_observation(
 }
 
 fn current_unix_micros() -> Option<i64> {
-	std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
 		.ok()
 		.and_then(|duration| i64::try_from(duration.as_micros()).ok())
 }
@@ -310,7 +311,7 @@ async fn direct_inventory_observation(
 				cached_direct_quotas(accounts, account_id, map_api_error_to_quota(*error)).await;
 
 			return Ok(ResetCardInventoryObservation::ObservationFailed(
-				crate::account_launch::ResetCardObservationFailure {
+				ResetCardObservationFailure {
 					account_id: account_id.clone(),
 					account_revision: requested_revision,
 					five_hour_quota,
@@ -323,7 +324,7 @@ async fn direct_inventory_observation(
 	let [five_hour_quota, seven_day_quota] =
 		persist_direct_quotas(accounts, account_id, inventory).await?;
 
-	Ok(ResetCardInventoryObservation::Available(crate::account_launch::ResetCardInventoryView {
+	Ok(ResetCardInventoryObservation::Available(ResetCardInventoryView {
 		account_id: account_id.clone(),
 		account_revision: inventory.account_revision,
 		reported_available_count: inventory.reported_available_count,
@@ -408,7 +409,7 @@ async fn persist_direct_quotas(
 	if !accounts
 		.observe_usage(
 			account_id,
-			decodex_core::AccountUsageObservation {
+			AccountUsageObservation {
 				account_revision: inventory.account_revision,
 				observed_at_unix_micros: now,
 				ordinary_usage_allowed: inventory.ordinary_usage_allowed,
@@ -485,11 +486,12 @@ async fn cached_direct_quotas(
 
 #[cfg(test)]
 mod recovery_cache_tests {
-	use super::{
+	use std::{collections::HashMap, sync::Arc};
+
+	use crate::account_observation::{
 		AccountId, AccountObservationOutcome, AccountObservationState, CachedAccountBanner,
 	};
 	use decodex_codex::AccountApiBannerState;
-	use std::{collections::HashMap, sync::Arc};
 	#[test]
 	fn invalidated_generation_cannot_restore_recovery_and_failures_expire_it() {
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
@@ -554,7 +556,7 @@ pub(crate) struct AccountObservationService {
 	reset_cards: Option<ApiResetCardRuntime>,
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
-	observation_generation: watch::Sender<u64>,
+	observation_generation: Sender<u64>,
 }
 impl AccountObservationService {
 	#[cfg(test)]
@@ -628,9 +630,9 @@ impl AccountObservationService {
 	/// Read exact-revision recovery copy without making a provider request.
 	pub(crate) async fn recovery(
 		&self,
-		account_id: &decodex_protocol::EntityId,
-		revision: decodex_protocol::EntityRevision,
-	) -> decodex_protocol::AccountRecoveryResult {
+		account_id: &EntityId,
+		revision: EntityRevision,
+	) -> AccountRecoveryResult {
 		let unavailable = || recovery::unavailable(account_id.clone(), revision);
 		let Ok(id) = AccountId::new(account_id.as_str()) else {
 			return unavailable();
@@ -682,7 +684,7 @@ impl AccountObservationService {
 	}
 
 	/// Run immediate startup observation and all later coalesced daemon refreshes.
-	pub(crate) async fn daemon_service(self, mut stop: watch::Receiver<bool>) {
+	pub(crate) async fn daemon_service(self, mut stop: Receiver<bool>) {
 		let reset_card_wakeup =
 			self.reset_cards.as_ref().map(ApiResetCardRuntime::observation_wakeup);
 		let mut interval = time::interval(OBSERVATION_REFRESH_INTERVAL);
@@ -760,9 +762,9 @@ impl AccountObservationService {
 		&self,
 		queue_in_flight_successor: bool,
 		desired: &mut HashMap<AccountId, i64>,
-		in_flight: &mut HashMap<AccountId, TaskId>,
+		in_flight: &mut HashMap<AccountId, Id>,
 		pending: &mut HashSet<AccountId>,
-		task_accounts: &mut HashMap<TaskId, AccountId>,
+		task_accounts: &mut HashMap<Id, AccountId>,
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
 		// Observation scheduling only needs the account registry.  Reading routing here takes the
@@ -809,8 +811,8 @@ impl AccountObservationService {
 		&self,
 		account_id: AccountId,
 		account_revision: i64,
-		in_flight: &mut HashMap<AccountId, TaskId>,
-		task_accounts: &mut HashMap<TaskId, AccountId>,
+		in_flight: &mut HashMap<AccountId, Id>,
+		task_accounts: &mut HashMap<Id, AccountId>,
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
 		let cache_generation = self.state.write().await.cache_generation(&account_id);
@@ -922,11 +924,11 @@ impl AccountObservationService {
 
 	async fn finish_observation(
 		&self,
-		result: Option<Result<(TaskId, AccountObservationOutcome), tokio::task::JoinError>>,
+		result: Option<Result<(Id, AccountObservationOutcome), JoinError>>,
 		desired: &HashMap<AccountId, i64>,
-		in_flight: &mut HashMap<AccountId, TaskId>,
+		in_flight: &mut HashMap<AccountId, Id>,
 		pending: &mut HashSet<AccountId>,
-		task_accounts: &mut HashMap<TaskId, AccountId>,
+		task_accounts: &mut HashMap<Id, AccountId>,
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
 		let (task_id, observation) = match result {
@@ -1113,7 +1115,7 @@ fn profile_status_semantically_equal(
 		}
 }
 
-fn account_observation_is_schedulable(account: &decodex_core::AccountRecord) -> bool {
+fn account_observation_is_schedulable(account: &AccountRecord) -> bool {
 	!account.tombstoned && account.credential.is_some() && account.unsettled_operation.is_none()
 }
 
@@ -1147,7 +1149,7 @@ const fn inventory_revision(observation: &ResetCardInventoryObservation) -> i64 
 }
 
 async fn wait_for_generation(
-	mut changes: watch::Receiver<u64>,
+	mut changes: Receiver<u64>,
 	after_generation: u64,
 	wait_timeout: Duration,
 ) -> AccountObservationSignal {
@@ -1188,32 +1190,28 @@ mod tests {
 		time::Duration,
 	};
 
+	use tokio::{sync::watch, time};
+
+	use crate::{
+		account_launch::ResetCardInventoryView,
+		account_observation::{
+			self, AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
+			ResetCardInventoryObservation, ResetCardServiceError,
+		},
+	};
+	use decodex_codex::AccountApiQuotaWindow;
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
-		AccountQuotaWindowObservation, AccountRecord, AccountState, CredentialBinding,
-		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
-		ResetCardDescriptor, ResetCardTimestamp,
+		AccountQuotaObservationError, AccountQuotaWindow, AccountQuotaWindowObservation,
+		AccountRecord, AccountState, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity, ResetCardDescriptor,
+		ResetCardTimestamp,
 	};
-
 	use decodex_database::AccountProfileSnapshot;
-
-	use tokio::{sync::watch, time};
-
-	use crate::account_launch::ResetCardInventoryView;
-
-	use super::{
-		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
-		ResetCardInventoryObservation, ResetCardServiceError, account_observation_is_schedulable,
-		plan_observation_round, resolve_direct_quota, wait_for_generation,
-	};
 
 	#[test]
 	fn optional_absence_requires_successful_five_slot_and_current_weekly_fact() {
-		use decodex_codex::AccountApiQuotaWindow;
-
-		use decodex_core::{AccountQuotaObservationError, AccountQuotaWindow};
-
 		let five = AccountApiQuotaWindow { duration_minutes: 300, result: Ok(None) };
 		let weekly = AccountApiQuotaWindow {
 			duration_minutes: 10_080,
@@ -1249,7 +1247,8 @@ mod tests {
 		let active = account(4);
 		let in_flight = HashMap::from([(active.clone(), ())]);
 		let mut pending = HashSet::new();
-		let scheduled = plan_observation_round(&desired, &in_flight, &mut pending, true);
+		let scheduled =
+			account_observation::plan_observation_round(&desired, &in_flight, &mut pending, true);
 
 		assert_eq!(scheduled.len(), 11);
 		assert!(scheduled.iter().all(|(account_id, _)| account_id != &active));
@@ -1262,7 +1261,8 @@ mod tests {
 		let desired = HashMap::from([(active.clone(), 7)]);
 		let in_flight = HashMap::from([(active, ())]);
 		let mut pending = HashSet::new();
-		let scheduled = plan_observation_round(&desired, &in_flight, &mut pending, false);
+		let scheduled =
+			account_observation::plan_observation_round(&desired, &in_flight, &mut pending, false);
 
 		assert!(scheduled.is_empty());
 		assert!(pending.is_empty());
@@ -1299,13 +1299,13 @@ mod tests {
 			tombstoned: false,
 		};
 
-		assert!(!account_observation_is_schedulable(&record));
-		assert!(!account_observation_is_schedulable(&record));
+		assert!(!account_observation::account_observation_is_schedulable(&record));
+		assert!(!account_observation::account_observation_is_schedulable(&record));
 
 		record.unsettled_operation = None;
 		record.lifecycle_readiness = AccountLifecycleReadiness::Ready;
 
-		assert!(account_observation_is_schedulable(&record));
+		assert!(account_observation::account_observation_is_schedulable(&record));
 	}
 
 	#[test]
@@ -1559,7 +1559,8 @@ mod tests {
 	#[test]
 	fn missing_optional_quota_window_retains_last_good_fact_and_freshness() {
 		let cached = quota(300, 100, 20, 2_000_000);
-		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), Some(cached), 456);
+		let (observed_at, disposition) =
+			account_observation::resolve_direct_quota(300, Ok(None), Some(cached), 456);
 
 		assert_eq!(observed_at, Some(100));
 		assert_eq!(disposition, cached.disposition);
@@ -1567,7 +1568,8 @@ mod tests {
 
 	#[test]
 	fn missing_optional_quota_window_without_cache_is_unknown_not_an_error() {
-		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), None, 456);
+		let (observed_at, disposition) =
+			account_observation::resolve_direct_quota(300, Ok(None), None, 456);
 
 		assert_eq!(observed_at, None);
 		assert_eq!(disposition, AccountQuotaDisposition::Unknown);
@@ -1578,7 +1580,7 @@ mod tests {
 		let error = decodex_core::AccountQuotaObservationError::ProviderUnavailable;
 
 		assert_eq!(
-			resolve_direct_quota(300, Err(error), None, 456),
+			account_observation::resolve_direct_quota(300, Err(error), None, 456),
 			(Some(456), AccountQuotaDisposition::Error(error))
 		);
 
@@ -1589,11 +1591,11 @@ mod tests {
 		};
 
 		assert_eq!(
-			resolve_direct_quota(300, Err(error), Some(prior), 456),
+			account_observation::resolve_direct_quota(300, Err(error), Some(prior), 456),
 			(Some(100), AccountQuotaDisposition::NotApplicable)
 		);
 		assert_eq!(
-			resolve_direct_quota(300, Ok(None), Some(prior), 456),
+			account_observation::resolve_direct_quota(300, Ok(None), Some(prior), 456),
 			(Some(100), AccountQuotaDisposition::NotApplicable)
 		);
 	}
@@ -1607,7 +1609,8 @@ mod tests {
 				decodex_core::AccountQuotaObservationError::UnsupportedWindow,
 			),
 		};
-		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), Some(cached), 456);
+		let (observed_at, disposition) =
+			account_observation::resolve_direct_quota(300, Ok(None), Some(cached), 456);
 
 		assert_eq!(observed_at, None);
 		assert_eq!(disposition, AccountQuotaDisposition::Unknown);
@@ -1686,11 +1689,16 @@ mod tests {
 	#[tokio::test]
 	async fn observation_signal_is_immediate_on_change_and_bounded_when_unchanged() {
 		let (generation, initial) = watch::channel(7_u64);
-		let immediate = wait_for_generation(initial, 6, Duration::from_secs(1)).await;
+		let immediate =
+			account_observation::wait_for_generation(initial, 6, Duration::from_secs(1)).await;
 
 		assert_eq!(immediate.generation, 7);
 
-		let waiting = wait_for_generation(generation.subscribe(), 7, Duration::from_secs(1));
+		let waiting = account_observation::wait_for_generation(
+			generation.subscribe(),
+			7,
+			Duration::from_secs(1),
+		);
 
 		tokio::pin!(waiting);
 
@@ -1700,7 +1708,9 @@ mod tests {
 
 		assert_eq!(waiting.await.generation, 8);
 
-		let heartbeat = wait_for_generation(generation.subscribe(), 8, Duration::ZERO).await;
+		let heartbeat =
+			account_observation::wait_for_generation(generation.subscribe(), 8, Duration::ZERO)
+				.await;
 
 		assert_eq!(heartbeat.generation, 8);
 	}

@@ -1,41 +1,45 @@
 //! Source-bound live model reviews and durable publication outcomes.
-use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::oneshot,
+	time,
+};
+
+use crate::{
+	account_launch::agent_process::native_tests::reviewer::store::*,
+	agent_live_settings::{self, LiveEdit},
+};
+use decodex_protocol::{AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort};
 
 #[tokio::test]
 async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts() {
-	use crate::agent_live_settings::{LiveEdit, read, write};
-
-	use decodex_protocol::{
-		AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort,
-	};
-
-	use serde_json::json;
-
 	for case in ["applied", "lost", "disabled", "unsupported", "changed"] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(16_384);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(16_384);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 		let AgentLiveReviewerState::Available { review_token, .. } =
-			read(&owner.store, || async { Some(owner.source(&owner.key)) }).await
+			agent_live_settings::read(&owner.store, || async { Some(owner.source(&owner.key)) })
+				.await
 		else {
 			panic!("owned turn");
 		};
-		let (release, released) = tokio::sync::oneshot::channel();
+		let (release, released) = oneshot::channel();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 
 			for phase in 0..3 {
-				let request: serde_json::Value =
+				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 				let result = if phase == 0 {
 					assert_eq!(request["method"], "model/list");
 
-					json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":if case=="unsupported" {"low"} else {"high"}}]}],"nextCursor":null})
+					serde_json::json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":if case=="unsupported" {"low"} else {"high"}}]}],"nextCursor":null})
 				} else {
 					assert_eq!(request["method"], "experimentalFeature/list");
 
@@ -43,24 +47,25 @@ async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts
 						assert_eq!(request["params"]["threadId"], "thread");
 					}
 
-					json!({"data":[{"name":"memories","enabled":false},{"name":"step_model_switching","enabled":case!="disabled"}],"nextCursor":null})
+					serde_json::json!({"data":[{"name":"memories","enabled":false},{"name":"step_model_switching","enabled":case!="disabled"}],"nextCursor":null})
 				};
 
 				w.write_all(
-					format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();
 			}
 
 			if matches!(case, "applied" | "lost") {
-				let request: serde_json::Value =
+				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"thread","turnId":"turn","model":"selected","effort":"high"})
+					serde_json::json!({"threadId":"thread","turnId":"turn","model":"selected","effort":"high"})
 				);
 
 				if case == "lost" {
@@ -68,8 +73,11 @@ async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts
 				}
 
 				w.write_all(
-					format!("{}\n", json!({"id":request["id"],"result":{"status":"applied"}}))
-						.as_bytes(),
+					format!(
+						"{}\n",
+						serde_json::json!({"id":request["id"],"result":{"status":"applied"}})
+					)
+					.as_bytes(),
 				)
 				.await
 				.unwrap();
@@ -78,14 +86,14 @@ async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts
 			let _ = released.await;
 
 			assert!(
-				tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
+				time::timeout(std::time::Duration::from_millis(20), lines.next_line())
 					.await
 					.is_err(),
 				"unexpected publication or retry"
 			);
 		});
 		let calls = AtomicUsize::new(0);
-		let outcome = write(
+		let outcome = agent_live_settings::write(
 			&owner.store,
 			|| {
 				let mut key = owner.key.clone();
@@ -134,26 +142,24 @@ async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts
 
 #[tokio::test]
 async fn live_model_choices_are_bound_to_the_task_and_discarded_after_source_change() {
-	use serde_json::json;
-
 	for changed in [false, true] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(16_384);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(16_384);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-		let (release, released) = tokio::sync::oneshot::channel();
+		let (release, released) = oneshot::channel();
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 
 			for phase in 0..3 {
-				let request: serde_json::Value =
+				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 				let result = if phase == 1 {
 					assert_eq!(request["method"], "model/list");
 
-					json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null})
+					serde_json::json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null})
 				} else {
 					assert_eq!(request["method"], "experimentalFeature/list");
 
@@ -161,11 +167,12 @@ async fn live_model_choices_are_bound_to_the_task_and_discarded_after_source_cha
 						assert_eq!(request["params"]["threadId"], "thread");
 					}
 
-					json!({"data":[{"name":"step_model_switching","enabled":true},{"name":"memories","enabled":false}],"nextCursor":null})
+					serde_json::json!({"data":[{"name":"step_model_switching","enabled":true},{"name":"memories","enabled":false}],"nextCursor":null})
 				};
 
 				w.write_all(
-					format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();
@@ -174,7 +181,7 @@ async fn live_model_choices_are_bound_to_the_task_and_discarded_after_source_cha
 			let _ = released.await;
 		});
 		let calls = AtomicUsize::new(0);
-		let state = crate::agent_live_settings::read_options(&owner.store, true, || {
+		let state = agent_live_settings::read_options(&owner.store, true, || {
 			let mut key = owner.key.clone();
 
 			if changed && calls.fetch_add(1, Ordering::SeqCst) > 0 {
@@ -191,7 +198,7 @@ async fn live_model_choices_are_bound_to_the_task_and_discarded_after_source_cha
 			assert_eq!(state, decodex_protocol::AgentLiveReviewerState::Unavailable);
 		} else {
 			assert!(
-				matches!(state,decodex_protocol::AgentLiveReviewerState::Available { model_choices:Some(ref models),..} if models.len()==1 && models[0].model.as_str()=="selected")
+				matches!(state,AgentLiveReviewerState::Available{ model_choices:Some(ref models),..} if models.len()==1 && models[0].model.as_str()=="selected")
 			);
 		}
 

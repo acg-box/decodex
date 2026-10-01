@@ -1,5 +1,6 @@
 //! Image-only native quota feedback, separate from conversation capacity and account routing.
 use serde_json::Value;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(super) fn is_quota_failure(item: &Value) -> bool {
 	item["type"] == "imageGeneration"
@@ -15,8 +16,8 @@ pub(crate) fn quota_detail(item: &Value) -> Option<String> {
 
 	let reset = item["failure"]["resetsAt"]
 		.as_i64()
-		.and_then(|timestamp| time::OffsetDateTime::from_unix_timestamp(timestamp).ok())
-		.and_then(|date| date.format(&time::format_description::well_known::Rfc3339).ok());
+		.and_then(|timestamp| OffsetDateTime::from_unix_timestamp(timestamp).ok())
+		.and_then(|date| date.format(&Rfc3339).ok());
 
 	Some(match reset {
 		Some(reset) =>
@@ -27,33 +28,35 @@ pub(crate) fn quota_detail(item: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent::image_generation::{self, Value};
 
 	#[test]
 	fn image_quota_feedback_preserves_reset_without_classifying_other_failures() {
-		let mut item = json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200}});
+		let mut item = serde_json::json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200}});
 
-		assert!(quota_detail(&item).unwrap().contains("2026-09-29T12:00:00Z"));
+		assert!(image_generation::quota_detail(&item).unwrap().contains("2026-09-29T12:00:00Z"));
 
-		for reset in [Value::Null, json!("unknown"), json!(i64::MAX)] {
+		for reset in [Value::Null, serde_json::json!("unknown"), serde_json::json!(i64::MAX)] {
 			item["failure"]["resetsAt"] = reset;
 
-			assert!(quota_detail(&item).unwrap().contains("Reset time not reported"));
+			assert!(
+				image_generation::quota_detail(&item).unwrap().contains("Reset time not reported")
+			);
 		}
 
-		item["failure"]["limitId"] = json!("codex");
+		item["failure"]["limitId"] = serde_json::json!("codex");
 
-		assert!(quota_detail(&item).is_none());
+		assert!(image_generation::quota_detail(&item).is_none());
 
-		item["failure"]["limitId"] = json!("image_gen");
-		item["status"] = json!("completed");
+		item["failure"]["limitId"] = serde_json::json!("image_gen");
+		item["status"] = serde_json::json!("completed");
 
-		assert!(quota_detail(&item).is_none());
+		assert!(image_generation::quota_detail(&item).is_none());
 
-		item["status"] = json!("failed");
-		item["failure"]["type"] = json!("futureFailure");
+		item["status"] = serde_json::json!("failed");
+		item["failure"]["type"] = serde_json::json!("futureFailure");
 
-		assert!(quota_detail(&item).is_none());
+		assert!(image_generation::quota_detail(&item).is_none());
 	}
 }

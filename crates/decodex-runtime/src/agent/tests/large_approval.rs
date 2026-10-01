@@ -1,4 +1,5 @@
-use super::*;
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn large_user_approval_keeps_complete_request_without_breaking_the_coordinator() {
@@ -64,9 +65,7 @@ async fn large_user_approval_keeps_complete_request_without_breaking_the_coordin
 	assert!(mcp_event.payload.len() < 4_096);
 
 	let mcp_id = mcp_event.id;
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(coordinator);
 

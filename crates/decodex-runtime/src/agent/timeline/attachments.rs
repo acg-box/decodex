@@ -1,8 +1,11 @@
 //! Describe native non-text content without copying bytes, paths or signed URLs into history.
+use std::path::Path;
+
+use serde_json::Value;
+
 use decodex_protocol::{
 	AgentTimelineAttachment as Attachment, AgentTimelineAttachmentSource as Source,
 };
-use serde_json::Value;
 
 pub(super) fn project(item: &Value) -> (Vec<Attachment>, bool) {
 	match item["type"].as_str() {
@@ -158,7 +161,7 @@ fn describe(index: u32, part: &Value) -> (Attachment, bool) {
 fn local(index: u32, kind: &str, path: Option<&str>, fallback: &str) -> (Attachment, bool) {
 	let label = path
 		.filter(|path| !path.is_empty())
-		.and_then(|path| std::path::Path::new(path).file_name().and_then(|name| name.to_str()));
+		.and_then(|path| Path::new(path).file_name().and_then(|name| name.to_str()));
 
 	make(
 		index,
@@ -185,17 +188,17 @@ fn make(index: u32, kind: &str, label: &str, source: Source) -> (Attachment, boo
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::agent::timeline::attachments::{self, Source};
 	#[test]
 	fn native_parts_keep_source_indices_without_exposing_embedded_or_remote_data() {
-		let item = json!({"type":"userMessage","content":[
+		let item = serde_json::json!({"type":"userMessage","content":[
 			{"type":"text","text":"Question"}, {"type":"localImage","path":"/host/private/photo.png"},
 			{"type":"image","url":"data:image/png;base64,PRIVATE_BYTES"}, {"type":"image","fileId":"private-file-id"},
 			{"type":"audio","url":"https://example.test/audio?signature=PRIVATE_SIGNATURE"},
 			{"type":"skill","name":"Read docs","path":"/private/SKILL.md"}, {"type":"mention","name":"Calendar","path":"app://private-id"}
 		]});
-		let (attachments, omitted) = project(&item);
+		let (attachments, omitted) = attachments::project(&item);
 
 		assert!(!omitted);
 		assert_eq!(
@@ -222,11 +225,12 @@ mod tests {
 	}
 	#[test]
 	fn tool_image_references_keep_indices_and_do_not_expose_file_ids() {
-		let (parts, omitted) = project(&json!({"type":"functionCallOutput","output":[
-			{"type":"input_text","text":"Result"},
-			{"type":"input_image","file_id":"private-file-id","detail":"original"},
-			{"type":"input_image","image_url":"data:image/png;base64,PRIVATE"}
-		]}));
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"functionCallOutput","output":[
+				{"type":"input_text","text":"Result"},
+				{"type":"input_image","file_id":"private-file-id","detail":"original"},
+				{"type":"input_image","image_url":"data:image/png;base64,PRIVATE"}
+			]}));
 
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
@@ -237,20 +241,22 @@ mod tests {
 
 		assert!(!encoded.contains("private-file-id") && !encoded.contains("PRIVATE"));
 
-		let (parts, omitted) = project(&json!({"type":"functionCallOutput","output":[
-			{"type":"input_image","file_id":""}, {"type":"input_image","file_id":42}
-		]}));
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"functionCallOutput","output":[
+				{"type":"input_image","file_id":""}, {"type":"input_image","file_id":42}
+			]}));
 
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
 	#[test]
 	fn dynamic_tool_media_preserves_native_indices_and_never_copies_payloads() {
-		let (parts, omitted) = project(&json!({"type":"dynamicToolCall","contentItems":[
-			{"type":"inputText","text":"Result"},
-			{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"},
-			{"type":"inputAudio","audioUrl":"https://example.test/?signature=PRIVATE"}
-		]}));
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"dynamicToolCall","contentItems":[
+				{"type":"inputText","text":"Result"},
+				{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"},
+				{"type":"inputAudio","audioUrl":"https://example.test/?signature=PRIVATE"}
+			]}));
 
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
@@ -258,21 +264,28 @@ mod tests {
 		assert_eq!((parts[1].kind.as_str(), parts[1].source), ("inputAudio", Source::Remote));
 		assert!(!serde_json::to_string(&parts).unwrap().contains("PRIVATE"));
 		assert_eq!(
-			project(&json!({"type":"dynamicToolCall","contentItems":null})),
+			attachments::project(
+				&serde_json::json!({"type":"dynamicToolCall","contentItems":null})
+			),
 			(vec![], false)
 		);
-		assert!(project(&json!({"type":"dynamicToolCall","contentItems":{}})).1);
+		assert!(
+			attachments::project(&serde_json::json!({"type":"dynamicToolCall","contentItems":{}}))
+				.1
+		);
 
-		let (parts, omitted) = project(&json!({"type":"dynamicToolCall","contentItems":[
-			{"type":"inputImage","imageUrl":null}, {"type":"futurePart"}
-		]}));
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"dynamicToolCall","contentItems":[
+				{"type":"inputImage","imageUrl":null}, {"type":"futurePart"}
+			]}));
 
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
 	#[test]
 	fn mcp_media_and_resources_are_described_without_raw_tool_output() {
-		let (parts, omitted) = project(&json!({"type":"mcpToolCall","result":{"content":[
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"mcpToolCall","result":{"content":[
 			{"type":"text","text":"Result"},
 			{"type":"image","mimeType":"image/png","data":"PRIVATE"},
 			{"type":"audio","mimeType":"audio/wav","data":"PRIVATE"},
@@ -285,44 +298,52 @@ mod tests {
 		assert!(parts[..3].iter().all(|part| part.source == Source::Inline));
 		assert_eq!((parts[3].label.as_str(), parts[3].source), ("Report", Source::Reference));
 		assert!(!serde_json::to_string(&parts).unwrap().contains("PRIVATE"));
-		assert_eq!(project(&json!({"type":"mcpToolCall","result":null})), (vec![], false));
+		assert_eq!(
+			attachments::project(&serde_json::json!({"type":"mcpToolCall","result":null})),
+			(vec![], false)
+		);
 
-		let (parts, omitted) = project(&json!({"type":"mcpToolCall","result":{"content":[
-			{"type":"image","data":"PRIVATE"}, {"type":"resource","resource":{}},
-			{"type":"resource_link","name":"Link"}, {"type":"futureBlock"}
-		]}}));
+		let (parts, omitted) =
+			attachments::project(&serde_json::json!({"type":"mcpToolCall","result":{"content":[
+				{"type":"image","data":"PRIVATE"}, {"type":"resource","resource":{}},
+				{"type":"resource_link","name":"Link"}, {"type":"futureBlock"}
+			]}}));
 
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
 	#[test]
 	fn bounds_unknown_parts_and_generated_images_are_explicit() {
-		let (parts, omitted) = project(
-			&json!({"type":"userMessage","content":[{"type":"futureContent","value":"private"},{"type":"localAudio","path":format!("/tmp/{}", "界".repeat(100))}]}),
+		let (parts, omitted) = attachments::project(
+			&serde_json::json!({"type":"userMessage","content":[{"type":"futureContent","value":"private"},{"type":"localAudio","path":format!("/tmp/{}", "界".repeat(100))}]}),
 		);
 
 		assert!(omitted && parts[0].source == Source::Unknown);
 		assert!(parts[1].label.len() <= 256 && parts[1].label.ends_with('界'));
 
-		let (parts, omitted) = project(
-			&json!({"type":"userMessage","content":vec![json!({"type":"image","fileId":"file"});17]}),
+		let (parts, omitted) = attachments::project(
+			&serde_json::json!({"type":"userMessage","content":vec![serde_json::json!({"type":"image","fileId":"file"});17]}),
 		);
 
 		assert!(omitted);
 		assert_eq!(parts.len(), 16);
 
-		let (parts, _) = project(
-			&json!({"type":"imageGeneration","result":"PRIVATE_BYTES","savedPath":"/tmp/result.png"}),
+		let (parts, _) = attachments::project(
+			&serde_json::json!({"type":"imageGeneration","result":"PRIVATE_BYTES","savedPath":"/tmp/result.png"}),
 		);
 
 		assert_eq!(parts[0].source, Source::Inline);
 		assert_eq!(parts[0].label, "Generated image");
 
-		let (parts, _) = project(&json!({"type":"imageGeneration","savedPath":"/tmp/result.png"}));
+		let (parts, _) = attachments::project(
+			&serde_json::json!({"type":"imageGeneration","savedPath":"/tmp/result.png"}),
+		);
 
 		assert_eq!(parts[0].source, Source::Unknown);
 
-		let (parts, _) = project(&json!({"type":"imageGeneration","result":"PRIVATE_BYTES"}));
+		let (parts, _) = attachments::project(
+			&serde_json::json!({"type":"imageGeneration","result":"PRIVATE_BYTES"}),
+		);
 
 		assert_eq!(parts[0].source, Source::Inline);
 	}

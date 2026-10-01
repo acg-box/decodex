@@ -10,6 +10,11 @@ mod summary;
 use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
 
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::agent::{activity, reasoning};
+
+use decodex_codex::app_server_client::ClientError;
 
 #[derive(Debug)]
 pub(crate) enum ProjectionError {
@@ -26,8 +31,6 @@ where
 	F: Fn() -> Fut,
 	Fut: std::future::Future<Output = Option<crate::agent_usage_estimate::Source>>,
 {
-	use decodex_codex::app_server_client::ClientError;
-
 	use decodex_protocol::AgentTimelineResult as Result;
 
 	let Some(before) = source().await else {
@@ -105,7 +108,7 @@ where
 
 		Result::CapacityExceeded
 	};
-	let result = tokio::time::timeout(std::time::Duration::from_secs(25), operation)
+	let result = time::timeout(std::time::Duration::from_secs(25), operation)
 		.await
 		.unwrap_or(Result::Unavailable);
 
@@ -127,18 +130,20 @@ where
 
 #[cfg(test)]
 mod app_ui_projection_tests {
-	use super::*;
+	use crate::agent::timeline::{self, Content};
 	#[test]
 	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
 		for (kind, metadata, expected) in [
-			("mcpToolCall", json!({"resourceUri":"ui://fixture/view"}), false),
-			("mcpToolCall", json!(null), false),
-			("mcpToolCall", json!({"resourceUri":"https://example.com"}), false),
-			("agentMessage", json!({"resourceUri":"ui://fixture/view"}), false),
+			("mcpToolCall", timeline::json!({"resourceUri":"ui://fixture/view"}), false),
+			("mcpToolCall", timeline::json!(null), false),
+			("mcpToolCall", timeline::json!({"resourceUri":"https://example.com"}), false),
+			("agentMessage", timeline::json!({"resourceUri":"ui://fixture/view"}), false),
 		] {
-			let row = json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
+			let row = timeline::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
 
-			assert!(matches!(ordinary(&row).unwrap(),Content::Item{app_ui,..} if app_ui==expected));
+			assert!(
+				matches!(timeline::ordinary(&row).unwrap(),Content::Item{app_ui,..} if app_ui==expected)
+			);
 		}
 	}
 }
@@ -175,7 +180,7 @@ fn project_fields(
 
 	let handoffs = rows
 		.iter()
-		.filter(|row| row["type"] == "item" && super::reasoning::voice_handoff(&row["item"]))
+		.filter(|row| row["type"] == "item" && reasoning::voice_handoff(&row["item"]))
 		.filter_map(|row| Some((row["turnId"].as_str()?, row["position"].as_u64()?)))
 		.collect::<Vec<_>>();
 	let visible = |row: &&Value| {
@@ -282,7 +287,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let turn_id = id(&row["turnId"])?;
 	let completed = !matches!(item["status"].as_str(), Some("inProgress" | "in_progress"));
 	let activity = (kind != "reasoning")
-		.then(|| super::activity::project(&json!({"turnId":turn_id,"item":item}), completed))
+		.then(|| activity::project(&json!({"turnId":turn_id,"item":item}), completed))
 		.flatten();
 
 	Some(Content::Item {
@@ -418,7 +423,7 @@ async fn project_with_saved_origins(
 		// This includes handoffs recorded by another client or before first launch.
 		let typed = items
 			.iter()
-			.take_while(|item| !super::reasoning::voice_handoff(item))
+			.take_while(|item| !reasoning::voice_handoff(item))
 			.filter(|item| item["type"] == "reasoning")
 			.filter_map(|item| item["id"].as_str().map(str::to_owned))
 			.collect();
@@ -431,25 +436,30 @@ async fn project_with_saved_origins(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::sync::atomic::{AtomicUsize, Ordering};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::agent::timeline::{self, Content, ProjectionError, Value};
 
 	#[test]
 	fn reasoning_history_hides_voice_items_and_uses_saved_origins_across_pages() {
-		let row = |position, item: &str| json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":item,"summary":[item]}});
-		let marker = json!({"type":"item","position":2,"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>","textElements":[]}]}});
-		let mut page = json!({"data":[row(1,"typed"),marker,row(3,"voice")],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
-		let projected = project("thread", &page).unwrap();
+		let row = |position, item: &str| timeline::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":item,"summary":[item]}});
+		let marker = timeline::json!({"type":"item","position":2,"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>","textElements":[]}]}});
+		let mut page = timeline::json!({"data":[row(1,"typed"),marker,row(3,"voice")],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+		let projected = timeline::project("thread", &page).unwrap();
 
 		assert_eq!(projected.entries.len(), 2);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("\"voice\""));
 		// A later page can omit the marker and contain a typed completion after it.
-		page["data"] = json!([row(4, "typed"), row(5, "voice")]);
+		page["data"] = timeline::json!([row(4, "typed"), row(5, "voice")]);
 
-		let projected =
-			project_with_origins("thread", &page, &[("turn".into(), vec!["typed".into()])])
-				.unwrap();
+		let projected = timeline::project_with_origins(
+			"thread",
+			&page,
+			&[("turn".into(), vec!["typed".into()])],
+		)
+		.unwrap();
 
 		assert_eq!(projected.entries.len(), 1);
 		assert!(
@@ -459,37 +469,41 @@ mod tests {
 
 	#[test]
 	fn reasoning_history_projects_only_public_summary_without_inventing_completion() {
-		let mut row = json!({"type":"item","position":1,"turnId":"turn","item":{
+		let mut row = timeline::json!({"type":"item","position":1,"turnId":"turn","item":{
 			"type":"reasoning","id":"reasoning-item","summary":["Checking the request.","Comparing the results."],
 			"content":["PRIVATE_RAW_REASONING"],"encryptedContent":"PRIVATE_ENCRYPTED"}});
-		let projected = ordinary(&row).expect("public summary");
+		let projected = timeline::ordinary(&row).expect("public summary");
 
 		assert!(matches!(&projected, Content::Item { text, activity: None, truncated: false, .. }
 			if text == "Checking the request.\n\nComparing the results."));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
 
-		row["item"]["summary"] = json!(["界".repeat(4_000)]);
+		row["item"]["summary"] = timeline::json!(["界".repeat(4_000)]);
 
-		assert!(matches!(ordinary(&row).unwrap(), Content::Item { text, truncated: true, .. }
-			if text.len() <= 8_192 && text.chars().all(|c| c == '界')));
+		assert!(
+			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, truncated: true, .. }
+			if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
+		);
 
-		row["item"]["summary"] = json!([]);
+		row["item"]["summary"] = timeline::json!([]);
 
-		assert!(matches!(ordinary(&row).unwrap(), Content::Item { text, .. } if text.is_empty()));
+		assert!(
+			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, .. } if text.is_empty())
+		);
 
-		row["item"]["summary"] = json!([{"text":"do not coerce"}]);
+		row["item"]["summary"] = timeline::json!([{"text":"do not coerce"}]);
 
-		assert!(ordinary(&row).is_none());
+		assert!(timeline::ordinary(&row).is_none());
 	}
 
 	#[test]
 	fn mcp_authentication_challenge_survives_history_projection_without_raw_metadata() {
-		let page = json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{
+		let page = timeline::json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{
 			"type":"mcpToolCall","id":"call","server":"docs","tool":"search","status":"failed",
 			"result":{"content":[{"type":"text","text":"Authentication required"}],
 			"_meta":{"mcp/www_authenticate":["Bearer PRIVATE"]}}}}],"nextCursor":null,
 			"activeRealtimeSessionAtPageStart":null});
-		let projected = project("thread", &page).expect("history");
+		let projected = timeline::project("thread", &page).expect("history");
 		let Content::Item { activity: Some(activity), .. } = &projected.entries[0].content else {
 			panic!("missing tool activity");
 		};
@@ -501,61 +515,61 @@ mod tests {
 
 	#[test]
 	fn proposed_plan_history_preserves_authoritative_text_and_bounds() {
-		let mut row = json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
+		let mut row = timeline::json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
 
 		assert!(
-			matches!(ordinary(&row).unwrap(),Content::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
+			matches!(timeline::ordinary(&row).unwrap(),Content::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
 		);
 
-		row["item"]["text"] = json!("界".repeat(4_000));
+		row["item"]["text"] = timeline::json!("界".repeat(4_000));
 
 		assert!(
-			matches!(ordinary(&row).unwrap(),Content::Item {text,truncated:true,..} if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
+			matches!(timeline::ordinary(&row).unwrap(),Content::Item {text,truncated:true,..} if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
 		);
 
 		row["item"]["text"] = Value::Null;
 
-		assert!(ordinary(&row).is_none());
+		assert!(timeline::ordinary(&row).is_none());
 	}
 
 	#[test]
 	fn assistant_phase_survives_the_public_timeline_projection() {
 		for phase in ["commentary", "final_answer"] {
-			let row = json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
+			let row = timeline::json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
 
 			assert!(
-				matches!(ordinary(&row).unwrap(),Content::Item {phase:Some(observed),..} if observed == phase)
+				matches!(timeline::ordinary(&row).unwrap(),Content::Item {phase:Some(observed),..} if observed == phase)
 			);
 		}
 	}
 
 	#[test]
 	fn failed_turn_keeps_public_reason_and_explicit_bounds() {
-		let mut row = json!({"type":"turnCompleted","position":9,"turnId":"turn",
+		let mut row = timeline::json!({"type":"turnCompleted","position":9,"turnId":"turn",
 			"status":"failed","durationMs":5,"error":{"message":"Model is overloaded. Try again.","additionalDetails":"private raw metadata"}});
-		let projected = entry(&row).unwrap();
+		let projected = timeline::entry(&row).unwrap();
 
 		assert!(matches!(projected.content, Content::TurnBoundary { error:Some(ref error), .. }
 			if error.message == "Model is overloaded. Try again." && !error.truncated));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private raw metadata"));
 
-		row["error"]["message"] = json!("界".repeat(4_000));
+		row["error"]["message"] = timeline::json!("界".repeat(4_000));
 
 		assert!(
-			matches!(entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
+			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message.len() <= 8_192 && error.message.chars().all(|c| c == '界'))
 		);
 
-		row["error"]["message"] = json!("Bearer abcdefgh");
+		row["error"]["message"] = timeline::json!("Bearer abcdefgh");
 
 		assert!(
-			matches!(entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
+			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message == "Sensitive details omitted")
 		);
 
-		row["error"] = json!({"message":false});
+		row["error"] = timeline::json!({"message":false});
 
-		assert!(entry(&row).is_none());
+		assert!(timeline::entry(&row).is_none());
 	}
 
 	#[test]
@@ -568,10 +582,10 @@ mod tests {
 			("userMessage", format!("Example: {envelope}"), format!("Example: {envelope}")),
 			("agentMessage", envelope.to_owned(), envelope.to_owned()),
 		] {
-			let row = json!({"type":"item","position":1,"turnId":"turn","item":{
+			let row = timeline::json!({"type":"item","position":1,"turnId":"turn","item":{
 				"type":kind,"id":"message","text":source,"content":[{"type":"text","text":source}]
 			}});
-			let content = ordinary(&row).unwrap();
+			let content = timeline::ordinary(&row).unwrap();
 
 			assert!(
 				matches!(content, Content::Item { text, truncated:false, ref turn_id, ref item_id, .. }
@@ -582,12 +596,12 @@ mod tests {
 
 	#[test]
 	fn speech_identity_and_promotions_survive_without_copying_tool_arguments() {
-		let value = json!({"data":[
+		let value = timeline::json!({"data":[
 			{"type":"realtime","position":1,"item":{"type":"transcriptSegment","id":"speech","realtimeSessionId":"session","role":"assistant","text":"Hello"}},
 			{"type":"realtime","position":2,"item":{"type":"bemItemPromoted","id":"promotion","realtimeSessionId":"session","turnId":"turn","itemId":"tool","presentation":{"type":"wholeItem"}}},
 			{"type":"item","position":3,"turnId":"turn","item":{"type":"dynamicToolCall","id":"tool","tool":"action","arguments":{"private":"NEVER_PROJECT"},"status":"completed","success":true}}
 		],"nextCursor":"older","activeRealtimeSessionAtPageStart":"session"});
-		let page = project("thread", &value).unwrap();
+		let page = timeline::project("thread", &value).unwrap();
 
 		assert_eq!(page.active_realtime_session_at_page_start.as_deref(), Some("session"));
 		assert!(
@@ -598,30 +612,32 @@ mod tests {
 
 	#[test]
 	fn malformed_realtime_and_unicode_bounds_are_explicit() {
-		let (text, truncated) = visible_text(&"界".repeat(4_000));
+		let (text, truncated) = timeline::visible_text(&"界".repeat(4_000));
 
 		assert!(truncated && text.len() <= 8_192 && text.ends_with('界'));
 
-		let item = json!({"type":"bemItemPromoted","id":"p","realtimeSessionId":"s","turnId":"t","itemId":"i","presentation":{"type":"inlineVisualization","index":-1}});
+		let item = timeline::json!({"type":"bemItemPromoted","id":"p","realtimeSessionId":"s","turnId":"t","itemId":"i","presentation":{"type":"inlineVisualization","index":-1}});
 
-		assert!(realtime(&item).is_none());
-		assert!(project("thread", &json!({"data":[],"nextCursor":null})).is_err());
+		assert!(timeline::realtime(&item).is_none());
+		assert!(
+			timeline::project("thread", &timeline::json!({"data":[],"nextCursor":null})).is_err()
+		);
 	}
 
 	#[test]
 	fn large_pages_report_capacity_and_running_items_stay_running() {
-		let rows: Vec<_> = (0..20).map(|n| json!({"type":"realtime","position":n,
+		let rows: Vec<_> = (0..20).map(|n| timeline::json!({"type":"realtime","position":n,
 			"item":{"type":"transcriptSegment","id":format!("speech-{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
 
 		assert!(matches!(
-			project(
+			timeline::project(
 				"thread",
-				&json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null})
+				&timeline::json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null})
 			),
 			Err(ProjectionError::Capacity)
 		));
 
-		let content = ordinary(&json!({"turnId":"turn","item":{"type":"commandExecution","id":"command","status":"inProgress"}})).unwrap();
+		let content = timeline::ordinary(&timeline::json!({"turnId":"turn","item":{"type":"commandExecution","id":"command","status":"inProgress"}})).unwrap();
 
 		assert!(
 			matches!(content, Content::Item { activity:Some(activity), .. } if activity.status=="running")
@@ -630,26 +646,24 @@ mod tests {
 
 	#[tokio::test]
 	async fn reasoning_origins_read_earlier_native_item_pages_without_local_handoff() {
-		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
-			let item = |id, kind, text| json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
-			let marker = json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
+			let item = |id, kind, text| timeline::json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
+			let marker = timeline::json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
 
 			for (cursor, page) in [
 				(
 					Value::Null,
-					json!({"data":[item("typed","reasoning","Public"),marker],"nextCursor":"next"}),
+					timeline::json!({"data":[item("typed","reasoning","Public"),marker],"nextCursor":"next"}),
 				),
 				(
-					json!("next"),
-					json!({"data":[item("voice","reasoning","PRIVATE")],"nextCursor":null}),
+					timeline::json!("next"),
+					timeline::json!({"data":[item("voice","reasoning","PRIVATE")],"nextCursor":null}),
 				),
 			] {
 				let request: Value =
@@ -663,16 +677,19 @@ mod tests {
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":page})).as_bytes(),
+						format!("{}\n", timeline::json!({"id":request["id"],"result":page}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();
 			}
 		});
-		let row = |position, id, text| json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":id,"summary":[text]}});
-		let page = json!({"data":[row(40,"typed","Public"),row(41,"voice","PRIVATE")],"nextCursor":"older","activeRealtimeSessionAtPageStart":null});
+		let row = |position, id, text| timeline::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":id,"summary":[text]}});
+		let page = timeline::json!({"data":[row(40,"typed","Public"),row(41,"voice","PRIVATE")],"nextCursor":"older","activeRealtimeSessionAtPageStart":null});
 		let projected =
-			project_with_saved_origins(None, &client, "work", "thread", &page).await.unwrap();
+			timeline::project_with_saved_origins(None, &client, "work", "thread", &page)
+				.await
+				.unwrap();
 
 		assert_eq!(projected.entries.len(), 1);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
@@ -685,16 +702,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn dense_pages_shrink_without_advancing_cursor_and_source_changes_discard_results() {
-		use std::sync::atomic::{AtomicUsize, Ordering};
-
 		for change in ["none", "revision", "history", "account", "generation", "thread", "closed"] {
 			let changed = change != "none";
-			let (local, remote) = tokio::io::duplex(512 * 1_024);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(512 * 1_024);
+			let (reader, writer) = io::split(local);
 			let (client, _events) =
 				decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let limits = if changed { vec![30] } else { vec![30, 15, 7] };
 
@@ -707,20 +722,23 @@ mod tests {
 						assert_eq!(request["method"], method);
 
 						let result = if method == "thread/read" {
-							json!({"thread":{"id":"thread"}})
+							timeline::json!({"thread":{"id":"thread"}})
 						} else {
 							assert_eq!(request["params"]["limit"], limit);
 							assert_eq!(request["params"]["cursor"], "same-cursor");
 
-							let rows:Vec<_> = (0..limit).map(|n| json!({"type":"realtime","position":n,"item":{"type":"transcriptSegment","id":format!("s{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
+							let rows:Vec<_> = (0..limit).map(|n| timeline::json!({"type":"realtime","position":n,"item":{"type":"transcriptSegment","id":format!("s{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
 
-							json!({"data":rows,"nextCursor":"older","activeRealtimeSessionAtPageStart":"session"})
+							timeline::json!({"data":rows,"nextCursor":"older","activeRealtimeSessionAtPageStart":"session"})
 						};
 
 						writer
 							.write_all(
-								format!("{}\n", json!({"id":request["id"],"result":result}))
-									.as_bytes(),
+								format!(
+									"{}\n",
+									timeline::json!({"id":request["id"],"result":result})
+								)
+								.as_bytes(),
 							)
 							.await
 							.unwrap();
@@ -728,7 +746,7 @@ mod tests {
 				}
 			});
 			let calls = AtomicUsize::new(0);
-			let result = read(
+			let result = timeline::read(
 				None,
 				|| {
 					let observation = calls.fetch_add(1, Ordering::SeqCst);

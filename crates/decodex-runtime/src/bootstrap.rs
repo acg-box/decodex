@@ -2,7 +2,8 @@
 
 use std::{
 	env,
-	fmt::{Display, Formatter},
+	error::Error,
+	fmt::{Debug, Display, Formatter},
 	fs,
 	io::ErrorKind,
 	path::{Path, PathBuf},
@@ -11,11 +12,11 @@ use std::{
 };
 
 #[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
-
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
 	account_launch::{ApiResetCardRuntime, AttestedAppServerProfile, RunnerCapacity},
+	account_login::AccountLoginManager,
 	account_observation::AccountObservationService,
 	account_profile::AccountProfileRuntime,
 	account_service::{AccountService, OpenAiCredentialRefresher},
@@ -26,14 +27,11 @@ use crate::{
 	},
 	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
-
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
 	ProcessExecutionAuthorization, ProductState as _, ServerIdentity, ServerProfile,
 };
-
 use decodex_database::{BootstrapFailure, SqliteStore};
-
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, ConversationUnavailableReason, DoctorCheck,
 	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, LocalTransportAuthority,
@@ -62,7 +60,7 @@ pub enum LocalDatabaseError {
 	/// The schema, migration ledger, or stored bytes are incompatible.
 	Incompatible,
 }
-impl std::fmt::Debug for LocalDatabaseError {
+impl Debug for LocalDatabaseError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::UnsafeHostPath => formatter.write_str("UnsafeHostPath"),
@@ -82,7 +80,7 @@ impl Display for LocalDatabaseError {
 	}
 }
 
-impl std::error::Error for LocalDatabaseError {}
+impl Error for LocalDatabaseError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum HostDirectoryError {
@@ -184,7 +182,7 @@ impl ServiceBootstrap {
 		};
 		let account_login = match (&store, &accounts) {
 			(ProductStore::Available(store), Some(accounts)) =>
-				Some(Arc::new(crate::account_login::AccountLoginManager::new(
+				Some(Arc::new(AccountLoginManager::new(
 					store.clone(),
 					Arc::clone(accounts),
 					account_observations.clone(),

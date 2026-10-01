@@ -1,7 +1,14 @@
 //! Read estimates only while the process, account revision and task binding remain current.
+use std::{
+	future::Future,
+	time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use tokio::time;
+
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_core::{AccountId, ProcessGenerationId};
-use decodex_protocol::AgentUsageEstimateResult;
+use decodex_protocol::{AgentUsageEstimateResult, EntityId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SourceKey {
@@ -20,15 +27,15 @@ pub(crate) struct Source {
 pub(crate) async fn read<F, Fut>(source: F) -> AgentUsageEstimateResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	use AgentUsageEstimateResult as Result;
 
 	let Some(before) = source().await else {
 		return Result::Unavailable;
 	};
-	let response = tokio::time::timeout(
-		std::time::Duration::from_secs(65),
+	let response = time::timeout(
+		Duration::from_secs(65),
 		before.client.thread_usage_estimate(&before.key.thread),
 	)
 	.await;
@@ -47,13 +54,13 @@ where
 				return Result::Unavailable;
 			};
 			let (Ok(work_id), Ok(account_id)) = (
-				decodex_protocol::EntityId::new(before.key.work),
-				decodex_protocol::EntityId::new(before.key.account.as_str().to_owned()),
+				EntityId::new(before.key.work),
+				EntityId::new(before.key.account.as_str().to_owned()),
 			) else {
 				return Result::Unavailable;
 			};
-			let observed_at_micros = std::time::SystemTime::now()
-				.duration_since(std::time::UNIX_EPOCH)
+			let observed_at_micros = SystemTime::now()
+				.duration_since(UNIX_EPOCH)
 				.ok()
 				.and_then(|v| i64::try_from(v.as_micros()).ok());
 			let Some(observed_at_micros) = observed_at_micros else {
@@ -71,21 +78,26 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::{Value, json};
 	use std::sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	};
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+	use serde_json::{self, Value};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::agent_usage_estimate::{
+		self, AccountId, AgentUsageEstimateResult, AppServerClient, ProcessGenerationId, Source,
+		SourceKey,
+	};
 	#[tokio::test]
 	async fn task_usage_discards_reply_after_account_revision_process_or_thread_changes() {
 		for change in ["none", "account", "revision", "history", "process", "thread", "closed"] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let request: Value = serde_json::from_str(
 					&BufReader::new(reader).lines().next_line().await.unwrap().unwrap(),
 				)
@@ -93,10 +105,10 @@ mod tests {
 
 				assert_eq!(request["params"]["threadId"], "thread");
 
-				writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":1,"groups":[]}}})).as_bytes()).await.unwrap();
+				writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":1,"groups":[]}}})).as_bytes()).await.unwrap();
 			});
 			let calls = Arc::new(AtomicUsize::new(0));
-			let result = read(|| {
+			let result = agent_usage_estimate::read(|| {
 				let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 				let client = client.clone();
 

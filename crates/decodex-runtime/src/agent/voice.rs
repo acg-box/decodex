@@ -1,10 +1,11 @@
 //! Bind native live voice to the existing Agent and observe its real task turns.
-use super::{
-	AgentCoordinator, AgentError, ClientError, ServerEvent, Value, exact, json, resume_error,
+use crate::{
+	agent::{
+		AgentCoordinator, AgentError, ClientError, ServerEvent, Value, exact, json, resume_error,
+	},
+	agent_voice::{self, VoiceGateway},
 };
-
-use crate::agent_voice::VoiceGateway;
-
+use decodex_database::{AgentVoiceCall, SqliteStore};
 use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, VoiceSdp};
 
 const TRANSCRIPT_TAIL_BYTES: usize = 32_768;
@@ -22,7 +23,7 @@ pub(super) struct VoiceConnection {
 impl VoiceConnection {
 	async fn save_transcript_tail(
 		&mut self,
-		store: &decodex_database::SqliteStore,
+		store: &SqliteStore,
 		id: &str,
 		index: usize,
 	) -> Result<(), AgentError> {
@@ -55,7 +56,7 @@ impl VoiceConnection {
 
 	async fn save_transcript_tails(
 		&mut self,
-		store: &decodex_database::SqliteStore,
+		store: &SqliteStore,
 		id: &str,
 	) -> Result<(), AgentError> {
 		for index in 0..2 {
@@ -192,7 +193,7 @@ impl AgentCoordinator {
 				let baseline = self.client.thread_latest_turn_id(&thread).await?;
 
 				self.store
-					.begin_agent_voice_call(decodex_database::AgentVoiceCall {
+					.begin_agent_voice_call(AgentVoiceCall {
 						session_id: session_id.as_str().into(),
 						work_id: work_id.as_str().into(),
 						thread_id: thread.clone(),
@@ -368,7 +369,7 @@ impl AgentCoordinator {
 				voice.gateway.update(&id, AgentVoicePhase::Ready, Some(answer), None);
 			},
 			"thread/realtime/error" => {
-				let detail = crate::agent_voice::provider_error_message(
+				let detail = agent_voice::provider_error_message(
 					params["message"].as_str().unwrap_or_default(),
 				);
 
@@ -488,14 +489,17 @@ fn transcript_role_index(role: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::iter;
+
+	use crate::agent::{
+		tests,
+		voice::{self, AgentVoicePhase, AgentVoiceRequest, ServerEvent, VoiceGateway, VoiceSdp},
+	};
+	use decodex_protocol::{EntityId, HistoryText};
 
 	#[tokio::test]
 	async fn selected_speech_uses_only_the_existing_native_call() {
-		use decodex_protocol::{EntityId, HistoryText};
-
-		let (mut agent, mut sent, _directory) =
-			super::super::tests::fixture_with_history(json!({})).await;
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(voice::json!({})).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 		agent.attach_voice_host("generation".into(), VoiceGateway::new());
@@ -517,13 +521,13 @@ mod tests {
 
 		agent.voice_request(request("call")).await.unwrap();
 
-		let frames: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		let frames: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 		assert_eq!(frames.len(), 1, "no resume, start, or new user turn");
 		assert_eq!(frames[0]["method"], "thread/realtime/appendSpeech");
 		assert_eq!(
 			frames[0]["params"],
-			json!({"threadId":"opaque thread/1","text":"Selected reply"})
+			voice::json!({"threadId":"opaque thread/1","text":"Selected reply"})
 		);
 
 		agent.voice.as_mut().unwrap().precaution_retired = true;
@@ -537,10 +541,9 @@ mod tests {
 		use decodex_protocol::EntityId;
 
 		for disconnected in [false, true] {
-			let (mut agent, mut sent, directory) = super::super::tests::fixture_with_history(
-				json!({"_voice_stop_disconnect":disconnected}),
-			)
-			.await;
+			let (mut agent, mut sent, directory) =
+				tests::fixture_with_history(voice::json!({"_voice_stop_disconnect":disconnected}))
+					.await;
 
 			agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -573,7 +576,7 @@ mod tests {
 					.observe_misalignment(
 						"opaque thread/1",
 						"opaque turn/1",
-						&json!({"codexErrorInfo":"misalignmentPolicyViolation"})
+						&voice::json!({"codexErrorInfo":"misalignmentPolicyViolation"})
 					)
 					.await
 					.is_err()
@@ -582,7 +585,7 @@ mod tests {
 			agent
 				.voice_event(&ServerEvent::Notification {
 					method: "thread/realtime/sdp".into(),
-					params: json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+					params: voice::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
 				})
 				.await
 				.unwrap();
@@ -599,7 +602,7 @@ mod tests {
 			assert!(agent.voice.as_ref().unwrap().session.is_some());
 			assert!(agent.store.agent_misalignment("agent".into()).await.unwrap().is_some());
 
-			let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+			let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 			assert_eq!(requests.len(), 1);
 			assert_eq!(requests[0]["method"], "thread/realtime/stop");
@@ -611,10 +614,9 @@ mod tests {
 		use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
 
 		for disconnected in [false, true] {
-			let (mut agent, mut sent, directory) = super::super::tests::fixture_with_history(
-				json!({"_voice_stop_disconnect":disconnected}),
-			)
-			.await;
+			let (mut agent, mut sent, directory) =
+				tests::fixture_with_history(voice::json!({"_voice_stop_disconnect":disconnected}))
+					.await;
 
 			agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -640,14 +642,14 @@ mod tests {
 				.observe_misalignment(
 					"opaque thread/1",
 					"opaque turn/1",
-					&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+					&voice::json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
 				)
 				.await
 				.unwrap();
 			agent
 				.voice_event(&ServerEvent::Notification {
 					method: "thread/realtime/sdp".into(),
-					params: json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+					params: voice::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
 				})
 				.await
 				.unwrap();

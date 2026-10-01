@@ -1,15 +1,19 @@
 //! Installed native -> retained bridge -> coordinator continuation qualification.
-use super::*;
-
-use crate::agent::{AgentConfig, AgentCoordinator};
-
-use decodex_database::SqliteStore;
+use std::{env, fs, panic::AssertUnwindSafe, sync::Mutex};
 
 use futures_util::FutureExt as _;
+use mpsc::Receiver;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	time,
+};
 
-use std::sync::Mutex;
-
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator, misalignment},
+};
+use decodex_core::DecodexRoot;
+use decodex_database::{AgentMisalignment, SqliteStore};
 
 const EXPLANATION: &str = "Review the isolated fixture scope.";
 const STEER: &str = "Continue within the confirmed fixture scope.";
@@ -41,7 +45,7 @@ fn assert_override(requests: &[Value]) {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native continuation qualification"]
 async fn installed_native_continuation_uses_live_details_and_rejects_restart_authority() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
@@ -51,10 +55,9 @@ async fn installed_native_continuation_uses_live_details_and_rejects_restart_aut
 	let requests = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&requests)));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated continuation fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated continuation fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -68,60 +71,57 @@ async fn installed_native_continuation_uses_live_details_and_rejects_restart_aut
 
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
-	let outcome =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(45), async {
-			agent.start_agent("agent", "Complete the isolated fixture.").await.unwrap();
+	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(45), async {
+		agent.start_agent("agent", "Complete the isolated fixture.").await.unwrap();
 
-			terminal(&mut agent, &mut session.events).await;
+		terminal(&mut agent, &mut session.events).await;
 
-			let review = store.agent_misalignment("agent".into()).await.unwrap().unwrap();
-			let (error, guard) = session
-				.client
-				.live_misalignment_review(&review.thread_id, &review.turn_id)
-				.unwrap();
+		let review = store.agent_misalignment("agent".into()).await.unwrap().unwrap();
+		let (error, guard) =
+			session.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
 
-			assert_eq!(error["misalignment"]["detailedExplanation"], EXPLANATION);
+		assert_eq!(error["misalignment"]["detailedExplanation"], EXPLANATION);
 
-			let token = crate::agent::misalignment::review_token(&review, &guard).unwrap();
+		let token = misalignment::review_token(&review, &guard).unwrap();
 
-			assert_history_omits_details(&session.client, &review).await;
+		assert_history_omits_details(&session.client, &review).await;
 
-			assert_eq!(requests.lock().unwrap().len(), 1, "readback must not start model work");
-			assert!(
-				agent
-					.continue_misalignment("agent", review.clone(), "stale", "old-token")
-					.await
-					.is_err()
-			);
-			assert_eq!(requests.lock().unwrap().len(), 1);
-
+		assert_eq!(requests.lock().unwrap().len(), 1, "readback must not start model work");
+		assert!(
 			agent
-				.continue_misalignment("agent", review, "explicit-fixture-consent", &token)
+				.continue_misalignment("agent", review.clone(), "stale", "old-token")
 				.await
-				.unwrap();
+				.is_err()
+		);
+		assert_eq!(requests.lock().unwrap().len(), 1);
 
-			terminal(&mut agent, &mut session.events).await;
+		agent
+			.continue_misalignment("agent", review, "explicit-fixture-consent", &token)
+			.await
+			.unwrap();
 
-			assert!(store.agent_misalignment("agent".into()).await.unwrap().is_none());
+		terminal(&mut agent, &mut session.events).await;
 
-			assert_override(&requests.lock().unwrap());
+		assert!(store.agent_misalignment("agent".into()).await.unwrap().is_none());
 
-			agent
-				.enqueue_user_message(
-					"agent",
-					"next-fixture-input",
-					"Leave the next fixture turn blocked.",
-				)
-				.await
-				.unwrap();
-			agent.wake_pending().await.unwrap();
+		assert_override(&requests.lock().unwrap());
 
-			terminal(&mut agent, &mut session.events).await;
+		agent
+			.enqueue_user_message(
+				"agent",
+				"next-fixture-input",
+				"Leave the next fixture turn blocked.",
+			)
+			.await
+			.unwrap();
+		agent.wake_pending().await.unwrap();
 
-			store.agent_misalignment("agent".into()).await.unwrap().unwrap()
-		}))
-		.catch_unwind()
-		.await;
+		terminal(&mut agent, &mut session.events).await;
+
+		store.agent_misalignment("agent".into()).await.unwrap().unwrap()
+	}))
+	.catch_unwind()
+	.await;
 
 	drop(agent);
 	drop(session);
@@ -136,27 +136,23 @@ async fn installed_native_continuation_uses_live_details_and_rejects_restart_aut
 	};
 	let reopened = NativeSession::start(&binary, home.path());
 	let mut agent = AgentCoordinator::new(store.clone(), reopened.client.clone(), config).unwrap();
-	let outcome =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(20), async {
-			assert_history_omits_details(&reopened.client, &review).await;
+	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(20), async {
+		assert_history_omits_details(&reopened.client, &review).await;
 
-			assert!(
-				reopened
-					.client
-					.live_misalignment_review(&review.thread_id, &review.turn_id)
-					.is_none()
-			);
-			assert!(
-				agent
-					.continue_misalignment("agent", review.clone(), "restarted", "old-token")
-					.await
-					.is_err()
-			);
-			assert_eq!(requests.lock().unwrap().len(), 3);
-			assert_eq!(store.agent_misalignment("agent".into()).await.unwrap(), Some(review));
-		}))
-		.catch_unwind()
-		.await;
+		assert!(
+			reopened.client.live_misalignment_review(&review.thread_id, &review.turn_id).is_none()
+		);
+		assert!(
+			agent
+				.continue_misalignment("agent", review.clone(), "restarted", "old-token")
+				.await
+				.is_err()
+		);
+		assert_eq!(requests.lock().unwrap().len(), 3);
+		assert_eq!(store.agent_misalignment("agent".into()).await.unwrap(), Some(review));
+	}))
+	.catch_unwind()
+	.await;
 
 	drop(agent);
 	drop(reopened);
@@ -165,7 +161,7 @@ async fn installed_native_continuation_uses_live_details_and_rejects_restart_aut
 	outcome.expect("native restart qualification panicked").expect("native restart timed out");
 }
 
-async fn terminal(agent: &mut AgentCoordinator, events: &mut mpsc::Receiver<ServerEvent>) {
+async fn terminal(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>) {
 	loop {
 		let event = events.recv().await.expect("native event stream");
 		let done = matches!(&event, ServerEvent::Notification { method, .. } if method == "turn/completed");
@@ -178,10 +174,7 @@ async fn terminal(agent: &mut AgentCoordinator, events: &mut mpsc::Receiver<Serv
 	}
 }
 
-async fn assert_history_omits_details(
-	client: &AppServerClient,
-	review: &decodex_database::AgentMisalignment,
-) {
+async fn assert_history_omits_details(client: &AppServerClient, review: &AgentMisalignment) {
 	let history = client
 		.thread_read_turn(&review.thread_id, &review.turn_id)
 		.await
@@ -200,7 +193,7 @@ async fn assert_history_omits_details(
 
 async fn serve(listener: tokio::net::TcpListener, requests: Arc<Mutex<Vec<Value>>>) {
 	while let Ok((socket, _)) = listener.accept().await {
-		let mut socket = tokio::io::BufReader::new(socket);
+		let mut socket = BufReader::new(socket);
 		let mut length = 0;
 
 		loop {

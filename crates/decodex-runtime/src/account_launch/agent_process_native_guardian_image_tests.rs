@@ -1,15 +1,20 @@
 //! Cold image history survives while the synchronous Guardian keeps its native text-only profile.
-use super::*;
+use std::{env, fs, sync::Mutex};
+
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::reviewer::*;
+use decodex_codex::{guardian, guardian::ReviewStatus};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Guardian image evidence"]
 async fn installed_guardian_preserves_native_image_profile_after_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -26,9 +31,9 @@ async fn installed_guardian_preserves_native_image_profile_after_restart() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nguardian_thread_context = true\nstep_model_switching = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nguardian_thread_context = true\nstep_model_switching = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
@@ -86,10 +91,10 @@ async fn finish(session: &mut NativeSession) -> bool {
 				assert_ne!(method, "error", "native error: {params}");
 
 				if method.starts_with("item/autoApprovalReview/") {
-					denied |= decodex_codex::guardian::decode_review(&method, &params)
+					denied |= guardian::decode_review(&method, &params)
 						.expect("native review event")
 						.status
-						== decodex_codex::guardian::ReviewStatus::Denied;
+						== ReviewStatus::Denied;
 				}
 				if method == "turn/completed" {
 					assert_eq!(params["turn"]["status"], "completed");

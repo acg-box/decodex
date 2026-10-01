@@ -6,6 +6,14 @@
 //! ProviderAttempt preparation. No dispatch authorization or provider gateway is reachable from
 //! either boundary.
 
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	process_supervisor::FencedProcess,
+	provider_attempt_service::{
+		ProviderAttemptControl, ProviderAttemptRuntimeAuthority, ProviderAttemptServiceError,
+	},
+};
 use decodex_core::{
 	AccountRegistryRoutingDecisionKind, BlobStore, ContextPack, ContinuationCommandOutcome,
 	ContinuationPlanKind, ContinuationRejection, ConversationId, ExecutionConsumer,
@@ -15,17 +23,9 @@ use decodex_core::{
 use decodex_database::{
 	BindConversationContinuation, ContinuationPlanEffect, ConversationInitialRoute,
 	ConversationInitialRouteOutcome, ConversationRoutingSuccessor,
-	ConversationRoutingSuccessorOutcome, CreateConversationRoutingSuccessor, PlanContinuation,
-	PlanInitialThreadContinuation, PrepareProviderAttemptOutcome, RouteConversationInitial,
-	SqliteStore,
-};
-use sha2::{Digest as _, Sha256};
-
-use crate::{
-	process_supervisor::FencedProcess,
-	provider_attempt_service::{
-		ProviderAttemptControl, ProviderAttemptRuntimeAuthority, ProviderAttemptServiceError,
-	},
+	ConversationRoutingSuccessorOutcome, CreateConversationRoutingSuccessor,
+	FreshPreparedProviderAttempt, PlanContinuation, PlanInitialThreadContinuation,
+	PrepareProviderAttemptOutcome, RouteConversationInitial, SqliteStore,
 };
 
 /// Complete input for one atomic initial Account Registry route followed by initial planning.
@@ -213,7 +213,7 @@ pub(crate) enum PostProcessOutcome {
 	/// This call freshly prepared the attempt and retains one-use authorization input.
 	FreshPrepared {
 		attempt: PreparedAttemptHandoff,
-		fresh_preparation: decodex_database::FreshPreparedProviderAttempt,
+		fresh_preparation: FreshPreparedProviderAttempt,
 	},
 	/// The exact preparation already exists at the supplied prepared revision.
 	PreparedReplay { attempt: PreparedAttemptHandoff },

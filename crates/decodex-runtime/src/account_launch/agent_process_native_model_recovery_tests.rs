@@ -1,9 +1,13 @@
 //! Qualify partial model updates without resetting mode, instructions, or permissions.
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
 
-use decodex_codex::app_server_client::ThreadModelRecoveryUpdate;
+use tokio::{net::TcpListener, time};
 
-use std::sync::atomic::AtomicUsize;
+use crate::account_launch::agent_process::native_tests::*;
+use decodex_codex::app_server_client::{NativeTaskModelSettings, ThreadModelRecoveryUpdate};
 
 fn assert_resumed_settings(resumed: &Value, mode: &str) {
 	assert_eq!(resumed["model"], "gpt-5.6-terra");
@@ -40,15 +44,15 @@ async fn installed_model_recovery_preserves_task_policy_and_does_not_replay_turn
 }
 
 async fn qualify(mode: &str, preserve_tier: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("isolated model recovery home");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("loopback inference");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback inference");
 	let address = listener.local_addr().expect("loopback address");
 	let count = Arc::new(AtomicUsize::new(0));
-	let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let requests = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture_usage(
 		listener,
 		Arc::clone(&count),
@@ -58,9 +62,9 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 		|serial| json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Fixture done."}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Local recovery fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("isolated model configuration");
+	fs::write(home.path().join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Local recovery fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("isolated model configuration");
 
-	let saved = std::fs::read(home.path().join("config.toml")).expect("original defaults");
+	let saved = fs::read(home.path().join("config.toml")).expect("original defaults");
 	let mut session = NativeSession::start(&binary, home.path());
 	let guard = session.client.thread_settings_guard("auth-fixture").expect("native source guard");
 
@@ -70,10 +74,10 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 		"custom provider must not consume ChatGPT fallback banners"
 	);
 
-	let thread = tokio::time::timeout(Duration::from_secs(30), async {
+	let thread = time::timeout(Duration::from_secs(30), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":"read-only"})).await.expect("native task");
 		let thread = started["thread"]["id"].as_str().expect("native thread");
-		let initial = decodex_codex::app_server_client::NativeTaskModelSettings::from_thread_response(&started).expect("complete native start settings");
+		let initial = NativeTaskModelSettings::from_thread_response(&started).expect("complete native start settings");
 
 		assert_eq!(initial.model,"gpt-5.6-sol");
 
@@ -112,7 +116,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 
 		assert_eq!(settings["serviceTier"], json!(expected_tier));
 
-		let published = decodex_codex::app_server_client::NativeTaskModelSettings::from_notification(&settings).expect("complete native publication");
+		let published = NativeTaskModelSettings::from_notification(&settings).expect("complete native publication");
 
 		assert_eq!(published.model,"gpt-5.6-terra");
 		assert_eq!(published.service_tier.as_deref(),expected_tier);
@@ -126,12 +130,12 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 		thread.to_owned()
 	}).await.expect("bounded native model recovery");
 
-	assert_eq!(std::fs::read(home.path().join("config.toml")).expect("current defaults"), saved);
+	assert_eq!(fs::read(home.path().join("config.toml")).expect("current defaults"), saved);
 
 	drop(session);
 
 	let mut reopened = NativeSession::start(&binary, home.path());
-	let resumed = tokio::time::timeout(
+	let resumed = time::timeout(
 		Duration::from_secs(20),
 		reopened.client.thread_resume(
 			json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true}),
@@ -146,13 +150,10 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 	assert_resumed_settings(&resumed, mode);
 
 	assert_eq!(count.load(Ordering::Acquire), 1, "cold hydration must not replay input");
-	assert_eq!(
-		std::fs::read(home.path().join("config.toml")).expect("defaults after resume"),
-		saved
-	);
+	assert_eq!(fs::read(home.path().join("config.toml")).expect("defaults after resume"), saved);
 	// A new user request with no model overrides must use the recovered task
 	// settings rather than the process-level defaults from config.toml.
-	tokio::time::timeout(Duration::from_secs(20), async {
+	time::timeout(Duration::from_secs(20), async {
 		reopened
 			.client
 			.turn_start(

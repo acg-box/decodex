@@ -1,17 +1,18 @@
 //! Exercise the settings command owner without a native process or provider.
-use super::*;
+use crate::application::*;
+use decodex_core::DecodexRoot;
 use decodex_protocol::{
-	CURRENT_VERSION, ClientCommandId, CorrelationId, DoctorComponent, DoctorIssue, DoctorStatus,
-	EntityRevision, IdempotencyKey,
+	CURRENT_VERSION, ClientCommandId, ConversationUnavailableReason, CorrelationId,
+	DoctorComponent, DoctorIssue, DoctorStatus, EntityRevision, IdempotencyKey, ServerId,
 };
 
 #[tokio::test]
 async fn automatic_recap_preference_uses_existing_command_and_readback_owner() {
 	let directory = tempfile::tempdir().unwrap();
-	let root = decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let doctor = DoctorReport::new(
-		decodex_protocol::ServerId::new("settings-test").unwrap(),
+		ServerId::new("settings-test").unwrap(),
 		CURRENT_VERSION,
 		DoctorComponent::ALL
 			.into_iter()
@@ -26,9 +27,7 @@ async fn automatic_recap_preference_uses_existing_command_and_readback_owner() {
 		None,
 		None,
 		None,
-		ConversationCapability::Unavailable(
-			decodex_protocol::ConversationUnavailableReason::AppServerProfile,
-		),
+		ConversationCapability::Unavailable(ConversationUnavailableReason::AppServerProfile),
 		doctor,
 	);
 	let mut command = CommandEnvelope {

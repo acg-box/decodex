@@ -1,14 +1,16 @@
 //! Real same-UID transport proof for cold, read-only creation recovery.
+use std::{fs, fs::Permissions};
+
 use crate::{
 	ProtocolServer, ServerConfig,
-	application::{ProductStore, ServiceApplication},
+	application::{self, ProductStore, ServiceApplication},
 	conversation::{ConversationCapability, CreateConversation},
 };
 use decodex_core::{ConversationId, DecodexRoot, LocalTrustPolicy};
 use decodex_database::{CreateConversationRecord, SqliteStore};
 use decodex_protocol::{
-	CURRENT_VERSION, ClientCommandId, ClientDraftStore, CommandEnvelope, CommandPayload,
-	ConversationCreationReceiptRequest, ConversationCreationReceiptResult as Receipt,
+	CURRENT_VERSION, ClientCommandId, ClientDraftStore, ClientProfile, CommandEnvelope,
+	CommandPayload, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 	ConversationExecutionSettings, ConversationModel, ConversationUnavailableReason,
 	ConversationWorkingDirectory, CorrelationId, DesktopDraftDocument,
 	DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft, DoctorCheck, DoctorComponent, DoctorIssue,
@@ -43,7 +45,7 @@ fn original() -> CommandEnvelope {
 async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope: &str) {
 	let request = ConversationCreationReceiptRequest::from_command(original).unwrap();
 	let command = CreateConversation {
-		initial_model_source: crate::application::runtime_initial_model_source(
+		initial_model_source: application::runtime_initial_model_source(
 			request.initial_model_source.as_deref(),
 		)
 		.unwrap(),
@@ -103,7 +105,7 @@ async fn query(
 	session: &mut RetainedSession,
 	request: ConversationCreationReceiptRequest,
 	sequence: u64,
-) -> Receipt {
+) -> ConversationCreationReceiptResult {
 	let query_id = QueryId::new(format!("creation-read-{sequence}")).unwrap();
 
 	session
@@ -144,10 +146,10 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 
 	let config = root.as_path().join("config.toml");
 
-	std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).unwrap();
-	std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).unwrap();
+	fs::set_permissions(&config, Permissions::from_mode(0o600)).unwrap();
 
-	let profile = decodex_protocol::ClientProfile::load(root.as_path(), None).unwrap();
+	let profile = ClientProfile::load(root.as_path(), None).unwrap();
 	let scope = profile.draft_scope_key();
 
 	persist_original(&root, &original, &scope).await;
@@ -158,7 +160,7 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 		let drafts = ClientDraftStore::open_at(root.as_path()).unwrap();
 		let saved = drafts.load().unwrap();
 		let restored = DesktopDraftDocument::decode(&saved.payload).unwrap();
-		let profile = decodex_protocol::ClientProfile::load(root.as_path(), None).unwrap();
+		let profile = ClientProfile::load(root.as_path(), None).unwrap();
 		let draft = &restored.profiles[&profile.draft_scope_key()].ordinary["/tmp"];
 
 		assert_eq!(draft.composer.text, "Later unsent input");
@@ -207,7 +209,7 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 
 		assert_eq!(
 			query(&mut client, request.clone(), 1).await,
-			Receipt::Recorded {
+			ConversationCreationReceiptResult::Recorded {
 				conversation_id: request.conversation_id.clone(),
 				creation_revision: EntityRevision(1)
 			}
@@ -217,13 +219,19 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 
 		missing.idempotency_key = IdempotencyKey::new("not-recorded").unwrap();
 
-		assert_eq!(query(&mut client, missing, 2).await, Receipt::NotRecorded);
+		assert_eq!(
+			query(&mut client, missing, 2).await,
+			decodex_protocol::ConversationCreationReceiptResult::NotRecorded
+		);
 
 		let mut conflicting = request;
 
 		conflicting.message = HistoryText::new("Later unsent input").unwrap();
 
-		assert_eq!(query(&mut client, conflicting, 3).await, Receipt::Conflict);
+		assert_eq!(
+			query(&mut client, conflicting, 3).await,
+			decodex_protocol::ConversationCreationReceiptResult::Conflict
+		);
 
 		client.close().await.unwrap();
 		server.shutdown().await.unwrap();

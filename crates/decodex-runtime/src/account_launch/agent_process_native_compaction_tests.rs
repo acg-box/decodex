@@ -1,9 +1,14 @@
 //! Qualify streamed compaction and cold continuation through the installed native bridge.
 #[path = "agent_process_native_code_compaction_tests.rs"] mod code_metadata;
 
-use super::*;
+use std::{
+	env, fs,
+	sync::{Mutex, atomic::AtomicUsize},
+};
 
-use std::sync::atomic::AtomicUsize;
+use tokio::{net::TcpListener, time};
+
+use crate::account_launch::agent_process::native_tests::*;
 
 const SUMMARY: &str = "isolated-compaction-checkpoint";
 
@@ -39,15 +44,15 @@ fn assert_checkpoint(bodies: &[Value], count: usize) {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native compaction qualification"]
 async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	{
 		let home = tempfile::tempdir().expect("compaction fixture");
-		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
-		let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+		let bodies = Arc::new(Mutex::new(Vec::new()));
 		let backend = tokio::spawn(serve_fixture_usage(
 			listener,
 			Arc::new(AtomicUsize::new(0)),
@@ -68,11 +73,11 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 		));
 		let limit = 200_000;
 
-		std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = {limit}\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+		fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = {limit}\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 		let mut session = NativeSession::start(&binary, home.path());
 
-		tokio::time::timeout(Duration::from_secs(60), async {
+		time::timeout(Duration::from_secs(60), async {
 			let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 			let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
@@ -110,12 +115,12 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native compaction failure qualification"]
 async fn installed_native_preserves_prompt_before_compaction_error_and_after_restart() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture_usage(
@@ -128,10 +133,10 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 		|serial| json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Not a compaction checkpoint"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	const PROMPT: &str = "Keep this incoming prompt exactly once after compaction fails.";
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();

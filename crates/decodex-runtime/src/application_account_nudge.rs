@@ -3,13 +3,15 @@
 #[path = "application_account_nudge_native_tests.rs"]
 mod native_tests;
 
-use super::{ApplicationPublication, ProductStore, ServiceApplication, application_unavailable};
-
+use crate::application::{
+	ApplicationPublication, ProductStore, ServiceApplication, application_unavailable,
+};
+use decodex_core::AccountId;
 use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
-
 use decodex_protocol::{
-	AccountRecoveryAction, AccountRecoveryNudgeStatus as Status, AccountRecoveryResult, Channel,
-	CommandEnvelope, CommandError, EventPayload, ResultPayload,
+	AccountRecoveryAction, AccountRecoveryNudgeOperation, AccountRecoveryNudgeStatus as Status,
+	AccountRecoveryResult, Channel, CommandEnvelope, CommandError, EntityId, EntityRevision,
+	EventPayload, QueryResultPayload, ResultPayload,
 };
 
 impl ServiceApplication {
@@ -94,17 +96,17 @@ impl ServiceApplication {
 impl ServiceApplication {
 	pub(super) async fn account_nudge_status(
 		&self,
-		account_id: &decodex_protocol::EntityId,
+		account_id: &EntityId,
 		action: AccountRecoveryAction,
 		key: Option<&decodex_protocol::IdempotencyKey>,
-	) -> decodex_protocol::QueryResultPayload {
+	) -> QueryResultPayload {
 		use decodex_protocol::{AccountRecoveryNudgeResult as R, QueryResultPayload};
 
 		let result = async {
 			let ProductStore::Available(store) = &self.store else {
 				return R::Unavailable;
 			};
-			let Ok(account) = decodex_core::AccountId::new(account_id.as_str()) else {
+			let Ok(account) = AccountId::new(account_id.as_str()) else {
 				return R::Unavailable;
 			};
 			let receipt = match store
@@ -130,9 +132,9 @@ impl ServiceApplication {
 					},
 			};
 
-			R::Found(decodex_protocol::AccountRecoveryNudgeOperation {
+			R::Found(AccountRecoveryNudgeOperation {
 				account_id: account_id.clone(),
-				account_revision: decodex_protocol::EntityRevision(revision),
+				account_revision: EntityRevision(revision),
 				action,
 				operation_key,
 				reserved_at_unix_micros: receipt.reserved_at_unix_micros,
@@ -155,7 +157,10 @@ fn nudge_kind(action: AccountRecoveryAction) -> AccountCommandKind {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::application::account_nudge::{
+		AccountRecoveryAction, AccountRecoveryResult, CommandEnvelope, ProductStore, ResultPayload,
+		ServiceApplication, Status,
+	};
 	use decodex_protocol::{
 		AccountRecoveryBanner, AccountRecoveryCta, AccountRecoveryState, CURRENT_VERSION,
 		ClientCommandId, CommandPayload, CorrelationId, DoctorCheck, DoctorComponent, DoctorIssue,

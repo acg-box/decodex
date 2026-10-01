@@ -1,25 +1,36 @@
 //! ModelSelection command ownership tests use disposable process records, not kernel admission.
-use super::*;
-
-use decodex_protocol::AgentModelSelectionState;
-
-use serde_json::{Value, json};
-
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	future::Future,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
 
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use rusqlite::Connection;
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
+	time,
+};
+
+use crate::{
+	account_launch::agent_process::native_tests::reviewer::store::*,
+	agent_host::AgentHostError,
+	agent_models::{self, Change},
+	agent_permissions,
+};
+use decodex_protocol::{AgentModelSelectionState, AgentPermissionState, WireText};
 
 fn settings(model: &str) -> Value {
-	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":"priority","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"disabledPluginIds":[],"activePermissionProfile":{"id":":read-only"}})
+	serde_json::json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":"priority","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"disabledPluginIds":[],"activePermissionProfile":{"id":":read-only"}})
 }
 
 #[tokio::test]
 async fn model_service_preserves_unknown_receipts_and_never_replays_a_review() {
 	for outcome in ["queued", "queued-unobserved", "rejected", "unknown", "unknown-live"] {
-		tokio::time::timeout(std::time::Duration::from_secs(15), scenario(outcome))
+		time::timeout(Duration::from_secs(15), scenario(outcome))
 			.await
 			.expect("bounded model service");
 	}
@@ -27,17 +38,17 @@ async fn model_service_preserves_unknown_receipts_and_never_replays_a_review() {
 
 async fn scenario(outcome: &'static str) {
 	let home = tempfile::tempdir().expect("fixture home");
-	let (local, remote) = tokio::io::duplex(32_768);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(32_768);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(remote, writes.clone(), outcome));
 
-	client.thread_resume(json!({"threadId":"thread"})).await.expect("hydrate");
+	client.thread_resume(serde_json::json!({"threadId":"thread"})).await.expect("hydrate");
 
 	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let source = || async { Some(owned.source(&owned.key)) };
-	let state = crate::agent_models::read(&owned.store, source).await;
+	let state = agent_models::read(&owned.store, source).await;
 	let AgentModelSelectionState::Available { mut review_token, models, can_update, .. } = state
 	else {
 		panic!("available model review")
@@ -64,7 +75,7 @@ async fn scenario(outcome: &'static str) {
 			.is_err()
 	);
 	assert!(
-		crate::agent_models::write(
+		agent_models::write(
 			&owned.store,
 			source,
 			crate::agent_models::Change {
@@ -89,7 +100,7 @@ async fn scenario(outcome: &'static str) {
 	assert_manual_source(&owned).await;
 
 	if outcome == "queued" {
-		let state = crate::agent_models::read(&owned.store, source).await;
+		let state = agent_models::read(&owned.store, source).await;
 
 		assert!(matches!(
 			state,
@@ -111,7 +122,7 @@ async fn scenario(outcome: &'static str) {
 		"target_observed"
 	} else if outcome == "queued-unobserved" {
 		assert!(matches!(
-			crate::agent_models::read(&owned.store, source).await,
+			agent_models::read(&owned.store, source).await,
 			AgentModelSelectionState::Pending { .. }
 		));
 		"queued"
@@ -122,12 +133,9 @@ async fn scenario(outcome: &'static str) {
 	};
 
 	if outcome == "unknown-live" {
-		let state = crate::agent_permissions::read(&owned.store, source).await;
+		let state = agent_permissions::read(&owned.store, source).await;
 
-		assert!(matches!(
-			state,
-			decodex_protocol::AgentPermissionState::Available { can_update: false, .. }
-		));
+		assert!(matches!(state, AgentPermissionState::Available { can_update: false, .. }));
 	}
 
 	let receipt = owned
@@ -178,8 +186,8 @@ async fn assert_manual_source(owned: &OwnedReviewer) {
 	);
 }
 
-async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {
-	let (r, mut w) = tokio::io::split(remote);
+async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, outcome: &str) {
+	let (r, mut w) = io::split(remote);
 	let mut lines = BufReader::new(r).lines();
 
 	while let Some(line) = lines.next_line().await.expect("request") {
@@ -188,46 +196,50 @@ async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcom
 		let reply = match request["method"].as_str().expect("method") {
 			"test/bounce" => {
 				for model in ["transient", "original"] {
-					let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings(model)}});
+					let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings(model)}});
 
 					w.write_all(format!("{event}\n").as_bytes()).await.expect("publication");
 				}
 
-				json!({"id":id,"result":{}})
+				serde_json::json!({"id":id,"result":{}})
 			},
 			"thread/resume" => {
 				let mut value = settings("original");
 
-				value["thread"] = json!({"id":"thread"});
+				value["thread"] = serde_json::json!({"id":"thread"});
 				value["reasoningEffort"] = value["effort"].take();
 				value["sandbox"] = value["sandboxPolicy"].clone();
 
-				json!({"id":id,"result":value})
+				serde_json::json!({"id":id,"result":value})
 			},
 			"model/list" =>
-				json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null},{ "id":"gpt-reserve","model":"gpt-reserve","displayName":"Reserve","supportedReasoningEfforts":[{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","hidden":false}],"nextCursor":null}}),
-			"experimentalFeature/list" => json!({"id":id,"result":{"data":[],"nextCursor":null}}),
+				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[],"defaultReasoningEffort":null},{ "id":"gpt-reserve","model":"gpt-reserve","displayName":"Reserve","supportedReasoningEfforts":[{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","hidden":false}],"nextCursor":null}}),
+			"experimentalFeature/list" =>
+				serde_json::json!({"id":id,"result":{"data":[],"nextCursor":null}}),
 			"permissionProfile/list" =>
-				json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),
+				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),
 
 			"thread/settings/update" => {
 				writes.fetch_add(1, Ordering::AcqRel);
 
-				assert_eq!(request["params"], json!({"threadId":"thread","model":"scoped"}));
+				assert_eq!(
+					request["params"],
+					serde_json::json!({"threadId":"thread","model":"scoped"})
+				);
 
 				match outcome {
 					"queued" => {
-						let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings("scoped")}});
+						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings("scoped")}});
 
 						w.write_all(format!("{event}\n").as_bytes()).await.expect("publication");
 
-						json!({"id":id,"result":{}})
+						serde_json::json!({"id":id,"result":{}})
 					},
-					"queued-unobserved" => json!({"id":id,"result":{}}),
+					"queued-unobserved" => serde_json::json!({"id":id,"result":{}}),
 					"rejected" =>
-						json!({"id":id,"error":{"code":-32_602,"message":"Native policy refused"}}),
+						serde_json::json!({"id":id,"error":{"code":-32_602,"message":"Native policy refused"}}),
 					"unknown-live" =>
-						json!({"id":id,"error":{"code":-32_001,"message":"Outcome unknown"}}),
+						serde_json::json!({"id":id,"error":{"code":-32_001,"message":"Outcome unknown"}}),
 					_ => return,
 				}
 			},
@@ -273,7 +285,7 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 		};
 
 		assert_eq!(
-			crate::agent_models::read(&owned.store, source).await,
+			agent_models::read(&owned.store, source).await,
 			AgentModelSelectionState::Unavailable,
 			"{change}"
 		);
@@ -297,24 +309,21 @@ async fn write<F, Fut>(
 	review: &str,
 	model: &str,
 	key: &str,
-) -> Result<(), crate::agent_host::AgentHostError>
+) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	crate::agent_models::write(
+	agent_models::write(
 		store,
 		source,
-		crate::agent_models::Change { thread, review, model, effort: None, attempt_id: key },
+		Change { thread, review, model, effort: None, attempt_id: key },
 	)
 	.await
 }
 
-async fn reject_restored_settings(
-	owned: &OwnedReviewer,
-	old: decodex_protocol::WireText,
-) -> decodex_protocol::WireText {
-	owned.client.request("test/bounce", json!({})).await.expect("wire barrier");
+async fn reject_restored_settings(owned: &OwnedReviewer, old: WireText) -> WireText {
+	owned.client.request("test/bounce", serde_json::json!({})).await.expect("wire barrier");
 
 	let source = || async { Some(owned.source(&owned.key)) };
 
@@ -324,7 +333,7 @@ async fn reject_restored_settings(
 	);
 
 	let AgentModelSelectionState::Available { review_token, .. } =
-		crate::agent_models::read(&owned.store, source).await
+		agent_models::read(&owned.store, source).await
 	else {
 		panic!("fresh review")
 	};
@@ -337,37 +346,36 @@ async fn reject_restored_settings(
 #[tokio::test]
 async fn legacy_model_request_blocks_current_service_mutations_without_native_writes() {
 	let home = tempfile::tempdir().expect("fixture home");
-	let (local, remote) = tokio::io::duplex(32_768);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(32_768);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(remote, writes.clone(), "queued"));
 
-	client.thread_resume(json!({"threadId":"thread"})).await.expect("hydrate");
+	client.thread_resume(serde_json::json!({"threadId":"thread"})).await.expect("hydrate");
 
 	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-	let connection =
-		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
-	let attempt = json!({"work":"root","thread":"thread","generation":owned.key.generation.as_str(),"account":owned.key.account.as_str(),"account_revision":owned.key.revision,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"});
+	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
+	let attempt = serde_json::json!({"work":"root","thread":"thread","generation":owned.key.generation.as_str(),"account":owned.key.account.as_str(),"account_revision":owned.key.revision,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"});
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service','root','model_recovery',?1,1,'resolved','Legacy fixture',1)",[json!({"attempt":attempt,"state":"claimed"}).to_string()]).unwrap();
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service','root','model_recovery',?1,1,'resolved','Legacy fixture',1)",[serde_json::json!({"attempt":attempt,"state":"claimed"}).to_string()]).unwrap();
 
 	let reservation = connection.last_insert_rowid();
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:result','root','model_recovery_result',?1,2,'resolved','Legacy response',2)",[json!({"reservation":reservation,"state":"uncertain"}).to_string()]).unwrap();
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:result','root','model_recovery_result',?1,2,'resolved','Legacy response',2)",[serde_json::json!({"reservation":reservation,"state":"uncertain"}).to_string()]).unwrap();
 
 	drop(connection);
 
 	let source = || async { Some(owned.source(&owned.key)) };
-	let state = crate::agent_models::read(&owned.store, source).await;
+	let state = agent_models::read(&owned.store, source).await;
 
 	assert!(
 		matches!(state,AgentModelSelectionState::Pending{model,state:decodex_protocol::AgentModelOutcome::Unknown,last_receipt:Some(decodex_protocol::AgentModelSelectionReceipt{manual:false,response:decodex_protocol::AgentModelResponse::Unknown,target_observed:false,reconciled:false,..}),..} if model.as_str()=="scoped")
 	);
 	assert!(write(&owned.store, source, "thread", "old-review", "scoped", "retry").await.is_err());
 	assert!(matches!(
-		crate::agent_permissions::read(&owned.store, source).await,
-		decodex_protocol::AgentPermissionState::Available { can_update: false, .. }
+		agent_permissions::read(&owned.store, source).await,
+		AgentPermissionState::Available { can_update: false, .. }
 	));
 	assert_eq!(writes.load(Ordering::Acquire), 0);
 
@@ -387,14 +395,13 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 		"unknown"
 	);
 	// Historical confirmation must stay visible even after native settings change again.
-	let connection =
-		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
+	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:observation','root','model_recovery_observation',?1,3,'resolved','Historical fixture',3)",[json!({"reservation":reservation,"settingsEvent":1,"state":"target_observed"}).to_string()]).unwrap();
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:observation','root','model_recovery_observation',?1,3,'resolved','Historical fixture',3)",[serde_json::json!({"reservation":reservation,"settingsEvent":1,"state":"target_observed"}).to_string()]).unwrap();
 
 	drop(connection);
 
-	let state = crate::agent_models::read(&reopened, source).await;
+	let state = agent_models::read(&reopened, source).await;
 	let AgentModelSelectionState::Available { ref review_token, .. } = state else {
 		panic!("historical receipt with current settings")
 	};
@@ -407,14 +414,13 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 		}), ..
 	} if model.as_str() == "original" && requested.as_str() == "scoped"));
 
-	let connection =
-		rusqlite::Connection::open(owned.root.paths().product_database_file()).unwrap();
+	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:reconciliation','root','model_selection_reconciled',?1,4,'resolved','Historical reconciliation',4)",[json!({"reservation":reservation,"settingsEvent":1,"generationId":owned.key.generation.as_str()}).to_string()]).unwrap();
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:reconciliation','root','model_selection_reconciled',?1,4,'resolved','Historical reconciliation',4)",[serde_json::json!({"reservation":reservation,"settingsEvent":1,"generationId":owned.key.generation.as_str()}).to_string()]).unwrap();
 
 	drop(connection);
 
-	let state = crate::agent_models::read(&reopened, source).await;
+	let state = agent_models::read(&reopened, source).await;
 
 	assert!(matches!(state, AgentModelSelectionState::Available {
 		review_token, last_receipt: Some(decodex_protocol::AgentModelSelectionReceipt {

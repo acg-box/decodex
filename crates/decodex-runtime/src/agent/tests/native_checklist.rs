@@ -1,10 +1,22 @@
 //! Qualify opt-in native checklist notifications and their history boundary.
-use super::*;
-use futures_util::FutureExt as _;
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	env, fs, panic,
+	panic::AssertUnwindSafe,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
+
+use futures_util::FutureExt as _;
+use tokio::{process::Command, time};
+
+use crate::{
+	agent::{tests::*, timeline},
+	application,
+};
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native checklist history"]
@@ -16,14 +28,13 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
 
-	std::fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\ntools.update_plan.enabled = true\n[model_providers.fixture]\nname = \"Isolated checklist fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\ntools.update_plan.enabled = true\n[model_providers.fixture]\nname = \"Isolated checklist fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let mut thread = String::new();
 
 	for cold in [false, true] {
 		let (mut agent, _sent, _store_home) = fixture().await;
-		let mut command =
-			tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command
 			.arg("app-server")
@@ -37,7 +48,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 
 		agent.client = client;
 
-		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(std::time::Duration::from_secs(20), async {
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(20), async {
             agent.initialize().await.unwrap();
 
             if !cold {
@@ -92,7 +103,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 
             loop {
                 let page = agent.client.thread_timeline_page(&thread,cursor.as_deref(),1).await.unwrap();
-                let projected = super::super::timeline::project(&thread,&page).unwrap();
+                let projected = timeline::project(&thread,&page).unwrap();
 
                 texts.push(serde_json::to_string(&page).unwrap());
 
@@ -119,20 +130,18 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 
 		match result {
 			Ok(result) => result.unwrap(),
-			Err(panic) => std::panic::resume_unwind(panic),
+			Err(panic) => panic::resume_unwind(panic),
 		}
 
 		if !cold {
 			drop(agent);
 
-			let root = decodex_core::DecodexRoot::new(
-				_store_home.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(_store_home.path().canonicalize().unwrap().join("root")).unwrap();
 			let reopened = SqliteStore::open(&root.paths()).unwrap();
 			let (saved, _) =
 				reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-			let projected = crate::application::render_agent_history_for_test(saved);
+			let projected = application::render_agent_history_for_test(saved);
 
 			assert_eq!(projected.len(), 1);
 			assert_eq!(projected[0].kind, "checklist");

@@ -1,4 +1,6 @@
-use super::*;
+use crate::{agent::tests::*, native_agents};
+use decodex_core::DecodexRoot;
+use decodex_protocol::NativeAgentsResult;
 
 fn child(thread: &str, parent: &str) -> Value {
 	json!({"thread":{"id":thread,"parentThreadId":parent,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":parent}}},"canAcceptDirectInput":false}})
@@ -101,9 +103,7 @@ async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 	assert_eq!(replies, vec![json!({"id":71,"result":{"decision":"decline"}})]);
 	assert!(agent.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 	assert!(reopened.get_agent_inbox_event(event_id).await.unwrap().disposition.is_some());
@@ -190,15 +190,11 @@ async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work()
 	while sent.try_recv().is_ok() {}
 
 	let result =
-		crate::native_agents::read(&agent.store, &agent.client, "agent", Some("child"), None).await;
+		native_agents::read(&agent.store, &agent.client, "agent", Some("child"), None).await;
 
+	assert!(matches!(result, NativeAgentsResult::Conversation { can_input: false, .. }));
 	assert!(matches!(
-		result,
-		decodex_protocol::NativeAgentsResult::Conversation { can_input: false, .. }
-	));
-	assert!(matches!(
-		crate::native_agents::read(&agent.store, &agent.client, "agent", Some("foreign"), None)
-			.await,
+		native_agents::read(&agent.store, &agent.client, "agent", Some("foreign"), None).await,
 		decodex_protocol::NativeAgentsResult::Unavailable
 	));
 

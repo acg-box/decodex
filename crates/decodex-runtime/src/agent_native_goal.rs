@@ -1,21 +1,32 @@
 //! Read and edit the native goal without creating a second persistent goal owner.
-use crate::agent_usage_estimate::Source;
-use decodex_codex::app_server_client::ClientError;
+use std::{
+	future::Future,
+	time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use tokio::time;
+
+use crate::{
+	agent::native_subagents,
+	agent_host::AgentHostError::{self, Rejected, Unknown},
+	agent_usage_estimate::Source,
+};
+use decodex_codex::app_server_client::{
+	ClientError, NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus,
+};
 use decodex_database::SqliteStore;
-use decodex_protocol::AgentNativeGoalResult as Result;
+use decodex_protocol::{AgentGoalEdit, AgentNativeGoalResult as Result, EntityId, WireText};
 
 pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F, thread: &str) -> Result
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else { return Result::Unavailable };
 	let operation = async {
 		if thread != before.key.thread {
 			let owner =
-				crate::agent::native_subagents::request_owner(store, &before.client, thread)
-					.await
-					.ok()?;
+				native_subagents::request_owner(store, &before.client, thread).await.ok()?;
 
 			if owner.id != before.key.work {
 				return None;
@@ -24,7 +35,7 @@ where
 
 		Some(before.client.thread_goal(thread).await)
 	};
-	let response = tokio::time::timeout(std::time::Duration::from_secs(30), operation).await;
+	let response = time::timeout(Duration::from_secs(30), operation).await;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return Result::Unavailable;
@@ -32,8 +43,7 @@ where
 
 	match response {
 		Ok(Some(Ok(goal))) => {
-			let review_token =
-				decodex_protocol::WireText::new(review_token(&before, thread, goal.as_ref())).ok();
+			let review_token = WireText::new(review_token(&before, thread, goal.as_ref())).ok();
 			let goal = goal
 				.map(|goal| {
 					let sensitive = decodex_core::contains_credential_material(&goal.objective);
@@ -56,14 +66,13 @@ where
 				})
 				.map_or(Some(None), |goal| goal.map(Some));
 			let Some(goal) = goal else { return Result::Unavailable };
-			let (Ok(work_id), Ok(thread_id)) = (
-				decodex_protocol::EntityId::new(before.key.work),
-				decodex_protocol::EntityId::new(thread.to_owned()),
-			) else {
+			let (Ok(work_id), Ok(thread_id)) =
+				(EntityId::new(before.key.work), EntityId::new(thread.to_owned()))
+			else {
 				return Result::Unavailable;
 			};
-			let Some(observed_at_micros) = std::time::SystemTime::now()
-				.duration_since(std::time::UNIX_EPOCH)
+			let Some(observed_at_micros) = SystemTime::now()
+				.duration_since(UNIX_EPOCH)
 				.ok()
 				.and_then(|t| i64::try_from(t.as_micros()).ok())
 			else {
@@ -89,16 +98,12 @@ pub(crate) async fn write<F, Fut>(
 	source: F,
 	thread: &str,
 	expected: &str,
-	edit: &decodex_protocol::AgentGoalEdit,
-) -> std::result::Result<(), crate::agent_host::AgentHostError>
+	edit: &AgentGoalEdit,
+) -> std::result::Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	use crate::agent_host::AgentHostError::{Rejected, Unknown};
-
-	use decodex_codex::app_server_client::{NativeGoalUpdate, NativeThreadGoalStatus};
-
 	use decodex_protocol::{AgentGoalBudgetEdit as Budget, AgentNativeGoalStatus as Status};
 
 	if edit.objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
@@ -116,7 +121,7 @@ where
 	let before = source().await.ok_or(Rejected("The goal source is unavailable."))?;
 
 	if thread != before.key.thread {
-		let owner = crate::agent::native_subagents::request_owner(store, &before.client, thread)
+		let owner = native_subagents::request_owner(store, &before.client, thread)
 			.await
 			.map_err(|_| Rejected("The native goal is not owned by this task."))?;
 
@@ -184,11 +189,7 @@ where
 	Ok(())
 }
 
-fn review_token(
-	source: &Source,
-	thread: &str,
-	goal: Option<&decodex_codex::app_server_client::NativeThreadGoal>,
-) -> String {
+fn review_token(source: &Source, thread: &str, goal: Option<&NativeThreadGoal>) -> String {
 	use sha2::{Digest as _, Sha256};
 
 	let identity = serde_json::json!([

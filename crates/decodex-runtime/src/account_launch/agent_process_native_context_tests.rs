@@ -1,13 +1,21 @@
 //! Qualify tool-owned context through the installed native process and retained bridge.
-use super::*;
-
-use crate::agent::{AgentConfig, AgentCoordinator};
-
-use decodex_database::SqliteStore;
+use std::{
+	env, fs,
+	panic::AssertUnwindSafe,
+	sync::{Mutex, atomic::AtomicUsize},
+};
 
 use futures_util::FutureExt as _;
+use mpsc::Receiver;
+use tokio::{net::TcpListener, time};
 
-use std::sync::atomic::AtomicUsize;
+use crate::{
+	account_launch::agent_process::native_tests::*,
+	agent::{AgentConfig, AgentCoordinator, timeline::metrics},
+};
+use decodex_core::DecodexRoot;
+use decodex_database::{AgentDispatchState, SqliteStore};
+use decodex_protocol::AgentTimelineContent;
 
 const EXTERNAL: &str = "External fixture result, not a user instruction.";
 const DELEGATED: &str = "Complete the delegated fixture.";
@@ -66,15 +74,15 @@ fn assert_external_delivery(bodies: &[Value]) {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native context qualification"]
 async fn installed_native_tool_context_survives_restart_without_replay() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		Arc::clone(&requests),
@@ -84,10 +92,9 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native context answer"}]}),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated context fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated context fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -101,57 +108,56 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
-	let result =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(45), async {
-			agent.start_agent("agent", "Complete the isolated context fixture.").await.unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(45), async {
+		agent.start_agent("agent", "Complete the isolated context fixture.").await.unwrap();
 
-			terminal(&mut agent, &mut session.events, &store).await;
+		terminal(&mut agent, &mut session.events, &store).await;
 
-			agent
-				.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
-				.await
-				.unwrap();
+		agent
+			.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
+			.await
+			.unwrap();
 
-			terminal(&mut agent, &mut session.events, &store).await;
-			assert_external_delivery(&bodies.lock().unwrap());
+		terminal(&mut agent, &mut session.events, &store).await;
+		assert_external_delivery(&bodies.lock().unwrap());
 
-			agent
-				.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
-				.await
-				.unwrap();
+		agent
+			.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
+			.await
+			.unwrap();
 
-			assert_eq!(
-				requests.load(Ordering::Acquire),
-				2,
-				"duplicate result must not start another turn"
-			);
+		assert_eq!(
+			requests.load(Ordering::Acquire),
+			2,
+			"duplicate result must not start another turn"
+		);
 
-			agent.create_worker("agent", "worker", DELEGATED).await.unwrap();
+		agent.create_worker("agent", "worker", DELEGATED).await.unwrap();
 
-			terminal(&mut agent, &mut session.events, &store).await;
+		terminal(&mut agent, &mut session.events, &store).await;
 
-			agent.continue_worker("worker", FOLLOWUP).await.unwrap();
+		agent.continue_worker("worker", FOLLOWUP).await.unwrap();
 
-			terminal(&mut agent, &mut session.events, &store).await;
+		terminal(&mut agent, &mut session.events, &store).await;
 
-			let mut histories = Vec::new();
+		let mut histories = Vec::new();
 
-			for work in ["agent", "worker"] {
-				let thread =
-					store.get_agent_work_item(work.into()).await.unwrap().codex_thread_id.unwrap();
-				let items = timeline(&session.client, &thread, &store, work).await;
+		for work in ["agent", "worker"] {
+			let thread =
+				store.get_agent_work_item(work.into()).await.unwrap().codex_thread_id.unwrap();
+			let items = timeline(&session.client, &thread, &store, work).await;
 
-				assert_tool_authority(work, &items);
+			assert_tool_authority(work, &items);
 
-				histories.push((work.to_owned(), thread, items));
-			}
+			histories.push((work.to_owned(), thread, items));
+		}
 
-			assert_eq!(requests.load(Ordering::Acquire), 6);
+		assert_eq!(requests.load(Ordering::Acquire), 6);
 
-			histories
-		}))
-		.catch_unwind()
-		.await;
+		histories
+	}))
+	.catch_unwind()
+	.await;
 
 	drop(agent);
 	drop(session);
@@ -168,26 +174,18 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 	let reopened_store = SqliteStore::open(&root.paths()).unwrap();
 	let mut agent =
 		AgentCoordinator::new(reopened_store.clone(), reopened.client.clone(), config).unwrap();
-	let result =
-		std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(30), async {
-			agent.recover_persisted().await.unwrap();
-			agent.wake_pending().await.unwrap();
+	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(30), async {
+		agent.recover_persisted().await.unwrap();
+		agent.wake_pending().await.unwrap();
 
-			for (work, thread, before) in histories {
-				assert_eq!(
-					timeline(&reopened.client, &thread, &reopened_store, &work).await,
-					before
-				);
-			}
+		for (work, thread, before) in histories {
+			assert_eq!(timeline(&reopened.client, &thread, &reopened_store, &work).await, before);
+		}
 
-			assert_eq!(
-				requests.load(Ordering::Acquire),
-				6,
-				"restart and reads must not replay work"
-			);
-		}))
-		.catch_unwind()
-		.await;
+		assert_eq!(requests.load(Ordering::Acquire), 6, "restart and reads must not replay work");
+	}))
+	.catch_unwind()
+	.await;
 
 	drop(agent);
 	drop(reopened);
@@ -198,7 +196,7 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 
 async fn terminal(
 	agent: &mut AgentCoordinator,
-	events: &mut mpsc::Receiver<ServerEvent>,
+	events: &mut Receiver<ServerEvent>,
 	store: &SqliteStore,
 ) {
 	loop {
@@ -218,7 +216,7 @@ async fn terminal(
 				.await
 				.expect("fixture work state")
 				.iter()
-				.all(|work| work.dispatch_state == decodex_database::AgentDispatchState::Idle)
+				.all(|work| work.dispatch_state == AgentDispatchState::Idle)
 		{
 			return;
 		}
@@ -238,16 +236,11 @@ async fn timeline(
 	let mut projected =
 		crate::agent::timeline::project(thread, &page).expect("public timeline projection");
 
-	crate::agent::timeline::metrics::enrich(store, work, &mut projected)
-		.await
-		.expect("persisted native response usage");
+	metrics::enrich(store, work, &mut projected).await.expect("persisted native response usage");
 
 	for entry in &projected.entries {
-		if let decodex_protocol::AgentTimelineContent::TurnBoundary {
-			completed: true,
-			usage_summary,
-			..
-		} = &entry.content
+		if let AgentTimelineContent::TurnBoundary { completed: true, usage_summary, .. } =
+			&entry.content
 		{
 			assert!(
 				usage_summary
@@ -256,7 +249,7 @@ async fn timeline(
 				"native response amount survives projection and reopen"
 			);
 		}
-		if let decodex_protocol::AgentTimelineContent::Item { kind, text, .. } = &entry.content
+		if let AgentTimelineContent::Item { kind, text, .. } = &entry.content
 			&& kind == "functionCallOutput"
 		{
 			assert!(

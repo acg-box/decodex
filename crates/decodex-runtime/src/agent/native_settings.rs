@@ -1,5 +1,8 @@
 //! Restore native task configuration without applying creation defaults.
-use super::{AgentCoordinator, AgentError, Value, json};
+use crate::{
+	agent::{self, AgentCoordinator, AgentError, Value},
+	agent_models, agent_permissions, agent_plugins,
+};
 
 impl AgentCoordinator {
 	pub(super) async fn hydrate_dispatch_thread(&mut self, thread: &str) -> Result<(), AgentError> {
@@ -45,21 +48,11 @@ impl AgentCoordinator {
 	pub(super) async fn persist_task_settings(&self, thread: &str) -> Result<(), AgentError> {
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().into());
 
-		crate::agent_permissions::persist_current(
-			&self.store,
-			&self.client,
-			thread,
-			generation.clone(),
-		)
-		.await?;
-		crate::agent_plugins::persist_current(
-			&self.store,
-			&self.client,
-			thread,
-			generation.clone(),
-		)
-		.await?;
-		crate::agent_models::persist_current(&self.store, &self.client, thread, generation).await?;
+		agent_permissions::persist_current(&self.store, &self.client, thread, generation.clone())
+			.await?;
+		agent_plugins::persist_current(&self.store, &self.client, thread, generation.clone())
+			.await?;
+		agent_models::persist_current(&self.store, &self.client, thread, generation).await?;
 
 		Ok(())
 	}
@@ -68,13 +61,13 @@ impl AgentCoordinator {
 		let mut params = Self::resume_params(thread);
 
 		params["initialTurnsPage"] =
-			json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
+			agent::json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
 
 		params
 	}
 
 	pub(super) fn resume_params(thread: &str) -> Value {
-		json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true})
+		agent::json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true})
 	}
 
 	pub(super) fn hydrated_thread_matches(response: &Value, thread: &str) -> bool {

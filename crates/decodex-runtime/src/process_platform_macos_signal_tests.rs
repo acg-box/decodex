@@ -1,21 +1,22 @@
-use std::{io, process::Stdio, time::Duration};
+use std::{io::Error, process::Stdio, time::Duration};
 
+use libc::{EINVAL, EPERM, ESRCH, SIGKILL, SIGTERM};
 use tokio::{
 	io::{AsyncBufReadExt as _, BufReader},
 	process::Command,
-	time::timeout,
+	time,
 };
 
-use super::signal_group;
+use crate::process_platform::macos_signal;
 
 #[test]
 fn absent_groups_and_non_permission_errors_do_not_trigger_member_signals() {
-	for result in [Ok(()), Err(libc::ESRCH), Err(libc::EINVAL)] {
+	for result in [Ok(()), Err(ESRCH), Err(EINVAL)] {
 		let mut calls = Vec::new();
-		let observed = signal_group(2, libc::SIGTERM, |pid, _| {
+		let observed = macos_signal::signal_group(2, SIGTERM, |pid, _| {
 			calls.push(pid);
 
-			result.map_err(io::Error::from_raw_os_error)
+			result.map_err(Error::from_raw_os_error)
 		});
 
 		assert_eq!(observed.map_err(|error| error.raw_os_error().unwrap()), result);
@@ -37,7 +38,7 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 		.spawn()
 		.unwrap();
 	let group = i32::try_from(child.id().unwrap()).unwrap();
-	let line = timeout(
+	let line = time::timeout(
 		Duration::from_secs(3),
 		BufReader::new(child.stdout.take().unwrap()).lines().next_line(),
 	)
@@ -47,21 +48,21 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 	.unwrap();
 	let member: i32 = line.parse().unwrap();
 	let error =
-		signal_group(group, libc::SIGTERM, |_, _| Err(io::Error::from_raw_os_error(libc::EPERM)))
+		macos_signal::signal_group(group, SIGTERM, |_, _| Err(Error::from_raw_os_error(EPERM)))
 			.unwrap_err();
 
 	assert_eq!(error.raw_os_error(), Some(libc::EPERM));
 
 	let mut outsider = Command::new("/bin/sleep").arg("10").kill_on_drop(true).spawn().unwrap();
 
-	for signal in [libc::SIGTERM, libc::SIGKILL] {
+	for signal in [SIGTERM, SIGKILL] {
 		let mut targets = Vec::new();
 
-		signal_group(group, signal, |pid, signal| {
+		macos_signal::signal_group(group, signal, |pid, signal| {
 			targets.push(pid);
 
 			if pid == -group || pid == group {
-				return Err(io::Error::from_raw_os_error(libc::EPERM));
+				return Err(Error::from_raw_os_error(EPERM));
 			}
 
 			assert_eq!(pid, member);
@@ -69,7 +70,7 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 			if unsafe { libc::kill(pid, signal) } == 0 {
 				Ok(())
 			} else {
-				Err(io::Error::last_os_error())
+				Err(Error::last_os_error())
 			}
 		})
 		.unwrap();
@@ -77,7 +78,7 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 		assert_eq!(targets, [-group, member, group]);
 		assert!(outsider.try_wait().unwrap().is_none());
 
-		if signal == libc::SIGTERM {
+		if signal == SIGTERM {
 			assert!(child.try_wait().unwrap().is_none());
 			// SAFETY: signal zero only checks whether the resistant member still exists.
 			assert_eq!(unsafe { libc::kill(member, 0) }, 0);
@@ -85,7 +86,8 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 	}
 
 	drop(child.stdin.take());
-	timeout(Duration::from_secs(3), child.wait()).await.unwrap().unwrap();
+
+	time::timeout(Duration::from_secs(3), child.wait()).await.unwrap().unwrap();
 
 	outsider.kill().await.unwrap();
 }

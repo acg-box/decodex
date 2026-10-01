@@ -1,26 +1,35 @@
 //! Shared hook production-service tests use disposable process ownership records.
-use super::*;
-
-use decodex_protocol::{AgentHookChange, AgentHookSettingsState as State};
-
-use serde_json::{Value, json};
-
-use std::sync::{
-	Arc,
-	atomic::{AtomicUsize, Ordering},
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
 };
 
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use serde_json::{self, Value};
+use sha2::Sha256;
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
+	time,
+};
+
+use crate::{
+	account_launch::agent_process::native_tests::reviewer::store::*,
+	agent_hooks::{self, Selection},
+	agent_host::AgentHostError,
+};
+use decodex_protocol::{AgentHookChange, AgentHookSettingsState};
 
 fn metadata(key: &str, managed: bool, hash: &str) -> Value {
-	json!({"key":key,"pluginId":"sample@test","eventName":"UserPromptSubmit","handlerType":"command","command":"echo fixture","sourcePath":"/native/hooks.json","currentHash":hash,"trustStatus":if managed{"managed"}else{"untrusted"},"isManaged":managed,"enabled":true})
+	serde_json::json!({"key":key,"pluginId":"sample@test","eventName":"UserPromptSubmit","handlerType":"command","command":"echo fixture","sourcePath":"/native/hooks.json","currentHash":hash,"trustStatus":if managed{"managed"}else{"untrusted"},"isManaged":managed,"enabled":true})
 }
 
 #[tokio::test]
 async fn hook_service_retains_unknown_receipts_and_reconciles_native_raw_state() {
 	for change in [AgentHookChange::Trust, AgentHookChange::Enabled(false)] {
 		for result in ["saved", "overridden", "rejected", "unknown", "unknown-applied", "closed"] {
-			tokio::time::timeout(std::time::Duration::from_secs(15), scenario(result, change))
+			time::timeout(Duration::from_secs(15), scenario(result, change))
 				.await
 				.expect("bounded hook scenario");
 		}
@@ -29,15 +38,15 @@ async fn hook_service_retains_unknown_receipts_and_reconciles_native_raw_state()
 
 async fn scenario(result: &'static str, change: AgentHookChange) {
 	let home = tempfile::tempdir().expect("home");
-	let (local, remote) = tokio::io::duplex(32_768);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(32_768);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let writes = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(remote, writes.clone(), result, change));
 	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let source = || async { Some(owned.source(&owned.key)) };
-	let State::Available { mut review_token, .. } =
-		crate::agent_hooks::read(&owned.store, source).await
+	let AgentHookSettingsState::Available { mut review_token, .. } =
+		agent_hooks::read(&owned.store, source).await
 	else {
 		panic!("review")
 	};
@@ -45,12 +54,15 @@ async fn scenario(result: &'static str, change: AgentHookChange) {
 	if result == "saved" {
 		reject_changed_sources(&owned, review_token.as_str()).await;
 
-		client.request("test/change-hook", json!({})).await.expect("change reviewed content");
+		client
+			.request("test/change-hook", serde_json::json!({}))
+			.await
+			.expect("change reviewed content");
 
 		assert!(write(&owned, review_token.as_str(), "hook", "old-hash", change).await.is_err());
 
-		let State::Available { review_token: fresh, .. } =
-			crate::agent_hooks::read(&owned.store, source).await
+		let AgentHookSettingsState::Available { review_token: fresh, .. } =
+			agent_hooks::read(&owned.store, source).await
 		else {
 			panic!("fresh hook review")
 		};
@@ -75,7 +87,7 @@ async fn scenario(result: &'static str, change: AgentHookChange) {
 	);
 	assert_eq!(writes.load(Ordering::Acquire), 1);
 
-	let state = crate::agent_hooks::read(&owned.store, source).await;
+	let state = agent_hooks::read(&owned.store, source).await;
 	let expected = match result {
 		"unknown-applied" => "target_observed",
 		"closed" => "unknown",
@@ -83,7 +95,8 @@ async fn scenario(result: &'static str, change: AgentHookChange) {
 	};
 
 	if result != "closed" {
-		let State::Available { last_edit: Some(edit), can_update, .. } = state else {
+		let AgentHookSettingsState::Available { last_edit: Some(edit), can_update, .. } = state
+		else {
 			panic!("current state")
 		};
 
@@ -95,7 +108,7 @@ async fn scenario(result: &'static str, change: AgentHookChange) {
 	assert_eq!(writes.load(Ordering::Acquire), 1);
 
 	let scope: String =
-		sha2::Sha256::digest(b"/native/config.toml").iter().map(|b| format!("{b:02x}")).collect();
+		Sha256::digest(b"/native/config.toml").iter().map(|b| format!("{b:02x}")).collect();
 	let reopened = SqliteStore::open(&owned.root.paths()).expect("reopen");
 
 	assert_eq!(
@@ -113,22 +126,22 @@ async fn write(
 	hook: &str,
 	key: &str,
 	change: AgentHookChange,
-) -> Result<(), crate::agent_host::AgentHostError> {
-	crate::agent_hooks::write(
+) -> Result<(), AgentHostError> {
+	agent_hooks::write(
 		&owned.store,
 		|| async { Some(owned.source(&owned.key)) },
-		crate::agent_hooks::Selection { thread: "thread", review, hook, change, attempt_id: key },
+		Selection { thread: "thread", review, hook, change, attempt_id: key },
 	)
 	.await
 }
 
 async fn serve(
-	remote: tokio::io::DuplexStream,
+	remote: DuplexStream,
 	writes: Arc<AtomicUsize>,
 	outcome: &str,
 	change: AgentHookChange,
 ) {
-	let (r, mut w) = tokio::io::split(remote);
+	let (r, mut w) = io::split(remote);
 	let mut lines = BufReader::new(r).lines();
 	let mut applied = false;
 	let mut hash = "hash";
@@ -140,21 +153,22 @@ async fn serve(
 			"test/change-hook" => {
 				hash = "new-hash";
 
-				json!({"id":id,"result":{}})
+				serde_json::json!({"id":id,"result":{}})
 			},
-			"thread/read" => json!({"id":id,"result":{"thread":{"id":"thread","cwd":"/native"}}}),
+			"thread/read" =>
+				serde_json::json!({"id":id,"result":{"thread":{"id":"thread","cwd":"/native"}}}),
 			"config/read" =>
-				json!({"id":id,"result":{"layers":[{"name":{"type":"user","file":"/native/config.toml"},"version":if applied{"after"}else{"before"},"config":{"hooks":{"state":if applied{match change {AgentHookChange::Trust=>json!({"hook":{"trusted_hash":hash}}),AgentHookChange::Enabled(v)=>json!({"hook":{"enabled":v}})}}else{json!({})}}}}]}}),
+				serde_json::json!({"id":id,"result":{"layers":[{"name":{"type":"user","file":"/native/config.toml"},"version":if applied{"after"}else{"before"},"config":{"hooks":{"state":if applied{match change {AgentHookChange::Trust=>serde_json::json!({"hook":{"trusted_hash":hash}}),AgentHookChange::Enabled(v)=>serde_json::json!({"hook":{"enabled":v}})}}else{serde_json::json!({})}}}}]}}),
 			"hooks/list" =>
-				json!({"id":id,"result":{"data":[{"cwd":"/native","hooks":[metadata("hook",false,hash),metadata("managed",true,hash)],"warnings":[],"errors":[]}]}}),
+				serde_json::json!({"id":id,"result":{"data":[{"cwd":"/native","hooks":[metadata("hook",false,hash),metadata("managed",true,hash)],"warnings":[],"errors":[]}]}}),
 			"config/batchWrite" => {
 				writes.fetch_add(1, Ordering::AcqRel);
 
 				assert_eq!(request["params"]["expectedVersion"], "before");
 
 				let (field, value) = match change {
-					AgentHookChange::Trust => ("trusted_hash", json!(hash)),
-					AgentHookChange::Enabled(v) => ("enabled", json!(v)),
+					AgentHookChange::Trust => ("trusted_hash", serde_json::json!(hash)),
+					AgentHookChange::Enabled(v) => ("enabled", serde_json::json!(v)),
 				};
 
 				assert_eq!(request["params"]["edits"][0]["value"], value);
@@ -169,11 +183,11 @@ async fn serve(
 
 				match outcome {
 					"saved" | "overridden" =>
-						json!({"id":id,"result":{"status":if outcome=="saved"{"ok"}else{"okOverridden"},"version":"after","filePath":"/native/config.toml"}}),
+						serde_json::json!({"id":id,"result":{"status":if outcome=="saved"{"ok"}else{"okOverridden"},"version":"after","filePath":"/native/config.toml"}}),
 					"rejected" =>
-						json!({"id":id,"error":{"code":-32_600,"message":"version conflict","data":{"config_write_error_code":"configVersionConflict"}}}),
+						serde_json::json!({"id":id,"error":{"code":-32_600,"message":"version conflict","data":{"config_write_error_code":"configVersionConflict"}}}),
 					"closed" => return,
-					_ => json!({"id":id,"error":{"code":-32_001,"message":"unknown"}}),
+					_ => serde_json::json!({"id":id,"error":{"code":-32_001,"message":"unknown"}}),
 				}
 			},
 			_ => panic!("unexpected native method"),
@@ -218,8 +232,8 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 		};
 
 		assert_eq!(
-			crate::agent_hooks::read(&owned.store, source).await,
-			State::Unavailable,
+			agent_hooks::read(&owned.store, source).await,
+			decodex_protocol::AgentHookSettingsState::Unavailable,
 			"{change}"
 		);
 
@@ -227,7 +241,7 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 
 		assert!(
 			matches!(
-				crate::agent_hooks::write(
+				agent_hooks::write(
 					&owned.store,
 					source,
 					crate::agent_hooks::Selection {

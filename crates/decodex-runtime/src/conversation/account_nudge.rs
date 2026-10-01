@@ -1,16 +1,21 @@
 //! Short-lived, selected-account native notification using existing attested control ownership.
-use super::{
-	AccountBinding, AccountId, AttestedAppServerLaunch, ConversationCredentialVault,
-	ConversationRefreshCallback, ConversationRuntime, ProcessAccountRefreshCallback,
-	ProcessGenerationId, SelectedWorkingDirectory, derived_uuid,
+use std::{sync::Arc, time::Duration};
+
+use tokio::{runtime::Handle, task};
+
+use crate::{
+	account_observation::AccountObservationService,
+	conversation::{
+		self, AccountBinding, AccountId, AttestedAppServerLaunch, ConversationCredentialVault,
+		ConversationRefreshCallback, ConversationRuntime, ProcessAccountRefreshCallback,
+		ProcessGenerationId, SelectedWorkingDirectory,
+	},
 };
-use crate::account_observation::AccountObservationService;
 use decodex_codex::app_server_client::{AccountNudgeCreditType, AccountNudgeOutcome, ServerEvent};
 use decodex_protocol::{
-	AccountRecoveryAction, AccountRecoveryDestination, AccountRecoveryNudgeStatus as Status,
-	AccountRecoveryPreparation, AccountRecoveryResult,
+	AccountRecoveryAction, AccountRecoveryDestination, AccountRecoveryPreparation,
+	AccountRecoveryResult,
 };
-use std::{sync::Arc, time::Duration};
 
 impl ConversationRuntime {
 	pub(crate) async fn send_account_recovery_nudge(
@@ -19,12 +24,12 @@ impl ConversationRuntime {
 		action: AccountRecoveryAction,
 		key: String,
 		observations: AccountObservationService,
-	) -> Status {
+	) -> decodex_protocol::AccountRecoveryNudgeStatus {
 		let Ok(account) = AccountId::new(source.account_id.as_str()) else {
-			return Status::Unavailable;
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
 		let Ok(revision) = i64::try_from(source.account_revision.0) else {
-			return Status::Unavailable;
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
 
 		if self.is_shutting_down()
@@ -35,20 +40,20 @@ impl ConversationRuntime {
 				.await
 				.unwrap_or(false)
 		{
-			return Status::Unavailable;
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		}
 
 		let Ok(credential) = self.inner.accounts.process_credential(&account, revision).await
 		else {
-			return Status::Unavailable;
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
-		let Ok(generation_id) = ProcessGenerationId::new(derived_uuid(
+		let Ok(generation_id) = ProcessGenerationId::new(conversation::derived_uuid(
 			"account-nudge-process",
 			&[&key, account.as_str()],
 		)) else {
-			return Status::Unavailable;
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
-		let runtime = tokio::runtime::Handle::current();
+		let runtime = Handle::current();
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
 				accounts: self.inner.accounts.clone(),
@@ -57,15 +62,15 @@ impl ConversationRuntime {
 			});
 		let owner = self.clone();
 
-		tokio::task::spawn_blocking(move || {
+		task::spawn_blocking(move || {
 			let directory = owner.inner.launch_profile.control_working_directory();
-			let Some(directory_text) = directory.to_str() else { return Status::Unavailable; };
-			let Ok(selected) = SelectedWorkingDirectory::acquire(directory_text) else { return Status::Unavailable; };
-			let Ok(binding) = AccountBinding::shared_home_bound(account.clone(), credential.binding, callback).and_then(|binding| binding.with_credential(&credential.stored)) else { return Status::Unavailable; };
+			let Some(directory_text) = directory.to_str() else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
+			let Ok(selected) = SelectedWorkingDirectory::acquire(directory_text) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
+			let Ok(binding) = AccountBinding::shared_home_bound(account.clone(), credential.binding, callback).and_then(|binding| binding.with_credential(&credential.stored)) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let vault = ConversationCredentialVault { account_id: account.clone(), stored: credential.stored };
-			let Ok(permit) = owner.inner.capacity.reserve(account.clone(), revision) else { return Status::Unavailable; };
-			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(owner.inner.launch_profile.clone(), directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return Status::Unavailable; };
-			let Ok(mut child) = launch.spawn() else { return Status::Unavailable; };
+			let Ok(permit) = owner.inner.capacity.reserve(account.clone(), revision) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
+			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(owner.inner.launch_profile.clone(), directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
+			let Ok(mut child) = launch.spawn() else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let initialized = child.initialize_ordinary_turns(&vault);
 
 			drop(credential.launch_guard);
@@ -79,7 +84,7 @@ impl ConversationRuntime {
 							AccountRecoveryPreparation::Ready { destination: AccountRecoveryDestination::RequestUsageIncrease, .. } => Some(AccountNudgeCreditType::UsageLimit),
 							_ => None,
 						};
-						let Some(purpose) = purpose else { client.close(); return Status::Unavailable; };
+						let Some(purpose) = purpose else { client.close(); return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 						let sending = client.send_account_nudge(purpose);
 
 						tokio::pin!(sending);
@@ -93,16 +98,16 @@ impl ConversationRuntime {
 
 						client.close();
 
-						match outcome { AccountNudgeOutcome::Sent => Status::Sent, AccountNudgeOutcome::CooldownActive => Status::CooldownActive, AccountNudgeOutcome::Unsupported => Status::Unsupported, AccountNudgeOutcome::Uncertain => Status::Uncertain }
+						match outcome { AccountNudgeOutcome::Sent => decodex_protocol::AccountRecoveryNudgeStatus::Sent, AccountNudgeOutcome::CooldownActive => decodex_protocol::AccountRecoveryNudgeStatus::CooldownActive, AccountNudgeOutcome::Unsupported => decodex_protocol::AccountRecoveryNudgeStatus::Unsupported, AccountNudgeOutcome::Uncertain => decodex_protocol::AccountRecoveryNudgeStatus::Uncertain }
 					}),
-					Err(_) => Status::Unavailable,
+					Err(_) => decodex_protocol::AccountRecoveryNudgeStatus::Unavailable,
 				}
-			} else { Status::Unavailable };
+			} else { decodex_protocol::AccountRecoveryNudgeStatus::Unavailable };
 			// Shutdown transfers unproved cleanup to the existing owned reaper. Do not
 			// erase a confirmed notification result because process cleanup is delayed.
 			let _ = child.shutdown();
 
 			result
-		}).await.unwrap_or(Status::Uncertain)
+		}).await.unwrap_or(decodex_protocol::AccountRecoveryNudgeStatus::Uncertain)
 	}
 }

@@ -1,26 +1,26 @@
 //! Qualify runtime model publication against the installed native owner.
 #[path = "agent_process_native_child_model_tests.rs"] mod child_model;
 
-use super::{
-	super::super::{NativeSession, serve_fixture},
-	OwnedReviewer, SqliteStore,
-};
-
-use crate::agent_live_settings::{LiveEdit, read_options, write};
-
-use decodex_codex::app_server_client::ServerEvent;
-
-use decodex_protocol::{AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort};
-
-use serde_json::{Value, json};
-
 use std::{
+	env, fs,
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
 	time::Duration,
 };
+
+use crate::account_launch::agent_process::native_tests::{
+	NativeSession,
+	reviewer::store::{OwnedReviewer, SqliteStore},
+	serve_fixture,
+};
+use serde_json::{Value, json};
+use tokio::{net::TcpListener, time};
+
+use crate::agent_live_settings::{LiveEdit, read_options, write};
+use decodex_codex::app_server_client::ServerEvent;
+use decodex_protocol::{AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated live model switching"]
@@ -35,13 +35,12 @@ async fn installed_native_disabled_live_model_preserves_all_steps() {
 }
 
 async fn qualify_live_model(enabled: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().expect("native live-model fixture");
-	let listener =
-		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native live-model fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native live-model fixture");
 	let address = listener.local_addr().expect("native live-model fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		calls.clone(),
@@ -57,11 +56,11 @@ async fn qualify_live_model(enabled: bool) {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching={enabled}\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native live-model fixture");
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching={enabled}\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native live-model fixture");
 
-	let config = std::fs::read(home.path().join("config.toml")).expect("native live-model fixture");
+	let config = fs::read(home.path().join("config.toml")).expect("native live-model fixture");
 	let mut session = NativeSession::start(&binary, home.path());
-	let thread=tokio::time::timeout(Duration::from_secs(45),async {
+	let thread=time::timeout(Duration::from_secs(45),async {
         let start=session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause this local fixture","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native live-model fixture");
         let thread=start["thread"]["id"].as_str().expect("native live-model fixture").to_owned();
         let turn=session.client.turn_start(json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Run the local pause fixture."}]})).await.expect("native live-model fixture");
@@ -117,7 +116,7 @@ async fn qualify_live_model(enabled: bool) {
 
 	let mut cold = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(30),async {
+	time::timeout(Duration::from_secs(30),async {
         cold.client.thread_resume(json!({"threadId":thread})).await.expect("native live-model fixture");
         cold.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native live-model fixture");
 
@@ -147,7 +146,7 @@ async fn qualify_live_model(enabled: bool) {
 	}
 
 	assert_eq!(
-		std::fs::read(home.path().join("config.toml")).expect("native live-model fixture"),
+		fs::read(home.path().join("config.toml")).expect("native live-model fixture"),
 		config
 	);
 

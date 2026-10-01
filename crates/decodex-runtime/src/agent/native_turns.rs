@@ -1,5 +1,6 @@
 //! Recover the latest native-admitted turn without replaying local input.
-use super::{AgentCoordinator, AgentError, Value, exact, json};
+use crate::agent::{self, AgentCoordinator, AgentError, Value};
+use decodex_codex::app_server_client::NativeThreadGoalStatus;
 use decodex_database::AgentDispatchState;
 
 impl AgentCoordinator {
@@ -85,7 +86,7 @@ impl AgentCoordinator {
 			}
 			if terminal {
 				self.record_terminal(
-					json!({"threadId":thread,"turn":observed}),
+					agent::json!({"threadId":thread,"turn":observed}),
 					Ok(history),
 					false,
 				)
@@ -107,7 +108,7 @@ impl AgentCoordinator {
 			return Ok(());
 		};
 
-		if goal.status != decodex_codex::app_server_client::NativeThreadGoalStatus::Active {
+		if goal.status != NativeThreadGoalStatus::Active {
 			return Ok(());
 		}
 		// Hydrate native goal ownership; only the native scheduler admits continuation.
@@ -126,8 +127,8 @@ impl AgentCoordinator {
 		if !self.dispatch_paused && params["turn"]["status"] == "inProgress" {
 			self.store
 				.observe_agent_native_turn(
-					exact(params, "/threadId")?,
-					exact(params, "/turn/id")?,
+					agent::exact(params, "/threadId")?,
+					agent::exact(params, "/turn/id")?,
 					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
 					self.connection_id.clone(),
 				)

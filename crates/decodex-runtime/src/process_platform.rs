@@ -7,9 +7,14 @@
 #[path = "process_platform_macos_signal.rs"]
 mod macos_signal;
 
+#[cfg(target_os = "linux")] use std::fs;
+#[cfg(target_os = "macos")] use std::{
+	ffi::CStr,
+	mem::{self, MaybeUninit},
+};
 use std::{
 	fmt::{Display, Formatter},
-	io,
+	io::{self},
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
 		unix::process::CommandExt as _,
@@ -18,12 +23,7 @@ use std::{
 	sync::atomic::{AtomicBool, Ordering},
 };
 
-#[cfg(target_os = "linux")] use std::fs;
-
-#[cfg(target_os = "macos")] use std::{
-	ffi::CStr,
-	mem::{self, MaybeUninit},
-};
+use libc::{EBADF, EPERM, ESRCH, F_GETFD, F_SETFD, FD_CLOEXEC, RLIMIT_FSIZE};
 
 use decodex_core::{
 	ProcessBootIdentity, ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
@@ -452,7 +452,7 @@ pub(crate) fn configure_session_command(command: &mut Command, max_file_bytes: O
 			if let Some(limit) = max_file_bytes {
 				let limit = libc::rlimit { rlim_cur: limit, rlim_max: limit };
 
-				if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) == -1 {
+				if libc::setrlimit(RLIMIT_FSIZE, &limit) == -1 {
 					return Err(io::Error::last_os_error());
 				}
 			}
@@ -563,8 +563,8 @@ pub(crate) fn process_group_id_is_quiescent(
 	}
 
 	match io::Error::last_os_error().raw_os_error() {
-		Some(libc::ESRCH) => Ok(true),
-		Some(libc::EPERM) => Ok(false),
+		Some(ESRCH) => Ok(true),
+		Some(EPERM) => Ok(false),
 		_ => Err(ProcessPlatformError::Observation(io::Error::last_os_error())),
 	}
 }
@@ -648,16 +648,16 @@ fn kernel_reports_missing(pid: i32) -> Result<bool, ProcessPlatformError> {
 
 unsafe fn mark_descriptor_close_on_exec(descriptor: i32) -> io::Result<()> {
 	// SAFETY: callers provide an integer descriptor and `fcntl` is async-signal-safe.
-	let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
+	let flags = unsafe { libc::fcntl(descriptor, F_GETFD) };
 
 	if flags == -1 {
 		let error = io::Error::last_os_error();
 
-		if error.raw_os_error() != Some(libc::EBADF) {
+		if error.raw_os_error() != Some(EBADF) {
 			return Err(error);
 		}
-	} else if flags & libc::FD_CLOEXEC == 0
-		&& unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags | libc::FD_CLOEXEC) } == -1
+	} else if flags & FD_CLOEXEC == 0
+		&& unsafe { libc::fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC) } == -1
 	{
 		return Err(io::Error::last_os_error());
 	}
@@ -676,7 +676,7 @@ fn parse_u32(value: &str) -> Result<u32, ProcessPlatformError> {
 }
 
 fn invalid_identity() -> io::Error {
-	io::Error::new(io::ErrorKind::InvalidData, "operating-system identity is invalid")
+	io::Error::new(std::io::ErrorKind::InvalidData, "operating-system identity is invalid")
 }
 
 #[cfg(test)]
@@ -684,10 +684,7 @@ mod tests {
 	use std::os::fd::AsRawFd as _;
 
 	#[cfg(target_os = "macos")]
-	use super::{
-		MACOS_BOOT_SESSION_IDENTITY_PREFIX, current_boot_identity, parse_macos_boot_session_uuid,
-	};
-	use super::{boot_identity_mismatch_proves_prior_boot, mark_descriptor_close_on_exec};
+	use crate::process_platform::{self, MACOS_BOOT_SESSION_IDENTITY_PREFIX};
 	use decodex_core::ProcessBootIdentity;
 
 	#[cfg(target_os = "macos")]
@@ -712,7 +709,7 @@ mod tests {
 
 		BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
 
-		let boot = current_boot_identity().unwrap();
+		let boot = process_platform::current_boot_identity().unwrap();
 		let identity = super::inspect_process_identity(child.id(), &boot).unwrap().unwrap();
 
 		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
@@ -751,7 +748,7 @@ mod tests {
 			assert_ne!(libc::fcntl(descriptor, libc::F_SETFD, 0), -1);
 			assert_eq!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
 
-			mark_descriptor_close_on_exec(descriptor).unwrap();
+			process_platform::mark_descriptor_close_on_exec(descriptor).unwrap();
 
 			let flags = libc::fcntl(descriptor, libc::F_GETFD);
 
@@ -776,18 +773,33 @@ mod tests {
 		let linux_prior =
 			ProcessBootIdentity::new("linux:11234567-89ab-cdef-0123-456789abcdef").unwrap();
 
-		assert!(!boot_identity_mismatch_proves_prior_boot(&macos_current, &macos_current));
-		assert!(boot_identity_mismatch_proves_prior_boot(&macos_prior, &macos_current));
-		assert!(!boot_identity_mismatch_proves_prior_boot(&macos_retired, &macos_current));
-		assert!(!boot_identity_mismatch_proves_prior_boot(&linux_current, &macos_current));
-		assert!(boot_identity_mismatch_proves_prior_boot(&linux_prior, &linux_current));
+		assert!(!process_platform::boot_identity_mismatch_proves_prior_boot(
+			&macos_current,
+			&macos_current
+		));
+		assert!(process_platform::boot_identity_mismatch_proves_prior_boot(
+			&macos_prior,
+			&macos_current
+		));
+		assert!(!process_platform::boot_identity_mismatch_proves_prior_boot(
+			&macos_retired,
+			&macos_current
+		));
+		assert!(!process_platform::boot_identity_mismatch_proves_prior_boot(
+			&linux_current,
+			&macos_current
+		));
+		assert!(process_platform::boot_identity_mismatch_proves_prior_boot(
+			&linux_prior,
+			&linux_current
+		));
 	}
 
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn macos_boot_identity_is_stable_across_repeated_reads() {
-		let first = current_boot_identity().unwrap();
-		let second = current_boot_identity().unwrap();
+		let first = process_platform::current_boot_identity().unwrap();
+		let second = process_platform::current_boot_identity().unwrap();
 
 		assert_eq!(first, second);
 		assert!(first.as_str().starts_with(MACOS_BOOT_SESSION_IDENTITY_PREFIX));
@@ -797,7 +809,10 @@ mod tests {
 	#[test]
 	fn macos_boot_session_uuid_requires_one_exact_c_string() {
 		assert_eq!(
-			parse_macos_boot_session_uuid(b"01234567-89AB-CDEF-0123-456789ABCDEF\0").unwrap(),
+			process_platform::parse_macos_boot_session_uuid(
+				b"01234567-89AB-CDEF-0123-456789ABCDEF\0"
+			)
+			.unwrap(),
 			"01234567-89ab-cdef-0123-456789abcdef"
 		);
 
@@ -807,7 +822,7 @@ mod tests {
 			b"01234567-89ab-cdef-0123-456789abcdeZ\0".as_slice(),
 			b"01234567\089ab-cdef-0123-456789abcdef\0".as_slice(),
 		] {
-			assert!(parse_macos_boot_session_uuid(invalid).is_err());
+			assert!(process_platform::parse_macos_boot_session_uuid(invalid).is_err());
 		}
 	}
 }

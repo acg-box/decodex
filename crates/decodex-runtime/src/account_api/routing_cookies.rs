@@ -43,7 +43,11 @@ fn allowed_origin(url: &Url) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::iter;
+
+	use reqwest::cookie::CookieStore;
+
+	use crate::account_api::routing_cookies::{HeaderValue, RoutingCookies, Url};
 
 	#[test]
 	fn routing_cookie_obeys_scope_and_expiration_without_account_cookies() {
@@ -76,7 +80,7 @@ mod tests {
 
 		let expired = HeaderValue::from_static("__oailb=; Path=/backend-api; Max-Age=0; Secure");
 
-		store.set_cookies(&mut std::iter::once(&expired), &source);
+		store.set_cookies(&mut iter::once(&expired), &source);
 
 		assert!(store.cookies(&target).is_none());
 	}
@@ -88,7 +92,7 @@ mod tests {
 			let store = RoutingCookies::default();
 			let cookie = HeaderValue::from_static("__oailb=foreign; Domain=chatgpt.com; Path=/");
 
-			store.set_cookies(&mut std::iter::once(&cookie), &Url::parse(origin).unwrap());
+			store.set_cookies(&mut iter::once(&cookie), &Url::parse(origin).unwrap());
 
 			assert!(store.cookies(&Url::parse("https://chatgpt.com/").unwrap()).is_none());
 		}

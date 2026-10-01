@@ -50,8 +50,9 @@ fn select(requested: &Path, applications: &[PathBuf], path: Option<OsString>) ->
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use std::fs;
+	use std::{fs, slice};
+
+	use crate::account_launch::process::executable_discovery::{self, Path, env};
 
 	#[test]
 	fn app_wins_over_path_and_works_without_shell_path() {
@@ -71,10 +72,10 @@ mod tests {
 		let path = env::join_paths([bin]).unwrap();
 
 		assert_eq!(
-			select(Path::new("codex"), std::slice::from_ref(&app), Some(path)),
+			executable_discovery::select(Path::new("codex"), slice::from_ref(&app), Some(path)),
 			Some(bundled.clone())
 		);
-		assert_eq!(select(Path::new("codex"), &[app], None), Some(bundled));
+		assert_eq!(executable_discovery::select(Path::new("codex"), &[app], None), Some(bundled));
 	}
 
 	#[test]
@@ -87,11 +88,15 @@ mod tests {
 		let path = env::join_paths([root.path()]).unwrap();
 
 		assert_eq!(
-			select(Path::new("codex"), &[root.path().join("Applications")], Some(path)),
+			executable_discovery::select(
+				Path::new("codex"),
+				&[root.path().join("Applications")],
+				Some(path)
+			),
 			Some(binary.clone())
 		);
-		assert_eq!(select(&binary, &[], None), Some(binary));
-		assert_eq!(select(Path::new("codex"), &[], None), None);
+		assert_eq!(executable_discovery::select(&binary, &[], None), Some(binary));
+		assert_eq!(executable_discovery::select(Path::new("codex"), &[], None), None);
 	}
 
 	#[test]
@@ -102,7 +107,13 @@ mod tests {
 		fs::create_dir_all(binary.parent().unwrap()).unwrap();
 		fs::write(&binary, b"fixture").unwrap();
 
-		assert_eq!(select(Path::new("codex"), &[root.path().to_owned()], None), Some(binary));
-		assert_eq!(select(Path::new("python3"), &[root.path().to_owned()], None), None);
+		assert_eq!(
+			executable_discovery::select(Path::new("codex"), &[root.path().to_owned()], None),
+			Some(binary)
+		);
+		assert_eq!(
+			executable_discovery::select(Path::new("python3"), &[root.path().to_owned()], None),
+			None
+		);
 	}
 }

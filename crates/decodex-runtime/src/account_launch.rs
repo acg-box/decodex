@@ -9,22 +9,20 @@ mod agent_process;
 mod protocol;
 mod reset_card_types;
 
+pub(crate) use self::{
+	api_reset_card::ApiResetCardRuntime,
+	process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild},
+	reset_card_types::{
+		ResetCardFailureCode, ResetCardInventoryObservation, ResetCardInventoryView,
+		ResetCardObservationFailure, ResetCardOperationStatus, ResetCardPreparation,
+		ResetCardServiceError,
+	},
+};
 pub(crate) use activation_policy::read_activation_policy;
-
 #[cfg(all(test, unix))]
 pub(crate) use agent_process::native_tests::account_nudge::{
 	serve_notification as serve_native_nudge_fixture,
 	serve_notification_with_gate as serve_native_nudge_with_gate,
-};
-
-pub(crate) use api_reset_card::ApiResetCardRuntime;
-
-pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
-
-pub(crate) use reset_card_types::{
-	ResetCardFailureCode, ResetCardInventoryObservation, ResetCardInventoryView,
-	ResetCardObservationFailure, ResetCardOperationStatus, ResetCardPreparation,
-	ResetCardServiceError,
 };
 
 use std::{
@@ -36,7 +34,6 @@ use std::{
 };
 
 use crate::account_launch::process::QuarantineSlotLease;
-
 use decodex_core::AccountId;
 
 const MAX_RUNNER_CAPACITY: u16 = 64;

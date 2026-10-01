@@ -1,11 +1,17 @@
-use super::*;
-use crate::agent_usage_estimate::SourceKey;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use serde_json::{self, Value};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
+	sync::oneshot,
+	time,
+};
+
+use crate::{agent_native_goal::*, agent_usage_estimate::SourceKey};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
 use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
-use serde_json::{Value, json};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit};
 
 #[tokio::test]
 async fn native_goal_observation_checks_source_ownership_and_absence() {
@@ -55,8 +61,8 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 			.unwrap();
 		store.bind_agent_thread("work".into(), "root".into()).await.unwrap();
 
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let target = if matches!(case, "child" | "unowned") { "child" } else { "root" };
 		let server = tokio::spawn(serve(remote, target, case));
@@ -128,8 +134,8 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 	}
 }
 
-async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
-	let (reader, mut writer) = tokio::io::split(remote);
+async fn serve(remote: DuplexStream, target: &str, case: &str) {
+	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 
 	if target == "child" {
@@ -142,21 +148,22 @@ async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 		assert_eq!(request["params"]["threadId"], "child");
 
 		let thread = if case == "unowned" {
-			json!({"id":"child","parentThreadId":"root","source":"cli"})
+			serde_json::json!({"id":"child","parentThreadId":"root","source":"cli"})
 		} else {
-			json!({"id":"child","parentThreadId":"root","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"root"}}}})
+			serde_json::json!({"id":"child","parentThreadId":"root","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"root"}}}})
 		};
 
 		writer
 			.write_all(
-				format!("{}\n", json!({"id":request["id"],"result":{"thread":thread}})).as_bytes(),
+				format!("{}\n", serde_json::json!({"id":request["id"],"result":{"thread":thread}}))
+					.as_bytes(),
 			)
 			.await
 			.expect("goal wire fixture");
 
 		if case == "unowned" {
 			assert!(
-				tokio::time::timeout(std::time::Duration::from_millis(30), lines.next_line())
+				time::timeout(std::time::Duration::from_millis(30), lines.next_line())
 					.await
 					.is_err()
 			);
@@ -185,13 +192,13 @@ async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 	};
 	let response = match case {
 		"disabled" =>
-			json!({"id":request["id"],"error":{"code":-32_600,"message":"goals feature is disabled"}}),
+			serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"goals feature is disabled"}}),
 		"unsupported" =>
-			json!({"id":request["id"],"error":{"code":-32_601,"message":"unknown method"}}),
-		"missing" => json!({"id":request["id"],"result":{"goal":null}}),
-		"malformed" => json!({"id":request["id"],"result":{}}),
+			serde_json::json!({"id":request["id"],"error":{"code":-32_601,"message":"unknown method"}}),
+		"missing" => serde_json::json!({"id":request["id"],"result":{"goal":null}}),
+		"malformed" => serde_json::json!({"id":request["id"],"result":{}}),
 		_ =>
-			json!({"id":request["id"],"result":{"goal":{"threadId":target,"objective":objective,"status":"budgetLimited","tokenBudget":11,"tokensUsed":12,"timeUsedSeconds":7,"createdAt":1,"updatedAt":2}}}),
+			serde_json::json!({"id":request["id"],"result":{"goal":{"threadId":target,"objective":objective,"status":"budgetLimited","tokenBudget":11,"tokensUsed":12,"timeUsedSeconds":7,"createdAt":1,"updatedAt":2}}}),
 	};
 
 	writer.write_all(format!("{response}\n").as_bytes()).await.expect("goal wire fixture");
@@ -206,8 +213,8 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 		root.paths().ensure_layout().unwrap();
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _) = AppServerClient::from_io(reader, writer);
 		let key = SourceKey {
 			generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap(),
@@ -217,13 +224,13 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			thread: "root".into(),
 			work: "work".into(),
 		};
-		let raw = json!({"threadId":"root","objective":"Original","status":"paused","tokenBudget":50,"tokensUsed":1,"timeUsedSeconds":1,"createdAt":1,"updatedAt":1});
+		let raw = serde_json::json!({"threadId":"root","objective":"Original","status":"paused","tokenBudget":50,"tokensUsed":1,"timeUsedSeconds":1,"createdAt":1,"updatedAt":1});
 		let goal = serde_json::from_value(raw.clone()).unwrap();
 		let review =
 			review_token(&Source { key: key.clone(), client: client.clone() }, "root", Some(&goal));
-		let (release, done) = tokio::sync::oneshot::channel();
+		let (release, done) = oneshot::channel();
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut current = raw;
 			let read: Value =
@@ -232,14 +239,15 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			assert_eq!(read["method"], "thread/goal/get");
 
 			if case == "stale" {
-				current["objective"] = json!("Other edit");
+				current["objective"] = serde_json::json!("Other edit");
 			}
 
-			current["tokensUsed"] = json!(2); // Usage updates do not invalidate semantic edits.
+			current["tokensUsed"] = serde_json::json!(2); // Usage updates do not invalidate semantic edits.
 
 			writer
 				.write_all(
-					format!("{}\n", json!({"id":read["id"],"result":{"goal":current}})).as_bytes(),
+					format!("{}\n", serde_json::json!({"id":read["id"],"result":{"goal":current}}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();
@@ -249,14 +257,20 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 				assert_eq!(update["method"], "thread/goal/set");
-				assert_eq!(update["params"], json!({"threadId":"root","objective":"Updated"}));
+				assert_eq!(
+					update["params"],
+					serde_json::json!({"threadId":"root","objective":"Updated"})
+				);
 
-				current["objective"] = json!("Updated");
+				current["objective"] = serde_json::json!("Updated");
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":update["id"],"result":{"goal":current}}))
-							.as_bytes(),
+						format!(
+							"{}\n",
+							serde_json::json!({"id":update["id"],"result":{"goal":current}})
+						)
+						.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -284,10 +298,10 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			},
 			"root",
 			&review,
-			&decodex_protocol::AgentGoalEdit {
+			&AgentGoalEdit {
 				objective: Some("Updated".into()),
 				status: None,
-				budget: decodex_protocol::AgentGoalBudgetEdit::Keep,
+				budget: AgentGoalBudgetEdit::Keep,
 			},
 		)
 		.await;

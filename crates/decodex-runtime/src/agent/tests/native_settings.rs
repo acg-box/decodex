@@ -1,4 +1,7 @@
-use super::*;
+use std::iter;
+
+use crate::agent::tests::*;
+use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
@@ -24,7 +27,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 
 	agent.continue_worker("agent", "Continue").await.unwrap();
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let resume = requests.iter().find(|r| r["method"] == "thread/resume").unwrap();
 
 	assert_eq!(
@@ -46,7 +49,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	agent.wake_pending().await.unwrap();
 
 	let turn =
-		std::iter::from_fn(|| sent.try_recv().ok()).find(|r| r["method"] == "turn/start").unwrap();
+		iter::from_fn(|| sent.try_recv().ok()).find(|r| r["method"] == "turn/start").unwrap();
 
 	assert_eq!(turn["params"]["model"], "chosen-model");
 	assert_eq!(turn["params"]["effort"], "high");
@@ -91,7 +94,7 @@ async fn a_changed_native_selection_cancels_capacity_retry_without_a_new_turn() 
 
 	agent.check_due_followups(i64::MAX).await.unwrap();
 
-	assert!(std::iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"));
+	assert!(iter::from_fn(|| sent.try_recv().ok()).all(|r| r["method"] != "turn/start"));
 }
 
 #[tokio::test]
@@ -173,9 +176,7 @@ async fn capacity_retry_keeps_the_acknowledged_selection_after_store_reopen() {
 
 	drop(agent);
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 	let config = AgentConfig::new("different-default-model".into(), "low".into(), "/tmp".into());
 	let mut agent = AgentCoordinator::new(reopened, client, config).unwrap();
@@ -184,9 +185,8 @@ async fn capacity_retry_keeps_the_acknowledged_selection_after_store_reopen() {
 
 	agent.check_due_followups(retry.due_at_micros).await.unwrap();
 
-	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
-		.filter(|r| r["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|r| r["method"] == "turn/start").collect();
 
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["model"], "selected-model");
@@ -223,7 +223,7 @@ async fn resume_bootstrap_avoids_a_second_history_read_and_does_not_replay_input
 		Some("latest")
 	);
 
-	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert!(!requests.is_empty());
 	assert!(requests.iter().all(|request| request["method"] == "thread/read"));

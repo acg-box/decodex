@@ -45,7 +45,9 @@ use security_framework::os::macos::code_signing::{
 	Flags, GuestAttributes, SecCode, SecRequirement, SecStaticCode,
 };
 
-use tempfile::{Builder as TempDirBuilder, TempDir};
+use tempfile::TempDir;
+
+use std::iter;
 
 pub(super) const PRIVATE_STDIO_STARTUP_ENV: &str =
 	"CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
@@ -341,7 +343,7 @@ struct ProtocolFifos {
 }
 impl ProtocolFifos {
 	fn new() -> io::Result<Self> {
-		let directory = TempDirBuilder::new().prefix("decodex-app-server-fifos-").tempdir()?;
+		let directory = tempfile::Builder::new().prefix("decodex-app-server-fifos-").tempdir()?;
 
 		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
 
@@ -616,7 +618,7 @@ fn spawn_suspended_with_environment(
 	let mut argv_pointers = argv
 		.iter()
 		.map(|value| value.as_ptr().cast_mut())
-		.chain(std::iter::once(ptr::null_mut()))
+		.chain(iter::once(ptr::null_mut()))
 		.collect::<Vec<_>>();
 	let mut environment_pointers = [
 		Some(home_environment.as_ptr()),
@@ -627,7 +629,7 @@ fn spawn_suspended_with_environment(
 	.into_iter()
 	.flatten()
 	.map(|value| value.cast_mut())
-	.chain(std::iter::once(ptr::null_mut()))
+	.chain(iter::once(ptr::null_mut()))
 	.collect::<Vec<_>>();
 	let protocol = ProtocolFifos::new()?;
 	let mut actions = SpawnFileActions::new()?;
@@ -1089,13 +1091,22 @@ fn permission_denied(message: &'static str) -> io::Error {
 mod tests {
 	use std::{
 		collections::BTreeMap,
+		fs,
 		io::{Read as _, Write as _},
+		os::{
+			fd::AsRawFd,
+			unix::{fs::PermissionsExt as _, process::ExitStatusExt as _},
+		},
 		process::Command,
 	};
 
+	use libc::pid_t;
 	use tempfile::TempDir;
 
-	use super::*;
+	use crate::account_launch::macos_attested_spawn::{
+		self, AttestedCodeIdentity, CHILD_PATH, ErrorKind, MAX_CODE_IDENTITY_BYTES, OsString,
+		PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE, Path, ProtocolFifos,
+	};
 
 	fn system_identity(path: &str) -> AttestedCodeIdentity {
 		let path = Path::new(path);
@@ -1122,7 +1133,9 @@ mod tests {
 	fn captures_and_runs_the_exact_signed_identity_with_protocol_pipes() {
 		let identity = system_identity("/bin/cat");
 		let working = TempDir::new().unwrap();
-		let suspended = spawn_suspended(&identity, &[], working.path(), working.path()).unwrap();
+		let suspended =
+			macos_attested_spawn::spawn_suspended(&identity, &[], working.path(), working.path())
+				.unwrap();
 		let marker = b"attested-spawn-marker\n";
 
 		assert!(suspended.id() > 0);
@@ -1151,8 +1164,10 @@ mod tests {
 		let descriptors = [protocol.parent_stdin.as_raw_fd(), protocol.parent_stdout.as_raw_fd()];
 
 		assert!(descriptors.iter().all(|descriptor| *descriptor > libc::STDERR_FILENO));
-		assert!(descriptor_is_close_on_exec(&protocol.parent_stdin).unwrap());
-		assert!(descriptor_is_close_on_exec(&protocol.parent_stdout).unwrap());
+		assert!(macos_attested_spawn::descriptor_is_close_on_exec(&protocol.parent_stdin).unwrap());
+		assert!(
+			macos_attested_spawn::descriptor_is_close_on_exec(&protocol.parent_stdout).unwrap()
+		);
 
 		let probe = Command::new("/usr/bin/python3")
 			.arg("-c")
@@ -1176,10 +1191,11 @@ mod tests {
 	fn child_receives_only_home_and_the_fixed_path() {
 		let identity = system_identity("/usr/bin/env");
 		let working = TempDir::new().unwrap();
-		let spawned = spawn_suspended(&identity, &[], working.path(), working.path())
-			.unwrap()
-			.attest_and_resume(&identity)
-			.unwrap();
+		let spawned =
+			macos_attested_spawn::spawn_suspended(&identity, &[], working.path(), working.path())
+				.unwrap()
+				.attest_and_resume(&identity)
+				.unwrap();
 
 		drop(spawned.stdin);
 
@@ -1204,7 +1220,7 @@ mod tests {
 			let identity = system_identity("/usr/bin/env");
 			let canonical = fs::canonicalize("/usr/bin/env").unwrap();
 			let working = TempDir::new().unwrap();
-			let suspended = spawn_private_stdio_suspended(
+			let suspended = macos_attested_spawn::spawn_private_stdio_suspended(
 				&identity,
 				&[],
 				working.path(),
@@ -1247,7 +1263,9 @@ mod tests {
 		let identity = system_identity("/bin/cat");
 		let mut wrong_identity = identity.clone();
 		let working = TempDir::new().unwrap();
-		let suspended = spawn_suspended(&identity, &[], working.path(), working.path()).unwrap();
+		let suspended =
+			macos_attested_spawn::spawn_suspended(&identity, &[], working.path(), working.path())
+				.unwrap();
 
 		wrong_identity.unique[0] ^= 0xff;
 
@@ -1267,8 +1285,13 @@ mod tests {
 			OsString::from("decodex-suspended-drop-test"),
 			marker.as_os_str().to_owned(),
 		];
-		let suspended =
-			spawn_suspended(&identity, &arguments, working.path(), working.path()).unwrap();
+		let suspended = macos_attested_spawn::spawn_suspended(
+			&identity,
+			&arguments,
+			working.path(),
+			working.path(),
+		)
+		.unwrap();
 
 		drop(suspended);
 
@@ -1279,11 +1302,15 @@ mod tests {
 	fn raw_child_handle_kills_and_reaps_once() {
 		let identity = system_identity("/bin/sleep");
 		let working = TempDir::new().unwrap();
-		let mut spawned =
-			spawn_suspended(&identity, &[OsString::from("30")], working.path(), working.path())
-				.unwrap()
-				.attest_and_resume(&identity)
-				.unwrap();
+		let mut spawned = macos_attested_spawn::spawn_suspended(
+			&identity,
+			&[OsString::from("30")],
+			working.path(),
+			working.path(),
+		)
+		.unwrap()
+		.attest_and_resume(&identity)
+		.unwrap();
 		let pid = spawned.child.id();
 
 		drop(spawned.stdin);
@@ -1303,11 +1330,12 @@ mod tests {
 	fn child_restores_sigpipe_to_the_default_disposition() {
 		let identity = system_identity("/bin/cat");
 		let working = TempDir::new().unwrap();
-		let mut spawned = spawn_suspended(&identity, &[], working.path(), working.path())
-			.unwrap()
-			.attest_and_resume(&identity)
-			.unwrap();
-		let pid = libc::pid_t::try_from(spawned.child.id()).unwrap();
+		let mut spawned =
+			macos_attested_spawn::spawn_suspended(&identity, &[], working.path(), working.path())
+				.unwrap()
+				.attest_and_resume(&identity)
+				.unwrap();
+		let pid = pid_t::try_from(spawned.child.id()).unwrap();
 
 		// SAFETY: the positive pid belongs to the live child retained above.
 		assert_eq!(unsafe { libc::kill(pid, libc::SIGPIPE) }, 0);

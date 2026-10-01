@@ -3,52 +3,49 @@
 #[path = "agent_process_native_guardian_image_tests.rs"] mod image_evidence;
 #[path = "agent_process_native_reviewer_store.rs"] mod store;
 
-use super::{NativeSession, serve_fixture};
-
-use decodex_codex::app_server_client::{LiveReviewer, LiveSettingsOutcome, RequestId, ServerEvent};
-
-use serde_json::{Value, json};
-
 use std::{
+	env, fs,
+	path::Path,
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
 	time::Duration,
 };
 
-use tokio::sync::mpsc;
+use serde_json::{Value, json};
+use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
-use decodex_protocol::AgentReviewer as Reviewer;
+use crate::account_launch::agent_process::native_tests::{NativeSession, serve_fixture};
+use decodex_codex::{
+	app_server_client::{
+		AppServerClient, LiveReviewer, LiveSettingsOutcome, RequestId, ServerEvent,
+	},
+	guardian,
+};
+use decodex_protocol::{AgentReviewer as Reviewer, AgentReviewer};
+use store::OwnedReviewer;
 
-pub(super) async fn select_permission(
-	client: &decodex_codex::app_server_client::AppServerClient,
-	home: &std::path::Path,
-	thread: &str,
-) {
-	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+pub(super) async fn select_permission(client: &AppServerClient, home: &Path, thread: &str) {
+	let owned = OwnedReviewer::new(home, client, thread, "fixture-active").await;
 
 	owned.select_permission().await;
 }
 
-pub(super) async fn trust_hook(
-	client: &decodex_codex::app_server_client::AppServerClient,
-	home: &std::path::Path,
-	thread: &str,
-) {
-	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+pub(super) async fn trust_hook(client: &AppServerClient, home: &Path, thread: &str) {
+	let owned = OwnedReviewer::new(home, client, thread, "fixture-active").await;
 
 	owned.trust_hook().await;
 }
 
 pub(super) async fn select_task_model(
-	client: &decodex_codex::app_server_client::AppServerClient,
-	home: &std::path::Path,
+	client: &AppServerClient,
+	home: &Path,
 	thread: &str,
 	model: &str,
 	effort: Option<&str>,
 ) {
-	let owned = store::OwnedReviewer::new(home, client, thread, "fixture-active").await;
+	let owned = OwnedReviewer::new(home, client, thread, "fixture-active").await;
 
 	owned.select_task_model(model, effort).await;
 }
@@ -120,15 +117,15 @@ fn direction_output(serial: usize, updated: Reviewer) -> Value {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native reviewer routing"]
 async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().unwrap();
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -138,11 +135,11 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		output,
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated reviewer fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated reviewer fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap();
 		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.unwrap();
@@ -152,9 +149,9 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		assert_eq!(method, "item/tool/call");
 
 		let pending = session.client.server_request_guard(&id, &method, &params).unwrap();
-		let owned = store::OwnedReviewer::new(home.path(), &session.client, thread, turn).await;
+		let owned = OwnedReviewer::new(home.path(), &session.client, thread, turn).await;
 
-		owned.publish(turn, decodex_protocol::AgentReviewer::User).await;
+		owned.publish(turn, AgentReviewer::User).await;
 
 		assert_eq!(requests.load(Ordering::Acquire), 1, "settings update cannot release pending tool");
 		assert!(session.client.server_request_guard(&id, &method, &params).is_some());
@@ -205,7 +202,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 	backend.abort();
 }
 
-async fn next_request(events: &mut mpsc::Receiver<ServerEvent>) -> (RequestId, String, Value) {
+async fn next_request(events: &mut Receiver<ServerEvent>) -> (RequestId, String, Value) {
 	loop {
 		match events.recv().await.expect("native event stream") {
 			ServerEvent::Request { id, method, params } => return (id, method, params),
@@ -216,7 +213,7 @@ async fn next_request(events: &mut mpsc::Receiver<ServerEvent>) -> (RequestId, S
 	}
 }
 
-async fn finish(events: &mut mpsc::Receiver<ServerEvent>) {
+async fn finish(events: &mut Receiver<ServerEvent>) {
 	loop {
 		match events.recv().await.expect("native event stream") {
 			ServerEvent::Request { method, .. } =>
@@ -234,15 +231,15 @@ async fn finish(events: &mut mpsc::Receiver<ServerEvent>) {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated large Guardian action"]
 async fn installed_native_guardian_preserves_large_action() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("native Guardian fixture");
-	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let command = format!("true # {} END_OF_COMPLETE_ACTION", "a".repeat(300_000));
 	let emitted = command.clone();
 	let backend = tokio::spawn(serve_fixture(
@@ -263,18 +260,18 @@ async fn installed_native_guardian_preserves_large_action() {
 		},
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated Guardian fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated Guardian fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
 
 	let config_path = home.path().join("config.toml");
-	let mut config = std::fs::read_to_string(&config_path).unwrap();
+	let mut config = fs::read_to_string(&config_path).unwrap();
 
 	config.push_str("\n[auto_review]\npolicy = '  Isolated fixture policy.  '\nexperimental_policy_template = '  Fixture Guardian template: {{ tenant_policy_config }}  '\n");
 
-	std::fs::write(&config_path, config).unwrap();
+	fs::write(&config_path, config).unwrap();
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"decodex_fixture_mutation","description":"Isolated parent tool","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread id");
 
@@ -285,7 +282,7 @@ async fn installed_native_guardian_preserves_large_action() {
 		loop {
 			match session.events.recv().await.expect("native event") {
 				ServerEvent::Notification { method, params } if method.starts_with("item/autoApprovalReview/") => {
-					let review = decodex_codex::guardian::decode_review(&method, &params).expect("complete native review decodes");
+					let review = guardian::decode_review(&method, &params).expect("complete native review decodes");
 
 					assert!(serde_json::to_vec(&review.event).expect("event JSON").len() > 256 * 1_024);
 					assert!(review.event["action"].to_string().contains(&command), "native action was truncated");
@@ -338,16 +335,15 @@ async fn installed_native_live_reviewer_preserves_both_default_directions() {
 }
 
 async fn qualify_direction(updated: Reviewer) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
 
 	let home = tempfile::tempdir().expect("native reviewer fixture");
-	let listener =
-		tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("native reviewer fixture");
+	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native reviewer fixture");
 	let address = listener.local_addr().expect("native reviewer fixture");
 	let requests = Arc::new(AtomicUsize::new(0));
-	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let backend = tokio::spawn(serve_fixture(
 		listener,
 		requests.clone(),
@@ -357,11 +353,11 @@ async fn qualify_direction(updated: Reviewer) {
 		move |serial| direction_output(serial, updated),
 	));
 
-	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated reviewer fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native reviewer fixture");
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nguardian_approval = true\nstep_model_switching = false\n[model_providers.fixture]\nname = \"Isolated reviewer fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("native reviewer fixture");
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	tokio::time::timeout(Duration::from_secs(60), async {
+	time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":match updated {Reviewer::User=>Reviewer::AutoReview,Reviewer::AutoReview=>Reviewer::User},"sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native reviewer fixture");
 		let thread = started["thread"]["id"].as_str().expect("native reviewer fixture");
 		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.expect("native reviewer fixture");
@@ -371,7 +367,7 @@ async fn qualify_direction(updated: Reviewer) {
 		assert_eq!(method, "item/tool/call");
 
 		let pending = session.client.server_request_guard(&id, &method, &params).expect("native reviewer fixture");
-		let owned=store::OwnedReviewer::new(home.path(),&session.client,thread,turn).await;
+		let owned=OwnedReviewer::new(home.path(),&session.client,thread,turn).await;
 
 		owned.observe_model().await;
 		owned.publish(turn,updated).await;
@@ -407,11 +403,7 @@ async fn qualify_direction(updated: Reviewer) {
 	backend.abort();
 }
 
-async fn decline_command(
-	client: &decodex_codex::app_server_client::AppServerClient,
-	events: &mut mpsc::Receiver<ServerEvent>,
-	turn: &str,
-) {
+async fn decline_command(client: &AppServerClient, events: &mut Receiver<ServerEvent>, turn: &str) {
 	let (id, method, params) = next_request(events).await;
 
 	assert_eq!(method, "item/commandExecution/requestApproval");

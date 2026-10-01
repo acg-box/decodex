@@ -1,5 +1,5 @@
 //! Observe only the public summary channel. Native completion replaces partial parts.
-use super::{AgentCoordinator, AgentError, Value, exact};
+use crate::agent::{self, AgentCoordinator, AgentError, Value};
 use decodex_database::AgentReasoningSummaryChange;
 
 impl AgentCoordinator {
@@ -10,9 +10,9 @@ impl AgentCoordinator {
 	) -> Result<bool, AgentError> {
 		let (item, change) = match method {
 			"item/started" | "item/completed" if voice_handoff(&params["item"]) =>
-				(exact(params, "/item/id")?, AgentReasoningSummaryChange::VoiceHandoff),
+				(agent::exact(params, "/item/id")?, AgentReasoningSummaryChange::VoiceHandoff),
 			"item/started" if params["item"]["type"] == "reasoning" => (
-				exact(params, "/item/id")?,
+				agent::exact(params, "/item/id")?,
 				AgentReasoningSummaryChange::Delta { index: 0, text: String::new() },
 			),
 			"item/reasoning/summaryTextDelta" => {
@@ -22,8 +22,11 @@ impl AgentCoordinator {
 					.ok_or_else(|| AgentError::Invalid("Invalid reasoning summary part".into()))?;
 
 				(
-					exact(params, "/itemId")?,
-					AgentReasoningSummaryChange::Delta { index, text: exact(params, "/delta")? },
+					agent::exact(params, "/itemId")?,
+					AgentReasoningSummaryChange::Delta {
+						index,
+						text: agent::exact(params, "/delta")?,
+					},
 				)
 			},
 			"item/completed" if params["item"]["type"] == "reasoning" => {
@@ -34,15 +37,18 @@ impl AgentCoordinator {
 					})
 					.ok_or_else(|| AgentError::Invalid("Invalid reasoning summary".into()))?;
 
-				(exact(params, "/item/id")?, AgentReasoningSummaryChange::Completed { parts })
+				(
+					agent::exact(params, "/item/id")?,
+					AgentReasoningSummaryChange::Completed { parts },
+				)
 			},
 			_ => return Ok(false),
 		};
 
 		self.store
 			.update_agent_reasoning_summary(
-				exact(params, "/threadId")?,
-				exact(params, "/turnId")?,
+				agent::exact(params, "/threadId")?,
+				agent::exact(params, "/turnId")?,
 				item,
 				self.native_generation.as_ref().map(|generation| generation.as_str().to_owned()),
 				change,

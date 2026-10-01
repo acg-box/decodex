@@ -1,9 +1,12 @@
 //! Qualify the installed catalog route without assuming upstream-main endpoint support.
 //! Reference: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582,
 //! model-provider/src/models_endpoint.rs and app-server model_list tests.
-use super::*;
+use std::{env, fs, path::Path, sync::Mutex};
 
-use std::sync::Mutex;
+use tokio::{io::BufReader, time};
+
+use crate::{account_launch::agent_process::native_tests::*, agent_capabilities};
+use decodex_protocol::AgentCapabilitiesResult;
 
 fn instructions(explicit: bool) -> &'static str {
 	if explicit { "Explicit catalog instructions." } else { "Legacy catalog instructions." }
@@ -13,14 +16,14 @@ fn instructions(explicit: bool) -> &'static str {
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated provider catalog qualification"]
 async fn installed_catalog_discovery_reports_endpoint_and_opt_in_behavior() {
 	for (explicit, enabled) in [(true, true), (false, true), (true, false)] {
-		tokio::time::timeout(Duration::from_secs(45), qualify(explicit, enabled))
+		time::timeout(Duration::from_secs(45), qualify(explicit, enabled))
 			.await
 			.expect("bounded catalog fixture");
 	}
 }
 
 async fn qualify(explicit: bool, enabled: bool) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let catalog = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("catalog listener");
 	let catalog_address = catalog.local_addr().expect("catalog address");
@@ -36,16 +39,16 @@ async fn qualify(explicit: bool, enabled: bool) {
 		String::new()
 	};
 
-	std::fs::write(home.path().join("config.toml"),format!("model=\"catalog-model\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\napi_key_model_discovery={enabled}\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{inference_address}\"\n{catalog_setting}wire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
-	std::fs::write(
+	fs::write(home.path().join("config.toml"),format!("model=\"catalog-model\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\napi_key_model_discovery={enabled}\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{inference_address}\"\n{catalog_setting}wire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
+	fs::write(
 		home.path().join("auth.json"),
 		json!({"OPENAI_API_KEY":"synthetic-catalog-token"}).to_string(),
 	)
 	.expect("synthetic API-key auth");
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let decodex_protocol::AgentCapabilitiesResult::Available { models, .. } =
-		crate::agent_capabilities::read(&session.client).await
+	let AgentCapabilitiesResult::Available { models, .. } =
+		agent_capabilities::read(&session.client).await
 	else {
 		panic!("native catalog result")
 	};
@@ -89,7 +92,7 @@ async fn qualify(explicit: bool, enabled: bool) {
 
 async fn qualify_inference(
 	session: &mut NativeSession,
-	home: &std::path::Path,
+	home: &Path,
 	calls: &Mutex<Vec<Value>>,
 	explicit: bool,
 ) {
@@ -139,7 +142,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>,
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 
 	while let Ok((socket, _)) = listener.accept().await {
-		let mut socket = tokio::io::BufReader::new(socket);
+		let mut socket = BufReader::new(socket);
 		let mut line = String::new();
 
 		socket.read_line(&mut line).await.expect("request");

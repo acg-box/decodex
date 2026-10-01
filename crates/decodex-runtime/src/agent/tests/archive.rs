@@ -1,9 +1,11 @@
-use super::*;
+use crate::agent::tests::*;
+use decodex_codex::app_server_client::RpcError;
+use decodex_core::DecodexRoot;
 
 #[test]
 fn archived_resume_diagnostic_is_bound_to_the_exact_thread_and_never_authorizes_restore() {
 	let error = || {
-		ClientError::Remote(decodex_codex::app_server_client::RpcError {
+		ClientError::Remote(RpcError {
 			code: -32_600,
 			message:
 				"session target is archived. Run `codex unarchive target` to unarchive it first."
@@ -113,9 +115,7 @@ async fn restoration_reconciles_only_exact_positive_terminal_history_after_reope
 	agent.store.mark_agent_dispatch_unknown("agent".into()).await.unwrap();
 	// Reopen the durable owner while retaining the fixture transport; native state
 	// still owns the archive flag, and exact saved turn identity owns recovery.
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	agent.store = SqliteStore::open(&root.paths()).unwrap();
 
