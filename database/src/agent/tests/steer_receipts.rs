@@ -50,6 +50,7 @@ async fn native_steer_receipts_require_exact_identity_and_survive_reopen() {
 
 	assert!(store.get_agent_inbox_event(first).await.unwrap().disposition.is_none());
 	assert!(store.get_agent_inbox_event(second).await.unwrap().disposition.is_some());
+
 	// A delayed RPC reply cannot turn an already confirmed receipt into an error.
 	store.finish_agent_steer(second, true).await.unwrap();
 

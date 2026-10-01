@@ -52,7 +52,7 @@ async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
 	let (events, _) = store.read_agent_transcript("agent".into(), None, 10).await.unwrap();
 
 	assert_eq!(events.len(), 1);
-	assert!(events[0].payload.len() < 1024);
+	assert!(events[0].payload.len() < 1_024);
 
 	let compact: Value = serde_json::from_str(&events[0].payload).unwrap();
 
@@ -127,8 +127,8 @@ async fn combined_file_evidence_preserves_two_native_sized_parts() {
 	let mut value: Value = serde_json::from_str(&input.payload).unwrap();
 
 	value["params"]["command"] = Value::Null;
-	value["params"]["reason"] = serde_json::json!("r".repeat(4 * 1024 * 1024));
-	value["fileChange"] = serde_json::json!({"id":"item","type":"fileChange","changes":[{"path":"fixture","kind":{"type":"add"},"diff":"+".repeat(5 * 1024 * 1024)}]});
+	value["params"]["reason"] = serde_json::json!("r".repeat(4 * 1_024 * 1_024));
+	value["fileChange"] = serde_json::json!({"id":"item","type":"fileChange","changes":[{"path":"fixture","kind":{"type":"add"},"diff":"+".repeat(5 * 1_024 * 1_024)}]});
 	input.payload = value.to_string();
 
 	assert!(input.payload.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES);
@@ -144,9 +144,9 @@ async fn combined_file_evidence_preserves_two_native_sized_parts() {
 
 	let (rows, _) = store.read_agent_transcript("agent".into(), None, 10).await.unwrap();
 
-	assert!(rows[0].payload.len() < 1024);
+	assert!(rows[0].payload.len() < 1_024);
 
-	value["fileChange"]["changes"][0]["diff"] = serde_json::json!("+".repeat(9 * 1024 * 1024));
+	value["fileChange"]["changes"][0]["diff"] = serde_json::json!("+".repeat(9 * 1_024 * 1_024));
 	input.source_event_id = "oversized-file".into();
 	input.payload = value.to_string();
 

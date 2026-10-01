@@ -1,18 +1,16 @@
 use crate::{
-	SqliteStore,
+	AgentDispatchRefusal, AgentPermissionAttempt, SqliteStore,
 	agent::{AgentDispatchState, AgentWorkStatus, EnqueueAgentEvent, tests},
 };
 
 #[tokio::test]
 async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() {
-	use crate::AgentDispatchRefusal as Refusal;
-
 	for refusal in [
-		Refusal::ServerDraining,
-		Refusal::ManagedProviderChanged,
-		Refusal::SettingsChanged,
-		Refusal::RequestTooLarge,
-		Refusal::RequestQueueFull,
+		AgentDispatchRefusal::ServerDraining,
+		AgentDispatchRefusal::ManagedProviderChanged,
+		AgentDispatchRefusal::SettingsChanged,
+		AgentDispatchRefusal::RequestTooLarge,
+		AgentDispatchRefusal::RequestQueueFull,
 	] {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("refusal.sqlite3");
@@ -102,7 +100,7 @@ async fn capacity_retry_waits_for_unknown_permission_selection_after_reopen() {
 		.await
 		.unwrap()
 		.unwrap();
-	let attempt = crate::AgentPermissionAttempt {
+	let attempt = AgentPermissionAttempt {
 		work: "agent".into(),
 		thread: "thread".into(),
 		generation: None,

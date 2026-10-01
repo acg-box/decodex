@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::{
-	SqliteStore,
+	AgentOutputUpdate, SqliteStore,
 	agent::{AgentDisposition, EnqueueAgentEvent, tests},
 };
 
@@ -24,7 +24,7 @@ async fn terminal_partial_output_survives_restart_and_next_turn_without_waking()
 		("final", "agentMessage", true),
 	] {
 		store
-			.update_agent_output_record(crate::AgentOutputUpdate {
+			.update_agent_output_record(AgentOutputUpdate {
 				thread_id: "thread".into(),
 				turn_id: "turn".into(),
 				item_id: id.into(),
@@ -127,7 +127,7 @@ async fn partial_output_bounds_escaped_text_for_each_terminal_status() {
 		store.begin_agent_dispatch("agent".into()).await.unwrap();
 		store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
 
-		let text = "🦀\u{0001}".repeat(13000);
+		let text = "🦀\u{0001}".repeat(13_000);
 
 		store
 			.update_agent_output(
@@ -156,7 +156,7 @@ async fn partial_output_bounds_escaped_text_for_each_terminal_status() {
 		let (events, _) = store.read_agent_transcript("agent".into(), None, 10).await.unwrap();
 		let event = events.iter().find(|e| e.event_kind == "partial_output").unwrap();
 
-		assert!(event.payload.len() <= 65536);
+		assert!(event.payload.len() <= 65_536);
 
 		let value: Value = serde_json::from_str(&event.payload).unwrap();
 
