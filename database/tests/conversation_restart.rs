@@ -5,6 +5,7 @@ use rusqlite as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use tempfile::TempDir;
 use zeroize::Zeroizing;
 
 use decodex_core::{
@@ -12,8 +13,8 @@ use decodex_core::{
 	AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl,
 	AccountSelectionMode, AccountState, BlobStore, ContextPackInput, ContextPackPolicy,
 	ContinuationCommandOutcome, ContinuationPlanKind, ConversationId, CredentialBinding,
-	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot,
-	HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexPaths,
+	DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
 	MAX_PROVIDER_THREAD_ID_BYTES, PinnedContextSource, PossibleSideEffects, ProcessBootIdentity,
 	ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
 	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
@@ -27,23 +28,26 @@ use decodex_core::{
 };
 use decodex_database::{
 	self, AccountAdministrationOutcome, AdmitInitialConversationTurn,
-	AuthorizeProviderDispatchOutcome, BindConversationContinuation,
+	AuthorizeProviderDispatchOutcome, BindConversationContinuation, BindRuntimeSessionThread,
 	BindRuntimeSessionThreadOutcome, CodexAccountCapabilityAttestation, CommandIdentity,
-	ConversationInitialRouteOutcome, ConversationNativeSettings, ConversationPreEffectEvidenceKind,
-	ConversationRoutingSuccessorOutcome, ConversationTerminalizationOutcome,
-	ConversationThreadEstablishmentReadback, CreateConversationRecord,
-	CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
+	ConversationInitialRoute, ConversationInitialRouteOutcome, ConversationNativeSettings,
+	ConversationPreEffectEvidenceKind, ConversationRoutingSuccessorOutcome,
+	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
+	CreateConversationRecord, CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
 	FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
-	InitialConversationTurnAdmissionOutcome, InitialModelReviewOutcome, InitialModelSource,
-	LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferOutcome,
-	OrdinaryTaskConversationProjection, PlanContinuation, PlanInitialThreadContinuation,
-	PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
-	PrepareProcessGenerationOutcome, PrepareProviderAttemptOutcome,
-	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome,
+	FreshConversationProcessGeneration, InitialConversationTurnAdmissionOutcome,
+	InitialModelReviewOutcome, InitialModelSource, LocalAccountTransfer, LocalAccountTransferBatch,
+	LocalAccountTransferOutcome, OrdinaryRuntimeSessionResumeReadback,
+	OrdinaryTaskConversationProjection, OrdinaryTaskPreSessionState, PlanContinuation,
+	PlanInitialThreadContinuation, PrepareConversationProcessGeneration,
+	PrepareConversationProcessGenerationOutcome, PrepareProcessGenerationOutcome,
+	PrepareProviderAttemptOutcome, ProcessGenerationMutationOutcome,
+	ProviderAttemptMutationOutcome, ProviderAttemptRejection,
 	ReconcileConversationThreadEstablishment, RecordConversationNativeSettings, RecordHistoryItem,
 	ReviewInitialModelSettings, RouteConversationInitial, RoutingControlOutcome,
-	RuntimeSessionBindingReceipt, RuntimeSessionThreadBindingReadback, SqliteStore,
-	SuccessfulRuntimeSessionThreadStart, TerminalizeConversationTurn, TurnReservationOutcome,
+	RuntimeSessionBindingReceipt, RuntimeSessionThreadBindingReadback, SqliteStore, StoreError,
+	StoredRuntimeSession, SuccessfulRuntimeSessionThreadStart, TerminalizeConversationTurn,
+	TurnReservationOutcome,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
@@ -73,6 +77,39 @@ const DIGEST_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const DIGEST_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const DIGEST_C: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const DIGEST_D: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+struct RestartConversation {
+	account_id: AccountId,
+	credential: CredentialBinding,
+	alternate_account_id: AccountId,
+	conversation_id: ConversationId,
+	route: ConversationInitialRoute,
+	initial_session: StoredRuntimeSession,
+}
+struct RestartProcess {
+	generation_id: ProcessGenerationId,
+	execution_epoch_id: ProcessExecutionEpochId,
+	process_identity: ProcessIdentity,
+}
+struct RestartThread {
+	thread_binding: BindRuntimeSessionThread,
+	bound_session: RuntimeSessionThreadBindingReadback,
+	codex_thread_id: String,
+}
+struct RestartAttempt {
+	preparation: ProviderAttemptPreparation,
+	attempt_id: ProviderAttemptId,
+	request_id: ProviderRequestId,
+	provider_key: ProviderRequestKey,
+}
+struct ResumedTurn {
+	resume: OrdinaryRuntimeSessionResumeReadback,
+	later_turn_id: TurnId,
+}
+struct ContinuedTurn {
+	resumed: ResumedTurn,
+	routing_decision_id: String,
+}
 
 fn fixture_account_transfer(
 	account_id: &str,
@@ -161,7 +198,6 @@ fn history_item(
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // Keep one complete persisted execution and restart proof together.
 async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_duplicate_dispatch()
 {
 	let temporary = tempfile::tempdir().expect("temporary Decodex root");
@@ -170,7 +206,70 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	let paths = root.paths();
 	let blob_store = BlobStore::open(paths.clone()).expect("open blob store");
 	let store = SqliteStore::open(&paths).expect("open SQLite product store");
-	let (account_id, credential, alternate_account_id) = import_ready_accounts(&store).await;
+	let initial = create_restart_conversation(&store, &temporary).await;
+
+	verify_initial_admission(&store, &blob_store, &paths, &initial).await;
+
+	let process = prepare_restart_process(&store, &initial).await;
+	let bound = bind_restart_thread(&store, &initial, &process).await;
+
+	verify_restart_binding_replay(&store, &paths, &initial, &process, &bound).await;
+	verify_native_settings_observations(
+		&store,
+		&root,
+		&bound.bound_session,
+		&process.generation_id,
+	)
+	.await;
+
+	let attempt = prepare_restart_attempt(&store, &initial, &process, &bound).await;
+	let assistant_turn_id = record_restart_response(&store, &blob_store, &initial).await;
+	let evidence_id = record_restart_evidence(&store, &attempt, &bound).await;
+
+	complete_restart_turn(
+		&store,
+		&blob_store,
+		&initial,
+		&bound,
+		&attempt,
+		assistant_turn_id,
+		evidence_id,
+	)
+	.await;
+	record_restart_process_death(&store, &process).await;
+	drop(store);
+
+	let reopened = SqliteStore::open(&paths).expect("reopen SQLite after daemon restart");
+	let saved =
+		reopened.read_conversation_request(&initial.conversation_id).await.unwrap().unwrap();
+
+	assert_eq!(saved.service_tier.unwrap().as_str(), "ultrafast");
+
+	reopened.revalidate().await.expect("revalidate reopened SQLite");
+
+	verify_changed_default_after_restart(&reopened, &temporary, &initial, &bound).await;
+
+	let resumed = reserve_restart_continuation(&reopened, &blob_store, &initial, &bound).await;
+	let continued =
+		plan_restart_continuation(&reopened, &blob_store, &initial, &bound, resumed).await;
+
+	verify_restart_dispatch_uniqueness(
+		&reopened,
+		&blob_store,
+		&initial,
+		&process,
+		&bound,
+		&attempt,
+		&continued,
+	)
+	.await;
+}
+
+async fn create_restart_conversation(
+	store: &SqliteStore,
+	temporary: &TempDir,
+) -> RestartConversation {
+	let (account_id, credential, alternate_account_id) = import_ready_accounts(store).await;
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation identity");
 	let conversation_command =
 		CommandIdentity::new("conversation-conversation", b"create restart conversation")
@@ -190,7 +289,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: Some("high".to_owned()),
 				fast: false,
-				service_tier: Some(ServiceTier::new("ultrafast").unwrap()),
+				service_tier: Some(ServiceTier::new("ultrafast").expect("service tier")),
 			},
 		)
 		.await
@@ -240,14 +339,30 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert_eq!(initial_session.state, RuntimeSessionState::Starting);
 	assert_eq!(initial_session.account_snapshot.source_account_id, account_id);
 
+	RestartConversation {
+		account_id,
+		credential,
+		alternate_account_id,
+		conversation_id,
+		route,
+		initial_session,
+	}
+}
+
+async fn verify_initial_admission(
+	store: &SqliteStore,
+	blob_store: &BlobStore,
+	paths: &DecodexPaths,
+	initial: &RestartConversation,
+) {
 	let admission_request = AdmitInitialConversationTurn {
 		expected_conversation_revision: 1,
 		expected_runtime_session_revision: 1,
 		continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
 		message: history_item(
-			&conversation_id,
-			&initial_session.runtime_session_id,
-			&route.turn_id,
+			&initial.conversation_id,
+			&initial.initial_session.runtime_session_id,
+			&initial.route.turn_id,
 			1,
 			TurnRole::User,
 			INITIAL_HISTORY_ID,
@@ -256,7 +371,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	let initial_admission = store
 		.admit_initial_conversation_turn(
-			&blob_store,
+			blob_store,
 			"conversation-initial-admission",
 			&admission_request,
 		)
@@ -266,12 +381,12 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert!(matches!(
 		initial_admission,
 		InitialConversationTurnAdmissionOutcome::Fresh(ref admission)
-			if admission.turn.turn_id == route.turn_id && admission.turn.revision == 1
+			if admission.turn.turn_id == initial.route.turn_id && admission.turn.revision == 1
 	));
 
 	let admission_replay = store
 		.admit_initial_conversation_turn(
-			&blob_store,
+			blob_store,
 			"conversation-initial-admission",
 			&admission_request,
 		)
@@ -287,12 +402,12 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		InitialConversationTurnAdmissionOutcome::Replayed(original_admission.clone())
 	);
 
-	let reopened_admission_store = SqliteStore::open(&paths).expect("reopen initial admission");
+	let reopened_admission_store = SqliteStore::open(paths).expect("reopen initial admission");
 
 	assert_eq!(
 		reopened_admission_store
 			.admit_initial_conversation_turn(
-				&blob_store,
+				blob_store,
 				"conversation-initial-admission",
 				&admission_request
 			)
@@ -308,16 +423,16 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert!(matches!(
 		reopened_admission_store
 			.admit_initial_conversation_turn(
-				&blob_store,
+				blob_store,
 				"conversation-initial-admission",
 				&changed_admission
 			)
 			.await,
-		Err(decodex_database::StoreError::IdempotencyConflict)
+		Err(StoreError::IdempotencyConflict)
 	));
 	assert_eq!(
 		reopened_admission_store
-			.conversation_history(&blob_store, &conversation_id, None, 10)
+			.conversation_history(blob_store, &initial.conversation_id, None, 10)
 			.await
 			.expect("initial history remains unique")
 			.entries
@@ -326,21 +441,26 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	);
 
 	drop(reopened_admission_store);
+}
 
-	let generation_id = ProcessGenerationId::new(GENERATION_ID).expect("generation identity");
+async fn admit_restart_process(
+	store: &SqliteStore,
+	initial: &RestartConversation,
+	generation_id: &ProcessGenerationId,
+) -> FreshConversationProcessGeneration {
 	let process_admission = match store
 		.prepare_conversation_process_generation(
 			"conversation-process-admission",
 			&PrepareConversationProcessGeneration {
-				conversation_id: conversation_id.clone(),
+				conversation_id: initial.conversation_id.clone(),
 				expected_conversation_revision: 1,
-				runtime_session_id: initial_session.runtime_session_id.clone(),
+				runtime_session_id: initial.initial_session.runtime_session_id.clone(),
 				expected_runtime_session_revision: 1,
-				turn_id: route.turn_id.clone(),
+				turn_id: initial.route.turn_id.clone(),
 				expected_turn_revision: 1,
 				continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
-				routing_decision_id: route.decision_id.clone(),
-				selected_account_id: account_id.clone(),
+				routing_decision_id: initial.route.decision_id.clone(),
+				selected_account_id: initial.account_id.clone(),
 				process_generation_id: generation_id.clone(),
 			},
 		)
@@ -352,15 +472,15 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	let pre_spawn_readback = store
 		.reconcile_conversation_thread_establishment(&ReconcileConversationThreadEstablishment {
-			conversation_id: conversation_id.clone(),
+			conversation_id: initial.conversation_id.clone(),
 			expected_conversation_revision: 1,
-			runtime_session_id: initial_session.runtime_session_id.clone(),
+			runtime_session_id: initial.initial_session.runtime_session_id.clone(),
 			expected_runtime_session_revision: 1,
-			turn_id: route.turn_id.clone(),
+			turn_id: initial.route.turn_id.clone(),
 			expected_turn_revision: 1,
 			continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
-			routing_decision_id: route.decision_id.clone(),
-			selected_account_id: account_id.clone(),
+			routing_decision_id: initial.route.decision_id.clone(),
+			selected_account_id: initial.account_id.clone(),
 			process_generation_id: generation_id.clone(),
 		})
 		.await
@@ -374,12 +494,21 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				&& evidence.evidence_id == "conversation-process-admission"
 	));
 
+	process_admission
+}
+
+async fn prepare_restart_process(
+	store: &SqliteStore,
+	initial: &RestartConversation,
+) -> RestartProcess {
+	let generation_id = ProcessGenerationId::new(GENERATION_ID).expect("generation identity");
+	let process_admission = admit_restart_process(store, initial, &generation_id).await;
 	let execution_epoch_id =
 		ProcessExecutionEpochId::new(EXECUTION_EPOCH_ID).expect("execution epoch identity");
 	let boot_id = ProcessBootIdentity::new("fixture-boot").expect("boot identity");
 	let intent = ProcessGenerationIntent {
 		generation_id: generation_id.clone(),
-		account_id: account_id.clone(),
+		account_id: initial.account_id.clone(),
 		runner_identity: ProcessRunnerIdentity::new(format!("sha256:{DIGEST_A}"))
 			.expect("runner identity"),
 		intended_boot_id: boot_id.clone(),
@@ -391,8 +520,9 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		)
 		.expect("execution authorization"),
 	};
-	let process_binding = ProcessGenerationAccountBinding::new(1, credential.clone(), DIGEST_C)
-		.expect("process account binding");
+	let process_binding =
+		ProcessGenerationAccountBinding::new(1, initial.credential.clone(), DIGEST_C)
+			.expect("process account binding");
 	let process_fence = match store
 		.prepare_conversation_bound_process_generation(&intent, &process_binding, process_admission)
 		.await
@@ -430,20 +560,28 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			if mutation.revision == 3 && mutation.state == ProcessGenerationState::Ready
 	));
 
+	RestartProcess { generation_id, execution_epoch_id, process_identity }
+}
+
+async fn bind_restart_thread(
+	store: &SqliteStore,
+	initial: &RestartConversation,
+	process: &RestartProcess,
+) -> RestartThread {
 	let thread_authority = match store
 		.fence_runtime_session_thread_start(
 			"conversation-thread-fence",
 			&FenceRuntimeSessionThreadStart {
-				conversation_id: conversation_id.clone(),
+				conversation_id: initial.conversation_id.clone(),
 				expected_conversation_revision: 1,
-				runtime_session_id: initial_session.runtime_session_id.clone(),
+				runtime_session_id: initial.initial_session.runtime_session_id.clone(),
 				expected_revision: 1,
-				turn_id: route.turn_id.clone(),
+				turn_id: initial.route.turn_id.clone(),
 				expected_turn_revision: 1,
 				continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
-				process_generation_id: generation_id.clone(),
+				process_generation_id: process.generation_id.clone(),
 				process_generation_revision: 3,
-				process_execution_epoch_id: execution_epoch_id.clone(),
+				process_execution_epoch_id: process.execution_epoch_id.clone(),
 				thread_start_request_id: 1,
 				thread_start_request_sha256: DIGEST_A.to_owned(),
 			},
@@ -467,7 +605,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	assert!(matches!(
 		store.bind_runtime_session_thread("oversized-provider-thread", &oversized_binding).await,
-		Err(decodex_database::StoreError::InvalidInput(_))
+		Err(StoreError::InvalidInput(_))
 	));
 
 	let bound_session = match store
@@ -482,45 +620,55 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert_eq!(bound_session.revision, 3);
 	assert_eq!(bound_session.codex_thread_id, codex_thread_id);
 
+	RestartThread { thread_binding, bound_session, codex_thread_id }
+}
+
+async fn verify_restart_binding_replay(
+	store: &SqliteStore,
+	paths: &DecodexPaths,
+	initial: &RestartConversation,
+	process: &RestartProcess,
+	bound: &RestartThread,
+) {
 	let replayed = store
-		.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+		.bind_runtime_session_thread("conversation-thread-binding", &bound.thread_binding)
 		.await
 		.expect("replay committed thread binding");
 
-	assert_eq!(replayed, BindRuntimeSessionThreadOutcome::Replayed(bound_session.clone()));
+	assert_eq!(replayed, BindRuntimeSessionThreadOutcome::Replayed(bound.bound_session.clone()));
 
-	let reopened_binding_store = SqliteStore::open(&paths).expect("reopen committed binding");
+	let reopened_binding_store = SqliteStore::open(paths).expect("reopen committed binding");
 
 	assert_eq!(
 		reopened_binding_store
-			.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+			.bind_runtime_session_thread("conversation-thread-binding", &bound.thread_binding)
 			.await
 			.expect("replay binding after reopen"),
-		BindRuntimeSessionThreadOutcome::Replayed(bound_session.clone())
+		BindRuntimeSessionThreadOutcome::Replayed(bound.bound_session.clone())
 	);
 	assert_eq!(
 		reopened_binding_store
 			.reconcile_conversation_thread_establishment(
 				&ReconcileConversationThreadEstablishment {
-					conversation_id: conversation_id.clone(),
+					conversation_id: initial.conversation_id.clone(),
 					expected_conversation_revision: 1,
-					runtime_session_id: initial_session.runtime_session_id.clone(),
+					runtime_session_id: initial.initial_session.runtime_session_id.clone(),
 					expected_runtime_session_revision: 1,
-					turn_id: route.turn_id.clone(),
+					turn_id: initial.route.turn_id.clone(),
 					expected_turn_revision: 1,
 					continuation_plan_id: INITIAL_PLAN_ID.into(),
-					routing_decision_id: route.decision_id.clone(),
-					selected_account_id: account_id.clone(),
-					process_generation_id: generation_id.clone(),
+					routing_decision_id: initial.route.decision_id.clone(),
+					selected_account_id: initial.account_id.clone(),
+					process_generation_id: process.generation_id.clone(),
 				}
 			)
 			.await
 			.expect("recover lost binding receipt"),
-		ConversationThreadEstablishmentReadback::Bound(bound_session.clone())
+		ConversationThreadEstablishmentReadback::Bound(bound.bound_session.clone())
 	);
 
 	for field in ["conversation_revision", "turn_revision", "request_digest", "response_digest"] {
-		let mut changed = thread_binding.clone();
+		let mut changed = bound.thread_binding.clone();
 
 		match field {
 			"conversation_revision" => changed.expected_conversation_revision += 1,
@@ -542,8 +690,14 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	}
 
 	drop(reopened_binding_store);
-	verify_native_settings_observations(&store, &root, &bound_session, &generation_id).await;
+}
 
+async fn prepare_restart_attempt(
+	store: &SqliteStore,
+	initial: &RestartConversation,
+	process: &RestartProcess,
+	bound: &RestartThread,
+) -> RestartAttempt {
 	let attempt_id = ProviderAttemptId::new(ATTEMPT_ID).expect("attempt identity");
 	let request_id = ProviderRequestId::new(REQUEST_ID).expect("provider request identity");
 	let provider_key =
@@ -551,8 +705,8 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	let preparation = ProviderAttemptPreparation::new(
 		attempt_id.clone(),
 		ProviderAttemptConsumer::ConversationTurn {
-			conversation_id: conversation_id.clone(),
-			turn_id: route.turn_id.clone(),
+			conversation_id: initial.conversation_id.clone(),
+			turn_id: initial.route.turn_id.clone(),
 		},
 		INITIAL_PLAN_ID,
 		request_id.clone(),
@@ -570,26 +724,28 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			store
 				.prepare_provider_attempt(
 					&malformed,
-					&generation_id,
+					&process.generation_id,
 					3,
-					&execution_epoch_id,
-					Some(&RuntimeSessionBindingReceipt::from_binding(&bound_session)),
+					&process.execution_epoch_id,
+					Some(&RuntimeSessionBindingReceipt::from_binding(&bound.bound_session)),
 					(Some(1), Some(1)),
 				)
 				.await,
-			Err(decodex_database::StoreError::InvalidInput(_))
+			Err(StoreError::InvalidInput(_))
 		),
 		"non-hex request digest must not create a durable attempt"
 	);
-	assert!(store.read_provider_attempt(&attempt_id).await.unwrap().is_none());
+	assert!(
+		store.read_provider_attempt(&attempt_id).await.expect("read rejected attempt").is_none()
+	);
 
 	let prepared = match store
 		.prepare_provider_attempt(
 			&preparation,
-			&generation_id,
+			&process.generation_id,
 			3,
-			&execution_epoch_id,
-			Some(&RuntimeSessionBindingReceipt::from_binding(&bound_session)),
+			&process.execution_epoch_id,
+			Some(&RuntimeSessionBindingReceipt::from_binding(&bound.bound_session)),
 			(Some(1), Some(1)),
 		)
 		.await
@@ -599,7 +755,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		other => panic!("provider attempt was not fresh: {other:?}"),
 	};
 	let authorized = match store
-		.authorize_provider_attempt_dispatch(prepared, &generation_id, 3)
+		.authorize_provider_attempt_dispatch(prepared, &process.generation_id, 3)
 		.await
 		.expect("authorize provider dispatch")
 	{
@@ -609,16 +765,24 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	assert_eq!(authorized.attempt_revision(), 2);
 
+	RestartAttempt { preparation, attempt_id, request_id, provider_key }
+}
+
+async fn record_restart_response(
+	store: &SqliteStore,
+	blob_store: &BlobStore,
+	initial: &RestartConversation,
+) -> TurnId {
 	let assistant_turn_id = TurnId::new(ASSISTANT_TURN_ID).expect("assistant Turn identity");
 
 	store
 		.record_history_item(
-			&blob_store,
+			blob_store,
 			&CommandIdentity::new("conversation-assistant-history", b"assistant reply")
 				.expect("assistant history command"),
 			&history_item(
-				&conversation_id,
-				&initial_session.runtime_session_id,
+				&initial.conversation_id,
+				&initial.initial_session.runtime_session_id,
 				&assistant_turn_id,
 				2,
 				TurnRole::Assistant,
@@ -629,16 +793,24 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		.await
 		.expect("record assistant response");
 
+	assistant_turn_id
+}
+
+async fn record_restart_evidence(
+	store: &SqliteStore,
+	attempt: &RestartAttempt,
+	bound: &RestartThread,
+) -> ProviderEvidenceId {
 	let evidence_id = ProviderEvidenceId::new(EVIDENCE_ID).expect("provider evidence identity");
 	let evidence = ProviderPositiveEvidence::new(
 		evidence_id.clone(),
-		attempt_id.clone(),
-		request_id,
+		attempt.attempt_id.clone(),
+		attempt.request_id.clone(),
 		ProviderEvidenceSource::ProviderReceipt,
 		ProviderTerminalOutcome::Succeeded,
-		provider_key,
+		attempt.provider_key.clone(),
 		Some("fixture-provider-receipt".to_owned()),
-		Some(codex_thread_id.clone()),
+		Some(bound.codex_thread_id.clone()),
 		Some(PROVIDER_TURN_ID.to_owned()),
 		DIGEST_D,
 	)
@@ -658,9 +830,9 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	for invalid in [missing_receipt, invalid_digest, oversized_turn] {
 		assert!(
 			matches!(
-				store.record_provider_attempt_positive_evidence(2, &invalid).await.unwrap(),
+				store.record_provider_attempt_positive_evidence(2, &invalid).await.expect("reject malformed evidence"),
 				ProviderAttemptMutationOutcome::Rejected {
-					rejection: decodex_database::ProviderAttemptRejection::InvalidEvidence,
+					rejection: ProviderAttemptRejection::InvalidEvidence,
 					actual,
 				} if actual.revision == 2 && actual.state == ProviderAttemptState::DispatchAuthorized
 			),
@@ -677,7 +849,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
 	assert!(matches!(
-		store.record_provider_attempt_positive_evidence(2, &evidence).await.unwrap(),
+		store.record_provider_attempt_positive_evidence(2, &evidence).await.expect("replay terminal evidence"),
 		ProviderAttemptMutationOutcome::Replayed(ref mutation)
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
@@ -697,9 +869,9 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	for changed in [changed_witness, changed_outcome, changed_receipt] {
 		assert!(
 			matches!(
-				store.record_provider_attempt_positive_evidence(2, &changed).await.unwrap(),
+				store.record_provider_attempt_positive_evidence(2, &changed).await.expect("reject changed evidence"),
 				ProviderAttemptMutationOutcome::Rejected {
-					rejection: decodex_database::ProviderAttemptRejection::EvidenceConflict,
+					rejection: ProviderAttemptRejection::EvidenceConflict,
 					actual,
 				} if actual.revision == 3 && actual.state == ProviderAttemptState::Succeeded
 			),
@@ -707,22 +879,34 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		);
 	}
 
+	evidence_id
+}
+
+async fn complete_restart_turn(
+	store: &SqliteStore,
+	blob_store: &BlobStore,
+	initial: &RestartConversation,
+	bound: &RestartThread,
+	attempt: &RestartAttempt,
+	assistant_turn_id: TurnId,
+	evidence_id: ProviderEvidenceId,
+) {
 	let terminalized = match store
 		.terminalize_conversation_turn(
 			"conversation-terminalization",
 			&TerminalizeConversationTurn {
-				conversation_id: conversation_id.clone(),
+				conversation_id: initial.conversation_id.clone(),
 				expected_conversation_revision: 1,
-				runtime_session_id: initial_session.runtime_session_id.clone(),
+				runtime_session_id: initial.initial_session.runtime_session_id.clone(),
 				expected_runtime_session_revision: 3,
-				user_turn_id: route.turn_id.clone(),
+				user_turn_id: initial.route.turn_id.clone(),
 				expected_user_turn_revision: 1,
 				assistant_turn: Some((assistant_turn_id, 1)),
-				provider_attempt_id: attempt_id.clone(),
+				provider_attempt_id: attempt.attempt_id.clone(),
 				expected_provider_attempt_revision: 3,
 				provider_evidence_id: evidence_id,
 				provider_outcome: ProviderTerminalOutcome::Succeeded,
-				provider_thread_id: codex_thread_id.clone(),
+				provider_thread_id: bound.codex_thread_id.clone(),
 				provider_turn_id: PROVIDER_TURN_ID.to_owned(),
 			},
 		)
@@ -737,7 +921,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert!(
 		matches!(
 			store
-				.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+				.bind_runtime_session_thread("conversation-thread-binding", &bound.thread_binding)
 				.await
 				.expect("read stale establishment request"),
 			BindRuntimeSessionThreadOutcome::Rejected(_)
@@ -746,20 +930,22 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	);
 	assert_eq!(
 		store
-			.conversation_history(&blob_store, &conversation_id, None, 10)
+			.conversation_history(blob_store, &initial.conversation_id, None, 10)
 			.await
 			.expect("read initial history")
 			.entries
 			.len(),
 		2
 	);
+}
 
+async fn record_restart_process_death(store: &SqliteStore, process: &RestartProcess) {
 	let death = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new(DEATH_EVIDENCE_ID).expect("death evidence identity"),
-		generation_id.clone(),
+		process.generation_id.clone(),
 		ProcessDeathEvidenceKind::ExactTerminationExit,
-		process_identity.boot_id.clone(),
-		Some(process_identity.clone()),
+		process.process_identity.boot_id.clone(),
+		Some(process.process_identity.clone()),
 		DIGEST_A,
 	)
 	.expect("positive process death evidence");
@@ -772,22 +958,20 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ProcessGenerationMutationOutcome::Applied(ref mutation)
 			if mutation.revision == 4 && mutation.state == ProcessGenerationState::Dead
 	));
+}
 
-	drop(store);
-
-	let reopened = SqliteStore::open(&paths).expect("reopen SQLite after daemon restart");
-	let saved = reopened.read_conversation_request(&conversation_id).await.unwrap().unwrap();
-
-	assert_eq!(saved.service_tier.unwrap().as_str(), "ultrafast");
-
-	reopened.revalidate().await.expect("revalidate reopened SQLite");
-
+async fn verify_changed_default_after_restart(
+	reopened: &SqliteStore,
+	temporary: &TempDir,
+	initial: &RestartConversation,
+	bound: &RestartThread,
+) {
 	let routing = reopened
 		.read_account_routing_control()
 		.await
 		.expect("read account routing before changing the default");
 	let changed_routing = match reopened
-		.set_fixed_account_selection(routing.revision, &alternate_account_id, 1)
+		.set_fixed_account_selection(routing.revision, &initial.alternate_account_id, 1)
 		.await
 		.expect("change the default account for new conversations")
 	{
@@ -795,10 +979,13 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		other => panic!("account routing did not update: {other:?}"),
 	};
 
-	assert_eq!(changed_routing.mode, AccountSelectionMode::Fixed(alternate_account_id.clone()));
+	assert_eq!(
+		changed_routing.mode,
+		AccountSelectionMode::Fixed(initial.alternate_account_id.clone())
+	);
 
 	let projection = reopened
-		.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+		.read_ordinary_task_conversations(Some(&initial.conversation_id), None, 1)
 		.await
 		.expect("read durable Conversation projection after restart");
 
@@ -806,7 +993,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		projection.as_slice(),
 		[OrdinaryTaskConversationProjection::Current(row)]
 			if row.title == "SQLite restart proof"
-				&& row.codex_thread_id.as_deref() == Some(codex_thread_id.as_str())
+				&& row.codex_thread_id.as_deref() == Some(bound.codex_thread_id.as_str())
 	));
 
 	let alternate_conversation_id =
@@ -851,20 +1038,27 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	assert_eq!(
 		alternate_route.decision.selected_account_id.as_ref(),
-		Some(&alternate_account_id),
+		Some(&initial.alternate_account_id),
 		"a new conversation may use the newly selected account",
 	);
+}
 
+async fn reserve_restart_continuation(
+	reopened: &SqliteStore,
+	blob_store: &BlobStore,
+	initial: &RestartConversation,
+	bound: &RestartThread,
+) -> ResumedTurn {
 	let resume = reopened
-		.read_ordinary_runtime_session_for_resume(&conversation_id)
+		.read_ordinary_runtime_session_for_resume(&initial.conversation_id)
 		.await
 		.expect("read restart projection")
 		.expect("active RuntimeSession survives restart");
 
-	assert_eq!(resume.runtime_session_id, initial_session.runtime_session_id);
+	assert_eq!(resume.runtime_session_id, initial.initial_session.runtime_session_id);
 	assert_eq!(resume.runtime_session_revision, 4);
-	assert_eq!(resume.codex_thread_id, codex_thread_id);
-	assert_eq!(resume.source_account_id, account_id);
+	assert_eq!(resume.codex_thread_id, bound.codex_thread_id);
+	assert_eq!(resume.source_account_id, initial.account_id);
 	assert_eq!(resume.next_turn_sequence, 3);
 	assert!(resume.has_acknowledged_turn);
 	assert!(!resume.has_active_turn);
@@ -872,7 +1066,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	let later_turn_id = TurnId::new(LATER_TURN_ID).expect("later Turn identity");
 	let later_history = history_item(
-		&conversation_id,
+		&initial.conversation_id,
 		&resume.runtime_session_id,
 		&later_turn_id,
 		resume.next_turn_sequence,
@@ -884,7 +1078,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert!(matches!(
 		reopened
 			.reserve_user_turn_with_history_item(
-				&blob_store,
+				blob_store,
 				&CommandIdentity::new("conversation-later-turn", b"continue after restart")
 					.expect("later Turn command"),
 				&later_history,
@@ -895,16 +1089,26 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			if reservation.turn_id == later_turn_id && reservation.sequence == 3
 	));
 
+	ResumedTurn { resume, later_turn_id }
+}
+
+async fn plan_restart_continuation(
+	reopened: &SqliteStore,
+	blob_store: &BlobStore,
+	initial: &RestartConversation,
+	bound: &RestartThread,
+	resumed: ResumedTurn,
+) -> ContinuedTurn {
 	let continuation_binding = match reopened
 		.bind_conversation_continuation(
 			"conversation-continuation-route",
 			&BindConversationContinuation {
 				operation_id: "a1000000-0000-4000-8000-000000000001".to_owned(),
-				conversation_id: conversation_id.clone(),
+				conversation_id: initial.conversation_id.clone(),
 				expected_conversation_revision: 1,
-				source_runtime_session_id: resume.runtime_session_id.clone(),
-				expected_source_runtime_session_revision: resume.runtime_session_revision,
-				turn_id: later_turn_id.clone(),
+				source_runtime_session_id: resumed.resume.runtime_session_id.clone(),
+				expected_source_runtime_session_revision: resumed.resume.runtime_session_revision,
+				turn_id: resumed.later_turn_id.clone(),
 			},
 		)
 		.await
@@ -916,7 +1120,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		},
 	};
 	let fallback_pack = decodex_core::compile_context_pack(ContextPackInput {
-		conversation_id: conversation_id.clone(),
+		conversation_id: initial.conversation_id.clone(),
 		possible_side_effects: PossibleSideEffects::Unknown,
 		policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
 		pinned: PinnedContextSource::new(
@@ -939,7 +1143,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	let continuation = match reopened
 		.plan_continuation(
-			&blob_store,
+			blob_store,
 			"conversation-continuation-plan",
 			&continuation_request,
 			&fallback_pack,
@@ -954,11 +1158,11 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 
 	assert_eq!(continuation.plan.kind, ContinuationPlanKind::SameThread);
-	assert_eq!(continuation.plan.codex_thread_id.as_deref(), Some(codex_thread_id.as_str()));
-	assert_eq!(continuation.plan.source_runtime_session_id, resume.runtime_session_id);
+	assert_eq!(continuation.plan.codex_thread_id.as_deref(), Some(bound.codex_thread_id.as_str()));
+	assert_eq!(continuation.plan.source_runtime_session_id, resumed.resume.runtime_session_id);
 	assert_eq!(continuation.plan.source_runtime_session_revision, 4);
-	assert_eq!(continuation.plan.selected_account_id, account_id);
-	assert_ne!(continuation.plan.selected_account_id, alternate_account_id);
+	assert_eq!(continuation.plan.selected_account_id, initial.account_id);
+	assert_ne!(continuation.plan.selected_account_id, initial.alternate_account_id);
 	assert!(matches!(
 		continuation.plan.same_thread_evidence,
 		Some(SameThreadContinuationEvidence::ProviderAttempt {
@@ -968,6 +1172,18 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		}) if attempt_id.as_str() == ATTEMPT_ID
 	));
 
+	ContinuedTurn { resumed, routing_decision_id: continuation_binding.decision_id }
+}
+
+async fn verify_restart_dispatch_uniqueness(
+	reopened: &SqliteStore,
+	blob_store: &BlobStore,
+	initial: &RestartConversation,
+	process: &RestartProcess,
+	bound: &RestartThread,
+	attempt: &RestartAttempt,
+	continued: &ContinuedTurn,
+) {
 	let rehydrated_generation_id =
 		ProcessGenerationId::new(REHYDRATED_GENERATION_ID).expect("rehydrated generation identity");
 
@@ -976,15 +1192,18 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.prepare_conversation_process_generation(
 				"conversation-rehydrated-process-admission",
 				&PrepareConversationProcessGeneration {
-					conversation_id: conversation_id.clone(),
+					conversation_id: initial.conversation_id.clone(),
 					expected_conversation_revision: 1,
-					runtime_session_id: resume.runtime_session_id.clone(),
-					expected_runtime_session_revision: resume.runtime_session_revision,
-					turn_id: later_turn_id.clone(),
+					runtime_session_id: continued.resumed.resume.runtime_session_id.clone(),
+					expected_runtime_session_revision: continued
+						.resumed
+						.resume
+						.runtime_session_revision,
+					turn_id: continued.resumed.later_turn_id.clone(),
 					expected_turn_revision: 1,
 					continuation_plan_id: CONTINUATION_PLAN_ID.to_owned(),
-					routing_decision_id: continuation_binding.decision_id.clone(),
-					selected_account_id: account_id.clone(),
+					routing_decision_id: continued.routing_decision_id.clone(),
+					selected_account_id: initial.account_id.clone(),
 					process_generation_id: rehydrated_generation_id,
 				},
 			)
@@ -995,11 +1214,11 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert!(matches!(
 		reopened
 			.prepare_provider_attempt(
-				&preparation,
-				&generation_id,
+				&attempt.preparation,
+				&process.generation_id,
 				3,
-				&execution_epoch_id,
-				Some(&RuntimeSessionBindingReceipt::from_binding(&bound_session)),
+				&process.execution_epoch_id,
+				Some(&RuntimeSessionBindingReceipt::from_binding(&bound.bound_session)),
 				(Some(1), Some(1)),
 			)
 			.await
@@ -1014,10 +1233,10 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		.expect("read provider attempts");
 
 	assert_eq!(attempts.len(), 1, "restart must not create a duplicate dispatch intent");
-	assert_eq!(attempts[0].attempt_id, attempt_id);
+	assert_eq!(attempts[0].attempt_id, attempt.attempt_id);
 	assert_eq!(
 		reopened
-			.conversation_history(&blob_store, &conversation_id, None, 10)
+			.conversation_history(blob_store, &initial.conversation_id, None, 10)
 			.await
 			.expect("read history after restart")
 			.entries
@@ -1165,14 +1384,14 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 
 	assert!(matches!(
 		store.read_conversation_creation_receipt(&changed, &id).await,
-		Err(decodex_database::StoreError::IdempotencyConflict)
+		Err(StoreError::IdempotencyConflict)
 	));
 
 	let other = ConversationId::new("30000000-0000-4000-8000-000000000099").unwrap();
 
 	assert!(matches!(
 		store.read_conversation_creation_receipt(&command, &other).await,
-		Err(decodex_database::StoreError::IdempotencyConflict)
+		Err(StoreError::IdempotencyConflict)
 	));
 
 	drop(store);
@@ -1238,7 +1457,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 
 		assert!(matches!(
 			reopened.create_conversation(&command, &changed).await,
-			Err(decodex_database::StoreError::IdempotencyConflict)
+			Err(StoreError::IdempotencyConflict)
 		));
 	}
 
@@ -1248,7 +1467,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 
 	assert!(matches!(
 		reopened.create_conversation(&command, &invalid).await,
-		Err(decodex_database::StoreError::InvalidInput(_))
+		Err(StoreError::InvalidInput(_))
 	));
 	assert_eq!(
 		reopened.read_conversation_request(&record.conversation_id).await.unwrap(),
@@ -1395,7 +1614,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 
 		assert!(matches!(
 			store.review_initial_model_settings(winning_key, &changed).await,
-			Err(decodex_database::StoreError::IdempotencyConflict)
+			Err(StoreError::IdempotencyConflict)
 		));
 		assert!(matches!(
 			store
@@ -1451,6 +1670,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 			account_id: AccountId::new(source_id).expect("source identity"),
 			account_revision: source_revision,
 		};
+		let command = CommandIdentity::new("source-create", b"source creation").expect("command");
 		let mut request = CreateConversationRecord {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation identity"),
 			title: "Source-bound creation".to_owned(),
@@ -1462,7 +1682,6 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 			service_tier: None,
 			initial_model_source: Some(source.clone()),
 		};
-		let command = CommandIdentity::new("source-create", b"source creation").expect("command");
 
 		store.create_conversation(&command, &request).await.expect("create source request");
 
@@ -1483,7 +1702,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 
 		assert!(matches!(
 			store.create_conversation(&command, &request).await,
-			Err(decodex_database::StoreError::IdempotencyConflict)
+			Err(StoreError::IdempotencyConflict)
 		));
 
 		let route_request = RouteConversationInitial {
@@ -1532,7 +1751,10 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 						panic!("current task");
 					};
 
-					assert_eq!(task.pre_session_state, Some(decodex_database::OrdinaryTaskPreSessionState::ModelSettingsReviewRequired));
+					assert_eq!(
+						task.pre_session_state,
+						Some(OrdinaryTaskPreSessionState::ModelSettingsReviewRequired)
+					);
 					assert!(!task.has_admitted_user_turn);
 					assert!(task.runtime_session_id.is_none());
 					assert!(
@@ -1618,7 +1840,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 			.create_conversation_routing_successor("source-successor", &request)
 			.await
 			.expect("replay successor"),
-		decodex_database::ConversationRoutingSuccessorOutcome::Replayed(_)
+		ConversationRoutingSuccessorOutcome::Replayed(_)
 	));
 }
 
@@ -1691,7 +1913,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 					&new_request
 				)
 				.await,
-			Err(decodex_database::StoreError::InvalidInput(_))
+			Err(StoreError::InvalidInput(_))
 		));
 	}
 }
@@ -1761,35 +1983,7 @@ async fn verify_native_settings_observations(
 			.expect("replay preserves timestamp")
 	);
 
-	observation.response_id = 1;
-
-	assert!(!store.record_conversation_native_settings(&observation).await.expect("late response"));
-
-	observation.response_id = 3;
-	observation.codex_thread_id = "foreign-thread".into();
-
-	assert!(
-		!store.record_conversation_native_settings(&observation).await.expect("foreign thread")
-	);
-
-	observation.codex_thread_id = binding.codex_thread_id.clone();
-	observation.expected_process_revision += 1;
-
-	assert!(
-		!store.record_conversation_native_settings(&observation).await.expect("changed process")
-	);
-
-	observation.expected_process_revision -= 1;
-	observation.expected_session_revision += 1;
-
-	assert!(
-		!store.record_conversation_native_settings(&observation).await.expect("changed session")
-	);
-
-	observation.expected_session_revision -= 1;
-	observation.settings.model_provider = " ".into();
-
-	assert!(store.record_conversation_native_settings(&observation).await.is_err());
+	verify_invalid_native_settings(store, binding, &mut observation).await;
 
 	observation.settings.model_provider = "replacement-provider".into();
 	observation.response_sha256 = DIGEST_C.into();
@@ -1827,4 +2021,38 @@ async fn verify_native_settings_observations(
 	};
 
 	assert_eq!(row.native_settings.as_deref(), Some(&after));
+}
+
+async fn verify_invalid_native_settings(
+	store: &SqliteStore,
+	binding: &RuntimeSessionThreadBindingReadback,
+	observation: &mut RecordConversationNativeSettings,
+) {
+	observation.response_id = 1;
+
+	assert!(!store.record_conversation_native_settings(observation).await.expect("late response"));
+
+	observation.response_id = 3;
+	observation.codex_thread_id = "foreign-thread".into();
+
+	assert!(!store.record_conversation_native_settings(observation).await.expect("foreign thread"));
+
+	observation.codex_thread_id = binding.codex_thread_id.clone();
+	observation.expected_process_revision += 1;
+
+	assert!(
+		!store.record_conversation_native_settings(observation).await.expect("changed process")
+	);
+
+	observation.expected_process_revision -= 1;
+	observation.expected_session_revision += 1;
+
+	assert!(
+		!store.record_conversation_native_settings(observation).await.expect("changed session")
+	);
+
+	observation.expected_session_revision -= 1;
+	observation.settings.model_provider = " ".into();
+
+	assert!(store.record_conversation_native_settings(observation).await.is_err());
 }
