@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 
 use decodex_database::SqliteStore;
 use decodex_protocol::{
-	AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, AgentAppUiReceiptResult as Result,
+	AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, AgentAppUiReceiptResult,
 	AgentPendingAppUiCall, EntityId, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 };
 
@@ -24,11 +24,14 @@ pub(crate) async fn pending(store: &SqliteStore, work_id: &EntityId) -> AgentPen
 	}
 }
 
-pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest) -> Result {
+pub(crate) async fn read(
+	store: &SqliteStore,
+	request: &AgentAppUiReceiptRequest,
+) -> AgentAppUiReceiptResult {
 	if request.offset as usize >= MAX_AGENT_APP_UI_RECEIPT_BYTES
 		|| (request.offset > 0 && request.fingerprint.is_none())
 	{
-		return Result::Unavailable;
+		return AgentAppUiReceiptResult::Unavailable;
 	}
 	if store
 		.recover_agent_app_ui_call(
@@ -38,7 +41,7 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 		.await
 		.is_err()
 	{
-		return Result::Unavailable;
+		return AgentAppUiReceiptResult::Unavailable;
 	}
 
 	let Ok(Some(receipt)) = store
@@ -48,7 +51,7 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 		)
 		.await
 	else {
-		return Result::Unavailable;
+		return AgentAppUiReceiptResult::Unavailable;
 	};
 	let a = receipt.attempt;
 	let document = serde_json::json!({"reservationId":receipt.id,"operationId":a.attempt_id,"workId":a.owner.work,"threadId":a.owner.thread,"accountId":a.owner.account,"sourceFingerprint":a.source_fingerprint,"turnId":a.turn,"itemId":a.item,"server":a.server,"tool":a.tool,"arguments":a.arguments,"state":receipt.state,"uncertaintyAcknowledged":receipt.uncertainty_acknowledged,"result":receipt.result});
@@ -56,9 +59,9 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 	chunk(request, serde_json::to_vec(&document).expect("saved JSON serializes"))
 }
 
-fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> Result {
+fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> AgentAppUiReceiptResult {
 	if document.len() > MAX_AGENT_APP_UI_RECEIPT_BYTES {
-		return Result::CapacityExceeded;
+		return AgentAppUiReceiptResult::CapacityExceeded;
 	}
 
 	let fingerprint = EntityId::new(
@@ -69,13 +72,13 @@ fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> Result {
 	if request.fingerprint.as_ref().is_some_and(|expected| expected != &fingerprint)
 		|| request.offset as usize >= document.len()
 	{
-		return Result::Unavailable;
+		return AgentAppUiReceiptResult::Unavailable;
 	}
 
 	let start = request.offset as usize;
 	let end = (start + AGENT_APP_UI_RECEIPT_CHUNK_BYTES).min(document.len());
 
-	Result::Available {
+	AgentAppUiReceiptResult::Available {
 		request: Box::new(request.clone()),
 		fingerprint,
 		total_bytes: document.len() as u32,
@@ -86,7 +89,8 @@ fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> Result {
 #[cfg(test)]
 mod tests {
 	use crate::agent_app_ui_receipt::{
-		self, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, EntityId, Result,
+		self, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, AgentAppUiReceiptResult,
+		EntityId,
 	};
 	#[test]
 	fn result_chunks_cannot_mix_saved_outcomes() {
@@ -97,7 +101,7 @@ mod tests {
 			fingerprint: None,
 		};
 		let document = vec![b'a'; AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 7];
-		let Result::Available { fingerprint, bytes, .. } =
+		let AgentAppUiReceiptResult::Available { fingerprint, bytes, .. } =
 			agent_app_ui_receipt::chunk(&request, document.clone())
 		else {
 			panic!("first chunk")
@@ -109,13 +113,16 @@ mod tests {
 		request.fingerprint = Some(fingerprint);
 
 		assert!(
-			matches!(agent_app_ui_receipt::chunk(&request,document.clone()),Result::Available{bytes,..} if bytes.len()==7)
+			matches!(agent_app_ui_receipt::chunk(&request,document.clone()),AgentAppUiReceiptResult::Available{bytes,..} if bytes.len()==7)
 		);
 
 		let mut changed = document;
 
 		changed[0] = b'b';
 
-		assert_eq!(agent_app_ui_receipt::chunk(&request, changed), Result::Unavailable);
+		assert_eq!(
+			agent_app_ui_receipt::chunk(&request, changed),
+			AgentAppUiReceiptResult::Unavailable
+		);
 	}
 }

@@ -41,7 +41,8 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 
 	assert!(serde_json::to_vec(&first).unwrap().len() < 256 * 1_024);
 
-	let Result::Available { fingerprint, bytes: first_bytes, total_bytes, .. } = first else {
+	let AgentMediaResult::Available { fingerprint, bytes: first_bytes, total_bytes, .. } = first
+	else {
 		panic!("available")
 	};
 
@@ -52,25 +53,31 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 	request.fingerprint = Some(fingerprint);
 
 	assert!(
-		matches!(chunk(&key(), &request, "image/png".into(), bytes.clone()), Result::Available { bytes, .. } if bytes == vec![255;17])
+		matches!(chunk(&key(), &request, "image/png".into(), bytes.clone()), AgentMediaResult::Available { bytes, .. } if bytes == vec![255;17])
 	);
-	assert_eq!(chunk(&key(), &request, "image/jpeg".into(), bytes.clone()), Result::Unavailable);
+	assert_eq!(
+		chunk(&key(), &request, "image/jpeg".into(), bytes.clone()),
+		AgentMediaResult::Unavailable
+	);
 
 	let mut changed = bytes.clone();
 
 	changed[0] = 0;
 
-	assert_eq!(chunk(&key(), &request, "image/png".into(), changed), Result::Unavailable);
+	assert_eq!(chunk(&key(), &request, "image/png".into(), changed), AgentMediaResult::Unavailable);
 
 	let mut other = key();
 
 	other.revision += 1;
 
-	assert_eq!(chunk(&other, &request, "image/png".into(), bytes.clone()), Result::Unavailable);
+	assert_eq!(
+		chunk(&other, &request, "image/png".into(), bytes.clone()),
+		AgentMediaResult::Unavailable
+	);
 
 	request.offset = total_bytes;
 
-	assert_eq!(chunk(&key(), &request, "image/png".into(), bytes), Result::Unavailable);
+	assert_eq!(chunk(&key(), &request, "image/png".into(), bytes), AgentMediaResult::Unavailable);
 }
 
 #[test]
@@ -86,8 +93,8 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 	.unwrap();
 
 	assert!(matches!(locate(item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
-	assert!(matches!(locate(item, 0), Err(Result::Unsupported)));
-	assert!(matches!(locate(item, 2), Err(Result::Unavailable)));
+	assert!(matches!(locate(item, 0), Err(AgentMediaResult::Unsupported)));
+	assert!(matches!(locate(item, 2), Err(AgentMediaResult::Unavailable)));
 
 	req.thread_id = EntityId::new("another").unwrap();
 
@@ -100,12 +107,12 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 		)
 		.is_none()
 	);
-	assert_eq!(decode("image/svg+xml", "AQID"), Err(Result::Unsupported));
-	assert_eq!(decode("image/png", "INVALID"), Err(Result::Unavailable));
-	assert_eq!(decode("image/png", ""), Err(Result::Unavailable));
+	assert_eq!(decode("image/svg+xml", "AQID"), Err(AgentMediaResult::Unsupported));
+	assert_eq!(decode("image/png", "INVALID"), Err(AgentMediaResult::Unavailable));
+	assert_eq!(decode("image/png", ""), Err(AgentMediaResult::Unavailable));
 	assert_eq!(
 		decode("image/png", &"A".repeat(MAX_AGENT_MEDIA_BYTES.div_ceil(3) * 4 + 4)),
-		Err(Result::CapacityExceeded)
+		Err(AgentMediaResult::CapacityExceeded)
 	);
 	assert_eq!(sniff(b"<html>not an image</html>"), None);
 
@@ -137,10 +144,10 @@ fn standalone_tool_media_uses_native_indices_without_exposing_encrypted_parts() 
 	assert!(matches!(locate(&item, 2), Ok(Media::Uri("data:audio/wav;base64,AQID"))));
 
 	for index in [0, 3] {
-		assert!(matches!(locate(&item, index), Err(Result::Unsupported)));
+		assert!(matches!(locate(&item, index), Err(AgentMediaResult::Unsupported)));
 	}
 
-	assert!(matches!(locate(&item, 4), Err(Result::Unavailable)));
+	assert!(matches!(locate(&item, 4), Err(AgentMediaResult::Unavailable)));
 }
 
 #[test]
@@ -152,7 +159,7 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 
 	let item = serde_json::json!({"id":"image","type":"imageView","path":path});
 
-	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
+	assert!(matches!(locate(&item, 0), Err(AgentMediaResult::Unsupported)));
 
 	let (descriptors, _) = attachments::project(&item);
 
@@ -254,10 +261,10 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 
 			if change == "none" {
 				assert!(
-					matches!(result,Result::Available { mime_type, bytes, .. } if mime_type == "image/png" && !bytes.is_empty())
+					matches!(result,AgentMediaResult::Available { mime_type, bytes, .. } if mime_type == "image/png" && !bytes.is_empty())
 				);
 			} else {
-				assert_eq!(result, Result::Unavailable, "{change}");
+				assert_eq!(result, AgentMediaResult::Unavailable, "{change}");
 			}
 		}
 	}
@@ -311,7 +318,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 	)
 	.await;
 
-	assert_eq!(result, Result::CapacityExceeded);
+	assert_eq!(result, AgentMediaResult::CapacityExceeded);
 
 	let peer = client.thread_read(serde_json::json!({"threadId":"peer"})).await.unwrap();
 
@@ -322,11 +329,14 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 
 #[tokio::test]
 async fn local_reads_reject_relative_paths_and_non_files() {
-	assert_eq!(local_media("relative.png").await, Err(Result::Unavailable));
+	assert_eq!(local_media("relative.png").await, Err(AgentMediaResult::Unavailable));
 
 	let directory = tempfile::tempdir().unwrap();
 
-	assert_eq!(local_media(directory.path().to_str().unwrap()).await, Err(Result::Unsupported));
+	assert_eq!(
+		local_media(directory.path().to_str().unwrap()).await,
+		Err(AgentMediaResult::Unsupported)
+	);
 
 	#[cfg(unix)]
 	{
@@ -345,7 +355,7 @@ async fn local_reads_reject_relative_paths_and_non_files() {
 			)
 			.await
 			.unwrap(),
-			Err(Result::Unsupported)
+			Err(AgentMediaResult::Unsupported)
 		);
 	}
 }
@@ -374,7 +384,7 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 
 	item["result"] = serde_json::json!("");
 
-	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
+	assert!(matches!(locate(&item, 0), Err(AgentMediaResult::Unsupported)));
 }
 
 #[tokio::test]
@@ -385,7 +395,10 @@ async fn relative_media_requires_an_absolute_admitted_process_directory() {
 	fs::write(directory.path().join("photo.png"), expected).unwrap();
 
 	for base in [None, Some("relative-base")] {
-		assert_eq!(resolve(Media::Local("photo.png"), base).await, Err(Result::Unavailable));
+		assert_eq!(
+			resolve(Media::Local("photo.png"), base).await,
+			Err(AgentMediaResult::Unavailable)
+		);
 	}
 
 	assert_eq!(
