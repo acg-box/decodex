@@ -571,7 +571,6 @@ impl AccountService {
 	}
 
 	/// Refresh, project, and select one account under one daemon-owned command receipt.
-	#[allow(clippy::too_many_lines)] // The ordered fail-fast, refresh, CAS, readback, and SQLite commit gates form one finite switch transaction.
 	pub(crate) async fn route_account_command_sync<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -584,7 +583,6 @@ impl AccountService {
 			+ 'static,
 	{
 		let _routing_guard = self.routing_lock.lock().await;
-		let mut build_response = Some(build_response);
 		let routing = match self.store.read_account_routing_control().await {
 			Ok(routing) => routing,
 			Err(error) => {
@@ -592,7 +590,7 @@ impl AccountService {
 					.complete_route_command_failure(
 						lease,
 						AccountRouteFailure::Lifecycle(error.into()),
-						build_response.take().expect("Route builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -607,7 +605,7 @@ impl AccountService {
 					.complete_route_command_failure(
 						lease,
 						AccountRouteFailure::Lifecycle(error),
-						build_response.take().expect("Route builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -616,84 +614,122 @@ impl AccountService {
 
 		if !target_account.enabled {
 			return self
-				.finish_route_error(
-					lease,
-					AccountLifecycleError::AccountDisabled,
-					build_response.take().expect("Route builder is retained"),
-				)
+				.finish_route_error(lease, AccountLifecycleError::AccountDisabled, build_response)
 				.await;
 		}
 
+		let command = AccountRouteCommand {
+			lease,
+			account_id,
+			expected_routing_revision,
+			expected_account_revision,
+			build_response,
+		};
+
+		self.confirm_account_route(command, routing, target_account).await
+	}
+
+	async fn confirm_account_route<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		routing: AccountRoutingControl,
+		target_account: AccountRecord,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let initial_auth = self.shared_auth.read_current_exact();
 		let projected_current = if let Ok(snapshot) = initial_auth.as_ref() {
-			self.confirm_shared_auth_target_locked(account_id, expected_account_revision, snapshot)
-				.await
-				.ok()
-				.flatten()
+			self.confirm_shared_auth_target_locked(
+				command.account_id,
+				command.expected_account_revision,
+				snapshot,
+			)
+			.await
+			.ok()
+			.flatten()
 		} else {
 			None
 		};
 
-		if matches!(&routing.mode, AccountSelectionMode::Fixed(current) if current == account_id)
+		if matches!(&routing.mode, AccountSelectionMode::Fixed(current) if current == command.account_id)
 			&& let Some((revision, projection_digest)) = projected_current.as_ref()
 		{
-			let response = build_response.take().expect("Route builder is retained")(Ok(
-				AccountRouteResult::Committed(Box::new(AccountRouteCommit {
+			let response = (command.build_response)(Ok(AccountRouteResult::Committed(Box::new(
+				AccountRouteCommit {
 					account: target_account,
 					routing,
 					projection_digest: projection_digest.clone(),
-				})),
-			))?;
+				},
+			))))?;
 
-			self.store.complete_account_command(lease, &response).await?;
+			self.store.complete_account_command(command.lease, &response).await?;
 
-			debug_assert_eq!(*revision, expected_account_revision);
+			debug_assert_eq!(*revision, command.expected_account_revision);
 
 			return Ok(response);
 		}
 		if projected_current.is_none() && self.shared_auth.liveness() != CodexLiveness::Quiescent {
 			return self
 				.finish_route_error(
-					lease,
+					command.lease,
 					AccountLifecycleError::CodexIsRunning,
-					build_response.take().expect("Route builder is retained"),
+					command.build_response,
 				)
 				.await;
 		}
 
-		let target_binding = match projection_binding(&target_account, expected_account_revision) {
-			Ok(binding) => binding.clone(),
-			Err(error) => {
-				return self
-					.complete_route_command_failure(
-						lease,
-						AccountRouteFailure::Lifecycle(error),
-						build_response.take().expect("Route builder is retained"),
-					)
-					.await;
-			},
-		};
+		let target_binding =
+			match projection_binding(&target_account, command.expected_account_revision) {
+				Ok(binding) => binding.clone(),
+				Err(error) => {
+					return self
+						.complete_route_command_failure(
+							command.lease,
+							AccountRouteFailure::Lifecycle(error),
+							command.build_response,
+						)
+						.await;
+				},
+			};
+
+		self.resolve_account_route_source(command, &target_binding, initial_auth).await
+	}
+
+	async fn resolve_account_route_source<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		target_binding: &CredentialBinding,
+		initial_auth: Result<Box<SharedCodexAuthSnapshot>, CodexAuthProjectionError>,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let stable = match initial_auth {
 			Ok(snapshot) => *snapshot,
 			Err(error) => {
 				return self
 					.finish_route_auth_error(
-						lease,
+						command.lease,
 						"initial_read",
 						projection_error(error),
 						format!("{error:?}"),
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			},
 		};
 		let shared_auth =
-			match self.shared_auth_route_source(account_id, &target_binding, stable).await {
+			match self.shared_auth_route_source(command.account_id, target_binding, stable).await {
 				Ok(source) => source,
 				Err(error) => {
 					return self
 						.finish_route_auth_error(
-							lease,
+							command.lease,
 							"source_account_match",
 							if matches!(error, AccountLifecycleError::ProviderMismatch) {
 								AccountLifecycleError::AuthSourceAccountUnknown
@@ -701,21 +737,23 @@ impl AccountService {
 								AccountLifecycleError::AuthCredentialConflict
 							},
 							error.to_string(),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
 			};
-		let source_is_target =
-			shared_auth.source.as_ref().is_some_and(|source| &source.account_id == account_id);
+		let source_is_target = shared_auth
+			.source
+			.as_ref()
+			.is_some_and(|source| &source.account_id == command.account_id);
 		let liveness = self.shared_auth.liveness_observation();
 
 		if !source_is_target && liveness.state() != CodexLiveness::Quiescent {
 			return self
 				.finish_route_error(
-					lease,
+					command.lease,
 					AccountLifecycleError::CodexIsRunning,
-					build_response.take().expect("Route builder is retained"),
+					command.build_response,
 				)
 				.await;
 		}
@@ -730,27 +768,43 @@ impl AccountService {
 			if let Err(error) = result {
 				return self
 					.finish_route_auth_error(
-						lease,
+						command.lease,
 						"source_credential_reconcile",
 						AccountLifecycleError::AuthCredentialConflict,
 						error.to_string(),
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			}
 		}
 
+		self.refresh_account_route_target(command, target_binding, &shared_auth, source_is_target)
+			.await
+	}
+
+	async fn refresh_account_route_target<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		target_binding: &CredentialBinding,
+		shared_auth: &RouteSharedAuthSnapshot,
+		source_is_target: bool,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let target_needs_refresh = if source_is_target {
 			false
 		} else {
-			let stored = match self.credentials.read_exact(account_id, &target_binding) {
+			let stored = match self.credentials.read_exact(command.account_id, target_binding) {
 				Ok(stored) => stored,
 				Err(error) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error.into()),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -760,9 +814,9 @@ impl AccountService {
 				Err(error) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -777,9 +831,9 @@ impl AccountService {
 				Err(error) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -787,14 +841,14 @@ impl AccountService {
 		};
 
 		if target_needs_refresh {
-			let target_operation_id = match refresh_journal_operation_id(account_id) {
+			let target_operation_id = match refresh_journal_operation_id(command.account_id) {
 				Ok(operation_id) => operation_id,
 				Err(error) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -803,8 +857,8 @@ impl AccountService {
 			if let Err(error) = self
 				.refresh_while_locked(
 					target_operation_id,
-					account_id,
-					Some(expected_account_revision),
+					command.account_id,
+					Some(command.expected_account_revision),
 					None,
 					None,
 					RefreshPlan::ROUTE_TARGET,
@@ -813,22 +867,36 @@ impl AccountService {
 			{
 				return self
 					.complete_route_command_failure(
-						lease,
+						command.lease,
 						AccountRouteFailure::Lifecycle(error),
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			}
 		}
 
-		let routed_account = match self.load_account(account_id).await {
+		self.verify_account_route_source(command, shared_auth, source_is_target).await
+	}
+
+	async fn verify_account_route_source<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		shared_auth: &RouteSharedAuthSnapshot,
+		source_is_target: bool,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let routed_account = match self.load_account(command.account_id).await {
 			Ok(account) => account,
 			Err(error) => {
 				return self
 					.complete_route_command_failure(
-						lease,
+						command.lease,
 						AccountRouteFailure::Lifecycle(error),
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			},
@@ -838,9 +906,9 @@ impl AccountService {
 		if !source_is_target && liveness.state() != CodexLiveness::Quiescent {
 			return self
 				.finish_route_error(
-					lease,
+					command.lease,
 					AccountLifecycleError::CodexIsRunning,
-					build_response.take().expect("Route builder is retained"),
+					command.build_response,
 				)
 				.await;
 		}
@@ -850,30 +918,54 @@ impl AccountService {
 			Ok(_) => {
 				return self
 					.finish_route_error(
-						lease,
+						command.lease,
 						AccountLifecycleError::AuthFileChanged,
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			},
 			Err(error) => {
 				return self
 					.finish_route_auth_error(
-						lease,
+						command.lease,
 						"final_read",
 						projection_error(error),
 						format!("{error:?}"),
-						build_response.take().expect("Route builder is retained"),
+						command.build_response,
 					)
 					.await;
 			},
 		};
+
+		self.project_account_route(
+			command,
+			shared_auth,
+			source_is_target,
+			&routed_account,
+			&final_source,
+		)
+		.await
+	}
+
+	async fn project_account_route<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		shared_auth: &RouteSharedAuthSnapshot,
+		source_is_target: bool,
+		routed_account: &AccountRecord,
+		final_source: &SharedCodexAuthSnapshot,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let (projected_revision, projection_digest) = if source_is_target {
 			match self
 				.confirm_shared_auth_target_locked(
-					account_id,
+					command.account_id,
 					routed_account.revision,
-					&final_source,
+					final_source,
 				)
 				.await
 			{
@@ -881,29 +973,29 @@ impl AccountService {
 				Ok(None) => {
 					return self
 						.finish_route_error(
-							lease,
+							command.lease,
 							AccountLifecycleError::AuthFileChanged,
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
 				Err(AccountLifecycleError::CoordinatorUnavailable) => {
 					return self
 						.finish_route_auth_error(
-							lease,
+							command.lease,
 							"target_confirmation",
 							AccountLifecycleError::AuthCredentialConflict,
 							"coordinator_unavailable".to_owned(),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
 				Err(error) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -911,7 +1003,7 @@ impl AccountService {
 		} else {
 			match self
 				.project_shared_auth_locked(
-					account_id,
+					command.account_id,
 					routed_account.revision,
 					&shared_auth.version,
 				)
@@ -921,9 +1013,9 @@ impl AccountService {
 				Err(SharedAuthProjectionError::OutcomeUnknown) => {
 					return self
 						.finish_route_error(
-							lease,
+							command.lease,
 							AccountLifecycleError::AuthReadbackMismatch,
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
@@ -932,43 +1024,58 @@ impl AccountService {
 				)) => {
 					return self
 						.finish_route_auth_error(
-							lease,
+							command.lease,
 							"projection_readback",
 							AccountLifecycleError::AuthCredentialConflict,
 							"coordinator_unavailable".to_owned(),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
 				Err(SharedAuthProjectionError::Rejected(error)) => {
 					return self
 						.complete_route_command_failure(
-							lease,
+							command.lease,
 							AccountRouteFailure::Lifecycle(error),
-							build_response.take().expect("Route builder is retained"),
+							command.build_response,
 						)
 						.await;
 				},
 			}
 		};
 
+		self.commit_account_route(command, routed_account, projected_revision, projection_digest)
+			.await
+	}
+
+	async fn commit_account_route<F>(
+		&self,
+		command: AccountRouteCommand<'_, F>,
+		routed_account: &AccountRecord,
+		projected_revision: i64,
+		projection_digest: String,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<AccountRouteResult, AccountRouteFailure>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		if projected_revision != routed_account.revision {
 			return self
 				.complete_route_command_failure(
-					lease,
+					command.lease,
 					AccountRouteFailure::Lifecycle(AccountLifecycleError::StaleAccount),
-					build_response.take().expect("Route builder is retained"),
+					command.build_response,
 				)
 				.await;
 		}
 
-		let build_response = build_response.take().expect("Route builder is retained");
 		let response = self
 			.store
 			.route_account_command(
-				lease,
-				expected_routing_revision,
-				account_id,
+				command.lease,
+				command.expected_routing_revision,
+				command.account_id,
 				projected_revision,
 				move |outcome, account| {
 					let result = match outcome {
@@ -987,7 +1094,7 @@ impl AccountService {
 						outcome => Err(AccountRouteFailure::Routing(outcome.clone())),
 					};
 
-					build_response(result)
+					(command.build_response)(result)
 				},
 			)
 			.await?;
@@ -4957,6 +5064,14 @@ impl RefreshPlan {
 			supplied_refresh: Some(supplied_refresh),
 		}
 	}
+}
+
+struct AccountRouteCommand<'a, F> {
+	lease: AccountCommandReceiptLease,
+	account_id: &'a AccountId,
+	expected_routing_revision: i64,
+	expected_account_revision: i64,
+	build_response: F,
 }
 
 struct RouteSharedAuthSource {
