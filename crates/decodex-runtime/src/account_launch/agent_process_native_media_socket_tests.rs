@@ -48,7 +48,7 @@ pub(super) async fn check(
 
 	accepted(
 		client,
-		Action::Start(AgentStartDto {
+		AgentActionDto::Start(AgentStartDto {
 			root_id: work.clone(),
 			prompt: HistoryText::new("Prepare the media fixture.").expect("native media fixture"),
 			model: ConversationModel::new("cold-native-model").expect("native media fixture"),
@@ -173,7 +173,7 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), empty);
 
-	let add = Action::AddResourceLink {
+	let add = AgentActionDto::AddResourceLink {
 		work_id: work.clone(),
 		title: WireText::new("Local fixture link").expect("native media fixture"),
 		url: WireText::new("https://example.invalid/media-fixture").expect("native media fixture"),
@@ -199,7 +199,7 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 
 	accepted(
 		client,
-		Action::RemoveResource {
+		AgentActionDto::RemoveResource {
 			work_id: work.clone(),
 			attachment_type: WireText::new(&resource.attachment_type)
 				.expect("native media fixture"),

@@ -54,9 +54,9 @@ fn seed(root: &DecodexRoot, request: &ConversationTurnOutcomeRequest) {
 #[tokio::test]
 async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence() {
 	for (terminal, expected) in [
-		(ProviderTerminalOutcome::Succeeded, StateDto::Completed),
-		(ProviderTerminalOutcome::FailedDefinitive, StateDto::Failed),
-		(ProviderTerminalOutcome::NotSubmitted, StateDto::NotSubmitted),
+		(ProviderTerminalOutcome::Succeeded, ConversationTurnOutcomeState::Completed),
+		(ProviderTerminalOutcome::FailedDefinitive, ConversationTurnOutcomeState::Failed),
+		(ProviderTerminalOutcome::NotSubmitted, ConversationTurnOutcomeState::NotSubmitted),
 	] {
 		let temp = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(temp.path().canonicalize().unwrap()).unwrap();
@@ -66,7 +66,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		let observed = |outcome| ResultDto::Observed {
+		let observed = |outcome| ConversationTurnOutcomeResult::Observed {
 			conversation_id: request.conversation_id.clone(),
 			turn_id: request.turn_id.clone(),
 			outcome,
@@ -74,7 +74,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 
 		assert_eq!(
 			query_turn_outcome(&owner, &request).await,
-			observed(StateDto::Unknown),
+			observed(ConversationTurnOutcomeState::Unknown),
 			"local failed turn is not provider failure"
 		);
 
@@ -82,7 +82,10 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 
 		foreign.conversation_id = EntityId::new("44000000-0000-4000-8000-000000000099").unwrap();
 
-		assert_eq!(query_turn_outcome(&owner, &foreign).await, ResultDto::Conflict);
+		assert_eq!(
+			query_turn_outcome(&owner, &foreign).await,
+			ConversationTurnOutcomeResult::Conflict
+		);
 
 		let attempt = ordinary_provider_attempt_id(
 			request.idempotency_key.as_str(),
@@ -126,7 +129,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 
 		assert_eq!(
 			query_turn_outcome(&owner, &request).await,
-			ResultDto::Unavailable,
+			ConversationTurnOutcomeResult::Unavailable,
 			"a dangling evidence ID is not positive evidence"
 		);
 	}

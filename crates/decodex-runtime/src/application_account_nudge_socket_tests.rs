@@ -128,7 +128,7 @@ pub(super) async fn qualify(
 
 	assert!(
 		matches!(response.expect("verified command response"), AccountCommandResponse::Applied { result, .. }
-		if matches!(&*result, ResultPayload::AccountRecoveryNudge { status:Status::Sent, operation_key, .. } if operation_key == &key))
+		if matches!(&*result, ResultPayload::AccountRecoveryNudge { status:AccountRecoveryNudgeStatus::Sent, operation_key, .. } if operation_key == &key))
 	);
 
 	let SessionDelivery::Event { event, confirmation } =
@@ -141,7 +141,7 @@ pub(super) async fn qualify(
 	};
 
 	assert!(
-		matches!(event.payload, EventPayload::AccountRecoveryNudge { status:Status::Sent, operation_key, .. } if operation_key == key)
+		matches!(event.payload, EventPayload::AccountRecoveryNudge { status:AccountRecoveryNudgeStatus::Sent, operation_key, .. } if operation_key == key)
 	);
 
 	peer.confirm_applied(confirmation).expect("peer applied event");
@@ -156,11 +156,11 @@ pub(super) async fn qualify(
 		.expect("status readback");
 
 	assert!(
-		matches!(outcome, AccountRecoveryNudgeResult::Found(operation) if operation.outcome == Status::Sent && operation.operation_key == key)
+		matches!(outcome, AccountRecoveryNudgeResult::Found(operation) if operation.outcome == AccountRecoveryNudgeStatus::Sent && operation.operation_key == key)
 	);
 	assert!(
 		matches!(client.send_recovery_nudge(current, AccountRecoveryAction::NotifyOwner, key).await.expect("same-key retry"),
-		AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge {status:Status::Sent,..}))
+		AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge {status:AccountRecoveryNudgeStatus::Sent,..}))
 	);
 	assert!(
 		time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),

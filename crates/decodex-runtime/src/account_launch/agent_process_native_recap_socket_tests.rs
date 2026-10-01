@@ -24,12 +24,12 @@ use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountQuotaWindow, LocalTrustPolicy};
 use decodex_database::AgentVoiceCall;
 use decodex_protocol::{
-	AgentActionDto as Action, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 	AgentExecutionOverrides, AgentSandboxDto, AgentSnapshotResult, AgentStartDto,
 	AgentTimelineContent, AgentTimelineResult, ClientProfile, ConversationModel,
 	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
 	IdempotencyKey, LocalTransportAuthority, PromptDraft, PromptEditStatus, PromptInputSend,
-	PromptInputSendIdentity, PromptInputUpload, ServerId, TaskRecapPhase as Phase, WireText,
+	PromptInputSendIdentity, PromptInputUpload, ServerId, TaskRecapPhase, WireText,
 };
 use reply_proxy::Proxy;
 
@@ -252,6 +252,36 @@ async fn qualify(home: &Path) {
 	outcome.expect("fixture assertions").expect("bounded command checks");
 }
 
+async fn qualify_recap_cancellation(client: &AgentClient, work: &EntityId) {
+	accepted(
+		client,
+		AgentActionDto::CancelRecap {
+			work_id: work.clone(),
+			request_id: WireText::new("recap-one").expect("old key"),
+		},
+		"recap-stale-cancel",
+	)
+	.await;
+
+	assert_ne!(
+		client.recap(work.clone()).await.expect("current request").phase,
+		TaskRecapPhase::Cancelled
+	);
+
+	accepted(
+		client,
+		AgentActionDto::CancelRecap {
+			work_id: work.clone(),
+			request_id: WireText::new("recap-two").expect("current key"),
+		},
+		"recap-cancel",
+	)
+	.await;
+	wait_phase(client, work, TaskRecapPhase::Cancelled).await;
+
+	assert!(client.recap(work.clone()).await.expect("cancelled query").recap.is_none());
+}
+
 async fn check(
 	client: &AgentClient,
 	runtime: &ConversationRuntime,
@@ -266,12 +296,12 @@ async fn check(
 
 	let work = EntityId::new("recap-root").expect("work");
 
-	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, Phase::Idle);
+	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, TaskRecapPhase::Idle);
 	assert_eq!(requests.load(Ordering::Acquire), 0, "queries must not infer");
 
 	accepted(
 		client,
-		Action::Start(AgentStartDto {
+		AgentActionDto::Start(AgentStartDto {
 			root_id: work.clone(),
 			prompt: HistoryText::new("Test the fix. Do not install it.").expect("prompt"),
 			model: ConversationModel::new("cold-native-model").expect("model"),
@@ -305,13 +335,13 @@ async fn check(
 	assert_eq!(requests.load(Ordering::Acquire), 9, "active voice must not infer a recap");
 
 	let automatic = qualify_desktop_recap(client, store, home, &work).await;
-	let generate = Action::GenerateRecap {
+	let generate = AgentActionDto::GenerateRecap {
 		work_id: work.clone(),
 		thread_id: WireText::new(&thread).expect("native thread"),
 	};
 
 	accepted(client, generate.clone(), "recap-one").await;
-	wait_phase(client, &work, Phase::Ready).await;
+	wait_phase(client, &work, TaskRecapPhase::Ready).await;
 	accepted(client, generate.clone(), "recap-one").await;
 
 	let state = client.recap(work.clone()).await.expect("ready result");
@@ -340,7 +370,7 @@ async fn check(
 
 	assert_eq!(
 		client.recap(work.clone()).await.expect("voice version read").phase,
-		Phase::Cancelled
+		TaskRecapPhase::Cancelled
 	);
 	assert_eq!(
 		requests.load(Ordering::Acquire),
@@ -349,10 +379,10 @@ async fn check(
 	);
 
 	accepted(client, generate.clone(), "recap-voice-refresh").await;
-	wait_phase(client, &work, Phase::Ready).await;
+	wait_phase(client, &work, TaskRecapPhase::Ready).await;
 	accepted(
 		client,
-		Action::Send {
+		AgentActionDto::Send {
 			root_id: work.clone(),
 			text: HistoryText::new("New correction: keep installation pending.")
 				.expect("correction"),
@@ -360,33 +390,10 @@ async fn check(
 		"recap-new-input",
 	)
 	.await;
-	wait_phase(client, &work, Phase::Cancelled).await;
+	wait_phase(client, &work, TaskRecapPhase::Cancelled).await;
 	settled(client).await;
 	accepted(client, generate, "recap-two").await;
-	accepted(
-		client,
-		Action::CancelRecap {
-			work_id: work.clone(),
-			request_id: WireText::new("recap-one").expect("old key"),
-		},
-		"recap-stale-cancel",
-	)
-	.await;
-
-	assert_ne!(client.recap(work.clone()).await.expect("current request").phase, Phase::Cancelled);
-
-	accepted(
-		client,
-		Action::CancelRecap {
-			work_id: work.clone(),
-			request_id: WireText::new("recap-two").expect("current key"),
-		},
-		"recap-cancel",
-	)
-	.await;
-	wait_phase(client, &work, Phase::Cancelled).await;
-
-	assert!(client.recap(work.clone()).await.expect("cancelled query").recap.is_none());
+	qualify_recap_cancellation(client, &work).await;
 
 	if env::var("DECODEX_TEST_PROMPT_REVERT").as_deref() == Ok("1") {
 		qualify_native_prompt_revert(
@@ -532,7 +539,7 @@ async fn qualify_completed_progress(
 	for index in 1..=8 {
 		accepted(
 			client,
-			Action::Send {
+			AgentActionDto::Send {
 				root_id: work.clone(),
 				text: HistoryText::new(format!("Validate step {index}; do not install."))
 					.expect("input"),
@@ -599,7 +606,7 @@ async fn qualify_completed_progress(
 	assert_eq!(requests.load(Ordering::Acquire), 9, "progress reads must not infer");
 }
 
-async fn accepted(client: &AgentClient, action: Action, key: &str) {
+async fn accepted(client: &AgentClient, action: AgentActionDto, key: &str) {
 	let response = client
 		.execute(action, IdempotencyKey::new(key).expect("command key"))
 		.await
@@ -630,7 +637,7 @@ async fn settled(client: &AgentClient) -> String {
 	}
 }
 
-async fn wait_phase(client: &AgentClient, work: &EntityId, phase: Phase) {
+async fn wait_phase(client: &AgentClient, work: &EntityId, phase: TaskRecapPhase) {
 	loop {
 		let state = client.recap(work.clone()).await.expect("public recap status");
 
@@ -638,7 +645,7 @@ async fn wait_phase(client: &AgentClient, work: &EntityId, phase: Phase) {
 			return;
 		}
 
-		assert_ne!(state.phase, Phase::Failed, "native recap failed: {state:?}");
+		assert_ne!(state.phase, TaskRecapPhase::Failed, "native recap failed: {state:?}");
 
 		time::sleep(Duration::from_millis(20)).await;
 	}
@@ -707,7 +714,7 @@ async fn prepare_voice_call(
 
 	let response = client
 		.execute(
-			Action::GenerateRecap {
+			AgentActionDto::GenerateRecap {
 				work_id: work.clone(),
 				thread_id: WireText::new(thread).expect("thread"),
 			},
@@ -748,7 +755,7 @@ async fn qualify_native_prompt_revert(
 
 	accepted(
 		client,
-		Action::PreparePromptEdit {
+		AgentActionDto::PreparePromptEdit {
 			work_id: work_id.clone(),
 			thread_id: thread_id.clone(),
 			turn_id: WireText::new(selected).expect("turn"),
@@ -773,7 +780,7 @@ async fn qualify_native_prompt_revert(
 	for key in ["installed-edit-confirm", "installed-edit-confirm-readback"] {
 		accepted(
 			client,
-			Action::ConfirmPromptEdit {
+			AgentActionDto::ConfirmPromptEdit {
 				work_id: work_id.clone(),
 				thread_id: thread_id.clone(),
 				review_token: token.clone(),
@@ -815,7 +822,10 @@ async fn qualify_native_prompt_revert(
 
 	accepted(
 		client,
-		Action::RecoverPromptEdit { work_id: work_id.clone(), thread_id: thread_id.clone() },
+		AgentActionDto::RecoverPromptEdit {
+			work_id: work_id.clone(),
+			thread_id: thread_id.clone(),
+		},
 		"installed-edit-recover",
 	)
 	.await;
@@ -888,7 +898,7 @@ async fn qualify_prompt_acknowledgement(
 	] {
 		let result = client
 			.execute(
-				Action::AcknowledgePromptEditDraft {
+				AgentActionDto::AcknowledgePromptEditDraft {
 					work_id: status.work_id.clone(),
 					thread_id: status.thread_id.clone(),
 					receipt_id: id,
@@ -969,7 +979,7 @@ async fn qualify_canonical_prompt_send(
 
 	accepted(
 		client,
-		Action::SendPromptInput {
+		AgentActionDto::SendPromptInput {
 			work_id,
 			thread_id: thread_id.clone(),
 			input_id,
@@ -1083,7 +1093,7 @@ async fn qualify_account_rotation(
 
 	accepted(
 		client,
-		Action::Send {
+		AgentActionDto::Send {
 			root_id: EntityId::new("recap-root").expect("native recap fixture"),
 			text: HistoryText::new("Continue once after account rotation.")
 				.expect("native recap fixture"),

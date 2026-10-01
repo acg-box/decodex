@@ -109,28 +109,34 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 
 		server.await.unwrap();
 
-		match case {
-			"root" | "child" | "redacted" | "long" | "unicode" => {
-				let Result::Available { work_id, thread_id, goal: Some(goal), .. } = result else {
-					panic!("{case}")
-				};
-
-				assert_eq!(work_id.as_str(), "work");
-				assert_eq!(thread_id.as_str(), target);
-				assert_eq!(goal.tokens_used, 12);
-				assert_eq!(goal.time_used_seconds, 7);
-				assert_eq!(goal.token_budget, Some(11));
-				assert_eq!(goal.objective_truncated, matches!(case, "redacted" | "long"));
-				assert!(goal.objective.len() <= 16_000);
-				assert!(!goal.objective.contains("private-access"));
-			},
-			"missing" => assert!(matches!(result, Result::Available { goal: None, .. })),
-			"disabled" => assert_eq!(result, Result::Disabled),
-			"unsupported" => assert_eq!(result, Result::Unsupported),
-			_ => assert_eq!(result, Result::Unavailable, "{case}"),
-		}
+		check_observation(result, case, target);
 
 		assert!(store.list_agent_wake_events("work".into(), 10).await.unwrap().is_empty());
+	}
+}
+
+fn check_observation(result: AgentNativeGoalResult, case: &str, target: &str) {
+	match case {
+		"root" | "child" | "redacted" | "long" | "unicode" => {
+			let AgentNativeGoalResult::Available { work_id, thread_id, goal: Some(goal), .. } =
+				result
+			else {
+				panic!("{case}")
+			};
+
+			assert_eq!(work_id.as_str(), "work");
+			assert_eq!(thread_id.as_str(), target);
+			assert_eq!(goal.tokens_used, 12);
+			assert_eq!(goal.time_used_seconds, 7);
+			assert_eq!(goal.token_budget, Some(11));
+			assert_eq!(goal.objective_truncated, matches!(case, "redacted" | "long"));
+			assert!(goal.objective.len() <= 16_000);
+			assert!(!goal.objective.contains("private-access"));
+		},
+		"missing" => assert!(matches!(result, AgentNativeGoalResult::Available { goal: None, .. })),
+		"disabled" => assert_eq!(result, AgentNativeGoalResult::Disabled),
+		"unsupported" => assert_eq!(result, AgentNativeGoalResult::Unsupported),
+		_ => assert_eq!(result, AgentNativeGoalResult::Unavailable, "{case}"),
 	}
 }
 

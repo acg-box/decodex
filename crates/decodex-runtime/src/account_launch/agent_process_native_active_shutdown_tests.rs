@@ -8,7 +8,7 @@ use crate::account_launch::agent_process::native_tests::cold_settings::recap_soc
 pub(super) async fn prepare(client: &AgentClient, home: &Path, account: &AccountId) {
 	accepted(
 		client,
-		Action::Start(AgentStartDto {
+		AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new("recap-root").expect("fixture root"),
 			prompt: HistoryText::new("Keep the isolated response pending for service shutdown.")
 				.expect("fixture input"),

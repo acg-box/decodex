@@ -23,7 +23,7 @@ use decodex_codex::{
 	},
 	guardian,
 };
-use decodex_protocol::{AgentReviewer as Reviewer, AgentReviewer};
+use decodex_protocol::AgentReviewer;
 use store::OwnedReviewer;
 
 pub(super) async fn select_permission(client: &AppServerClient, home: &Path, thread: &str) {
@@ -99,8 +99,8 @@ fn assert_guardian_tool_isolation(bodies: &[Value]) {
 	assert_eq!(rejected["output"], "unsupported call: decodex_fixture_mutation");
 }
 
-fn direction_output(serial: usize, updated: Reviewer) -> Value {
-	let serial = if updated == Reviewer::AutoReview {
+fn direction_output(serial: usize, updated: AgentReviewer) -> Value {
+	let serial = if updated == AgentReviewer::AutoReview {
 		match serial {
 			2 => 4,
 			3 => 2,
@@ -330,11 +330,11 @@ async fn installed_native_guardian_preserves_large_action() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native reviewer routing"]
 async fn installed_native_live_reviewer_preserves_both_default_directions() {
-	qualify_direction(Reviewer::User).await;
-	qualify_direction(Reviewer::AutoReview).await;
+	qualify_direction(AgentReviewer::User).await;
+	qualify_direction(AgentReviewer::AutoReview).await;
 }
 
-async fn qualify_direction(updated: Reviewer) {
+async fn qualify_direction(updated: AgentReviewer) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
@@ -358,7 +358,7 @@ async fn qualify_direction(updated: Reviewer) {
 	let mut session = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":match updated {Reviewer::User=>Reviewer::AutoReview,Reviewer::AutoReview=>Reviewer::User},"sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native reviewer fixture");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":match updated {AgentReviewer::User=>AgentReviewer::AutoReview,AgentReviewer::AutoReview=>AgentReviewer::User},"sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native reviewer fixture");
 		let thread = started["thread"]["id"].as_str().expect("native reviewer fixture");
 		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.expect("native reviewer fixture");
 		let turn = turn["turn"]["id"].as_str().expect("native reviewer fixture");
@@ -377,18 +377,18 @@ async fn qualify_direction(updated: Reviewer) {
 
 		session.client.respond_guarded(id, serde_json::json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.expect("native reviewer fixture");
 
-		if updated==Reviewer::User { decline_command(&session.client,&mut session.events,turn).await; }
+		if updated==AgentReviewer::User { decline_command(&session.client,&mut session.events,turn).await; }
 
 		finish(&mut session.events).await;
 
 		owned.completed_target(turn).await;
 		owned.observe_model().await;
 
-		assert_eq!(requests.load(Ordering::Acquire), if updated==Reviewer::User {3} else {4});
+		assert_eq!(requests.load(Ordering::Acquire), if updated==AgentReviewer::User {3} else {4});
 
 		let next=session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.expect("native reviewer fixture");
 
-		if updated==Reviewer::AutoReview {decline_command(&session.client,&mut session.events,next["turn"]["id"].as_str().expect("native reviewer fixture")).await;}
+		if updated==AgentReviewer::AutoReview {decline_command(&session.client,&mut session.events,next["turn"]["id"].as_str().expect("native reviewer fixture")).await;}
 
 		finish(&mut session.events).await;
 
