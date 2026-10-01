@@ -10,15 +10,19 @@ use std::{
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use gpui::{AnyElement, Context, SharedString, div, prelude::*, px, rgb, rgba};
+use gpui::{
+	self, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement as _,
+	ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+};
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
 use crate::shell::{
-	ControlTooltip, Destination, Shell, WB_AMBER, WB_TEXT_MUTED, account_needs_login,
-	account_row_action, quota_meter, quota_meter::ResetFill, workspace_symbols,
-	workspace_symbols::Symbol,
+	self, ControlTooltip, Destination, Shell, WB_AMBER, WB_TEXT_MUTED,
+	quota_meter::{self, ResetFill},
+	workspace_symbols::{self, Symbol},
 };
+#[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::ResetCardObservationDto;
 use decodex_protocol::{
 	AccountDto, AccountResetCardOperationResult, ClientProfile, EntityId, EntityRevision,
 	IdempotencyKey, ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
@@ -40,9 +44,7 @@ pub(super) struct ResetCardsPanel {
 }
 #[cfg(any(test, feature = "visual-capture"))]
 impl ResetCardsPanel {
-	pub(super) fn seed_visual(&mut self, accounts: &[decodex_protocol::AccountDto]) {
-		use decodex_protocol::ResetCardObservationDto;
-
+	pub(super) fn seed_visual(&mut self, accounts: &[AccountDto]) {
 		for account in accounts.iter().take(2) {
 			self.rows.insert(
 				account.account_id.clone(),
@@ -108,12 +110,67 @@ impl Confirmation {
 	}
 }
 
+enum PendingKeyUpdate {
+	Preserve,
+	Clear,
+	Set(IdempotencyKey),
+}
+impl PendingKeyUpdate {
+	fn apply(self, pending: &mut Option<IdempotencyKey>) {
+		match self {
+			Self::Preserve => {},
+			Self::Clear => *pending = None,
+			Self::Set(key) => *pending = Some(key),
+		}
+	}
+}
+
 struct Update {
 	completed_reset: Option<(EntityId, IdempotencyKey)>,
 	inventory: Option<ResetCardInventoryResult>,
 	blocked: bool,
-	pending_key: Option<IdempotencyKey>,
+	pending_key: PendingKeyUpdate,
 	message: String,
+}
+impl Update {
+	fn observed(
+		account: EntityId,
+		inventory: Option<ResetCardInventoryResult>,
+		state: Option<ResetCardOperationResult>,
+		key: Option<IdempotencyKey>,
+	) -> Self {
+		let (operation_blocked, message) = operation_presentation(state, key.is_some());
+		let blocked = operation_blocked || inventory.is_none();
+		let message = if inventory.is_none() && !operation_blocked {
+			"Card availability could not be refreshed. Checking again before another request."
+		} else {
+			message
+		};
+		let completed_reset = match (&state, &key) {
+			(
+				Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset }),
+				Some(key),
+			) => Some((account, key.clone())),
+			_ => None,
+		};
+		let pending_key = if operation_blocked {
+			key.map_or(PendingKeyUpdate::Preserve, PendingKeyUpdate::Set)
+		} else {
+			PendingKeyUpdate::Clear
+		};
+
+		Self { inventory, blocked, pending_key, message: message.into(), completed_reset }
+	}
+
+	fn not_accepted(message: &str) -> Self {
+		Self {
+			completed_reset: None,
+			inventory: None,
+			blocked: true,
+			pending_key: PendingKeyUpdate::Clear,
+			message: message.into(),
+		}
+	}
 }
 
 impl Shell {
@@ -136,7 +193,7 @@ impl Shell {
             !row.blocked && self.reset_cards.working.is_none()
                 && matches!(&row.inventory, Some(ResetCardInventoryResult::Available { account_revision, details_complete: true, cards, .. })
                     if *account_revision == revision && cards.iter().any(|card| card.descriptor == descriptor))
-        }) && self.accounts.accounts.iter().any(|row| row.account_id == account && row.account_revision == revision && !account_needs_login(row))
+        }) && self.accounts.accounts.iter().any(|row| row.account_id == account && row.account_revision == revision && !shell::account_needs_login(row))
             && descriptor.expires_at_unix_seconds().is_none_or(|expiry| expiry > OffsetDateTime::now_utc().unix_timestamp());
 
 		if !eligible {
@@ -190,24 +247,14 @@ impl Shell {
 		row.pending_key = Some(key.clone());
 		row.consuming = Some(descriptor);
 		row.blocked = true;
-		self.start_reset_card_work(account.clone(), cx, async move {
+		self.start_reset_card_work(account.clone(), cx, PendingKeyUpdate::Clear, async move {
 			let client = ResetCardClient::new(profile);
 
 			match client.consume(account.clone(), descriptor, revision, key.clone()).await {
-				Ok(ResetCardConsumeResponse::Rejected { .. }) => Update {
-					completed_reset: None,
-					inventory: None,
-					blocked: true,
-					pending_key: None,
-					message: "Card was not used. Checking account availability…".into(),
-				},
-				Err(_) => Update {
-					completed_reset: None,
-					inventory: None,
-					blocked: true,
-					pending_key: Some(key),
-					message: "Checking the request result. No request will be resent.".into(),
-				},
+				Ok(ResetCardConsumeResponse::Rejected { .. }) =>
+					Update::not_accepted("Card was not used. Checking account availability…"),
+				Err(_) =>
+					Update::not_accepted("The request was not sent. Checking account availability…"),
 				Ok(
 					ResetCardConsumeResponse::Accepted { .. }
 					| ResetCardConsumeResponse::PotentiallyDispatched { .. },
@@ -231,6 +278,7 @@ impl Shell {
 		&mut self,
 		account: EntityId,
 		cx: &mut Context<Self>,
+		failure_pending: PendingKeyUpdate,
 		work: impl Future<Output = Update> + Send + 'static,
 	) {
 		let (sender, receiver) = mpsc::channel();
@@ -245,7 +293,7 @@ impl Shell {
 						completed_reset: None,
 						inventory: None,
 						blocked: true,
-						pending_key: None,
+						pending_key: failure_pending,
 						message: "Reset Cards are temporarily unavailable.".into(),
 					},
 				};
@@ -287,10 +335,8 @@ impl Shell {
 				}
 
 				row.blocked = update.blocked;
-				// A failed read must not discard the identity of an uncertain request.
-				if !update.blocked || update.pending_key.is_some() {
-					row.pending_key = update.pending_key;
-				}
+
+				update.pending_key.apply(&mut row.pending_key);
 
 				row.message = update.message;
 				row.checked = Some(Instant::now());
@@ -351,7 +397,7 @@ impl Shell {
 				(pending
 					|| (visible
 						&& self.expanded_accounts.contains(&account.account_id)
-						&& !account_needs_login(account)))
+						&& !shell::account_needs_login(account)))
 					&& row.is_none_or(|row| {
 						row.checked.is_none_or(|at| {
 							at.elapsed() >= Duration::from_secs(if row.blocked { 5 } else { 30 })
@@ -367,9 +413,12 @@ impl Shell {
 
 			let key = row.pending_key.clone();
 
-			self.start_reset_card_work(account.clone(), cx, async move {
-				load(&ResetCardClient::new(profile), account, key).await
-			});
+			self.start_reset_card_work(
+				account.clone(),
+				cx,
+				PendingKeyUpdate::Preserve,
+				async move { load(&ResetCardClient::new(profile), account, key).await },
+			);
 		}
 	}
 }
@@ -403,15 +452,15 @@ pub(super) fn row(
 		return None;
 	}
 
-	let mut strip = div()
+	let mut strip = gpui::div()
 		.id(SharedString::from(format!("reset-cards-{}", account.account_id.as_str())))
 		.w_full()
 		.flex()
 		.flex_wrap()
 		.items_center()
 		.gap_1()
-		.px(px(14.))
-		.pb(px(4.))
+		.px(gpui::px(14.))
+		.pb(gpui::px(4.))
 		.child(workspace_symbols::icon(Symbol::ResetCards));
 
 	for (index, descriptor) in descriptors.into_iter().enumerate() {
@@ -434,7 +483,7 @@ pub(super) fn row(
 			descriptor.expires_at_unix_seconds().map(date).unwrap_or_else(|| "No expiry".into())
 		};
 		let enabled = shell.accounts.can_manage
-			&& !account_needs_login(account)
+			&& !shell::account_needs_login(account)
 			&& !state.blocked
 			&& shell.reset_cards.working.is_none()
 			&& *details_complete
@@ -450,16 +499,16 @@ pub(super) fn row(
 		};
 
 		strip = strip.child(
-			account_row_action("reset-card", index, "Use Reset Card", "", enabled)
+			shell::account_row_action("reset-card", index, "Use Reset Card", "", enabled)
 				.border_1()
-				.border_color(rgba(0xffffff26))
+				.border_color(gpui::rgba(0xffffff26))
 				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
 				.debug_selector({
 					let id = account_id.clone();
 
 					move || format!("reset-card-{}-{index}", id.as_str())
 				})
-				.text_color(rgb(if armed.is_some() { WB_AMBER } else { WB_TEXT_MUTED }))
+				.text_color(gpui::rgb(if armed.is_some() { WB_AMBER } else { WB_TEXT_MUTED }))
 				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				.child(title)
 				.on_click(cx.listener(move |shell, _, _, cx| {
@@ -535,28 +584,136 @@ async fn load(
 			_ => (None, None),
 		}
 	};
-	let (blocked, message) = operation_presentation(state, key.is_some());
-	let completed_reset = match (&state, &key) {
-		(
-			Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset }),
-			Some(key),
-		) => Some((account, key.clone())),
-		_ => None,
-	};
-	let pending_key = if blocked { key } else { None };
 
-	Update { inventory, blocked, pending_key, message: message.into(), completed_reset }
+	Update::observed(account, inventory, state, key)
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::reset_cards::*;
+	use std::{
+		sync::mpsc,
+		time::{Duration, Instant},
+	};
+
+	use gpui::TestAppContext;
+
+	use crate::{
+		client_lifecycle::ConnectionView,
+		shell::{
+			Shell,
+			reset_cards::{self, Confirmation, PendingKeyUpdate, Update},
+		},
+	};
+	use decodex_protocol::{
+		EntityId, EntityRevision, IdempotencyKey, ResetCardDescriptorDto, ResetCardOperationResult,
+		ResetCardOutcome,
+	};
+	#[gpui::test]
+	fn rejected_request_is_cleared_without_unblocking_redemption(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|w, cx| Shell::new(w, cx, ConnectionView::Stopped));
+
+		shell.update(visual, |s, cx| {
+			s.visual_accounts_and_health();
+
+			let account = s.accounts.accounts[0].account_id.clone();
+			let key = IdempotencyKey::new("rejected-request").unwrap();
+
+			s.reset_cards.rows.get_mut(&account).unwrap().pending_key = Some(key);
+
+			let (sender, receiver) = mpsc::channel();
+
+			sender
+				.send((account.clone(), Update::not_accepted("Rejected before acceptance")))
+				.unwrap();
+
+			s.reset_cards.updates = Some(receiver);
+
+			s.poll_reset_cards(cx);
+
+			let row = &s.reset_cards.rows[&account];
+
+			assert!(
+				row.pending_key.is_none(),
+				"a rejected request cannot have a durable receipt to poll"
+			);
+			assert!(row.blocked, "fresh account availability is still required");
+			assert!(s.reset_cards.fills.is_empty());
+			assert!(s.reset_cards.updates.is_none(), "polling must not resend the command");
+
+			let inventory = s.reset_cards.rows[&account].inventory.clone();
+			let (sender, receiver) = mpsc::channel();
+
+			sender
+				.send((
+					account.clone(),
+					Update::observed(
+						account.clone(),
+						inventory,
+						Some(ResetCardOperationResult::NotFound),
+						None,
+					),
+				))
+				.unwrap();
+
+			s.reset_cards.updates = Some(receiver);
+
+			s.poll_reset_cards(cx);
+
+			assert!(
+				!s.reset_cards.rows[&account].blocked,
+				"a fresh inventory and no operation restore explicit confirmation"
+			);
+			assert!(s.reset_cards.rows[&account].pending_key.is_none());
+			assert!(s.reset_cards.fills.is_empty());
+			assert!(s.reset_cards.updates.is_none());
+		});
+	}
+
+	#[test]
+	fn failed_or_uncertain_status_reads_keep_the_exact_request() {
+		let account = EntityId::new("21000000-0000-4000-8000-000000000099").unwrap();
+		let key = IdempotencyKey::new("uncertain-request").unwrap();
+
+		for state in [
+			None,
+			Some(ResetCardOperationResult::NotFound),
+			Some(ResetCardOperationResult::EffectAmbiguous),
+		] {
+			let update = Update::observed(account.clone(), None, state, Some(key.clone()));
+
+			assert!(update.blocked);
+			assert!(
+				matches!(update.pending_key, PendingKeyUpdate::Set(ref current) if current == &key)
+			);
+		}
+	}
+
+	#[test]
+	fn missing_inventory_keeps_redemption_blocked() {
+		let account = EntityId::new("21000000-0000-4000-8000-000000000099").unwrap();
+		let update =
+			Update::observed(account, None, Some(ResetCardOperationResult::NotFound), None);
+
+		assert!(update.blocked, "a failed inventory read must not re-enable stale cards");
+	}
+
 	#[test]
 	fn missing_or_ambiguous_receipts_block_new_redemption() {
-		assert!(operation_presentation(None, false).0);
-		assert!(operation_presentation(Some(ResetCardOperationResult::EffectAmbiguous), true).0);
-		assert!(operation_presentation(Some(ResetCardOperationResult::NotFound), true).0);
-		assert!(!operation_presentation(Some(ResetCardOperationResult::NotFound), false).0);
+		assert!(reset_cards::operation_presentation(None, false).0);
+		assert!(
+			reset_cards::operation_presentation(
+				Some(ResetCardOperationResult::EffectAmbiguous),
+				true
+			)
+			.0
+		);
+		assert!(
+			reset_cards::operation_presentation(Some(ResetCardOperationResult::NotFound), true).0
+		);
+		assert!(
+			!reset_cards::operation_presentation(Some(ResetCardOperationResult::NotFound), false).0
+		);
 	}
 	#[test]
 	fn confirmation_is_bound_to_account_card_revision_and_deadline() {
@@ -583,9 +740,9 @@ mod tests {
 		let state =
 			ResetCardOperationResult::Completed { outcome: ResetCardOutcome::NothingToReset };
 
-		assert!(terminal(state));
+		assert!(reset_cards::terminal(state));
 
-		let (blocked, message) = operation_presentation(Some(state), true);
+		let (blocked, message) = reset_cards::operation_presentation(Some(state), true);
 
 		assert!(!blocked);
 		assert!(message.contains("No card was used"));
@@ -593,10 +750,15 @@ mod tests {
 }
 #[cfg(test)]
 mod render_tests {
-	use crate::{client_lifecycle::ConnectionView, shell::reset_cards::*};
-	use gpui::{self, Modifiers, TestAppContext};
+	use std::{thread, time::Duration};
 
-	use std::thread;
+	use gpui::{self, Modifiers, MouseButton, TestAppContext};
+
+	use crate::{
+		client_lifecycle::ConnectionView,
+		shell::{Destination, Shell},
+	};
+	use decodex_protocol::AccountQuotaStateDto;
 
 	#[gpui::test]
 	fn quota_columns_remain_aligned_when_one_window_is_unavailable(cx: &mut TestAppContext) {
@@ -613,7 +775,7 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_248.), px(840.)));
+			window.resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
 			window.draw(cx).clear();
 		});
 
@@ -623,10 +785,7 @@ mod render_tests {
 		assert_eq!(five.size.width, seven.size.width);
 		assert_eq!(five.top(), seven.top());
 
-		for unavailable in [
-			decodex_protocol::AccountQuotaStateDto::NotApplicable,
-			decodex_protocol::AccountQuotaStateDto::Unknown,
-		] {
+		for unavailable in [AccountQuotaStateDto::NotApplicable, AccountQuotaStateDto::Unknown] {
 			shell.update(visual, |shell, cx| {
 				shell.accounts.accounts[0].five_hour_quota.result = unavailable;
 
@@ -639,6 +798,7 @@ mod render_tests {
 
 			let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
 			let next_seven = visual.debug_bounds("quota-reset-7d").unwrap();
+
 			// The page arrival can move both columns vertically between frames.
 			assert_eq!(next_five.origin.x, five.origin.x);
 			assert_eq!(next_seven.origin.x, seven.origin.x);
@@ -665,23 +825,24 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_248.), px(840.)));
+			window.resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
 			window.draw(cx).clear();
 		});
 
 		let first = visual.debug_bounds("account-card-0").unwrap();
 
 		assert!(
-			first.size.height <= px(38.),
+			first.size.height <= gpui::px(38.),
 			"Healthy accounts must fit in one line: {:?}",
 			first.size
 		);
+
 		// Click the outside padding of the last row repeatedly, including after its height changes.
 		for expanded in [true, false, true, false] {
 			let bounds = visual.debug_bounds("account-card-2").unwrap();
 
 			visual.simulate_click(
-				gpui::point(bounds.left() + px(3.), bounds.top() + px(3.)),
+				gpui::point(bounds.left() + gpui::px(3.), bounds.top() + gpui::px(3.)),
 				Modifiers::default(),
 			);
 			shell.read_with(visual, |s, _| {
@@ -702,14 +863,14 @@ mod render_tests {
 
 		visual.simulate_click(handle, Modifiers::default());
 		shell.read_with(visual, |s, _| assert!(!s.expanded_accounts.contains(&last)));
-		visual.simulate_mouse_down(handle, gpui::MouseButton::Left, Modifiers::default());
+		visual.simulate_mouse_down(handle, MouseButton::Left, Modifiers::default());
 		visual.simulate_mouse_move(
-			handle + gpui::point(px(0.), px(-20.)),
-			gpui::MouseButton::Left,
+			handle + gpui::point(gpui::px(0.), gpui::px(-20.)),
+			MouseButton::Left,
 			Modifiers::default(),
 		);
 		visual.update(|_, cx| assert!(cx.has_active_drag()));
-		visual.simulate_mouse_up(handle, gpui::MouseButton::Left, Modifiers::default());
+		visual.simulate_mouse_up(handle, MouseButton::Left, Modifiers::default());
 		shell.read_with(visual, |s, _| {
 			assert!(
 				!s.expanded_accounts.contains(&last),
@@ -737,7 +898,7 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 			window.draw(cx).clear();
 		});
 
