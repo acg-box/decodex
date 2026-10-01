@@ -2,16 +2,14 @@
 use std::{cell::Cell, mem};
 
 use gpui::AnyElement;
-#[cfg(test)] use gpui::AppContext as _;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentCommandResponse;
 #[cfg(test)] use crate::shell::agent_surface::EntityId;
 #[cfg(test)] use crate::shell::agent_surface::IdempotencyKey;
 #[cfg(test)] use crate::shell::agent_surface::native_timeline;
 use crate::shell::agent_surface::{
-	AgentHistoryResult, AgentSurface, FluentBuilder, InteractiveElement, IntoElement,
-	ParentElement, PendingCommand, Styled, div, history_entry_with_key, px,
-	ui_theme::USER_MESSAGE_ACTION_SIZE,
+	self, AgentHistoryResult, AgentSurface, FluentBuilder, InteractiveElement, IntoElement,
+	ParentElement, PendingCommand, Styled, px, ui_theme::USER_MESSAGE_ACTION_SIZE,
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent};
 
@@ -159,10 +157,15 @@ impl AgentSurface {
 					.and_then(|s| s.work_items.iter().find(|w| w.id == work))
 					.is_some_and(|w| self.native_history_active(w));
 
-				div()
+				agent_surface::div()
 					.debug_selector(|| "sending-message-preview".into())
-					.child(history_entry_with_key(&entry, &format!("sending-{}", p.key)))
-					.when(native, |row| row.child(div().h(px(USER_MESSAGE_ACTION_SIZE))))
+					.child(agent_surface::history_entry_with_key(
+						&entry,
+						&format!("sending-{}", p.key),
+					))
+					.when(native, |row| {
+						row.child(agent_surface::div().h(px(USER_MESSAGE_ACTION_SIZE)))
+					})
 					.into_any_element()
 			})
 			.collect()
@@ -171,15 +174,23 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::send_preview::*;
-
 	use std::thread;
+
+	#[cfg(test)] use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::send_preview::{
+		self, AgentHistoryResult, AgentSurface, PendingCommand,
+	};
+	#[cfg(test)]
+	use crate::shell::agent_surface::send_preview::{
+		AgentCommandResponse, EntityId, IdempotencyKey, native_timeline,
+	};
 
 	#[gpui::test]
 	fn native_echo_replaces_preview_without_changing_bubble_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
+		visual.simulate_resize(gpui::size(send_preview::px(1_400.), send_preview::px(1_000.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

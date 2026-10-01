@@ -4,9 +4,9 @@ use std::{cell::RefCell, collections::BTreeMap, mem};
 use gpui::{AnyElement, AppContext as _, Bounds, Focusable, KeyDownEvent, Point};
 
 use crate::shell::agent_surface::{
-	AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ComposerInput, Context,
-	Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-	StatefulInteractiveElement, Styled, SubmitComposer, Window, div, muted, px, rgba,
+	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ComposerInput,
+	Context, Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
+	StatefulInteractiveElement, Styled, SubmitComposer, Window, px,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -264,7 +264,7 @@ impl AgentSurface {
 		let key_owner = key.clone();
 		let selector = format!("async-option-{}-{index}", key.1);
 
-		div()
+		agent_surface::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
 			.relative()
@@ -275,7 +275,7 @@ impl AgentSurface {
 			.aria_label(label.clone())
 			.p_2()
 			.rounded(px(6.0))
-			.bg(rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+			.bg(agent_surface::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 			.cursor_pointer()
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.select_async_choice(&owner, option.as_deref(), window, cx)
@@ -377,18 +377,18 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let Some(thread) = &work.codex_thread_id else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 		let (Ok(work_id), Ok(thread_id), Ok(question_id)) =
 			(EntityId::new(&work.id), WireText::new(thread), WireText::new(question))
 		else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 		let action = AgentActionDto::SkipQuestion { work_id, thread_id, question_id };
 		let key_action = action.clone();
 		let selector = format!("async-skip-{question}");
 
-		div()
+		agent_surface::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
 			.role(Role::Button)
@@ -438,7 +438,7 @@ impl AgentSurface {
 		let owner = work.to_owned();
 		let key_owner = owner.clone();
 
-		div()
+		agent_surface::div()
 			.id("async-question-toggle")
 			.debug_selector(|| "async-question-toggle".into())
 			.role(Role::Button)
@@ -480,17 +480,17 @@ impl AgentSurface {
 			},
 		)) = &self.history
 		else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 
 		if id != &work.id {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
-		let mut panel = div().flex().flex_col().gap_3();
+		let mut panel = agent_surface::div().flex().flex_col().gap_3();
 
 		if *questions_recovering || questions.is_empty() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		panel = panel.child(self.async_question_toggle(&work.id, questions.len(), cx));
@@ -504,11 +504,11 @@ impl AgentSurface {
 			let Some(input) = self.async_question_inputs.get(&key) else {
 				continue;
 			};
-			let mut card = div()
+			let mut card = agent_surface::div()
 				.p_3()
 				.rounded(px(8.0))
 				.border_1()
-				.border_color(rgba(0xffffff18))
+				.border_color(agent_surface::rgba(0xffffff18))
 				.flex()
 				.flex_col()
 				.gap_2()
@@ -567,9 +567,9 @@ impl AgentSurface {
 					s.answer_async_question(&enter_owner, &enter_question, cx);
 					cx.stop_propagation();
 				}))
-				.child(div().h(px(40.0)).child(input.clone()))
+				.child(agent_surface::div().h(px(40.0)).child(input.clone()))
 				.child(
-					div()
+					agent_surface::div()
 						.id(SharedString::from(format!("async-send-{question_id}")))
 						.debug_selector(move || send_selector)
 						.role(Role::Button)
@@ -586,7 +586,9 @@ impl AgentSurface {
 		}
 
 		if *questions_truncated {
-			panel = panel.child(muted("More questions are available after these are answered."));
+			panel = panel.child(agent_surface::muted(
+				"More questions are available after these are answered.",
+			));
 		}
 
 		panel.into_any_element()

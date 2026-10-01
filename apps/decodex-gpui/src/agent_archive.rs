@@ -10,10 +10,9 @@ use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
 #[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
 use crate::shell::agent_surface::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto, Context,
-	EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement, ParentElement, Role,
-	StatefulInteractiveElement, Styled, Task, WireText, div, px, rgb, rgba, ui_theme,
-	unique_command,
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto,
+	Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
+	ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, px, ui_theme,
 };
 use decodex_protocol::AgentArchiveResult as State;
 
@@ -161,7 +160,7 @@ impl AgentSurface {
 		// The archive epoch changes only with its owner or service connection.
 		let epoch = self.archive.epoch;
 		let work = work.to_owned();
-		let key = unique_command();
+		let key = agent_surface::unique_command();
 		let command_key = IdempotencyKey::new(key.clone()).expect("bounded identity");
 
 		self.archive.mutation_key = Some(key.clone());
@@ -239,18 +238,18 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.archive.owner.as_deref() != Some(&work.id) {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let restoring = self.archive.mutation.is_some();
 		let thread = match &self.archive.result {
 			Some(State::Archived { thread_id }) => Some(thread_id.clone()),
 			_ if restoring => None,
-			_ => return div().into_any_element(),
+			_ => return agent_surface::div().into_any_element(),
 		};
 		let work = work.id.clone();
 
-		div()
+		agent_surface::div()
 			.w_full()
 			.flex_none()
 			.px(px(20.))
@@ -259,17 +258,17 @@ impl AgentSurface {
 			.items_center()
 			.justify_between()
 			.gap_3()
-			.bg(rgba(PANEL_HEADER_TINT))
+			.bg(agent_surface::rgba(PANEL_HEADER_TINT))
 			.text_size(px(11.))
 			.child(
-				div()
+				agent_surface::div()
 					.flex()
 					.flex_col()
 					.gap_1()
 					.child(if restoring { "Unarchiving…" } else { "Archived" })
 					.child(
-						div()
-							.text_color(rgb(TEXT_MUTED))
+						agent_surface::div()
+							.text_color(agent_surface::rgb(TEXT_MUTED))
 							.child("History is available. Unarchive to continue."),
 					),
 			)
@@ -299,14 +298,14 @@ fn button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	div()
+	agent_surface::div()
 		.id(id)
 		.debug_selector(move || id.to_owned())
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label)
 		.cursor_pointer()
-		.text_color(rgb(BLUE))
+		.text_color(agent_surface::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -322,9 +321,15 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::archive::*;
-
 	use std::future;
+
+	use crate::shell::agent_surface::archive::{
+		self, AgentSurface, AgentWorkItemDto, Panel, State,
+	};
+	#[cfg(test)]
+	use crate::shell::agent_surface::archive::{
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
 
 	#[gpui::test]
 	fn snapshot_refresh_does_not_strand_archive_read(cx: &mut gpui::TestAppContext) {
@@ -365,12 +370,12 @@ mod tests {
 		for state in
 			[State::Active { thread_id: "new".into() }, State::Archived { thread_id: "new".into() }]
 		{
-			assert_eq!(bind_readback(state, "original"), State::Unconfirmed);
+			assert_eq!(archive::bind_readback(state, "original"), State::Unconfirmed);
 		}
 
 		let state = State::Active { thread_id: "original".into() };
 
-		assert_eq!(bind_readback(state.clone(), "original"), state);
+		assert_eq!(archive::bind_readback(state.clone(), "original"), state);
 	}
 
 	#[gpui::test]
@@ -445,7 +450,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.), px(1_200.)));
+			window.resize(gpui::size(archive::px(1_180.), archive::px(1_200.)));
 			window.draw(cx).clear();
 		});
 
@@ -483,7 +488,7 @@ mod tests {
 }
 #[cfg(test)]
 mod background_read_tests {
-	use crate::shell::agent_surface::archive::*;
+	use crate::shell::agent_surface::archive::{Panel, State};
 
 	#[test]
 	fn transient_read_does_not_flash_error_or_replace_known_state() {
