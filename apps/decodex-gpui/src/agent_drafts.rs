@@ -6,10 +6,18 @@ use std::{
 	mem,
 };
 
-use async_questions::ChoiceDraft;
-use execution_intent::Intents;
-
-use crate::shell::agent_surface::{send_preview::Preview, *};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
+	ConversationWorkingDirectory, IntoElement, LoadState, Render, Window, px,
+};
+use crate::shell::agent_surface::{
+	AgentSurface, ClientProfile, ComposerInput, Context, Entity, EntityId, IdempotencyKey,
+	PendingCommand, QueuedCommand, Task, WireText,
+	async_questions::ChoiceDraft,
+	execution_intent::{self, Intents},
+	send_preview::Preview,
+};
 use decodex_protocol::{
 	AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto, DesktopCreationSetup,
 	DesktopQuestionDraft,
@@ -188,10 +196,20 @@ impl AgentSurface {
 
 #[cfg(test)]
 pub(super) mod tests {
-	use crate::shell::agent_surface::drafts::*;
 	use std::{
 		fs,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	};
+
+	use gpui::AppContext as _;
+
+	#[cfg(not(test))]
+	use crate::shell::agent_surface::drafts::{
+		AgentAttachmentDto, AgentTaskReferenceDto, composer, execution_intent,
+	};
+	use crate::shell::agent_surface::drafts::{
+		AgentSurface, ClientProfile, ComposerInput, ConversationReasoningEffort,
+		ConversationWorkingDirectory, EntityId, IdempotencyKey, PendingCommand, WireText,
 	};
 
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {

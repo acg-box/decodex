@@ -7,12 +7,17 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::recap::*;
+use crate::shell::agent_surface::recap::{
+	self, AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, Phase,
+	TaskRecapStatus, Window, WireText, request, watch,
+};
+#[cfg(test)] use crate::shell::agent_surface::recap::{Entity, Render};
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
 	CommandResultEnvelope, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
@@ -140,7 +145,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestApp
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(600.), px(500.)));
+		w.resize(gpui::size(recap::px(600.), recap::px(500.)));
 		w.draw(cx).clear();
 	});
 
@@ -233,7 +238,7 @@ fn active_voice_rejection_is_shown_without_retrying_generation() {
 fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-	visual.simulate_resize(gpui::size(px(1_400.), px(900.)));
+	visual.simulate_resize(gpui::size(recap::px(1_400.), recap::px(900.)));
 	surface.update(visual, |s, cx| {
 		s.visual_workspace_fixture(cx);
 		cx.notify();

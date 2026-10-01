@@ -6,7 +6,21 @@ use reqwest::Url;
 use serde_json::Value;
 use tokio::runtime::Builder;
 
-use crate::{shell::agent_surface::*, ui_loading};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+};
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+			Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement, ParentElement,
+			Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, WireText, px,
+		},
+	},
+	ui_loading,
+};
 use decodex_protocol::AgentResourcesResult;
 
 impl AgentSurface {
@@ -44,8 +58,8 @@ impl AgentSurface {
 		let opened = self.resources.as_ref().filter(|(owner, _)| owner == work);
 		let click = work.to_owned();
 		let key = click.clone();
-		let mut panel = div().flex().flex_col().gap_2().child(
-			div()
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().child(
+			agent_surface::div()
 				.id("agent-resources-toggle")
 				.debug_selector(|| "agent-resources-toggle".into())
 				.role(Role::Button)
@@ -65,13 +79,13 @@ impl AgentSurface {
 
 		if let Some((_, result)) = opened {
 			let body = match result {
-				None => div().child(ui_loading::loading("Loading resources")),
-				Some(AgentResourcesResult::Unsupported) =>
-					div().child("This Codex provider does not support task resources."),
+				None => agent_surface::div().child(ui_loading::loading("Loading resources")),
+				Some(AgentResourcesResult::Unsupported) => agent_surface::div()
+					.child("This Codex provider does not support task resources."),
 				Some(AgentResourcesResult::Unavailable) =>
-					div().child("Task resources are unavailable. Retrying…"),
+					agent_surface::div().child("Task resources are unavailable. Retrying…"),
 				Some(AgentResourcesResult::CapacityExceeded) =>
-					div().child("The resource list exceeds the display limit."),
+					agent_surface::div().child("The resource list exceeds the display limit."),
 				Some(AgentResourcesResult::Available { resources }) => {
 					let mut list = self.resource_editor(work, cx);
 
@@ -100,13 +114,16 @@ impl AgentSurface {
 							});
 
 						list = list.child(
-							div().p_2().rounded(px(6.)).bg(rgba(0xffffff06)).child(title).child(
-								if resource.payload_omitted {
+							agent_surface::div()
+								.p_2()
+								.rounded(px(6.))
+								.bg(agent_surface::rgba(0xffffff06))
+								.child(title)
+								.child(if resource.payload_omitted {
 									"Resource details are unavailable for display.".into()
 								} else {
 									resource.payload_json.clone()
-								},
-							),
+								}),
 						);
 
 						if let Some(link) = link {
@@ -149,7 +166,7 @@ impl AgentSurface {
 			};
 
 			panel = panel.child(
-				div()
+				agent_surface::div()
 					.id("agent-resources-body")
 					.debug_selector(|| "agent-resources-body".into())
 					.max_h(px(280.))
@@ -171,12 +188,12 @@ impl AgentSurface {
 	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> Div {
 		let add_work = work.to_owned();
 
-		div()
+		agent_surface::div()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(div().h(px(40.)).child(self.resource_title.clone()))
-			.child(div().h(px(40.)).child(self.resource_url.clone()))
+			.child(agent_surface::div().h(px(40.)).child(self.resource_title.clone()))
+			.child(agent_surface::div().h(px(40.)).child(self.resource_url.clone()))
 			.child(resource_button(
 				"resource-add-link".into(),
 				"Add link".into(),
@@ -217,7 +234,7 @@ impl AgentSurface {
 		self.resources_task = None;
 
 		let work = work.to_owned();
-		let key = IdempotencyKey::new(unique_command()).expect("bounded identity");
+		let key = IdempotencyKey::new(agent_surface::unique_command()).expect("bounded identity");
 
 		self.resource_feedback = "Waiting for resource confirmation…".into();
 
@@ -372,7 +389,7 @@ fn resource_button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	div()
+	agent_surface::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
@@ -394,18 +411,28 @@ fn resource_button(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::resources::*;
+	use std::{future, thread};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+	#[cfg(test)] use gpui::AppContext as _;
+	use tokio_tungstenite::tungstenite::Message;
+
+	#[cfg(test)]
+	use crate::shell::agent_surface::resources::{
+		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::{
+		resources,
+		resources::{
+			AgentActionDto, AgentResourcesResult, AgentSnapshotDto, AgentSurface, EntityId,
+			WireText,
+		},
+		wire_test_support,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
 		QueryResultPayload, ServerId, ServerMessage,
 	};
-
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
-
-	use std::{future, thread};
-
-	use crate::shell::agent_surface::wire_test_support;
 
 	#[test]
 	fn mutation_readback_requires_complete_list_and_exact_resource() {
@@ -425,14 +452,14 @@ mod tests {
 			AgentResourcesResult::Unsupported,
 			AgentResourcesResult::CapacityExceeded,
 		] {
-			assert!(!resource_change_observed(&add, &unavailable));
-			assert!(!resource_change_observed(&remove, &unavailable));
+			assert!(!resources::resource_change_observed(&add, &unavailable));
+			assert!(!resources::resource_change_observed(&remove, &unavailable));
 		}
 
 		let empty = AgentResourcesResult::Available { resources: vec![] };
 
-		assert!(!resource_change_observed(&add, &empty));
-		assert!(resource_change_observed(&remove, &empty));
+		assert!(!resources::resource_change_observed(&add, &empty));
+		assert!(resources::resource_change_observed(&remove, &empty));
 
 		let row = decodex_protocol::AgentResourceDto {
 			id: "native".into(),
@@ -444,14 +471,14 @@ mod tests {
 		};
 		let present = AgentResourcesResult::Available { resources: vec![row.clone()] };
 
-		assert!(resource_change_observed(&add, &present));
-		assert!(!resource_change_observed(&remove, &present));
+		assert!(resources::resource_change_observed(&add, &present));
+		assert!(!resources::resource_change_observed(&remove, &present));
 
 		let mut hidden = row;
 
 		hidden.payload_omitted = true;
 
-		assert!(!resource_change_observed(
+		assert!(!resources::resource_change_observed(
 			&add,
 			&AgentResourcesResult::Available { resources: vec![hidden] }
 		));
@@ -491,7 +518,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.), px(1_200.)));
+			window.resize(gpui::size(resources::px(1_180.), resources::px(1_200.)));
 			window.draw(cx).clear();
 		});
 

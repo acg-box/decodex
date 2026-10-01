@@ -6,12 +6,16 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::recap::automatic::*;
+use crate::shell::agent_surface::recap::automatic::{
+	self, AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
+	ClientProfile, Context, DELAY, Duration, Entity, EntityId, Instant, IntoElement, LoadState,
+	Phase, Render, TaskRecapStatus, Window, WireText,
+};
 use decodex_protocol::{
 	AgentTimelineContent, AgentTimelinePage, AgentTimelineResult, CURRENT_VERSION, ClientMessage,
 	CommandPayload, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode,
@@ -23,7 +27,7 @@ const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct EmptyView(Entity<AgentSurface>);
 impl Render for EmptyView {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
+		automatic::div()
 	}
 }
 
@@ -32,7 +36,7 @@ fn automatic_progress_uses_exact_completed_turns_across_pages_and_refuses_accoun
 	for changed_account in [false, true] {
 		let (_root, profile, server) = fixture(changed_account, false);
 		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-		let progress = runtime.block_on(read_progress(profile, "work", "thread"));
+		let progress = runtime.block_on(automatic::read_progress(profile, "work", "thread"));
 
 		if changed_account {
 			assert!(progress.is_none());
@@ -104,11 +108,11 @@ fn only_two_new_completed_turns_allow_another_recap() {
 	let ids = |values: &[&str]| values.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
 	let previous = ids(&["c", "b", "a"]);
 
-	assert!(!has_new_progress(&ids(&["b", "a"]), &[]));
-	assert!(has_new_progress(&previous, &[]));
-	assert!(!has_new_progress(&previous, &previous));
-	assert!(!has_new_progress(&ids(&["d", "c", "b"]), &previous));
-	assert!(has_new_progress(&ids(&["e", "d", "c"]), &previous));
+	assert!(!automatic::has_new_progress(&ids(&["b", "a"]), &[]));
+	assert!(automatic::has_new_progress(&previous, &[]));
+	assert!(!automatic::has_new_progress(&previous, &previous));
+	assert!(!automatic::has_new_progress(&ids(&["d", "c", "b"]), &previous));
+	assert!(automatic::has_new_progress(&ids(&["e", "d", "c"]), &previous));
 }
 
 #[gpui::test]

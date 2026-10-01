@@ -22,7 +22,16 @@ use gpui::{
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
 
-use crate::{shell::agent_surface::*, ui_motion, ui_theme::HOVER_FILL};
+#[cfg(test)] use crate::shell::agent_surface::{ClipboardItem, Context};
+use crate::{
+	shell::agent_surface::{
+		FluentBuilder, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
+		SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
+		selectable_text, ui_theme,
+	},
+	ui_motion,
+	ui_theme::HOVER_FILL,
+};
 use math::MathMarkdown;
 
 #[derive(Clone, Debug)]
@@ -663,7 +672,10 @@ fn parse_plain_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::markdown::*;
+
+	use crate::shell::agent_surface::markdown::{
+		self, ClipboardItem, FontWeight, HighlightStyle, Inline, Kind, Node,
+	};
 
 	struct CopyPreview {
 		text: String,
@@ -704,20 +716,26 @@ mod tests {
 		let marker = "\u{e200}weather\u{e202}turn0forecast0\u{e201}";
 		let body = "Singapore: **32°C**, cloudy.";
 
-		assert_eq!(response_text(&format!("{body}\n\n{marker}")), body);
+		assert_eq!(markdown::response_text(&format!("{body}\n\n{marker}")), body);
 
 		for end in marker.char_indices().map(|(i, _)| i).chain([marker.len()]) {
-			assert_eq!(response_text(&format!("{body}\n\n{}", &marker[..end])).trim_end(), body);
+			assert_eq!(
+				markdown::response_text(&format!("{body}\n\n{}", &marker[..end])).trim_end(),
+				body
+			);
 		}
 
-		assert_eq!(response_text(&format!("Before {marker} after {marker}!")), "Before  after !");
+		assert_eq!(
+			markdown::response_text(&format!("Before {marker} after {marker}!")),
+			"Before  after !"
+		);
 
 		for source in [
 			format!("`{marker}`"),
 			format!("```text\n{marker}\n```"),
 			"\u{e200}unknown\u{e202}data\u{e201}".into(),
 		] {
-			assert_eq!(response_text(&source), source);
+			assert_eq!(markdown::response_text(&source), source);
 		}
 	}
 
@@ -727,22 +745,22 @@ mod tests {
 
 		for end in marker.char_indices().map(|(i, _)| i).chain([marker.len()]) {
 			assert_eq!(
-				response_text(&format!("Cloudy.\n{}", &marker[..end])).trim_end(),
+				markdown::response_text(&format!("Cloudy.\n{}", &marker[..end])).trim_end(),
 				"Cloudy."
 			);
 		}
 
-		assert_eq!(response_text(&format!("`{marker}`")), format!("`{marker}`"));
+		assert_eq!(markdown::response_text(&format!("`{marker}`")), format!("`{marker}`"));
 	}
 
 	#[test]
 	fn deep_markdown_preserves_text_and_following_blocks() {
 		for depth in [63, 64, 65, 128] {
 			let source = format!("{}Deep 中文\n\nAfter **limit**\n", "> ".repeat(depth));
-			let nodes = parse(&source);
+			let nodes = markdown::parse(&source);
 			let mut out = Inline::default();
 
-			append_inline(&nodes, HighlightStyle::default(), None, &mut out);
+			markdown::append_inline(&nodes, HighlightStyle::default(), None, &mut out);
 
 			assert_eq!(out.text, "Deep 中文After limit", "depth {depth}");
 			assert!(out.highlights.iter().any(|(range, style)| {
@@ -761,13 +779,13 @@ mod tests {
 			("/tmp/a.rs:", "/tmp/a.rs:"),
 			("/tmp/a.rs:12x", "/tmp/a.rs:12x"),
 		] {
-			assert_eq!(without_line_column(target), expected);
+			assert_eq!(markdown::without_line_column(target), expected);
 		}
 
 		let mut out = Inline::default();
 
-		append_inline(
-			&parse("| Source |\n|---|\n| [**Read** `parser`](/tmp/中文.rs:12:3) |"),
+		markdown::append_inline(
+			&markdown::parse("| Source |\n|---|\n| [**Read** `parser`](/tmp/中文.rs:12:3) |"),
 			HighlightStyle::default(),
 			None,
 			&mut out,
@@ -793,14 +811,14 @@ mod tests {
 				nodes
 					.iter()
 					.flat_map(|n| match n {
-						Node::Block(Kind::Code, children) => vec![code_text(children)],
+						Node::Block(Kind::Code, children) => vec![markdown::code_text(children)],
 						Node::Block(_, children) => blocks(children),
 						_ => Vec::new(),
 					})
 					.collect()
 			}
 
-			assert_eq!(blocks(&parse(source)), vec![expected]);
+			assert_eq!(blocks(&markdown::parse(source)), vec![expected]);
 		}
 	}
 
@@ -811,7 +829,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(700.), px(500.)));
+			window.resize(gpui::size(markdown::px(700.), markdown::px(500.)));
 			window.draw(cx).clear();
 		});
 
@@ -835,7 +853,7 @@ mod tests {
 		let (preview, visual) = cx.add_window_view(|_, _| CopyPreview { text: original.into() });
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(700.), px(500.)));
+			window.resize(gpui::size(markdown::px(700.), markdown::px(500.)));
 			window.draw(cx).clear();
 		});
 
@@ -884,7 +902,7 @@ mod tests {
 			cx.add_window_view(|_, _| CopyPreview { text: "Read **中文** text".into() });
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(700.), px(300.)));
+			window.resize(gpui::size(markdown::px(700.), markdown::px(300.)));
 			window.draw(cx).clear();
 		});
 
@@ -902,10 +920,10 @@ mod tests {
 
 	#[test]
 	fn markdown_retains_unicode_styles_and_link_ranges() {
-		let nodes = parse("**中文** and [source](/tmp/a.rs:12) with `code`");
+		let nodes = markdown::parse("**中文** and [source](/tmp/a.rs:12) with `code`");
 		let mut out = Inline::default();
 
-		append_inline(&nodes, HighlightStyle::default(), None, &mut out);
+		markdown::append_inline(&nodes, HighlightStyle::default(), None, &mut out);
 
 		assert_eq!(out.text, "中文 and source with code");
 		assert!(out.highlights.iter().any(
@@ -916,7 +934,7 @@ mod tests {
 
 	#[test]
 	fn tables_lists_and_code_are_structural_blocks() {
-		let nodes = parse(
+		let nodes = markdown::parse(
 			"# Heading\n\n- item\n\n```rust\nlet x = 1;\n```\n\n| A | B |\n|---|---|\n| one | two |\n",
 		);
 

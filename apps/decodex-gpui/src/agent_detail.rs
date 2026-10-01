@@ -1,10 +1,24 @@
 //! Expand exact worker tool evidence in place, without leaving the conversation.
+
 use gpui::{AnyElement, Div, KeyDownEvent};
 use tokio::runtime::Builder;
 use ui_theme::{TEXT, TEXT_MUTED};
 
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	ClientProfile, Entity, LoadState, Render, Window, native_timeline,
+};
 use crate::{
-	shell::agent_surface::{selectable_text::SelectableText, *},
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
+			InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
+			StatefulInteractiveElement, Styled, Task, WireText, div, px,
+			selectable_text::SelectableText, ui_theme,
+		},
+	},
 	ui_loading,
 	ui_theme::HOVER_FILL,
 };
@@ -128,7 +142,7 @@ impl AgentSurface {
 					.aria_label(format!("Inspect {}", item.label))
 					.aria_expanded(expanded)
 					.cursor_pointer()
-					.hover(|d| d.bg(rgba(HOVER_FILL)))
+					.hover(|d| d.bg(agent_surface::rgba(HOVER_FILL)))
 					.on_click(
 						cx.listener(move |s, _, _, cx| s.toggle_activity_detail(click.clone(), cx)),
 					)
@@ -140,7 +154,7 @@ impl AgentSurface {
 					}))
 					.smooth(),
 			)
-			.child(disclosure(
+			.child(agent_surface::disclosure(
 				SharedString::from(format!("worker-tool-detail-{key}")),
 				expanded,
 				div()
@@ -154,25 +168,27 @@ impl AgentSurface {
 					.overflow_y_scroll()
 					.p(px(10.))
 					.rounded(px(7.))
-					.bg(rgba(0x10101445))
+					.bg(agent_surface::rgba(0x10101445))
 					.font_family("Menlo")
 					.text_size(px(11.5))
 					.line_height(px(16.))
-					.text_color(rgb(TEXT))
+					.text_color(agent_surface::rgb(TEXT))
 					.child(body)
 					.child(metadata_toggle)
-					.child(disclosure(
+					.child(agent_surface::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
 						metadata_open,
-						div().mt(px(6.)).text_color(rgb(TEXT_MUTED)).child(SelectableText {
-							key: format!("detail-metadata-{key}"),
-							text: format!(
-								"{} · {}\nTurn {}\nCall {}",
-								item.kind, item.status, item.turn_id, item.item_id
-							),
-							highlights: Vec::new(),
-							links: Vec::new(),
-						}),
+						div().mt(px(6.)).text_color(agent_surface::rgb(TEXT_MUTED)).child(
+							SelectableText {
+								key: format!("detail-metadata-{key}"),
+								text: format!(
+									"{} · {}\nTurn {}\nCall {}",
+									item.kind, item.status, item.turn_id, item.item_id
+								),
+								highlights: Vec::new(),
+								links: Vec::new(),
+							},
+						),
 					)),
 			))
 			.into_any_element()
@@ -324,9 +340,20 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::detail::*;
-
 	use std::thread;
+
+	#[cfg(test)]
+	use crate::shell::agent_surface::detail::{
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+		LoadState, native_timeline,
+	};
+	use crate::shell::agent_surface::{
+		detail,
+		detail::{
+			AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
+			EntityId,
+		},
+	};
 
 	fn prepare_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 		s.visual_workspace_fixture(cx);
@@ -380,7 +407,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(900.), px(1_000.)));
+		visual.simulate_resize(gpui::size(detail::px(900.), detail::px(1_000.)));
 
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 

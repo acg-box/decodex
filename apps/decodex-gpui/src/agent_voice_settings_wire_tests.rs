@@ -2,13 +2,18 @@
 use std::{future, thread::JoinHandle};
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)] use crate::shell::agent_surface::voice_settings::{ClientProfile, Render, Window};
 use crate::shell::agent_surface::{
-	voice_settings::*,
+	voice_settings,
+	voice_settings::{
+		AgentActionDto, AgentSurface, ComposerInput, Context, Entity, EntityId, IntoElement,
+		NextCall, State, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -43,7 +48,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 	let surface = view.read_with(visual, |v, _| v.0.clone());
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(700.), px(850.)));
+		w.resize(gpui::size(voice_settings::px(700.), voice_settings::px(850.)));
 		w.draw(cx).clear();
 	});
 

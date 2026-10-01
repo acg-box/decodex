@@ -4,7 +4,10 @@ use std::time::Instant;
 use gpui::{App, RenderOnce};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{shell::agent_surface::*, ui_motion};
+use crate::{
+	shell::agent_surface::{IntoElement, SharedString, Window, markdown},
+	ui_motion,
+};
 
 #[derive(gpui::IntoElement)]
 pub(super) struct StreamingText {
@@ -73,8 +76,11 @@ impl Reveal {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::text_reveal::*;
 	use std::time::Duration;
+
+	use unicode_segmentation::UnicodeSegmentation;
+
+	use crate::shell::agent_surface::text_reveal::{Instant, Reveal};
 	#[test]
 	fn bursts_reveal_on_frames_without_splitting_graphemes_and_then_stop() {
 		let now = Instant::now();

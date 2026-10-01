@@ -2,13 +2,18 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::search_settings::{self, ClientProfile, Entity, Render, Window};
 use crate::shell::agent_surface::{
-	search_settings::*,
+	search_settings::{
+		AgentActionDto, AgentSurface, Context, EntityId, IntoElement, State, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -45,7 +50,7 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
 	let surface = view.read_with(visual, |v, _| v.0.clone());
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(700.), px(850.)));
+		w.resize(gpui::size(search_settings::px(700.), search_settings::px(850.)));
 		w.draw(cx).clear();
 	});
 

@@ -1,5 +1,5 @@
 //! Reuse immutable parsing across scroll frames; streaming text has a new key.
-use crate::shell::agent_surface::markdown::*;
+use crate::shell::agent_surface::markdown::{HashMap, Node, OnceCell, Rc, RefCell};
 
 thread_local! {
 	static DOCUMENTS: RefCell<Cache> = RefCell::new(Cache::default());
@@ -65,7 +65,7 @@ pub(super) fn document(text: &str) -> Rc<Document> {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::markdown::cache::*;
+	use crate::shell::agent_surface::{markdown, markdown::cache::*};
 
 	use std::{hint, time::Instant};
 
@@ -79,8 +79,8 @@ mod tests {
 
 		for _ in 0..60 {
 			for text in &messages {
-				hint::black_box(parse(hint::black_box(text)));
-				hint::black_box(parse_plain_text(hint::black_box(text)));
+				hint::black_box(markdown::parse(hint::black_box(text)));
+				hint::black_box(markdown::parse_plain_text(hint::black_box(text)));
 			}
 		}
 
@@ -92,8 +92,8 @@ mod tests {
 			for text in &messages {
 				let document = cache.document(hint::black_box(text));
 
-				hint::black_box(document.nodes.get_or_init(|| parse(text)));
-				hint::black_box(document.plain.get_or_init(|| parse_plain_text(text)));
+				hint::black_box(document.nodes.get_or_init(|| markdown::parse(text)));
+				hint::black_box(document.plain.get_or_init(|| markdown::parse_plain_text(text)));
 			}
 		}
 
@@ -108,8 +108,8 @@ mod tests {
 		let mut cache = Cache::default();
 		let first = cache.document("**Hello**");
 
-		first.nodes.set(parse("**Hello**")).unwrap();
-		first.plain.set(parse_plain_text("**Hello**")).unwrap();
+		first.nodes.set(markdown::parse("**Hello**")).unwrap();
+		first.plain.set(markdown::parse_plain_text("**Hello**")).unwrap();
 
 		let frame = cache.document("**Hello**");
 
@@ -120,7 +120,7 @@ mod tests {
 
 		assert!(!Rc::ptr_eq(&first, &streamed));
 		assert_eq!(
-			streamed.plain.get_or_init(|| parse_plain_text("**Hello** world")),
+			streamed.plain.get_or_init(|| markdown::parse_plain_text("**Hello** world")),
 			"Hello world"
 		);
 	}

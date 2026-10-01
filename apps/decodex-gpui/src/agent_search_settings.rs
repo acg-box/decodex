@@ -2,7 +2,12 @@
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
+	mcp_forms,
+};
+#[cfg(test)] use crate::shell::agent_surface::{ClientProfile, Entity, Render, Window, px};
 use decodex_protocol::{AgentSearchSettingsResult as State, ClientFailure};
 
 #[derive(Default)]
@@ -84,7 +89,8 @@ impl AgentSurface {
 		self.search_settings.feedback =
 			if mode.is_some() { "Saving search…" } else { "Reading search settings…" }.into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let key =
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -123,25 +129,26 @@ impl AgentSurface {
 
 	pub(super) fn search_settings_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let owner = work.to_owned();
 		let opened = self.search_settings.work.as_deref() == Some(work);
-		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
-			"search-settings-toggle".into(),
-			"Search defaults".into(),
-			opened,
-			cx,
-			move |s, cx| {
-				if s.search_settings.work.as_deref() == Some(&owner) {
-					s.reset_search_settings();
-					cx.notify();
-				} else {
-					s.update_search_settings(&owner, None, cx);
-				}
-			},
-		));
+		let mut panel =
+			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+				"search-settings-toggle".into(),
+				"Search defaults".into(),
+				opened,
+				cx,
+				move |s, cx| {
+					if s.search_settings.work.as_deref() == Some(&owner) {
+						s.reset_search_settings();
+						cx.notify();
+					} else {
+						s.update_search_settings(&owner, None, cx);
+					}
+				},
+			));
 
 		if !opened {
 			return panel.into_any_element();
@@ -157,7 +164,7 @@ impl AgentSurface {
 
 		let owner = work.to_owned();
 
-		panel = panel.child(mcp_button(
+		panel = panel.child(mcp_forms::mcp_button(
 			"search-settings-refresh".into(),
 			"Refresh search settings".into(),
 			false,
@@ -196,7 +203,7 @@ impl AgentSurface {
 				let mode = mode.clone();
 				let epoch = self.search_settings.epoch;
 
-				panel = panel.child(mcp_button(
+				panel = panel.child(mcp_forms::mcp_button(
 					format!("search-choice-{index}"),
 					label,
 					selected,

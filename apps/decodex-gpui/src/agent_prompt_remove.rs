@@ -1,9 +1,14 @@
 //! Explicit local input removal. No history mutation or submission occurs here.
 use std::{collections::BTreeSet, path::Path};
 
-use gpui::AnyElement;
+use gpui::{AnyElement, AppContext as _, IntoElement, ParentElement, Styled};
 
-use crate::shell::agent_surface::{mcp_forms, prompt_edit::*};
+use crate::shell::agent_surface::{
+	mcp_forms,
+	prompt_edit::{
+		self, AgentSurface, ComposerInput, Context, DesktopPromptEditDraft, PromptDraft,
+	},
+};
 
 pub(super) struct Removal {
 	pub(super) key: String,
@@ -27,7 +32,7 @@ impl AgentSurface {
 		}
 
 		self.prompt_edit.removal = Some(Removal {
-			key: unique_command(),
+			key: prompt_edit::unique_command(),
 			before: expected.clone(),
 			part,
 			markers: BTreeSet::new(),
@@ -102,9 +107,9 @@ impl AgentSurface {
 
 	pub(in super::super) fn prompt_removal_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(removal) = &self.prompt_edit.removal else {
-			return div().into_any_element();
+			return prompt_edit::div().into_any_element();
 		};
-		let mut panel = div()
+		let mut panel = prompt_edit::div()
 			.w_full()
 			.min_w_0()
 			.flex_none()

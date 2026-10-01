@@ -2,7 +2,16 @@
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
+	WireText, mcp_forms,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render,
+	Window, px,
+};
 use decodex_protocol::{AgentHookChange as Change, AgentHookDto, AgentHookSettingsState as State};
 
 #[derive(Default)]
@@ -134,7 +143,8 @@ impl AgentSurface {
 		}
 		.into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let key =
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
@@ -208,17 +218,19 @@ impl AgentSurface {
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
 		{
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let owner = work.id.clone();
-		let mut panel = div().flex().flex_col().gap_2().child("Shared hooks").child(mcp_button(
-			"hook-settings-read".into(),
-			"Review / refresh shared hooks".into(),
-			false,
-			cx,
-			move |s, cx| s.update_hook_settings(owner.clone(), None, cx),
-		));
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().child("Shared hooks").child(
+			mcp_forms::mcp_button(
+				"hook-settings-read".into(),
+				"Review / refresh shared hooks".into(),
+				false,
+				cx,
+				move |s, cx| s.update_hook_settings(owner.clone(), None, cx),
+			),
+		);
 
 		if self.hook_settings.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();
@@ -295,7 +307,7 @@ impl AgentSurface {
 							let owner = work.id.clone();
 							let key = hook.key.clone();
 
-							panel = panel.child(mcp_button(
+							panel = panel.child(mcp_forms::mcp_button(
 								format!("hook-setting-{index}-{action_index}"),
 								label.into(),
 								false,

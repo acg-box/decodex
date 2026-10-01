@@ -1,8 +1,15 @@
 //! Native diagram presentation with source copy and complete-source fallback.
-use mermaid::Role;
 use ui_theme::{BLUE, TEXT_MUTED};
 
-use crate::shell::agent_surface::{markdown::*, selectable_text::SelectableText};
+#[cfg(test)] use crate::shell::agent_surface::markdown::{Context, Kind, Window, parse};
+use crate::shell::agent_surface::{
+	markdown::{
+		self, AnyElement, HighlightStyle, Inline, InteractiveElement, IntoElement, Node,
+		ParentElement, Range, SharedString, StatefulInteractiveElement, Styled, code_text, mermaid,
+		mermaid::Role, px, ui_theme,
+	},
+	selectable_text::SelectableText,
+};
 
 // Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
 pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: usize) -> bool {
@@ -26,7 +33,7 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 	let selector = format!("mermaid-{key}");
 
 	Some(
-		div()
+		markdown::div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -34,13 +41,17 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 			.w_full()
 			.p_3()
 			.rounded_md()
-			.bg(rgba(0x00000045))
+			.bg(markdown::rgba(0x00000045))
 			.font_family("Menlo")
 			.text_size(px(12.))
 			.line_height(px(19.))
-			.child(copy_button(&format!("mermaid-copy-{key}"), "Copy Mermaid source", source))
+			.child(markdown::copy_button(
+				&format!("mermaid-copy-{key}"),
+				"Copy Mermaid source",
+				source,
+			))
 			.child(
-				div()
+				markdown::div()
 					.id(SharedString::from(selector.clone()))
 					.debug_selector(move || selector.clone())
 					.w_full()
@@ -77,8 +88,8 @@ fn diagram(source: &str) -> Option<Inline> {
 			out.text.push_str(&span.text);
 
 			let color = match span.role {
-				Role::Node => Some(rgb(BLUE).into()),
-				Role::Edge => Some(rgb(TEXT_MUTED).into()),
+				Role::Node => Some(markdown::rgb(BLUE).into()),
+				Role::Edge => Some(markdown::rgb(TEXT_MUTED).into()),
 				Role::Text => None,
 			};
 

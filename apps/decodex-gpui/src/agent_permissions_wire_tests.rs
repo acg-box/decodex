@@ -2,13 +2,17 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
-	permissions::*,
+	permissions::{
+		self, AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult,
+		AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, ClientProfile, Context, Entity,
+		EntityId, IntoElement, Outcome, Render, State, Window, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -101,7 +105,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(700.)));
+		w.resize(gpui::size(permissions::px(900.), permissions::px(700.)));
 		w.draw(cx).clear();
 	});
 
@@ -220,7 +224,7 @@ fn running_permissions_offer_both_named_and_builtin_profiles(cx: &mut TestAppCon
 	});
 
 	visual.update(|window, cx| {
-		window.resize(gpui::size(px(900.), px(700.)));
+		window.resize(gpui::size(permissions::px(900.), permissions::px(700.)));
 		window.draw(cx).clear();
 	});
 

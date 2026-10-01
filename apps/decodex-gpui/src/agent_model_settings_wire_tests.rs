@@ -2,13 +2,22 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::model_settings::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile,
+	ConversationModel, ConversationReasoningEffort, Entity, Render, Window, WireText,
+};
 use crate::shell::agent_surface::{
-	model_settings::*,
+	model_settings::{
+		self, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId, IntoElement,
+		State,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -75,7 +84,7 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut T
 
 	for index in 0..4 {
 		visual.update(|w, cx| {
-			w.resize(gpui::size(px(900.), px(600.)));
+			w.resize(gpui::size(model_settings::px(900.), model_settings::px(600.)));
 			w.draw(cx).clear();
 		});
 
@@ -91,8 +100,11 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut T
 
 			match index {
 				0 => {
-					assert!(settings_text(state).contains("configured-model"));
-					assert!(settings_text(state).contains("Model provider: server-provider"));
+					assert!(model_settings::settings_text(state).contains("configured-model"));
+					assert!(
+						model_settings::settings_text(state)
+							.contains("Model provider: server-provider")
+					);
 				},
 				1 => assert!(matches!(
 					state,

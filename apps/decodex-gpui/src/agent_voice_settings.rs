@@ -1,8 +1,13 @@
 //! Select the next call's voice without changing a live audio session.
-use gpui::AnyElement;
+use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
+	Task, WireText, mcp_forms, px,
+};
+#[cfg(test)] use crate::shell::agent_surface::{ClientProfile, Render, Window};
 use decodex_protocol::{AgentVoiceSettingsResult as State, ClientFailure, HistoryText};
 
 #[derive(Default)]
@@ -71,7 +76,7 @@ impl AgentSurface {
 
 	fn advanced_voice_options(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.voice_option_target(work).is_none() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let owner = work.to_owned();
@@ -80,53 +85,54 @@ impl AgentSurface {
 			.next
 			.as_ref()
 			.is_some_and(|next| Some(&next.target) == self.voice_option_target(work).as_ref());
-		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
-			"voice-call-options".into(),
-			if active { "Clear call overrides" } else { "Advanced call options" }.into(),
-			active,
-			cx,
-			move |s, cx| {
-				if active {
-					s.voice_settings.next = None;
-				} else if let Some(target) = s.voice_option_target(&owner) {
-					s.voice_settings.next = Some(NextCall {
-						target,
-						model: cx.new(|cx| {
-							ComposerInput::with_placeholder(
-								0,
-								"Configured voice model",
-								"Realtime model override",
-								cx,
-							)
-						}),
-						start: cx.new(|cx| {
-							ComposerInput::with_placeholder(
-								0,
-								"Default start behavior",
-								"Voice start instructions",
-								cx,
-							)
-						}),
-						end: cx.new(|cx| {
-							ComposerInput::with_placeholder(
-								0,
-								"Default end behavior",
-								"Voice end instructions",
-								cx,
-							)
-						}),
-					});
-				}
+		let mut panel =
+			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+				"voice-call-options".into(),
+				if active { "Clear call overrides" } else { "Advanced call options" }.into(),
+				active,
+				cx,
+				move |s, cx| {
+					if active {
+						s.voice_settings.next = None;
+					} else if let Some(target) = s.voice_option_target(&owner) {
+						s.voice_settings.next = Some(NextCall {
+							target,
+							model: cx.new(|cx| {
+								ComposerInput::with_placeholder(
+									0,
+									"Configured voice model",
+									"Realtime model override",
+									cx,
+								)
+							}),
+							start: cx.new(|cx| {
+								ComposerInput::with_placeholder(
+									0,
+									"Default start behavior",
+									"Voice start instructions",
+									cx,
+								)
+							}),
+							end: cx.new(|cx| {
+								ComposerInput::with_placeholder(
+									0,
+									"Default end behavior",
+									"Voice end instructions",
+									cx,
+								)
+							}),
+						});
+					}
 
-				cx.notify();
-			},
-		));
+					cx.notify();
+				},
+			));
 
 		if active && let Some(next) = &self.voice_settings.next {
 			panel=panel.child("Applies when you start a call. Blank fields use configured defaults. Changes do not affect an active call.")
                 .child("Realtime model").child(next.model.clone())
-                .child("Instructions for the Agent when voice starts").child(div().h(px(90.)).child(next.start.clone()))
-                .child("Instructions for the Agent when voice ends").child(div().h(px(90.)).child(next.end.clone()));
+                .child("Instructions for the Agent when voice starts").child(agent_surface::div().h(px(90.)).child(next.start.clone()))
+                .child("Instructions for the Agent when voice ends").child(agent_surface::div().h(px(90.)).child(next.end.clone()));
 		}
 
 		panel.into_any_element()
@@ -201,7 +207,8 @@ impl AgentSurface {
 		self.voice_settings.feedback =
 			if voice.is_some() { "Saving voice…" } else { "Reading voice settings…" }.into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let key =
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -240,30 +247,31 @@ impl AgentSurface {
 
 	pub(super) fn voice_settings_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let owner = work.to_owned();
 		let opened = self.voice_settings.work.as_deref() == Some(work);
-		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
-			"voice-settings-toggle".into(),
-			"Voice settings".into(),
-			opened,
-			cx,
-			move |s, cx| {
-				if s.voice_settings.work.as_deref() == Some(&owner) {
-					let next = s.voice_settings.next.take();
+		let mut panel =
+			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+				"voice-settings-toggle".into(),
+				"Voice settings".into(),
+				opened,
+				cx,
+				move |s, cx| {
+					if s.voice_settings.work.as_deref() == Some(&owner) {
+						let next = s.voice_settings.next.take();
 
-					s.reset_voice_settings();
+						s.reset_voice_settings();
 
-					s.voice_settings.next = next;
+						s.voice_settings.next = next;
 
-					cx.notify();
-				} else {
-					s.update_voice_settings(&owner, None, cx);
-				}
-			},
-		));
+						cx.notify();
+					} else {
+						s.update_voice_settings(&owner, None, cx);
+					}
+				},
+			));
 
 		if !opened {
 			return panel.into_any_element();
@@ -279,7 +287,7 @@ impl AgentSurface {
 
 		let owner = work.to_owned();
 
-		panel = panel.child(mcp_button(
+		panel = panel.child(mcp_forms::mcp_button(
 			"voice-settings-refresh".into(),
 			"Refresh voices".into(),
 			false,
@@ -306,7 +314,7 @@ impl AgentSurface {
 				let voice = voice.clone();
 				let epoch = self.voice_settings.epoch;
 
-				panel = panel.child(mcp_button(
+				panel = panel.child(mcp_forms::mcp_button(
 					format!("voice-choice-{index}"),
 					label,
 					selected,

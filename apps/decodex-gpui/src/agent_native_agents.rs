@@ -4,12 +4,24 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use agent_tree::DISCLOSURE;
-use gpui::AnyElement;
+use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 use ui_theme::{AGENT_CHAT_OVERLAY, CAPTION_SIZE, TEXT_MUTED, TREE_ROW_HEIGHT};
 
-use crate::{shell::agent_surface::*, ui_loading, ui_motion};
+#[cfg(test)] use crate::shell::agent_surface::{AgentSnapshotResult, ClientProfile};
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+			ComposerInput, Context, Entity, EntityId, FluentBuilder, HistoryText, IdempotencyKey,
+			InteractiveElement, IntoElement, ParentElement, SharedString,
+			StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, agent_tree,
+			agent_tree::DISCLOSURE, markdown, ui_theme,
+		},
+	},
+	ui_loading, ui_motion,
+};
 use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
 #[derive(Default)]
@@ -287,7 +299,7 @@ impl AgentSurface {
 		depth: usize,
 		cx: &mut Context<Self>,
 	) -> (AnyElement, usize) {
-		let mut rows = div().flex().flex_col();
+		let mut rows = agent_surface::div().flex().flex_col();
 		let mut count = 0;
 
 		if depth > 24 {
@@ -329,19 +341,19 @@ impl AgentSurface {
 			.child(if has_children {
 				self.tree_toggle(key.clone(), &label, expanded, cx)
 			} else {
-				div().w(px(DISCLOSURE)).flex_none().into_any_element()
+				agent_surface::div().w(agent_surface::px(DISCLOSURE)).flex_none().into_any_element()
 			})
-			.child(div().flex_1().min_w_0().child(self.workspace_action(
+			.child(agent_surface::div().flex_1().min_w_0().child(self.workspace_action(
 				format!("native-agent-open-{thread}"),
 				label,
 				move |s, cx| s.open_native_agent(&work, &thread, cx),
 				cx,
 			)))
 			.child(
-				div()
-					.text_size(px(CAPTION_SIZE))
+				agent_surface::div()
+					.text_size(agent_surface::px(CAPTION_SIZE))
 					.flex_none()
-					.text_color(rgb(TEXT_MUTED))
+					.text_color(agent_surface::rgb(TEXT_MUTED))
 					.child(format!("L{depth} · {}", agent.status)),
 			);
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
@@ -359,7 +371,7 @@ impl AgentSurface {
 	}
 
 	fn native_agent_transcript(&self, thread: &str) -> (AnyElement, bool) {
-		let mut body = div()
+		let mut body = agent_surface::div()
 			.id("native-agent-transcript")
 			.flex_1()
 			.min_h_0()
@@ -380,17 +392,23 @@ impl AgentSurface {
 				can_input = *enabled && self.command_connection_ready();
 
 				if *truncated {
-					body = body.child(muted("Recent conversation · earlier content omitted"));
+					body = body.child(agent_surface::muted(
+						"Recent conversation · earlier content omitted",
+					));
 				}
 
 				for message in messages {
 					let user = message.role == "user";
 
 					body = body.child(
-						div().w_full().flex().when(user, |d| d.justify_end()).child(
-							div()
+						agent_surface::div().w_full().flex().when(user, |d| d.justify_end()).child(
+							agent_surface::div()
 								.max_w(gpui::relative(if user { 0.8 } else { 1.0 }))
-								.when(user, |d| d.p_3().rounded(px(15.)).bg(rgba(0xffffff0b)))
+								.when(user, |d| {
+									d.p_3()
+										.rounded(agent_surface::px(15.))
+										.bg(agent_surface::rgba(0xffffff0b))
+								})
 								.child(markdown::render(
 									&message.text,
 									&format!("native-{thread}-{}", message.id),
@@ -400,7 +418,10 @@ impl AgentSurface {
 				}
 			},
 			None => body = body.child(ui_loading::conversation("Loading conversation")),
-			_ => body = body.child(muted("This agent's conversation is unavailable. Retrying…")),
+			_ =>
+				body = body.child(agent_surface::muted(
+					"This agent's conversation is unavailable. Retrying…",
+				)),
 		}
 
 		(body.into_any_element(), can_input)
@@ -408,7 +429,7 @@ impl AgentSurface {
 
 	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, thread)) = &self.native_agents.selected else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 		let title = self
 			.native_agents
@@ -429,66 +450,76 @@ impl AgentSurface {
 			.find(|a| &a.thread_id == thread)
 			.map(|a| a.parent_thread_id.clone());
 		let (body, can_input) = self.native_agent_transcript(thread);
-		let mut panel = div()
-			.size_full()
-			.flex()
-			.flex_col()
-			.rounded(px(14.))
-			.bg(rgba(AGENT_CHAT_OVERLAY))
-			.child(
-				div()
-					.h(px(36.))
-					.px_3()
-					.flex()
-					.items_center()
-					.gap_3()
-					.child(self.workspace_action(
-						"native-agent-back".into(),
-						"←".into(),
-						move |s, cx| {
-							if let Some(parent) = &parent
-								&& s.native_agents
-									.lists
-									.get(&back)
-									.is_some_and(|list| list.iter().any(|a| &a.thread_id == parent))
-							{
-								s.open_native_agent(&back, parent, cx);
+		let mut panel =
+			agent_surface::div()
+				.size_full()
+				.flex()
+				.flex_col()
+				.rounded(agent_surface::px(14.))
+				.bg(agent_surface::rgba(AGENT_CHAT_OVERLAY))
+				.child(
+					agent_surface::div()
+						.h(agent_surface::px(36.))
+						.px_3()
+						.flex()
+						.items_center()
+						.gap_3()
+						.child(self.workspace_action(
+							"native-agent-back".into(),
+							"←".into(),
+							move |s, cx| {
+								if let Some(parent) = &parent
+									&& s.native_agents.lists.get(&back).is_some_and(|list| {
+										list.iter().any(|a| &a.thread_id == parent)
+									}) {
+									s.open_native_agent(&back, parent, cx);
 
-								return;
-							}
+									return;
+								}
 
-							s.open_page(&back, cx);
-						},
-						cx,
-					))
-					.when(!self.pages.is_empty(), |row| {
-						row.child(div().max_w(px(360.)).min_w_0().child(self.workspace_tabs(cx)))
-					})
-					.child(div().flex_1().min_w_0().text_ellipsis().child(title.to_owned()))
-					.child(markdown::copy_button(
-						&format!("native-reference-{thread}"),
-						"Copy agent reference",
-						format!("thread://{thread}"),
-					)),
-			)
-			.child(body);
+								s.open_page(&back, cx);
+							},
+							cx,
+						))
+						.when(!self.pages.is_empty(), |row| {
+							row.child(
+								agent_surface::div()
+									.max_w(agent_surface::px(360.))
+									.min_w_0()
+									.child(self.workspace_tabs(cx)),
+							)
+						})
+						.child(
+							agent_surface::div()
+								.flex_1()
+								.min_w_0()
+								.text_ellipsis()
+								.child(title.to_owned()),
+						)
+						.child(markdown::copy_button(
+							&format!("native-reference-{thread}"),
+							"Copy agent reference",
+							format!("thread://{thread}"),
+						)),
+				)
+				.child(body);
 
 		if can_input {
 			if let Some(input) = &self.native_agents.input {
 				panel = panel.child(
-					div()
+					agent_surface::div()
 						.id("native-agent-input")
 						.m_4()
 						.p_2()
-						.rounded(px(16.))
-						.bg(rgba(0x202024ee))
+						.rounded(agent_surface::px(16.))
+						.bg(agent_surface::rgba(0x202024ee))
 						.flex()
 						.items_center()
 						.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 							s.send_native_agent(cx);
 							cx.stop_propagation();
 						}))
-						.child(div().flex_1().min_w_0().child(input.clone()))
+						.child(agent_surface::div().flex_1().min_w_0().child(input.clone()))
 						.child(self.workspace_action(
 							"native-agent-send".into(),
 							if self.native_agents.pending.is_some() { "…" } else { "↑" }.into(),
@@ -499,13 +530,17 @@ impl AgentSurface {
 			}
 		} else if matches!(self.native_agents.detail, Some(NativeAgentsResult::Conversation { .. }))
 		{
-			panel = panel.child(div().p_4().child(muted(
+			panel = panel.child(agent_surface::div().p_4().child(agent_surface::muted(
 				"This agent is controlled by its parent. Open the parent conversation to request changes.",
 			)));
 		}
 		if !self.native_agents.feedback.is_empty() {
-			panel =
-				panel.child(div().px_4().pb_3().child(muted(self.native_agents.feedback.clone())));
+			panel = panel.child(
+				agent_surface::div()
+					.px_4()
+					.pb_3()
+					.child(agent_surface::muted(self.native_agents.feedback.clone())),
+			);
 		}
 
 		panel.into_any_element()
@@ -572,7 +607,7 @@ impl AgentSurface {
 						text: message,
 						expected_turn: active_turn.and_then(|t| WireText::new(t).ok()),
 					},
-					IdempotencyKey::new(unique_command()).ok()?,
+					IdempotencyKey::new(agent_surface::unique_command()).ok()?,
 				))
 				.ok()
 		});
@@ -640,18 +675,23 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_agents::*;
+	use std::future;
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+	use gpui::AppContext as _;
+	use tokio_tungstenite::tungstenite::Message;
+
+	use crate::shell::agent_surface::{
+		native_agents::{
+			AgentActionDto, AgentCommandResponse, AgentSnapshotResult, AgentSurface, ClientProfile,
+			ComposerInput, Context, EntityId, NativeAgentDto, NativeAgentsResult,
+		},
+		wire_test_support,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ServerId, ServerMessage,
 	};
-
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
-
-	use std::future;
-
-	use crate::shell::agent_surface::wire_test_support;
 
 	fn conversation(thread: &str) -> NativeAgentsResult {
 		NativeAgentsResult::Conversation {

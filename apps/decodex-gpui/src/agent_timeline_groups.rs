@@ -2,9 +2,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpui::{
-	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString, div,
+	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
-	px, rgb,
+	px,
 };
 
 use crate::{
@@ -40,7 +40,7 @@ impl AgentSurface {
 		let entry = entry.clone();
 		let expanded = group.expanded;
 		let keyboard = (work_id.clone(), entry.clone(), turn.clone());
-		let control = div()
+		let control = gpui::div()
 			.id(SharedString::from(format!("turn-process-{identity}")))
 			.debug_selector(|| "turn-process-toggle".into())
 			.role(Role::Button)
@@ -55,8 +55,8 @@ impl AgentSurface {
 			.text_size(px(13.))
 			.font_weight(FontWeight::NORMAL)
 			.line_height(px(18.))
-			.text_color(rgb(TEXT_MUTED))
-			.hover(|s| s.text_color(rgb(TEXT)))
+			.text_color(gpui::rgb(TEXT_MUTED))
+			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.child(earlier_messages_label(group.count))
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),
@@ -85,7 +85,7 @@ impl AgentSurface {
 			}))
 			.into_any_element();
 
-		div().flex().child(control).into_any_element()
+		gpui::div().flex().child(control).into_any_element()
 	}
 }
 
@@ -192,9 +192,12 @@ fn earlier_messages_label(count: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_timeline::{Binding, Timeline, groups::*};
-
 	use std::thread;
+
+	use crate::shell::agent_surface::native_timeline::{
+		Binding, Timeline,
+		groups::{self, AgentSurface, AgentTimelineEntry, BTreeSet, Content},
+	};
 
 	fn message(index: u64, kind: &str, phase: Option<&str>) -> AgentTimelineEntry {
 		AgentTimelineEntry {
@@ -235,26 +238,26 @@ mod tests {
 			*text = " \n\t".into();
 		}
 
-		assert!(empty_completed_reasoning(&entries).is_empty());
+		assert!(groups::empty_completed_reasoning(&entries).is_empty());
 
 		entries.push(completed("completed"));
 
-		assert_eq!(empty_completed_reasoning(&entries), BTreeSet::from([0]));
-		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		assert_eq!(groups::empty_completed_reasoning(&entries), BTreeSet::from([0]));
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 
 		if let Content::Item { truncated, .. } = &mut entries[0].content {
 			*truncated = true;
 		}
 
-		assert!(empty_completed_reasoning(&entries).is_empty());
+		assert!(groups::empty_completed_reasoning(&entries).is_empty());
 
 		if let Content::Item { text, truncated, .. } = &mut entries[0].content {
 			*text = "Retained summary".into();
 			*truncated = false;
 		}
 
-		assert!(empty_completed_reasoning(&entries).is_empty());
-		assert_eq!(groups(&entries, &BTreeSet::new())[0].count, 1);
+		assert!(groups::empty_completed_reasoning(&entries).is_empty());
+		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].count, 1);
 	}
 
 	#[test]
@@ -267,25 +270,25 @@ mod tests {
 		];
 
 		assert!(
-			groups(&entries, &BTreeSet::new()).is_empty(),
+			groups::groups(&entries, &BTreeSet::new()).is_empty(),
 			"final output can arrive before work finishes"
 		);
 
 		entries.push(completed("completed"));
 
-		let result = groups(&entries, &BTreeSet::new());
+		let result = groups::groups(&entries, &BTreeSet::new());
 
 		assert_eq!(result[0].indices, vec![1, 2]);
 		assert!(!result[0].expanded);
-		assert!(groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
+		assert!(groups::groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
 
 		entries[4] = completed("failed");
 
-		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 
 		entries[4] = completed("interrupted");
 
-		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
 	fn unknown_phases_and_interactive_content_remain_visible() {
@@ -296,17 +299,17 @@ mod tests {
 			completed("completed"),
 		];
 
-		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 
 		entries[2] = message(2, "agentMessage", Some("final_answer"));
 
-		assert_eq!(groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
+		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
 
 		if let Content::Item { app_ui, .. } = &mut entries[1].content {
 			*app_ui = true;
 		}
 
-		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
 	fn interleaved_user_input_splits_process_segments_without_reordering() {
@@ -318,15 +321,15 @@ mod tests {
 			message(4, "agentMessage", Some("final_answer")),
 			completed("completed"),
 		];
-		let result = groups(&entries, &BTreeSet::new());
+		let result = groups::groups(&entries, &BTreeSet::new());
 
 		assert_eq!(
 			result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
 			BTreeSet::from([1])
 		);
 		assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
-		assert_eq!(earlier_messages_label(result[0].count), "2 earlier messages");
-		assert_eq!(earlier_messages_label(1), "1 earlier message");
+		assert_eq!(groups::earlier_messages_label(result[0].count), "2 earlier messages");
+		assert_eq!(groups::earlier_messages_label(1), "1 earlier message");
 		assert_eq!(
 			result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
 			vec![vec![1], vec![3]]
@@ -339,7 +342,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(1_400.)));
+		visual.simulate_resize(gpui::size(groups::px(1_400.), groups::px(1_400.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

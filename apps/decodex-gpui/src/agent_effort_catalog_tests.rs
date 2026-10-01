@@ -12,7 +12,13 @@ use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::{AgentActionDto, ClientProfile, LoadState, capabilities::*};
+use crate::shell::agent_surface::{
+	AgentActionDto, ClientProfile, LoadState,
+	capabilities::{
+		AgentCapabilitiesResult, AgentModelDto, AgentSurface, ConversationReasoningEffort,
+		IntoElement, ParentElement,
+	},
+};
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandPayload, ConversationModel,
 	ConversationWorkingDirectory, Cursor, EntityId, InitialExecutionDefaults,

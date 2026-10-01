@@ -1,7 +1,9 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
 use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
 
-use crate::shell::agent_surface::markdown::mermaid_view::*;
+use crate::shell::agent_surface::markdown::mermaid_view::{
+	self, Context, IntoElement, Kind, Node, Window, mermaid,
+};
 
 struct Preview {
 	text: String,
@@ -17,7 +19,7 @@ fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 		.iter()
 		.flat_map(|node| match node {
 			Node::Block(kind @ (Kind::Code | Kind::Mermaid { .. }), children) =>
-				vec![(matches!(kind, Kind::Mermaid { .. }), code_text(children))],
+				vec![(matches!(kind, Kind::Mermaid { .. }), mermaid_view::code_text(children))],
 			Node::Block(_, children) => sources(children),
 			_ => Vec::new(),
 		})
@@ -35,11 +37,11 @@ fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 		"erDiagram; CUSTOMER ||--o{ ORDER : places",
 	] {
 		let markdown = format!("```mermaid title=example\r\n{source}  \r\n```\n\nAfter");
-		let blocks = sources(&parse(&markdown));
+		let blocks = sources(&mermaid_view::parse(&markdown));
 
 		assert_eq!(blocks, vec![(true, format!("{source}  \r\n"))]);
 		assert_eq!(
-			diagram(&blocks[0].1).expect("supported family").text,
+			mermaid_view::diagram(&blocks[0].1).expect("supported family").text,
 			mermaid::render(source, 256).expect("upstream diagram")
 		);
 	}
@@ -48,11 +50,11 @@ fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 		"> ~~~~mermaid\n> graph TD; A --> B\n> ~~~~~\n",
 		"- Diagram:\n\n  ```mermaid\n  graph LR; A --> B\n  ```\n",
 	] {
-		let blocks = sources(&parse(markdown));
+		let blocks = sources(&mermaid_view::parse(markdown));
 
 		assert_eq!(blocks.len(), 1);
 		assert!(blocks[0].0);
-		assert!(diagram(&blocks[0].1).is_some());
+		assert!(mermaid_view::diagram(&blocks[0].1).is_some());
 	}
 }
 
@@ -63,7 +65,7 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 		"````mermaid\ngraph TD; A --> B\n```\n",
 		"> ```mermaid\n> graph TD; A --> B\n",
 	] {
-		assert!(sources(&parse(markdown)).iter().all(|(closed, _)| !closed));
+		assert!(sources(&mermaid_view::parse(markdown)).iter().all(|(closed, _)| !closed));
 	}
 	for source in [
 		"pie; Cats: 2".to_owned(),
@@ -71,10 +73,10 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 		"flowchart TD; click A https://example.test".to_owned(),
 		"x".repeat(16 * 1_024 + 1),
 	] {
-		let blocks = sources(&parse(&format!("```mermaid\n{source}\n```\n\nAfter")));
+		let blocks = sources(&mermaid_view::parse(&format!("```mermaid\n{source}\n```\n\nAfter")));
 
 		assert_eq!(blocks, vec![(true, format!("{source}\n"))]);
-		assert!(diagram(&blocks[0].1).is_none());
+		assert!(mermaid_view::diagram(&blocks[0].1).is_none());
 	}
 }
 
@@ -87,14 +89,14 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 	let mut previous_size = None;
 
 	for width in [800., 160.] {
-		visual.simulate_resize(gpui::size(px(width), px(500.)));
+		visual.simulate_resize(gpui::size(mermaid_view::px(width), mermaid_view::px(500.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let bounds = visual.debug_bounds("mermaid-diagram-preview-0").expect("diagram viewport");
 
-		assert!(bounds.size.width <= px(width));
+		assert!(bounds.size.width <= mermaid_view::px(width));
 
 		let text = visual.debug_bounds("mermaid-text-diagram-preview-0").expect("diagram text");
 
@@ -107,7 +109,10 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 		if width == 160. {
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(
+					mermaid_view::px(-60.),
+					mermaid_view::px(0.),
+				)),
 				..Default::default()
 			});
 			visual.update(|window, cx| {

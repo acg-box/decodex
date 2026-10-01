@@ -4,7 +4,15 @@ use std::collections::BTreeMap;
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentClient, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId,
+	InteractiveElement, IntoElement, ParentElement, Styled, Task, mcp_forms,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile,
+	ConversationModel, ConversationReasoningEffort, Entity, Render, Window, WireText, px,
+};
 use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult as State};
 
 #[derive(Default)]
@@ -139,13 +147,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let owner = work.id.clone();
-		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
-			"native-model-settings-read".into(),
-			"Refresh task model".into(),
-			self.model_settings.task.is_some(),
-			cx,
-			move |s, cx| s.read_model_settings(&owner, cx),
-		));
+		let mut panel =
+			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+				"native-model-settings-read".into(),
+				"Refresh task model".into(),
+				self.model_settings.task.is_some(),
+				cx,
+				move |s, cx| s.read_model_settings(&owner, cx),
+			));
 
 		if self.model_settings.observations.contains_key(&work.id)
 			|| self.model_settings.work.as_ref() == Some(&work.id)
@@ -159,9 +168,11 @@ impl AgentSurface {
 
 			panel = panel
 				.child(
-					div().debug_selector(|| "native-model-settings-observation".into()).child(text),
+					agent_surface::div()
+						.debug_selector(|| "native-model-settings-observation".into())
+						.child(text),
 				)
-				.child(muted(
+				.child(agent_surface::muted(
 					"Last read of task settings. Individual turns may use different settings.",
 				));
 		}

@@ -1,8 +1,18 @@
 //! Explicit task selection and per-manager composer drafts.
-use gpui::{AnyElement, KeyDownEvent};
-use ui_theme::TEXT_MUTED;
+use gpui::{AnyElement, AppContext as _, KeyDownEvent};
 
-use crate::{shell::agent_surface::composer::*, ui_theme::HOVER_FILL};
+#[cfg(test)] use crate::shell::agent_surface::composer::{AgentActionDto, HistoryText};
+use crate::{
+	shell::agent_surface::{
+		composer,
+		composer::{
+			AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement,
+			IntoElement, ParentElement, Role, SharedString, SmoothControl,
+			StatefulInteractiveElement, Styled, WireText, px, ui_theme::TEXT_MUTED,
+		},
+	},
+	ui_theme::HOVER_FILL,
+};
 use decodex_protocol::AgentTaskReferenceDto;
 
 impl AgentSurface {
@@ -72,7 +82,7 @@ impl AgentSurface {
 
 	pub(super) fn task_reference_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let query = self.task_reference_search.read(cx).content().trim().to_lowercase();
-		let mut list = div()
+		let mut list = composer::div()
 			.id("task-reference-results")
 			.max_h(px(280.))
 			.overflow_y_scroll()
@@ -104,7 +114,7 @@ impl AgentSurface {
 				let clicked = reference.clone();
 
 				list = list.child(
-					div()
+					composer::div()
 						.id(SharedString::from(format!("reference-task-{}", work.id)))
 						.debug_selector({
 							let id = format!("reference-task-{}", work.id);
@@ -118,18 +128,18 @@ impl AgentSurface {
 						.py_1()
 						.rounded(px(6.))
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(HOVER_FILL)))
+						.hover(|d| d.bg(composer::rgba(HOVER_FILL)))
 						.child(
-							div()
+							composer::div()
 								.text_size(px(12.))
 								.overflow_hidden()
 								.text_ellipsis()
 								.child(work.title.clone()),
 						)
 						.child(
-							div()
+							composer::div()
 								.text_size(px(10.))
-								.text_color(rgb(TEXT_MUTED))
+								.text_color(composer::rgb(TEXT_MUTED))
 								.child(work.id.clone()),
 						)
 						.on_click(cx.listener(move |s, _, _, cx| {
@@ -148,19 +158,20 @@ impl AgentSurface {
 		}
 
 		if count == 0 {
-			list = list
-				.child(div().text_size(px(11.)).child("No matching tasks with a conversation."));
+			list = list.child(
+				composer::div().text_size(px(11.)).child("No matching tasks with a conversation."),
+			);
 		}
 
-		div()
+		composer::div()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(div().h(px(36.)).flex_none().child(self.task_reference_search.clone()))
+			.child(composer::div().h(px(36.)).flex_none().child(self.task_reference_search.clone()))
 			.child(
-				div()
+				composer::div()
 					.text_size(px(10.))
-					.text_color(rgb(TEXT_MUTED))
+					.text_color(composer::rgb(TEXT_MUTED))
 					.child("Sending grants read access to the selected task history."),
 			)
 			.child(list)
@@ -172,14 +183,14 @@ impl AgentSurface {
 			return None;
 		}
 
-		let mut row = div().flex().flex_wrap().gap_1().px_1();
+		let mut row = composer::div().flex().flex_wrap().gap_1().px_1();
 
 		for reference in &self.task_references {
 			let remove = reference.clone();
 			let clicked = remove.clone();
 
 			row = row.child(
-				div()
+				composer::div()
 					.id(SharedString::from(format!(
 						"selected-task-{}-{}",
 						reference.work_id.as_str(),
@@ -201,11 +212,11 @@ impl AgentSurface {
 					.px_2()
 					.py_1()
 					.rounded(px(6.))
-					.bg(rgba(0xffffff0a))
+					.bg(composer::rgba(0xffffff0a))
 					.text_size(px(11.))
 					.cursor_pointer()
 					.child(
-						div()
+						composer::div()
 							.overflow_hidden()
 							.text_ellipsis()
 							.child(format!("@{} ×", reference.title.as_str())),
@@ -231,9 +242,15 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::composer::task_references::*;
-
 	use std::{slice, thread};
+
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::composer::task_references::{
+		self, AgentSurface, AgentTaskReferenceDto, EntityId, WireText,
+	};
+	#[cfg(test)]
+	use crate::shell::agent_surface::composer::task_references::{AgentActionDto, HistoryText};
 
 	fn reference(id: &str) -> AgentTaskReferenceDto {
 		AgentTaskReferenceDto {
@@ -310,7 +327,8 @@ mod tests {
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
+		visual
+			.simulate_resize(gpui::size(task_references::px(1_400.), task_references::px(1_000.)));
 
 		let search = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

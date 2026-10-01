@@ -2,13 +2,17 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
-	live_settings::*,
+	live_settings::{
+		self, AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult,
+		AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, ClientProfile, Context, Edit, Entity,
+		EntityId, IntoElement, Render, Reviewer, State, Window, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -166,7 +170,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(600.)));
+		w.resize(gpui::size(live_settings::px(900.), live_settings::px(600.)));
 		w.draw(cx).clear();
 	});
 
@@ -291,7 +295,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 	});
 
 	visual.update(|window, cx| {
-		window.resize(gpui::size(px(900.), px(600.)));
+		window.resize(gpui::size(live_settings::px(900.), live_settings::px(600.)));
 		window.draw(cx).clear();
 	});
 

@@ -50,7 +50,7 @@ impl ComposerInput {
 mod tests {
 	use gpui::AppContext as _;
 
-	use crate::composer_input::{Redo, Undo, native::*};
+	use crate::composer_input::{Redo, Undo, native::ComposerInput};
 
 	#[gpui::test]
 	fn large_native_edits_keep_a_bounded_undo_history(cx: &mut gpui::TestAppContext) {

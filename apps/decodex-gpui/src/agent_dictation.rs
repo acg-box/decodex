@@ -1,5 +1,12 @@
 //! Subscription dictation edits a draft; only the ordinary Send action starts work.
-use crate::shell::agent_surface::{voice::Media, *};
+use crate::shell::agent_surface::voice::Media;
+
+#[cfg(test)] use gpui::AppContext as _;
+
+use crate::shell::agent_surface::{
+	AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement, ParentElement,
+	Role, StatefulInteractiveElement, Styled, Window, div, px, rgb, ui_theme, unique_command,
+};
 use decodex_protocol::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
 use gpui::AnyElement;
 use std::{

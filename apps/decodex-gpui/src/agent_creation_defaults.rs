@@ -1,5 +1,13 @@
 //! Resolve native defaults without converting observations into user intent.
-use crate::{creation_defaults::resolve, shell::agent_surface::*};
+
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, creation_setup,
+};
+use crate::{
+	creation_defaults::resolve,
+	shell::agent_surface::{AgentSurface, Context, ConversationModel},
+};
 use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, ServiceTier};
 
 impl AgentSurface {
@@ -104,7 +112,15 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::{creation_defaults, shell::agent_surface::creation_defaults::*};
+	use gpui::AppContext as _;
+
+	use crate::{
+		creation_defaults,
+		shell::agent_surface::creation_defaults::{
+			AgentSurface, ConversationModel, ConversationReasoningEffort,
+			ConversationWorkingDirectory, EntityId, InitialExecutionDefaults, creation_setup,
+		},
+	};
 	use decodex_protocol::{
 		DesktopCreationIntent, InitialModelCatalogResult, InitialModelDefaults, ServiceTier,
 	};

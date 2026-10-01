@@ -8,11 +8,22 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::drafts::{storage::*, tests};
+#[cfg(test)]
+use crate::shell::agent_surface::drafts::storage::{
+	self, AgentActionDto, Entity, IntoElement, LoadState, Render, Window,
+};
+use crate::shell::agent_surface::drafts::{
+	storage::{
+		AgentSurface, ClientDraftStore, ClientProfile, Context, DesktopDraftDocument, EntityId,
+		Storage, WireText,
+	},
+	tests,
+};
 use decodex_protocol::*;
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -146,7 +157,7 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 		for _ in 0..200 {
 			visual.run_until_parked();
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1_000.), px(900.)));
+				window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
 				window.draw(cx).clear();
 			});
 
