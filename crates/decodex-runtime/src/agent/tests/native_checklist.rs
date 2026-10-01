@@ -13,7 +13,14 @@ use futures_util::FutureExt as _;
 use tokio::{process::Command, time};
 
 use crate::{
-	agent::{tests::*, timeline},
+	agent::{
+		tests,
+		tests::{
+			AgentCoordinator, AppServerClient, AsyncWriteExt as _, ServerEvent, SqliteStore,
+			native_task_references,
+		},
+		timeline,
+	},
 	application,
 };
 use decodex_core::DecodexRoot;
@@ -33,7 +40,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 	let mut thread = String::new();
 
 	for cold in [false, true] {
-		let (mut agent, _sent, _store_home) = fixture().await;
+		let (mut agent, _sent, _store_home) = tests::fixture().await;
 		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command

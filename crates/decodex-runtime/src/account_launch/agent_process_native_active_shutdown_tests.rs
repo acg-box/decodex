@@ -3,10 +3,14 @@ use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::time;
 
-use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
+	self, AccountId, AgentActionDto, AgentClient, AgentDispatchStateDto, AgentSandboxDto,
+	AgentSnapshotResult, AgentStartDto, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering,
+};
 
 pub(super) async fn prepare(client: &AgentClient, home: &Path, account: &AccountId) {
-	accepted(
+	recap_socket::accepted(
 		client,
 		AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new("recap-root").expect("fixture root"),

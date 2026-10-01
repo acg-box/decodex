@@ -8,7 +8,13 @@ use tokio::{
 
 use crate::application::{
 	ServiceApplication,
-	account_nudge::{native_tests::model_review::*, tests},
+	account_nudge::{
+		native_tests::model_review::{
+			Application, CURRENT_VERSION, ClientCommandId, CommandPayload, CorrelationId,
+			DecodexRoot, Duration, EntityId, EntityRevision, IdempotencyKey, SqliteStore,
+		},
+		tests,
+	},
 };
 use decodex_core::ConversationId;
 use decodex_protocol::{

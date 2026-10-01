@@ -12,7 +12,16 @@ use std::{
 use futures_util::FutureExt as _;
 use tokio::{process::Command, time};
 
-use crate::{agent::tests::*, application};
+use crate::{
+	agent::{
+		tests,
+		tests::{
+			AgentCoordinator, AppServerClient, AsyncWriteExt as _, ServerEvent, SqliteStore,
+			native_task_references,
+		},
+	},
+	application,
+};
 use decodex_core::DecodexRoot;
 
 const PARTIAL: &str = "Intro.\n\n$$\n\\frac{a+b+c+d+e+f}{g+h}";
@@ -35,7 +44,7 @@ async fn interrupted(plan: bool) {
 
 	fs::write(path.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ncollaboration_modes = true\n[model_providers.fixture]\nname = \"Interrupted output fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let (mut agent, _, store_home) = fixture().await;
+	let (mut agent, _, store_home) = tests::fixture().await;
 	let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 	command

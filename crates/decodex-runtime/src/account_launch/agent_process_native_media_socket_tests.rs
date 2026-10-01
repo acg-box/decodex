@@ -8,7 +8,11 @@ use std::{
 
 use tokio::{process::Command, time};
 
-use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
+	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
+	ConversationModel, ConversationReasoningEffort, ConversationRuntime,
+	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering, Value, WireText,
+};
 use decodex_protocol::{AgentMediaRequest, AgentMediaResult, AgentResourcesResult};
 
 pub(super) async fn check(
@@ -46,7 +50,7 @@ pub(super) async fn check(
 
 	let work = EntityId::new("recap-root").expect("native media fixture");
 
-	accepted(
+	recap_socket::accepted(
 		client,
 		AgentActionDto::Start(AgentStartDto {
 			root_id: work.clone(),
@@ -64,7 +68,7 @@ pub(super) async fn check(
 	)
 	.await;
 
-	let thread = settled(client).await;
+	let thread = recap_socket::settled(client).await;
 	let native = runtime.agent_client().expect("native media fixture");
 	let (generation, ..) = runtime.agent_usage_source().await.expect("native media fixture");
 
@@ -91,7 +95,7 @@ pub(super) async fn check(
 		time::sleep(Duration::from_millis(20)).await;
 	}
 
-	assert_eq!(settled(client).await, thread);
+	assert_eq!(recap_socket::settled(client).await, thread);
 
 	let items = native.thread_read_turn_items(&thread, turn).await.expect("native media fixture");
 	let item = items
@@ -179,7 +183,7 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 		url: WireText::new("https://example.invalid/media-fixture").expect("native media fixture"),
 	};
 
-	accepted(client, add.clone(), "resource-add").await;
+	recap_socket::accepted(client, add.clone(), "resource-add").await;
 
 	let first = client.resources(work.clone()).await.expect("native media fixture");
 	let AgentResourcesResult::Available { resources } = &first else {
@@ -193,11 +197,11 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 	assert!(!resource.payload_omitted);
 	assert!(resource.payload_json.contains("https://example.invalid/media-fixture"));
 
-	accepted(client, add, "resource-add-again").await;
+	recap_socket::accepted(client, add, "resource-add-again").await;
 
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), first);
 
-	accepted(
+	recap_socket::accepted(
 		client,
 		AgentActionDto::RemoveResource {
 			work_id: work.clone(),

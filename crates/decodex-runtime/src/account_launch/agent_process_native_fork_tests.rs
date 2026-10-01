@@ -1,7 +1,9 @@
 //! Exercise the public branch commands against the installed native app-server.
 use std::{path::Path, sync::atomic::AtomicUsize};
 
-use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
+	self, AgentActionDto, AgentClient, EntityId, Ordering, SqliteStore, WireText,
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
@@ -56,7 +58,12 @@ pub(super) async fn check(
 		};
 
 		for retry in 0..2 {
-			accepted(client, action.clone(), &format!("fork-confirm-{index}-{retry}")).await;
+			recap_socket::accepted(
+				client,
+				action.clone(),
+				&format!("fork-confirm-{index}-{retry}"),
+			)
+			.await;
 		}
 
 		let PromptForkResult::Available(Some(receipt)) = client
@@ -103,7 +110,7 @@ pub(super) async fn check(
 			assert_eq!(restored, content);
 			assert_eq!(status.phase, decodex_protocol::PromptEditPhase::Applied);
 
-			qualify_prompt_acknowledgement(
+			recap_socket::qualify_prompt_acknowledgement(
 				client,
 				status,
 				&content.expect("canonical reviewed input"),
@@ -112,7 +119,7 @@ pub(super) async fn check(
 			.await;
 		}
 
-		accepted(
+		recap_socket::accepted(
 			client,
 			AgentActionDto::RecoverPromptFork { work_id: work.clone(), review_token: token },
 			&format!("fork-recover-{index}"),
@@ -141,7 +148,7 @@ async fn prepare_review(
 	input_id: &str,
 	index: usize,
 ) {
-	accepted(
+	recap_socket::accepted(
 		client,
 		AgentActionDto::PreparePromptEdit {
 			work_id: work.clone(),

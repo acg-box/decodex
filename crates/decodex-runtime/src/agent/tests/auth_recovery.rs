@@ -3,12 +3,18 @@ use std::time::Duration;
 use rusqlite::Connection;
 use tokio::{io, time};
 
-use crate::{agent::tests::*, application};
+use crate::{
+	agent::{
+		tests,
+		tests::{AppServerClient, AsyncWriteExt as _, SqliteStore},
+	},
+	application,
+};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 

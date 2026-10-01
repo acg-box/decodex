@@ -3,7 +3,10 @@ use std::{env, fs, sync::Mutex};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::{native_tests, native_tests::compaction::*};
+use crate::account_launch::agent_process::{
+	native_tests,
+	native_tests::compaction::{self, Arc, AtomicUsize, Duration, NativeSession, SUMMARY},
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and packaged Code Mode helper"]
@@ -57,13 +60,18 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 				.unwrap();
 			let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
-			start_turn(&session.client, &thread, "Run the fixture tool through Code Mode.").await;
+			compaction::start_turn(
+				&session.client,
+				&thread,
+				"Run the fixture tool through Code Mode.",
+			)
+			.await;
 
-			assert!(completed(&mut session, &thread).await.is_empty());
+			assert!(compaction::completed(&mut session, &thread).await.is_empty());
 
-			start_turn(&session.client, &thread, "Continue through compaction.").await;
+			compaction::start_turn(&session.client, &thread, "Continue through compaction.").await;
 
-			assert_eq!(completed(&mut session, &thread).await.len(), 2);
+			assert_eq!(compaction::completed(&mut session, &thread).await.len(), 2);
 
 			{
 				let requests = bodies.lock().unwrap();
@@ -124,9 +132,9 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 				.await
 				.unwrap();
 
-			start_turn(&cold.client, &thread, "Continue after restart.").await;
+			compaction::start_turn(&cold.client, &thread, "Continue after restart.").await;
 
-			assert!(completed(&mut cold, &thread).await.is_empty());
+			assert!(compaction::completed(&mut cold, &thread).await.is_empty());
 
 			let requests = bodies.lock().unwrap();
 

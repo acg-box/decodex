@@ -8,7 +8,7 @@ use tokio::{
 	task::JoinHandle,
 };
 
-use crate::agent::tests::*;
+use crate::agent::tests::{self, AgentCoordinator, AppServerClient, Value};
 use decodex_database::{AgentForkBoundary, EnqueueAgentEvent};
 
 type NativeHistory = Arc<Mutex<Vec<Value>>>;
@@ -141,11 +141,11 @@ fn transport(
 #[tokio::test]
 async fn prompt_edit_submits_once_and_recovers_lost_or_postcommit_replies_without_replay() {
 	for mode in ["success", "lost-reply", "internal-after-commit", "validation"] {
-		let (mut agent, _old_reads, _directory) = fixture().await;
+		let (mut agent, _old_reads, _directory) = tests::fixture().await;
 
 		agent.start_agent("agent", "Start").await.unwrap();
 
-		complete(&mut agent, "agent").await;
+		tests::complete(&mut agent, "agent").await;
 
 		let native = history();
 		let (client, mut reads, server) = transport(mode, native.clone());
@@ -208,11 +208,11 @@ async fn prompt_edit_submits_once_and_recovers_lost_or_postcommit_replies_withou
 
 #[tokio::test]
 async fn prompt_edit_revalidates_content_before_reservation_or_native_mutation() {
-	let (mut agent, _old_reads, _directory) = fixture().await;
+	let (mut agent, _old_reads, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Start").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let native = history();
 	let (client, mut reads, server) = transport("changed-content", native);
@@ -243,11 +243,11 @@ async fn prompt_edit_revalidates_content_before_reservation_or_native_mutation()
 
 #[tokio::test]
 async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_preview() {
-	let (mut agent, _old_reads, _directory) = fixture().await;
+	let (mut agent, _old_reads, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Start").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let (client, _reads, server) = transport("success", history());
 
@@ -394,11 +394,11 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 		("fork-read-failure", AgentForkBoundary::BeforeInput),
 		("fork-lost-reply", AgentForkBoundary::BeforeInput),
 	] {
-		let (mut agent, _old_reads, _directory) = fixture().await;
+		let (mut agent, _old_reads, _directory) = tests::fixture().await;
 
 		agent.start_agent("agent", "Start").await.unwrap();
 
-		complete(&mut agent, "agent").await;
+		tests::complete(&mut agent, "agent").await;
 
 		let native = history();
 		let original = native.lock().unwrap().clone();

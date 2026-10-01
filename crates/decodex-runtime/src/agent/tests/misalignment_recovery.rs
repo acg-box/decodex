@@ -1,4 +1,4 @@
-use crate::agent::tests::*;
+use crate::agent::tests;
 
 #[tokio::test]
 async fn complete_later_native_history_reconciles_only_the_exact_old_precaution() {
@@ -15,7 +15,7 @@ async fn complete_later_native_history_reconciles_only_the_exact_old_precaution(
 			turns.push(serde_json::json!({"id":"later","status":"completed","items":[]}));
 		}
 
-		let (mut agent, mut sent, _directory) = fixture_with_history(serde_json::json!({
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(serde_json::json!({
 			"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}
 		}))
 		.await;

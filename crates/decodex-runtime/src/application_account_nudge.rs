@@ -3,9 +3,7 @@
 #[path = "application_account_nudge_native_tests.rs"]
 mod native_tests;
 
-use crate::application::{
-	ApplicationPublication, ProductStore, ServiceApplication, application_unavailable,
-};
+use crate::application::{self, ApplicationPublication, ProductStore, ServiceApplication};
 use decodex_core::AccountId;
 use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
 use decodex_protocol::{
@@ -24,18 +22,22 @@ impl ServiceApplication {
 		if command.expected_revision != Some(source.account_revision)
 			|| !source.allows_nudge(action)
 		{
-			return Err(application_unavailable("account notification source changed"));
+			return Err(application::application_unavailable(
+				"account notification source changed",
+			));
 		}
 
 		let ProductStore::Available(store) = &self.store else {
-			return Err(application_unavailable("account state unavailable"));
+			return Err(application::application_unavailable("account state unavailable"));
 		};
 		let request = serde_json::to_vec(&command.payload)
-			.map_err(|_| application_unavailable("invalid account notification"))?;
-		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
-			.map_err(|_| application_unavailable("invalid account notification identity"))?;
+			.map_err(|_| application::application_unavailable("invalid account notification"))?;
+		let identity =
+			CommandIdentity::new(command.idempotency_key.as_str(), &request).map_err(|_| {
+				application::application_unavailable("invalid account notification identity")
+			})?;
 		let revision = i64::try_from(source.account_revision.0)
-			.map_err(|_| application_unavailable("invalid account revision"))?;
+			.map_err(|_| application::application_unavailable("invalid account revision"))?;
 		let claim = store
 			.reserve_account_command(
 				&identity,
@@ -44,13 +46,17 @@ impl ServiceApplication {
 				Some(revision),
 			)
 			.await
-			.map_err(|_| application_unavailable("account notification could not be reserved"))?;
+			.map_err(|_| {
+				application::application_unavailable("account notification could not be reserved")
+			})?;
 		let status = match claim {
 			AccountCommandReceiptClaim::Pending(_) => AccountRecoveryNudgeStatus::Uncertain,
 			AccountCommandReceiptClaim::Replayed(value) => serde_json::from_value(
 				value.get("status").cloned().unwrap_or_default(),
 			)
-			.map_err(|_| application_unavailable("account notification result unavailable"))?,
+			.map_err(|_| {
+				application::application_unavailable("account notification result unavailable")
+			})?,
 			AccountCommandReceiptClaim::Owned(lease) => {
 				let status = match (self.conversations.runtime(), self.account_observations.clone())
 				{

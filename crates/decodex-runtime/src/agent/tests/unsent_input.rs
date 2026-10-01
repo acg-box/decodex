@@ -1,6 +1,8 @@
 use std::iter;
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentDisposition, AgentWorkStatus, ClientError, EnqueueAgentEvent, SqliteStore,
+};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
@@ -15,11 +17,11 @@ async fn only_local_refusals_without_prior_effects_release_input_after_restart()
 		(ClientError::Closed, true, false),
 		(ClientError::Io, true, false),
 	] {
-		let (mut agent, mut sent, directory) = fixture().await;
+		let (mut agent, mut sent, directory) = tests::fixture().await;
 
 		agent.start_agent("agent", "Start").await.unwrap();
 
-		complete(&mut agent, "agent").await;
+		tests::complete(&mut agent, "agent").await;
 
 		let previous = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -86,11 +88,11 @@ async fn only_local_refusals_without_prior_effects_release_input_after_restart()
 
 #[tokio::test]
 async fn local_question_refusal_releases_only_the_exact_pending_answer() {
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Start").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let previous = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = agent

@@ -2,7 +2,7 @@ use std::iter;
 
 use rusqlite::Connection;
 
-use crate::agent::tests::*;
+use crate::agent::tests::{self, AgentError, AgentInputExtras, SqliteStore, Value};
 use decodex_core::DecodexRoot;
 use decodex_protocol::WireText;
 
@@ -11,7 +11,7 @@ fn saved_task_references_are_rendered_on_queued_native_turn_input() {
 	let mut params = serde_json::json!({"input":[{"type":"text","text":"Compare it"}]});
 	let payload=serde_json::json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
 
-	apply_message_options(&mut params, &payload).unwrap();
+	tests::apply_message_options(&mut params, &payload).unwrap();
 
 	assert_eq!(params["input"].as_array().unwrap().len(), 2);
 	assert!(params["input"][1]["text"].as_str().unwrap().contains("native-thread"));
@@ -25,7 +25,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 		{"id":"tool","type":"commandExecution","command":"test","aggregatedOutput":"raw output"},
 		{"id":"image","type":"userMessage","content":[{"type":"image","url":"data:image/png;base64,PRIVATE_MEDIA"}]}
 	]}]}}});
-	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let worker = agent.create_worker("agent", "worker", "Investigate").await.unwrap();
 
@@ -61,7 +61,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 
 #[tokio::test]
 async fn task_history_denies_foreign_scope_stale_binding_and_worker_authority() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
@@ -93,11 +93,11 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1",
 		"historyMode":"paginated","turns":[{"id":"old-turn","status":"completed","items":[
 		{"id":"old-answer","type":"agentMessage","text":"before upgrade"}]}]}}});
-	let (mut agent, _sent, directory) = fixture_with_history(history).await;
+	let (mut agent, _sent, directory) = tests::fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Original").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	// Seed a migration completed by an older release; current code never upgrades threads.
@@ -138,7 +138,7 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 	let history = serde_json::json!({"opaque thread/3":{"thread":{"id":"opaque thread/3",
 		"historyMode":"paginated","turns":[{"id":"target-turn","status":"completed","items":[
 		{"id":"result","type":"agentMessage","text":"selected evidence"}]}]}}});
-	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
@@ -210,7 +210,7 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 
 #[tokio::test]
 async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_read() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
@@ -268,7 +268,7 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 
 #[tokio::test]
 async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 	let work = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let connection = Connection::open(root.paths().product_database_file()).unwrap();
@@ -335,7 +335,7 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 
 	],"nextCursor":"more"},"_occurrences":{"data":[{"turnId":"turn-hit","itemId":"item-hit",
 		"snippet":"matched body","snippetMatchRange":{"start":0,"end":7},"turnCursor":"exact-turn"}],"nextCursor":null}});
-	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	while sent.try_recv().is_ok() {}
@@ -377,7 +377,7 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 #[tokio::test]
 async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors() {
 	let (mut agent, _sent, _directory) =
-		fixture_with_history(serde_json::json!({"_search":{"data":[
+		tests::fixture_with_history(serde_json::json!({"_search":{"data":[
 		{"thread":{"id":"foreign-thread"},"snippet":"hidden"}],"nextCursor":"more"}}))
 		.await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -396,7 +396,7 @@ async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors()
 
 #[tokio::test]
 async fn native_occurrence_search_rejects_foreign_scope_before_rpc() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let _child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();

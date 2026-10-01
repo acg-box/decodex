@@ -2,7 +2,10 @@ use std::{env, error::Error, iter, time::Duration};
 
 use tokio::{process::Command, time};
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AgentError, AppServerClient, ServerEvent, SqliteStore,
+	Value,
+};
 use decodex_core::DecodexRoot;
 use decodex_database::AgentDispatchState;
 
@@ -11,7 +14,7 @@ use decodex_database::AgentDispatchState;
 async fn native_delegation_preserves_tool_authority_and_history() -> Result<(), Box<dyn Error>> {
 	let home = env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
 	let executable = env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 	let mut command = Command::new(executable);
 
 	command.arg("app-server").current_dir(&home).env("CODEX_HOME", &home);
@@ -102,11 +105,11 @@ async fn native_delegation_preserves_tool_authority_and_history() -> Result<(), 
 
 #[tokio::test]
 async fn external_results_use_named_tool_context_before_the_wake_turn() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "agent").await;
 
 	while sent.try_recv().is_ok() {}
 
@@ -149,7 +152,7 @@ async fn external_results_use_named_tool_context_before_the_wake_turn() {
 
 #[tokio::test]
 async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Actual user request").await.unwrap();
 
@@ -161,7 +164,7 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 
 	agent.create_worker("agent", "worker", "Delegated <request> & details").await.unwrap();
 
-	complete(&mut agent, "worker").await;
+	tests::complete(&mut agent, "worker").await;
 
 	agent.continue_worker("worker", "Repair the evidence").await.unwrap();
 	agent.create_manager("agent", "manager", "Manage this delegated outcome", None).await.unwrap();
@@ -198,7 +201,7 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 #[tokio::test]
 async fn uncertain_delegation_is_not_replayed_as_user_input_after_reopen() {
 	let (mut agent, mut sent, directory) =
-		fixture_with_history(serde_json::json!({"_tool_output_disconnect":true})).await;
+		tests::fixture_with_history(serde_json::json!({"_tool_output_disconnect":true})).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -214,7 +217,7 @@ async fn uncertain_delegation_is_not_replayed_as_user_input_after_reopen() {
 
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let store = SqliteStore::open(&root.paths()).unwrap();
-	let (fresh, mut requests, _other) = fixture().await;
+	let (fresh, mut requests, _other) = tests::fixture().await;
 	let mut recovered =
 		AgentCoordinator::new(store, fresh.client.clone(), agent.config.clone()).unwrap();
 
@@ -232,11 +235,11 @@ async fn uncertain_delegation_is_not_replayed_as_user_input_after_reopen() {
 async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_restart() {
 	for failure in ["_injection_disconnect", "_turn_after_injection_disconnect"] {
 		let (mut coordinator, mut sent, directory) =
-			fixture_with_history(serde_json::json!({failure:true})).await;
+			tests::fixture_with_history(serde_json::json!({failure:true})).await;
 
 		coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-		complete(&mut coordinator, "agent").await;
+		tests::complete(&mut coordinator, "agent").await;
 
 		while sent.try_recv().is_ok() {}
 
@@ -261,7 +264,7 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		let (fresh, mut requests, _other_directory) = fixture().await;
+		let (fresh, mut requests, _other_directory) = tests::fixture().await;
 		let mut recovered =
 			AgentCoordinator::new(store, fresh.client.clone(), coordinator.config.clone()).unwrap();
 
@@ -287,7 +290,7 @@ async fn uncertain_context_injection_or_following_turn_is_not_replayed_after_res
 async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dyn Error>> {
 	let home = env::var("DECODEX_NATIVE_CONTEXT_HOME")?;
 	let executable = env::var("DECODEX_NATIVE_CONTEXT_EXECUTABLE")?;
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 	let mut command = Command::new(executable);
 
 	command.arg("app-server").current_dir(&home).env("CODEX_HOME", &home);
@@ -352,7 +355,7 @@ async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dy
 
 #[tokio::test]
 async fn structured_work_context_tracks_the_current_work_without_changing_user_input() {
-	let (mut agent, mut sent, _home) = fixture().await;
+	let (mut agent, mut sent, _home) = tests::fixture().await;
 
 	agent.start_agent("manager", "User-owned goal").await.unwrap();
 

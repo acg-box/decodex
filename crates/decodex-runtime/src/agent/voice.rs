@@ -1,6 +1,6 @@
 //! Bind native live voice to the existing Agent and observe its real task turns.
 use crate::{
-	agent::{AgentCoordinator, AgentError, ClientError, ServerEvent, Value, exact, resume_error},
+	agent::{self, AgentCoordinator, AgentError, ClientError, ServerEvent, Value},
 	agent_voice::{self, VoiceGateway},
 };
 use decodex_database::{AgentVoiceCall, SqliteStore};
@@ -182,9 +182,9 @@ impl AgentCoordinator {
 						.client
 						.thread_resume(params)
 						.await
-						.map_err(|error| resume_error(error, &thread))?;
+						.map_err(|error| agent::resume_error(error, &thread))?;
 
-					if exact(&resumed, "/thread/id")? != thread {
+					if agent::exact(&resumed, "/thread/id")? != thread {
 						return Err(AgentError::Invalid("voice thread differs".into()));
 					}
 
@@ -411,9 +411,9 @@ impl AgentCoordinator {
 				.client
 				.thread_resume(params)
 				.await
-				.map_err(|error| resume_error(error, &call.thread_id))?;
+				.map_err(|error| agent::resume_error(error, &call.thread_id))?;
 
-			if exact(&resumed, "/thread/id")? != call.thread_id {
+			if agent::exact(&resumed, "/thread/id")? != call.thread_id {
 				return Err(AgentError::Invalid("voice recovery thread differs".into()));
 			}
 
@@ -423,7 +423,7 @@ impl AgentCoordinator {
 				.await?;
 
 			for turn in &turns {
-				let turn_id = exact(turn, "/id")?;
+				let turn_id = agent::exact(turn, "/id")?;
 				let observed = self
 					.store
 					.observe_agent_voice_turn(
@@ -441,7 +441,7 @@ impl AgentCoordinator {
 					self.record_terminal(
 						serde_json::json!({"threadId":call.thread_id,"turn":turn}),
 						self.client
-							.thread_read_turn(&call.thread_id, exact(turn, "/id")?.as_str())
+							.thread_read_turn(&call.thread_id, agent::exact(turn, "/id")?.as_str())
 							.await,
 						false,
 					)

@@ -1,6 +1,10 @@
 use tokio::io;
 
-use crate::agent_recap::{excerpts, history::*, prompt};
+use crate::agent_recap::{
+	excerpts,
+	history::{self, AppServerClient, Exchange, Recent, Value},
+	prompt,
+};
 
 #[test]
 fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reasoning_text() {
@@ -22,11 +26,12 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 		serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"steer detail"}]}),
 	);
 
-	let mut messages = visible(&items).expect("visible fixture");
+	let mut messages = history::visible(&items).expect("visible fixture");
 
 	messages.reverse();
 
-	let result = finish(select(&messages), Some("latest".into())).expect("bounded history");
+	let result = history::finish(history::select(&messages), Some("latest".into()))
+		.expect("bounded history");
 
 	assert!(!excerpts::render(&result.exchanges).contains("question-1"));
 	assert!(excerpts::render(&result.exchanges).contains("question-2"));
@@ -71,13 +76,13 @@ fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_bu
 #[test]
 fn media_is_described_without_payloads_and_internal_voice_handoff_is_not_summarized() {
 	let image = serde_json::json!({"type":"userMessage","content":[{"type":"image","url":"data:PRIVATE_IMAGE"}]});
-	let projected = visible(&[image]).expect("visible media placeholder");
+	let projected = history::visible(&[image]).expect("visible media placeholder");
 
 	assert_eq!(projected[0].text, "[Image attachment]");
 
 	let handoff = serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>","textElements":[]}]});
 
-	assert!(visible(&[handoff]).is_err());
+	assert!(history::visible(&[handoff]).is_err());
 }
 
 #[test]

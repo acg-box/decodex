@@ -1,9 +1,18 @@
 //! Same-UID transport over the real command owner; provider observations remain fixture-owned.
+
 use tokio::{net::TcpListener, time};
 
 use crate::{
 	Application, ProtocolServer, ServerConfig, account_launch,
-	application::account_nudge::native_tests::*,
+	application::account_nudge::{
+		native_tests,
+		native_tests::{
+			AccountId, AccountObservationService, AccountRecoveryAction,
+			AccountRecoveryNudgeStatus, AccountRecoveryResult, ApplicationPublication,
+			CommandEnvelope, CommandError, DecodexRoot, Duration, EventPayload, IdempotencyKey,
+			ResultPayload, ServiceApplication,
+		},
+	},
 };
 use decodex_core::LocalTrustPolicy;
 use decodex_protocol::{
@@ -55,7 +64,7 @@ pub(super) async fn qualify(
 		.cache_recovery_fixture(
 			AccountId::new(source.account_id.as_str()).expect("account"),
 			source.account_revision.0 as i64,
-			fixture_usage(),
+			native_tests::fixture_usage(),
 			"workspace-fixture",
 			"user-fixture",
 		)

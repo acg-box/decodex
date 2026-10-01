@@ -6,7 +6,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent,
+};
 use decodex_codex::app_server_client::ThreadModelRecoveryUpdate;
 
 #[tokio::test]
@@ -28,13 +30,13 @@ async fn qualify(configured: bool) {
 	let address = listener.local_addr().expect("fixture address");
 	let count = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		count.clone(),
 		None,
 		Some(bodies.clone()),
-		|_| json!({"input_tokens":1,"output_tokens":1,"total_tokens":2}),
-		|serial| json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+		|_| native_tests::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2}),
+		|serial| native_tests::json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	));
 	let tier = if configured { "service_tier=\"flex\"\n" } else { "" };
 
@@ -44,7 +46,7 @@ async fn qualify(configured: bool) {
 	let started = session
 		.client
 		.thread_start(
-			json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only"}),
+			native_tests::json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only"}),
 		)
 		.await
 		.expect("start");
@@ -81,7 +83,7 @@ async fn qualify(configured: bool) {
 
 			let resumed = session
 				.client
-				.thread_resume(json!({"threadId":thread,"excludeTurns":true}))
+				.thread_resume(native_tests::json!({"threadId":thread,"excludeTurns":true}))
 				.await
 				.expect("cold resume");
 
@@ -90,7 +92,9 @@ async fn qualify(configured: bool) {
 
 		session
 			.client
-			.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Return done."}]}))
+			.turn_start(
+				native_tests::json!({"threadId":thread,"input":[{"type":"text","text":"Return done."}]}),
+			)
 			.await
 			.expect("turn");
 

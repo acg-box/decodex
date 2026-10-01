@@ -5,7 +5,13 @@ use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
-	agent::{tests, voice::*},
+	agent::{
+		tests,
+		voice::{
+			AgentCoordinator, AgentVoiceRequest, ClientError, ServerEvent, TRANSCRIPT_TAIL_BYTES,
+			Value, VoiceGateway, VoiceSdp,
+		},
+	},
 	agent_model_settings::tests::OwnedReviewer,
 };
 use decodex_core::DecodexRoot;
