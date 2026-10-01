@@ -1,5 +1,8 @@
 //! Composer-specific visual controls. Exact values remain visible and keyboard accessible.
+#[path = "agent_effort_slider.rs"] mod effort_slider;
+
 use super::{AgentSurface, SmoothControl, ui_theme};
+
 use gpui::{
 	Context, Role, SharedString, div,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
@@ -17,54 +20,6 @@ const LEVELS: [(&str, &str); 9] = [
 	("ultra", "Ultra"),
 	("persistent", "Persistent"),
 ];
-
-pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
-	div()
-		.flex()
-		.items_center()
-		.gap(px(7.))
-		.child(div().text_size(px(11.)).child(level_label(level)))
-		.into_any_element()
-}
-
-fn level_label(level: &str) -> String {
-	LEVELS.iter().find(|(value, _)| *value == level).map_or(level, |(_, label)| *label).to_owned()
-}
-
-#[path = "agent_effort_slider.rs"] mod effort_slider;
-
-pub(super) fn live_mark() -> gpui::AnyElement {
-	div()
-		.size(px(16.))
-		.flex()
-		.items_center()
-		.justify_center()
-		.gap(px(1.5))
-		.children(
-			[5., 10., 15., 10., 5.]
-				.map(|height| div().w(px(2.)).h(px(height)).rounded_full().bg(rgb(0xf4f2f7))),
-		)
-		.into_any_element()
-}
-
-pub(super) fn launch_mark() -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		|bounds, _, window, _| {
-			let mut path = gpui::PathBuilder::stroke(px(1.5));
-			let origin = bounds.origin;
-			path.move_to(origin + gpui::point(px(8.), px(13.)));
-			path.line_to(origin + gpui::point(px(8.), px(3.)));
-			path.move_to(origin + gpui::point(px(3.), px(8.)));
-			path.line_to(origin + gpui::point(px(8.), px(3.)));
-			path.line_to(origin + gpui::point(px(13.), px(8.)));
-			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(ui_theme::TEXT));
-			}
-		},
-	)
-	.size(px(16.))
-}
 
 impl AgentSurface {
 	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -97,9 +52,12 @@ impl AgentSurface {
 					.into_any_element(),
 		};
 		let mut models: Vec<_> = models.iter().collect();
+
 		models.sort_by_key(|entry| std::cmp::Reverse(model_version(entry.model.as_str())));
+
 		for pair in models.chunks(1) {
 			let mut row = div().flex().gap(px(2.));
+
 			for entry in pair {
 				let model = entry.model.as_str().to_owned();
 				let click_model = model.clone();
@@ -161,8 +119,57 @@ impl AgentSurface {
 
 			palette = palette.child(row);
 		}
+
 		palette.into_any_element()
 	}
+}
+
+pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
+	div()
+		.flex()
+		.items_center()
+		.gap(px(7.))
+		.child(div().text_size(px(11.)).child(level_label(level)))
+		.into_any_element()
+}
+
+pub(super) fn live_mark() -> gpui::AnyElement {
+	div()
+		.size(px(16.))
+		.flex()
+		.items_center()
+		.justify_center()
+		.gap(px(1.5))
+		.children(
+			[5., 10., 15., 10., 5.]
+				.map(|height| div().w(px(2.)).h(px(height)).rounded_full().bg(rgb(0xf4f2f7))),
+		)
+		.into_any_element()
+}
+
+pub(super) fn launch_mark() -> impl IntoElement {
+	gpui::canvas(
+		|_, _, _| (),
+		|bounds, _, window, _| {
+			let mut path = gpui::PathBuilder::stroke(px(1.5));
+			let origin = bounds.origin;
+
+			path.move_to(origin + gpui::point(px(8.), px(13.)));
+			path.line_to(origin + gpui::point(px(8.), px(3.)));
+			path.move_to(origin + gpui::point(px(3.), px(8.)));
+			path.line_to(origin + gpui::point(px(8.), px(3.)));
+			path.line_to(origin + gpui::point(px(13.), px(8.)));
+
+			if let Ok(path) = path.build() {
+				window.paint_path(path, rgb(ui_theme::TEXT));
+			}
+		},
+	)
+	.size(px(16.))
+}
+
+fn level_label(level: &str) -> String {
+	LEVELS.iter().find(|(value, _)| *value == level).map_or(level, |(_, label)| *label).to_owned()
 }
 
 /// Group GPT releases newest first while retaining catalog order within a release.
@@ -184,7 +191,9 @@ mod ordering_tests {
 	fn versions_descend_without_reordering_same_release_variants() {
 		let mut models =
 			["gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-5.5", "gpt-5.10", "custom"];
+
 		models.sort_by_key(|model| std::cmp::Reverse(super::model_version(model)));
+
 		assert_eq!(
 			models,
 			["gpt-6-astra", "gpt-5.10", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "custom"]
@@ -208,6 +217,7 @@ impl gpui::RenderOnce for StopMark {
 		);
 		let pending =
 			crate::ui_motion::value("stop-pending", if self.pending { 1. } else { 0. }, window, cx);
+
 		div()
 			.size(px(16.))
 			.relative()
@@ -255,6 +265,7 @@ pub(super) struct PrimaryMark {
 impl gpui::RenderOnce for PrimaryMark {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let mut row = div().size(px(16.)).relative();
+
 		for (id, mode, glyph) in [
 			("primary-live", PrimaryMode::Live, live_mark()),
 			(
@@ -267,6 +278,7 @@ impl gpui::RenderOnce for PrimaryMark {
 		] {
 			let opacity =
 				crate::ui_motion::value(id, if self.mode == mode { 1. } else { 0. }, window, cx);
+
 			row = row.child(
 				div()
 					.absolute()
@@ -278,6 +290,7 @@ impl gpui::RenderOnce for PrimaryMark {
 					.child(glyph),
 			);
 		}
+
 		row
 	}
 }

@@ -17,8 +17,10 @@ impl AgentSurface {
 		let Some(owner) = self.selected.clone().filter(|_| self.native_agents.selected.is_none())
 		else {
 			self.output_stream = OutputStream::default();
+
 			return;
 		};
+
 		if self.output_stream.owner.as_ref() != Some(&owner) {
 			self.output_stream = OutputStream { owner: Some(owner.clone()), ..Default::default() };
 		}
@@ -27,6 +29,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -34,6 +37,7 @@ impl AgentSurface {
 			return;
 		};
 		let (sender, mut receiver) = tokio::sync::watch::channel(None);
+
 		if std::thread::Builder::new()
 			.name("agent-output-io".into())
 			.spawn(move || {
@@ -47,12 +51,15 @@ impl AgentSurface {
 			.is_err()
 		{
 			self.output_stream.retry_after = Some(Instant::now() + Duration::from_secs(2));
+
 			return;
 		}
+
 		self.output_stream.task = Some(cx.spawn(async move |surface, cx| {
 			while receiver.changed().await.is_ok() {
 				// The latest-value channel coalesces bursts without an unbounded delta queue.
 				cx.background_executor().timer(Duration::from_millis(8)).await;
+
 				let update = receiver.borrow_and_update().clone();
 				let Some(AgentOutputResult::Available { work_id, messages, .. }) = update else {
 					continue;
@@ -63,8 +70,11 @@ impl AgentSurface {
 					{
 						return;
 					}
+
 					let changed = !s.output_stream.ready || s.output_stream.messages != messages;
+
 					s.output_stream.ready = true;
+
 					if changed {
 						let needs_state = messages.first().is_some_and(|message| {
 							s.snapshot
@@ -75,19 +85,24 @@ impl AgentSurface {
 								.and_then(|work| work.active_turn_id.as_ref())
 								!= Some(&message.turn_id)
 						});
+
 						s.output_stream.messages = messages;
+
 						if needs_state {
 							s.refresh(cx);
 						}
+
 						cx.notify();
 					}
 				});
 			}
+
 			let _ = surface.update(cx, |s, cx| {
 				if s.output_stream.owner.as_ref() == Some(&owner) {
 					s.output_stream.task = None;
 					s.output_stream.ready = false;
 					s.output_stream.retry_after = Some(Instant::now() + Duration::from_secs(2));
+
 					cx.notify();
 				}
 			});
@@ -114,8 +129,10 @@ mod tests {
 	#[gpui::test]
 	fn output_is_visible_only_for_its_owner_and_current_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let mut work = s
 				.snapshot
 				.as_ref()
@@ -125,6 +142,7 @@ mod tests {
 				.find(|w| w.id == "agent")
 				.unwrap()
 				.clone();
+
 			work.active_turn_id = Some("current".into());
 			s.output_stream = OutputStream {
 				owner: Some(work.id.clone()),
@@ -138,13 +156,20 @@ mod tests {
 				}],
 				..Default::default()
 			};
+
 			assert!(s.streamed_output(&work).is_none());
+
 			s.output_stream.messages[0].turn_id = "current".into();
+
 			assert_eq!(s.streamed_output(&work).unwrap().len(), 1);
+
 			s.output_stream.owner = Some("other-agent".into());
+
 			assert!(s.streamed_output(&work).is_none());
+
 			s.output_stream.owner = Some(work.id.clone());
 			work.active_turn_id = None;
+
 			assert!(
 				s.streamed_output(&work).is_none(),
 				"completed output must come from saved history"

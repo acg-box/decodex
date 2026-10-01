@@ -2,9 +2,13 @@
 use decodex_protocol::{
 	AccountClient, AccountObservationSignal, ClientFailure, QueryEnvelope, QueryPayload,
 };
+
 use std::{future::Future, pin::Pin};
-type Outcome = (QueryEnvelope, Result<AccountObservationSignal, ClientFailure>);
+
 pub(super) type Wait = Pin<Box<dyn Future<Output = Outcome> + Send>>;
+
+type Outcome = (QueryEnvelope, Result<AccountObservationSignal, ClientFailure>);
+
 pub(super) fn start(client: AccountClient, query: QueryEnvelope) -> Wait {
 	Box::pin(async move {
 		let QueryPayload::WaitForAccountObservation { after_generation, request_refresh } =
@@ -17,12 +21,15 @@ pub(super) fn start(client: AccountClient, query: QueryEnvelope) -> Wait {
 		} else {
 			client.wait_for_observation(after_generation).await
 		};
+
 		if result.is_err() {
 			tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 		}
+
 		(query, result)
 	})
 }
+
 pub(super) async fn poll(wait: &mut Option<Wait>) -> Outcome {
 	match wait {
 		Some(wait) => wait.await,
@@ -53,19 +60,26 @@ mod tests {
 		let dropped = drops.clone();
 		let mut wait: Option<Wait> = Some(Box::pin(async move {
 			entered.fetch_add(1, Ordering::SeqCst);
+
 			let _lifetime = Lifetime(dropped);
+
 			std::future::pending().await
 		}));
+
 		for _ in 0..10 {
 			tokio::select! {
 				biased;
+
 				_ = poll(&mut wait) => panic!("wait must remain pending"),
 				() = std::future::ready(()) => {},
 			}
 		}
+
 		assert_eq!(starts.load(Ordering::SeqCst), 1);
 		assert_eq!(drops.load(Ordering::SeqCst), 0);
+
 		drop(wait);
+
 		assert_eq!(drops.load(Ordering::SeqCst), 1);
 	}
 }

@@ -1,8 +1,10 @@
 //! Compact Agent composer. Controls apply to the next submitted message.
-use super::*;
-use decodex_protocol::AgentAttachmentDto;
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
+
+use super::*;
+
+use decodex_protocol::AgentAttachmentDto;
 
 struct ComposerTip(String);
 impl Render for ComposerTip {
@@ -23,9 +25,11 @@ impl AgentSurface {
 		let snapshot = self.snapshot.as_ref()?;
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
+
 		if work.dispatch_state != AgentDispatchStateDto::Running {
 			return None;
 		}
+
 		Some((
 			EntityId::new(work.id.clone()).ok()?,
 			WireText::new(work.active_turn_id.clone()?).ok()?,
@@ -102,45 +106,59 @@ impl AgentSurface {
 		}
 		if self.composer_menu.take().is_some() || self.dictation.is_some() {
 			self.cancel_dictation(cx);
+
 			self.escape_stop = None;
 			self.effort_drag = None;
 			self.effort_pointer = None;
+
 			cx.notify();
+
 			return;
 		}
 		if !self.command_connection_ready() {
 			self.escape_stop = None;
+
 			return;
 		}
 		if self.escape_stop_armed() {
 			self.escape_stop = None;
+
 			self.interrupt_current(cx);
+
 			return;
 		}
+
 		let Some((work, turn)) = self.running_turn() else {
 			self.escape_stop = None;
+
 			return;
 		};
 		let armed = (work.as_str().to_owned(), turn.as_str().to_owned(), std::time::Instant::now());
+
 		self.escape_stop = Some(armed.clone());
 		cx.spawn(async move |owner, cx| {
 			cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+
 			let _ = owner.update(cx, |s, cx| {
 				if s.escape_stop.as_ref() == Some(&armed) {
 					s.escape_stop = None;
+
 					cx.notify();
 				}
 			});
 		})
 		.detach();
+
 		cx.notify();
 	}
 
 	pub(crate) fn interrupt_current(&mut self, cx: &mut Context<Self>) {
 		self.escape_stop = None;
+
 		if !self.command_connection_ready() {
 			return;
 		}
+
 		if let Some((work_id, turn_id)) = self.running_turn() {
 			self.execute(AgentActionDto::Interrupt { work_id, turn_id }, None, cx);
 		}
@@ -155,19 +173,25 @@ impl AgentSurface {
 		if self.interrupting.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.feedback = "No service profile is configured.".into();
+
 			cx.notify();
+
 			return;
 		};
 		let target = (work_id.as_str().to_owned(), turn_id.as_str().to_owned());
+
 		self.interrupting = Some(target.clone());
+
 		let target_for_readback = target.clone();
 		let request = cx.background_executor().spawn(async move {
 			let runtime = tokio::runtime::Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Cannot start cancellation".to_string())?;
+
 			runtime.block_on(async {
 				let client = AgentClient::new(profile);
 				let result = client
@@ -179,36 +203,48 @@ impl AgentSurface {
 				// The turn can finish before interruption reaches Codex. Read back before
 				// presenting an error, and never reuse the send/uncertain-delivery state.
 				let mut snapshot = client.query().await.ok();
+
                 if !matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
                     for _ in 0..2 {
                         let ended = matches!(&snapshot, Some(AgentSnapshotResult::Available(s)) if s.work_items.iter().any(|w| w.id == target_for_readback.0 && w.active_turn_id.as_deref() != Some(target_for_readback.1.as_str())));
+
                         if ended { break; }
+
                         tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
                         snapshot = client.query().await.ok();
                     }
                 }
+
 				Ok::<_, String>((result, snapshot))
 			})
 		});
+
 		self.interrupt_task = Some(cx.spawn(async move |surface, cx| {
             let result = request.await;
             let _ = surface.update(cx, |s, cx| {
                 if s.interrupting.as_ref() != Some(&target) { return; }
+
                 let accepted = match result {
                     Ok((result, snapshot)) => {
                         if let Some(snapshot) = snapshot { s.apply_result(Ok(snapshot)); }
+
                         matches!(result, Ok(AgentCommandResponse::Accepted { .. }))
                     }
+
                     Err(_) => false,
                 };
+
                 if !accepted && s.interrupting.as_ref() == Some(&target) {
                     s.interrupting = None;
                     s.feedback = "Stopping could not be confirmed. If the response is still running, press Stop again.".into();
                 }
+
                 s.load_history(cx);
                 cx.notify();
             });
         }));
+
 		cx.notify();
 	}
 
@@ -216,6 +252,7 @@ impl AgentSurface {
 		#[cfg(not(test))]
 		{
 			let fetch = cx.background_executor().spawn(async { prompts::refresh_cache() });
+
 			cx.spawn(async move |surface, cx| {
 				if fetch.await {
 					let _ = surface.update(cx, |s, cx| {
@@ -288,6 +325,7 @@ impl AgentSurface {
 		if self.native_composer.enabled {
 			return self.render_native_composer_anchor(cx);
 		}
+
 		div()
 			.w_full()
 			.px_4()
@@ -319,6 +357,7 @@ impl AgentSurface {
 					gpui::MouseButton::Left,
 					cx.listener(|s, _, _, cx| {
 						s.composer_menu = None;
+
 						cx.notify();
 					}),
 				)
@@ -329,6 +368,7 @@ impl AgentSurface {
 			}))
 			.children(self.voice_controls(window, cx))
 			.child(self.composer.clone());
+
 		div()
 			.id("agent-composer")
 			.occlude()
@@ -357,6 +397,7 @@ impl AgentSurface {
 					if !e.is_held {
 						s.escape_interrupt(cx);
 					}
+
 					cx.stop_propagation();
 				}
 			}))
@@ -389,6 +430,7 @@ impl AgentSurface {
 			menu,
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
 		);
+
 		div()
 			.absolute()
 			.inset_0()
@@ -432,6 +474,7 @@ impl AgentSurface {
 						}),
 					_ => None,
 				});
+
 				d.children(detail.map(|text| {
 					gpui::deferred(
 						div()
@@ -456,6 +499,7 @@ impl AgentSurface {
 	fn attachment_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let device =
 			if self.audio_input.is_empty() { "System default" } else { self.audio_input.as_str() };
+
 		div()
 			.flex()
 			.flex_col()
@@ -466,6 +510,7 @@ impl AgentSurface {
 				"Add attachments",
 				|s, cx| {
 					s.composer_menu = None;
+
 					s.pick_attachments(cx);
 				},
 				cx,
@@ -484,9 +529,11 @@ impl AgentSurface {
 				|s, cx| {
 					s.composer_menu = None;
 					s.details_visible = true;
+
 					if let Some(work) = s.selected.clone() {
 						s.open_recap(&work, cx);
 					}
+
 					cx.notify();
 				},
 				cx,
@@ -523,6 +570,7 @@ impl AgentSurface {
 				"Agent settings",
 				|s, cx| {
 					s.setup_expanded = true;
+
 					s.toggle_composer_menu("agent-settings", cx);
 				},
 				cx,
@@ -533,6 +581,7 @@ impl AgentSurface {
 				if self.steer { "Add to the current turn" } else { "Send after the current turn" },
 				|s, cx| {
 					s.steer = !s.steer;
+
 					cx.notify();
 				},
 				cx,
@@ -547,11 +596,13 @@ impl AgentSurface {
 		if let Some(controls) = self.voice_toolbar(cx) {
 			return controls;
 		}
+
 		self.text_composer_toolbar(cx)
 	}
 
 	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let model = self.composer_model_label(cx);
+
 		div()
 			.flex_none()
 			.flex()
@@ -632,6 +683,7 @@ impl AgentSurface {
 		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
+
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.debug_selector(move || format!("composer-{id}"))
@@ -692,6 +744,7 @@ impl AgentSurface {
 			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					action(s, window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -720,6 +773,7 @@ impl AgentSurface {
 		cx: &Context<Self>,
 	) -> gpui::AnyElement {
 		use super::super::workspace_symbols::{Symbol, icon};
+
 		match id {
 			"send" => controls::PrimaryMark {
 				mode: if self.dictation.is_some() {
@@ -797,14 +851,19 @@ impl AgentSurface {
 
 	fn toggle_composer_menu(&mut self, name: &'static str, cx: &mut Context<Self>) {
 		self.escape_stop = None;
+
 		let same_menu = self.composer_menu == Some(name)
 			|| (name == "attachments" && self.composer_menu == Some("microphone"));
+
 		self.composer_menu = if same_menu { None } else { Some(name) };
+
 		if self.composer_menu.is_some() {
 			self.composer_menu_content = self.composer_menu;
+
 			self.load_capabilities(cx);
 			self.refresh_composer_model_settings(cx);
 		}
+
 		cx.notify();
 	}
 
@@ -819,6 +878,7 @@ impl AgentSurface {
 		// the child control bounds, gives the space available above the popover.
 		let settings_height =
 			anchor.map_or(320., |bounds| (f32::from(bounds.origin.y) - 32.).clamp(1., 480.));
+
 		Some(
 			div()
 				.id("composer-menu-popover")
@@ -828,6 +888,7 @@ impl AgentSurface {
 						s.composer_menu = None;
 						s.effort_drag = None;
 						s.effort_pointer = None;
+
 						cx.notify();
 						cx.stop_propagation();
 					}
@@ -838,17 +899,21 @@ impl AgentSurface {
 						let same_window = !s.native_composer.enabled;
 						#[cfg(not(all(target_os = "macos", not(test))))]
 						let same_window = true;
+
 						same_window
 							&& s.menu_trigger_bounds
 								.values()
 								.any(|bounds| bounds.contains(&event.position))
 					};
+
 					if trigger_hit {
 						return;
 					}
+
 					s.composer_menu = None;
 					s.effort_drag = None;
 					s.effort_pointer = None;
+
 					cx.notify();
 				}))
 				.p(px(if menu == "model" { 0. } else { 8. }))
@@ -912,9 +977,12 @@ impl AgentSurface {
 			self.reconcile_model_options(cx);
 		} else {
 			let Ok(effort) = ConversationReasoningEffort::new(value) else { return };
+
 			self.effort = effort;
+
 			self.mark_effort_intent(cx);
 		}
+
 		self.save_draft_document(cx);
 		cx.notify();
 	}
@@ -925,9 +993,11 @@ impl AgentSurface {
 		else {
 			return None;
 		};
+
 		if self.selected.as_ref() != Some(id) || usage.context_tokens == 0 {
 			return None;
 		}
+
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
 
@@ -943,6 +1013,7 @@ impl AgentSurface {
 				.aria_label(format!("Context {percent:.0}%"))
 				.on_hover(cx.listener(|s, hovered, _, cx| {
 					s.context_tip_visible = *hovered;
+
 					cx.notify();
 				}))
 				.justify_center()
@@ -955,7 +1026,9 @@ impl AgentSurface {
 		if self.attachments.is_empty() {
 			return None;
 		}
+
 		let mut row = div().flex().flex_wrap().gap_1().px_1();
+
 		for file in &self.attachments {
 			let path = std::path::PathBuf::from(file.path.as_str());
 			let label = file
@@ -966,6 +1039,7 @@ impl AgentSurface {
 					path.file_name().unwrap_or_default().to_string_lossy().into_owned()
 				});
 			let remove = file.clone();
+
 			row = row.child(
 				div()
 					.id(SharedString::from(
@@ -994,6 +1068,7 @@ impl AgentSurface {
 					.child("×")
 					.on_click(cx.listener({
 						let remove = remove.clone();
+
 						move |s, _, _, cx| {
 							s.attachments.retain(|f| f != &remove);
 							cx.notify();
@@ -1009,6 +1084,7 @@ impl AgentSurface {
 					.smooth(),
 			);
 		}
+
 		Some(row.into_any_element())
 	}
 
@@ -1021,6 +1097,7 @@ impl AgentSurface {
 			multiple: true,
 			prompt: Some("Add to message".into()),
 		});
+
 		cx.spawn(async move |s, cx| {
 			if let Ok(Ok(Some(paths))) = result.await {
 				let _ = s.update(cx, |s, cx| {
@@ -1037,10 +1114,13 @@ impl AgentSurface {
 		for path in paths {
 			if self.attachments.len() >= 16 {
 				self.feedback = "Attach at most 16 files or folders.".into();
+
 				break;
 			}
+
 			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file() || p.is_dir()) else {
 				self.feedback = "The selected file or folder is not available.".into();
+
 				continue;
 			};
 			let image = path.is_file()
@@ -1052,10 +1132,12 @@ impl AgentSurface {
 				continue;
 			};
 			let file = AgentAttachmentDto { path, image, skill_name: None };
+
 			if !self.attachments.contains(&file) {
 				self.attachments.push(file);
 			}
 		}
+
 		cx.notify();
 	}
 
@@ -1068,6 +1150,7 @@ impl AgentSurface {
 					Ok(path) => self.attach_paths(vec![path], cx),
 					Err(error) => {
 						self.feedback = format!("Cannot attach clipboard image: {error}");
+
 						cx.notify();
 					},
 				},
@@ -1082,10 +1165,13 @@ fn save_clipboard_image(image: &gpui::Image) -> std::io::Result<std::path::PathB
 		io::Write,
 		os::unix::fs::{DirBuilderExt, OpenOptionsExt},
 	};
+
 	let home = std::env::var_os("HOME")
 		.ok_or_else(|| std::io::Error::other("Home directory unavailable"))?;
 	let dir = std::path::PathBuf::from(home).join(".decodex/attachments");
+
 	std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
+
 	let ext = match image.format {
 		gpui::ImageFormat::Png => "png",
 		gpui::ImageFormat::Jpeg => "jpg",
@@ -1094,12 +1180,14 @@ fn save_clipboard_image(image: &gpui::Image) -> std::io::Result<std::path::PathB
 		_ => return Err(std::io::Error::other("Paste a PNG, JPEG, WebP, or GIF image")),
 	};
 	let path = dir.join(format!("{}.{ext}", unique_command()));
+
 	std::fs::OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
 		.open(&path)?
 		.write_all(&image.bytes)?;
+
 	Ok(path)
 }
 
@@ -1111,19 +1199,23 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 				if portion <= 0.0 {
 					continue;
 				}
+
 				let mut path = gpui::PathBuilder::stroke(px(1.6));
 				let steps = (portion * 64.0).ceil() as usize;
+
 				for step in 0..=steps {
 					let angle = -std::f32::consts::FRAC_PI_2
 						+ std::f32::consts::TAU * portion * step as f32 / steps as f32;
 					let point =
 						bounds.center() + gpui::point(px(angle.cos() * 5.7), px(angle.sin() * 5.7));
+
 					if step == 0 {
 						path.move_to(point);
 					} else {
 						path.line_to(point);
 					}
 				}
+
 				if let Ok(path) = path.build() {
 					window.paint_path(path, color);
 				}
@@ -1141,11 +1233,15 @@ mod tests {
 	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {
 		let directory = tempfile::tempdir().unwrap();
 		let file = directory.path().join("reference.txt");
+
 		std::fs::write(&file, "Fixture reference").unwrap();
+
 		for change in ["none", "edit", "selection", "manager", "profile", "cancel"] {
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.snapshot
 					.as_mut()
 					.unwrap()
@@ -1154,11 +1250,14 @@ mod tests {
 					.find(|work| work.id == "release")
 					.unwrap()
 					.kind = decodex_protocol::AgentWorkKindDto::Manager;
+
 				s.open_page("agent", cx);
 				s.composer.update(cx, |input, cx| input.set_content("Opening draft", cx));
 				s.pick_attachments(cx);
 			});
+
 			assert!(cx.did_prompt_for_paths());
+
 			surface.update(cx, |s, cx| match change {
 				"edit" => s.composer.update(cx, |input, cx| input.set_content("Later edit", cx)),
 				"selection" => s.open_page("verify", cx),
@@ -1168,6 +1267,7 @@ mod tests {
 			});
 			cx.simulate_path_prompt_response(|options| {
 				assert!(options.files && options.directories && options.multiple);
+
 				(change != "cancel").then(|| vec![file.clone()])
 			});
 			cx.run_until_parked();
@@ -1196,12 +1296,18 @@ mod tests {
 	) {
 		let directory = tempfile::tempdir().unwrap();
 		let folder = directory.path().join("notes.png");
+
 		std::fs::create_dir(&folder).unwrap();
+
 		let file = directory.path().join("reference.txt");
+
 		std::fs::write(&file, "Fixture reference").unwrap();
+
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.attach_paths(vec![folder.clone(), file.clone(), folder.clone()], cx);
+
 			assert_eq!(s.attachments.len(), 2);
 			assert!(!s.attachments.iter().any(|attachment| attachment.image));
 			assert_eq!(
@@ -1216,6 +1322,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.clear(cx));
@@ -1229,12 +1336,17 @@ mod tests {
 					delivery_claimed: true,
 				},
 			);
+
 			s.feedback = "Message saved · Waiting for agent…".into();
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
+
 			assert!(!s.awaiting_start(cx));
 			assert!(!s.stop_button(cx));
+
 			s.snapshot.as_mut().unwrap().pending_events.last_mut().unwrap().delivery_claimed =
 				false;
+
 			assert!(s.awaiting_start(cx), "undelivered input still waits for its turn");
 		});
 	}
@@ -1244,14 +1356,19 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+
 			s.interrupting = Some(("agent".into(), "cancelled-turn".into()));
+
 			assert!(s.stop_button(cx));
 			assert!(!s.sending);
 			assert!(!s.awaiting_start(cx));
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
+
 			assert!(s.interrupting.is_none());
 			assert!(!s.uncertain);
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
@@ -1262,6 +1379,7 @@ mod tests {
 	#[gpui::test]
 	fn model_selection_uses_native_default_and_capabilities(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: vec![decodex_protocol::AgentModelDto {
@@ -1286,34 +1404,47 @@ mod tests {
 			s.composer_menu = Some("model");
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
+
 			s.select_composer_option("model", "custom-model", cx);
+
 			assert_eq!(s.composer_model_label(cx), "Custom");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
+
 			if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
 				&mut s.capabilities
 			{
 				models[0].name = "Renamed catalog label".into();
 			}
+
 			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("custom-model"));
 			assert_eq!(s.effort, ConversationReasoningEffort::Medium);
 			assert!(!s.fast);
 			assert_eq!(s.model_efforts(cx).len(), 2);
+
 			s.select_composer_option("effort", "low", cx);
 			s.select_composer_option("model", "custom-model", cx);
+
 			assert_eq!(s.effort, ConversationReasoningEffort::Low);
 			assert_eq!(s.composer_menu, Some("model"));
+
 			if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
 				&mut s.capabilities
 			{
 				let mut other = models[0].clone();
+
 				other.model = ConversationModel::new("other-model").unwrap();
+
 				models.push(other);
 			}
+
 			s.select_composer_option("model", "other-model", cx);
+
 			assert_eq!(s.composer_model_label(cx), "Renamed catalog label");
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
+
 			s.capabilities = None;
+
 			assert_eq!(s.composer_model_label(cx), "other-model");
 		});
 	}
@@ -1321,8 +1452,10 @@ mod tests {
 	#[gpui::test]
 	fn escape_requires_two_presses_for_the_same_current_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1331,25 +1464,40 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("turn".into());
+
 			s.feedback.clear();
+
 			s.details_visible = true;
 			s.composer_menu = Some("model");
+
 			s.escape_interrupt(cx);
+
 			assert!(s.composer_menu.is_none());
 			assert!(!s.escape_stop_armed());
+
 			s.escape_interrupt(cx);
+
 			assert!(s.escape_stop_armed());
 			assert!(s.details_visible, "inspection must not intercept Escape");
 			assert!(s.feedback.is_empty(), "first Escape must not dispatch an interrupt");
+
 			s.escape_stop.as_mut().unwrap().2 -= std::time::Duration::from_secs(3);
+
 			s.escape_interrupt(cx);
+
 			assert!(s.feedback.is_empty(), "expired confirmation must only rearm");
+
 			s.escape_stop.as_mut().unwrap().1 = "old-turn".into();
+
 			s.escape_interrupt(cx);
+
 			assert!(s.feedback.is_empty(), "confirmation must not cross turn identities");
+
 			s.escape_interrupt(cx);
+
 			assert!(!s.escape_stop_armed());
 			assert_eq!(
 				s.feedback, "No service profile is configured.",
@@ -1361,15 +1509,22 @@ mod tests {
 	#[gpui::test]
 	fn accepted_message_does_not_flash_the_live_voice_control(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.clear(cx));
+
 			s.sending = true;
+
 			assert!(s.awaiting_start(cx));
+
 			s.sending = false;
 			s.feedback = "Message saved · Waiting for agent…".into();
+
 			assert!(s.awaiting_start(cx));
+
 			s.feedback.clear();
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1378,8 +1533,11 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Dispatching;
+
 			assert!(s.awaiting_start(cx));
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1388,8 +1546,10 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("turn".into());
+
 			assert!(!s.awaiting_start(cx));
 			assert!(s.stop_button(cx));
 		});
@@ -1398,8 +1558,10 @@ mod tests {
 	#[gpui::test]
 	fn delivery_mode_and_stop_follow_the_selected_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1408,8 +1570,10 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("exact-turn".into());
+
 			let action = |s: &AgentSurface| {
 				s.configured_send(
 					EntityId::new("agent").unwrap(),
@@ -1417,24 +1581,39 @@ mod tests {
 					vec![],
 				)
 			};
+
 			assert!(
 				matches!(action(s),AgentActionDto::Steer {turn_id,..} if turn_id.as_str()=="exact-turn")
 			);
+
 			s.composer.update(cx, |i, cx| i.clear(cx));
+
 			assert!(s.stop_button(cx));
+
 			s.uncertain = true;
+
 			s.interrupt_current(cx);
+
 			assert_eq!(s.feedback, "No service profile is configured.");
+
 			s.uncertain = false;
+
 			s.composer.update(cx, |i, cx| i.set_content("Supplement", cx));
+
 			assert!(!s.stop_button(cx));
+
 			s.sending = true;
+
 			assert!(!s.awaiting_start(cx), "steering does not restart the current turn");
 			assert!(!s.stop_button(cx), "keep the send glyph while the supplement is submitted");
+
 			s.sending = false;
 			s.steer = false;
+
 			assert!(matches!(action(s), AgentActionDto::SendConfigured { .. }));
+
 			s.steer = true;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1443,8 +1622,10 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Idle;
 			work.active_turn_id = None;
+
 			assert!(matches!(action(s), AgentActionDto::SendConfigured { .. }));
 			assert!(!s.stop_button(cx));
 		});

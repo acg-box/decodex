@@ -3,43 +3,6 @@ use std::sync::{Arc, LazyLock};
 
 use gpui::{AnyElement, Image, ImageFormat, img, prelude::*, px};
 
-#[derive(Clone, Copy)]
-pub(super) enum Symbol {
-	Sidebar,
-	Graph,
-	Timeline,
-	Expand,
-	Settings,
-	Close,
-	Plus,
-	Minus,
-	Back,
-	Forward,
-	Agents,
-	Fast,
-	ChevronDown,
-	Microphone,
-	Bell,
-	BellAttention,
-	BellInfo,
-	BellError,
-	ArrowDown,
-	AccountRoute,
-	AccountLogout,
-	Confirm,
-	AccountRouteActive,
-	PowerOn,
-	PowerOff,
-	Eye,
-	EyeSlash,
-	Lock,
-	AccountSignIn,
-	AccountWarning,
-	ResetCards,
-	AccountReorder,
-	AccountWarningAmber,
-}
-
 static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 	let sources: [&[u8]; 33] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
@@ -79,13 +42,41 @@ static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
 
-pub(super) fn icon(symbol: Symbol) -> AnyElement {
-	let size = match symbol {
-		Symbol::ChevronDown => 12.0,
-		Symbol::Sidebar | Symbol::Graph | Symbol::Timeline | Symbol::Agents => 20.0,
-		_ => 16.0,
-	};
-	img(IMAGES[symbol as usize].clone()).size(px(size)).flex_none().into_any_element()
+#[derive(Clone, Copy)]
+pub(super) enum Symbol {
+	Sidebar,
+	Graph,
+	Timeline,
+	Expand,
+	Settings,
+	Close,
+	Plus,
+	Minus,
+	Back,
+	Forward,
+	Agents,
+	Fast,
+	ChevronDown,
+	Microphone,
+	Bell,
+	BellAttention,
+	BellInfo,
+	BellError,
+	ArrowDown,
+	AccountRoute,
+	AccountLogout,
+	Confirm,
+	AccountRouteActive,
+	PowerOn,
+	PowerOff,
+	Eye,
+	EyeSlash,
+	Lock,
+	AccountSignIn,
+	AccountWarning,
+	ResetCards,
+	AccountReorder,
+	AccountWarningAmber,
 }
 
 #[derive(gpui::IntoElement)]
@@ -93,23 +84,21 @@ pub(super) struct DisclosureChevron {
 	id: &'static str,
 	expanded: bool,
 }
-
-pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> DisclosureChevron {
-	DisclosureChevron { id, expanded }
-}
-
 impl gpui::RenderOnce for DisclosureChevron {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let progress =
 			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let direction = 1. - 2. * progress;
 				let mut path = gpui::PathBuilder::stroke(px(1.2));
+
 				path.move_to(bounds.origin + gpui::point(px(2.), px(6. - 2. * direction)));
 				path.line_to(bounds.origin + gpui::point(px(6.), px(6. + 2. * direction)));
 				path.line_to(bounds.origin + gpui::point(px(10.), px(6. - 2. * direction)));
+
 				if let Ok(path) = path.build() {
 					window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
 				}
@@ -126,32 +115,31 @@ pub(super) struct ProcessChevron {
 	id: gpui::ElementId,
 	expanded: bool,
 }
-
-pub(super) fn process_chevron(id: impl Into<gpui::ElementId>, expanded: bool) -> ProcessChevron {
-	ProcessChevron { id: id.into(), expanded }
-}
-
 impl gpui::RenderOnce for ProcessChevron {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let progress =
 			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
 		let angle = progress * std::f32::consts::FRAC_PI_2;
+
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let mut path = gpui::PathBuilder::stroke(px(1.4));
+
 				for (i, (x, y)) in [(-2., -3.5), (1.5, 0.), (-2., 3.5)].into_iter().enumerate() {
 					let point = bounds.center()
 						+ gpui::point(
 							px(x * angle.cos() - y * angle.sin()),
 							px(x * angle.sin() + y * angle.cos()),
 						);
+
 					if i == 0 {
 						path.move_to(point);
 					} else {
 						path.line_to(point);
 					}
 				}
+
 				if let Ok(path) = path.build() {
 					window.paint_path(path, window.text_style().color);
 				}
@@ -160,4 +148,22 @@ impl gpui::RenderOnce for ProcessChevron {
 		.size(px(12.))
 		.flex_none()
 	}
+}
+
+pub(super) fn icon(symbol: Symbol) -> AnyElement {
+	let size = match symbol {
+		Symbol::ChevronDown => 12.0,
+		Symbol::Sidebar | Symbol::Graph | Symbol::Timeline | Symbol::Agents => 20.0,
+		_ => 16.0,
+	};
+
+	img(IMAGES[symbol as usize].clone()).size(px(size)).flex_none().into_any_element()
+}
+
+pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> DisclosureChevron {
+	DisclosureChevron { id, expanded }
+}
+
+pub(super) fn process_chevron(id: impl Into<gpui::ElementId>, expanded: bool) -> ProcessChevron {
+	ProcessChevron { id: id.into(), expanded }
 }

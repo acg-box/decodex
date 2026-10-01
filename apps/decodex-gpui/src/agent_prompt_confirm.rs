@@ -29,6 +29,7 @@ impl AgentSurface {
 		if !self.prompt_confirmation_eligible(&expected) {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -41,6 +42,7 @@ impl AgentSurface {
 			) else {
 				return;
 			};
+
 			if let Some(boundary) = boundary {
 				pending.fork = Some(decodex_protocol::PromptForkIntent {
 					target_work_id: EntityId::new(unique_command())
@@ -48,6 +50,7 @@ impl AgentSurface {
 					boundary,
 				});
 			}
+
 			pending
 		};
 		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
@@ -63,8 +66,10 @@ impl AgentSurface {
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				else {
 					let _ = checked.send(Err("Could not start history confirmation"));
+
 					return;
 				};
+
 				runtime.block_on(confirm_worker(
 					AgentClient::new(profile),
 					worker_draft,
@@ -72,11 +77,15 @@ impl AgentSurface {
 					(checked, permitted, completed),
 				));
 			});
+
 		if started.is_err() {
 			self.prompt_edit.feedback = "Could not start history confirmation".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		self.prompt_edit.confirmation = None;
 		self.prompt_edit.feedback = "Checking edited input before changing history…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
@@ -87,6 +96,7 @@ impl AgentSurface {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 						return false;
 					}
+
 					s.stage_prompt_confirmation(
 						&expected,
 						&pending,
@@ -96,16 +106,20 @@ impl AgentSurface {
 					)
 				})
 				.unwrap_or(false);
+
 			if !staged {
 				return;
 			}
+
 			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+
 			loop {
 				let ready = surface
 					.update(cx, |s, cx| {
 						if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 							return Some(false);
 						}
+
 						s.prompt_confirmation_ready(
 							&pending,
 							&expected_execution,
@@ -115,14 +129,18 @@ impl AgentSurface {
 						)
 					})
 					.unwrap_or(Some(false));
+
 				if let Some(ready) = ready {
 					if !ready {
 						return;
 					}
+
 					break;
 				}
+
 				cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
 			}
+
 			if permit.send(()).is_err() {
 				let _ = surface.update(cx, |s, cx| {
 					s.cancel_unsent_prompt_confirmation(
@@ -132,16 +150,20 @@ impl AgentSurface {
 						cx,
 					)
 				});
+
 				return;
 			}
+
 			let result = completion.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 					return;
 				}
+
 				s.apply_prompt_confirmation_reply(&pending, resuming, result, cx);
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -153,6 +175,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.prompt_edit.task = None;
+
 		match result {
 			Ok(Ok(AgentCommandResponse::Rejected { .. })) => self
 				.cancel_unsent_prompt_confirmation(
@@ -174,6 +197,7 @@ impl AgentSurface {
 				}
 			},
 		}
+
 		cx.notify();
 	}
 
@@ -205,11 +229,13 @@ impl AgentSurface {
 				"Confirmation stopped before dispatch. Draft retained.",
 				cx,
 			);
+
 			return Some(false);
 		}
 		if self.prompt_editor_saved(pending) {
 			return Some(true);
 		}
+
 		None
 	}
 
@@ -228,18 +254,27 @@ impl AgentSurface {
 			{
 				return Err("Draft or settings changed. Review the current edit again.");
 			}
+
 			self.stage_prompt_editor(pending.clone(), cx)?;
+
 			self.prompt_edit.draft = Some(pending.clone());
+
 			Ok(())
 		});
+
 		if let Err(message) = result {
 			self.prompt_edit.task = None;
 			self.prompt_edit.feedback = message.into();
+
 			cx.notify();
+
 			return false;
 		}
+
 		self.prompt_edit.feedback = "Saving the confirmation record…".into();
+
 		cx.notify();
+
 		true
 	}
 
@@ -258,7 +293,9 @@ impl AgentSurface {
 			}) {
 			return;
 		}
+
 		self.prompt_edit.task = None;
+
 		if !retain_prior_uncertainty
 			&& let Some(mut current) = self.prompt_edit.draft.clone()
 			&& current.confirmation_key == pending.confirmation_key
@@ -267,11 +304,14 @@ impl AgentSurface {
 			current.confirmation_key = None;
 			current.fork = None;
 			current.handback_pending = false;
+
 			if self.stage_prompt_editor(current.clone(), cx).is_ok() {
 				self.prompt_edit.draft = Some(current);
 			}
 		}
+
 		self.prompt_edit.feedback = message.into();
+
 		cx.notify();
 	}
 }
@@ -281,8 +321,10 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 		if !matches!(part["type"].as_str(), Some("localImage" | "localAudio")) {
 			continue;
 		}
+
 		let path = part["path"].as_str().ok_or("A local media path is missing")?;
 		let path = std::path::Path::new(path);
+
 		if !path.is_absolute() {
 			return Err(
 				"A local media path is relative. Use Check edited input to resolve and save its location before continuing.",
@@ -294,6 +336,7 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 			return Err("A local media file is unavailable. History was not changed.");
 		}
 	}
+
 	Ok(())
 }
 
@@ -331,9 +374,11 @@ async fn confirm_worker(
 		}
 	};
 	let qualified = result.is_ok();
+
 	if checked.send(result).is_err() || !qualified || permitted.await.is_err() {
 		return;
 	}
+
 	let action = match worker_draft.fork {
 		Some(fork) => AgentActionDto::ForkPromptEdit {
 			work_id: worker_draft.work_id,
@@ -361,11 +406,15 @@ mod tests {
 	fn prompt_confirm_media_check_rejects_missing_or_nonfile_paths() {
 		let directory = tempfile::tempdir().unwrap();
 		let file = directory.path().join("image.png");
+
 		std::fs::write(&file, b"fixture").unwrap();
+
 		for kind in ["localImage", "localAudio"] {
 			let input =
 				PromptDraft::new(vec![serde_json::json!({"type":kind,"path":file})]).unwrap();
+
 			assert!(readable_local_media(&input).is_ok());
+
 			for path in [
 				directory.path().to_path_buf(),
 				directory.path().join("missing"),
@@ -373,6 +422,7 @@ mod tests {
 			] {
 				let input =
 					PromptDraft::new(vec![serde_json::json!({"type":kind,"path":path})]).unwrap();
+
 				assert!(readable_local_media(&input).is_err());
 			}
 		}

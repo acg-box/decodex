@@ -1,7 +1,9 @@
 //! Keep editable input and uncertain submission state with its exact service profile.
-use super::*;
-use std::{collections::BTreeMap, mem};
 #[path = "agent_draft_storage.rs"] mod storage;
+
+use super::*;
+
+use std::{collections::BTreeMap, mem};
 
 #[derive(Default)]
 pub(super) struct SubmissionState {
@@ -68,16 +70,19 @@ impl AgentSurface {
 
 	pub(super) fn bind_drafts(&mut self, profile: Option<&ClientProfile>, cx: &mut Context<Self>) {
 		self.remember_draft_document(cx);
+
 		let Some(profile) = profile else {
 			return;
 		};
 		let previous = self.draft_profiles.active.replace(profile.clone());
+
 		if previous.as_ref() == Some(profile) {
 			return;
 		}
 		if previous.is_none() {
 			self.adopt_unbound_ordinary(&profile.draft_scope_key());
 		}
+
 		let restored = self
 			.draft_profiles
 			.saved
@@ -87,24 +92,32 @@ impl AgentSurface {
 			.or_else(|| {
 				self.draft_profiles.storage.restore(&profile.draft_scope_key(), self.command_epoch)
 			});
+
 		if previous.is_none() {
 			let Some(restored) = restored else {
 				self.draft_profiles.storage.clear_unbound();
+
 				return;
 			};
+
 			if !self.composer.read(cx).content().is_empty()
 				|| !self.attachments.is_empty()
 				|| !self.task_references.is_empty()
 				|| self.creation_setup(cx).is_some()
 			{
 				self.draft_profiles.storage.seed_conflict();
+
 				return;
 			}
+
 			self.apply_drafts(restored, cx);
 			self.draft_profiles.storage.clear_unbound();
+
 			return;
 		}
+
 		let saved = self.take_drafts(cx);
+
 		self.draft_profiles.saved.push((previous.expect("existing profile"), saved));
 		self.apply_drafts(restored.unwrap_or_default(), cx);
 	}
@@ -136,6 +149,7 @@ impl AgentSurface {
 
 	fn apply_drafts(&mut self, restored: Drafts, cx: &mut Context<Self>) {
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
+
 		self.draft_profiles.threads = restored.threads;
 		self.restored_question_drafts = restored.restored_questions;
 		self.async_question_inputs = restored.question_inputs;
@@ -143,9 +157,11 @@ impl AgentSurface {
 		self.async_question_threads = restored.question_threads;
 		self.collapsed_async_questions = restored.collapsed_questions;
 		self.composer_manager = restored.manager;
+
 		if self.composer_manager.is_none() {
 			self.restore_creation_setup(restored.creation.as_ref(), cx);
 		}
+
 		self.attachments = restored.attachments;
 		self.task_references = restored.references;
 		self.draft_profiles.texts = restored.texts;
@@ -168,17 +184,22 @@ pub(super) mod tests {
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
+
 		std::fs::create_dir(path.join("server")).unwrap();
 		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
 			.unwrap();
+
 		let uid = std::fs::metadata(&path).unwrap().uid();
 		let config = path.join("config.toml");
+
 		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
 		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+
 		let first = ClientProfile::load(&path, None).unwrap();
 		let second = first.clone().with_expected_server_id(
 			decodex_protocol::ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405163").unwrap(),
 		);
+
 		(root, first, second)
 	}
 
@@ -188,13 +209,18 @@ pub(super) mod tests {
 	) {
 		let (_root, first, second) = profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.composer.update(cx, |input, cx| input.set_content("seed", cx));
 			s.bind_profile(Some(first.clone()), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "seed");
+
 			s.composer_manager = Some("root".into());
 			s.effort = ConversationReasoningEffort::High;
+
 			s.mark_effort_intent(cx);
+
 			let file = decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/first.png").unwrap(),
 				image: true,
@@ -205,19 +231,27 @@ pub(super) mod tests {
 				thread_id: WireText::new("thread").unwrap(),
 				title: WireText::new("First service task").unwrap(),
 			};
+
 			s.attachments = vec![file.clone()];
 			s.task_references = vec![reference.clone()];
+
 			s.draft_profiles.texts.insert("manager".into(), "manager draft".into());
 			s.draft_profiles.files.insert("manager".into(), vec![file.clone()]);
 			s.draft_profiles.tasks.insert("manager".into(), vec![reference.clone()]);
+
 			s.sending = true;
+
 			s.bind_profile(None, cx);
+
 			assert!(s.uncertain);
+
 			s.composer.update(cx, |input, cx| input.set_content("edited offline", cx));
 			s.bind_profile(Some(first.clone()), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "edited offline");
 			assert_eq!(s.attachments, vec![file.clone()]);
 			assert!(s.uncertain);
+
 			s.submission.pending = Some(PendingCommand {
 				recovery: None,
 				key: Some(IdempotencyKey::new("first-service-steer").unwrap()),
@@ -234,7 +268,9 @@ pub(super) mod tests {
 				attachments: None,
 				references: None,
 			});
+
 			s.bind_profile(Some(second.clone()), cx);
+
 			assert!(s.submission.pending.is_none());
 			assert!(s.draft_profiles.execution.choice("root").is_empty());
 			assert_eq!(s.composer.read(cx).content(), "");
@@ -242,9 +278,12 @@ pub(super) mod tests {
 			assert!(s.draft_profiles.texts.is_empty() && s.draft_profiles.files.is_empty());
 			assert!(s.draft_profiles.tasks.is_empty());
 			assert!(!s.uncertain);
+
 			s.composer_manager = Some("root".into());
+
 			s.composer.update(cx, |input, cx| input.set_content("second draft", cx));
 			s.bind_profile(Some(first), cx);
+
 			assert_eq!(
 				s.draft_profiles.execution.choice("root").reasoning_effort,
 				Some(ConversationReasoningEffort::High)
@@ -272,7 +311,9 @@ pub(super) mod tests {
 				"first-service-steer"
 			);
 			assert!(s.submission.command.is_none() && !s.sending);
+
 			s.bind_profile(Some(second), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "second draft");
 			assert!(s.submission.command.is_none() && !s.uncertain);
 		});
@@ -281,37 +322,51 @@ pub(super) mod tests {
 	fn async_editors_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			let key = ("work".into(), "question".into());
+
 			s.bind_profile(Some(first.clone()), cx);
+
 			let input = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
+
 			input.update(cx, |input, cx| input.set_content("First service answer", cx));
 			s.async_question_inputs.insert(key.clone(), input.clone());
 			s.async_question_choices.insert(key.clone(), Default::default());
 			s.async_question_threads.insert("work".into(), "first-thread".into());
 			s.collapsed_async_questions.insert("work".into());
 			s.bind_profile(None, cx);
+
 			assert_eq!(s.async_question_inputs[&key], input);
+
 			input.update(cx, |input, cx| input.set_content("Edited offline", cx));
 			s.bind_profile(Some(first.clone()), cx);
+
 			assert_eq!(s.async_question_inputs[&key], input);
+
 			s.bind_profile(Some(second.clone()), cx);
+
 			assert!(s.async_question_inputs.is_empty());
 			assert!(s.async_question_choices.is_empty());
 			assert!(s.async_question_threads.is_empty());
 			assert!(s.collapsed_async_questions.is_empty());
+
 			let other = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
+
 			other.update(cx, |input, cx| input.set_content("Second service answer", cx));
 			s.async_question_inputs.insert(key.clone(), other.clone());
 			s.async_question_threads.insert("work".into(), "second-thread".into());
 			s.bind_profile(Some(first), cx);
+
 			assert_eq!(s.async_question_inputs[&key], input);
 			assert_eq!(input.read(cx).content(), "Edited offline");
 			assert!(s.async_question_choices.contains_key(&key));
 			assert_eq!(s.async_question_threads["work"], "first-thread");
 			assert!(s.collapsed_async_questions.contains("work"));
 			assert!(s.submission.command.is_none() && !s.sending);
+
 			s.bind_profile(Some(second), cx);
+
 			assert_eq!(s.async_question_inputs[&key], other);
 			assert_eq!(other.read(cx).content(), "Second service answer");
 			assert_eq!(s.async_question_threads["work"], "second-thread");

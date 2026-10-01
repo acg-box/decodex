@@ -34,7 +34,9 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				s.details_visible = false;
+
 				cx.notify();
 			}))
 			.child(
@@ -78,6 +80,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> gpui::Div {
 		let mut panel = div().flex().flex_col().gap(px(4.));
+
 		for (label, id) in snapshot
 			.dependencies
 			.iter()
@@ -98,18 +101,22 @@ impl AgentSurface {
 					.map(|child| ("Coordinates", child.id.as_str())),
 			) {
 			let selector = format!("inspection-{label}-{id}");
+
 			panel = panel.child(
 				div()
 					.debug_selector(move || selector.clone())
 					.child(self.relation(label, snapshot, id, cx)),
 			);
 		}
+
 		panel
 	}
 
 	fn inspection_resources(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
 		use decodex_protocol::AgentResourcesResult;
+
 		let mut rows = div().flex().flex_col().gap(px(4.));
+
 		match self.resources.as_ref().filter(|(owner, _)| owner == work).map(|(_, result)| result) {
 			Some(Some(AgentResourcesResult::Available { resources })) =>
 				for resource in resources {
@@ -134,12 +141,14 @@ impl AgentSurface {
 						.py(px(7.))
 						.rounded(px(8.))
 						.child(title);
+
 					if let Some(link) = link {
 						row = row
 							.cursor_pointer()
 							.hover(|row| row.bg(rgba(crate::ui_theme::HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| cx.open_url(link.as_str())));
 					}
+
 					rows = rows.child(row);
 				},
 			Some(None) => rows = rows.child(crate::ui_loading::loading("Loading records")),
@@ -148,6 +157,7 @@ impl AgentSurface {
 			)) => rows = rows.child(muted("Records are unavailable.")),
 			_ => {},
 		}
+
 		rows.into_any_element()
 	}
 }
@@ -160,16 +170,20 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.snapshot.as_mut().unwrap().dependencies.push(decodex_protocol::AgentDependencyDto {
 				work_item_id: "improve".into(),
 				depends_on_id: "agent".into(),
 			});
+
 			s.selected = Some("improve".into());
 			s.details_visible = true;
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		for selector in [
 			"inspection-Requires-agent",
 			"inspection-Requires-trace",
@@ -177,30 +191,42 @@ mod tests {
 		] {
 			assert!(visual.debug_bounds(selector).is_some(), "{selector}");
 		}
+
 		surface.update(visual, |s, cx| {
 			s.selected = Some("release".into());
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		assert!(visual.debug_bounds("inspection-Coordinates-improve").is_some());
 	}
 
 	#[gpui::test]
 	fn inspection_does_not_resize_or_scroll_the_transcript(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+
 		for _ in 0..4 {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
+
 		std::thread::sleep(std::time::Duration::from_millis(250));
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let before = surface.read_with(visual, |s, _| {
 			(s.transcript_scroll["agent"].bounds(), s.transcript_scroll["agent"].offset())
 		});
+
 		surface.update(visual, |s, cx| {
 			s.details_visible = true;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.transcript_scroll["agent"].bounds(), before.0);

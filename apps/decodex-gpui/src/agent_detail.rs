@@ -22,10 +22,12 @@ impl AgentSurface {
 		if !self.command_connection_ready() {
 			return None;
 		}
+
 		let snapshot = self.snapshot.as_ref()?;
 		let source = snapshot.runtime_source.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| work.id == ids.0)?;
 		let thread = work.codex_thread_id.as_ref()?;
+
 		Some(serde_json::json!([ids, thread, source]).to_string())
 	}
 
@@ -42,8 +44,10 @@ impl AgentSurface {
 		{
 			return false;
 		}
+
 		self.activity_detail.value = Some((key, Some(result)));
 		self.activity_detail.task = None;
+
 		true
 	}
 
@@ -67,6 +71,7 @@ impl AgentSurface {
 		{
 			return row.into_any_element();
 		}
+
 		let ids = (work.id.clone(), item.turn_id.clone(), item.item_id.clone());
 		let Some(key) = self.activity_detail_key(&ids) else {
 			return row.into_any_element();
@@ -96,6 +101,7 @@ impl AgentSurface {
 				if !s.expanded_records.remove(&metadata_key) {
 					s.expanded_records.insert(metadata_key.clone());
 				}
+
 				cx.notify();
 			},
 			cx,
@@ -175,6 +181,7 @@ impl AgentSurface {
 			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
 				let first_ids = ids.clone();
 				let next_ids = ids.clone();
+
 				div()
 					.child(super::selectable_text::SelectableText {
 						key: format!("detail-text-{key}-{offset}"),
@@ -217,9 +224,13 @@ impl AgentSurface {
 		let Some(key) = self.activity_detail_key(&ids) else {
 			return;
 		};
+
 		self.latest_follow_work = None;
+
 		self.history_follow_paused.insert(ids.0.clone());
+
 		self.history_navigation = None;
+
 		if let Some(entry) = self.native_history.entries.iter().find(|entry| matches!(&entry.content,
 			decodex_protocol::AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == &ids.1 && item_id == &ids.2)).cloned() {
 			self.anchor_process_toggle(&ids.0, &entry);
@@ -227,11 +238,15 @@ impl AgentSurface {
 
 		self.activity_detail.revision += 1;
 		self.activity_detail.task = None;
+
 		if self.activity_detail.value.as_ref().is_some_and(|(selected, _)| selected == &key) {
 			self.activity_detail.closing = self.activity_detail.value.take();
+
 			cx.notify();
+
 			return;
 		}
+
 		self.load_activity_detail(ids, None, cx);
 	}
 
@@ -244,22 +259,31 @@ impl AgentSurface {
 		let Some(key) = self.activity_detail_key(&ids) else {
 			return;
 		};
+
 		self.activity_detail.revision += 1;
+
 		let revision = self.activity_detail.revision;
+
 		self.activity_detail.task = None;
+
 		if let Some(previous) = self.activity_detail.value.take() {
 			self.activity_detail.closing = Some(previous);
 		}
+
 		self.activity_detail.value = Some((key.clone(), None));
+
 		let Some(profile) = self.profile.clone() else {
 			self.activity_detail.value = Some((key, Some(AgentActivityDetailResult::Unavailable)));
+
 			cx.notify();
+
 			return;
 		};
 		let expected_ids = ids.clone();
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime
 				.block_on(AgentClient::new(profile).activity_detail(
 					EntityId::new(ids.0).ok()?,
@@ -269,6 +293,7 @@ impl AgentSurface {
 				))
 				.ok()
 		});
+
 		self.activity_detail.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(AgentActivityDetailResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
@@ -277,6 +302,7 @@ impl AgentSurface {
 				}
 			});
 		}));
+
 		cx.notify();
 	}
 }
@@ -287,6 +313,7 @@ mod tests {
 
 	fn prepare_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 		s.visual_workspace_fixture(cx);
+
 		s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("source").unwrap());
 		s.snapshot
 			.as_mut()
@@ -301,6 +328,7 @@ mod tests {
 			thread: "thread".into(),
 			account: "account".into(),
 		});
+
 		s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
 			position: 0,
 			content: decodex_protocol::AgentTimelineContent::Item {
@@ -322,7 +350,7 @@ mod tests {
 					plugin_id: None,
 					read_only_hint: None,
 					native_timestamp_ms: None,
-					duration_ms: Some(12345),
+					duration_ms: Some(12_345),
 				}),
 			},
 		});
@@ -334,22 +362,35 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(900.), px(1000.)));
+
+		visual.simulate_resize(gpui::size(px(900.), px(1_000.)));
+
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
+
 		surface.update(visual, prepare_tool_history);
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+
 		assert!(row.right() <= transcript.right(), "tool indent must fit the transcript");
+
 		let standalone_arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
 		let arrow = standalone_arrow;
+
 		assert!(arrow.right() <= row.right(), "arrow {arrow:?} must fit row {row:?}");
+
 		visual.simulate_click(row.center(), Default::default());
+
 		surface.update(visual, |s, cx| {
 			assert!(s.history_follow_paused.contains("agent"));
+
 			let key = s.activity_detail_key(&ids).unwrap();
+
 			s.activity_detail.value = Some((
 				key,
 				Some(AgentActivityDetailResult::Available {
@@ -359,26 +400,38 @@ mod tests {
 					next: None,
 				}),
 			));
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(300));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
+
 		assert!(expanded.size.height > row.size.height);
+
 		for refreshing in [true, false, true, false] {
 			surface.update(visual, |s, cx| {
 				s.state = if refreshing { LoadState::Loading } else { LoadState::Ready };
 				s.status_before_refresh = refreshing.then_some(LoadState::Ready);
+
 				cx.notify();
 			});
+
 			visual.update(|w, cx| w.draw(cx).clear());
+
 			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
 		}
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, |s, cx| {
 			let mut final_entry = s.native_history.entries[0].clone();
+
 			final_entry.position = 1;
+
 			if let decodex_protocol::AgentTimelineContent::Item {
 				kind,
 				item_id,
@@ -394,6 +447,7 @@ mod tests {
 				*phase = Some("final_answer".into());
 				*activity = None;
 			}
+
 			s.native_history.entries.push(final_entry);
 			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 2,
@@ -409,13 +463,20 @@ mod tests {
 			});
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(250));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+
 		assert!(
 			arrow.right() <= standalone_arrow.right(),
 			"grouped arrow {arrow:?} must align with standalone arrow {standalone_arrow:?}"
@@ -427,6 +488,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			let snapshot = AgentSnapshotDto {
 				runtime_source: Some(EntityId::new("source").unwrap()),
@@ -454,58 +516,77 @@ mod tests {
 				offset: 0,
 				next: None,
 			};
+
 			for change in
 				["none", "refresh", "source", "thread", "reopen", "disconnect", "unavailable", "profile"]
 			{
 				s.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
+
 				let key = s.activity_detail_key(&ids).unwrap();
 				let revision = s.activity_detail.revision;
+
 				s.activity_detail.value = Some((key.clone(), None));
+
 				match change {
 					"refresh" => {
 						s.state = LoadState::Loading;
 						s.status_before_refresh = Some(LoadState::Ready);
+
 						assert_eq!(s.activity_detail_key(&ids).as_ref(), Some(&key));
 						assert!(s.command_connection_ready());
 					},
 					"source" => {
 						let mut replacement = snapshot.clone();
+
 						replacement.runtime_source = Some(EntityId::new("replacement").unwrap());
+
 						s.apply_result(Ok(AgentSnapshotResult::Available(replacement)));
+
 						assert!(s.activity_detail.value.is_none());
 					},
 					"thread" => {
 						let mut replacement = snapshot.clone();
+
 						replacement.work_items[0].codex_thread_id = Some("replacement".into());
+
 						s.apply_result(Ok(AgentSnapshotResult::Available(replacement)));
+
 						assert!(s.activity_detail.value.is_none());
+
 						s.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
 					},
 					"reopen" => {
 						s.clear_activity_detail();
+
 						s.activity_detail.value = Some((key.clone(), None));
 					},
 					"disconnect" => {
 						s.mark_stale(cx);
+
 						assert!(s.activity_detail.value.is_none());
 					},
 					"unavailable" => {
 						s.apply_result(Ok(AgentSnapshotResult::Unavailable));
+
 						assert!(s.activity_detail.value.is_none());
 					},
 					"profile" => {
 						s.bind_profile(None, cx);
+
 						assert!(s.activity_detail.value.is_none());
 					},
 					_ => {},
 				}
+
 				assert_eq!(
 					s.accept_activity_detail(&ids, key, revision, result()),
 					matches!(change, "none" | "refresh"),
 					"{change}"
 				);
+
 				if change == "reopen" {
 					let key = s.activity_detail_key(&ids).unwrap();
+
 					assert!(s.accept_activity_detail(
 						&ids,
 						key,
@@ -514,19 +595,25 @@ mod tests {
 					));
 				}
 			}
+
             s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+
             let key = s.activity_detail_key(&ids).unwrap();
+
             s.activity_detail.value = Some((key.clone(),Some(result())));
+
             s.toggle_activity_detail(ids,cx);
+
             assert!(s.activity_detail.value.is_none());
             assert!(matches!(&s.activity_detail.closing, Some((id,Some(AgentActivityDetailResult::Available {text,..}))) if id == &key && text == "Passed"));
+
             s.clear_activity_detail();
+
             assert!(s.activity_detail.closing.is_none());
 
 		});
 	}
 }
-
 #[cfg(test)]
 #[path = "agent_detail_wire_tests.rs"]
 mod wire_tests;

@@ -5,7 +5,9 @@ use decodex_protocol::AgentResourcesResult;
 impl AgentSurface {
 	pub(super) fn reset_resources(&mut self) {
 		let opened = self.resources.take().is_some();
+
 		self.resources_task = None;
+
 		if self.resource_mutation_task.take().is_some() {
 			self.resource_feedback = "The resource change is unconfirmed. Reopen task resources to inspect the current state; it was not retried.".into();
 		} else if opened {
@@ -23,6 +25,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work));
 		let after = next.work_items.iter().find(|w| w.id == work);
+
 		if !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
 			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 		{
@@ -52,6 +55,7 @@ impl AgentSurface {
 				}))
 				.child("Task resources"),
 		);
+
 		if let Some((_, result)) = opened {
 			let body = match result {
 				None => div().child(crate::ui_loading::loading("Loading resources")),
@@ -63,9 +67,11 @@ impl AgentSurface {
 					div().child("The resource list exceeds the display limit."),
 				Some(AgentResourcesResult::Available { resources }) => {
 					let mut list = self.resource_editor(work, cx);
+
 					if resources.is_empty() {
 						list = list.child("No task resources.");
 					}
+
 					for resource in resources {
 						let owner = work.to_owned();
 						let kind = resource.attachment_type.clone();
@@ -86,6 +92,7 @@ impl AgentSurface {
 									&& url.username().is_empty()
 									&& url.password().is_none()
 							});
+
 						list = list.child(
 							div().p_2().rounded(px(6.)).bg(rgba(0xffffff06)).child(title).child(
 								if resource.payload_omitted {
@@ -95,6 +102,7 @@ impl AgentSurface {
 								},
 							),
 						);
+
 						if let Some(link) = link {
 							list = list.child(resource_button(
 								format!("resource-open-{}", resource.id),
@@ -103,6 +111,7 @@ impl AgentSurface {
 								move |_, cx| cx.open_url(link.as_str()),
 							));
 						}
+
 						list = list.child(resource_button(
 							format!("resource-remove-{}", resource.id),
 							"Remove association".into(),
@@ -115,6 +124,7 @@ impl AgentSurface {
 								) else {
 									return;
 								};
+
 								s.change_resource(
 									&owner,
 									AgentActionDto::RemoveResource {
@@ -127,9 +137,11 @@ impl AgentSurface {
 							},
 						));
 					}
+
 					list
 				},
 			};
+
 			panel = panel.child(
 				div()
 					.id("agent-resources-body")
@@ -139,7 +151,9 @@ impl AgentSurface {
 					.child(body),
 			);
 		}
+
 		let work = work.to_owned();
+
 		panel
 			.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
 				cx.stop_propagation();
@@ -150,6 +164,7 @@ impl AgentSurface {
 
 	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> gpui::Div {
 		let add_work = work.to_owned();
+
 		div()
 			.flex()
 			.flex_col()
@@ -171,9 +186,12 @@ impl AgentSurface {
 			WireText::new(self.resource_url.read(cx).content().to_owned()),
 		) else {
 			self.resource_feedback = "Enter a title and a link within the text limit.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		self.change_resource(work, AgentActionDto::AddResourceLink { work_id, title, url }, cx);
 	}
 
@@ -181,14 +199,20 @@ impl AgentSurface {
 		if self.resource_mutation_task.is_some() || self.selected.as_deref() != Some(work) {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.resource_feedback = "No service profile is configured.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		self.resources_task = None;
+
 		let work = work.to_owned();
 		let key = IdempotencyKey::new(unique_command()).expect("bounded identity");
+
 		self.resource_feedback = "Waiting for resource confirmation…".into();
 
 		let read_work = work.clone();
@@ -199,14 +223,18 @@ impl AgentSurface {
 			let client = AgentClient::new(profile);
 			let result = runtime.block_on(client.execute(action, key)).ok();
 			let readback = runtime.block_on(client.resources(EntityId::new(read_work).ok()?)).ok();
+
 			Some((result, readback))
 		});
+
 		self.resource_mutation_task=Some(cx.spawn(async move |surface,cx| {
             let (result,readback)=request.await.unwrap_or((None,None));
             let observed=readback.as_ref().is_some_and(|resources|resource_change_observed(&expected,resources));
             let _=surface.update(cx,|s,cx| {
                 if s.selected.as_deref()!=Some(work.as_str()) {return;}
+
                 s.resource_mutation_task=None;
+
                 s.resource_feedback=if observed {
                     "The current resource list confirms the requested state."
                 } else {match result {
@@ -214,31 +242,43 @@ impl AgentSurface {
                     Some(AgentCommandResponse::Rejected {..}) => "The resource change was not accepted. Check the link and task connection.",
                     _ => "The change is not confirmed. Check the refreshed resource list before trying again.",
                 }}.into();
+
                 if s.resources.as_ref().is_some_and(|(owner,_)|owner==&work) {
                     s.resources=None;
+
                     s.toggle_resources(&work,cx);
                     s.resources=Some((work,Some(readback.unwrap_or(AgentResourcesResult::Unavailable))));
                 }
+
                 cx.notify();
             });
         }));
+
 		cx.notify();
 	}
 
 	pub(super) fn toggle_resources(&mut self, work: &str, cx: &mut Context<Self>) {
 		self.resources_task = None;
+
 		if self.resources.as_ref().is_some_and(|(owner, _)| owner == work) {
 			self.resources = None;
+
 			cx.notify();
+
 			return;
 		}
+
 		self.resources = Some((work.into(), None));
+
 		let Some(profile) = self.profile.clone() else {
 			self.resources = Some((work.into(), Some(AgentResourcesResult::Unavailable)));
+
 			cx.notify();
+
 			return;
 		};
 		let work = work.to_owned();
+
 		self.resources_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				let profile = profile.clone();
@@ -250,6 +290,7 @@ impl AgentSurface {
 							.enable_all()
 							.build()
 							.ok()?;
+
 						runtime
 							.block_on(
 								AgentClient::new(profile).resources(EntityId::new(requested).ok()?),
@@ -265,22 +306,29 @@ impl AgentSurface {
 						{
 							return false;
 						}
+
 						let supported = !matches!(
 							result,
 							AgentResourcesResult::Unsupported
 								| AgentResourcesResult::CapacityExceeded
 						);
+
 						s.resources = Some((work.clone(), Some(result)));
+
 						cx.notify();
+
 						supported
 					})
 					.unwrap_or(false);
+
 				if !keep {
 					break;
 				}
+
 				cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
 			}
 		}));
+
 		cx.notify();
 	}
 }
@@ -289,11 +337,13 @@ fn resource_change_observed(action: &AgentActionDto, result: &AgentResourcesResu
 	let AgentResourcesResult::Available { resources } = result else {
 		return false;
 	};
+
 	match action {
 		AgentActionDto::AddResourceLink { url, .. } => {
 			let Ok(url) = reqwest::Url::parse(url.as_str()) else {
 				return false;
 			};
+
 			resources.iter().any(|resource| {
 				resource.attachment_type == "decodex.link"
 					&& !resource.payload_omitted
@@ -319,6 +369,7 @@ fn resource_button(
 ) -> gpui::AnyElement {
 	let action = std::rc::Rc::new(action);
 	let click = action.clone();
+
 	div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
@@ -331,6 +382,7 @@ fn resource_button(
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
+
 				action(s, cx);
 			}
 		}))
@@ -353,6 +405,7 @@ mod tests {
 			attachment_type: WireText::new("decodex.link").unwrap(),
 			identity_key: WireText::new("key").unwrap(),
 		};
+
 		for unavailable in [
 			AgentResourcesResult::Unavailable,
 			AgentResourcesResult::Unsupported,
@@ -361,9 +414,12 @@ mod tests {
 			assert!(!resource_change_observed(&add, &unavailable));
 			assert!(!resource_change_observed(&remove, &unavailable));
 		}
+
 		let empty = AgentResourcesResult::Available { resources: vec![] };
+
 		assert!(!resource_change_observed(&add, &empty));
 		assert!(resource_change_observed(&remove, &empty));
+
 		let row = decodex_protocol::AgentResourceDto {
 			id: "native".into(),
 			attachment_type: "decodex.link".into(),
@@ -373,10 +429,14 @@ mod tests {
 			created_at: 1,
 		};
 		let present = AgentResourcesResult::Available { resources: vec![row.clone()] };
+
 		assert!(resource_change_observed(&add, &present));
 		assert!(!resource_change_observed(&remove, &present));
+
 		let mut hidden = row;
+
 		hidden.payload_omitted = true;
+
 		assert!(!resource_change_observed(
 			&add,
 			&AgentResourcesResult::Available { resources: vec![hidden] }
@@ -388,9 +448,11 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, _| {
 			s.composer_menu = Some("agent-settings");
 			s.composer_menu_content = Some("agent-settings");
+
 			let work = |id: &str| AgentWorkItemDto {
 				id: id.into(),
 				parent_goal_id: None,
@@ -404,6 +466,7 @@ mod tests {
 				created_at_micros: 1,
 				updated_at_micros: 1,
 			};
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
 				workspaces: vec![],
@@ -412,24 +475,31 @@ mod tests {
 				pending_events: vec![],
 			})));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.draw(cx).clear();
 		});
+
 		for _ in 0..2 {
 			std::thread::sleep(std::time::Duration::from_millis(200));
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
 		}
+
 		let bounds = visual.debug_bounds("agent-resources-toggle").expect("task resource control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
 			assert!(
 				matches!(&s.resources,Some((owner,Some(AgentResourcesResult::Unavailable))) if owner=="root")
 			);
 			assert!(s.resources_task.is_none());
+
 			s.open_page("other", cx);
+
 			assert!(s.resources.is_none());
 			assert!(s.resources_task.is_none());
 		});
@@ -442,8 +512,11 @@ mod tests {
 			CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
 			QueryResultPayload, ServerId, ServerMessage,
 		};
+
 		use futures_util::{SinkExt, StreamExt};
+
 		use tokio_tungstenite::tungstenite::Message;
+
 		for remove in [false, true] {
 			let (_dir, profile, server) = super::super::wire_test_support::fixture(
 				move |listener| async move {
@@ -453,6 +526,7 @@ mod tests {
 							panic!("text request")
 						};
 						let request: ClientMessage = serde_json::from_str(&text).unwrap();
+
 						if index == 0 {
 							let ClientMessage::Command(command) = request else {
 								panic!("one resource command")
@@ -460,19 +534,25 @@ mod tests {
 							let CommandPayload::Agent { action } = command.payload else {
 								panic!("Agent action")
 							};
+
 							assert!(
 								matches!(&*action, AgentActionDto::RemoveResource { work_id, .. } if remove && work_id.as_str() == "agent")
 									|| matches!(&*action, AgentActionDto::AddResourceLink { work_id, .. } if !remove && work_id.as_str() == "agent")
 							);
+
 							socket.close(None).await.unwrap();
+
 							continue;
 						}
+
 						let ClientMessage::Query(query) = request else {
 							panic!("readback, never retry")
 						};
+
 						assert!(
 							matches!(query.payload, QueryPayload::GetAgentResources { ref work_id } if work_id.as_str() == "agent")
 						);
+
 						let response = ServerMessage::QueryResult(QueryResultEnvelope {
 							version: CURRENT_VERSION,
 							server_id: ServerId::new(super::super::wire_test_support::SERVER)
@@ -482,6 +562,7 @@ mod tests {
 								AgentResourcesResult::Available { resources: vec![] },
 							),
 						});
+
 						socket
 							.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
 							.await
@@ -490,9 +571,12 @@ mod tests {
 				},
 			);
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.profile = Some(profile);
+
 				let action = if remove {
 					AgentActionDto::RemoveResource {
 						work_id: EntityId::new("agent").unwrap(),
@@ -506,11 +590,16 @@ mod tests {
 						url: WireText::new("https://example.test/").unwrap(),
 					}
 				};
+
 				s.change_resource("agent", action, cx);
+
 				assert!(s.resource_mutation_task.is_some());
+
 				s.generation += 1;
+
 				s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
 			});
+
 			cx.run_until_parked();
 			server.join().unwrap();
 			surface.read_with(cx, |s, _| {
@@ -532,23 +621,30 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		for pending in [false, true] {
 			for change in ["thread", "source", "removed", "disconnect", "failed"] {
 				surface.update(cx, |s, cx| {
 					s.visual_workspace_fixture(cx);
+
 					let original = s.snapshot.clone().unwrap();
+
 					s.resources = (!pending).then(|| {
 						(
 							"agent".into(),
 							Some(AgentResourcesResult::Available { resources: vec![] }),
 						)
 					});
+
 					s.resource_feedback.clear();
+
 					if pending {
 						s.resource_mutation_task =
 							Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
 					}
+
 					let mut next = original.clone();
+
 					match change {
 						"thread" =>
 							next.work_items
@@ -563,12 +659,16 @@ mod tests {
 						"failed" => s.apply_result(Err(())),
 						_ => unreachable!(),
 					}
+
 					if !matches!(change, "disconnect" | "failed") {
 						s.apply_result(Ok(AgentSnapshotResult::Available(next)));
 					}
+
 					s.apply_result(Ok(AgentSnapshotResult::Available(original)));
+
 					assert!(s.resources.is_none(), "old inventory after {change}");
 					assert!(s.resource_mutation_task.is_none(), "old mutation after {change}");
+
 					if pending {
 						assert!(
 							s.resource_feedback.contains("unconfirmed"),

@@ -27,9 +27,13 @@ impl AgentSurface {
 		let budget =
 			goal.as_ref().and_then(|g| g.token_budget).map_or(String::new(), |n| n.to_string());
 		let input = cx.new(|cx| ComposerInput::new(0, cx));
+
 		input.update(cx, |i, cx| i.set_content(&objective, cx));
+
 		let tokens = cx.new(|cx| ComposerInput::new(0, cx));
+
 		tokens.update(cx, |i, cx| i.set_content(&budget, cx));
+
 		self.native_goal.editor = Some(Editor {
 			target,
 			review: review.clone(),
@@ -39,6 +43,7 @@ impl AgentSurface {
 			original_budget: budget,
 			new_goal: goal.is_none(),
 		});
+
 		cx.notify();
 	}
 
@@ -46,14 +51,18 @@ impl AgentSurface {
 		if self.native_goal.task.is_some() {
 			return div().into_any_element();
 		}
+
 		let Some(Result::Available { review_token: Some(_), goal, .. }) = &self.native_goal.result
 		else {
 			return div().into_any_element();
 		};
+
 		if self.native_goal.target != self.native_goal_target() {
 			return div().into_any_element();
 		}
+
 		let mut panel = div().flex().flex_col().gap_2();
+
 		if let Some(editor) = &self.native_goal.editor {
 			panel = panel
 				.child("Objective (leave unchanged to keep the current objective)")
@@ -83,6 +92,7 @@ impl AgentSurface {
 					"Cancel edit".into(),
 					|s, cx| {
 						s.native_goal.editor = None;
+
 						cx.notify();
 					},
 					cx,
@@ -94,12 +104,14 @@ impl AgentSurface {
 				|s, cx| s.begin_goal_edit(cx),
 				cx,
 			));
+
 			if let Some(goal) = goal {
 				let (label, status) = if goal.status == Status::Active {
 					("Pause goal", Status::Paused)
 				} else {
 					("Resume goal", Status::Active)
 				};
+
 				panel = panel.child(self.workspace_action(
 					"goal-status".into(),
 					label.into(),
@@ -108,6 +120,7 @@ impl AgentSurface {
 				));
 			}
 		}
+
 		panel.into_any_element()
 	}
 
@@ -121,6 +134,7 @@ impl AgentSurface {
 			multiple: false,
 			prompt: Some("Import goal objective".into()),
 		});
+
 		cx.spawn(async move |surface, cx| {
 			let Ok(Ok(Some(paths))) = selected.await else { return };
 			let Some(path) = paths.into_iter().next() else { return };
@@ -128,12 +142,16 @@ impl AgentSurface {
 				.background_executor()
 				.spawn(async move {
 					use std::io::Read as _;
+
 					let mut file = std::fs::File::open(path).map_err(|_| ())?;
 					let mut bytes = Vec::new();
-					file.by_ref().take(64 * 1024 + 1).read_to_end(&mut bytes).map_err(|_| ())?;
-					if bytes.len() > 64 * 1024 {
+
+					file.by_ref().take(64 * 1_024 + 1).read_to_end(&mut bytes).map_err(|_| ())?;
+
+					if bytes.len() > 64 * 1_024 {
 						return Err(());
 					}
+
 					String::from_utf8(bytes).map_err(|_| ())
 				})
 				.await;
@@ -146,6 +164,7 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				match text {
 					Ok(text) => {
 						input.update(cx, |i, cx| i.set_content(&text, cx));
@@ -155,6 +174,7 @@ impl AgentSurface {
 						s.native_goal.feedback =
 							"Choose a UTF-8 text file no larger than 64 KiB.".into(),
 				};
+
 				cx.notify();
 			});
 		})
@@ -166,11 +186,16 @@ impl AgentSurface {
 		let text = editor.objective.read(cx).content().to_owned();
 		let budget = editor.budget.read(cx).content().trim().to_owned();
 		let objective = (text != editor.original_objective || editor.new_goal).then_some(text);
-		if objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1024) {
+
+		if objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
+		{
 			self.native_goal.feedback = "Enter an objective no larger than 64 KiB.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let budget = if budget == editor.original_budget {
 			Budget::Keep
 		} else if budget.is_empty() {
@@ -178,9 +203,12 @@ impl AgentSurface {
 		} else {
 			let Some(tokens) = budget.parse::<i64>().ok().filter(|tokens| *tokens > 0) else {
 				self.native_goal.feedback = "Enter a positive whole-number token budget.".into();
+
 				cx.notify();
+
 				return;
 			};
+
 			Budget::Set(tokens)
 		};
 		let status = if start {
@@ -190,6 +218,7 @@ impl AgentSurface {
 		} else {
 			None
 		};
+
 		self.submit_goal_edit(
 			editor.target.clone(),
 			editor.review.clone(),
@@ -204,6 +233,7 @@ impl AgentSurface {
 			return;
 		};
 		let Some(target) = self.native_goal_target() else { return };
+
 		self.submit_goal_edit(
 			target,
 			review.clone(),
@@ -222,6 +252,7 @@ impl AgentSurface {
 		if self.native_goal.task.is_some() || self.native_goal_target() != Some(target.clone()) {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else { return };
 		let (Ok(work), Ok(thread)) =
 			(EntityId::new(target.0.clone()), EntityId::new(target.1.clone()))
@@ -236,7 +267,9 @@ impl AgentSurface {
 		};
 		let key = IdempotencyKey::new(unique_command()).expect("command identity");
 		let epoch = self.native_goal.epoch;
+
 		self.native_goal.feedback = "Saving native goal…".into();
+
 		let task = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -244,24 +277,32 @@ impl AgentSurface {
 			let outcome = runtime.block_on(client.execute(action, key));
 			let read =
 				runtime.block_on(client.native_goal(work, thread)).unwrap_or(Result::Unavailable);
+
 			Some((outcome, read))
 		});
+
 		self.native_goal.task = Some(cx.spawn(async move |surface, cx| {
 			let result = task.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.native_goal.epoch != epoch {
 					return;
 				}
+
 				s.native_goal.task = None;
+
 				if s.native_goal_target() != Some(target) {
 					return;
 				}
+
 				if let Some((outcome, read)) = result {
 					let applied = matches!(outcome, Ok(AgentCommandResponse::Accepted { .. }));
+
 					s.native_goal.result = Some(read);
+
 					if applied {
 						s.native_goal.editor = None;
 					}
+
 					s.native_goal.feedback = if applied {
 						"Native goal saved."
 					} else {
@@ -273,9 +314,11 @@ impl AgentSurface {
 						"The edit could not be confirmed. Read the native goal before retrying."
 							.into();
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 }

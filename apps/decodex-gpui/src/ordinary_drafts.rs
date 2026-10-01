@@ -17,9 +17,11 @@ impl Shell {
 		else {
 			return;
 		};
+
 		if !self.conversations.open_recorded_ordinary_creation(command) {
 			return;
 		}
+
 		let carry = current
 			.composer
 			.conversation_id
@@ -33,13 +35,16 @@ impl Shell {
 			}
 		} else {
 			self.conversations.park_ordinary_editor(current.composer);
+
 			self.conversations
 				.select_ordinary_editor(Some(&request.conversation_id))
 				.map(|editor| editor.text)
 				.unwrap_or_default()
 		};
+
 		self.ordinary_syncing = true;
 		self.ordinary_owner = Some(request.conversation_id.clone());
+
 		if self
 			.pending_submission
 			.as_ref()
@@ -47,8 +52,11 @@ impl Shell {
 		{
 			self.pending_submission = None;
 		}
+
 		self.composer.update(cx, |input, cx| input.set_content(&text, cx));
+
 		self.ordinary_syncing = false;
+
 		self.sync_ordinary_drafts(cx);
 		self.synchronize_conversations(cx);
 	}
@@ -57,15 +65,21 @@ impl Shell {
 		if self.ordinary_syncing {
 			return;
 		}
+
 		let Some(directory) = self.conversations.working_directory() else { return };
+
 		self.conversations.require_saved_dispatch();
+
 		self.ordinary_syncing = true;
+
 		let stored = self.agent.read(cx).ordinary_storage_record(directory.as_str(), false);
+
 		if stored != self.ordinary_last
 			&& let Some(stored) = stored.as_ref()
 		{
 			if self.conversations.restore_ordinary_draft(stored) {
 				self.composer.update(cx, |input, cx| input.set_content(&stored.composer.text, cx));
+
 				self.ordinary_owner = stored.composer.conversation_id.clone();
 				self.ordinary_last = Some(stored.clone());
 				self.pending_submission = None;
@@ -75,30 +89,40 @@ impl Shell {
 				self.agent.update(cx, |surface, _| surface.defer_ordinary_restore());
 			}
 		}
+
 		self.quick = self.conversations.snapshot();
+
 		let owner = self.conversations.ordinary_editor_owner();
+
 		if owner != self.ordinary_owner {
 			let rebinding_created = self.pending_submission.as_ref().is_some_and(|pending| {
 				Some(&pending.conversation_id) == owner.as_ref()
 					&& self.conversations.snapshot().last_submission_accepted
 			});
+
 			if !rebinding_created {
 				if let Some(mut old) =
 					self.ordinary_last.as_ref().map(|draft| draft.composer.clone())
 				{
 					old.text = self.composer.read(cx).content().into();
+
 					self.conversations.park_ordinary_editor(old);
 				}
+
 				let text = self
 					.conversations
 					.select_ordinary_editor(owner.as_ref())
 					.map(|draft| draft.text)
 					.unwrap_or_default();
+
 				self.composer.update(cx, |input, cx| input.set_content(&text, cx));
 			}
+
 			self.ordinary_owner = owner;
 		}
+
 		self.reconcile_pending_submission(cx);
+
 		if let Some(draft) = self.conversations.ordinary_draft(self.composer.read(cx).content()) {
 			let confirmed = self.conversations.confirmed_ordinary_commands();
 			let saved = self.agent.read(cx).ordinary_storage_record(directory.as_str(), true);
@@ -106,23 +130,28 @@ impl Shell {
 				|| self.ordinary_last.as_ref() != Some(&draft)
 				|| saved.as_ref() != Some(&draft)
 				|| !confirmed.is_empty();
+
 			self.ordinary_last = Some(draft.clone());
+
 			if needs_write {
 				self.agent
 					.update(cx, |surface, cx| surface.save_ordinary_storage(draft, &confirmed, cx));
 			}
+
 			if let Some(saved) =
 				self.agent.read(cx).ordinary_storage_record(directory.as_str(), true)
 			{
 				self.conversations.release_saved_commands(&saved.unconfirmed);
 			}
 		}
+
 		self.ordinary_syncing = false;
 	}
 
 	pub(super) fn reset_ordinary_draft_binding(&mut self, cx: &mut Context<Self>) {
 		self.ordinary_last = None::<DesktopOrdinaryDraft>;
 		self.ordinary_owner = None;
+
 		self.sync_ordinary_drafts(cx);
 	}
 }
@@ -133,11 +162,14 @@ pub(super) fn creation_receipt_controls(
 	cx: &mut Context<Shell>,
 ) -> gpui::AnyElement {
 	use decodex_protocol::{CommandPayload, ConversationCreationReceiptResult as Receipt};
+
 	use gpui::{
 		InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _, div,
 	};
+
 	let mut rows = div().flex().flex_col();
+
 	for (index, (command, result)) in
 		shell.conversations.ordinary_creation_receipts().into_iter().enumerate()
 	{
@@ -153,6 +185,7 @@ pub(super) fn creation_receipt_controls(
 			None => "Creation outcome has not been checked.",
 		};
 		let check_command = command.clone();
+
 		rows = rows.child(
 			div().child(original).child(div().child(status)).child(
 				div()
@@ -166,11 +199,13 @@ pub(super) fn creation_receipt_controls(
 								"Wait for the current query or reconnect, then check again.".into(),
 							);
 						}
+
 						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			),
 		);
+
 		if recorded {
 			rows = rows.child(
 				div()
@@ -185,6 +220,7 @@ pub(super) fn creation_receipt_controls(
 			);
 		}
 	}
+
 	rows.child(turn_outcome_controls(shell, cx))
 		.child(control_state_controls(shell, cx))
 		.into_any_element()
@@ -196,11 +232,14 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 		CommandPayload, ConversationTurnOutcomeResult as Result,
 		ConversationTurnOutcomeState as Outcome,
 	};
+
 	use gpui::{
 		InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _, div,
 	};
+
 	let mut rows = div().flex().flex_col();
+
 	for (index, (command, result)) in
 		shell.conversations.ordinary_turn_outcomes().into_iter().enumerate()
 	{
@@ -233,6 +272,7 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 			None => "Saved message outcome has not been checked.",
 		};
 		let check = command.clone();
+
 		rows = rows.child(
 			div().child(original).child(status).child(
 				div()
@@ -245,11 +285,13 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 								"Wait for the current query or reconnect, then check again.".into(),
 							);
 						}
+
 						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			),
 		);
+
 		if terminal {
 			rows = rows.child(
 				div()
@@ -272,28 +314,36 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 								&& shell.composer.read(cx).content() == message.as_str()
 							{
 								shell.ordinary_syncing = true;
+
 								shell.composer.update(cx, |input, cx| input.set_content("", cx));
+
 								shell.ordinary_syncing = false;
 							}
+
 							shell.sync_ordinary_drafts(cx);
 						}
+
 						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			);
 		}
 	}
+
 	rows.into_any_element()
 }
 
 /// Acknowledge observed control state without claiming delivery or replaying the command.
 fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyElement {
 	use decodex_protocol::CommandPayload;
+
 	use gpui::{
 		InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _, div,
 	};
+
 	let mut rows = div().flex().flex_col();
+
 	for (index, (command, observation)) in
 		shell.conversations.ordinary_control_states().into_iter().enumerate()
 	{
@@ -319,6 +369,7 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEl
 		let status = observation
 			.map_or("Saved control request has not been checked.", |value| value.message());
 		let check = command.clone();
+
 		rows = rows.child(
 			div().child(format!("{label}: {title}")).child(status).child(
 				div()
@@ -332,11 +383,13 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEl
 								"Wait for the current query or reconnect, then check again.".into(),
 							);
 						}
+
 						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			),
 		);
+
 		if observation.is_some_and(|value| value.can_acknowledge()) {
 			rows = rows.child(
 				div()
@@ -348,11 +401,13 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEl
 						if shell.conversations.acknowledge_ordinary_control(&command) {
 							shell.sync_ordinary_drafts(cx);
 						}
+
 						shell.synchronize_conversations(cx);
 						cx.notify();
 					})),
 			);
 		}
 	}
+
 	rows.into_any_element()
 }

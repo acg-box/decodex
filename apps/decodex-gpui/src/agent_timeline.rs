@@ -1,13 +1,16 @@
 //! Native timeline page state. Native IDs remain distinct from local inbox row IDs.
-use super::*;
-use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
-use std::collections::BTreeSet;
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
 #[path = "agent_timeline_receipts.rs"] mod receipts;
 #[path = "agent_timeline_render.rs"] mod render;
 #[path = "agent_timeline_scroll.rs"] mod scroll;
+
+use super::*;
+
+use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
+
+use std::collections::BTreeSet;
 
 impl AgentSurface {
 	pub(super) fn restore_prompt_presentation(
@@ -30,16 +33,20 @@ impl AgentSurface {
 		if !matches!(&history, AgentHistoryResult::Available { questions_recovering: false, .. }) {
 			return Err("Question history recovery is incomplete");
 		}
+
 		let decodex_protocol::AgentTimelineResult::Available { work_id, account_id, page } =
 			timeline
 		else {
 			return Err("Native history is unavailable");
 		};
+
 		if work_id.as_str() != work || page.thread_id != thread {
 			return Err("Native history source changed");
 		}
+
 		let mut restored =
 			Timeline { epoch: self.native_history.epoch.wrapping_add(1), ..Default::default() };
+
 		if !restored.replace(
 			Binding {
 				work: work.into(),
@@ -50,26 +57,35 @@ impl AgentSurface {
 		) {
 			return Err("Native history page could not be applied");
 		}
+
 		restored.requested = Some((work.into(), thread.into()));
+
 		self.cancel_native_scroll_anchor();
+
 		self.native_history = restored;
 		self.history_task = None;
 		self.older_task = None;
 		self.loading_older = false;
 		self.older_retry_after = None;
 		self.older_scroll_anchor = None;
+
 		self.older_history.remove(work);
+
 		self.output_stream = Default::default();
 		self.history_requested_for = Some(work.into());
 		self.history_read_at = Some(std::time::Instant::now());
+
 		self.observe_question_notices(&history);
 		self.prepare_async_question_inputs(work, &history, cx);
 		self.history_cache.insert(work.into(), history.clone());
+
 		self.history = Some((work.into(), history));
 		self.history_navigation = None;
+
 		self.history_follow_paused.remove(work);
 		self.transcript_scroll.entry(work.into()).or_default().scroll_to_bottom();
 		cx.notify();
+
 		Ok(())
 	}
 
@@ -79,16 +95,19 @@ impl AgentSurface {
 		}) else {
 			return false;
 		};
+
 		if self.native_history.older_cursor.is_some()
 			&& self.native_history.task.is_none()
 			&& self.native_history.can_retry(std::time::Instant::now())
 			&& self.history_follow_paused.contains(&binding.work)
 			&& self.transcript_scroll.get(&binding.work).is_some_and(|scroll| {
 				let height = f32::from(scroll.bounds().size.height);
+
 				height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
 			}) {
 			self.load_native_timeline(&binding.work, &binding.thread, true, cx);
 		}
+
 		true
 	}
 
@@ -101,16 +120,21 @@ impl AgentSurface {
 				.and_then(|work| Some((work.id.clone(), work.codex_thread_id.clone()?)))
 		}) else {
 			self.native_history.reset();
+
 			return;
 		};
+
 		if self.native_history.requested.as_ref() != Some(&(work.clone(), thread.clone())) {
 			self.native_history.reset();
 			self.native_history.viewport.request_latest();
 		}
+
 		let turn = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.as_deref()
 		});
+
 		self.native_history.retry_after_turn_change(turn);
+
 		if self.native_history.can_retry(std::time::Instant::now()) {
 			self.load_native_timeline(&work, &thread, false, cx);
 		}
@@ -131,6 +155,7 @@ impl AgentSurface {
 		{
 			return false;
 		}
+
 		match self.native_history.requested.as_ref() {
 			None => self.profile.is_some(),
 			Some((id, thread)) =>
@@ -164,7 +189,6 @@ impl AgentSurface {
 		if self.native_history_loading(work) {
 			panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
 		}
-
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) && let Some(message) = self.native_history.notice
@@ -191,14 +215,17 @@ impl AgentSurface {
 						.into(),
 						|s, cx| {
 							s.cancel_native_scroll_anchor();
+
 							s.native_history.show_saved = !s.native_history.show_saved;
 							s.history_navigation = None;
+
 							cx.notify();
 						},
 						cx,
 					),
 				),
 			);
+
 			if self.native_history.show_saved {
 				return panel
 					.child(muted(
@@ -206,7 +233,9 @@ impl AgentSurface {
 					))
 					.into_any_element();
 			}
+
 			let binding = self.native_history.binding.as_ref().expect("matching binding").clone();
+
 			if self.native_history.browsing_window {
 				panel = panel.child(muted("Showing an earlier history window. Select Latest native history to return to recent messages."));
 			}
@@ -221,11 +250,14 @@ impl AgentSurface {
 			if self.native_history.opening_session.is_some() {
 				panel = panel.child(muted("Voice conversation continued from an earlier page."));
 			}
+
 			for item in &self.native_history.summary {
 				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
+
 			panel = self.append_native_history_rows(panel, work, cx);
 			panel = panel.children(self.send_previews(&work.id));
+
 			if let Some(messages) = self.streamed_output(work) {
 				for message in messages.iter().filter(|message| {
                     work.active_turn_id.as_deref() == Some(&message.turn_id)
@@ -239,6 +271,7 @@ impl AgentSurface {
                 }
 			}
 		}
+
 		panel.into_any_element()
 	}
 
@@ -257,18 +290,23 @@ impl AgentSurface {
 			headers.insert(group.indices[0], group);
 			collapsed.extend(group.indices.iter().skip(1).copied());
 		}
+
 		self.prepare_process_folds(work, &collapsed);
+
 		let mut hidden = Vec::new();
 		let empty_reasoning = groups::empty_completed_reasoning(&self.native_history.entries);
+
 		for (index, entry) in self.native_history.entries.iter().enumerate() {
 			if empty_reasoning.contains(&index) {
 				continue;
 			}
+
 			if let Some(group) = headers.get(&index) {
 				if !hidden.is_empty() {
 					panel =
 						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
 				}
+
 				let owner = cx.entity();
 				let indices = group.indices.clone();
 				let source_work = work.clone();
@@ -312,26 +350,34 @@ impl AgentSurface {
 							})
 						},
 					));
+
 				panel =
 					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));
+
 				continue;
 			}
 
 			if collapsed.contains(&index) {
 				continue;
 			}
+
 			if let Some(height) = self.native_offscreen_height(work, entry) {
 				hidden.push((entry, height));
+
 				continue;
 			}
+
 			if !hidden.is_empty() {
 				panel = panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
 			}
+
 			panel = panel.child(self.native_timeline_row(work, entry, cx));
 		}
+
 		if !hidden.is_empty() {
 			panel = panel.child(self.native_history_spacer(work, hidden));
 		}
+
 		panel
 	}
 
@@ -339,13 +385,20 @@ impl AgentSurface {
 		if self.selected.as_deref() != Some(work) || self.native_history.task.is_some() {
 			return;
 		}
+
 		self.cancel_native_scroll_anchor();
+
 		self.native_history.epoch = self.native_history.epoch.wrapping_add(1);
+
 		self.native_history.recovered();
+
 		self.native_history.show_saved = false;
+
 		self.native_history.viewport.request_latest();
 		self.history_follow_paused.remove(work);
+
 		self.history_navigation = None;
+
 		self.set_voice_follow(true);
 		self.load_native_timeline(work, thread, false, cx);
 	}
@@ -353,8 +406,10 @@ impl AgentSurface {
 	fn refresh_native_summary(&mut self, binding: Binding, items: Vec<Content>) {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
+
 		self.cancel_native_scroll_anchor();
 		self.native_history.accept_summary(binding, items);
+
 		if jump {
 			self.transcript_scroll.entry(work).or_default().scroll_to_bottom();
 		}
@@ -371,6 +426,7 @@ impl AgentSurface {
 						matches!(&old.content,
 						Content::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
 					});
+
 					if !already_finished {
 						self.native_history.expanded_turns.insert(turn_id.clone());
 					}
@@ -383,9 +439,11 @@ impl AgentSurface {
 		} else {
 			self.native_history.refresh(binding, page)
 		};
+
 		if accepted && jump {
 			self.transcript_scroll.entry(work).or_default().scroll_to_bottom();
 		}
+
 		accepted
 	}
 
@@ -399,31 +457,41 @@ impl AgentSurface {
 		if self.selected.as_deref() != Some(work) || self.native_history.task.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
 		let cursor = if older { self.native_history.older_cursor.clone() } else { None };
+
 		if older && cursor.is_none() {
 			return;
 		}
+
 		let (Ok(work_id), Ok(thread_id)) = (EntityId::new(work), EntityId::new(thread)) else {
 			return;
 		};
+
 		if older {
 			self.history_follow_paused.insert(work.into());
+
 			self.history_navigation = None;
+
 			self.set_voice_follow(false);
 		}
+
 		let (work, thread) = (work.to_owned(), thread.to_owned());
 		let epoch = self.native_history.epoch;
+
 		self.native_history.requested = Some((work.clone(), thread.clone()));
 		self.native_history.requested_turn = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.clone()
 		});
+
 		let sent_cursor = cursor.clone();
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime
 				.block_on(AgentClient::new(profile).timeline(
 					work_id,
@@ -432,13 +500,16 @@ impl AgentSurface {
 				))
 				.ok()
 		});
+
 		self.native_history.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.native_history.epoch != epoch {
 					return;
 				}
+
 				s.native_history.task = None;
+
 				if s.selected.as_deref() != Some(&work)
 					|| !s.snapshot.as_ref().is_some_and(|v| {
 						v.work_items
@@ -447,6 +518,7 @@ impl AgentSurface {
 					}) {
 					return;
 				}
+
 				if let Some(decodex_protocol::AgentTimelineResult::Summary {
 					work_id,
 					account_id,
@@ -466,6 +538,7 @@ impl AgentSurface {
 						items.clone(),
 					);
 					cx.notify();
+
 					return;
 				}
 				if let Some(decodex_protocol::AgentTimelineResult::Available {
@@ -479,6 +552,7 @@ impl AgentSurface {
 						Some(cursor) => s.prepend_native_history(&binding, &cursor, page),
 						None => s.refresh_native_history(binding, page),
 					};
+
 					if accepted {
 						s.native_history.recovered();
 					} else {
@@ -490,10 +564,12 @@ impl AgentSurface {
 				} else {
 					s.native_history.failed(result, std::time::Instant::now());
 				}
+
 				s.refresh_native_input_receipts(cx);
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 }
@@ -531,7 +607,6 @@ pub(super) struct Timeline {
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
 }
-
 impl Timeline {
 	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &Content> {
 		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
@@ -570,6 +645,7 @@ impl Timeline {
 		now: std::time::Instant,
 	) {
 		self.clear_page();
+
 		self.unsupported =
 			matches!(result, Some(decodex_protocol::AgentTimelineResult::Unsupported));
 		self.failures = self.failures.saturating_add(1);
@@ -580,6 +656,7 @@ impl Timeline {
 		} else {
 			(5_u64 << self.failures.saturating_sub(1).min(3)).min(30)
 		};
+
 		self.retry_at = Some(now + std::time::Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
 			"This thread does not support native history. Saved local history remains available."
@@ -590,9 +667,12 @@ impl Timeline {
 
 	fn accept_summary(&mut self, binding: Binding, items: Vec<Content>) {
 		self.clear_page();
+
 		self.binding = Some(binding);
 		self.summary = items;
+
 		self.recovered();
+
 		self.retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
 		self.notice = Some(
 			"Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.",
@@ -601,16 +681,24 @@ impl Timeline {
 
 	fn clear_page(&mut self) {
 		self.revision = self.revision.wrapping_add(1);
+
 		self.preview.clear();
+
 		self.viewport = Default::default();
 		self.binding = None;
+
 		self.entries.clear();
 		self.weather.clear();
+
 		self.safety_buffering_turn_id = None;
+
 		self.summary.clear();
+
 		self.older_cursor = None;
 		self.opening_session = None;
+
 		self.seen_cursors.clear();
+
 		self.browsing_window = false;
 	}
 
@@ -618,10 +706,12 @@ impl Timeline {
 		if page.thread_id != binding.thread || !valid_entries(&page.entries) {
 			return false;
 		}
+
 		let overlap = page
 			.entries
 			.first()
 			.and_then(|first| self.entries.iter().position(|old| key(old) == key(first)));
+
 		if self.binding.as_ref() == Some(&binding)
 			&& let Some(start) = overlap
 			&& self.entries[start..]
@@ -632,8 +722,10 @@ impl Timeline {
 			&& bounded(self.entries[..start].iter().chain(&page.entries))
 		{
 			self.safety_buffering_turn_id = page.safety_buffering_turn_id;
+
 			self.weather.extend(page.weather);
 			self.entries.splice(start.., page.entries);
+
 			return true;
 		}
 		// Without overlap the middle is unknown. Restart at the native page boundary;
@@ -648,11 +740,14 @@ impl Timeline {
 		{
 			return false;
 		}
+
 		let changed = self.binding.as_ref() != Some(&binding)
 			|| self.entries != page.entries
 			|| self.weather != page.weather
 			|| !self.summary.is_empty();
+
 		self.summary.clear();
+
 		if changed {
 			self.viewport = Default::default();
 			self.revision = self.revision.wrapping_add(1);
@@ -661,14 +756,18 @@ impl Timeline {
 			self.expanded_turns.clear();
 			self.preview.clear();
 		}
+
 		self.binding = Some(binding);
 		self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 		self.weather = page.weather;
 		self.entries = page.entries;
 		self.older_cursor = page.next_cursor;
 		self.opening_session = page.active_realtime_session_at_page_start;
+
 		self.seen_cursors.clear();
+
 		self.browsing_window = false;
+
 		true
 	}
 
@@ -684,6 +783,7 @@ impl Timeline {
 				&& current.account != binding.account
 		}) {
 			self.clear_page();
+
 			return false;
 		}
 		if self.binding.as_ref() != Some(binding)
@@ -703,41 +803,30 @@ impl Timeline {
 		{
 			return false;
 		}
+
 		self.seen_cursors.insert(cursor.into());
+
 		if !page.entries.is_empty() {
 			self.opening_session = page.active_realtime_session_at_page_start;
 		}
+
 		self.weather.extend(page.weather);
 		self.entries.splice(0..0, page.entries);
+
 		self.revision = self.revision.wrapping_add(1);
+
 		while !bounded(&self.entries) {
 			self.entries.pop();
+
 			self.browsing_window = true;
 		}
+
 		self.older_cursor = page.next_cursor;
+
 		self.viewport.retain(&self.entries);
+
 		true
 	}
-}
-
-fn bounded<'a>(entries: impl IntoIterator<Item = &'a AgentTimelineEntry>) -> bool {
-	let mut bytes = 0;
-	let mut count = 0;
-	for entry in entries {
-		count += 1;
-		let Ok(encoded) = serde_json::to_vec(entry) else {
-			return false;
-		};
-		bytes += encoded.len();
-		if count > 1000 || bytes > 2 * 1024 * 1024 {
-			return false;
-		}
-	}
-	true
-}
-
-fn valid_entries(entries: &[AgentTimelineEntry]) -> bool {
-	entries.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
 }
 
 pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
@@ -749,7 +838,33 @@ pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
 		| Content::Promotion { item_id, .. } => (2, item_id),
 		Content::TurnBoundary { turn_id, completed: true, .. } => (3, turn_id),
 	};
+
 	(entry.position, kind, id)
+}
+
+fn bounded<'a>(entries: impl IntoIterator<Item = &'a AgentTimelineEntry>) -> bool {
+	let mut bytes = 0;
+	let mut count = 0;
+
+	for entry in entries {
+		count += 1;
+
+		let Ok(encoded) = serde_json::to_vec(entry) else {
+			return false;
+		};
+
+		bytes += encoded.len();
+
+		if count > 1_000 || bytes > 2 * 1_024 * 1_024 {
+			return false;
+		}
+	}
+
+	true
+}
+
+fn valid_entries(entries: &[AgentTimelineEntry]) -> bool {
+	entries.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
 }
 
 #[cfg(test)]
@@ -758,9 +873,12 @@ mod tests {
 	#[gpui::test]
 	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -769,35 +887,46 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
 			s.native_history.requested = Some((work.id.clone(), "thread".into()));
 			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 		// A failed native read still permits the saved-history fallback.
 		surface.update(visual, |s, cx| {
 			s.native_history.task = None;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
 		assert!(visual.debug_bounds("saved-local-history").is_some());
 		// Retrying a failed read must retain the fallback, too.
 		surface.update(visual, |s, cx| {
 			s.native_history.failed(None, std::time::Instant::now());
+
 			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
 		assert!(visual.debug_bounds("saved-local-history").is_some());
 	}
@@ -805,11 +934,16 @@ mod tests {
 	#[gpui::test]
 	fn summary_recovery_renders_notice_and_copies_only_message_text(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		let mut copy_key = String::new();
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -818,17 +952,21 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.expect("work");
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			};
+
 			copy_key = format!(
 				"copy-{}",
 				serde_json::json!(["summary", work.id, work.codex_thread_id, "turn", "answer"])
 			);
 			s.native_history.requested = Some((work.id.clone(), "thread".into()));
+
 			s.native_history.accept_summary(
 				binding,
 				vec![Content::Item {
@@ -845,13 +983,17 @@ mod tests {
 			);
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("native-summary-message").is_some());
 		assert!(visual.debug_bounds("native-history-notice").is_some());
+
 		let button =
 			visual.debug_bounds(Box::leak(copy_key.into_boxed_str())).expect("summary copy action");
+
 		visual.simulate_click(button.center(), gpui::Modifiers::default());
 		visual.update(|_, cx| {
 			assert_eq!(
@@ -866,6 +1008,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("native-summary-message").is_none());
 	}
 
@@ -885,10 +1028,14 @@ mod tests {
 			attachments: vec![],
 		};
 		let mut state = Timeline::default();
+
 		state.entries.push(AgentTimelineEntry { position: 42, content: item.clone() });
+
 		state.older_cursor = Some("old".into());
 		state.opening_session = Some("voice".into());
+
 		state.accept_summary(binding.clone(), vec![item.clone()]);
+
 		assert!(state.entries.is_empty());
 		assert!(state.older_cursor.is_none() && state.opening_session.is_none());
 		assert_eq!(state.summary, vec![item.clone()]);
@@ -904,11 +1051,15 @@ mod tests {
 				active_realtime_session_at_page_start: None
 			}
 		));
+
 		state.recovered();
+
 		assert!(state.summary.is_empty() && state.notice.is_none());
 		assert_eq!(state.entries[0].position, 77);
 		assert_eq!(state.older_cursor.as_deref(), Some("real-cursor"));
+
 		state.reset();
+
 		assert!(state.summary.is_empty() && state.binding.is_none());
 	}
 
@@ -917,9 +1068,12 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s.selected.clone().unwrap();
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -928,6 +1082,7 @@ mod tests {
 				.find(|item| item.id == work)
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
+
 			let history = AgentHistoryResult::Available {
 				questions: vec![],
 				questions_truncated: false,
@@ -939,18 +1094,24 @@ mod tests {
 				next_before: None,
 				live: vec![],
 			};
+
 			s.history = Some((work.clone(), history.clone()));
+
 			s.older_history.insert(work.clone(), (vec![], Some(99)));
+
 			let binding =
 				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() };
+
 			s.native_history
 				.replace(binding, page(vec![boundary(9, false)], Some("old-cursor"), None));
+
 			let epoch = s.native_history.epoch;
 			let timeline = decodex_protocol::AgentTimelineResult::Available {
 				work_id: EntityId::new(&work).unwrap(),
 				account_id: EntityId::new("account").unwrap(),
 				page: page(vec![boundary(1, true)], None, None),
 			};
+
 			assert!(
 				s.restore_prompt_presentation(
 					&work,
@@ -963,23 +1124,31 @@ mod tests {
 			);
 			assert_eq!(s.native_history.entries[0].position, 9);
 			assert!(s.older_history.contains_key(&work));
+
 			let mut incomplete = history.clone();
+
 			if let AgentHistoryResult::Available { questions_recovering, .. } = &mut incomplete {
 				*questions_recovering = true;
 			}
+
 			assert!(
 				s.restore_prompt_presentation(&work, "thread", incomplete, timeline.clone(), cx)
 					.is_err()
 			);
+
 			let mut crossed = timeline.clone();
+
 			if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut crossed {
 				page.thread_id = "foreign".into();
 			}
+
 			assert!(
 				s.restore_prompt_presentation(&work, "thread", history.clone(), crossed, cx)
 					.is_err()
 			);
+
 			s.restore_prompt_presentation(&work, "thread", history, timeline, cx).unwrap();
+
 			assert_ne!(s.native_history.epoch, epoch);
 			assert_eq!(s.native_history.entries, vec![boundary(1, true)]);
 			assert!(s.native_history.older_cursor.is_none());
@@ -1023,25 +1192,38 @@ mod tests {
 	fn safety_buffering_refresh_clears_without_changing_transcript_layout() {
 		let mut state = Timeline::default();
 		let mut current = page(vec![boundary(1, false)], Some("older"), None);
+
 		current.safety_buffering_turn_id = Some("turn".into());
+
 		assert!(state.replace(binding(), current.clone()));
+
 		let revision = state.revision;
+
 		assert_eq!(state.safety_buffering_turn_id.as_deref(), Some("turn"));
+
 		current.safety_buffering_turn_id = None;
+
 		assert!(state.refresh(binding(), current.clone()));
 		assert!(state.safety_buffering_turn_id.is_none());
 		assert_eq!(state.revision, revision);
+
 		current.safety_buffering_turn_id = Some("turn".into());
+
 		assert!(state.refresh(binding(), current));
+
 		state.failed(None, std::time::Instant::now());
+
 		assert!(state.safety_buffering_turn_id.is_none());
 	}
 
 	#[test]
 	fn unchanged_refresh_keeps_layout_revision_but_same_length_edits_invalidate_it() {
 		let mut state = Timeline::default();
+
 		assert!(state.replace(binding(), page(vec![boundary(1, false)], None, None)));
+
 		let revision = state.revision;
+
 		assert!(state.replace(binding(), page(vec![boundary(1, false)], None, None)));
 		assert_eq!(state.revision, revision);
 		assert!(state.replace(binding(), page(vec![boundary(1, true)], None, None)));
@@ -1053,23 +1235,34 @@ mod tests {
 		let now = std::time::Instant::now();
 		let mut state =
 			Timeline { requested: Some(("work".into(), "thread".into())), ..Default::default() };
+
 		assert!(state.replace(binding(), page(vec![boundary(1, false)], None, None)));
+
 		state.failed(None, now);
+
 		assert!(state.entries.is_empty() && state.binding.is_none());
 		assert_eq!(state.requested, Some(("work".into(), "thread".into())));
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(4)));
 		assert!(state.can_retry(now + std::time::Duration::from_secs(5)));
+
 		state.failed(None, now);
+
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(9)));
 		assert!(state.can_retry(now + std::time::Duration::from_secs(10)));
+
 		state.failed(Some(decodex_protocol::AgentTimelineResult::Unsupported), now);
+
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(60)));
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
 		assert!(state.can_retry(now + std::time::Duration::from_secs(300)));
+
 		state.recovered();
+
 		assert!(state.can_retry(now));
 		assert!(state.notice.is_none());
+
 		state.reset();
+
 		assert!(state.requested.is_none());
 		assert_eq!(state.epoch, 1);
 	}
@@ -1078,19 +1271,26 @@ mod tests {
 	fn cold_native_history_retries_on_new_turn_without_polling_unsupported_history() {
 		let now = std::time::Instant::now();
 		let mut state = Timeline::default();
+
 		state.failed(Some(decodex_protocol::AgentTimelineResult::Unsupported), now);
 		state.retry_after_turn_change(None);
+
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
+
 		state.retry_after_turn_change(Some("first-turn"));
+
 		assert!(state.can_retry(now));
 		// A legacy thread can still refuse the retry. Do not keep polling it for
 		// the same acknowledged turn, including after terminal status changes.
 		state.requested_turn = Some("first-turn".into());
+
 		state.failed(Some(decodex_protocol::AgentTimelineResult::Unsupported), now);
 		state.retry_after_turn_change(Some("first-turn"));
+
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
 		// New execution while the earlier read was pending must also rearm it.
 		state.retry_after_turn_change(Some("second-turn"));
+
 		assert!(state.can_retry(now));
 		assert!(state.replace(binding(), page(vec![boundary(1, true)], None, None)));
 		assert_eq!(state.entries.len(), 1);
@@ -1099,6 +1299,7 @@ mod tests {
 	#[test]
 	fn older_pages_keep_native_boundary_order_without_fake_local_ids() {
 		let mut state = Timeline::default();
+
 		assert!(
 			state.replace(binding(), page(vec![boundary(5, true)], Some("older"), Some("voice")))
 		);
@@ -1111,17 +1312,22 @@ mod tests {
 	#[test]
 	fn stale_account_thread_cursor_and_overlapping_pages_do_not_mutate_history() {
 		let mut state = Timeline::default();
+
 		assert!(
 			state.replace(binding(), page(vec![boundary(10, true)], Some("older"), Some("voice")))
 		);
+
 		for field in ["thread", "work"] {
 			let mut stale = binding();
+
 			match field {
 				"thread" => stale.thread = "other".into(),
 				_ => stale.work = "other".into(),
 			}
+
 			assert!(!state.prepend(&stale, "older", page(vec![boundary(9, false)], None, None)));
 		}
+
 		assert!(!state.prepend(&binding(), "older", page(vec![boundary(10, true)], None, None)));
 		assert!(!state.prepend(
 			&binding(),
@@ -1130,8 +1336,11 @@ mod tests {
 		));
 		assert_eq!(state.entries, vec![boundary(10, true)]);
 		assert_eq!(state.opening_session.as_deref(), Some("voice"));
+
 		let mut other_account = binding();
+
 		other_account.account = "other".into();
+
 		assert!(!state.prepend(
 			&other_account,
 			"older",
@@ -1143,6 +1352,7 @@ mod tests {
 	#[test]
 	fn refresh_preserves_loaded_prefix_only_when_native_pages_overlap() {
 		let mut state = Timeline::default();
+
 		assert!(state.replace(
 			binding(),
 			page(vec![boundary(5, false), boundary(6, true)], Some("old"), Some("session"))
@@ -1157,8 +1367,11 @@ mod tests {
 		assert!(state.refresh(binding(), page(vec![boundary(20, true)], Some("gap"), None)));
 		assert_eq!(state.entries, vec![boundary(20, true)]);
 		assert_eq!(state.older_cursor.as_deref(), Some("gap"));
+
 		let mut other = binding();
+
 		other.account = "other".into();
+
 		assert!(
 			state.refresh(other, page(vec![boundary(20, true), boundary(21, false)], None, None))
 		);
@@ -1169,28 +1382,34 @@ mod tests {
 	#[test]
 	fn cache_limit_moves_to_an_earlier_window_without_losing_continuation() {
 		let mut state = Timeline::default();
+
 		assert!(state.replace(
 			binding(),
-			page((1..=1000).map(|n| boundary(n, false)).collect(), Some("old"), None)
+			page((1..=1_000).map(|n| boundary(n, false)).collect(), Some("old"), None)
 		));
 		assert!(state.prepend(&binding(), "old", page(vec![boundary(0, false)], None, None)));
-		assert_eq!(state.entries.len(), 1000);
+		assert_eq!(state.entries.len(), 1_000);
 		assert_eq!(state.entries.first(), Some(&boundary(0, false)));
 		assert_eq!(state.entries.last(), Some(&boundary(999, false)));
 		assert_eq!(state.older_cursor, None);
 		assert!(state.browsing_window);
 		assert!(!state.can_retry(std::time::Instant::now()));
+
 		state.reset();
+
 		assert!(state.can_retry(std::time::Instant::now()));
 	}
 
 	#[test]
 	fn revoked_page_clears_identity_cursor_and_records_without_reusing_request_epoch() {
 		let mut state = Timeline { epoch: 5, ..Default::default() };
+
 		assert!(
 			state.replace(binding(), page(vec![boundary(1, false)], Some("old"), Some("voice")))
 		);
+
 		state.clear_page();
+
 		assert!(
 			state.binding.is_none()
 				&& state.entries.is_empty()

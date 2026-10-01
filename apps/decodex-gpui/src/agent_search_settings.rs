@@ -17,6 +17,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 			|| !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
 		{
@@ -41,9 +42,12 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.search_settings.feedback = "No service connection is available.".into();
+
 			cx.notify();
+
 			return;
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
@@ -53,9 +57,11 @@ impl AgentSurface {
 			else {
 				return;
 			};
+
 			if work_id != &owner || !modes.contains(&mode) {
 				return;
 			}
+
 			Some(AgentActionDto::SetSearchPreference {
 				work_id: owner.clone(),
 				review_token: review_token.clone(),
@@ -64,13 +70,17 @@ impl AgentSurface {
 		} else {
 			None
 		};
+
 		self.search_settings.work = Some(work.into());
 		self.search_settings.epoch = self.search_settings.epoch.wrapping_add(1);
+
 		let epoch = self.search_settings.epoch;
 		let generation = self.generation;
+
 		self.search_settings.state = None;
 		self.search_settings.feedback =
 			if mode.is_some() { "Saving search…" } else { "Reading search settings…" }.into();
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
@@ -80,8 +90,10 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
 				runtime.block_on(client.search_settings(query_owner)).unwrap_or(State::Unavailable);
+
 			Some((outcome, state))
 		});
+
 		self.search_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -91,14 +103,19 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				s.search_settings.task = None;
+
 				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+
 				s.search_settings.feedback =
 					feedback(mode.as_ref(), outcome.as_ref(), &state).into();
 				s.search_settings.state = Some(state);
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -110,6 +127,7 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}
+
 		let owner = work.to_owned();
 		let opened = self.search_settings.work.as_deref() == Some(work);
 		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
@@ -126,16 +144,21 @@ impl AgentSurface {
 				}
 			},
 		));
+
 		if !opened {
 			return panel.into_any_element();
 		}
+
 		panel = panel
 			.child("Shared across accounts in Codex user settings. Applies to new conversations. Project settings can override this default; loaded conversations keep their current mode.")
 			.child(self.search_settings.feedback.clone());
+
 		if self.search_settings.task.is_some() {
 			return panel.into_any_element();
 		}
+
 		let owner = work.to_owned();
+
 		panel = panel.child(mcp_button(
 			"search-settings-refresh".into(),
 			"Refresh search settings".into(),
@@ -143,6 +166,7 @@ impl AgentSurface {
 			cx,
 			move |s, cx| s.update_search_settings(&owner, None, cx),
 		));
+
 		if let Some(State::Available { modes, effective, preference, .. }) =
 			&self.search_settings.state
 		{
@@ -150,6 +174,7 @@ impl AgentSurface {
 				"Project default for new conversations: {}",
 				effective.as_ref().map_or("Native default", |mode| mode_label(mode.as_str()))
 			));
+
 			if modes.is_empty() {
 				panel = panel.child(
 					"No selectable modes are available under the current Codex requirements.",
@@ -161,6 +186,7 @@ impl AgentSurface {
 					preference.as_ref().map_or("Native default", |mode| mode_label(mode.as_str()))
 				));
 			}
+
 			for (index, mode) in modes.iter().enumerate() {
 				let owner = work.to_owned();
 				let selected = Some(mode) == effective.as_ref();
@@ -171,6 +197,7 @@ impl AgentSurface {
 				);
 				let mode = mode.clone();
 				let epoch = self.search_settings.epoch;
+
 				panel = panel.child(mcp_button(
 					format!("search-choice-{index}"),
 					label,
@@ -186,6 +213,7 @@ impl AgentSurface {
 		} else {
 			panel = panel.child("Search settings are unavailable. Refresh to try again.");
 		}
+
 		panel.into_any_element()
 	}
 }

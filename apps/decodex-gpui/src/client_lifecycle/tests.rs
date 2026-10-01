@@ -13,6 +13,7 @@ use std::{
 };
 
 use crate::history_pager::HistoryPager;
+
 use tempfile::TempDir;
 
 use decodex_protocol::{
@@ -36,96 +37,17 @@ use crate::{
 	},
 };
 
-struct BoundedRecoveryProbe {
-	attempts: AtomicUsize,
-}
-
-impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
-	fn recover_transport(&self) -> bool {
-		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
-	}
-}
-
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const INSTANCE: &str = "publication-a";
 
-#[test]
-fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let physical_root = temporary.path().canonicalize().expect("fixture root canonicalizes");
-	let physical_temp = physical_root.join("physical-temp");
-	let arbitrary_alias = physical_root.join("arbitrary-alias");
-
-	fs::create_dir(&physical_temp).expect("physical temporary directory is created");
-	std::os::unix::fs::symlink(&physical_temp, &arbitrary_alias)
-		.expect("arbitrary temporary directory alias is created");
-
-	assert_eq!(
-		production_cache_parent(&physical_temp).expect("physical temporary directory is accepted"),
-		physical_temp.join("box.acg.decodex")
-	);
-	let aliased_cache_parent =
-		production_cache_parent(&arbitrary_alias).expect("non-platform alias remains lexical");
-	assert_eq!(
-		aliased_cache_parent,
-		arbitrary_alias.join("box.acg.decodex"),
-		"arbitrary aliases must not be resolved"
-	);
-	assert!(matches!(
-		ClientCache::open(
-			aliased_cache_parent.join("client-cache"),
-			CacheLimits::new(1_024, 4, 2).expect("test cache limits are valid"),
-			CacheAuthority::new(&server(SERVER), CURRENT_VERSION, 1)
-				.expect("test cache authority is valid"),
-		),
-		Err(CacheError::UnsafeRoot)
-	));
-
-	#[cfg(target_os = "macos")]
-	{
-		use crate::client_lifecycle::normalize_macos_var_prefix;
-
-		fn reject_drifted_mapping() -> Result<(), CacheError> {
-			Err(CacheError::UnsafeRoot)
-		}
-
-		let logical_temp = Path::new("/var/folders/decodex-test/T");
-		assert_eq!(
-			production_cache_parent(logical_temp).expect("fixed macOS mapping is valid"),
-			Path::new("/private/var/folders/decodex-test/T/box.acg.decodex")
-		);
-		assert_eq!(
-			normalize_macos_var_prefix(logical_temp, reject_drifted_mapping),
-			Err(LifecycleBuildError::Cache(CacheError::UnsafeRoot))
-		);
-	}
-
-	#[cfg(not(target_os = "macos"))]
-	assert_eq!(
-		production_cache_parent(Path::new("/var/folders/decodex-test/T"))
-			.expect("non-macOS temporary path remains lexical"),
-		Path::new("/var/folders/decodex-test/T/box.acg.decodex")
-	);
+struct BoundedRecoveryProbe {
+	attempts: AtomicUsize,
 }
-
-#[test]
-fn production_client_cache_authority_tracks_the_current_protocol() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let fixture_temp_dir =
-		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
-	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
-	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at the current protocol");
-
-	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
-	assert!(lifecycle.cache.is_some(), "the production client cache opens");
-	let encoded =
-		serde_json::to_value(&lifecycle.cache_authority).expect("cache authority serializes");
-
-	assert_eq!(encoded["protocol_major"].as_u64(), Some(u64::from(CURRENT_VERSION.major)));
-	assert_eq!(encoded["protocol_minor"].as_u64(), Some(u64::from(CURRENT_VERSION.minor)));
-	assert_eq!(encoded["schema_generation"].as_u64(), Some(CLIENT_CACHE_SCHEMA_GENERATION));
+impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
+	fn recover_transport(&self) -> bool {
+		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -141,7 +63,6 @@ struct PendingSendControl {
 	entered: tokio::sync::Semaphore,
 	release: tokio::sync::Semaphore,
 }
-
 impl PendingSendControl {
 	fn new() -> Self {
 		Self {
@@ -169,17 +90,6 @@ impl PendingSendControl {
 	}
 }
 
-enum SessionAction {
-	Snapshot(SnapshotEnvelope),
-	Event(Box<EventEnvelope>),
-	HistoryPage { next_cursor: Option<&'static str> },
-	Fail(RetainedSessionFailure),
-	FailAfterQuery(RetainedSessionFailure),
-	AwaitCancellation,
-	Cancel,
-	CancelAfterQuery,
-}
-
 struct FakeSession {
 	actions: VecDeque<SessionAction>,
 	checkpoint: Option<SessionCheckpoint>,
@@ -193,7 +103,6 @@ struct FakeSession {
 	query_cursor: usize,
 	query_notify: Arc<tokio::sync::Notify>,
 }
-
 impl FakeSession {
 	async fn next_query(&mut self) -> QueryEnvelope {
 		loop {
@@ -207,9 +116,11 @@ impl FakeSession {
 
 			if let Some(query) = query {
 				self.query_cursor += 1;
+
 				if matches!(query.payload, QueryPayload::GetConversationHistory { .. }) {
 					return query;
 				}
+
 				continue;
 			}
 
@@ -280,6 +191,7 @@ impl FakeSession {
 			},
 			SessionAction::CancelAfterQuery => {
 				let _ = query.expect("scripted cancellation waits for one outbound query");
+
 				self.cancellation.cancel();
 
 				Err(RetainedSessionFailure::Cancelled)
@@ -295,6 +207,7 @@ impl FakeSession {
 			confirmation.cache_root.join("current").is_file(),
 			"cache publication must complete before confirmation"
 		);
+
 		if let Some(previous) = confirmation.previous_current {
 			assert_ne!(
 				fs::read(confirmation.cache_root.join("current"))
@@ -303,7 +216,9 @@ impl FakeSession {
 				"event generation must publish before confirmation"
 			);
 		}
+
 		self.confirmations.lock().expect("confirmation log is available").push(confirmation.cursor);
+
 		let checkpoint = SessionCheckpoint::new(
 			self.server_id.clone(),
 			self.instance_id.clone(),
@@ -320,62 +235,6 @@ impl FakeSession {
 
 		Ok(())
 	}
-}
-
-#[gpui::test]
-fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_quit(
-	cx: &mut gpui::TestAppContext,
-) {
-	use crate::shell::{Shell, retain_lifecycle_task};
-
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	let cancellation = lifecycle.cancellation();
-	let views = lifecycle.observe_views();
-	let io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
-	let closed = io.closed.clone();
-	let (shell, visual) = cx.add_window_view(|window, cx| {
-		Shell::new(window, cx, ConnectionView::Connecting { attempt: 1 })
-	});
-	let background = visual.spawn(|_| async move {
-		let mut io = io;
-
-		lifecycle.run_with_io(&mut io).await
-	});
-	let owner = visual.update(|_, cx| {
-		retain_lifecycle_task(shell.downgrade(), cancellation, views, background, cx)
-	});
-
-	visual.run_until_parked();
-	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
-	visual.update(|window, _| window.remove_window());
-	for _ in 0..4 {
-		visual.executor().advance_clock(Duration::from_millis(40));
-		visual.run_until_parked();
-	}
-	assert_eq!(*closed.lock().expect("close count is available"), 0);
-	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
-
-	visual.cx.update(|cx| cx.shutdown());
-	for _ in 0..4 {
-		visual.executor().advance_clock(Duration::from_millis(40));
-		visual.run_until_parked();
-	}
-
-	assert_eq!(*closed.lock().expect("close count is available"), 1);
-	assert!(!owner.read_with(visual, |owner, _| owner.is_running()));
-}
-
-enum ConnectAction {
-	Session {
-		actions: VecDeque<SessionAction>,
-		checkpoint: Option<SessionCheckpoint>,
-		server_id: &'static str,
-		instance_id: &'static str,
-	},
-	Fail(RetainedSessionFailure),
-	Cancel,
 }
 
 struct FakeIo {
@@ -395,7 +254,6 @@ struct FakeIo {
 	pending_send: Option<Arc<PendingSendControl>>,
 	send_failures: VecDeque<RetainedSessionFailure>,
 }
-
 impl FakeIo {
 	fn new(cache_parent: PathBuf, connections: Vec<ConnectAction>) -> Self {
 		Self {
@@ -436,11 +294,15 @@ impl LifecycleIo for FakeIo {
 		cancellation: &LifecycleCancellation,
 	) -> Result<Option<SessionCheckpoint>, RetainedSessionFailure> {
 		assert!(self.session.is_none(), "one caller-owned session must close before replacement");
+
 		self.attempts += 1;
 		self.active += 1;
 		self.maximum_active = self.maximum_active.max(self.active);
+
 		self.requested_checkpoints.push(checkpoint);
+
 		let action = self.connections.pop_front().expect("fake connection is scripted");
+
 		self.active -= 1;
 
 		match action {
@@ -483,6 +345,7 @@ impl LifecycleIo for FakeIo {
 		command: CommandEnvelope,
 	) -> Result<(), RetainedSessionFailure> {
 		assert_eq!(command.version, CURRENT_VERSION);
+
 		if let Some(control) = self.pending_send.as_ref() {
 			let attempt = control.attempts.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -508,7 +371,9 @@ impl LifecycleIo for FakeIo {
 
 	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
 		assert_eq!(query.version, CURRENT_VERSION);
+
 		let controlled = matches!(query.payload, QueryPayload::GetConversationHistory { .. });
+
 		if controlled && let Some(control) = self.pending_send.as_ref() {
 			let attempt = control.attempts.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -522,11 +387,14 @@ impl LifecycleIo for FakeIo {
 					.forget();
 			}
 		}
+
 		if let Some(failure) = self.send_failures.pop_front() {
 			return Err(failure);
 		}
+
 		self.sent_queries.lock().expect("query log is available").push(query);
 		self.query_notify.notify_waiters();
+
 		if controlled && let Some(control) = self.pending_send.as_ref() {
 			control.completed.fetch_add(1, Ordering::SeqCst);
 		}
@@ -555,6 +423,7 @@ impl LifecycleIo for FakeIo {
 		cancellation: &LifecycleCancellation,
 	) -> Result<(), RetainedSessionFailure> {
 		self.delays.push(delay);
+
 		if self.cancel_backoff {
 			cancellation.cancel();
 
@@ -565,6 +434,167 @@ impl LifecycleIo for FakeIo {
 	}
 }
 
+enum SessionAction {
+	Snapshot(SnapshotEnvelope),
+	Event(Box<EventEnvelope>),
+	HistoryPage { next_cursor: Option<&'static str> },
+	Fail(RetainedSessionFailure),
+	FailAfterQuery(RetainedSessionFailure),
+	AwaitCancellation,
+	Cancel,
+	CancelAfterQuery,
+}
+
+enum ConnectAction {
+	Session {
+		actions: VecDeque<SessionAction>,
+		checkpoint: Option<SessionCheckpoint>,
+		server_id: &'static str,
+		instance_id: &'static str,
+	},
+	Fail(RetainedSessionFailure),
+	Cancel,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HistoryCacheFailurePhase {
+	ParentResolution,
+	InitialValidation,
+	PostOpenOperation,
+}
+
+#[test]
+fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let physical_root = temporary.path().canonicalize().expect("fixture root canonicalizes");
+	let physical_temp = physical_root.join("physical-temp");
+	let arbitrary_alias = physical_root.join("arbitrary-alias");
+
+	fs::create_dir(&physical_temp).expect("physical temporary directory is created");
+	std::os::unix::fs::symlink(&physical_temp, &arbitrary_alias)
+		.expect("arbitrary temporary directory alias is created");
+
+	assert_eq!(
+		production_cache_parent(&physical_temp).expect("physical temporary directory is accepted"),
+		physical_temp.join("box.acg.decodex")
+	);
+
+	let aliased_cache_parent =
+		production_cache_parent(&arbitrary_alias).expect("non-platform alias remains lexical");
+
+	assert_eq!(
+		aliased_cache_parent,
+		arbitrary_alias.join("box.acg.decodex"),
+		"arbitrary aliases must not be resolved"
+	);
+	assert!(matches!(
+		ClientCache::open(
+			aliased_cache_parent.join("client-cache"),
+			CacheLimits::new(1_024, 4, 2).expect("test cache limits are valid"),
+			CacheAuthority::new(&server(SERVER), CURRENT_VERSION, 1)
+				.expect("test cache authority is valid"),
+		),
+		Err(CacheError::UnsafeRoot)
+	));
+
+	#[cfg(target_os = "macos")]
+	{
+		use crate::client_lifecycle::normalize_macos_var_prefix;
+
+		fn reject_drifted_mapping() -> Result<(), CacheError> {
+			Err(CacheError::UnsafeRoot)
+		}
+
+		let logical_temp = Path::new("/var/folders/decodex-test/T");
+
+		assert_eq!(
+			production_cache_parent(logical_temp).expect("fixed macOS mapping is valid"),
+			Path::new("/private/var/folders/decodex-test/T/box.acg.decodex")
+		);
+		assert_eq!(
+			normalize_macos_var_prefix(logical_temp, reject_drifted_mapping),
+			Err(LifecycleBuildError::Cache(CacheError::UnsafeRoot))
+		);
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	assert_eq!(
+		production_cache_parent(Path::new("/var/folders/decodex-test/T"))
+			.expect("non-macOS temporary path remains lexical"),
+		Path::new("/var/folders/decodex-test/T/box.acg.decodex")
+	);
+}
+
+#[test]
+fn production_client_cache_authority_tracks_the_current_protocol() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let fixture_temp_dir =
+		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
+	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
+	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
+		.expect("production lifecycle constructs at the current protocol");
+
+	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
+	assert!(lifecycle.cache.is_some(), "the production client cache opens");
+
+	let encoded =
+		serde_json::to_value(&lifecycle.cache_authority).expect("cache authority serializes");
+
+	assert_eq!(encoded["protocol_major"].as_u64(), Some(u64::from(CURRENT_VERSION.major)));
+	assert_eq!(encoded["protocol_minor"].as_u64(), Some(u64::from(CURRENT_VERSION.minor)));
+	assert_eq!(encoded["schema_generation"].as_u64(), Some(CLIENT_CACHE_SCHEMA_GENERATION));
+}
+
+#[gpui::test]
+fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_quit(
+	cx: &mut gpui::TestAppContext,
+) {
+	use crate::shell::{Shell, retain_lifecycle_task};
+
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let cancellation = lifecycle.cancellation();
+	let views = lifecycle.observe_views();
+	let io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
+	let closed = io.closed.clone();
+	let (shell, visual) = cx.add_window_view(|window, cx| {
+		Shell::new(window, cx, ConnectionView::Connecting { attempt: 1 })
+	});
+	let background = visual.spawn(|_| async move {
+		let mut io = io;
+
+		lifecycle.run_with_io(&mut io).await
+	});
+	let owner = visual.update(|_, cx| {
+		retain_lifecycle_task(shell.downgrade(), cancellation, views, background, cx)
+	});
+
+	visual.run_until_parked();
+
+	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
+
+	visual.update(|window, _| window.remove_window());
+
+	for _ in 0..4 {
+		visual.executor().advance_clock(Duration::from_millis(40));
+		visual.run_until_parked();
+	}
+
+	assert_eq!(*closed.lock().expect("close count is available"), 0);
+	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
+
+	visual.cx.update(|cx| cx.shutdown());
+
+	for _ in 0..4 {
+		visual.executor().advance_clock(Duration::from_millis(40));
+		visual.run_until_parked();
+	}
+
+	assert_eq!(*closed.lock().expect("close count is available"), 1);
+	assert!(!owner.read_with(visual, |owner, _| owner.is_running()));
+}
+
 fn connected(actions: Vec<SessionAction>, checkpoint: Option<SessionCheckpoint>) -> ConnectAction {
 	ConnectAction::Session {
 		actions: actions.into(),
@@ -572,36 +602,6 @@ fn connected(actions: Vec<SessionAction>, checkpoint: Option<SessionCheckpoint>)
 		server_id: SERVER,
 		instance_id: INSTANCE,
 	}
-}
-
-#[tokio::test]
-async fn fake_session_await_cancellation_survives_a_dropped_receive() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let config = retained_config(&root, SERVER);
-	let cancellation = LifecycleCancellation::new();
-	let mut io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
-
-	io.connect(&config, None, &cancellation).await.expect("fake session connects");
-	let mut receive = Box::pin(io.next());
-	let poll = std::future::poll_fn(|context| {
-		std::task::Poll::Ready(std::future::Future::poll(receive.as_mut(), context))
-	})
-	.await;
-
-	assert!(matches!(poll, std::task::Poll::Pending));
-	drop(receive);
-	assert!(matches!(
-		io.session.as_ref().expect("fake session remains connected").actions.front(),
-		Some(SessionAction::AwaitCancellation)
-	));
-
-	cancellation.cancel();
-	assert!(matches!(io.next().await, Err(RetainedSessionFailure::Cancelled)));
-	assert!(
-		io.session.as_ref().expect("fake session remains connected").actions.is_empty(),
-		"the cancellation sentinel is consumed exactly once"
-	);
 }
 
 fn server(value: &str) -> ServerId {
@@ -752,6 +752,255 @@ expected_server_identity = "{server_id}"
 		.expect("fixture retained session config is local")
 }
 
+#[test]
+fn snapshot_fallback_stays_quarantined_until_checkpoint_binding() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+
+	lifecycle.connection_established(1, true, None);
+
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Quarantined {
+			reason: QuarantineReason::PublicationInstanceChanged,
+			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
+		}
+	);
+
+	let inspection = lifecycle
+		.apply_snapshot(1, snapshot(8, "replacement", 1))
+		.expect("verified replacement publishes");
+
+	assert!(matches!(lifecycle.view(), ConnectionView::Quarantined { .. }));
+
+	lifecycle
+		.bind_checkpoint(1, Cursor(8), checkpoint("publication-b", 8), inspection)
+		.expect("verified replacement checkpoint binds");
+
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Online { generation: 1, applied: Some(Cursor(8)) }
+	);
+}
+
+#[test]
+fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator() {
+	let corrupt_temporary = TempDir::new().expect("temporary directory is available");
+	let corrupt_root = cache_parent(&corrupt_temporary);
+	let mut original = lifecycle(&corrupt_root);
+
+	original.connection_generation = 1;
+
+	original.apply_snapshot(1, snapshot(1, "system", 1)).expect("cache publishes");
+
+	let corrupt_client_cache_root = client_cache_root(&corrupt_root);
+	let generation = fs::read_dir(corrupt_client_cache_root.join("generations"))
+		.expect("generation directory is readable")
+		.next()
+		.expect("one generation exists")
+		.expect("generation entry is readable")
+		.path();
+	let object = fs::read_dir(generation.join("objects"))
+		.expect("object directory is readable")
+		.next()
+		.expect("one object exists")
+		.expect("object entry is readable")
+		.path();
+
+	fs::write(object, b"tampered").expect("test corrupts cache content");
+
+	drop(original);
+
+	let rebuilt = lifecycle(&corrupt_root);
+
+	assert_eq!(
+		rebuilt.view(),
+		ConnectionView::Quarantined {
+			reason: QuarantineReason::CacheCorrupt,
+			recovery: QuarantineRecovery::DisposedBeforeRebuild,
+		}
+	);
+	assert_eq!(
+		rebuilt
+			.cache
+			.as_ref()
+			.expect("rebuilt cache is available")
+			.inspect_current()
+			.expect("test operation must succeed"),
+		None
+	);
+
+	let unsafe_temporary = TempDir::new().expect("temporary directory is available");
+	let unsafe_root =
+		unsafe_temporary.path().canonicalize().expect("test operation must succeed").join("cache");
+
+	fs::write(&unsafe_root, b"not a directory").expect("unsafe cache root is created");
+
+	let unsafe_lifecycle = lifecycle(&unsafe_root);
+
+	assert_eq!(
+		unsafe_lifecycle.view(),
+		ConnectionView::Quarantined {
+			reason: QuarantineReason::CacheRootUnsafe,
+			recovery: QuarantineRecovery::OperatorRequired,
+		}
+	);
+	assert!(unsafe_lifecycle.cache.is_none());
+}
+
+#[test]
+fn checkpoint_reuse_requires_current_content_attestation() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+
+	let inspection =
+		lifecycle.apply_snapshot(1, snapshot(4, "system", 2)).expect("snapshot publishes");
+
+	lifecycle
+		.bind_checkpoint(1, Cursor(4), checkpoint(INSTANCE, 4), inspection)
+		.expect("checkpoint binds");
+
+	fs::write(client_cache_root(&root).join("current"), b"corrupt")
+		.expect("current attestation is corrupted");
+
+	assert_eq!(lifecycle.reusable_checkpoint(), None);
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Quarantined {
+			reason: QuarantineReason::ContentAttestation,
+			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
+		}
+	);
+}
+
+#[test]
+fn complete_cache_deletion_cannot_remove_applied_product_state() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+
+	lifecycle.apply_snapshot(1, snapshot(1, "system", 5)).expect("snapshot publishes");
+
+	let client_root = client_cache_root(&root);
+
+	ClientCache::dispose_all(&client_root).expect("disposable cache is removed");
+
+	assert!(!client_root.exists());
+	assert_eq!(lifecycle.state["system"].revision, EntityRevision(5));
+	assert_eq!(lifecycle.last_cursor, Some(Cursor(1)));
+}
+
+#[test]
+fn event_order_revision_and_connection_generation_are_fenced() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 2;
+	lifecycle.last_cursor = Some(Cursor(4));
+
+	lifecycle.state.insert(
+		"system".to_owned(),
+		AppliedEntity {
+			entity_id: entity("system"),
+			revision: EntityRevision(2),
+			bytes: Vec::new(),
+		},
+	);
+
+	assert_eq!(
+		lifecycle.apply_event(1, event(5, "system", 3)),
+		Err(RetainedSessionFailure::PublicationOrder)
+	);
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Quarantined {
+			reason: QuarantineReason::StaleConnectionGeneration,
+			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
+		}
+	);
+
+	lifecycle.connection_generation = 3;
+	lifecycle.last_cursor = Some(Cursor(4));
+
+	assert_eq!(
+		lifecycle.apply_event(3, event(5, "system", 2)),
+		Err(RetainedSessionFailure::PublicationOrder)
+	);
+}
+
+#[test]
+fn publication_instances_are_part_of_checkpoint_identity() {
+	assert_ne!(checkpoint(INSTANCE, 1), checkpoint("publication-b", 1));
+}
+
+#[test]
+fn test_fixture_uses_only_typed_bounded_cache_content() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+
+	let inspection = lifecycle
+		.apply_snapshot(1, snapshot(1, "../../not-a-path", 1))
+		.expect("typed snapshot publishes");
+
+	assert_eq!(inspection.records, 1);
+	assert!(!temporary.path().join("not-a-path").exists());
+	assert!(fs::read(client_cache_root(&root).join("current")).is_ok());
+}
+
+fn configured_live_lifecycle() -> ClientLifecycle {
+	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
+	let config =
+		profile.retained_session_config().expect("the live retained session is configured");
+
+	ClientLifecycle::production(config).expect("the production lifecycle is available")
+}
+
+#[tokio::test]
+async fn fake_session_await_cancellation_survives_a_dropped_receive() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let config = retained_config(&root, SERVER);
+	let cancellation = LifecycleCancellation::new();
+	let mut io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
+
+	io.connect(&config, None, &cancellation).await.expect("fake session connects");
+
+	let mut receive = Box::pin(io.next());
+	let poll = std::future::poll_fn(|context| {
+		std::task::Poll::Ready(std::future::Future::poll(receive.as_mut(), context))
+	})
+	.await;
+
+	assert!(matches!(poll, std::task::Poll::Pending));
+
+	drop(receive);
+
+	assert!(matches!(
+		io.session.as_ref().expect("fake session remains connected").actions.front(),
+		Some(SessionAction::AwaitCancellation)
+	));
+
+	cancellation.cancel();
+
+	assert!(matches!(io.next().await, Err(RetainedSessionFailure::Cancelled)));
+	assert!(
+		io.session.as_ref().expect("fake session remains connected").actions.is_empty(),
+		"the cancellation sentinel is consumed exactly once"
+	);
+}
+
 #[tokio::test]
 async fn retry_progression_is_capped_and_uses_only_fake_time() {
 	let temporary = TempDir::new().expect("temporary directory is available");
@@ -804,7 +1053,6 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
 
 	let queries = sent_queries.lock().expect("query log is available");
-
 	let routes = queries
 		.iter()
 		.filter_map(|query| match &query.payload {
@@ -813,11 +1061,11 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 			_ => None,
 		})
 		.collect::<Vec<_>>();
+
 	assert_eq!(routes.len(), 3);
 	assert_ne!(routes[0].0, routes[1].0);
 	assert_ne!(routes[0].0, routes[2].0);
 	assert_ne!(routes[1].0, routes[2].0);
-
 	assert_eq!(
 		routes
 			.into_iter()
@@ -840,6 +1088,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	let failed_pager = failed_lifecycle.history_pager();
 
 	failed_pager.open(entity("conversation-failed-send")).expect("failed-send history view opens");
+
 	let mut failed_io = FakeIo::new(
 		failed_root.clone(),
 		vec![connected(
@@ -852,6 +1101,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	);
 
 	failed_io.fail_next_send(RetainedSessionFailure::Backpressure);
+
 	failed_io.cancel_backoff = true;
 
 	assert_eq!(failed_lifecycle.run_with_io(&mut failed_io).await, RunResult::Stopped);
@@ -866,6 +1116,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	let control = Arc::new(PendingSendControl::new());
 
 	pager.open(entity("conversation-cache-order")).expect("history view opens");
+
 	let mut io = FakeIo::new(
 		root.clone(),
 		vec![connected(
@@ -879,12 +1130,14 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	let sent_queries = io.sent_queries.clone();
 
 	io.hold_first_send(control.clone());
+
 	assert!(pager.cache_probe_events().is_empty());
 	assert!(!root.join("history-page-cache-v1").exists());
 
 	let run = lifecycle.run_with_io(&mut io);
 
 	tokio::pin!(run);
+
 	tokio::select! {
 		result = &mut run => panic!("lifecycle stopped before held send: {result:?}"),
 		_ = control.wait_until_entered() => {},
@@ -897,6 +1150,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	control.release_first();
 
 	let mut lookup_started = false;
+
 	for _ in 0..64 {
 		if pager.cache_probe_events() == [HistoryCacheProbeEvent::LookupStarted] {
 			lookup_started = true;
@@ -941,6 +1195,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 		pager.cache_probe_events(),
 		[HistoryCacheProbeEvent::LookupStarted, HistoryCacheProbeEvent::PublicationStarted,]
 	);
+
 	let fresh = pager.snapshot();
 
 	assert_eq!(fresh.visible, Some(history_page(None)));
@@ -981,12 +1236,14 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 	let run = lifecycle.run_with_io(&mut io);
 
 	tokio::pin!(run);
+
 	tokio::select! {
 		result = &mut run => panic!("lifecycle stopped before first send settled: {result:?}"),
 		_ = control.wait_until_entered() => {},
 	}
 
 	pager.open(entity("conversation-new")).expect("replacement history view opens");
+
 	for _ in 0..4 {
 		tokio::select! {
 			result = &mut run => panic!("lifecycle stopped with send unresolved: {result:?}"),
@@ -1021,6 +1278,7 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 				HistoryStaleReason::ConversationChanged
 			);
 			assert_eq!(snapshot.visible.expect("replacement page is visible").next_cursor, None);
+
 			upgraded = true;
 
 			break;
@@ -1091,9 +1349,10 @@ async fn history_results_route_only_to_the_exact_current_view_request() {
 	assert_eq!(pager.snapshot().visible_source, Some(HistoryPageSource::FreshServer));
 
 	pager.open(entity("conversation-b")).expect("second view opens");
-	let stale = pager.next_dispatch(1, &server_id).await;
-	pager.open(entity("conversation-c")).expect("replacement view opens");
 
+	let stale = pager.next_dispatch(1, &server_id).await;
+
+	pager.open(entity("conversation-c")).expect("replacement view opens");
 	lifecycle
 		.route_history_result(
 			1,
@@ -1132,9 +1391,11 @@ async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged(
 	.expect("lifecycle constructs");
 
 	lifecycle.connection_generation = 1;
+
 	let inspection = lifecycle
 		.apply_snapshot(1, maximum_snapshot(9))
 		.expect("maximum authoritative snapshot publishes");
+
 	lifecycle
 		.bind_checkpoint(1, Cursor(9), checkpoint(INSTANCE, 9), inspection)
 		.expect("maximum snapshot checkpoint binds");
@@ -1154,11 +1415,13 @@ async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged(
 
 	pager.bind_session(1, server_id.clone());
 	pager.open(entity("conversation-large")).expect("history view opens");
+
 	let head = pager.next_dispatch(1, &server_id).await;
 
 	lifecycle
 		.route_history_result(1, history_result(&head, &server_id, Some("cursor-1")))
 		.expect("history head routes");
+
 	let continuation = pager.next_dispatch(1, &server_id).await;
 
 	lifecycle
@@ -1182,13 +1445,6 @@ async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged(
 	assert!(lifecycle.quarantine.is_none());
 }
 
-#[derive(Clone, Copy, Debug)]
-enum HistoryCacheFailurePhase {
-	ParentResolution,
-	InitialValidation,
-	PostOpenOperation,
-}
-
 #[tokio::test]
 async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_authority() {
 	let cases = [
@@ -1203,6 +1459,7 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 			.collect::<Vec<_>>();
 
 		names.sort();
+
 		names
 	};
 
@@ -1212,9 +1469,11 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 		let mut lifecycle = lifecycle(&root);
 
 		lifecycle.connection_generation = 1;
+
 		let inspection = lifecycle
 			.apply_snapshot(1, snapshot(11, "system", 4))
 			.expect("authoritative snapshot publishes");
+
 		lifecycle
 			.bind_checkpoint(1, Cursor(11), checkpoint(INSTANCE, 11), inspection)
 			.expect("authoritative checkpoint binds");
@@ -1241,10 +1500,12 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 
 		pager.bind_session(1, server_id.clone());
 		pager.open(entity("conversation-isolated")).expect("history view opens");
+
 		let dispatch = pager.next_dispatch(1, &server_id).await;
 		let send = pager.begin_send(&dispatch).expect("history request enters the send phase");
 
 		assert!(pager.finish_send(&send));
+
 		match phase {
 			HistoryCacheFailurePhase::ParentResolution => {
 				fs::set_permissions(
@@ -1252,17 +1513,21 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 					fs::Permissions::from_mode(0o770),
 				)
 				.expect("external base is made unsafe");
+
 				pager.lookup_sent_request(&send);
 			},
 			HistoryCacheFailurePhase::InitialValidation => {
 				fs::create_dir(&history_root).expect("history cache root is created");
 				fs::set_permissions(&history_root, fs::Permissions::from_mode(0o755))
 					.expect("history cache root is made unsafe");
+
 				pager.lookup_sent_request(&send);
 			},
 			HistoryCacheFailurePhase::PostOpenOperation => {
 				pager.lookup_sent_request(&send);
+
 				assert_eq!(pager.snapshot().cache_diagnostic, None, "{name}");
+
 				fs::write(history_root.join("foreign"), b"foreign")
 					.expect("foreign post-open artifact is created");
 			},
@@ -1329,9 +1594,11 @@ async fn wrong_history_payload_is_request_local_and_preserves_authoritative_stat
 	let mut lifecycle = lifecycle(&root);
 
 	lifecycle.connection_generation = 1;
+
 	let inspection = lifecycle
 		.apply_snapshot(1, snapshot(7, "system", 3))
 		.expect("authoritative snapshot publishes");
+
 	lifecycle
 		.bind_checkpoint(1, Cursor(7), checkpoint(INSTANCE, 7), inspection)
 		.expect("authoritative checkpoint binds");
@@ -1351,6 +1618,7 @@ async fn wrong_history_payload_is_request_local_and_preserves_authoritative_stat
 
 	pager.bind_session(1, server_id.clone());
 	pager.open(entity("conversation-protocol")).expect("history view opens");
+
 	let dispatch = pager.next_dispatch(1, &server_id).await;
 	let wrong_payload = DoctorReport::new(server_id.clone(), CURRENT_VERSION, Vec::new())
 		.expect("bounded doctor report constructs");
@@ -1403,11 +1671,13 @@ async fn session_replacement_requires_a_fresh_head_before_retained_topology_retu
 
 	pager.bind_session(1, server_id.clone());
 	pager.open(entity("conversation-session")).expect("history view opens");
+
 	let head = pager.next_dispatch(1, &server_id).await;
 
 	lifecycle
 		.route_history_result(1, history_result(&head, &server_id, Some("old-cursor")))
 		.expect("old session head routes");
+
 	let retained_prefetch = pager.next_dispatch(1, &server_id).await;
 
 	lifecycle
@@ -1474,11 +1744,13 @@ async fn prior_session_result_cannot_replace_session_invalidated_view() {
 
 	pager.bind_session(1, server_id.clone());
 	pager.open(entity("conversation-session")).expect("history view opens");
+
 	let head = pager.next_dispatch(1, &server_id).await;
 
 	lifecycle
 		.route_history_result(1, history_result(&head, &server_id, Some("old-cursor")))
 		.expect("old-session head routes");
+
 	let prior = pager.next_dispatch(1, &server_id).await;
 
 	pager.session_ended(1);
@@ -1495,6 +1767,7 @@ async fn prior_session_result_cannot_replace_session_invalidated_view() {
 	assert_eq!(pager.show_next(), HistoryNavigationResult::BoundaryUnknown);
 
 	pager.bind_session(2, server_id.clone());
+
 	let current = pager.next_dispatch(2, &server_id).await;
 
 	assert!(matches!(
@@ -1505,6 +1778,7 @@ async fn prior_session_result_cannot_replace_session_invalidated_view() {
 			..
 		} if conversation_id == &entity("conversation-session")
 	));
+
 	lifecycle
 		.route_history_result(1, history_result(&prior, &server_id, Some("prior-cursor")))
 		.expect("prior-session delivery is ignored");
@@ -1561,7 +1835,9 @@ async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_rest
 	let root = cache_parent(&temporary);
 	let recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
 	let mut disconnected_lifecycle = lifecycle(&root);
+
 	disconnected_lifecycle.supervise_app_owned_daemon(Arc::clone(&recovery));
+
 	let failures =
 		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
 	let mut io = FakeIo::new(root, failures);
@@ -1573,7 +1849,9 @@ async fn app_owned_transport_recovery_is_bounded_and_protocol_failure_never_rest
 	let protocol_root = cache_parent(&protocol_temporary);
 	let protocol_recovery = Arc::new(BoundedRecoveryProbe { attempts: AtomicUsize::new(0) });
 	let mut protocol_lifecycle = lifecycle(&protocol_root);
+
 	protocol_lifecycle.supervise_app_owned_daemon(Arc::clone(&protocol_recovery));
+
 	let mut protocol_io = FakeIo::new(
 		protocol_root,
 		vec![ConnectAction::Fail(RetainedSessionFailure::ServiceVersionMismatch)],
@@ -1598,6 +1876,7 @@ async fn cancellation_is_terminal_during_connect_backoff_and_receive() {
 	let mut backoff_lifecycle = lifecycle(&backoff_root);
 	let mut backoff_io =
 		FakeIo::new(backoff_root, vec![ConnectAction::Fail(RetainedSessionFailure::Disconnected)]);
+
 	backoff_io.cancel_backoff = true;
 
 	assert_eq!(backoff_lifecycle.run_with_io(&mut backoff_io).await, RunResult::Stopped);
@@ -1874,50 +2153,25 @@ async fn material_failure_exhaustion_preserves_quarantine_authority_state() {
 	);
 }
 
-#[test]
-fn snapshot_fallback_stays_quarantined_until_checkpoint_binding() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	lifecycle.connection_generation = 1;
-	lifecycle.connection_established(1, true, None);
-
-	assert_eq!(
-		lifecycle.view(),
-		ConnectionView::Quarantined {
-			reason: QuarantineReason::PublicationInstanceChanged,
-			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
-		}
-	);
-
-	let inspection = lifecycle
-		.apply_snapshot(1, snapshot(8, "replacement", 1))
-		.expect("verified replacement publishes");
-	assert!(matches!(lifecycle.view(), ConnectionView::Quarantined { .. }));
-	lifecycle
-		.bind_checkpoint(1, Cursor(8), checkpoint("publication-b", 8), inspection)
-		.expect("verified replacement checkpoint binds");
-
-	assert_eq!(
-		lifecycle.view(),
-		ConnectionView::Online { generation: 1, applied: Some(Cursor(8)) }
-	);
-}
-
 #[tokio::test]
 async fn stable_server_and_schema_switches_require_verified_snapshot_replacement() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
 	let mut original = lifecycle(&root);
+
 	original.connection_generation = 1;
+
 	let original_inspection =
 		original.apply_snapshot(1, snapshot(1, "old", 1)).expect("original snapshot publishes");
+
 	original
 		.bind_checkpoint(1, Cursor(1), checkpoint(INSTANCE, 1), original_inspection.clone())
 		.expect("original checkpoint binds");
+
 	drop(original);
 
 	let mut server_switched = lifecycle_for(&root, OTHER_SERVER, 1);
+
 	assert_eq!(
 		server_switched.view(),
 		ConnectionView::Quarantined {
@@ -1925,6 +2179,7 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
 		}
 	);
+
 	let mut switch_io = FakeIo::new(
 		root.clone(),
 		vec![ConnectAction::Session {
@@ -1952,148 +2207,17 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 			.is_ok(),
 		"old authority remains inspection-only"
 	);
+
 	drop(server_switched);
 
 	let schema_switched = lifecycle_for(&root, OTHER_SERVER, 2);
+
 	assert_eq!(
 		schema_switched.view(),
 		ConnectionView::Quarantined {
 			reason: QuarantineReason::AuthorityChanged,
 			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
 		}
-	);
-}
-
-#[test]
-fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator() {
-	let corrupt_temporary = TempDir::new().expect("temporary directory is available");
-	let corrupt_root = cache_parent(&corrupt_temporary);
-	let mut original = lifecycle(&corrupt_root);
-	original.connection_generation = 1;
-	original.apply_snapshot(1, snapshot(1, "system", 1)).expect("cache publishes");
-	let corrupt_client_cache_root = client_cache_root(&corrupt_root);
-	let generation = fs::read_dir(corrupt_client_cache_root.join("generations"))
-		.expect("generation directory is readable")
-		.next()
-		.expect("one generation exists")
-		.expect("generation entry is readable")
-		.path();
-	let object = fs::read_dir(generation.join("objects"))
-		.expect("object directory is readable")
-		.next()
-		.expect("one object exists")
-		.expect("object entry is readable")
-		.path();
-	fs::write(object, b"tampered").expect("test corrupts cache content");
-	drop(original);
-
-	let rebuilt = lifecycle(&corrupt_root);
-	assert_eq!(
-		rebuilt.view(),
-		ConnectionView::Quarantined {
-			reason: QuarantineReason::CacheCorrupt,
-			recovery: QuarantineRecovery::DisposedBeforeRebuild,
-		}
-	);
-	assert_eq!(
-		rebuilt
-			.cache
-			.as_ref()
-			.expect("rebuilt cache is available")
-			.inspect_current()
-			.expect("test operation must succeed"),
-		None
-	);
-
-	let unsafe_temporary = TempDir::new().expect("temporary directory is available");
-	let unsafe_root =
-		unsafe_temporary.path().canonicalize().expect("test operation must succeed").join("cache");
-	fs::write(&unsafe_root, b"not a directory").expect("unsafe cache root is created");
-	let unsafe_lifecycle = lifecycle(&unsafe_root);
-	assert_eq!(
-		unsafe_lifecycle.view(),
-		ConnectionView::Quarantined {
-			reason: QuarantineReason::CacheRootUnsafe,
-			recovery: QuarantineRecovery::OperatorRequired,
-		}
-	);
-	assert!(unsafe_lifecycle.cache.is_none());
-}
-
-#[test]
-fn checkpoint_reuse_requires_current_content_attestation() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	lifecycle.connection_generation = 1;
-	let inspection =
-		lifecycle.apply_snapshot(1, snapshot(4, "system", 2)).expect("snapshot publishes");
-	lifecycle
-		.bind_checkpoint(1, Cursor(4), checkpoint(INSTANCE, 4), inspection)
-		.expect("checkpoint binds");
-	fs::write(client_cache_root(&root).join("current"), b"corrupt")
-		.expect("current attestation is corrupted");
-
-	assert_eq!(lifecycle.reusable_checkpoint(), None);
-	assert_eq!(
-		lifecycle.view(),
-		ConnectionView::Quarantined {
-			reason: QuarantineReason::ContentAttestation,
-			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
-		}
-	);
-}
-
-#[test]
-fn complete_cache_deletion_cannot_remove_applied_product_state() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	lifecycle.connection_generation = 1;
-	lifecycle.apply_snapshot(1, snapshot(1, "system", 5)).expect("snapshot publishes");
-
-	let client_root = client_cache_root(&root);
-	ClientCache::dispose_all(&client_root).expect("disposable cache is removed");
-
-	assert!(!client_root.exists());
-	assert_eq!(lifecycle.state["system"].revision, EntityRevision(5));
-	assert_eq!(lifecycle.last_cursor, Some(Cursor(1)));
-}
-
-#[test]
-fn event_order_revision_and_connection_generation_are_fenced() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-
-	lifecycle.connection_generation = 2;
-	lifecycle.last_cursor = Some(Cursor(4));
-	lifecycle.state.insert(
-		"system".to_owned(),
-		AppliedEntity {
-			entity_id: entity("system"),
-			revision: EntityRevision(2),
-			bytes: Vec::new(),
-		},
-	);
-
-	assert_eq!(
-		lifecycle.apply_event(1, event(5, "system", 3)),
-		Err(RetainedSessionFailure::PublicationOrder)
-	);
-	assert_eq!(
-		lifecycle.view(),
-		ConnectionView::Quarantined {
-			reason: QuarantineReason::StaleConnectionGeneration,
-			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
-		}
-	);
-
-	lifecycle.connection_generation = 3;
-	lifecycle.last_cursor = Some(Cursor(4));
-	assert_eq!(
-		lifecycle.apply_event(3, event(5, "system", 2)),
-		Err(RetainedSessionFailure::PublicationOrder)
 	);
 }
 
@@ -2131,53 +2255,33 @@ async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 	);
 }
 
-#[test]
-fn publication_instances_are_part_of_checkpoint_identity() {
-	assert_ne!(checkpoint(INSTANCE, 1), checkpoint("publication-b", 1));
-}
-
-#[test]
-fn test_fixture_uses_only_typed_bounded_cache_content() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-
-	lifecycle.connection_generation = 1;
-	let inspection = lifecycle
-		.apply_snapshot(1, snapshot(1, "../../not-a-path", 1))
-		.expect("typed snapshot publishes");
-
-	assert_eq!(inspection.records, 1);
-	assert!(!temporary.path().join("not-a-path").exists());
-	assert!(fs::read(client_cache_root(&root).join("current")).is_ok());
-}
-
-fn configured_live_lifecycle() -> ClientLifecycle {
-	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
-	let config =
-		profile.retained_session_config().expect("the live retained session is configured");
-	ClientLifecycle::production(config).expect("the production lifecycle is available")
-}
-
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
 async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 	use crate::conversations::{ConversationCommandState, ConversationsLoadState};
+
 	let mut lifecycle = configured_live_lifecycle();
 	let conversations = lifecycle.conversations();
 	let history = lifecycle.history_pager();
 	let cancellation = lifecycle.cancellation();
+
 	conversations.activate();
 
 	let run = lifecycle.run();
+
 	tokio::pin!(run);
+
 	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+
 	loop {
 		let snapshot = conversations.snapshot();
+
 		if snapshot.load == ConversationsLoadState::Ready && snapshot.can_submit {
 			break;
 		}
+
 		assert!(tokio::time::Instant::now() < ready_deadline, "Conversations did not become ready");
+
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
@@ -2186,6 +2290,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 	let mut first_conversation = None;
 	let mut first_history_items = 0;
+
 	for ordinal in 1..=2 {
 		conversations.begin_new();
 		conversations
@@ -2193,9 +2298,11 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 				"Reply briefly with: Decodex sequential live smoke {ordinal} is working."
 			))
 			.expect("the live composer command is accepted for dispatch");
+
 		let accepted_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
 		let conversation_id = loop {
 			let snapshot = conversations.snapshot();
+
 			match snapshot.command {
 				ConversationCommandState::ManualRecovery(action) => {
 					panic!("the live daemon requested manual recovery before starting: {action:?}")
@@ -2208,16 +2315,19 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 				},
 				_ => {},
 			}
+
 			if let Some(conversation_id) = snapshot.selected.as_ref() {
 				let task = snapshot
 					.tasks
 					.iter()
 					.find(|task| &task.conversation_id == conversation_id)
 					.expect("the selected conversation has a projection");
+
 				if task.state == ConversationState::Ready {
 					break conversation_id.clone();
 				}
 			}
+
 			assert!(
 				tokio::time::Instant::now() < accepted_deadline,
 				"the live daemon did not finish the composed Conversation; load={:?}, command={:?}, state={:?}",
@@ -2225,6 +2335,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 				snapshot.command,
 				snapshot.selected_task().map(|task| task.state),
 			);
+
 			tokio::select! {
 				result = &mut run => panic!("live lifecycle stopped before command acceptance: {result:?}"),
 				() = tokio::time::sleep(Duration::from_millis(50)) => {},
@@ -2232,27 +2343,32 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 		};
 
 		history.open(conversation_id.clone()).expect("the accepted conversation history opens");
+
 		let history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
 		let mut advanced_visible_items = 0;
 		let history_items = loop {
 			let snapshot = history.snapshot();
 			let visible_items = snapshot.visible.as_ref().map_or(0, |page| page.items.len());
+
 			if snapshot.visible_source == Some(HistoryPageSource::FreshServer) && visible_items > 0
 			{
 				match snapshot.cursor {
 					HistoryCursorObservation::NoContinuationObserved => {
 						assert_eq!(snapshot.conversation_id, Some(conversation_id.clone()));
+
 						break visible_items;
 					},
 					HistoryCursorObservation::ContinuationAvailable
 						if visible_items > advanced_visible_items =>
 					{
 						advanced_visible_items = visible_items;
+
 						assert_eq!(history.show_next(), HistoryNavigationResult::Moved);
 					},
 					_ => {},
 				}
 			}
+
 			assert!(
 				tokio::time::Instant::now() < history_deadline,
 				"the accepted conversation remained stuck without complete fresh history; load={:?}, source={:?}, cursor={:?}, visible_items={}, retained_pages={}",
@@ -2262,11 +2378,13 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 				visible_items,
 				snapshot.retained_pages,
 			);
+
 			tokio::select! {
 				result = &mut run => panic!("live lifecycle stopped before history readback: {result:?}"),
 				() = tokio::time::sleep(Duration::from_millis(50)) => {},
 			}
 		};
+
 		if ordinal == 1 {
 			first_conversation = Some(conversation_id);
 			first_history_items = history_items;
@@ -2283,9 +2401,11 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 	.await;
 
 	cancellation.cancel();
+
 	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
 		.await
 		.expect("live lifecycle stops after cancellation");
+
 	assert_eq!(result, RunResult::Stopped);
 }
 
@@ -2301,17 +2421,23 @@ async fn live_daemon_reconciles_archived_conversations() {
 		ClientLifecycle::production(config).expect("the production lifecycle is available");
 	let conversations = lifecycle.conversations();
 	let cancellation = lifecycle.cancellation();
+
 	conversations.activate();
 
 	let run = lifecycle.run();
+
 	tokio::pin!(run);
+
 	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
 	let initial_count = loop {
 		let snapshot = conversations.snapshot();
+
 		if snapshot.load == ConversationsLoadState::Ready && snapshot.can_submit {
 			break snapshot.tasks.len();
 		}
+
 		assert!(tokio::time::Instant::now() < ready_deadline, "Conversations did not become ready");
+
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
@@ -2319,9 +2445,11 @@ async fn live_daemon_reconciles_archived_conversations() {
 	};
 
 	conversations.refresh_all().expect("the live provider reconciliation starts");
+
 	let refresh_deadline = tokio::time::Instant::now() + Duration::from_secs(600);
 	let (checked, archived, failed) = loop {
 		let snapshot = conversations.snapshot();
+
 		match snapshot.refresh {
 			ConversationRefreshState::Complete { checked, archived, failed } => {
 				break (checked, archived, failed);
@@ -2331,17 +2459,20 @@ async fn live_daemon_reconciles_archived_conversations() {
 			),
 			_ => {},
 		}
+
 		assert!(
 			tokio::time::Instant::now() < refresh_deadline,
 			"live provider reconciliation did not finish; refresh={:?}",
 			snapshot.refresh,
 		);
+
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped during provider reconciliation: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
 		}
 	};
 	let final_count = conversations.snapshot().tasks.len();
+
 	eprintln!(
 		"live reconciliation: initial={initial_count}, final={final_count}, checked={checked}, archived={archived}, skipped={failed}"
 	);
@@ -2349,9 +2480,11 @@ async fn live_daemon_reconciles_archived_conversations() {
 	assert!(final_count <= initial_count, "reconciliation must not create conversations");
 
 	cancellation.cancel();
+
 	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
 		.await
 		.expect("live lifecycle stops after cancellation");
+
 	assert_eq!(result, RunResult::Stopped);
 }
 
@@ -2363,18 +2496,24 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 	first_history_items: usize,
 ) {
 	use crate::conversations::ConversationCommandState;
+
 	assert!(conversations.select(first_conversation.clone()));
+
 	let baseline_session_revision = conversations
 		.snapshot()
 		.selected_task()
 		.and_then(|task| task.runtime_session_revision)
 		.expect("the completed first conversation has a RuntimeSession revision");
+
 	conversations
 		.submit("Reply briefly with: Decodex same-thread rehydration is working.")
 		.expect("the later live turn is accepted for dispatch");
+
 	let continuation_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+
 	loop {
 		let snapshot = conversations.snapshot();
+
 		match snapshot.command {
 			ConversationCommandState::ManualRecovery(action) => {
 				panic!("the live daemon requested manual recovery during rehydration: {action:?}")
@@ -2387,6 +2526,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 			},
 			_ => {},
 		}
+
 		if snapshot.selected_task().is_some_and(|task| {
 			task.state == ConversationState::Ready
 				&& task
@@ -2395,6 +2535,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 		}) {
 			break;
 		}
+
 		assert!(
 			tokio::time::Instant::now() < continuation_deadline,
 			"the later live turn did not advance its RuntimeSession; load={:?}, command={:?}, state={:?}",
@@ -2402,6 +2543,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 			snapshot.command,
 			snapshot.selected_task().map(|task| task.state),
 		);
+
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before the later turn completed: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
@@ -2409,28 +2551,34 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 	}
 
 	history.open(first_conversation.clone()).expect("the rehydrated conversation history opens");
+
 	let continuation_history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
 	let mut advanced_visible_items = 0;
+
 	loop {
 		let snapshot = history.snapshot();
 		let visible_items = snapshot.visible.as_ref().map_or(0, |page| page.items.len());
+
 		if snapshot.visible_source == Some(HistoryPageSource::FreshServer) {
 			match snapshot.cursor {
 				HistoryCursorObservation::NoContinuationObserved
 					if visible_items > first_history_items =>
 				{
 					assert_eq!(snapshot.conversation_id, Some(first_conversation));
+
 					break;
 				},
 				HistoryCursorObservation::ContinuationAvailable
 					if visible_items > advanced_visible_items =>
 				{
 					advanced_visible_items = visible_items;
+
 					assert_eq!(history.show_next(), HistoryNavigationResult::Moved);
 				},
 				_ => {},
 			}
 		}
+
 		assert!(
 			tokio::time::Instant::now() < continuation_history_deadline,
 			"the rehydrated conversation history did not grow; load={:?}, source={:?}, cursor={:?}, visible_items={}, baseline_items={}, retained_pages={}",
@@ -2441,6 +2589,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 			first_history_items,
 			snapshot.retained_pages,
 		);
+
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before rehydrated history readback: {result:?}"),
 			() = tokio::time::sleep(Duration::from_millis(50)) => {},
@@ -2452,13 +2601,17 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 async fn history_events_refresh_only_their_open_conversation() {
 	let selected = "10000000-0000-4000-8000-000000000001";
 	let other = "10000000-0000-4000-8000-000000000002";
+
 	for (changed, target) in [(false, selected), (false, other), (true, selected), (true, other)] {
 		let temporary = TempDir::new().expect("history invalidation fixture");
 		let root = cache_parent(&temporary);
 		let mut lifecycle = lifecycle(&root);
+
 		lifecycle.history_pager.open(entity(selected)).expect("history invalidation fixture");
+
 		let before = lifecycle.history_pager.snapshot().view_generation;
 		let mut notice = event(6, "warning-item", 1);
+
 		notice.channel = Channel::ConversationStream;
 		notice.payload = if changed {
 			EventPayload::ConversationChanged {
@@ -2480,6 +2633,7 @@ async fn history_events_refresh_only_their_open_conversation() {
 		} else {
 			EventPayload::ConversationHistoryChanged { conversation_id: entity(target) }
 		};
+
 		let mut io = FakeIo::new(
 			root,
 			vec![connected(
@@ -2491,8 +2645,11 @@ async fn history_events_refresh_only_their_open_conversation() {
 				None,
 			)],
 		);
+
 		assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+
 		let after = lifecycle.history_pager.snapshot();
+
 		assert_eq!(after.conversation_id, Some(entity(selected)));
 		assert_eq!(after.view_generation > before, target == selected);
 	}

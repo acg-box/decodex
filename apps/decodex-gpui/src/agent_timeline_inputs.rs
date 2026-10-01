@@ -18,6 +18,7 @@ impl AgentSurface {
 		if self.native_history.input_receipts.task.is_some() {
 			return;
 		}
+
 		let Some(binding) = self
 			.native_history
 			.binding
@@ -37,8 +38,10 @@ impl AgentSurface {
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).input_receipts(work_id, after)).ok()
 		});
+
 		self.native_history.input_receipts.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
@@ -48,9 +51,12 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				let receipts = &mut surface.native_history.input_receipts;
+
 				receipts.task = None;
 				receipts.result = Some(result.unwrap_or(AgentInputReceiptsResult::Unavailable));
+
 				cx.notify();
 			});
 		}));
@@ -62,8 +68,10 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		self.native_history.input_receipts.after = after;
 		self.native_history.input_receipts.result = None;
+
 		self.refresh_native_input_receipts(cx);
 		cx.notify();
 	}
@@ -75,8 +83,10 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let state = &self.native_history.input_receipts;
 		let mut panel = div().flex().flex_col().gap_2();
+
 		if state.after.is_some() {
 			let owner = work.id.clone();
+
 			panel = panel.child(div().debug_selector(|| "input-receipts-first".into()).child(
 				self.workspace_action(
 					"first-input-receipts".into(),
@@ -86,6 +96,7 @@ impl AgentSurface {
 				),
 			));
 		}
+
 		match &state.result {
 			Some(AgentInputReceiptsResult::Available {
 				work_id,
@@ -97,6 +108,7 @@ impl AgentSurface {
 					if self.preview_covers_receipt(&work.id, entry.id, &entry.text) {
 						continue;
 					}
+
 					panel = panel.child(
 						div()
 							.debug_selector(|| "unconfirmed-native-input".into())
@@ -107,11 +119,14 @@ impl AgentSurface {
 							)),
 					);
 				}
+
 				if *shortened {
 					panel = panel.child(muted("Some local input text is shortened."));
 				}
+
 				if let Some(after) = next_after {
 					let (owner, after) = (work.id.clone(), *after);
+
 					panel =
 						panel.child(div().debug_selector(|| "input-receipts-next".into()).child(
 							self.workspace_action(
@@ -124,6 +139,7 @@ impl AgentSurface {
 							),
 						));
 				}
+
 				if entries.is_empty() && state.after.is_some() {
 					panel = panel.child(muted("No remaining unconfirmed inputs on this page."));
 				}
@@ -131,6 +147,7 @@ impl AgentSurface {
 			None => panel = panel.child(crate::ui_loading::loading("Loading delivery records")),
 			_ => panel = panel.child(muted("Local delivery records could not be read. Retrying…")),
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -173,10 +190,14 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.update(|window, _| window.resize(gpui::size(gpui::px(1000.), gpui::px(700.))));
+
+		visual.update(|window, _| window.resize(gpui::size(gpui::px(1_000.), gpui::px(700.))));
+
 		let work = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			surface.graph_visible = false;
+
 			let work = surface
 				.snapshot
 				.as_mut()
@@ -185,8 +206,11 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == surface.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let id = work.id.clone();
+
 			assert!(surface.native_history.replace(
 				Binding { work: id.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
@@ -198,37 +222,57 @@ mod tests {
 					active_realtime_session_at_page_start: None
 				}
 			));
+
 			surface.native_history.input_receipts.result = Some(page(&id, Some(1), Some(1)));
+
 			cx.notify();
+
 			id
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("unconfirmed-native-input").is_some());
+
 		let more = visual.debug_bounds("input-receipts-next").unwrap();
+
 		visual.simulate_click(more.center(), Default::default());
+
 		surface.update(visual, |surface, cx| {
 			assert_eq!(surface.native_history.input_receipts.after, Some(1));
 			assert!(surface.native_history.older_cursor.is_none());
+
 			surface.native_history.input_receipts.result = Some(page(&work, Some(2), None));
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("input-receipts-next").is_none());
+
 		let first = visual.debug_bounds("input-receipts-first").unwrap();
+
 		visual.simulate_click(first.center(), Default::default());
+
 		surface.update(visual, |surface, cx| {
 			assert_eq!(surface.native_history.input_receipts.after, None);
+
 			surface.native_history.input_receipts.result = Some(page(&work, None, None));
+
 			assert!(surface.native_input_receipts_loaded(&work));
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("unconfirmed-native-input").is_none());
 	}
 }

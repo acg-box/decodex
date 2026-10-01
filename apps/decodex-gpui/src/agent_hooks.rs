@@ -24,6 +24,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if !matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.dispatch_state==b.dispatch_state && a.active_turn_id==b.active_turn_id)
 			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 		{
@@ -43,13 +44,16 @@ impl AgentSurface {
 		else {
 			return None;
 		};
+
 		if work_id != work
 			|| thread_id.as_str() != thread
 			|| self.hook_settings.work.as_deref() != Some(work.as_str())
 		{
 			return None;
 		}
+
 		let hook = hooks.iter().find(|h| h.key == hook_key)?;
+
 		if !editable(hook)
 			|| match change {
 				Change::Trust => hook.saved_hash.as_deref() == Some(hook.current_hash.as_str()),
@@ -57,6 +61,7 @@ impl AgentSurface {
 			} {
 			return None;
 		}
+
 		Some(AgentActionDto::SetHookSetting {
 			work_id: work.clone(),
 			thread_id: thread_id.clone(),
@@ -80,6 +85,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -104,13 +110,17 @@ impl AgentSurface {
 			let Some(action) = self.hook_setting_action(&work_id, &thread, hook_key, change) else {
 				return;
 			};
+
 			Some(action)
 		} else {
 			None
 		};
 		let saving = action.is_some();
+
 		self.hook_settings.epoch = self.hook_settings.epoch.wrapping_add(1);
+
 		let epoch = self.hook_settings.epoch;
+
 		self.hook_settings.work = Some(work.clone());
 		self.hook_settings.state = None;
 		self.hook_settings.reviewed = false;
@@ -120,6 +130,7 @@ impl AgentSurface {
 			"Reading native hook settings…"
 		}
 		.into();
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime =
@@ -128,15 +139,19 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
 				runtime.block_on(client.hook_settings(work_id)).unwrap_or(State::Unavailable);
+
 			Some((outcome, state))
 		});
+
 		self.hook_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.hook_settings.epoch != epoch {
 					return;
 				}
+
 				s.hook_settings.task = None;
+
 				let current = s.command_connection_ready()
 					&& s.native_agents.selected.is_none()
 					&& s.selected.as_ref() == Some(&work)
@@ -146,12 +161,16 @@ impl AgentSurface {
 								w.id == work && w.codex_thread_id.as_deref() == Some(&thread)
 							})
 					});
+
 				if !current {
 					s.reset_hook_settings();
 					cx.notify();
+
 					return;
 				}
+
 				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+
 				s.hook_settings.reviewed = !saving;
 				s.hook_settings.feedback = match outcome {
 					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
@@ -170,9 +189,11 @@ impl AgentSurface {
 						State::Unavailable,
 					other => other,
 				});
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -187,6 +208,7 @@ impl AgentSurface {
 		{
 			return div().into_any_element();
 		}
+
 		let owner = work.id.clone();
 		let mut panel = div().flex().flex_col().gap_2().child("Shared hooks").child(mcp_button(
 			"hook-settings-read".into(),
@@ -195,15 +217,19 @@ impl AgentSurface {
 			cx,
 			move |s, cx| s.update_hook_settings(owner.clone(), None, cx),
 		));
+
 		if self.hook_settings.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();
 		}
+
 		panel = panel.child(self.hook_settings.feedback.clone());
+
 		match &self.hook_settings.state {
 			Some(State::Available {
 				config_file, hooks, notices, can_update, last_edit, ..
 			}) => {
 				panel=panel.child(format!("Shared config: {}",config_file.as_str())).child("Trust approves only the displayed content hash. Enablement is separate. Other tasks using this file are also affected. Native policy and task plugin exclusions still apply.");
+
 				if let Some(edit) = last_edit {
 					panel = panel.child(format!(
 						"Last shared edit: {} · {} · task {} · account {}",
@@ -212,12 +238,14 @@ impl AgentSurface {
 						edit.work_id.as_str(),
 						edit.account_id.as_str()
 					));
+
 					if matches!(edit.outcome.as_str(), "reserved" | "unknown") {
 						panel = panel.child(
 							"A shared edit is unconfirmed. Refresh to read its result; it will not be resent.",
 						);
 					}
 				}
+
 				for notice in notices {
 					panel = panel.child(notice.clone());
 				}
@@ -239,17 +267,20 @@ impl AgentSurface {
 							"disabled"
 						})
 					));
+
 					if *can_update
 						&& self.hook_settings.reviewed
 						&& self.hook_settings.task.is_none()
 						&& editable(hook)
 					{
 						let mut changes = vec![];
+
 						if matches!(hook.trust_status.as_str(), "untrusted" | "modified")
 							&& hook.saved_hash.as_deref() != Some(hook.current_hash.as_str())
 						{
 							changes.push((Change::Trust, "Trust this reviewed content"));
 						}
+
 						for enabled in [true, false] {
 							if hook.saved_enabled != Some(enabled) {
 								changes.push((
@@ -261,6 +292,7 @@ impl AgentSurface {
 						for (action_index, (change, label)) in changes.into_iter().enumerate() {
 							let owner = work.id.clone();
 							let key = hook.key.clone();
+
 							panel = panel.child(mcp_button(
 								format!("hook-setting-{index}-{action_index}"),
 								label.into(),
@@ -277,6 +309,7 @@ impl AgentSurface {
 						}
 					}
 				}
+
 				if hooks.is_empty() {
 					panel = panel.child("No hooks were reported for this directory.");
 				}
@@ -287,6 +320,7 @@ impl AgentSurface {
 				),
 			None => {},
 		}
+
 		panel.into_any_element()
 	}
 }

@@ -14,7 +14,9 @@ use std::{
 };
 
 use decodex_protocol::{ConversationHistoryPage, EntityId, HistoryCursorToken, ServerId};
+
 use serde::{Deserialize, Serialize};
+
 use sha2::{Digest as _, Sha256};
 
 const CACHE_DIRECTORY_NAME: &CStr = c"history-page-cache-v1";
@@ -25,7 +27,6 @@ const PAGES_DIRECTORY_NAME: &CStr = c"pages";
 const PAGE_STAGE_NAME: &CStr = c".page.next";
 const CACHE_SCHEMA_ID: &str = "decodex.gpui.history-page-cache/1";
 const CACHE_SCHEMA_GENERATION: u32 = 1;
-
 const PRIVATE_DIRECTORY_MODE: libc::mode_t = 0o700;
 const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
 #[cfg(target_vendor = "apple")]
@@ -49,18 +50,8 @@ const MAX_CURSOR_BYTES: usize = 128;
 const FRESH_ELIGIBILITY_SECONDS: i64 = 15 * 60;
 const SHA256_HEX_LENGTH: usize = 64;
 
-#[derive(Clone, Copy)]
-enum DirectoryShape {
-	Root,
-	Pages,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct AuthorityIdentity {
-	stable_server_id: ServerId,
-	protocol_major: u16,
-	protocol_minor: u16,
-	cache_schema_generation: u32,
+trait FaultInjector {
+	fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -68,135 +59,6 @@ struct AuthorityIdentity {
 pub(super) enum CacheRequestKey {
 	Head,
 	After(HistoryCursorToken),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct PageIdentity {
-	authority: AuthorityIdentity,
-	conversation_id: EntityId,
-	request_key: CacheRequestKey,
-	page_sha256: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct IndexEntry {
-	identity: PageIdentity,
-	fresh_received_at_unix_seconds: i64,
-	recency: u64,
-	item_count: u8,
-	byte_length: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct CacheIndex {
-	schema_id: String,
-	entries: Vec<IndexEntry>,
-}
-
-impl CacheIndex {
-	fn empty() -> Self {
-		Self { schema_id: CACHE_SCHEMA_ID.to_owned(), entries: Vec::new() }
-	}
-}
-
-#[derive(Clone)]
-struct ValidatedPageFile {
-	byte_length: usize,
-	item_count: usize,
-}
-
-struct CacheInventory {
-	page_files: BTreeMap<String, ValidatedPageFile>,
-	physical_bytes: usize,
-	index_stage_present: bool,
-	page_stage_present: bool,
-}
-
-struct ValidatedCacheState {
-	index: CacheIndex,
-	inventory: CacheInventory,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CacheAuthority {
-	identity: AuthorityIdentity,
-}
-
-impl CacheAuthority {
-	pub(super) fn new(
-		stable_server_id: ServerId,
-		protocol_major: u16,
-		protocol_minor: u16,
-		cache_schema_generation: u32,
-	) -> Result<Self, CacheFailure> {
-		let identity = AuthorityIdentity {
-			stable_server_id,
-			protocol_major,
-			protocol_minor,
-			cache_schema_generation,
-		};
-		validate_authority(&identity)?;
-
-		Ok(Self { identity })
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CacheRequest {
-	authority: AuthorityIdentity,
-	conversation_id: EntityId,
-	request_key: CacheRequestKey,
-}
-
-impl CacheRequest {
-	pub(super) fn head(
-		authority: &CacheAuthority,
-		conversation_id: EntityId,
-	) -> Result<Self, CacheFailure> {
-		Self::new(authority, conversation_id, CacheRequestKey::Head)
-	}
-
-	pub(super) fn after(
-		authority: &CacheAuthority,
-		conversation_id: EntityId,
-		after: HistoryCursorToken,
-	) -> Result<Self, CacheFailure> {
-		Self::new(authority, conversation_id, CacheRequestKey::After(after))
-	}
-
-	fn new(
-		authority: &CacheAuthority,
-		conversation_id: EntityId,
-		request_key: CacheRequestKey,
-	) -> Result<Self, CacheFailure> {
-		let request = Self { authority: authority.identity.clone(), conversation_id, request_key };
-		validate_request(&request)?;
-
-		Ok(request)
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CacheHit {
-	identity: PageIdentity,
-	page: ConversationHistoryPage,
-	fresh_received_at_unix_seconds: i64,
-}
-
-impl CacheHit {
-	#[cfg(test)]
-	pub(super) const fn page(&self) -> &ConversationHistoryPage {
-		&self.page
-	}
-
-	pub(super) fn into_page(self) -> ConversationHistoryPage {
-		self.page
-	}
-
-	#[cfg(test)]
-	pub(super) const fn fresh_received_at_unix_seconds(&self) -> i64 {
-		self.fresh_received_at_unix_seconds
-	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -226,7 +88,6 @@ pub(super) enum CacheDiagnostic {
 	#[cfg(test)]
 	DurabilityFault,
 }
-
 #[cfg(test)]
 impl CacheDiagnostic {
 	pub(super) const fn as_str(self) -> &'static str {
@@ -245,41 +106,10 @@ impl CacheDiagnostic {
 	}
 }
 
-#[derive(Debug)]
-pub(super) struct HistoryPageCache {
-	root: File,
-	pages: File,
-	lock: File,
-	index: CacheIndex,
-	hit_recency: Vec<(PageIdentity, u64)>,
-	next_recency: Option<u64>,
-}
-
-pub(super) struct PreparedCachePublication {
-	candidate: CacheIndex,
-	following_recency: u64,
-	created_page_digest: Option<String>,
-	reinitialized: bool,
-}
-
-pub(super) struct CommittedCachePublication {
-	reinitialized: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct CacheFailure {
-	diagnostic: CacheDiagnostic,
-}
-
-impl CacheFailure {
-	pub(super) fn new(diagnostic: CacheDiagnostic) -> Self {
-		Self { diagnostic }
-	}
-
-	#[cfg(test)]
-	pub(super) const fn diagnostic(&self) -> &'static str {
-		self.diagnostic.as_str()
-	}
+#[derive(Clone, Copy)]
+enum DirectoryShape {
+	Root,
+	Pages,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -293,18 +123,96 @@ enum DurabilityEdge {
 	CleanupSync,
 }
 
-trait FaultInjector {
-	fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure>;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CacheAuthority {
+	identity: AuthorityIdentity,
 }
+impl CacheAuthority {
+	pub(super) fn new(
+		stable_server_id: ServerId,
+		protocol_major: u16,
+		protocol_minor: u16,
+		cache_schema_generation: u32,
+	) -> Result<Self, CacheFailure> {
+		let identity = AuthorityIdentity {
+			stable_server_id,
+			protocol_major,
+			protocol_minor,
+			cache_schema_generation,
+		};
 
-struct NoFaults;
+		validate_authority(&identity)?;
 
-impl FaultInjector for NoFaults {
-	fn check(&self, _edge: DurabilityEdge) -> Result<(), CacheFailure> {
-		Ok(())
+		Ok(Self { identity })
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CacheRequest {
+	authority: AuthorityIdentity,
+	conversation_id: EntityId,
+	request_key: CacheRequestKey,
+}
+impl CacheRequest {
+	pub(super) fn head(
+		authority: &CacheAuthority,
+		conversation_id: EntityId,
+	) -> Result<Self, CacheFailure> {
+		Self::new(authority, conversation_id, CacheRequestKey::Head)
+	}
+
+	pub(super) fn after(
+		authority: &CacheAuthority,
+		conversation_id: EntityId,
+		after: HistoryCursorToken,
+	) -> Result<Self, CacheFailure> {
+		Self::new(authority, conversation_id, CacheRequestKey::After(after))
+	}
+
+	fn new(
+		authority: &CacheAuthority,
+		conversation_id: EntityId,
+		request_key: CacheRequestKey,
+	) -> Result<Self, CacheFailure> {
+		let request = Self { authority: authority.identity.clone(), conversation_id, request_key };
+
+		validate_request(&request)?;
+
+		Ok(request)
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CacheHit {
+	identity: PageIdentity,
+	page: ConversationHistoryPage,
+	fresh_received_at_unix_seconds: i64,
+}
+impl CacheHit {
+	#[cfg(test)]
+	pub(super) const fn page(&self) -> &ConversationHistoryPage {
+		&self.page
+	}
+
+	pub(super) fn into_page(self) -> ConversationHistoryPage {
+		self.page
+	}
+
+	#[cfg(test)]
+	pub(super) const fn fresh_received_at_unix_seconds(&self) -> i64 {
+		self.fresh_received_at_unix_seconds
+	}
+}
+
+#[derive(Debug)]
+pub(super) struct HistoryPageCache {
+	root: File,
+	pages: File,
+	lock: File,
+	index: CacheIndex,
+	hit_recency: Vec<(PageIdentity, u64)>,
+	next_recency: Option<u64>,
+}
 impl HistoryPageCache {
 	pub(super) fn open(parent: &Path, cache_schema_generation: u32) -> Result<Self, CacheFailure> {
 		if cache_schema_generation != CACHE_SCHEMA_GENERATION {
@@ -314,10 +222,12 @@ impl HistoryPageCache {
 		let parent = open_or_create_absolute_parent(parent)?;
 		let root = open_or_create_directory_at(&parent, CACHE_DIRECTORY_NAME)?;
 		let lock = open_or_create_file_at(&root, LOCK_NAME)?;
+
 		lock_exclusive(&lock)?;
 		validate_directory(&root)?;
 		validate_regular_file(&lock, None)?;
 		validate_directory_entries(&root, DirectoryShape::Root)?;
+
 		let pages = open_or_create_directory_at(&root, PAGES_DIRECTORY_NAME)?;
 
 		validate_directory(&root)?;
@@ -336,6 +246,7 @@ impl HistoryPageCache {
 		if let Err(failure) = validate_request(request) {
 			return CacheLookup::Failure(failure);
 		}
+
 		if now_unix_seconds < 0 {
 			return CacheLookup::Failure(CacheFailure::new(CacheDiagnostic::InvalidInput));
 		}
@@ -350,12 +261,14 @@ impl HistoryPageCache {
 		if !self.index.entries.iter().any(|entry| entry.identity == hit.identity) {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
+
 		let (recency, next_recency) = self
 			.next_recency
 			.and_then(|recency| recency.checked_add(1).map(|next| (recency, next)))
 			.ok_or_else(|| CacheFailure::new(CacheDiagnostic::RecencyExhausted))?;
 
 		self.next_recency = Some(next_recency);
+
 		if let Some(position) =
 			self.hit_recency.iter().position(|(identity, _)| identity == &hit.identity)
 		{
@@ -374,9 +287,11 @@ impl HistoryPageCache {
 		fresh_received_at_unix_seconds: i64,
 	) -> Result<PreparedCachePublication, CacheFailure> {
 		validate_request(request)?;
+
 		if fresh_received_at_unix_seconds < 0 {
 			return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 		}
+
 		let (page_bytes, page_sha256) = page_bytes_and_digest(page)?;
 
 		self.prepare_publication_with_faults(
@@ -425,11 +340,13 @@ impl HistoryPageCache {
 		else {
 			return Ok(CacheLookup::Miss(CacheDiagnostic::NotFound));
 		};
+
 		if !is_fresh_eligible(entry.fresh_received_at_unix_seconds, now_unix_seconds) {
 			return Ok(CacheLookup::Miss(CacheDiagnostic::Ineligible));
 		}
 
 		let (page, metadata) = read_validated_page(&self.pages, &entry.identity.page_sha256)?;
+
 		if metadata.item_count != usize::from(entry.item_count)
 			|| metadata.byte_length
 				!= usize::try_from(entry.byte_length)
@@ -455,9 +372,11 @@ impl HistoryPageCache {
 		faults: &impl FaultInjector,
 	) -> Result<PreparedCachePublication, CacheFailure> {
 		let mut state = load_validated_cache_state(&self.root, &self.pages, &self.lock)?;
+
 		if state.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
+
 		state = clean_known_remnants(&self.root, &self.pages, &self.lock, state, faults)?;
 
 		let reinitialized = self.next_recency.and_then(|recency| recency.checked_add(1)).is_none();
@@ -471,9 +390,12 @@ impl HistoryPageCache {
 				.checked_add(1)
 				.ok_or_else(|| CacheFailure::new(CacheDiagnostic::RecencyExhausted))?;
 			let mut candidate = state.index.clone();
+
 			merge_hit_recencies(&mut candidate, &self.hit_recency);
+
 			(candidate, new_recency, following_recency)
 		};
+
 		candidate.entries.retain(|entry| !entry_matches_request(entry, request));
 		candidate.entries.push(IndexEntry {
 			identity: PageIdentity {
@@ -489,7 +411,9 @@ impl HistoryPageCache {
 			byte_length: u32::try_from(page_bytes.len())
 				.map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?,
 		});
+
 		evict_to_bounds(&mut candidate, fresh_received_at_unix_seconds)?;
+
 		if !candidate.entries.iter().any(|entry| {
 			entry_matches_request(entry, request)
 				&& entry.identity.page_sha256 == page_sha256
@@ -499,13 +423,15 @@ impl HistoryPageCache {
 		}
 
 		let mut candidate_pages = state.inventory.page_files.clone();
+
 		candidate_pages.insert(
 			page_sha256.to_owned(),
 			ValidatedPageFile { byte_length: page_bytes.len(), item_count: page.items.len() },
 		);
-		validate_index(&candidate, &candidate_pages)?;
-		let index_bytes = serialize_index(&candidate)?;
 
+		validate_index(&candidate, &candidate_pages)?;
+
+		let index_bytes = serialize_index(&candidate)?;
 		let page_exists = state.inventory.page_files.contains_key(page_sha256);
 		let after_page = if page_exists {
 			state.inventory.physical_bytes
@@ -518,16 +444,19 @@ impl HistoryPageCache {
 			checked_add(after_page, page_bytes.len())?
 		};
 		let index_stage_peak = checked_add(after_page, index_bytes.len())?;
+
 		if page_publish_peak > MAX_PHYSICAL_BYTES || index_stage_peak > MAX_PHYSICAL_BYTES {
 			return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 		}
 
 		let created_page = if page_exists {
 			verify_page_target(&self.pages, page_sha256, page_bytes)?;
+
 			false
 		} else {
 			publish_page(&self.pages, page_sha256, page_bytes, faults)?
 		};
+
 		stage_index(&self.root, &index_bytes, faults)?;
 
 		Ok(PreparedCachePublication {
@@ -546,6 +475,7 @@ impl HistoryPageCache {
 		let commit_result = faults.check(DurabilityEdge::IndexPublish).and_then(|()| {
 			rename_at(self.root.as_raw_fd(), INDEX_STAGE_NAME, self.root.as_raw_fd(), INDEX_NAME)
 		});
+
 		if let Err(failure) = commit_result {
 			return Err((prepared, failure));
 		}
@@ -556,8 +486,11 @@ impl HistoryPageCache {
 			created_page_digest: _,
 			reinitialized,
 		} = prepared;
+
 		self.index = candidate;
+
 		self.hit_recency.clear();
+
 		self.next_recency = Some(following_recency);
 
 		Ok(CommittedCachePublication { reinitialized })
@@ -569,13 +502,18 @@ impl HistoryPageCache {
 		faults: &impl FaultInjector,
 	) -> Result<CachePublishResult, CacheFailure> {
 		faults.check(DurabilityEdge::RootSync)?;
+
 		sync_file(&self.root)?;
+
 		let published = load_validated_cache_state(&self.root, &self.pages, &self.lock)?;
+
 		if published.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
+
 		let cleaned =
 			clean_newly_unreferenced_pages(&self.root, &self.pages, &self.lock, published, faults)?;
+
 		if cleaned.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
@@ -593,24 +531,34 @@ impl HistoryPageCache {
 		faults: &impl FaultInjector,
 	) -> Result<(), CacheFailure> {
 		unlink_at(self.root.as_raw_fd(), INDEX_STAGE_NAME)?;
+
 		let mut removed_page = false;
+
 		if let Some(digest) = prepared.created_page_digest.as_ref() {
 			if referenced_digests(&self.index).contains(digest) {
 				return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 			}
+
 			let name = CString::new(digest.as_str())
 				.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 			unlink_at(self.pages.as_raw_fd(), &name)?;
+
 			removed_page = true;
 		}
+
 		faults.check(DurabilityEdge::CleanupSync)?;
+
 		sync_file(&self.root)?;
+
 		if removed_page {
 			faults.check(DurabilityEdge::CleanupSync)?;
+
 			sync_file(&self.pages)?;
 		}
 
 		let discarded = load_validated_cache_state(&self.root, &self.pages, &self.lock)?;
+
 		if discarded.index != self.index
 			|| discarded.inventory.index_stage_present
 			|| discarded.inventory.page_stage_present
@@ -638,15 +586,104 @@ impl Drop for HistoryPageCache {
 	}
 }
 
+pub(super) struct PreparedCachePublication {
+	candidate: CacheIndex,
+	following_recency: u64,
+	created_page_digest: Option<String>,
+	reinitialized: bool,
+}
+
+pub(super) struct CommittedCachePublication {
+	reinitialized: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CacheFailure {
+	diagnostic: CacheDiagnostic,
+}
+impl CacheFailure {
+	pub(super) fn new(diagnostic: CacheDiagnostic) -> Self {
+		Self { diagnostic }
+	}
+
+	#[cfg(test)]
+	pub(super) const fn diagnostic(&self) -> &'static str {
+		self.diagnostic.as_str()
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct AuthorityIdentity {
+	stable_server_id: ServerId,
+	protocol_major: u16,
+	protocol_minor: u16,
+	cache_schema_generation: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PageIdentity {
+	authority: AuthorityIdentity,
+	conversation_id: EntityId,
+	request_key: CacheRequestKey,
+	page_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct IndexEntry {
+	identity: PageIdentity,
+	fresh_received_at_unix_seconds: i64,
+	recency: u64,
+	item_count: u8,
+	byte_length: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct CacheIndex {
+	schema_id: String,
+	entries: Vec<IndexEntry>,
+}
+impl CacheIndex {
+	fn empty() -> Self {
+		Self { schema_id: CACHE_SCHEMA_ID.to_owned(), entries: Vec::new() }
+	}
+}
+
+#[derive(Clone)]
+struct ValidatedPageFile {
+	byte_length: usize,
+	item_count: usize,
+}
+
+struct CacheInventory {
+	page_files: BTreeMap<String, ValidatedPageFile>,
+	physical_bytes: usize,
+	index_stage_present: bool,
+	page_stage_present: bool,
+}
+
+struct ValidatedCacheState {
+	index: CacheIndex,
+	inventory: CacheInventory,
+}
+
+struct NoFaults;
+impl FaultInjector for NoFaults {
+	fn check(&self, _edge: DurabilityEdge) -> Result<(), CacheFailure> {
+		Ok(())
+	}
+}
+
 fn read_index(root: &File) -> Result<(CacheIndex, usize, bool), CacheFailure> {
 	let Some(index_file) = open_optional_file_at(root, INDEX_NAME)? else {
 		return Ok((CacheIndex::empty(), 0, false));
 	};
+
 	validate_regular_file(&index_file, Some(MAX_INDEX_BYTES))?;
 
 	let bytes = read_bounded(&index_file, MAX_INDEX_BYTES)?;
 	let index: CacheIndex = serde_json::from_slice(&bytes)
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if index.schema_id != CACHE_SCHEMA_ID {
 		return Err(CacheFailure::new(CacheDiagnostic::IncompatibleSchema));
 	}
@@ -665,8 +702,10 @@ fn load_validated_cache_state(
 	validate_directory(root)?;
 	validate_directory(pages)?;
 	validate_regular_file(lock, Some(0))?;
+
 	let root_names = validated_directory_names(root, DirectoryShape::Root)?;
 	let page_names = validated_directory_names(pages, DirectoryShape::Pages)?;
+
 	if !root_names.iter().any(|name| name.as_slice() == LOCK_NAME.to_bytes())
 		|| !root_names.iter().any(|name| name.as_slice() == PAGES_DIRECTORY_NAME.to_bytes())
 	{
@@ -674,14 +713,17 @@ fn load_validated_cache_state(
 	}
 
 	let (index, index_bytes, index_present) = read_index(root)?;
+
 	if root_names.iter().any(|name| name.as_slice() == INDEX_NAME.to_bytes()) != index_present {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	let index_stage_present =
 		root_names.iter().any(|name| name.as_slice() == INDEX_STAGE_NAME.to_bytes());
 	let page_stage_present =
 		page_names.iter().any(|name| name.as_slice() == PAGE_STAGE_NAME.to_bytes());
 	let mut physical_bytes = index_bytes;
+
 	if index_stage_present {
 		physical_bytes = checked_add(
 			physical_bytes,
@@ -696,20 +738,26 @@ fn load_validated_cache_state(
 	}
 
 	let mut page_files = BTreeMap::new();
+
 	for name in page_names {
 		if name.as_slice() == PAGE_STAGE_NAME.to_bytes() {
 			continue;
 		}
+
 		let digest = std::str::from_utf8(&name)
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::UnsafeShape))?
 			.to_owned();
 		let (_, metadata) = read_validated_page(pages, &digest)?;
+
 		physical_bytes = checked_add(physical_bytes, metadata.byte_length)?;
+
 		page_files.insert(digest, metadata);
 	}
+
 	if physical_bytes > MAX_PHYSICAL_BYTES {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
+
 	validate_index(&index, &page_files)?;
 
 	Ok(ValidatedCacheState {
@@ -739,8 +787,10 @@ fn validate_index(
 	let mut conversations = BTreeMap::<Vec<u8>, (usize, usize, usize)>::new();
 	let mut total_items = 0_usize;
 	let mut total_bytes = 0_usize;
+
 	for entry in &index.entries {
 		validate_page_identity(&entry.identity)?;
+
 		if entry.fresh_received_at_unix_seconds < 0
 			|| entry.recency == 0
 			|| !recencies.insert(entry.recency)
@@ -748,15 +798,19 @@ fn validate_index(
 		{
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
+
 		let item_count = usize::from(entry.item_count);
 		let byte_length = usize::try_from(entry.byte_length)
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?;
+
 		if item_count > MAX_PAGE_ITEMS || byte_length == 0 || byte_length > MAX_PAGE_BYTES {
 			return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 		}
+
 		let page_file = page_files
 			.get(&entry.identity.page_sha256)
 			.ok_or_else(|| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 		if page_file.item_count != item_count || page_file.byte_length != byte_length {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
@@ -767,18 +821,22 @@ fn validate_index(
 				&entry.identity.conversation_id,
 			))
 			.or_default();
+
 		totals.0 = checked_add(totals.0, 1)?;
 		totals.1 = checked_add(totals.1, item_count)?;
 		totals.2 = checked_add(totals.2, byte_length)?;
+
 		if totals.0 > MAX_CONVERSATION_PAGES
 			|| totals.1 > MAX_CONVERSATION_ITEMS
 			|| totals.2 > MAX_CONVERSATION_BYTES
 		{
 			return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 		}
+
 		total_items = checked_add(total_items, item_count)?;
 		total_bytes = checked_add(total_bytes, byte_length)?;
 	}
+
 	if conversations.len() > MAX_CACHE_CONVERSATIONS
 		|| index.entries.len() > MAX_CACHE_PAGES
 		|| total_items > MAX_CACHE_ITEMS
@@ -803,15 +861,18 @@ fn validate_authority(authority: &AuthorityIdentity) -> Result<(), CacheFailure>
 
 fn validate_request(request: &CacheRequest) -> Result<(), CacheFailure> {
 	validate_authority(&request.authority)?;
+
 	if !bounded_identity(request.conversation_id.as_str(), MAX_IDENTITY_BYTES) {
 		return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 	}
+
 	validate_request_key(&request.request_key)
 }
 
 fn validate_page_identity(identity: &PageIdentity) -> Result<(), CacheFailure> {
 	validate_authority(&identity.authority)
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if !bounded_identity(identity.conversation_id.as_str(), MAX_IDENTITY_BYTES)
 		|| validate_request_key(&identity.request_key).is_err()
 		|| !is_digest_name(identity.page_sha256.as_bytes())
@@ -843,29 +904,38 @@ fn entry_matches_request(entry: &IndexEntry, request: &CacheRequest) -> bool {
 
 fn mapping_sort_key(identity: &PageIdentity) -> Vec<u8> {
 	let mut key = conversation_sort_key(&identity.authority, &identity.conversation_id);
+
 	match &identity.request_key {
 		CacheRequestKey::Head => key.push(0),
 		CacheRequestKey::After(after) => {
 			key.push(1);
+
 			append_sort_field(&mut key, after.as_str());
 		},
 	}
+
 	key
 }
 
 fn page_identity_sort_key(identity: &PageIdentity) -> Vec<u8> {
 	let mut key = mapping_sort_key(identity);
+
 	append_sort_field(&mut key, &identity.page_sha256);
+
 	key
 }
 
 fn conversation_sort_key(authority: &AuthorityIdentity, conversation_id: &EntityId) -> Vec<u8> {
 	let mut key = Vec::new();
+
 	append_sort_field(&mut key, authority.stable_server_id.as_str());
+
 	key.extend_from_slice(&authority.protocol_major.to_be_bytes());
 	key.extend_from_slice(&authority.protocol_minor.to_be_bytes());
 	key.extend_from_slice(&authority.cache_schema_generation.to_be_bytes());
+
 	append_sort_field(&mut key, conversation_id.as_str());
+
 	key
 }
 
@@ -880,7 +950,9 @@ fn validated_file_length(
 	maximum: usize,
 ) -> Result<usize, CacheFailure> {
 	let file = open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY).map_err(|_| io_failure())?;
+
 	validate_regular_file(&file, Some(maximum))?;
+
 	let status = file_status(&file)?;
 
 	usize::try_from(status.st_size).map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))
@@ -893,20 +965,27 @@ fn read_validated_page(
 	if !is_digest_name(digest.as_bytes()) {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	let name = CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	let file = open_file_at(pages.as_raw_fd(), &name, libc::O_RDONLY).map_err(|_| io_failure())?;
+
 	validate_regular_file(&file, Some(MAX_PAGE_BYTES))?;
+
 	let bytes = read_bounded(&file, MAX_PAGE_BYTES)?;
+
 	if bytes.is_empty() || sha256_hex(&bytes) != digest {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	let page: ConversationHistoryPage = serde_json::from_slice(&bytes)
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	let (canonical, canonical_digest) =
 		page_bytes_and_digest(&page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if canonical != bytes || canonical_digest != digest {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	let item_count = page.items.len();
 
 	Ok((page, ValidatedPageFile { byte_length: bytes.len(), item_count }))
@@ -915,6 +994,7 @@ fn read_validated_page(
 fn serialize_index(index: &CacheIndex) -> Result<Vec<u8>, CacheFailure> {
 	let bytes =
 		serde_json::to_vec(index).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if bytes.is_empty() || bytes.len() > MAX_INDEX_BYTES {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
@@ -931,6 +1011,7 @@ fn merge_hit_recencies(index: &mut CacheIndex, hit_recencies: &[(PageIdentity, u
 		for (identity, recency) in hit_recencies {
 			if identity == &entry.identity {
 				entry.recency = *recency;
+
 				break;
 			}
 		}
@@ -949,15 +1030,18 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 			conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 		})
 		.collect::<BTreeSet<_>>();
+
 	for conversation_key in conversation_keys {
 		loop {
 			let (pages, items, bytes) = conversation_totals(index, &conversation_key)?;
+
 			if pages <= MAX_CONVERSATION_PAGES
 				&& items <= MAX_CONVERSATION_ITEMS
 				&& bytes <= MAX_CONVERSATION_BYTES
 			{
 				break;
 			}
+
 			remove_oldest_entry(index, |entry| {
 				conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 					== conversation_key
@@ -967,19 +1051,23 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 
 	while conversation_count(index) > MAX_CACHE_CONVERSATIONS {
 		let mut newest_by_conversation = BTreeMap::<Vec<u8>, u64>::new();
+
 		for entry in &index.entries {
 			let key =
 				conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id);
+
 			newest_by_conversation
 				.entry(key)
 				.and_modify(|recency| *recency = (*recency).max(entry.recency))
 				.or_insert(entry.recency);
 		}
+
 		let conversation = newest_by_conversation
 			.into_iter()
 			.min_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)))
 			.map(|(key, _)| key)
 			.ok_or_else(|| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 		index.entries.retain(|entry| {
 			conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 				!= conversation
@@ -991,6 +1079,7 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 		let serialized_length = serde_json::to_vec(index)
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?
 			.len();
+
 		if index.entries.len() <= MAX_CACHE_PAGES
 			&& items <= MAX_CACHE_ITEMS
 			&& bytes <= MAX_CACHE_BYTES
@@ -998,8 +1087,10 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 		{
 			break;
 		}
+
 		remove_oldest_entry(index, |_| true)?;
 	}
+
 	index.entries.sort_by(|left, right| {
 		page_identity_sort_key(&left.identity).cmp(&page_identity_sort_key(&right.identity))
 	});
@@ -1014,12 +1105,14 @@ fn conversation_totals(
 	let mut pages = 0_usize;
 	let mut items = 0_usize;
 	let mut bytes = 0_usize;
+
 	for entry in &index.entries {
 		if conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 			!= conversation_key
 		{
 			continue;
 		}
+
 		pages = checked_add(pages, 1)?;
 		items = checked_add(items, usize::from(entry.item_count))?;
 		bytes = checked_add(
@@ -1046,6 +1139,7 @@ fn conversation_count(index: &CacheIndex) -> usize {
 fn global_totals(index: &CacheIndex) -> Result<(usize, usize), CacheFailure> {
 	let mut items = 0_usize;
 	let mut bytes = 0_usize;
+
 	for entry in &index.entries {
 		items = checked_add(items, usize::from(entry.item_count))?;
 		bytes = checked_add(
@@ -1070,6 +1164,7 @@ fn remove_oldest_entry(
 		.min_by(|(_, left), (_, right)| eviction_order(left, right))
 		.map(|(position, _)| position)
 		.ok_or_else(|| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	index.entries.remove(oldest);
 
 	Ok(())
@@ -1095,32 +1190,44 @@ fn clean_known_remnants(
 	let referenced = referenced_digests(&state.index);
 	let mut root_changed = false;
 	let mut pages_changed = false;
+
 	if state.inventory.index_stage_present {
 		unlink_at(root.as_raw_fd(), INDEX_STAGE_NAME)?;
+
 		root_changed = true;
 	}
 	if state.inventory.page_stage_present {
 		unlink_at(pages.as_raw_fd(), PAGE_STAGE_NAME)?;
+
 		pages_changed = true;
 	}
+
 	for digest in state.inventory.page_files.keys() {
 		if referenced.contains(digest) {
 			continue;
 		}
+
 		let name = CString::new(digest.as_str())
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 		unlink_at(pages.as_raw_fd(), &name)?;
+
 		pages_changed = true;
 	}
+
 	if root_changed {
 		faults.check(DurabilityEdge::CleanupSync)?;
+
 		sync_file(root)?;
 	}
 	if pages_changed {
 		faults.check(DurabilityEdge::CleanupSync)?;
+
 		sync_file(pages)?;
 	}
+
 	let cleaned = load_validated_cache_state(root, pages, lock)?;
+
 	if cleaned.index != state.index
 		|| cleaned.inventory.index_stage_present
 		|| cleaned.inventory.page_stage_present
@@ -1141,20 +1248,28 @@ fn clean_newly_unreferenced_pages(
 ) -> Result<ValidatedCacheState, CacheFailure> {
 	let referenced = referenced_digests(&state.index);
 	let mut removed = false;
+
 	for digest in state.inventory.page_files.keys() {
 		if referenced.contains(digest) {
 			continue;
 		}
+
 		let name = CString::new(digest.as_str())
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 		unlink_at(pages.as_raw_fd(), &name)?;
+
 		removed = true;
 	}
+
 	if removed {
 		faults.check(DurabilityEdge::CleanupSync)?;
+
 		sync_file(pages)?;
 	}
+
 	let cleaned = load_validated_cache_state(root, pages, lock)?;
+
 	if cleaned.index != state.index
 		|| cleaned.inventory.page_files.keys().any(|digest| !referenced.contains(digest))
 	{
@@ -1171,22 +1286,31 @@ fn publish_page(
 	faults: &impl FaultInjector,
 ) -> Result<bool, CacheFailure> {
 	let stage = create_new_file_at(pages, PAGE_STAGE_NAME)?;
+
 	write_all(&stage, bytes)?;
 	validate_regular_file(&stage, Some(bytes.len()))?;
+
 	if validated_length(&stage)? != bytes.len() {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	faults.check(DurabilityEdge::PageStageSync)?;
+
 	sync_file(&stage)?;
 
 	let digest_name =
 		CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	faults.check(DurabilityEdge::PagePublish)?;
+
 	let created =
 		link_create_only(pages.as_raw_fd(), PAGE_STAGE_NAME, pages.as_raw_fd(), &digest_name)?;
+
 	unlink_at(pages.as_raw_fd(), PAGE_STAGE_NAME)?;
 	verify_page_target(pages, digest, bytes)?;
+
 	faults.check(DurabilityEdge::PagesSync)?;
+
 	sync_file(pages)?;
 
 	Ok(created)
@@ -1194,12 +1318,16 @@ fn publish_page(
 
 fn stage_index(root: &File, bytes: &[u8], faults: &impl FaultInjector) -> Result<(), CacheFailure> {
 	let stage = create_new_file_at(root, INDEX_STAGE_NAME)?;
+
 	write_all(&stage, bytes)?;
 	validate_regular_file(&stage, Some(bytes.len()))?;
+
 	if validated_length(&stage)? != bytes.len() {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
+
 	faults.check(DurabilityEdge::IndexStageSync)?;
+
 	sync_file(&stage)?;
 
 	Ok(())
@@ -1213,6 +1341,7 @@ fn create_new_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> 
 			io_failure()
 		}
 	})?;
+
 	validate_regular_file(&file, Some(0))?;
 
 	Ok(file)
@@ -1222,6 +1351,7 @@ fn verify_page_target(pages: &File, digest: &str, expected: &[u8]) -> Result<(),
 	let (page, metadata) = read_validated_page(pages, digest)?;
 	let bytes =
 		serde_json::to_vec(&page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if bytes != expected || metadata.byte_length != expected.len() {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
@@ -1248,46 +1378,63 @@ fn validated_directory_names(
 		open_directory_at(directory.as_raw_fd(), c".").map_err(|_| io_failure())?;
 	let scan_descriptor = scan_directory.into_raw_fd();
 	let stream = unsafe { libc::fdopendir(scan_descriptor) };
+
 	if stream.is_null() {
 		let _ = unsafe { libc::close(scan_descriptor) };
+
 		return Err(io_failure());
 	}
 
 	let mut result = Ok(());
 	let mut names = Vec::new();
+
 	loop {
 		errno_clear();
+
 		let entry = unsafe { libc::readdir(stream) };
+
 		if entry.is_null() {
 			let error = errno();
+
 			if error == libc::EINTR {
 				continue;
 			}
 			if error != 0 {
 				result = Err(io_failure());
 			}
+
 			break;
 		}
+
 		let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
+
 		if name == b"." || name == b".." {
 			continue;
 		}
 		if !directory_name_is_known(shape, name) {
 			result = Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
+
 			break;
 		}
+
 		let maximum = match shape {
 			DirectoryShape::Root => 4,
 			DirectoryShape::Pages => MAX_PHYSICAL_PAGE_NAMES,
 		};
+
 		if names.len() == maximum {
 			result = Err(CacheFailure::new(CacheDiagnostic::Bounds));
+
 			break;
 		}
+
 		names.push(name.to_vec());
 	}
+
 	let _ = unsafe { libc::closedir(stream) };
+
 	result?;
+
 	names.sort();
 
 	Ok(names)
@@ -1315,7 +1462,9 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 	if !path.is_absolute() {
 		return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 	}
+
 	let path_bytes = path.as_os_str().as_bytes();
+
 	if path_bytes.len() <= 1
 		|| path_bytes.last() == Some(&b'/')
 		|| path_bytes[1..]
@@ -1326,26 +1475,30 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 	}
 
 	let mut lexical_components = path.components();
+
 	if !matches!(lexical_components.next(), Some(Component::RootDir))
 		|| lexical_components.any(|component| !matches!(component, Component::Normal(_)))
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 	}
+
 	let external_base =
 		path.parent().ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
 	let cache_parent_leaf =
 		path.file_name().ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
+
 	if !matches!(
 		path.components().next_back(),
 		Some(Component::Normal(name)) if name == cache_parent_leaf
 	) {
 		return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 	}
+
 	let cache_parent_leaf = CString::new(cache_parent_leaf.as_bytes())
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
-
 	let resolved_external_base = std::fs::canonicalize(external_base).map_err(|_| io_failure())?;
 	let mut resolved_components = resolved_external_base.components();
+
 	if !matches!(resolved_components.next(), Some(Component::RootDir)) {
 		return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
 	}
@@ -1356,18 +1509,22 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 	} else {
 		open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?
 	};
+
 	validate_ancestor_directory(&directory)?;
+
 	while let Some(component) = components.next() {
 		let Component::Normal(name) = component else {
 			return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
 		};
 		let name = CString::new(name.as_bytes())
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::UnsafeShape))?;
+
 		directory = if components.peek().is_some() {
 			open_search_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?
 		} else {
 			open_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?
 		};
+
 		validate_ancestor_directory(&directory)?;
 	}
 
@@ -1379,11 +1536,14 @@ fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, Cache
 		Ok(directory) => (directory, false),
 		Err(error) if error.raw_os_error() == Some(libc::ENOENT) => {
 			create_directory_at(parent.as_raw_fd(), name)?;
+
 			(open_directory_at(parent.as_raw_fd(), name).map_err(|_| io_failure())?, true)
 		},
 		Err(_) => return Err(io_failure()),
 	};
+
 	validate_directory(&directory)?;
+
 	if created {
 		sync_file(parent)?;
 	}
@@ -1398,6 +1558,7 @@ fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailu
 			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR).map_err(|_| io_failure())?,
 		Err(_) => return Err(io_failure()),
 	};
+
 	validate_regular_file(&file, Some(0))?;
 	sync_file(parent)?;
 
@@ -1433,10 +1594,13 @@ fn open_directory_with_access_at(
 				access | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
 			)
 		};
+
 		if descriptor != -1 {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
+
 		let error = io::Error::last_os_error();
+
 		if error.raw_os_error() != Some(libc::EINTR) {
 			return Err(error);
 		}
@@ -1448,7 +1612,9 @@ fn create_directory_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 		if unsafe { libc::mkdirat(parent, name.as_ptr(), PRIVATE_DIRECTORY_MODE) } == 0 {
 			return Ok(());
 		}
+
 		let error = io::Error::last_os_error();
+
 		match error.raw_os_error() {
 			Some(libc::EINTR) => {},
 			Some(libc::EEXIST) => return Ok(()),
@@ -1466,10 +1632,13 @@ fn open_file_at(parent: RawFd, name: &CStr, access: libc::c_int) -> io::Result<F
 				access | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
 			)
 		};
+
 		if descriptor != -1 {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
+
 		let error = io::Error::last_os_error();
+
 		if error.raw_os_error() != Some(libc::EINTR) {
 			return Err(error);
 		}
@@ -1478,6 +1647,7 @@ fn open_file_at(parent: RawFd, name: &CStr, access: libc::c_int) -> io::Result<F
 
 fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 	let mut interrupted = false;
+
 	loop {
 		let descriptor = unsafe {
 			libc::openat(
@@ -1492,10 +1662,13 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 				PRIVATE_FILE_MODE as libc::c_uint,
 			)
 		};
+
 		if descriptor != -1 {
 			return Ok(unsafe { File::from_raw_fd(descriptor) });
 		}
+
 		let error = io::Error::last_os_error();
+
 		match error.raw_os_error() {
 			Some(libc::EINTR) => interrupted = true,
 			Some(libc::EEXIST) if interrupted => return open_file_at(parent, name, libc::O_RDWR),
@@ -1506,11 +1679,13 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 
 fn validated_length(file: &File) -> Result<usize, CacheFailure> {
 	let status = file_status(file)?;
+
 	usize::try_from(status.st_size).map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))
 }
 
 fn write_all(file: &File, bytes: &[u8]) -> Result<(), CacheFailure> {
 	let mut offset = 0_usize;
+
 	while offset < bytes.len() {
 		let written = unsafe {
 			libc::pwrite(
@@ -1520,12 +1695,14 @@ fn write_all(file: &File, bytes: &[u8]) -> Result<(), CacheFailure> {
 				offset as libc::off_t,
 			)
 		};
+
 		if written == -1 && errno() == libc::EINTR {
 			continue;
 		}
 		if written <= 0 {
 			return Err(io_failure());
 		}
+
 		offset = checked_add(offset, written as usize)?;
 	}
 
@@ -1545,10 +1722,12 @@ fn sync_file(file: &File) -> Result<(), CacheFailure> {
 
 fn unlink_at(parent: RawFd, name: &CStr) -> Result<(), CacheFailure> {
 	let mut interrupted = false;
+
 	loop {
 		if unsafe { libc::unlinkat(parent, name.as_ptr(), 0) } == 0 {
 			return Ok(());
 		}
+
 		match errno() {
 			libc::EINTR => interrupted = true,
 			libc::ENOENT if interrupted => return Ok(()),
@@ -1576,6 +1755,7 @@ fn link_create_only(
 		{
 			return Ok(true);
 		}
+
 		match errno() {
 			libc::EINTR => {},
 			libc::EEXIST => return Ok(false),
@@ -1591,6 +1771,7 @@ fn rename_at(
 	target_name: &CStr,
 ) -> Result<(), CacheFailure> {
 	let mut interrupted = false;
+
 	loop {
 		if unsafe {
 			libc::renameat(source_parent, source_name.as_ptr(), target_parent, target_name.as_ptr())
@@ -1598,6 +1779,7 @@ fn rename_at(
 		{
 			return Ok(());
 		}
+
 		match errno() {
 			libc::EINTR => interrupted = true,
 			libc::ENOENT if interrupted => return Ok(()),
@@ -1611,6 +1793,7 @@ fn validate_ancestor_directory(directory: &File) -> Result<(), CacheFailure> {
 	let mode = status.st_mode & 0o7777;
 	let owner_is_allowed = status.st_uid == 0 || status.st_uid == effective_uid();
 	let root_owned_sticky = status.st_uid == 0 && mode & libc::S_ISVTX != 0;
+
 	if status.st_mode & libc::S_IFMT != libc::S_IFDIR
 		|| !owner_is_allowed
 		|| (mode & 0o022 != 0 && !root_owned_sticky)
@@ -1623,6 +1806,7 @@ fn validate_ancestor_directory(directory: &File) -> Result<(), CacheFailure> {
 
 fn validate_directory(directory: &File) -> Result<(), CacheFailure> {
 	let status = file_status(directory)?;
+
 	if status.st_uid != effective_uid()
 		|| status.st_mode & libc::S_IFMT != libc::S_IFDIR
 		|| status.st_mode & 0o7777 != PRIVATE_DIRECTORY_MODE
@@ -1635,6 +1819,7 @@ fn validate_directory(directory: &File) -> Result<(), CacheFailure> {
 
 fn validate_regular_file(file: &File, max_length: Option<usize>) -> Result<(), CacheFailure> {
 	let status = file_status(file)?;
+
 	if status.st_uid != effective_uid()
 		|| status.st_mode & libc::S_IFMT != libc::S_IFREG
 		|| status.st_mode & 0o7777 != PRIVATE_FILE_MODE
@@ -1651,6 +1836,7 @@ fn validate_regular_file(file: &File, max_length: Option<usize>) -> Result<(), C
 fn file_status(file: &File) -> Result<libc::stat, CacheFailure> {
 	loop {
 		let mut status = std::mem::MaybeUninit::<libc::stat>::uninit();
+
 		if unsafe { libc::fstat(file.as_raw_fd(), status.as_mut_ptr()) } == 0 {
 			return Ok(unsafe { status.assume_init() });
 		}
@@ -1664,11 +1850,14 @@ fn read_bounded(file: &File, maximum: usize) -> Result<Vec<u8>, CacheFailure> {
 	let status = file_status(file)?;
 	let length =
 		usize::try_from(status.st_size).map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?;
+
 	if length > maximum {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
+
 	let mut bytes = vec![0; length];
 	let mut offset = 0;
+
 	while offset < bytes.len() {
 		let read = unsafe {
 			libc::pread(
@@ -1678,14 +1867,17 @@ fn read_bounded(file: &File, maximum: usize) -> Result<Vec<u8>, CacheFailure> {
 				offset as libc::off_t,
 			)
 		};
+
 		if read == -1 && errno() == libc::EINTR {
 			continue;
 		}
 		if read <= 0 {
 			return Err(io_failure());
 		}
+
 		offset = checked_add(offset, read as usize)?;
 	}
+
 	if validated_length(file)? != length {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
@@ -1698,9 +1890,11 @@ fn page_bytes_and_digest(
 ) -> Result<(Vec<u8>, String), CacheFailure> {
 	let bytes =
 		serde_json::to_vec(page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+
 	if page.items.len() > MAX_PAGE_ITEMS || bytes.len() > MAX_PAGE_BYTES {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
+
 	let digest = sha256_hex(&bytes);
 
 	Ok((bytes, digest))
@@ -1711,6 +1905,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 	let digest = Sha256::digest(bytes);
 	let mut output = String::with_capacity(SHA256_HEX_LENGTH);
+
 	for byte in digest {
 		output.push(char::from(HEX[usize::from(byte >> 4)]));
 		output.push(char::from(HEX[usize::from(byte & 0x0f)]));
@@ -1729,13 +1924,16 @@ fn lock_exclusive(lock: &File) -> Result<(), CacheFailure> {
 		if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
 			return Ok(());
 		}
+
 		let error = errno();
+
 		if error == libc::EINTR {
 			continue;
 		}
 		if error == libc::EWOULDBLOCK || error == libc::EAGAIN {
 			return Err(io_failure());
 		}
+
 		return Err(io_failure());
 	}
 }
@@ -1766,6 +1964,7 @@ fn io_failure() -> CacheFailure {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use std::{
 		fs,
 		os::unix::fs::{PermissionsExt as _, symlink},
@@ -1773,7 +1972,40 @@ mod tests {
 	};
 
 	use decodex_protocol::CURRENT_VERSION;
+
 	use tempfile::TempDir;
+
+	#[derive(Clone, Copy, Debug)]
+	enum ParentExpectation {
+		Opens,
+		Refuses,
+	}
+
+	#[derive(Clone, Copy, Debug)]
+	enum NoFollowBoundary {
+		FinalParentLeaf,
+		CacheRoot,
+		PagesDirectory,
+		LockFile,
+	}
+
+	#[derive(Clone, Copy)]
+	enum DurabilityCase {
+		PreIndex,
+		PostIndexCleanup,
+	}
+
+	struct FailAt(DurabilityEdge);
+
+	impl FaultInjector for FailAt {
+		fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure> {
+			if edge == self.0 {
+				Err(CacheFailure::new(CacheDiagnostic::DurabilityFault))
+			} else {
+				Ok(())
+			}
+		}
+	}
 
 	fn host_temp_fixture() -> TempDir {
 		TempDir::new_in(std::env::temp_dir())
@@ -1845,8 +2077,8 @@ mod tests {
 			item_count: 0,
 			byte_length: 1,
 		};
-
 		let mut pages = CacheIndex::empty();
+
 		for number in 1_u8..=5 {
 			let request_key = if number == 1 {
 				CacheRequestKey::Head
@@ -1856,18 +2088,22 @@ mod tests {
 						.expect("history cursor is bounded"),
 				)
 			};
+
 			pages.entries.push(entry("bounded-pages", request_key, number, u64::from(number)));
 		}
 
 		evict_to_bounds(&mut pages, NOW).expect("page bounds evict deterministically");
+
 		let mut retained_recencies =
 			pages.entries.iter().map(|entry| entry.recency).collect::<Vec<_>>();
+
 		retained_recencies.sort_unstable();
 
 		assert_eq!(pages.entries.len(), 4);
 		assert_eq!(retained_recencies, [2, 3, 4, 5]);
 
 		let mut conversations = CacheIndex::empty();
+
 		conversations.entries.extend([
 			entry("oldest-conversation", CacheRequestKey::Head, 10, 1),
 			entry(
@@ -1879,6 +2115,7 @@ mod tests {
 				2,
 			),
 		]);
+
 		for number in 1_u8..=8 {
 			conversations.entries.push(entry(
 				&format!("retained-conversation-{number}"),
@@ -1889,6 +2126,7 @@ mod tests {
 		}
 
 		assert_eq!(conversation_count(&conversations), 9);
+
 		evict_to_bounds(&mut conversations, NOW)
 			.expect("conversation bounds evict deterministically");
 
@@ -1916,28 +2154,23 @@ mod tests {
 		assert_eq!(eviction_order(&higher_identity, &lower_identity), Ordering::Greater,);
 	}
 
-	#[derive(Clone, Copy, Debug)]
-	enum ParentExpectation {
-		Opens,
-		Refuses,
-	}
-
 	#[test]
 	fn absolute_parent_boundary_accepts_host_alias_and_refuses_missing_base() {
 		let temporary = host_temp_fixture();
 		let accepted_parent = temporary.path().join("accepted-parent");
 		let absent_parent = temporary.path().join("absent-base").join("cache-parent");
-
 		let cases = [
 			("host temporary path", accepted_parent.clone(), ParentExpectation::Opens),
 			("absent external base", absent_parent, ParentExpectation::Refuses),
 		];
+
 		for (name, parent, expectation) in cases {
 			let result = HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION);
 
 			match (expectation, result) {
 				(ParentExpectation::Opens, Ok(cache)) => {
 					drop(cache);
+
 					assert!(parent.is_dir(), "{name} creates the unchanged final leaf");
 				},
 				(ParentExpectation::Refuses, Err(_)) => {},
@@ -1959,14 +2192,6 @@ mod tests {
 		}
 	}
 
-	#[derive(Clone, Copy, Debug)]
-	enum NoFollowBoundary {
-		FinalParentLeaf,
-		CacheRoot,
-		PagesDirectory,
-		LockFile,
-	}
-
 	#[test]
 	fn shared_no_follow_boundaries_refuse_representative_symlinks() {
 		let cases = [
@@ -1986,6 +2211,7 @@ mod tests {
 					fs::create_dir(&target).expect("directory link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
 						.expect("directory link target is owner-private");
+
 					symlink(&target, &parent).expect("final parent leaf link is created");
 
 					parent.clone()
@@ -1997,6 +2223,7 @@ mod tests {
 					fs::create_dir(&target).expect("directory link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
 						.expect("directory link target is owner-private");
+
 					symlink(&target, &root).expect("cache root link is created");
 
 					root.clone()
@@ -2006,12 +2233,15 @@ mod tests {
 						HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
 							.expect("baseline cache opens"),
 					);
+
 					fs::create_dir(&target).expect("directory link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
 						.expect("directory link target is owner-private");
+
 					let pages = root.join("pages");
 
 					fs::remove_dir(&pages).expect("baseline pages directory is empty");
+
 					symlink(&target, &pages).expect("pages directory link is created");
 
 					pages
@@ -2021,12 +2251,15 @@ mod tests {
 						HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
 							.expect("baseline cache opens"),
 					);
+
 					fs::write(&target, b"").expect("file link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o600))
 						.expect("file link target is owner-private");
+
 					let lock = root.join("lock");
 
 					fs::remove_file(&lock).expect("baseline lock file is removed");
+
 					symlink(&target, &lock).expect("lock file link is created");
 
 					lock
@@ -2044,6 +2277,7 @@ mod tests {
 					.is_symlink(),
 				"{name} remains a symbolic link",
 			);
+
 			match boundary {
 				NoFollowBoundary::LockFile => assert!(
 					fs::read(&target).expect("file link target remains readable").is_empty(),
@@ -2078,13 +2312,16 @@ mod tests {
 
 		assert_eq!(serialized_bytes.as_slice(), expected_bytes);
 		assert_eq!(sha256_hex(expected_bytes), expected_digest);
+
 		publish(&mut cache, &request, &page, fresh_received_at);
 
 		assert_eq!(cache.index.entries.len(), 1);
 		assert_eq!(cache.index.entries[0].identity.page_sha256.as_str(), expected_digest);
+
 		let persisted_bytes = fs::read(&page_path).expect("published page is readable");
 
 		assert_eq!(persisted_bytes.as_slice(), expected_bytes);
+
 		drop(cache);
 
 		let mut reopened =
@@ -2096,11 +2333,14 @@ mod tests {
 
 		assert_eq!(hit.page(), &page);
 		assert_eq!(hit.fresh_received_at_unix_seconds(), fresh_received_at);
+
 		reopened.record_hit_recency(&hit).expect("eligible hit records bounded recency");
+
 		assert!(matches!(
 			reopened.lookup(&request, fresh_received_at + FRESH_ELIGIBILITY_SECONDS - 1),
 			CacheLookup::Hit(_)
 		));
+
 		for now in [fresh_received_at - 1, fresh_received_at + FRESH_ELIGIBILITY_SECONDS] {
 			assert_eq!(
 				reopened.lookup(&request, now),
@@ -2108,31 +2348,15 @@ mod tests {
 				"a hit cannot extend the immutable eligibility interval",
 			);
 		}
+
 		drop(reopened);
 
 		fs::write(&page_path, b"tampered").expect("fixture corrupts the page bytes");
+
 		let failure = HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
 			.expect_err("digest mismatch is refused");
 
 		assert_eq!(failure.diagnostic, CacheDiagnostic::Integrity);
-	}
-
-	struct FailAt(DurabilityEdge);
-
-	impl FaultInjector for FailAt {
-		fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure> {
-			if edge == self.0 {
-				Err(CacheFailure::new(CacheDiagnostic::DurabilityFault))
-			} else {
-				Ok(())
-			}
-		}
-	}
-
-	#[derive(Clone, Copy)]
-	enum DurabilityCase {
-		PreIndex,
-		PostIndexCleanup,
 	}
 
 	#[test]
@@ -2141,6 +2365,7 @@ mod tests {
 			("pre-index", DurabilityCase::PreIndex),
 			("post-index-cleanup", DurabilityCase::PostIndexCleanup),
 		];
+
 		for (name, case) in cases {
 			let temporary = host_temp_fixture();
 			let parent: PathBuf = temporary.path().join(name);
@@ -2171,6 +2396,7 @@ mod tests {
 				},
 				DurabilityCase::PostIndexCleanup => {
 					publish(&mut cache, &request, &baseline, fresh_received_at - 1);
+
 					let prepared = cache
 						.prepare_publication_with_faults(
 							&request,
@@ -2196,10 +2422,12 @@ mod tests {
 					assert_eq!(failure.diagnostic, CacheDiagnostic::DurabilityFault);
 				},
 			}
+
 			drop(cache);
 
 			let reopened =
 				HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION).expect("cache reopens");
+
 			match case {
 				DurabilityCase::PreIndex => assert_eq!(
 					reopened.lookup(&request, fresh_received_at),

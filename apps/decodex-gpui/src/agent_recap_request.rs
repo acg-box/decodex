@@ -13,10 +13,12 @@ pub(super) async fn run(
 	if *cancellation.borrow() || cancellation.has_changed().is_err() {
 		return;
 	}
+
 	let client = AgentClient::new(profile);
 	let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 	let mut cancellable = generate;
 	let mut request = generate.then(|| WireText::new(key.as_str()).expect("bounded identity"));
+
 	if generate {
 		let outcome = client
 			.execute(
@@ -24,6 +26,7 @@ pub(super) async fn run(
 				key,
 			)
 			.await;
+
 		if let Ok(AgentCommandResponse::Rejected { error }) = outcome {
 			let feedback = match error {
 				decodex_protocol::CommandError::ApplicationUnavailable { message } =>
@@ -32,9 +35,11 @@ pub(super) async fn run(
 					.into(),
 			};
 			let _ = updates.send(Some((None, feedback)));
+
 			return;
 		}
 	}
+
 	loop {
 		if *cancellation.borrow() || cancellation.has_changed().is_err() {
 			if cancellable && let Some(request_id) = request {
@@ -46,16 +51,21 @@ pub(super) async fn run(
 					)
 					.await;
 			}
+
 			let _ = updates.send(Some((
 				None,
 				"Recap cancelled locally. Refresh to check service status.".into(),
 			)));
+
 			return;
 		}
+
 		let response = client.recap(owner.clone()).await;
+
 		if *cancellation.borrow() || cancellation.has_changed().is_err() {
 			continue;
 		}
+
 		let state = match response {
 			Ok(state)
 				if state.thread_id.as_ref().is_none_or(|id| id == &thread)
@@ -66,6 +76,7 @@ pub(super) async fn run(
 					None,
 					"Recap could not be confirmed. Refresh before trying again.".into(),
 				)));
+
 				return;
 			},
 			Err(_) => {
@@ -74,15 +85,19 @@ pub(super) async fn run(
 					"Recap status is unavailable. Checking again; generation will not be repeated."
 						.into(),
 				)));
+
 				tokio::select! {
 					_ = cancellation.changed() => {},
 					_ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {},
 				}
+
 				continue;
 			},
 		};
+
 		request = state.request_id.clone();
 		cancellable = matches!(state.phase, Phase::Pending | Phase::Cancelling);
+
 		let active = matches!(state.phase, Phase::Pending | Phase::Cancelling | Phase::Ready);
 		let message = match state.phase {
 			Phase::Idle => "Generate a short recap of this conversation.",
@@ -93,9 +108,11 @@ pub(super) async fn run(
 			Phase::Cancelled => "This recap was cancelled or is no longer current.",
 		};
 		let _ = updates.send(Some((Some(state), message.into())));
+
 		if !active {
 			return;
 		}
+
 		tokio::select! {
 			_ = cancellation.changed() => {},
 			_ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},

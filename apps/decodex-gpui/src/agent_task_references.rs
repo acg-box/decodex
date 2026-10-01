@@ -6,11 +6,13 @@ impl AgentSurface {
 	pub(crate) fn visual_task_references(&mut self) {
 		self.graph_visible = false;
 		self.timeline_visible = false;
+
 		if let Some(snapshot) = &mut self.snapshot {
 			for work in &mut snapshot.work_items {
 				work.codex_thread_id = Some(format!("fixture-thread-{}", work.id));
 			}
 		}
+
 		self.task_references = vec![decodex_protocol::AgentTaskReferenceDto {
 			work_id: EntityId::new("verify").expect("fixture"),
 			thread_id: WireText::new("fixture-thread-verify").expect("fixture"),
@@ -24,7 +26,9 @@ impl AgentSurface {
 		let search = cx.new(|cx| {
 			ComposerInput::with_placeholder(45, "Search tasks", "Search task references", cx)
 		});
+
 		cx.observe(&search, |_, _, cx| cx.notify()).detach();
+
 		search
 	}
 
@@ -56,8 +60,10 @@ impl AgentSurface {
 			self.feedback = "Select at most 16 tasks.".into();
 		} else {
 			self.task_references.push(reference);
+
 			self.composer_menu = None;
 		}
+
 		cx.notify();
 	}
 
@@ -71,6 +77,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap_1();
 		let mut count = 0;
+
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot
 				.work_items
@@ -92,11 +99,13 @@ impl AgentSurface {
 				};
 				let reference = AgentTaskReferenceDto { work_id, thread_id, title };
 				let clicked = reference.clone();
+
 				list = list.child(
 					div()
 						.id(SharedString::from(format!("reference-task-{}", work.id)))
 						.debug_selector({
 							let id = format!("reference-task-{}", work.id);
+
 							move || id.clone()
 						})
 						.role(Role::Button)
@@ -134,10 +143,12 @@ impl AgentSurface {
 				count += 1;
 			}
 		}
+
 		if count == 0 {
 			list = list
 				.child(div().text_size(px(11.)).child("No matching tasks with a conversation."));
 		}
+
 		div()
 			.flex()
 			.flex_col()
@@ -157,10 +168,13 @@ impl AgentSurface {
 		if self.task_references.is_empty() {
 			return None;
 		}
+
 		let mut row = div().flex().flex_wrap().gap_1().px_1();
+
 		for reference in &self.task_references {
 			let remove = reference.clone();
 			let clicked = remove.clone();
+
 			row = row.child(
 				div()
 					.id(SharedString::from(format!(
@@ -174,6 +188,7 @@ impl AgentSurface {
 							reference.work_id.as_str(),
 							reference.thread_id.as_str()
 						);
+
 						move || id.clone()
 					})
 					.role(Role::Button)
@@ -206,6 +221,7 @@ impl AgentSurface {
 					.smooth(),
 			);
 		}
+
 		Some(row.into_any_element())
 	}
 }
@@ -227,19 +243,28 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			let first = reference("first");
 			let later = reference("later");
+
 			s.select_task_reference(first.clone(), cx);
 			s.select_task_reference(first.clone(), cx);
+
 			assert_eq!(s.task_references.len(), 1);
+
 			s.select_task_reference(later.clone(), cx);
 			s.apply_command_result(Err("disconnected".into()), Some("draft"), cx);
+
 			assert_eq!(s.task_references.len(), 2);
+
 			s.clear_sent_task_references(std::slice::from_ref(&first), true, None);
+
 			assert_eq!(s.task_references, vec![later.clone()]);
+
 			s.draft_profiles.tasks.insert("other".into(), vec![first.clone(), later.clone()]);
 			s.clear_sent_task_references(&[first], false, Some("other"));
+
 			assert_eq!(s.draft_profiles.tasks["other"], vec![later.clone()]);
 			assert_eq!(s.task_references, vec![later]);
 		});
@@ -250,67 +275,93 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let selected = reference("target");
+
 			s.select_task_reference(selected.clone(), cx);
+
 			let action = s.configured_send(
 				EntityId::new("agent").unwrap(),
 				HistoryText::new("Read it").unwrap(),
 				vec![],
 			);
+
 			match action {
 				AgentActionDto::SendConfigured { task_references, .. }
 				| AgentActionDto::Steer { task_references, .. } => assert_eq!(task_references, vec![selected]),
 				_ => panic!("expected message action"),
 			}
+
 			assert!(!s.stop_button(cx));
 		});
 	}
 	#[gpui::test]
 	fn real_picker_search_select_remove_and_manager_drafts(cx: &mut gpui::TestAppContext) {
 		use gpui::Focusable as _;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
+
 		let search = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_task_references();
 			s.task_references.clear();
+
 			s.task_reference_search.clone()
 		});
+
 		visual.update(|window, cx| {
 			window.focus(&search.focus_handle(cx), cx);
 			window.draw(cx).clear();
 		});
 		visual.simulate_keystrokes("v e r i f y");
+
 		std::thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert_eq!(search.read_with(visual, |input, _| input.content().to_owned()), "verify");
 		assert!(visual.debug_bounds("reference-task-flow").is_none());
+
 		let bounds = visual.debug_bounds("reference-task-verify").expect("matching task rendered");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.task_references.len(), 1);
 			assert_eq!(s.task_references[0].work_id.as_str(), "verify");
 			assert!(s.composer_menu.is_none());
+
 			let mut manager = s.snapshot.as_ref().unwrap().work_items[0].clone();
+
 			manager.id = "other-manager".into();
 			manager.kind = decodex_protocol::AgentWorkKindDto::Manager;
 			manager.parent_goal_id = Some("agent".into());
+
 			s.snapshot.as_mut().unwrap().work_items.push(manager);
 			s.open_page("other-manager", cx);
+
 			assert!(s.task_references.is_empty());
+
 			s.open_page("agent", cx);
+
 			assert_eq!(s.task_references.len(), 1);
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let chip = visual
 			.debug_bounds("selected-task-verify-fixture-thread-verify")
 			.expect("selected chip rendered");
+
 		visual.simulate_click(chip.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| assert!(s.task_references.is_empty()));
 	}

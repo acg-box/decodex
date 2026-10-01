@@ -1,15 +1,28 @@
 //! Rendered edits preserve inherited omissions until an explicit save.
 use super::*;
+
 use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
+struct ExposureView {
+	surface: Entity<AgentSurface>,
+}
+impl Render for ExposureView {
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.surface.update(cx, |s, cx| s.integrations_panel("root", cx))
+	}
+}
 
 #[gpui::test]
 fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut gpui::TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
 		ExposureView { surface }
 	});
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
+
 	surface.update(visual, |s, _| {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			runtime_source: Some(EntityId::new("native-source").unwrap()),
@@ -37,6 +50,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut gpui:
 				delivery_claimed: false,
 			}],
 		})));
+
 		s.integrations = Some(("root".into(), None));
 		s.app_exposure.owner = Some(("root".into(), "calendar".into()));
 		s.app_exposure.state = Some(State::Available {
@@ -49,11 +63,14 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut gpui:
 			last_outcome: None,
 		});
 	});
+
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(1180.), px(2600.)));
+		w.resize(gpui::size(px(1_180.), px(2_600.)));
 		w.draw(cx).clear();
 	});
+
 	let button = visual.debug_bounds("app-exposure-surface-0").expect("direct toggle");
+
 	visual.simulate_click(button.center(), Default::default());
 	surface.read_with(visual, |s, _| {
 		assert_eq!(s.app_exposure.draft, Some(vec![Surface::Deferred]));
@@ -62,45 +79,49 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut gpui:
 	visual.update(|w, cx| {
 		w.draw(cx).clear();
 	});
+
 	assert!(visual.debug_bounds("app-exposure-save").is_some());
+
 	let clear = visual.debug_bounds("app-exposure-clear").unwrap();
+
 	visual.simulate_click(clear.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, Some(vec![])));
 	visual.update(|w, cx| {
 		w.draw(cx).clear();
 	});
+
 	let inherit = visual.debug_bounds("app-exposure-inherit").unwrap();
+
 	visual.simulate_click(inherit.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, None));
 	visual.update(|w, cx| {
 		w.draw(cx).clear();
 	});
+
 	assert!(visual.debug_bounds("app-exposure-save").is_none());
+
 	surface.update(visual, |s, _| {
 		if let Some(State::Available { effective, .. }) = &mut s.app_exposure.state {
 			*effective = Some(vec!["future-surface".into()]);
 		}
 	});
+
 	visual.update(|w, cx| {
 		w.draw(cx).clear();
 	});
+
 	assert!(visual.debug_bounds("app-exposure-surface-0").is_none());
 	assert!(visual.debug_bounds("app-exposure-clear").is_none());
+
 	surface.update(visual, |s, _| {
 		let epoch = s.app_exposure.epoch;
 		let mut snapshot = s.snapshot.clone().unwrap();
+
 		snapshot.runtime_source = Some(EntityId::new("replacement-source").unwrap());
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+
 		assert!(s.app_exposure.epoch != epoch);
 		assert!(s.app_exposure.state.is_none());
 	});
-}
-
-struct ExposureView {
-	surface: Entity<AgentSurface>,
-}
-impl Render for ExposureView {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.integrations_panel("root", cx))
-	}
 }

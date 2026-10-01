@@ -16,6 +16,7 @@ impl AgentSurface {
 		if !self.creation_defaults_applied {
 			return true;
 		}
+
 		let Some(decodex_protocol::InitialModelCatalogResult::Available {
 			defaults: Some(defaults),
 			working_directory,
@@ -30,6 +31,7 @@ impl AgentSurface {
 			&& (self.creation_intent.reasoning || defaults.managed.model.is_none())
 			&& defaults.configured.model.is_none()
 			&& defaults.catalog_model.is_none();
+
 		missing_model
 			|| self.current_model_catalog(cx).is_none()
 			|| *account_revision <= 0
@@ -47,6 +49,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(decodex_protocol::InitialModelCatalogResult::Available {
 			defaults: Some(defaults),
 			working_directory,
@@ -57,6 +60,7 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if working_directory.as_str() != self.cwd.read(cx).content()
 			|| *account_revision <= 0
 			|| (!self.account.read(cx).content().is_empty()
@@ -64,6 +68,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let selected = resolve(
 			defaults,
 			&self.creation_intent,
@@ -76,16 +81,21 @@ impl AgentSurface {
 					.or_else(|| Some(decodex_protocol::ServiceTier::from_fast(self.fast))),
 			},
 		);
+
 		self.creation_defaults_applied = true;
 		// Keep incomplete explicit edits visible, but never manufacture a native default model.
 		if !self.creation_intent.model {
 			let Some(model) = selected.model else { return };
+
 			self.model.update(cx, |input, cx| input.set_content(model.as_str(), cx));
 		}
+
 		self.creation_inherit_effort = selected.reasoning_effort.is_none();
+
 		if let Some(effort) = selected.reasoning_effort {
 			self.effort = effort;
 		}
+
 		self.service_tier = selected.service_tier;
 		self.fast = self.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		self.creation_setup_present = true;
@@ -120,21 +130,31 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			s.composer.update(cx, |input, cx| input.set_content("Keep this unsent request", cx));
+
 			assert!(s.creation_defaults_need_refresh(cx));
 			assert!(s.composer_capability_error(cx).is_some());
+
 			s.creation_defaults = Some(InitialModelCatalogResult::Unavailable);
+
 			s.apply_creation_defaults(cx);
+
 			assert!(s.creation_defaults_need_refresh(cx));
 			assert_eq!(s.composer.read(cx).content(), "Keep this unsent request");
 			assert!(s.submission.command.is_none() && s.submission.waiting.is_none());
+
 			s.creation_intent.model = true;
 			s.creation_intent.reasoning = true;
+
 			assert!(s.creation_defaults_need_refresh(cx));
+
 			s.creation_intent.service_tier = true;
+
 			assert!(!s.creation_defaults_need_refresh(cx));
+
 			s.creation_intent = Default::default();
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: vec![],
@@ -147,7 +167,9 @@ mod tests {
 				models: vec![],
 				defaults: Some(Box::new(defaults())),
 			});
+
 			s.apply_creation_defaults(cx);
+
 			assert!(!s.creation_defaults_need_refresh(cx));
 			assert_eq!(s.model.read(cx).content(), "managed");
 			assert_eq!(s.composer.read(cx).content(), "Keep this unsent request");
@@ -159,6 +181,7 @@ mod tests {
 		let surface = cx.new(AgentSurface::new);
 		let saved = surface.update(cx, |s, cx| {
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: vec![],
 				memory_enabled: None,
@@ -170,23 +193,30 @@ mod tests {
 				models: vec![],
 				defaults: Some(Box::new(defaults())),
 			});
+
 			s.apply_creation_defaults(cx);
+
 			assert_eq!(s.model.read(cx).content(), "managed");
 			assert_eq!(s.creation_effort(), Some(ConversationReasoningEffort::Low));
 			assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
 			// Selecting effort opts out of the managed model, not just managed effort.
 			s.effort = ConversationReasoningEffort::High;
+
 			s.mark_effort_intent(cx);
+
 			assert_eq!(s.model.read(cx).content(), "project");
 			assert_eq!(s.creation_effort(), Some(ConversationReasoningEffort::High));
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
 			assert!(!s.creation_intent.model && s.creation_intent.reasoning);
 			assert!(s.submission.command.is_none(), "metadata and selections do not send");
+
 			s.creation_setup(cx).unwrap()
 		});
 		let restored = cx.new(AgentSurface::new);
+
 		restored.update(cx, |s, cx| {
 			s.restore_creation_setup(Some(&saved), cx);
+
 			assert_eq!(s.creation_intent, saved.intent.unwrap());
 			assert!(s.creation_defaults.is_none(), "re-read source after restart");
 			assert!(s.creation_defaults_need_refresh(cx));
@@ -198,19 +228,24 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+
 			let setup = s.creation_setup(cx).unwrap();
 			let mut old = serde_json::to_value(setup).unwrap();
+
 			old.as_object_mut().unwrap().remove("intent");
 			old.as_object_mut().unwrap().remove("defaults_applied");
 			s.restore_creation_setup(Some(&serde_json::from_value(old).unwrap()), cx);
+
 			assert!(
 				s.creation_intent.model
 					&& s.creation_intent.reasoning
 					&& s.creation_intent.service_tier
 			);
 			assert!(!s.creation_defaults_need_refresh(cx));
+
 			s.creation_intent = Default::default();
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: vec![],
@@ -227,7 +262,9 @@ mod tests {
 					catalog_model: None,
 				})),
 			});
+
 			s.apply_creation_defaults(cx);
+
 			assert!(s.creation_defaults_need_refresh(cx));
 			assert!(s.composer_capability_error(cx).is_some());
 		});
@@ -244,6 +281,7 @@ mod tests {
 				service_tier: None,
 			},
 		);
+
 		assert_eq!(selected.model.unwrap().as_str(), "chosen");
 		assert!(selected.reasoning_effort.is_none(), "do not retain stale managed effort");
 		assert_eq!(selected.service_tier.unwrap().as_str(), "priority");
@@ -252,6 +290,7 @@ mod tests {
 	#[gpui::test]
 	fn changed_source_and_pending_creation_do_not_apply_defaults(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: vec![],
@@ -264,16 +303,24 @@ mod tests {
 				models: vec![],
 				defaults: Some(Box::new(defaults())),
 			});
+
 			s.cwd.update(cx, |input, cx| input.set_content("/other", cx));
 			s.apply_creation_defaults(cx);
+
 			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
+
 			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
 			s.account.update(cx, |input, cx| input.set_content("different", cx));
 			s.apply_creation_defaults(cx);
+
 			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
+
 			s.account.update(cx, |input, cx| input.set_content("account", cx));
+
 			s.uncertain = true;
+
 			s.apply_creation_defaults(cx);
+
 			assert_eq!(s.model.read(cx).content(), creation_setup::DEFAULT_MODEL);
 		});
 	}

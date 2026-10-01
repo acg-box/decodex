@@ -27,11 +27,13 @@ impl Notice {
 
 	fn error(mut self) -> Self {
 		self.color = ui_theme::ERROR;
+
 		self
 	}
 
 	fn info(mut self) -> Self {
 		self.color = ui_theme::BLUE;
+
 		self
 	}
 }
@@ -62,6 +64,7 @@ impl Shell {
 		let popup_bounds =
 			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
 		let outside_bounds = popup_bounds.clone();
+
 		div()
 			.id("status-center")
 			.w(px(304.))
@@ -77,12 +80,14 @@ impl Shell {
 					&& !outside_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
 				{
 					s.status_open = false;
+
 					cx.notify();
 				}
 			}))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 				if open && event.keystroke.key == "escape" {
 					s.status_open = false;
+
 					cx.notify();
 					cx.stop_propagation();
 				}
@@ -118,6 +123,7 @@ impl Shell {
 						.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.status_open = !open;
+
 							cx.notify();
 						}))
 						.child(workspace_symbols::icon(if notices.is_empty() {
@@ -180,14 +186,20 @@ impl Shell {
 				)
 			})
 			.collect::<Vec<_>>();
+
 		self.account_notifications(&mut notices);
 		self.profile_notifications(&mut notices);
+
 		let agent = self.agent.read(cx);
+
 		if let Some((identity, detail)) = agent.question_arrival_notice() {
 			let mut notice = Notice::new("Question", detail, Recovery::None);
+
 			notice.identity = Some(identity);
+
 			notices.insert(0, notice);
 		}
+
 		notices.extend(
 			agent
 				.operation_notices()
@@ -202,17 +214,23 @@ impl Shell {
 				Recovery::None,
 			));
 		}
+
 		let mut seen = std::collections::HashSet::new();
+
 		notices.retain(|notice| seen.insert(notice.key()));
+
 		let current = notices.iter().map(Notice::key).collect::<std::collections::HashSet<_>>();
 		let mut dismissed = self.dismissed_notifications.borrow_mut();
+
 		dismissed.retain(|key| current.contains(key));
 		notices.retain(|notice| !dismissed.contains(&notice.key()));
+
 		notices
 	}
 
 	fn account_notifications(&self, notices: &mut Vec<Notice>) {
 		let snapshot = &self.accounts;
+
 		if snapshot.route_reopen_notice {
 			notices.push(
 				Notice::new(
@@ -223,6 +241,7 @@ impl Shell {
 				.info(),
 			);
 		}
+
 		if let Some(detail) = &self.account_status {
 			notices.push(Notice::new("Accounts", detail.to_string(), Recovery::Accounts));
 		}
@@ -239,6 +258,7 @@ impl Shell {
 		{
 			notices.push(Notice::new("Accounts", detail, Recovery::Accounts));
 		}
+
 		if matches!(
 			snapshot.load,
 			AccountsLoadState::Offline
@@ -252,9 +272,11 @@ impl Shell {
 				Recovery::Accounts,
 			));
 		}
+
 		if let Some(detail) = &self.account_login_error {
 			if detail.as_ref() != "Cancelling account login…" {
 				let notice = Notice::new("Account login", detail.to_string(), Recovery::Accounts);
+
 				notices.push(if detail.as_ref() == "Login code copied." {
 					notice.info()
 				} else {
@@ -282,6 +304,7 @@ impl Shell {
 				_ => {},
 			}
 		}
+
 		if matches!(
 			self.account_profile.load,
 			AccountProfileLoadState::Offline | AccountProfileLoadState::Refused
@@ -314,6 +337,7 @@ impl Shell {
 				}),
 			_ => None,
 		};
+
 		if let Some(detail) = detail {
 			let notice = Notice::new("Account profile", detail, Recovery::Accounts);
 			let requires_login = match self.account_profile.result.as_ref() {
@@ -323,6 +347,7 @@ impl Shell {
 					crate::account_profile::requires_login(*error),
 				_ => false,
 			};
+
 			notices.push(if requires_login { notice.error() } else { notice });
 		}
 	}
@@ -352,6 +377,7 @@ impl Shell {
 							.on_click(cx.listener(|s, _, _, cx| {
 								let notices =
 									s.notifications(&connection_presentation(s.connection), cx);
+
 								s.dismissed_notifications
 									.borrow_mut()
 									.extend(notices.iter().map(Notice::key));
@@ -361,11 +387,13 @@ impl Shell {
 					)
 				}),
 		);
+
 		if notices.is_empty() {
 			panel = panel.child(
 				div().text_size(px(11.)).text_color(rgb(WB_TEXT_MUTED)).child("No notifications."),
 			);
 		}
+
 		panel
 			.child(
 				div()
@@ -377,6 +405,7 @@ impl Shell {
 					.gap_3()
 					.children(notices.into_iter().enumerate().map(|(index, notice)| {
 						let key = notice.key();
+
 						div()
 							.flex()
 							.flex_col()
@@ -444,6 +473,7 @@ impl Shell {
 			Recovery::None => unreachable!(),
 			Recovery::LoginItems => "Open Login Items",
 		};
+
 		div()
 			.id(SharedString::from(format!("notice-action-{index}")))
 			.role(Role::Button)
@@ -460,6 +490,7 @@ impl Shell {
 			.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
+
 				match recovery {
 					Recovery::LoginItems => s.settings.update(cx, |settings, cx| {
 						settings.open_login_items_settings(event, window, cx)
@@ -471,6 +502,7 @@ impl Shell {
 					Recovery::Accounts => s.open_settings_window(Destination::Accounts, cx),
 					Recovery::None => {},
 				}
+
 				cx.notify();
 			}))
 			.child(label)
@@ -481,11 +513,13 @@ impl Shell {
 
 pub(crate) fn count_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+
 	crate::ui_preferences::boolean("DecodexNotificationCount", &VALUE, value, false)
 }
 
 pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+
 	crate::ui_preferences::boolean("DecodexQuestionNotices", &VALUE, value, true)
 }
 
@@ -495,11 +529,17 @@ mod tests {
 	#[test]
 	fn question_dismissal_uses_identity_instead_of_repeated_title() {
 		let mut first = Notice::new("Question", "Choose a format", Recovery::None);
+
 		first.identity = Some("first-question".into());
+
 		let mut second = Notice::new("Question", "Choose a format", Recovery::None);
+
 		second.identity = Some("second-question".into());
+
 		assert_ne!(first.key(), second.key());
+
 		let dismissed = std::collections::HashSet::from([first.key()]);
+
 		assert!(!dismissed.contains(&second.key()));
 	}
 
@@ -509,11 +549,14 @@ mod tests {
 	) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+
 		shell.update(visual, |s, cx| {
 			s.account_status = Some("Account change refused".into());
 			s.input_status = Some("Message was not delivered".into());
+
 			let connection = connection_presentation(s.connection);
 			let notices = s.notifications(&connection, cx);
+
 			assert!(
 				notices
 					.iter()
@@ -523,8 +566,10 @@ mod tests {
 				!notices.iter().any(|n| n.detail == "Message was not delivered"),
 				"thread delivery errors belong beside the conversation"
 			);
+
 			s.account_status = None;
 			s.input_status = None;
+
 			assert!(
 				!s.notifications(&connection, cx)
 					.iter()
@@ -537,20 +582,31 @@ mod tests {
 	fn dismissed_notice_stays_hidden_until_source_recovers(cx: &mut gpui::TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+
 		shell.update(visual, |s, cx| {
 			let connection = connection_presentation(s.connection);
+
 			s.account_status = Some("Failed".into());
+
 			let notices = s.notifications(&connection, cx);
 			let key = notices.iter().find(|n| n.title == "Accounts").unwrap().key();
+
 			s.dismissed_notifications.borrow_mut().insert(key);
+
 			assert!(!s.notifications(&connection, cx).iter().any(|n| n.title == "Accounts"));
+
 			s.account_status = Some("Different failure".into());
+
 			assert!(
 				s.notifications(&connection, cx).iter().any(|n| n.detail == "Different failure")
 			);
+
 			s.account_status = None;
+
 			s.notifications(&connection, cx);
+
 			s.account_status = Some("Failed".into());
+
 			assert!(s.notifications(&connection, cx).iter().any(|n| n.detail == "Failed"));
 		});
 	}

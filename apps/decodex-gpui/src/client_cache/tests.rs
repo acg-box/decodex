@@ -15,6 +15,25 @@ use crate::client_cache::{
 
 const PROTOCOL: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 
+struct OrderedFaults {
+	crash_at: Option<FaultPoint>,
+	seen: Vec<FaultPoint>,
+}
+impl FaultInjector for OrderedFaults {
+	fn check(&mut self, point: FaultPoint) -> Result<(), CacheError> {
+		self.seen.push(point);
+
+		if self.crash_at == Some(point) { Err(CacheError::InjectedCrash(point)) } else { Ok(()) }
+	}
+}
+
+struct HostFailure(FaultPoint);
+impl FaultInjector for HostFailure {
+	fn check(&mut self, point: FaultPoint) -> Result<(), CacheError> {
+		if self.0 == point { Err(CacheError::Io(ErrorKind::Other)) } else { Ok(()) }
+	}
+}
+
 fn authority(server: &str, schema: u64) -> CacheAuthority {
 	let server = ServerId::new(server).expect("test server identity is bounded");
 
@@ -262,25 +281,6 @@ fn server_protocol_and_schema_switches_are_explicit_and_never_inherit_objects() 
 	assert_eq!(current.authority, authority("server-b", 1));
 	assert_eq!(current.records, 0);
 	assert_eq!(current.uncertain_records, 0);
-}
-
-struct OrderedFaults {
-	crash_at: Option<FaultPoint>,
-	seen: Vec<FaultPoint>,
-}
-impl FaultInjector for OrderedFaults {
-	fn check(&mut self, point: FaultPoint) -> Result<(), CacheError> {
-		self.seen.push(point);
-
-		if self.crash_at == Some(point) { Err(CacheError::InjectedCrash(point)) } else { Ok(()) }
-	}
-}
-
-struct HostFailure(FaultPoint);
-impl FaultInjector for HostFailure {
-	fn check(&mut self, point: FaultPoint) -> Result<(), CacheError> {
-		if self.0 == point { Err(CacheError::Io(ErrorKind::Other)) } else { Ok(()) }
-	}
 }
 
 #[test]
@@ -596,7 +596,6 @@ fn open_rejects_over_cap_cumulative_content_before_hash_mismatch() {
 	let second = entity("second");
 	let first_bytes = vec![b'a'; 700];
 	let second_bytes = vec![b'b'; 700];
-
 	let generation = cache
 		.publish(
 			&[
@@ -675,7 +674,6 @@ fn symlinks_and_foreign_shapes_fail_closed_while_full_disposal_never_follows_the
 	let outside = temporary.path().join("outside");
 
 	fs::write(&outside, b"must-survive").expect("outside fixture is writable");
-
 	std::os::unix::fs::symlink(&outside, root.join("foreign-link"))
 		.expect("test symlink is created");
 

@@ -1,5 +1,6 @@
 //! Explicit local input removal. No history mutation or submission occurs here.
 use super::*;
+
 use std::collections::BTreeSet;
 
 pub(super) struct Removal {
@@ -7,36 +8,6 @@ pub(super) struct Removal {
 	before: DesktopPromptEditDraft,
 	part: usize,
 	markers: BTreeSet<(usize, usize)>,
-}
-
-pub(super) fn label(input: &PromptDraft, index: usize) -> String {
-	let part = &input.parts()[index];
-	let kind = part["type"].as_str().unwrap_or("input");
-	let title = match kind {
-		"skill" | "mention" => part["name"].as_str(),
-		"image" => part["fileId"].as_str(),
-		"localImage" | "localAudio" => part["path"]
-			.as_str()
-			.and_then(|path| std::path::Path::new(path).file_name())
-			.and_then(|name| name.to_str()),
-		_ => None,
-	};
-	let kind = match kind {
-		"image" | "localImage" => {
-			let number = input.parts()[..=index]
-				.iter()
-				.filter(|part| matches!(part["type"].as_str(), Some("image" | "localImage")))
-				.count();
-			format!("Image #{number}")
-		},
-		"audio" | "localAudio" => "audio".into(),
-		"mention" => "reference".into(),
-		other => other.into(),
-	};
-	match title {
-		Some(title) => format!("{kind}: {}", title.chars().take(80).collect::<String>()),
-		None => kind,
-	}
 }
 
 impl AgentSurface {
@@ -52,12 +23,14 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		self.prompt_edit.removal = Some(Removal {
 			key: unique_command(),
 			before: expected.clone(),
 			part,
 			markers: BTreeSet::new(),
 		});
+
 		cx.notify();
 	}
 
@@ -65,9 +38,11 @@ impl AgentSurface {
 		if self.prompt_edit.removal.as_ref().is_none_or(|removal| removal.key != key) {
 			return;
 		}
+
 		let Some(removal) = self.prompt_edit.removal.take() else {
 			return;
 		};
+
 		if !self.prompt_editor_source_current()
 			|| self.prompt_edit.draft.as_ref() != Some(&removal.before)
 			|| self.prompt_edit.editors.iter().any(|(index, editor)| {
@@ -75,13 +50,17 @@ impl AgentSurface {
 			}) {
 			self.prompt_edit.feedback =
 				"The draft changed. Select the input to remove again.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let mut draft = removal.before;
 		let markers: Vec<_> = removal.markers.into_iter().collect();
 		let result = draft.input.remove_bound_part(removal.part, &markers).and_then(|()| {
 			let mut editors = Vec::new();
+
 			for (index, part) in
 				draft.input.parts().iter().enumerate().filter(|(_, part)| part["type"] == "text")
 			{
@@ -98,18 +77,24 @@ impl AgentSurface {
 					Some(editor) => editor,
 					None => {
 						let editor = cx.new(|cx| ComposerInput::new(0, cx));
+
 						editor.update(cx, |editor, cx| editor.set_native_part(part.clone(), cx))?;
+
 						editor
 					},
 				};
+
 				editors.push((index, editor));
 			}
+
 			self.bind_prompt_editors(draft, editors, cx)
 		});
+
 		self.prompt_edit.feedback = match result {
 			Ok(()) => "Input removed from this draft. History is unchanged.".into(),
 			Err(error) => error.into(),
 		};
+
 		cx.notify();
 	}
 
@@ -134,17 +119,20 @@ impl AgentSurface {
 			.child(
 				"Also select any references to remove from the message. Unselected text is kept.",
 			);
+
 		if matches!(
 			removal.before.input.parts()[removal.part]["type"].as_str(),
 			Some("image" | "localImage")
 		) {
 			panel = panel.child("Remaining images will be numbered in their new order. Review any image numbers in your message.");
 		}
+
 		for (part_index, part) in removal.before.input.parts().iter().enumerate() {
 			let Some(elements) = part["text_elements"].as_array() else {
 				continue;
 			};
 			let text = part["text"].as_str().unwrap_or_default();
+
 			for (element_index, element) in elements.iter().enumerate() {
 				let title = element["placeholder"]
 					.as_str()
@@ -152,6 +140,7 @@ impl AgentSurface {
 						let start =
 							usize::try_from(element["byteRange"]["start"].as_u64()?).ok()?;
 						let end = usize::try_from(element["byteRange"]["end"].as_u64()?).ok()?;
+
 						text.get(start..end)
 					})
 					.unwrap_or("Text reference")
@@ -160,6 +149,7 @@ impl AgentSurface {
 					.collect::<String>();
 				let identity = (part_index, element_index);
 				let key = removal.key.clone();
+
 				panel = panel.child(super::super::mcp_forms::mcp_button(
 					format!("prompt-remove-marker-{part_index}-{element_index}"),
 					title,
@@ -172,13 +162,16 @@ impl AgentSurface {
 						{
 							removal.markers.remove(&identity);
 						}
+
 						cx.notify();
 					},
 				));
 			}
 		}
+
 		let confirm_key = removal.key.clone();
 		let cancel_key = removal.key.clone();
+
 		panel
 			.child(self.workspace_action(
 				"prompt-remove-confirm".into(),
@@ -197,10 +190,43 @@ impl AgentSurface {
 					{
 						s.prompt_edit.removal = None;
 					}
+
 					cx.notify();
 				},
 				cx,
 			))
 			.into_any_element()
+	}
+}
+
+pub(super) fn label(input: &PromptDraft, index: usize) -> String {
+	let part = &input.parts()[index];
+	let kind = part["type"].as_str().unwrap_or("input");
+	let title = match kind {
+		"skill" | "mention" => part["name"].as_str(),
+		"image" => part["fileId"].as_str(),
+		"localImage" | "localAudio" => part["path"]
+			.as_str()
+			.and_then(|path| std::path::Path::new(path).file_name())
+			.and_then(|name| name.to_str()),
+		_ => None,
+	};
+	let kind = match kind {
+		"image" | "localImage" => {
+			let number = input.parts()[..=index]
+				.iter()
+				.filter(|part| matches!(part["type"].as_str(), Some("image" | "localImage")))
+				.count();
+
+			format!("Image #{number}")
+		},
+		"audio" | "localAudio" => "audio".into(),
+		"mention" => "reference".into(),
+		other => other.into(),
+	};
+
+	match title {
+		Some(title) => format!("{kind}: {}", title.chars().take(80).collect::<String>()),
+		None => kind,
 	}
 }

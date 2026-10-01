@@ -19,69 +19,12 @@ pub(super) struct StatusPanel {
 	surface: Option<GlassPanel>,
 	_observation: Subscription,
 }
-impl Shell {
-	pub(super) fn prepare_native_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		// Drive the fade from the visible parent: AppKit stops the display link
-		// of a fully transparent or hidden child window.
-		let opacity = crate::ui_motion::native_presence(
-			"status-native-opacity",
-			self.status_open,
-			window,
-			cx,
-		);
-		if let Some(child) = self.native_status.child {
-			let viewport = window.viewport_size();
-			let height = self.native_status.height.max(48.);
-			let bounds = Bounds::new(
-				point(
-					viewport.width - px(328. + ui_theme::CONTROL_MARGIN - 12.),
-					viewport.height
-						- px(ui_theme::CONTROL_MARGIN
-							+ ui_theme::CONTROL_GROUP_HEIGHT
-							+ ui_theme::CONTROL_MARGIN
-							- 12.
-							+ height),
-				),
-				size(px(328.), px(height)),
-			);
-			cx.defer(move |cx| {
-				let _ = child.update(cx, |s, window, cx| {
-					if let Some(surface) = &mut s.surface {
-						if surface.place(bounds) {
-							window.bounds_changed(cx);
-						}
-						surface.set_opacity(opacity);
-						surface.set_visible(opacity > 0.001);
-					}
-				});
-			});
-			return;
-		}
-		if !self.status_open || self.native_status.creating || self.native_status.failed {
-			return;
-		}
-		self.native_status.creating = true;
-		let owner = cx.entity();
-		let parent = window.window_handle();
-		cx.defer(move |cx| {
-			let child = parent
-				.update(cx, |_, window, cx| create(owner.clone(), parent, window, cx))
-				.ok()
-				.flatten();
-			owner.update(cx, |s, cx| {
-				s.native_status.child = child;
-				s.native_status.creating = false;
-				s.native_status.failed = child.is_none();
-				cx.notify();
-			});
-		});
-	}
-}
 impl Render for StatusPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
 		let panel = owner
 			.update(cx, |s, cx| s.render_status_panel(&connection_presentation(s.connection), cx));
+
 		div()
 			.w_full()
 			.p(px(12.))
@@ -89,10 +32,12 @@ impl Render for StatusPanel {
 			.text_color(gpui::rgb(ui_theme::TEXT))
 			.on_key_down({
 				let owner = owner.clone();
+
 				move |event, _, cx| {
 					if event.keystroke.key == "escape" {
 						owner.update(cx, |s, cx| {
 							s.status_open = false;
+
 							cx.notify();
 						});
 					}
@@ -101,9 +46,11 @@ impl Render for StatusPanel {
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
 					let height = f32::from(bounds.size.height) + 24.;
+
 					owner.update(cx, |s, cx| {
 						if (s.native_status.height - height).abs() > 0.5 {
 							s.native_status.height = height;
+
 							cx.notify();
 						}
 					});
@@ -123,6 +70,75 @@ impl Render for StatusPanel {
 					}])
 					.child(panel),
 			)
+	}
+}
+
+impl Shell {
+	pub(super) fn prepare_native_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		// Drive the fade from the visible parent: AppKit stops the display link
+		// of a fully transparent or hidden child window.
+		let opacity = crate::ui_motion::native_presence(
+			"status-native-opacity",
+			self.status_open,
+			window,
+			cx,
+		);
+
+		if let Some(child) = self.native_status.child {
+			let viewport = window.viewport_size();
+			let height = self.native_status.height.max(48.);
+			let bounds = Bounds::new(
+				point(
+					viewport.width - px(328. + ui_theme::CONTROL_MARGIN - 12.),
+					viewport.height
+						- px(ui_theme::CONTROL_MARGIN
+							+ ui_theme::CONTROL_GROUP_HEIGHT
+							+ ui_theme::CONTROL_MARGIN
+							- 12.
+							+ height),
+				),
+				size(px(328.), px(height)),
+			);
+
+			cx.defer(move |cx| {
+				let _ = child.update(cx, |s, window, cx| {
+					if let Some(surface) = &mut s.surface {
+						if surface.place(bounds) {
+							window.bounds_changed(cx);
+						}
+
+						surface.set_opacity(opacity);
+						surface.set_visible(opacity > 0.001);
+					}
+				});
+			});
+
+			return;
+		}
+
+		if !self.status_open || self.native_status.creating || self.native_status.failed {
+			return;
+		}
+
+		self.native_status.creating = true;
+
+		let owner = cx.entity();
+		let parent = window.window_handle();
+
+		cx.defer(move |cx| {
+			let child = parent
+				.update(cx, |_, window, cx| create(owner.clone(), parent, window, cx))
+				.ok()
+				.flatten();
+
+			owner.update(cx, |s, cx| {
+				s.native_status.child = child;
+				s.native_status.creating = false;
+				s.native_status.failed = child.is_none();
+
+				cx.notify();
+			});
+		});
 	}
 }
 fn create(
@@ -147,6 +163,7 @@ fn create(
 			move |_, cx| {
 				cx.new(|cx| {
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+
 					StatusPanel { owner, surface: None, _observation: observation }
 				})
 			},
@@ -155,18 +172,23 @@ fn create(
 	let installed = child
 		.update(cx, |s, child_window, _| {
 			s.surface = GlassPanel::install_overlay(window, child_window);
+
 			s.surface.is_some()
 		})
 		.unwrap_or(false);
+
 	if !installed {
 		let _ = child.update(cx, |_, window, _| window.remove_window());
+
 		return None;
 	}
+
 	cx.on_window_closed(move |cx, id| {
 		if id == parent.window_id() {
 			let _ = child.update(cx, |_, window, _| window.remove_window());
 		}
 	})
 	.detach();
+
 	Some(child)
 }

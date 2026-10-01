@@ -16,16 +16,21 @@ impl AgentSurface {
 		let AgentRequestResult::Available { event_id, method, request_json, .. } = request else {
 			return;
 		};
+
 		if method != "mcpServer/elicitation/request" || self.mcp_form_event == Some(*event_id) {
 			return;
 		}
+
 		self.mcp_form_event = Some(*event_id);
 		self.mcp_url_opened = None;
+
 		self.mcp_inputs.clear();
 		self.mcp_answers.clear();
+
 		let Ok(value) = serde_json::from_str::<Value>(request_json.as_str()) else {
 			return;
 		};
+
 		if let Ok(fields) = decodex_protocol::mcp_request_fields(&value) {
 			for field in fields.into_iter().filter(|field| field.choices.is_empty()) {
 				self.mcp_inputs.insert(
@@ -53,53 +58,70 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if *event_id != event
 			|| method != "mcpServer/elicitation/request"
 			|| self.mcp_form_event != Some(event)
 		{
 			return;
 		}
+
 		let Ok(value) = serde_json::from_str::<Value>(request_json.as_str()) else {
 			return;
 		};
+
 		if !matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
 			return;
 		}
+
 		let result = (|| -> Result<Value, String> {
 			let fields = decodex_protocol::mcp_request_fields(&value)?;
+
 			if fields.is_empty() {
 				return Ok(Value::Null);
 			}
+
 			let mut answers = self.mcp_answers.clone();
+
 			for field in &fields {
 				if let Some(input) = self.mcp_inputs.get(&field.id) {
 					let text = input.read(cx).content();
+
 					if text.is_empty() {
 						continue;
 					}
+
 					let answer = if field.kind == "string" {
 						json!(text)
 					} else {
 						serde_json::from_str(text)
 							.map_err(|_| format!("Enter a number for {}.", field.title))?
 					};
+
 					answers.insert(field.id.clone(), answer);
 				}
 			}
+
 			decodex_protocol::mcp_form_content(&fields, &answers)
 		})();
+
 		match result {
 			Ok(content) => {
 				let response = json!({"action":"accept","content":content,"_meta":persist.map(|scope|json!({"persist":scope}))});
+
 				if let Err(message) = decodex_protocol::validate_mcp_response(&value, &response) {
 					self.feedback = message;
+
 					cx.notify();
+
 					return;
 				}
+
 				self.respond(response.to_string(), cx);
 			},
 			Err(message) => {
 				self.feedback = message;
+
 				cx.notify();
 			},
 		}
@@ -114,6 +136,7 @@ impl AgentSurface {
 		if value["_meta"]["codex_approval_kind"] == "tool_suggestion" {
 			return self.installation_panel(event, value, cx);
 		}
+
 		let mut panel = div()
 			.id("mcp-form-panel")
 			.flex()
@@ -129,6 +152,7 @@ impl AgentSurface {
 						.to_owned(),
 				),
 			);
+
 		if let Some(account) = mcp_account_label(value) {
 			panel =
 				panel.child(div().debug_selector(|| "mcp-account-context".into()).child(account));
@@ -143,24 +167,29 @@ impl AgentSurface {
 		}
 
 		panel = self.mcp_verification_link(panel, event, value, cx);
+
 		let fields =
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
 				decodex_protocol::mcp_request_fields(value)
 			} else {
 				Err("This request requires a different verification flow.".into())
 			};
+
 		match fields {
 			Ok(fields) => {
 				let empty = fields.is_empty();
+
 				for field in fields {
 					panel = panel.child(self.mcp_field_row(event, field, cx));
 				}
+
 				if empty {
 					for (scope, label) in
 						[("session", "Allow for this session"), ("always", "Always allow")]
 					{
 						let response =
 							json!({"action":"accept","content":null,"_meta":{"persist":scope}});
+
 						if decodex_protocol::validate_mcp_response(value, &response).is_ok() {
 							panel = panel.child(mcp_button(
 								format!("mcp-persist-{scope}"),
@@ -172,6 +201,7 @@ impl AgentSurface {
 						}
 					}
 				}
+
 				panel = panel.child(mcp_button(
 					"mcp-submit".into(),
 					"Submit response".into(),
@@ -185,6 +215,7 @@ impl AgentSurface {
 					panel = panel.child(muted(message));
 				},
 		}
+
 		for (action, label) in [("decline", "Decline"), ("cancel", "Cancel")] {
 			panel = panel.child(mcp_button(
 				format!("mcp-{action}"),
@@ -201,6 +232,7 @@ impl AgentSurface {
 				},
 			));
 		}
+
 		panel
 			.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
 				s.submit_mcp_form(event, cx);
@@ -227,6 +259,7 @@ impl AgentSurface {
 				}) {
 				let url = url.to_string();
 				let open_url = url.clone();
+
 				panel = panel.child(url.clone()).child(mcp_button(
 					"mcp-open-url".into(),
 					"Open verification page".into(),
@@ -235,11 +268,14 @@ impl AgentSurface {
 					move |s, cx| {
 						if s.mcp_request_is_current(event) {
 							cx.open_url(&open_url);
+
 							s.mcp_url_opened = Some((event, open_url.clone()));
+
 							cx.notify();
 						}
 					},
 				));
+
 				if self.mcp_url_opened.as_ref() == Some(&(event, url.clone())) {
 					panel = panel.child(mcp_button(
 						"mcp-confirm-url".into(),
@@ -264,6 +300,7 @@ impl AgentSurface {
 					panel.child(muted("A valid HTTP or HTTPS verification link is unavailable."));
 			}
 		}
+
 		panel
 	}
 
@@ -278,12 +315,14 @@ impl AgentSurface {
 			field.title,
 			if field.required { " *" } else { "" }
 		));
+
 		if let Some(description) = field.description {
 			row = row.child(muted(description));
 		}
 		if let Some(input) = self.mcp_inputs.get(&field.id) {
 			row = row.child(div().h(px(40.0)).child(input.clone()));
 		}
+
 		for (index, choice) in field.choices.into_iter().enumerate() {
 			let id = field.id.clone();
 			let answer = choice.value;
@@ -295,6 +334,7 @@ impl AgentSurface {
 					value == &answer
 				}
 			});
+
 			row = row.child(mcp_button(
 				format!("mcp-{event}-{id}-{index}"),
 				choice.label,
@@ -306,6 +346,7 @@ impl AgentSurface {
 					}
 					if multiple {
 						let entry = s.mcp_answers.entry(id.clone()).or_insert_with(|| json!([]));
+
 						if let Some(values) = entry.as_array_mut() {
 							if values.contains(&answer) {
 								values.retain(|value| value != &answer);
@@ -316,10 +357,12 @@ impl AgentSurface {
 					} else {
 						s.mcp_answers.insert(id.clone(), answer.clone());
 					}
+
 					cx.notify();
 				},
 			));
 		}
+
 		row
 	}
 }
@@ -333,6 +376,7 @@ pub(super) fn mcp_button(
 ) -> gpui::AnyElement {
 	let action = std::rc::Rc::new(action);
 	let click = action.clone();
+
 	div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
@@ -347,6 +391,7 @@ pub(super) fn mcp_button(
 		.on_key_down(cx.listener(move |s, key: &gpui::KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&key.keystroke.key.as_str()) {
 				cx.stop_propagation();
+
 				action(s, cx);
 			}
 		}))
@@ -358,9 +403,11 @@ fn mcp_account_label(value: &Value) -> Option<String> {
 	if value["serverName"] != "codex_apps" {
 		return None;
 	}
+
 	let link = value.pointer("/_meta/link_id")?.as_str().filter(|link| {
-		!link.trim().is_empty() && link.len() <= 4096 && !link.chars().any(char::is_control)
+		!link.trim().is_empty() && link.len() <= 4_096 && !link.chars().any(char::is_control)
 	})?;
+
 	Some(format!("Connected account link: {link}"))
 }
 
@@ -370,13 +417,20 @@ mod tests {
 	#[test]
 	fn account_label_uses_only_native_apps_metadata() {
 		let request = json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
+
 		assert_eq!(mcp_account_label(&request), Some("Connected account link:  work/link ".into()));
+
 		let mut other = request.clone();
+
 		other["serverName"] = json!("custom_mcp");
+
 		assert_eq!(mcp_account_label(&other), None);
+
 		other = request;
-		for link in [Value::Null, json!(" "), json!("account\nname"), json!("x".repeat(4097))] {
+
+		for link in [Value::Null, json!(" "), json!("account\nname"), json!("x".repeat(4_097))] {
 			other["_meta"]["link_id"] = link;
+
 			assert_eq!(mcp_account_label(&other), None);
 		}
 	}
@@ -385,7 +439,9 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
                 runtime_source: None,
@@ -398,32 +454,43 @@ mod tests {
                 }],
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
+
             let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
+
             s.prepare_mcp_inputs(&request,cx);
+
             s.request=Some(request);
+
             s.submit_mcp_form_with_scope(7,Some("always"),cx);
+
             assert_eq!(s.feedback,"This persistence scope was not offered");
+
             s.feedback.clear();
             s.submit_mcp_form_with_scope(6,Some("session"),cx);
+
             assert!(s.feedback.is_empty());
             assert!(s.submission.command.is_none());
         });
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("mcp-submit").is_some(), "form submit must render");
 		assert!(
 			visual.debug_bounds("mcp-account-context").is_some(),
 			"show account before settings read"
 		);
 		assert!(visual.debug_bounds("mcp-persist-always").is_none());
+
 		let bounds = visual.debug_bounds("mcp-persist-session").expect("offered session action");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert!(s.submission.command.is_none());
 		});
+
 		for schema in [
 			Value::Null,
 			json!(true),
@@ -439,9 +506,13 @@ mod tests {
 					)
 					.unwrap(),
 				};
+
 				s.prepare_mcp_inputs(&request, cx);
+
 				s.request = Some(request);
+
 				s.submit_mcp_form(7, cx);
+
 				assert_eq!(
 					s.feedback,
 					if schema.is_object() {
@@ -451,11 +522,14 @@ mod tests {
 					}
 				);
 				assert!(s.submission.command.is_none());
+
 				cx.notify();
 			});
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			assert!(visual.debug_bounds("mcp-submit").is_none());
 			assert!(visual.debug_bounds("mcp-decline").is_some());
 			assert!(visual.debug_bounds("mcp-cancel").is_some());
@@ -465,7 +539,9 @@ mod tests {
 	#[gpui::test]
 	fn url_open_requires_separate_explicit_confirmation(cx: &mut gpui::TestAppContext) {
 		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
                 runtime_source: None,
@@ -478,17 +554,24 @@ mod tests {
                 }],
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
+
             let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":"url","serverName":"test","message":"Sign in","url":"https://example.test/verify","elicitationId":"verification"}).to_string()).unwrap()};
+
             s.prepare_mcp_inputs(&request,cx);
+
             s.request=Some(request);
+
             cx.notify();
         });
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("mcp-confirm-url").is_none());
+
 		let bounds = visual.debug_bounds("mcp-open-url").expect("verification link");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.mcp_url_opened, Some((7, "https://example.test/verify".into())));
@@ -498,11 +581,15 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let bounds =
 			visual.debug_bounds("mcp-confirm-url").expect("explicit confirmation after open");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
+
 			let request = AgentRequestResult::Available {
 				event_id: 8,
 				work_id: "root".into(),
@@ -512,15 +599,21 @@ mod tests {
 				)
 				.unwrap(),
 			};
+
 			s.prepare_mcp_inputs(&request, cx);
+
 			s.request = Some(request);
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 8;
+
 			assert!(s.mcp_url_opened.is_none());
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("mcp-open-url").is_none());
 		assert!(visual.debug_bounds("mcp-confirm-url").is_none());
 	}
@@ -529,16 +622,22 @@ mod tests {
 	fn form_defaults_are_not_answers_and_same_request_keeps_drafts(cx: &mut gpui::TestAppContext) {
 		for mode in ["form", "openai/form", "openaiForm"] {
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx,|s,cx| {
             let request=AgentRequestResult::Available {event_id:7,work_id:"agent".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":mode,"requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
+
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("agent".into());
             s.submit_mcp_form(7,cx);
+
             assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());
+
             s.mcp_answers.insert("agree".into(),json!(false));
             s.mcp_inputs["name"].update(cx,|input,cx|input.set_content("My name",cx));
             s.prepare_mcp_inputs(&request,cx);
+
             assert_eq!(s.mcp_inputs["name"].read(cx).content(),"My name");
             assert_eq!(s.mcp_answers["agree"],false);
+
             s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
         });

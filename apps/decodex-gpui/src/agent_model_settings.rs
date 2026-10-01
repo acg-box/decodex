@@ -1,14 +1,7 @@
 //! Source-checked native observations with explicit next-message choices kept separate.
 use super::{mcp_forms::mcp_button, *};
+
 use decodex_protocol::AgentModelSettingsResult as State;
-/// Display native specialty only in choices; compact current-model controls keep their name.
-pub(super) fn model_choice_label(model: &decodex_protocol::AgentModelDto) -> String {
-	match model.specialty.as_deref() {
-		Some("cyber") => format!("{} · Cybersecurity", model.name),
-		Some(specialty) => format!("{} · {specialty}", model.name),
-		None => model.name.clone(),
-	}
-}
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -18,6 +11,7 @@ pub(super) struct Panel {
 	read_at: Option<std::time::Instant>,
 	epoch: u64,
 }
+
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
 		if self.sending
@@ -26,6 +20,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
 			self.read_model_settings(&owner, cx);
 		}
@@ -33,12 +28,14 @@ impl AgentSurface {
 
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
 		let Some(model) = self.composer_model_value(cx) else { return "Task model".into() };
+
 		if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
 			self.current_model_catalog(cx)
 			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
 		{
 			return entry.name.clone();
 		}
+
 		model
 	}
 
@@ -46,6 +43,7 @@ impl AgentSurface {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else {
 			return Some(self.model.read(cx).content().into());
 		};
+
 		if let Some(model) = self.draft_profiles.execution.choice(&owner).model {
 			return Some(model.as_str().into());
 		}
@@ -54,6 +52,7 @@ impl AgentSurface {
 		{
 			return Some(model.as_str().into());
 		}
+
 		None
 	}
 
@@ -65,9 +64,11 @@ impl AgentSurface {
 				self.effort.as_str().into()
 			};
 		};
+
 		if let Some(effort) = self.draft_profiles.execution.choice(&owner).reasoning_effort {
 			return effort.as_str().into();
 		}
+
 		if let Some(State::Available { reasoning_effort: Some(effort), .. }) =
 			self.model_settings.observations.get(&owner)
 		{
@@ -90,8 +91,10 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let State::Available { reasoning_effort, .. } = state else { return };
 		let choice = self.draft_profiles.execution.choice(work);
+
 		if choice.reasoning_effort.is_none()
 			&& let Some(effort) = reasoning_effort
 			&& let Ok(effort) = serde_json::from_value(serde_json::json!(effort.as_str()))
@@ -110,13 +113,17 @@ impl AgentSurface {
 			!= next.runtime_source.as_ref()
 		{
 			self.reset_model_settings();
+
 			return;
 		}
+
 		let changed = self.model_settings.observations.keys().chain(self.model_settings.work.iter()).any(|work| {
 			let before = self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 			let after = next.work_items.iter().find(|w| &w.id == work);
+
 			!matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.active_turn_id==b.active_turn_id && a.dispatch_state==b.dispatch_state)
 		});
+
 		if changed {
 			self.reset_model_settings();
 		}
@@ -135,6 +142,7 @@ impl AgentSurface {
 			cx,
 			move |s, cx| s.read_model_settings(&owner, cx),
 		));
+
 		if self.model_settings.observations.contains_key(&work.id)
 			|| self.model_settings.work.as_ref() == Some(&work.id)
 		{
@@ -144,6 +152,7 @@ impl AgentSurface {
 				.get(&work.id)
 				.map(settings_text)
 				.unwrap_or_else(|| "Reading native settings…".into());
+
 			panel = panel
 				.child(
 					div().debug_selector(|| "native-model-settings-observation".into()).child(text),
@@ -152,6 +161,7 @@ impl AgentSurface {
 					"Last read of task settings. Individual turns may use different settings.",
 				));
 		}
+
 		panel.into_any_element()
 	}
 
@@ -162,35 +172,48 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let composer = self.composer_manager.clone().or_else(|| self.root_id());
+
 		self.model_settings
 			.observations
 			.retain(|key, _| self.selected.as_ref() == Some(key) || composer.as_ref() == Some(key));
+
 		self.model_settings.work = Some(work.into());
+
 		cx.notify();
+
 		let binding = self.snapshot.as_ref().and_then(|snapshot| {
 			let thread =
 				snapshot.work_items.iter().find(|w| w.id == work)?.codex_thread_id.clone()?;
+
 			Some((snapshot.runtime_source.clone(), thread))
 		});
 		let (Some(profile), Some((source, thread)), Ok(work_id)) =
 			(self.profile.clone(), binding, EntityId::new(work.to_owned()))
 		else {
 			self.model_settings.observations.insert(work.into(), State::Unavailable);
+
 			return;
 		};
 		let selection = self.selected.clone();
 		let intent_revision = self.draft_profiles.execution.revision();
 		let input_at_read = self.model.read(cx).content().to_owned();
+
 		self.model_settings.epoch = self.model_settings.epoch.wrapping_add(1);
+
 		let epoch = self.model_settings.epoch;
+
 		self.model_settings.read_at = Some(std::time::Instant::now());
+
 		let work = work.to_owned();
 		let future = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).model_settings(work_id)).ok()
 		});
+
 		self.model_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let state = future.await.unwrap_or(State::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
@@ -199,28 +222,47 @@ impl AgentSurface {
 					|| s.snapshot.as_ref().and_then(|v| v.runtime_source.clone()) != source {
 					s.reset_model_settings();
 					cx.notify();
+
 					return;
 				}
+
 				let bound = s
 					.snapshot
 					.as_ref()
 					.and_then(|v| v.work_items.iter().find(|w| w.id == work))
 					.and_then(|w| w.codex_thread_id.as_deref());
+
 				if bound != Some(thread.as_str()) {
 					s.reset_model_settings();
 					cx.notify();
+
 					return;
 				}
+
 				let state = if matches!(&state,State::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {State::Unavailable} else {state};
+
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
 				s.model_settings.observations.insert(work, state);
+
 				s.model_settings.task = None;
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 }
+
+/// Display native specialty only in choices; compact current-model controls keep their name.
+pub(super) fn model_choice_label(model: &decodex_protocol::AgentModelDto) -> String {
+	match model.specialty.as_deref() {
+		Some("cyber") => format!("{} · Cybersecurity", model.name),
+		Some(specialty) => format!("{} · {specialty}", model.name),
+		None => model.name.clone(),
+	}
+}
+
 fn settings_text(state: &State) -> String {
 	match state {
 		State::Available { account_id, model, reasoning_effort, model_provider, .. } => format!(

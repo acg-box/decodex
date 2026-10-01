@@ -1,16 +1,30 @@
 //! Rich response copies reuse the displayed Markdown tree and keep source text intact.
 use super::{Kind, Node, parse};
 
-fn escape(text: &str) -> String {
-	text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
 pub(super) fn html(text: &str) -> String {
 	let mut output = String::new();
+
 	for node in parse(text) {
 		render(&node, &mut output);
 	}
+
 	output
+}
+
+pub(super) fn copy(text: String, rich: bool, cx: &mut gpui::App) {
+	cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+
+	if rich {
+		let markup = html(&text);
+		#[cfg(all(target_os = "macos", not(test)))]
+		append_native_html(&text, &markup);
+		#[cfg(any(not(target_os = "macos"), test))]
+		let _ = markup;
+	}
+}
+
+fn escape(text: &str) -> String {
+	text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 fn render(node: &Node, output: &mut String) {
@@ -20,6 +34,7 @@ fn render(node: &Node, output: &mut String) {
 			Node::Rule => output.push_str("<hr>"),
 			Node::Block(_, _) => unreachable!(),
 		}
+
 		return;
 	};
 	let (open, close) = match kind {
@@ -40,10 +55,13 @@ fn render(node: &Node, output: &mut String) {
 			if *display {
 				output.push_str("<pre>");
 			}
+
 			output.push_str(&escape(source));
+
 			if *display {
 				output.push_str("</pre>");
 			}
+
 			return;
 		},
 		Kind::InlineCode => ("<code>".into(), "</code>".into()),
@@ -51,6 +69,7 @@ fn render(node: &Node, output: &mut String) {
 			let web = reqwest::Url::parse(destination).ok().filter(|url| {
 				["http", "https"].contains(&url.scheme()) && url.host_str().is_some()
 			});
+
 			match web {
 				Some(url) => (format!("<a href=\"{}\">", escape(url.as_str())), "</a>".into()),
 				None => (String::new(), format!(" ({})", escape(destination))),
@@ -58,22 +77,14 @@ fn render(node: &Node, output: &mut String) {
 		},
 		Kind::Group => (String::new(), String::new()),
 	};
+
 	output.push_str(&open);
+
 	for child in children {
 		render(child, output);
 	}
-	output.push_str(&close);
-}
 
-pub(super) fn copy(text: String, rich: bool, cx: &mut gpui::App) {
-	cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
-	if rich {
-		let markup = html(&text);
-		#[cfg(all(target_os = "macos", not(test)))]
-		append_native_html(&text, &markup);
-		#[cfg(any(not(target_os = "macos"), test))]
-		let _ = markup;
-	}
+	output.push_str(&close);
 }
 
 #[cfg(target_os = "macos")]
@@ -89,6 +100,7 @@ fn append_native_html(text: &str, html: &str) {
 	unsafe {
 		let Some(class) = AnyClass::get(c"NSPasteboard") else { return };
 		let board: Retained<AnyObject> = msg_send![class, generalPasteboard];
+
 		append_html_to_board(&board, text, html);
 	}
 }
@@ -96,13 +108,16 @@ fn append_native_html(text: &str, html: &str) {
 #[cfg(target_os = "macos")]
 fn append_html_to_board(board: &objc2::runtime::AnyObject, text: &str, html: &str) {
 	use objc2::{msg_send, rc::Retained};
+
 	use objc2_foundation::NSString;
+
 	let plain_type = NSString::from_str("public.utf8-plain-text");
 	let html_type = NSString::from_str("public.html");
 	// SAFETY: The caller supplies an NSPasteboard; all strings are retained for
 	// the duration of the calls. Preserve a clipboard replaced since the copy.
 	unsafe {
 		let current: Option<Retained<NSString>> = msg_send![board, stringForType: &*plain_type];
+
 		if current.as_ref().is_some_and(|value| value.to_string() == text) {
 			let markup = NSString::from_str(html);
 			let _: bool = msg_send![board, setString: &*markup, forType: &*html_type];
@@ -121,6 +136,7 @@ mod tests {
 			rc::Retained,
 			runtime::{AnyClass, AnyObject},
 		};
+
 		use objc2_foundation::NSString;
 		// SAFETY: Use an isolated named pasteboard, never the user's clipboard.
 		unsafe {
@@ -134,19 +150,29 @@ mod tests {
 			let text = NSString::from_str(original);
 			let _: isize = msg_send![&*board, clearContents];
 			let set: bool = msg_send![&*board, setString: &*text, forType: &*plain_type];
+
 			assert!(set);
+
 			let markup = html(original);
+
 			append_html_to_board(&board, original, &markup);
+
 			let plain: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*plain_type];
 			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
+
 			assert_eq!(plain.map(|v| v.to_string()).as_deref(), Some(original));
 			assert_eq!(rich.map(|v| v.to_string()), Some(markup));
+
 			let _: isize = msg_send![&*board, clearContents];
 			let other = NSString::from_str("replacement");
 			let _: bool = msg_send![&*board, setString: &*other, forType: &*plain_type];
+
 			append_html_to_board(&board, original, "<p>stale</p>");
+
 			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
+
 			assert!(rich.is_none());
+
 			let _: () = msg_send![&*board, releaseGlobally];
 		}
 	}
@@ -155,6 +181,7 @@ mod tests {
 		let rendered = html(
 			"# Title\n\n**Bold** *italic* ~~old~~ `a<b`\n\n<script>x</script>\n\n![alt](https://test/image)\n\n[local](/tmp/a) [bad](javascript:alert(1)) [web](https://example.com)\n\n| A | B |\n|---|---|\n| x | y |\n",
 		);
+
 		for part in [
 			"<h1>Title</h1>",
 			"<strong>Bold</strong>",
@@ -170,6 +197,7 @@ mod tests {
 		] {
 			assert!(rendered.contains(part), "missing {part}: {rendered}");
 		}
+
 		assert!(!rendered.contains("<img"));
 		assert!(!rendered.contains("https://test/image"));
 		assert!(!rendered.contains("<script>"));

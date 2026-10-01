@@ -3,6 +3,7 @@
 //! Strict parser for a small flowchart grammar; every non-comment byte must be consumed.
 
 use super::{Direction, Edge, Graph, MAX_EDGES, MAX_LABEL, RenderError, Shape};
+
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
@@ -11,64 +12,43 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 		return Err(RenderError::Unsupported);
 	};
 	let mut graph = Graph { direction: Direction::parse(direction)?, ..Graph::default() };
+
 	for statement in body {
 		let mut rest = *statement;
 		let mut from = node(&mut rest, &mut graph)?;
+
 		while !rest.trim_start().is_empty() {
 			rest = rest.trim_start().strip_prefix("-->").ok_or(RenderError::Unsupported)?;
 			rest = rest.trim_start();
+
 			let label = if let Some(after) = rest.strip_prefix('|') {
 				let (label, remaining) = after.split_once('|').ok_or(RenderError::Unsupported)?;
+
 				check_label(label)?;
+
 				rest = remaining;
+
 				label.to_owned()
 			} else {
 				String::new()
 			};
 			let to = node(&mut rest, &mut graph)?;
+
 			if graph.edges.len() == MAX_EDGES {
 				return Err(RenderError::Limit);
 			}
+
 			graph.edges.push(Edge::directed(from, to, label));
+
 			from = to;
 		}
 	}
+
 	if graph.nodes.is_empty() {
 		return Err(RenderError::Unsupported);
 	}
-	Ok(graph)
-}
 
-fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
-	let id = identifier(rest)?;
-	// Reserved constructs must not be interpreted as ordinary node declarations.
-	if matches!(
-		id,
-		"end" | "subgraph" | "direction" | "style" | "class" | "classDef" | "linkStyle" | "click"
-	) {
-		return Err(RenderError::Unsupported);
-	}
-	let declaration = match rest.chars().next() {
-		Some('[') => Some(("[", "]", Shape::Rectangle)),
-		Some('{') => Some(("{", "}", Shape::Decision)),
-		Some('(') if rest.starts_with("([") => Some(("([", "])", Shape::Stadium)),
-		_ => None,
-	};
-	let index = graph.node(id)?;
-	if let Some((open, close, shape)) = declaration {
-		let (label, remaining) =
-			rest[open.len()..].split_once(close).ok_or(RenderError::Unsupported)?;
-		check_label(label)?;
-		*rest = remaining;
-		let node = &mut graph.nodes[index];
-		if node.declared && (node.label != label || node.shape != shape) {
-			return Err(RenderError::Unsupported);
-		}
-		node.label = label.to_owned();
-		node.shape = shape;
-		node.declared = true;
-	}
-	Ok(index)
+	Ok(graph)
 }
 
 pub(super) fn check_label(label: &str) -> Result<(), RenderError> {
@@ -107,16 +87,61 @@ pub(super) fn check_label(label: &str) -> Result<(), RenderError> {
 	if UnicodeWidthStr::width(label) > MAX_LABEL {
 		return Err(RenderError::Limit);
 	}
+
 	Ok(())
 }
 
 pub(super) fn identifier<'a>(rest: &mut &'a str) -> Result<&'a str, RenderError> {
 	*rest = rest.trim_start();
+
 	let len = rest.bytes().take_while(|b| b.is_ascii_alphanumeric() || *b == b'_').count();
 	let id = &rest[..len];
+
 	if id.is_empty() || !id.as_bytes()[0].is_ascii_alphabetic() || id.len() > MAX_LABEL {
 		return Err(RenderError::Unsupported);
 	}
+
 	*rest = &rest[len..];
+
 	Ok(id)
+}
+
+fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
+	let id = identifier(rest)?;
+	// Reserved constructs must not be interpreted as ordinary node declarations.
+	if matches!(
+		id,
+		"end" | "subgraph" | "direction" | "style" | "class" | "classDef" | "linkStyle" | "click"
+	) {
+		return Err(RenderError::Unsupported);
+	}
+
+	let declaration = match rest.chars().next() {
+		Some('[') => Some(("[", "]", Shape::Rectangle)),
+		Some('{') => Some(("{", "}", Shape::Decision)),
+		Some('(') if rest.starts_with("([") => Some(("([", "])", Shape::Stadium)),
+		_ => None,
+	};
+	let index = graph.node(id)?;
+
+	if let Some((open, close, shape)) = declaration {
+		let (label, remaining) =
+			rest[open.len()..].split_once(close).ok_or(RenderError::Unsupported)?;
+
+		check_label(label)?;
+
+		*rest = remaining;
+
+		let node = &mut graph.nodes[index];
+
+		if node.declared && (node.label != label || node.shape != shape) {
+			return Err(RenderError::Unsupported);
+		}
+
+		node.label = label.to_owned();
+		node.shape = shape;
+		node.declared = true;
+	}
+
+	Ok(index)
 }

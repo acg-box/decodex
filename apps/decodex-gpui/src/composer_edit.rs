@@ -24,12 +24,15 @@ impl ComposerInput {
 			if self.undo.len() >= 100 {
 				self.undo.remove(0);
 			}
+
 			self.undo.push(self.snapshot());
 			// Large restored inputs must not turn 100 undo entries into gigabytes.
 			let mut bytes: usize = self.undo.iter().map(|snapshot| snapshot.bytes).sum();
-			while bytes > 16 * 1024 * 1024 && self.undo.len() > 1 {
+
+			while bytes > 16 * 1_024 * 1_024 && self.undo.len() > 1 {
 				bytes -= self.undo.remove(0).bytes;
 			}
+
 			self.redo.clear();
 		}
 	}
@@ -41,6 +44,7 @@ impl ComposerInput {
 		self.marked_range = None;
 		self.selection_reversed = false;
 		self.last_layout = None;
+
 		self.changed(cx);
 	}
 

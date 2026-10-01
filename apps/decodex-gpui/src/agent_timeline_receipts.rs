@@ -16,6 +16,7 @@ impl AgentSurface {
 			if self.loading_older {
 				return crate::ui_loading::loading("Loading earlier records").into_any_element();
 			}
+
 			div()
 				.id("native-earlier-local-records")
 				.debug_selector(|| "native-earlier-local-records".into())
@@ -33,9 +34,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
 		let mut panel = div().flex().flex_col().gap_2();
+
 		if !diagnostics {
 			panel = panel.child(self.native_input_receipts_panel(work, cx));
 		}
+
 		let Some((_, AgentHistoryResult::Available { entries, live, next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
@@ -51,19 +54,24 @@ impl AgentSurface {
 				entry.kind == "auth_recovery"
 					|| receipt_label(entry) == Some("Local execution record")
 			});
+
 		if has_records && diagnostics {
 			panel = panel.child(self.local_records_toggle(records_key, expanded, cx));
 		}
 		if expanded {
 			panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
 		}
+
 		let mut saved = std::collections::BTreeMap::new();
+
 		if let Some((older, _)) = self.older_history.get(&work.id) {
 			for entry in older {
 				saved.insert(entry.id, entry);
 			}
 		}
+
 		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
+
 		for entry in saved.values() {
 			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
 				&& self.preview_covers_receipt(&work.id, entry.id, &entry.text)
@@ -80,7 +88,9 @@ impl AgentSurface {
 				if !expanded && entry.receipt.as_ref().is_some_and(|r| r.disposed) {
 					continue;
 				}
+
 				panel = panel.child(auth_recovery_entry(entry));
+
 				continue;
 			}
 			if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan")
@@ -94,21 +104,23 @@ impl AgentSurface {
 				}) {
 				continue;
 			}
-
 			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
 				&& self.native_input_receipts_loaded(&work.id)
 			{
 				continue;
 			}
+
 			let Some(label) = receipt_label(entry) else {
 				continue;
 			};
+
 			if diagnostics && label != "Local execution record" {
 				continue;
 			}
 			if label == "Local execution record" && !expanded {
 				continue;
 			}
+
 			let mut row = div()
 				.debug_selector({
 					let id = entry.id;
@@ -117,6 +129,7 @@ impl AgentSurface {
 						"partial_answer" | "partial_plan" => "partial",
 						_ => "local",
 					};
+
 					move || format!("{kind}-receipt-{id}")
 				})
 				.flex()
@@ -124,6 +137,7 @@ impl AgentSurface {
 				.gap_1()
 				.child(muted(label))
 				.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
+
 			if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
 				row = row.child(markdown::response_copy_button(
 					&format!("copy-partial-{}", entry.id),
@@ -138,11 +152,14 @@ impl AgentSurface {
 						.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
 				);
 			}
+
 			panel = panel.child(row);
 		}
+
 		if diagnostics {
 			return panel.into_any_element();
 		}
+
 		panel.children(self.native_live_receipts(live)).into_any_element()
 	}
 
@@ -161,6 +178,7 @@ impl AgentSurface {
 				if !s.expanded_records.remove(&records_key) {
 					s.expanded_records.insert(records_key.clone());
 				}
+
 				cx.notify();
 			}))
 			.into_any_element()
@@ -171,6 +189,7 @@ impl AgentSurface {
 		live: &[decodex_protocol::AgentLiveMessageDto],
 	) -> Vec<gpui::AnyElement> {
 		let mut rows = Vec::new();
+
 		for message in live {
 			if self.native_history.entries.iter().any(|entry| match &entry.content {
 				Content::Item { turn_id, item_id, .. } =>
@@ -181,6 +200,7 @@ impl AgentSurface {
 			}) {
 				continue;
 			}
+
 			rows.push(
 				div()
 					.debug_selector({
@@ -191,6 +211,7 @@ impl AgentSurface {
 							decodex_protocol::AgentLiveMessageKind::AgentMessage =>
 								"native-live-output",
 						};
+
 						move || selector.into()
 					})
 					.child(muted(match message.kind {
@@ -213,6 +234,7 @@ impl AgentSurface {
 					.into_any_element(),
 			);
 		}
+
 		rows
 	}
 }
@@ -254,7 +276,9 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 	if entry.kind == "automation" {
 		return Some("Automation result");
 	}
+
 	let receipt = entry.receipt.as_ref()?;
+
 	if ["user_message", "async_question_answer", "work_instruction"]
 		.contains(&receipt.event_kind.as_str())
 		&& receipt.delivered_turn_id.is_none()
@@ -265,6 +289,7 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 	if entry.kind == "system" && receipt.event_kind != "context_compacted" {
 		return Some("Local execution record");
 	}
+
 	None
 }
 
@@ -274,14 +299,20 @@ mod tests {
 	#[gpui::test]
 	fn unfinished_output_is_visible_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
 			};
+
 			entries.clear();
+
 			for (id, kind) in [(91, "partial_answer"), (92, "partial_plan")] {
 				entries.push(AgentHistoryEntryDto {
 					native_source: None,
@@ -297,13 +328,17 @@ mod tests {
 					duration_ms: None,
 				});
 			}
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		for copy_id in ["copy-partial-91", "copy-partial-92"] {
 			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
+
 			visual.simulate_click(copy.center(), Default::default());
 			visual.update(|_, cx| {
 				assert_eq!(
@@ -312,6 +347,7 @@ mod tests {
 				);
 			});
 		}
+
 		surface.update(visual, |s, cx| {
 			let work = s
 				.snapshot
@@ -321,19 +357,24 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
 			s.native_history.binding = Some(super::super::Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),
 				account: "account".into(),
 			});
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		for copy_id in ["copy-partial-91", "copy-partial-92"] {
 			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
+
 			visual.simulate_click(copy.center(), Default::default());
 			visual.update(|_, cx| {
 				assert_eq!(
@@ -347,23 +388,34 @@ mod tests {
 	#[gpui::test]
 	fn recorded_checklist_renders_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		surface.update(visual, |s,cx| {
             s.visual_workspace_fixture(cx);
+
             s.graph_visible=false;
+
             let Some((_,AgentHistoryResult::Available {entries,..}))=&mut s.history else {panic!("fixture history")};
+
             entries.clear();
             entries.push(AgentHistoryEntryDto {native_source:None,turn_id:Some("turn".into()),weather:vec![],id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
+
             entries[0].receipt = Some(decodex_protocol::AgentHistoryReceiptDto { voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+
             let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
+
             s.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
             cx.notify();
         });
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
+
 		surface.update(visual, |s, cx| {
 			let work = s
 				.snapshot
@@ -373,17 +425,21 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
 			s.native_history.binding = Some(super::super::Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),
 				account: "account".into(),
 			});
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
 	}
@@ -391,11 +447,16 @@ mod tests {
 	#[gpui::test]
 	fn auth_recovery_history_is_visible_as_a_recorded_notice(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| Some(&w.id) == s.selected.as_ref()).unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
 			s.history = Some((work.id.clone(), AgentHistoryResult::Available {
 				questions: vec![], questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
@@ -403,26 +464,34 @@ mod tests {
 					native_source: None, turn_id: None, weather: vec![], id: 91,kind:"auth_recovery".into(),text:"Codex reported that provider sign-in recovery started.\n\nAWS: [Sign in](https://example.invalid)\n\nSaved event; current sign-in status is not confirmed by this record.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None,
 				}],
 			}));
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual
 			.debug_bounds("auth-recovery-receipt-91")
 			.expect("saved authentication notice is rendered");
+
 		assert!(bounds.size.height > gpui::px(0.));
+
 		surface.update(visual, |s, cx| {
 			s.native_history.binding = Some(super::super::Binding {
 				work: s.selected.clone().unwrap(),
 				thread: "native-thread".into(),
 				account: "account".into(),
 			});
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(
 			visual
 				.debug_bounds("auth-recovery-receipt-91")
@@ -453,20 +522,35 @@ mod tests {
 			text: "Repeated text".into(),
 			created_at_micros: 1,
 		};
+
 		assert_eq!(receipt_label(&entry), Some("Local input · Delivery not confirmed"));
+
 		entry.receipt.as_mut().unwrap().delivered_turn_id = Some("native-turn".into());
+
 		assert_eq!(receipt_label(&entry), None);
+
 		entry.receipt = None;
+
 		assert_eq!(receipt_label(&entry), None);
+
 		entry.kind = "unsent_input".into();
+
 		assert_eq!(receipt_label(&entry), Some("Local input · Not sent"));
+
 		entry.kind = "capacity_retry_pending".into();
+
 		assert_eq!(receipt_label(&entry), Some("Automatic retry"));
+
 		entry.kind = "execution_notice".into();
+
 		assert_eq!(receipt_label(&entry), Some("Execution notice"));
+
 		entry.text = "Codex warning: Under-development features enabled: chronicle.".into();
+
 		assert_eq!(receipt_label(&entry), None);
+
 		entry.text = "Codex warning: Previous instructions retained".into();
+
 		assert_eq!(receipt_label(&entry), Some("Execution notice"));
 	}
 	#[test]
@@ -492,6 +576,7 @@ mod tests {
 				},
 			}
 		};
+
 		for (thread, turn, id, text, truncated, expected) in [
 			(Some("thread"), "turn", "item", "Final plan", false, true),
 			(Some("foreign"), "turn", "item", "Final plan", false, false),
@@ -506,6 +591,7 @@ mod tests {
 				expected
 			);
 		}
+
 		assert!(!partial_replaced(&source, Some("thread"), &[], "plan"));
 		assert!(!partial_replaced(
 			&source,
@@ -513,6 +599,7 @@ mod tests {
 			&[item("turn", "item", "Final plan", false)],
 			"agentMessage"
 		));
+
 		let terminal = decodex_protocol::AgentTimelineEntry {
 			position: 2,
 			content: Content::TurnBoundary {
@@ -525,6 +612,7 @@ mod tests {
 				error: None,
 			},
 		};
+
 		assert!(!partial_replaced(&source, Some("thread"), &[terminal], "plan"));
 	}
 }

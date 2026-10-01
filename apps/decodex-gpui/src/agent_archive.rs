@@ -13,11 +13,11 @@ pub(super) struct Panel {
 	mutation_key: Option<String>,
 	pub(super) feedback: String,
 }
-
 impl Panel {
 	fn apply_read(&mut self, result: State, explicit: bool) {
 		let failed =
 			matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded);
+
 		if failed {
 			if explicit {
 				self.feedback = "Could not check archive status. Try again.".into();
@@ -25,6 +25,7 @@ impl Panel {
 			// An incomplete background read must not replace the last confirmed state.
 		} else {
 			self.feedback.clear();
+
 			self.result = Some(result);
 		}
 	}
@@ -38,6 +39,7 @@ impl AgentSurface {
 		self.archive.mutation = None;
 		self.archive.mutation_key = None;
 		self.archive.last_read = None;
+
 		self.archive.feedback.clear();
 	}
 
@@ -45,6 +47,7 @@ impl AgentSurface {
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
+
 		if self.archive.owner.as_ref() != Some(&work) {
 			self.archive = Panel {
 				owner: Some(work.clone()),
@@ -63,8 +66,10 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.archive.result = Some(State::Unavailable);
+
 			return;
 		};
 		let Ok(work_id) = EntityId::new(work.clone()) else {
@@ -73,20 +78,24 @@ impl AgentSurface {
 		// Ordinary snapshot refreshes do not invalidate an archive request.
 		// The archive epoch changes only with its owner or service connection.
 		let epoch = self.archive.epoch;
+
 		self.archive.last_read = Some(std::time::Instant::now());
 		// Keep the archived reading view stable while checking. The request guard
 		// disables Unarchive until this read completes.
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).archive_state(work_id)).ok()
 		});
+
 		self.archive.request = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(State::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if !s.complete_archive_read(&work, epoch, result, force) {
 					return;
 				}
+
 				cx.notify();
 			});
 		}));
@@ -105,8 +114,11 @@ impl AgentSurface {
 		{
 			return false;
 		}
+
 		self.archive.request = None;
+
 		self.archive.apply_read(result, explicit);
+
 		true
 	}
 
@@ -121,9 +133,12 @@ impl AgentSurface {
 		}
 		if self.profile.is_none() {
 			self.archive.feedback = "No service profile is configured.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let (Some(profile), Ok(work_id), Ok(thread_id)) = (
 			self.profile.clone(),
 			EntityId::new(work.to_owned()),
@@ -137,9 +152,11 @@ impl AgentSurface {
 		let work = work.to_owned();
 		let key = unique_command();
 		let command_key = IdempotencyKey::new(key.clone()).expect("bounded identity");
+
 		self.archive.mutation_key = Some(key.clone());
 		self.archive.result = None;
 		self.archive.feedback = "Restoring the original task…".into();
+
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -151,8 +168,10 @@ impl AgentSurface {
 			));
 			let state =
 				runtime.block_on(client.archive_state(work_id)).unwrap_or(State::Unavailable);
+
 			Some((result, bind_readback(state, &expected_thread)))
 		});
+
 		self.archive.mutation = Some(cx.spawn(async move |surface, cx| {
 			let completed = request.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -162,8 +181,10 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				s.archive.mutation = None;
 				s.archive.mutation_key = None;
+
 				let (feedback, state) = match completed {
 					Some((_, State::Active { thread_id })) => (
 						"The original task is active. Previously queued work can continue.",
@@ -184,12 +205,15 @@ impl AgentSurface {
 						State::Unavailable,
 					),
 				};
+
 				s.archive.feedback = feedback.into();
 				s.archive.result = Some(state);
 				s.archive.last_read = Some(std::time::Instant::now());
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -207,6 +231,7 @@ impl AgentSurface {
 		if self.archive.owner.as_deref() != Some(&work.id) {
 			return div().into_any_element();
 		}
+
 		let restoring = self.archive.mutation.is_some();
 		let thread = match &self.archive.result {
 			Some(State::Archived { thread_id }) => Some(thread_id.clone()),
@@ -214,6 +239,7 @@ impl AgentSurface {
 			_ => return div().into_any_element(),
 		};
 		let work = work.id.clone();
+
 		div()
 			.w_full()
 			.flex_none()
@@ -262,6 +288,7 @@ fn button(
 ) -> gpui::AnyElement {
 	let action = std::rc::Rc::new(action);
 	let click = action.clone();
+
 	div()
 		.id(id)
 		.debug_selector(move || id.to_owned())
@@ -275,6 +302,7 @@ fn button(
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
+
 				action(s, cx);
 			}
 		}))
@@ -288,12 +316,16 @@ mod tests {
 	#[gpui::test]
 	fn snapshot_refresh_does_not_strand_archive_read(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.selected = Some("root".into());
 			s.archive.owner = s.selected.clone();
+
 			let epoch = s.archive.epoch;
+
 			s.archive.request = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
 			s.generation += 1; // An unrelated snapshot request starts before the archive reply.
+
 			assert!(s.complete_archive_read(
 				"root",
 				epoch,
@@ -302,7 +334,9 @@ mod tests {
 			));
 			assert!(s.archive.request.is_none());
 			assert!(matches!(s.archive.result, Some(State::Active { .. })));
+
 			s.archive_disconnected();
+
 			assert!(!s.complete_archive_read(
 				"root",
 				epoch,
@@ -320,7 +354,9 @@ mod tests {
 		{
 			assert_eq!(bind_readback(state, "original"), State::Unconfirmed);
 		}
+
 		let state = State::Active { thread_id: "original".into() };
+
 		assert_eq!(bind_readback(state.clone(), "original"), state);
 	}
 	#[gpui::test]
@@ -328,24 +364,33 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.selected = Some("root".into());
 			s.archive.owner = Some("root".into());
 			s.archive.result = Some(State::Archived { thread_id: "thread".into() });
+
 			assert!(s.selected_is_archived());
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
 			s.submit(cx);
+
 			assert!(!s.sending);
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+
 			s.selected = Some("other".into());
+
 			assert!(!s.selected_is_archived());
+
 			s.selected = Some("root".into());
+
 			for state in [
 				State::Active { thread_id: "thread".into() },
 				State::Unavailable,
 				State::Unconfirmed,
 			] {
 				s.archive.result = Some(state);
+
 				assert!(!s.selected_is_archived());
 			}
 		});
@@ -356,6 +401,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
@@ -376,59 +422,77 @@ mod tests {
 					updated_at_micros: 1,
 				}],
 			})));
+
 			s.archive = Panel {
 				owner: Some("root".into()),
 				result: Some(State::Archived { thread_id: "thread".into() }),
 				..Default::default()
 			};
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.archive.feedback, "No service profile is configured.");
+
 			s.archive.feedback.clear();
 			cx.notify();
 		});
 		visual.simulate_keystrokes("space");
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.archive.feedback, "No service profile is configured.");
+
 			s.archive.feedback.clear();
 			s.restore_archive("root", "old-thread", cx);
+
 			assert!(s.archive.feedback.is_empty());
+
 			s.archive_disconnected();
 			s.restore_archive("root", "thread", cx);
+
 			assert!(s.archive.feedback.is_empty());
+
 			cx.notify();
 		});
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("archive-restore").is_none());
 	}
 }
-
 #[cfg(test)]
 mod background_read_tests {
 	use super::*;
 	#[test]
 	fn transient_read_does_not_flash_error_or_replace_known_state() {
 		let mut panel = Panel::default();
+
 		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
 		panel.apply_read(State::Unavailable, false);
+
 		assert!(panel.feedback.is_empty());
 		assert!(matches!(panel.result, Some(State::Active { .. })));
+
 		for failure in [State::Unavailable, State::Unconfirmed, State::CapacityExceeded] {
 			panel.apply_read(failure, false);
+
 			assert!(panel.feedback.is_empty(), "background polling must not insert a banner");
 			assert!(matches!(panel.result, Some(State::Active { .. })));
 		}
+
 		panel.apply_read(State::Unavailable, true);
+
 		assert_eq!(panel.feedback, "Could not check archive status. Try again.");
+
 		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+
 		assert!(panel.feedback.is_empty());
 	}
 }

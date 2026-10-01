@@ -1,8 +1,11 @@
 //! Native goal observations do not change Agent coordination state.
-use super::*;
-use decodex_protocol::AgentNativeGoalResult as Result;
-use std::time::Instant;
 #[path = "agent_goal_editor.rs"] mod editor;
+
+use super::*;
+
+use decodex_protocol::AgentNativeGoalResult as Result;
+
+use std::time::Instant;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -14,6 +17,7 @@ pub(super) struct Panel {
 	editor: Option<editor::Editor>,
 	feedback: String,
 }
+
 impl AgentSurface {
 	pub(super) fn reset_native_goal(&mut self) {
 		self.native_goal =
@@ -25,6 +29,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
 			!= next.runtime_source.as_ref()
 			|| !matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id)
@@ -35,9 +40,11 @@ impl AgentSurface {
 
 	pub(super) fn native_goal_target(&self) -> Option<(String, String)> {
 		let work = self.selected.as_ref()?;
+
 		if let Some((owner, thread)) = &self.native_agents.selected {
 			return (owner == work).then(|| (owner.clone(), thread.clone()));
 		}
+
 		let thread = self
 			.snapshot
 			.as_ref()?
@@ -46,6 +53,7 @@ impl AgentSurface {
 			.find(|w| &w.id == work)?
 			.codex_thread_id
 			.clone()?;
+
 		Some((work.clone(), thread))
 	}
 
@@ -62,6 +70,7 @@ impl AgentSurface {
 		if self.native_goal.task.is_some() || !self.command_connection_ready() {
 			return;
 		}
+
 		let (Some(target), Some(profile), Some(source)) = (
 			self.native_goal_target(),
 			self.profile.clone(),
@@ -74,33 +83,43 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		self.native_goal.target = Some(target.clone());
 		self.native_goal.epoch = self.native_goal.epoch.wrapping_add(1);
+
 		let epoch = self.native_goal.epoch;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).native_goal(work_id, thread_id)).ok()
 		});
+
 		self.native_goal.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(Result::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.native_goal.epoch != epoch {
 					return;
 				}
+
 				s.native_goal.task = None;
+
 				if s.native_goal_target() != Some(target)
 					|| s.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()) != Some(&source)
 				{
 					s.reset_native_goal();
 					cx.notify();
+
 					return;
 				}
+
 				s.native_goal.result = Some(result);
 				s.native_goal.read_at = Some(Instant::now());
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -108,12 +127,14 @@ impl AgentSurface {
 		if !self.command_connection_ready() || self.native_goal_target().is_none() {
 			return div().into_any_element();
 		}
+
 		let mut panel = div().flex().flex_col().gap_2().child(self.workspace_action(
 			"native-goal-read".into(),
 			"Read native goal".into(),
 			|s, cx| s.load_native_goal(cx),
 			cx,
 		));
+
 		if self.native_goal.target == self.native_goal_target() {
 			panel = panel.child(
 				self.native_goal
@@ -123,17 +144,20 @@ impl AgentSurface {
 					.unwrap_or_else(|| "Reading native goal…".into()),
 			);
 		}
+
 		panel
 			.child(self.goal_edit_controls(cx))
 			.child(self.native_goal.feedback.clone())
 			.into_any_element()
 	}
 }
+
 fn goal_text(result: &Result) -> String {
 	match result {
 		Result::Available { goal: None, .. } => "This conversation has no native goal.".into(),
 		Result::Available { goal: Some(goal), observed_at_micros, .. } => {
 			use decodex_protocol::AgentNativeGoalStatus as S;
+
 			let status = match goal.status {
 				S::Active => "Active",
 				S::Paused => "Paused",
@@ -149,6 +173,7 @@ fn goal_text(result: &Result) -> String {
 				time::OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
 					.map(|v| format!("{:02}:{:02}:{:02} UTC", v.hour(), v.minute(), v.second()))
 					.unwrap_or_else(|_| "unknown time".into());
+
 			format!(
 				"Native goal · {status}\n{}{}\n{budget}\nGoal tokens used: {}\nGoal elapsed: {} seconds\nRead at {observed}. Refreshes while this task is selected.",
 				goal.objective,

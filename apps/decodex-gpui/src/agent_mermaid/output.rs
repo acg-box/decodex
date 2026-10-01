@@ -28,7 +28,6 @@ pub(super) struct Cell {
 	/// Semantic display role.
 	pub role: Role,
 }
-
 impl Cell {
 	pub(super) fn edge(symbol: char) -> Self {
 		Self { symbol, role: Role::Edge }
@@ -43,10 +42,12 @@ pub(super) fn finish(rows: Vec<Vec<Cell>>) -> Vec<Vec<Span>> {
 	rows.into_iter()
 		.map(|row| {
 			let mut spans: Vec<Span> = Vec::new();
+
 			for Cell { symbol, role } in row {
 				if symbol == '\0' {
 					continue;
 				}
+
 				if let Some(last) = spans.last_mut()
 					&& last.role == role
 				{
@@ -55,13 +56,17 @@ pub(super) fn finish(rows: Vec<Vec<Cell>>) -> Vec<Vec<Span>> {
 					spans.push(Span { text: symbol.to_string(), role });
 				}
 			}
+
 			while let Some(last) = spans.last_mut() {
 				last.text.truncate(last.text.trim_end().len());
+
 				if !last.text.is_empty() {
 					break;
 				}
+
 				spans.pop();
 			}
+
 			spans
 		})
 		.collect()

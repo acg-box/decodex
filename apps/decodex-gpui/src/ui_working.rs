@@ -4,6 +4,7 @@ use gpui::{
 	Role, SharedString, Window, canvas, div, img, linear_color_stop, linear_gradient, point,
 	prelude::*, px, rgb, rgba, size,
 };
+
 use std::{
 	sync::{Arc, LazyLock},
 	time::Instant,
@@ -17,36 +18,11 @@ static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
 	Arc::new(Image::from_bytes(ImageFormat::Svg, svg.into_bytes()))
 });
 
-fn smooth(value: f32) -> f32 {
-	let t = value.clamp(0., 1.);
-	t * t * (3. - 2. * t)
-}
-
-// Staggered births hide recycling at zero alpha. Every particle only travels outwards.
-fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
-	let p = (time / 2.8 + index as f32 / 10.).rem_euclid(1.);
-	let lane = (index % 4) as f32;
-	let seed = ((index * 7) % 11) as f32 / 10.;
-	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
-	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.)
-		+ (p * std::f32::consts::PI).sin() * 0.7 * (seed - 0.5);
-	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
-	(x, y, 1.5, alpha)
-}
-
-#[derive(Default)]
-struct Motion {
-	turn: Option<String>,
-	started: Option<Instant>,
-	ended: Option<Instant>,
-}
-
 #[derive(IntoElement)]
 pub(crate) struct Working {
 	pub key: String,
 	pub turn: Option<String>,
 }
-
 impl RenderOnce for Working {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state =
@@ -60,8 +36,10 @@ impl RenderOnce for Working {
 				} else if s.started.is_some() {
 					s.ended = Some(now);
 				}
+
 				s.turn = self.turn.clone();
 			}
+
 			(
 				s.started.map(|t| now.duration_since(t).as_secs_f32()),
 				s.ended.map(|t| now.duration_since(t).as_secs_f32()),
@@ -69,14 +47,17 @@ impl RenderOnce for Working {
 		});
 		let reduced = crate::ui_motion::reduced();
 		let visible = elapsed.is_some() && closing.is_none_or(|t| t < 0.35 && !reduced);
+
 		if !visible {
 			return div().into_any_element();
 		}
 		if !reduced {
 			crate::ui_motion::request_frame(window, cx);
 		}
+
 		let time = elapsed.unwrap_or_default();
 		let settle = closing.map_or(1., |t| (1. - t / 0.35).clamp(0., 1.));
+
 		div()
 			.id("pixel-work-status")
 			.role(Role::Status)
@@ -114,6 +95,7 @@ impl RenderOnce for Working {
 										bounds.origin + point(px(x), px(y)),
 										size(px(edge), px(edge)),
 									);
+
 									paint_particle(
 										window,
 										b,
@@ -126,7 +108,9 @@ impl RenderOnce for Working {
 											),
 										),
 									);
+
 									let rim = Bounds::new(b.origin, size(b.size.width, px(0.35)));
+
 									paint_particle(
 										window,
 										rim,
@@ -144,9 +128,36 @@ impl RenderOnce for Working {
 	}
 }
 
+#[derive(Default)]
+struct Motion {
+	turn: Option<String>,
+	started: Option<Instant>,
+	ended: Option<Instant>,
+}
+
+fn smooth(value: f32) -> f32 {
+	let t = value.clamp(0., 1.);
+
+	t * t * (3. - 2. * t)
+}
+
+// Staggered births hide recycling at zero alpha. Every particle only travels outwards.
+fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
+	let p = (time / 2.8 + index as f32 / 10.).rem_euclid(1.);
+	let lane = (index % 4) as f32;
+	let seed = ((index * 7) % 11) as f32 / 10.;
+	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
+	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.)
+		+ (p * std::f32::consts::PI).sin() * 0.7 * (seed - 0.5);
+	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
+
+	(x, y, 1.5, alpha)
+}
+
 // paint_quad snaps to device pixels. Paths retain subpixel travel and antialiased edges.
 fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background) {
 	let mut path = PathBuilder::fill();
+
 	path.add_polygon(
 		&[
 			bounds.origin,
@@ -156,6 +167,7 @@ fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background
 		],
 		true,
 	);
+
 	if let Ok(path) = path.build() {
 		window.paint_path(path, color);
 	}
