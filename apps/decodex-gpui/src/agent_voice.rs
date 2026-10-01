@@ -1070,14 +1070,11 @@ mod tests {
 
 	#[cfg(any(all(target_os = "macos", not(test)), any(not(target_os = "macos"), test)))]
 	use crate::shell::agent_surface::voice::Media;
-	#[cfg(test)] use crate::shell::agent_surface::voice::{Entity, Render};
-	use crate::shell::agent_surface::{
-		voice,
-		voice::{
-			AgentHistoryResult, AgentSurface, AgentVoicePhase, AgentVoiceRequest, Caption, Context,
-			EntityId, IntoElement, VoiceUi, Window,
-		},
+	use crate::shell::agent_surface::voice::{
+		self, AgentHistoryResult, AgentSurface, AgentVoicePhase, AgentVoiceRequest, Caption,
+		Context, EntityId, IntoElement, VoiceUi, Window,
 	};
+	#[cfg(test)] use crate::shell::agent_surface::voice::{Entity, Render};
 
 	struct VoiceComposerView(Entity<AgentSurface>);
 

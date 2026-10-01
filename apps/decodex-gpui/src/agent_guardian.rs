@@ -739,10 +739,9 @@ mod tests {
 		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto,
 	};
 	use crate::shell::agent_surface::{
-		guardian,
 		guardian::{
-			AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
-			Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
+			self, AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+			AgentWorkItemDto, Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
 		},
 		wire_test_support,
 	};

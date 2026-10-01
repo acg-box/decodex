@@ -422,9 +422,8 @@ mod tests {
 		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
 	};
 	use crate::shell::agent_surface::{
-		resources,
 		resources::{
-			AgentActionDto, AgentResourcesResult, AgentSnapshotDto, AgentSurface, EntityId,
+			self, AgentActionDto, AgentResourcesResult, AgentSnapshotDto, AgentSurface, EntityId,
 			WireText,
 		},
 		wire_test_support,

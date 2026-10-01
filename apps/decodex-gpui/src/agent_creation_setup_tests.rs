@@ -4,8 +4,7 @@ use gpui::TestAppContext;
 
 #[cfg(test)] use crate::shell::agent_surface::drafts::storage::IdempotencyKey;
 use crate::shell::agent_surface::drafts::{
-	storage,
-	storage::{AgentSurface, ClientDraftStore, Context, PendingCommand, Storage},
+	storage::{self, AgentSurface, ClientDraftStore, Context, PendingCommand, Storage},
 	tests,
 };
 use decodex_protocol::{

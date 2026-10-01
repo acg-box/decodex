@@ -9,9 +9,8 @@ use tokio_tungstenite::tungstenite::Message;
 
 #[cfg(test)] use crate::shell::agent_surface::voice_settings::{ClientProfile, Render, Window};
 use crate::shell::agent_surface::{
-	voice_settings,
 	voice_settings::{
-		AgentActionDto, AgentSurface, ComposerInput, Context, Entity, EntityId, IntoElement,
+		self, AgentActionDto, AgentSurface, ComposerInput, Context, Entity, EntityId, IntoElement,
 		NextCall, State, WireText,
 	},
 	wire_test_support::{self, SERVER},
