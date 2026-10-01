@@ -235,7 +235,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 
 	assert!(matches!(
 		result.expect("command result").result,
-		ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
+		ResultPayload::AccountRecoveryNudge { status: AccountRecoveryNudgeStatus::Sent, .. }
 	));
 
 	assert_source_invalidated_during_launch(&app, &command, &source, &observations, &listener)
@@ -255,7 +255,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 
 	assert!(matches!(
 		replay.result,
-		ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
+		ResultPayload::AccountRecoveryNudge { status: AccountRecoveryNudgeStatus::Sent, .. }
 	));
 	assert!(
 		time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
@@ -325,7 +325,7 @@ async fn assert_source_invalidated_during_launch(
 
 	assert!(matches!(
 		outcome.result,
-		ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
+		ResultPayload::AccountRecoveryNudge { status: AccountRecoveryNudgeStatus::Unavailable, .. }
 	));
 
 	let replay = app
@@ -335,7 +335,7 @@ async fn assert_source_invalidated_during_launch(
 
 	assert!(matches!(
 		replay.result,
-		ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
+		ResultPayload::AccountRecoveryNudge { status: AccountRecoveryNudgeStatus::Unavailable, .. }
 	));
 }
 
@@ -360,7 +360,10 @@ async fn concurrent_sends(
 			.iter()
 			.filter(|r| matches!(
 				r.result,
-				ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
+				ResultPayload::AccountRecoveryNudge {
+					status: AccountRecoveryNudgeStatus::Sent,
+					..
+				}
 			))
 			.count(),
 		1
@@ -370,7 +373,10 @@ async fn concurrent_sends(
 			.iter()
 			.filter(|r| matches!(
 				r.result,
-				ResultPayload::AccountRecoveryNudge { status: Status::Uncertain, .. }
+				ResultPayload::AccountRecoveryNudge {
+					status: AccountRecoveryNudgeStatus::Uncertain,
+					..
+				}
 			))
 			.count(),
 		1
@@ -379,7 +385,13 @@ async fn concurrent_sends(
 	Ok(results
 		.into_iter()
 		.find(|r| {
-			matches!(r.result, ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. })
+			matches!(
+				r.result,
+				ResultPayload::AccountRecoveryNudge {
+					status: AccountRecoveryNudgeStatus::Sent,
+					..
+				}
+			)
 		})
 		.expect("one native send owner"))
 }

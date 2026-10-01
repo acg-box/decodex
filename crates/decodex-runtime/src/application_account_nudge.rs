@@ -9,7 +9,7 @@ use crate::application::{
 use decodex_core::AccountId;
 use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
 use decodex_protocol::{
-	AccountRecoveryAction, AccountRecoveryNudgeOperation, AccountRecoveryNudgeStatus as Status,
+	AccountRecoveryAction, AccountRecoveryNudgeOperation, AccountRecoveryNudgeStatus,
 	AccountRecoveryResult, Channel, CommandEnvelope, CommandError, EntityId, EntityRevision,
 	EventPayload, QueryResultPayload, ResultPayload,
 };
@@ -46,7 +46,7 @@ impl ServiceApplication {
 			.await
 			.map_err(|_| application_unavailable("account notification could not be reserved"))?;
 		let status = match claim {
-			AccountCommandReceiptClaim::Pending(_) => Status::Uncertain,
+			AccountCommandReceiptClaim::Pending(_) => AccountRecoveryNudgeStatus::Uncertain,
 			AccountCommandReceiptClaim::Replayed(value) => serde_json::from_value(
 				value.get("status").cloned().unwrap_or_default(),
 			)
@@ -63,7 +63,7 @@ impl ServiceApplication {
 								observations,
 							)
 							.await,
-					_ => Status::Unavailable,
+					_ => AccountRecoveryNudgeStatus::Unavailable,
 				};
 
 				store
@@ -100,39 +100,39 @@ impl ServiceApplication {
 		action: AccountRecoveryAction,
 		key: Option<&decodex_protocol::IdempotencyKey>,
 	) -> QueryResultPayload {
-		use decodex_protocol::{AccountRecoveryNudgeResult as R, QueryResultPayload};
+		use decodex_protocol::{AccountRecoveryNudgeResult, QueryResultPayload};
 
 		let result = async {
 			let ProductStore::Available(store) = &self.store else {
-				return R::Unavailable;
+				return AccountRecoveryNudgeResult::Unavailable;
 			};
 			let Ok(account) = AccountId::new(account_id.as_str()) else {
-				return R::Unavailable;
+				return AccountRecoveryNudgeResult::Unavailable;
 			};
 			let receipt = match store
 				.read_account_nudge_receipt(&account, nudge_kind(action), key.map(|k| k.as_str()))
 				.await
 			{
 				Ok(Some(receipt)) => receipt,
-				Ok(None) => return R::NotFound,
-				Err(_) => return R::Unavailable,
+				Ok(None) => return AccountRecoveryNudgeResult::NotFound,
+				Err(_) => return AccountRecoveryNudgeResult::Unavailable,
 			};
 			let (Ok(operation_key), Ok(revision)) = (
 				decodex_protocol::IdempotencyKey::new(receipt.operation_key),
 				u64::try_from(receipt.account_revision),
 			) else {
-				return R::Unavailable;
+				return AccountRecoveryNudgeResult::Unavailable;
 			};
 			let outcome = match receipt.response {
-				None => Status::Uncertain,
+				None => AccountRecoveryNudgeStatus::Uncertain,
 				Some(value) =>
 					match serde_json::from_value(value.get("status").cloned().unwrap_or_default()) {
 						Ok(status) => status,
-						Err(_) => return R::Unavailable,
+						Err(_) => return AccountRecoveryNudgeResult::Unavailable,
 					},
 			};
 
-			R::Found(AccountRecoveryNudgeOperation {
+			AccountRecoveryNudgeResult::Found(AccountRecoveryNudgeOperation {
 				account_id: account_id.clone(),
 				account_revision: EntityRevision(revision),
 				action,
@@ -158,8 +158,8 @@ fn nudge_kind(action: AccountRecoveryAction) -> AccountCommandKind {
 #[cfg(test)]
 mod tests {
 	use crate::application::account_nudge::{
-		AccountRecoveryAction, AccountRecoveryResult, CommandEnvelope, ProductStore, ResultPayload,
-		ServiceApplication, Status,
+		AccountRecoveryAction, AccountRecoveryNudgeStatus, AccountRecoveryResult, CommandEnvelope,
+		ProductStore, ResultPayload, ServiceApplication,
 	};
 	use decodex_protocol::{
 		AccountRecoveryBanner, AccountRecoveryCta, AccountRecoveryState, CURRENT_VERSION,
@@ -236,7 +236,10 @@ mod tests {
 
 		assert!(matches!(
 			result.result,
-			ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
+			ResultPayload::AccountRecoveryNudge {
+				status: AccountRecoveryNudgeStatus::Unavailable,
+				..
+			}
 		));
 
 		drop(app);
@@ -250,7 +253,10 @@ mod tests {
 
 		assert!(matches!(
 			result.result,
-			ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
+			ResultPayload::AccountRecoveryNudge {
+				status: AccountRecoveryNudgeStatus::Unavailable,
+				..
+			}
 		));
 
 		let status = app
@@ -262,7 +268,7 @@ mod tests {
 			.await;
 
 		assert!(
-			matches!(status, decodex_protocol::QueryResultPayload::AccountRecoveryNudge(decodex_protocol::AccountRecoveryNudgeResult::Found(operation)) if operation.outcome == Status::Unavailable && operation.operation_key == command.idempotency_key)
+			matches!(status, decodex_protocol::QueryResultPayload::AccountRecoveryNudge(decodex_protocol::AccountRecoveryNudgeResult::Found(operation)) if operation.outcome == AccountRecoveryNudgeStatus::Unavailable && operation.operation_key == command.idempotency_key)
 		);
 
 		let other_purpose = app

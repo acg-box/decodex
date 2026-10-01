@@ -47,7 +47,7 @@ pub(super) async fn check(
 			.await
 			.expect("read prepared review");
 		let token = review.evidence.expect("prepared review evidence").review_token;
-		let action = Action::ForkPromptEdit {
+		let action = AgentActionDto::ForkPromptEdit {
 			work_id: work.clone(),
 			thread_id: WireText::new(thread).expect("source thread identity"),
 			review_token: token.clone(),
@@ -114,7 +114,7 @@ pub(super) async fn check(
 
 		accepted(
 			client,
-			Action::RecoverPromptFork { work_id: work.clone(), review_token: token },
+			AgentActionDto::RecoverPromptFork { work_id: work.clone(), review_token: token },
 			&format!("fork-recover-{index}"),
 		)
 		.await;
@@ -143,7 +143,7 @@ async fn prepare_review(
 ) {
 	accepted(
 		client,
-		Action::PreparePromptEdit {
+		AgentActionDto::PreparePromptEdit {
 			work_id: work.clone(),
 			thread_id: WireText::new(thread).expect("source thread identity"),
 			turn_id: WireText::new(selected).expect("selected turn identity"),

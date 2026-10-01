@@ -26,7 +26,7 @@ pub(super) async fn check(
 
 	accepted(
 		client,
-		Action::Start(AgentStartDto {
+		AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new("recap-root").expect("valid fixture root"),
 			prompt: HistoryText::new("Isolated desktop acceptance. Reply briefly.")
 				.expect("valid fixture prompt"),
@@ -52,7 +52,7 @@ pub(super) async fn check(
 		for index in 1..=2 {
 			accepted(
 				client,
-				Action::Send {
+				AgentActionDto::Send {
 					root_id: EntityId::new("recap-root").expect("fixture root"),
 					text: HistoryText::new(format!("Complete background recap step {index}."))
 						.expect("fixture input"),

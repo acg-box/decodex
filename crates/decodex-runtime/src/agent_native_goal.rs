@@ -15,14 +15,18 @@ use decodex_codex::app_server_client::{
 	ClientError, NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus,
 };
 use decodex_database::SqliteStore;
-use decodex_protocol::{AgentGoalEdit, AgentNativeGoalResult as Result, EntityId, WireText};
+use decodex_protocol::{AgentGoalEdit, AgentNativeGoalResult, EntityId, WireText};
 
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F, thread: &str) -> Result
+pub(crate) async fn read<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+	thread: &str,
+) -> AgentNativeGoalResult
 where
 	F: Fn() -> Fut,
 	Fut: Future<Output = Option<Source>>,
 {
-	let Some(before) = source().await else { return Result::Unavailable };
+	let Some(before) = source().await else { return AgentNativeGoalResult::Unavailable };
 	let operation = async {
 		if thread != before.key.thread {
 			let owner =
@@ -38,7 +42,7 @@ where
 	let response = time::timeout(Duration::from_secs(30), operation).await;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return Result::Unavailable;
+		return AgentNativeGoalResult::Unavailable;
 	}
 
 	match response {
@@ -65,27 +69,34 @@ where
 					serde_json::from_value(value).ok()
 				})
 				.map_or(Some(None), |goal| goal.map(Some));
-			let Some(goal) = goal else { return Result::Unavailable };
+			let Some(goal) = goal else { return AgentNativeGoalResult::Unavailable };
 			let (Ok(work_id), Ok(thread_id)) =
 				(EntityId::new(before.key.work), EntityId::new(thread.to_owned()))
 			else {
-				return Result::Unavailable;
+				return AgentNativeGoalResult::Unavailable;
 			};
 			let Some(observed_at_micros) = SystemTime::now()
 				.duration_since(UNIX_EPOCH)
 				.ok()
 				.and_then(|t| i64::try_from(t.as_micros()).ok())
 			else {
-				return Result::Unavailable;
+				return AgentNativeGoalResult::Unavailable;
 			};
 
-			Result::Available { work_id, thread_id, observed_at_micros, review_token, goal }
+			AgentNativeGoalResult::Available {
+				work_id,
+				thread_id,
+				observed_at_micros,
+				review_token,
+				goal,
+			}
 		},
-		Ok(Some(Err(ClientError::Remote(error)))) if error.code == -32_601 => Result::Unsupported,
+		Ok(Some(Err(ClientError::Remote(error)))) if error.code == -32_601 =>
+			AgentNativeGoalResult::Unsupported,
 		Ok(Some(Err(ClientError::Remote(error))))
 			if error.code == -32_600 && error.message == "goals feature is disabled" =>
-			Result::Disabled,
-		_ => Result::Unavailable,
+			AgentNativeGoalResult::Disabled,
+		_ => AgentNativeGoalResult::Unavailable,
 	}
 }
 
@@ -104,16 +115,21 @@ where
 	F: Fn() -> Fut,
 	Fut: Future<Output = Option<Source>>,
 {
-	use decodex_protocol::{AgentGoalBudgetEdit as Budget, AgentNativeGoalStatus as Status};
+	use decodex_protocol::{AgentGoalBudgetEdit, AgentNativeGoalStatus};
 
 	if edit.objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
-		|| matches!(edit.budget,Budget::Set(n) if n<=0)
+		|| matches!(edit.budget,AgentGoalBudgetEdit::Set(n) if n<=0)
 		|| edit.status.as_ref().is_some_and(|status| {
-			!matches!(status, Status::Active | Status::Paused | Status::Complete)
+			!matches!(
+				status,
+				AgentNativeGoalStatus::Active
+					| AgentNativeGoalStatus::Paused
+					| AgentNativeGoalStatus::Complete
+			)
 		})
 		|| (edit.objective.is_none()
 			&& edit.status.is_none()
-			&& matches!(edit.budget, Budget::Keep))
+			&& matches!(edit.budget, AgentGoalBudgetEdit::Keep))
 	{
 		return Err(Rejected("Enter an objective or an explicit goal change."));
 	}
@@ -167,14 +183,14 @@ where
 	let update = NativeGoalUpdate {
 		objective,
 		status: edit.status.as_ref().map(|status| match status {
-			Status::Active => NativeThreadGoalStatus::Active,
-			Status::Paused => NativeThreadGoalStatus::Paused,
+			AgentNativeGoalStatus::Active => NativeThreadGoalStatus::Active,
+			AgentNativeGoalStatus::Paused => NativeThreadGoalStatus::Paused,
 			_ => NativeThreadGoalStatus::Complete,
 		}),
 		token_budget: match edit.budget {
-			Budget::Keep => None,
-			Budget::Reset => Some(None),
-			Budget::Set(n) => Some(Some(n)),
+			AgentGoalBudgetEdit::Keep => None,
+			AgentGoalBudgetEdit::Reset => Some(None),
+			AgentGoalBudgetEdit::Set(n) => Some(Some(n)),
 		},
 	};
 

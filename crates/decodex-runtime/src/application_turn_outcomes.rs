@@ -2,73 +2,79 @@
 use crate::{application::ProductStore, conversation::ordinary_provider_attempt_id};
 use decodex_core::{ConversationId, ProviderAttemptConsumer, ProviderAttemptState, TurnId};
 use decodex_protocol::{
-	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult as ResultDto,
-	ConversationTurnOutcomeState as StateDto,
+	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationTurnOutcomeState,
 };
 
 pub(super) async fn query_turn_outcome(
 	store: &ProductStore,
 	request: &ConversationTurnOutcomeRequest,
-) -> ResultDto {
+) -> ConversationTurnOutcomeResult {
 	let ProductStore::Available(store) = store else {
-		return ResultDto::Unavailable;
+		return ConversationTurnOutcomeResult::Unavailable;
 	};
 	let (Ok(conversation), Ok(turn)) = (
 		ConversationId::new(request.conversation_id.as_str()),
 		TurnId::new(request.turn_id.as_str()),
 	) else {
-		return ResultDto::Conflict;
+		return ConversationTurnOutcomeResult::Conflict;
 	};
 	let Ok(attempt_id) = ordinary_provider_attempt_id(request.idempotency_key.as_str(), &turn)
 	else {
-		return ResultDto::Conflict;
+		return ConversationTurnOutcomeResult::Conflict;
 	};
 	let attempt = match store.read_provider_attempt(&attempt_id).await {
 		Ok(Some(attempt)) => attempt,
-		Ok(None) => return ResultDto::NotRecorded,
-		Err(_) => return ResultDto::Unavailable,
+		Ok(None) => return ConversationTurnOutcomeResult::NotRecorded,
+		Err(_) => return ConversationTurnOutcomeResult::Unavailable,
 	};
 	let expected =
 		ProviderAttemptConsumer::ConversationTurn { conversation_id: conversation, turn_id: turn };
 
 	if attempt.consumer != expected {
-		return ResultDto::Conflict;
+		return ConversationTurnOutcomeResult::Conflict;
 	}
 
 	let evidence_matches = match store.provider_attempt_terminal_evidence_matches(&attempt).await {
 		Ok(matches) => matches,
-		Err(_) => return ResultDto::Unavailable,
+		Err(_) => return ConversationTurnOutcomeResult::Unavailable,
 	};
 	let Some(outcome) = project_state(attempt.state, evidence_matches) else {
-		return ResultDto::Unavailable;
+		return ConversationTurnOutcomeResult::Unavailable;
 	};
 
-	ResultDto::Observed {
+	ConversationTurnOutcomeResult::Observed {
 		conversation_id: request.conversation_id.clone(),
 		turn_id: request.turn_id.clone(),
 		outcome,
 	}
 }
 
-fn project_state(state: ProviderAttemptState, terminal_evidence: bool) -> Option<StateDto> {
-	use ProviderAttemptState as Source;
-
+fn project_state(
+	state: ProviderAttemptState,
+	terminal_evidence: bool,
+) -> Option<ConversationTurnOutcomeState> {
 	match state {
-		Source::Prepared | Source::DispatchAuthorized => Some(StateDto::Pending),
-		Source::Unknown => Some(StateDto::Unknown),
-		Source::Canceled => Some(StateDto::NotSubmitted),
-		Source::Succeeded if terminal_evidence => Some(StateDto::Completed),
-		Source::FailedDefinitive if terminal_evidence => Some(StateDto::Failed),
-		Source::NotSubmitted if terminal_evidence => Some(StateDto::NotSubmitted),
-		Source::Succeeded | Source::FailedDefinitive | Source::NotSubmitted => None,
+		ProviderAttemptState::Prepared | ProviderAttemptState::DispatchAuthorized =>
+			Some(ConversationTurnOutcomeState::Pending),
+		ProviderAttemptState::Unknown => Some(ConversationTurnOutcomeState::Unknown),
+		ProviderAttemptState::Canceled => Some(ConversationTurnOutcomeState::NotSubmitted),
+		ProviderAttemptState::Succeeded if terminal_evidence =>
+			Some(ConversationTurnOutcomeState::Completed),
+		ProviderAttemptState::FailedDefinitive if terminal_evidence =>
+			Some(ConversationTurnOutcomeState::Failed),
+		ProviderAttemptState::NotSubmitted if terminal_evidence =>
+			Some(ConversationTurnOutcomeState::NotSubmitted),
+		ProviderAttemptState::Succeeded
+		| ProviderAttemptState::FailedDefinitive
+		| ProviderAttemptState::NotSubmitted => None,
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use crate::application::turn_outcomes::{
-		self, ConversationTurnOutcomeRequest, ProductStore, ProviderAttemptState, ResultDto,
-		StateDto, TurnId,
+		self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
+		ConversationTurnOutcomeState, ProductStore, ProviderAttemptState, TurnId,
 	};
 	#[test]
 	fn outcome_lookup_preserves_the_existing_attempt_identity() {
@@ -84,26 +90,30 @@ mod tests {
 
 	#[test]
 	fn provider_terminal_results_require_positive_evidence() {
-		use ProviderAttemptState as Source;
-
 		for (source, expected) in [
-			(Source::Succeeded, StateDto::Completed),
-			(Source::FailedDefinitive, StateDto::Failed),
-			(Source::NotSubmitted, StateDto::NotSubmitted),
+			(ProviderAttemptState::Succeeded, ConversationTurnOutcomeState::Completed),
+			(ProviderAttemptState::FailedDefinitive, ConversationTurnOutcomeState::Failed),
+			(ProviderAttemptState::NotSubmitted, ConversationTurnOutcomeState::NotSubmitted),
 		] {
 			assert_eq!(turn_outcomes::project_state(source, false), None);
 			assert_eq!(turn_outcomes::project_state(source, true), Some(expected));
 		}
 
-		assert_eq!(turn_outcomes::project_state(Source::Unknown, false), Some(StateDto::Unknown));
-		assert_eq!(turn_outcomes::project_state(Source::Prepared, false), Some(StateDto::Pending));
 		assert_eq!(
-			turn_outcomes::project_state(Source::DispatchAuthorized, false),
-			Some(StateDto::Pending)
+			turn_outcomes::project_state(ProviderAttemptState::Unknown, false),
+			Some(ConversationTurnOutcomeState::Unknown)
 		);
 		assert_eq!(
-			turn_outcomes::project_state(Source::Canceled, false),
-			Some(StateDto::NotSubmitted)
+			turn_outcomes::project_state(ProviderAttemptState::Prepared, false),
+			Some(ConversationTurnOutcomeState::Pending)
+		);
+		assert_eq!(
+			turn_outcomes::project_state(ProviderAttemptState::DispatchAuthorized, false),
+			Some(ConversationTurnOutcomeState::Pending)
+		);
+		assert_eq!(
+			turn_outcomes::project_state(ProviderAttemptState::Canceled, false),
+			Some(ConversationTurnOutcomeState::NotSubmitted)
 		);
 	}
 	#[tokio::test]
@@ -123,7 +133,7 @@ mod tests {
 
 		assert_eq!(
 			turn_outcomes::query_turn_outcome(&ProductStore::Available(store), &request).await,
-			ResultDto::NotRecorded
+			ConversationTurnOutcomeResult::NotRecorded
 		);
 	}
 }
