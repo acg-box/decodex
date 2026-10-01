@@ -66,6 +66,7 @@ impl Media {
 		}
 
 		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
+
 		// SAFETY: fixed signed-app library and exact versioned C ABI; this object cannot cross
 		// threads.
 		unsafe {
@@ -97,6 +98,7 @@ impl Media {
 			if host.is_null() {
 				return Err(());
 			}
+
 			// Keep the signed platform library loaded for native callbacks.
 			Ok(Self {
 				host,
@@ -141,6 +143,7 @@ impl Media {
 		}
 
 		let Ok(text) = std::ffi::CString::new(value.to_string()) else { return false };
+
 		// SAFETY: retained native host; argument is copied by the synchronous call.
 		unsafe { (self.command_fn)(self.host, text.as_ptr()) }
 	}
@@ -229,6 +232,7 @@ impl Media {
 impl Drop for Media {
 	fn drop(&mut self) {
 		self.command(json!({"operation":"stop"}));
+
 		// SAFETY: unique host, destroyed exactly once on the GPUI main thread.
 		unsafe { (self.destroy)(self.host) };
 	}
@@ -405,6 +409,7 @@ impl AgentSurface {
 
 					break;
 				};
+
 				// Wait for the local offer before asking the service to start a call.
 				if let Some(request) = request {
 					let profile = profile.clone();
@@ -791,6 +796,7 @@ impl AgentSurface {
 					.flat_map(|v| &v.captions),
 			);
 		let mut captions: Vec<_> = captions.filter(|c| !c.text.is_empty()).collect();
+
 		// Keep completed order; duplex live user text stays above the live reply.
 		captions.sort_by_key(|c| {
 			if c.complete {

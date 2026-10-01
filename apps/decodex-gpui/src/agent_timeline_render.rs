@@ -143,6 +143,7 @@ impl AgentSurface {
 			.unwrap_or(live.as_slice())
 			.iter()
 			.find(|message| message.turn_id == turn && message.item_id == item)?;
+
 		// Historical rows have no live draft. Do not scan the entire timeline
 		// for every such row on every scroll frame.
 		if self.native_history.entries.iter().any(|entry| {
@@ -1260,6 +1261,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		// Settle the workspace's sidebar entrance before measuring the footer.
 		thread::sleep(std::time::Duration::from_millis(240));
 

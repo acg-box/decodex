@@ -198,6 +198,7 @@ impl MathParser<'_> {
 				denominator.single()?
 			)));
 		}
+
 		// Nested bars need a richer layout to preserve fraction hierarchy.
 		let numerator = numerator.single()?;
 		let denominator = denominator.single()?;

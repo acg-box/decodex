@@ -1686,6 +1686,7 @@ fn open_new_private_file(path: &Path) -> Result<File, CacheError> {
 	let mut options = OpenOptions::new();
 
 	options.write(true).create_new(true);
+
 	#[cfg(unix)]
 	std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
 

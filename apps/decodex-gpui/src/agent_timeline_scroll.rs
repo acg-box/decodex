@@ -657,6 +657,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		// The fixture closes the initially reserved dock. Measure refreshes only
 		// after that independent panel animation has settled.
 		thread::sleep(std::time::Duration::from_millis(240));

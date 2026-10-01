@@ -468,6 +468,7 @@ fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut TestApp
 				s.update_task_models("root".into(), selection, cx);
 
 				assert!(s.task_models.task.is_some());
+
 				// Advance the snapshot generation before this operation can complete.
 				s.generation += 1;
 

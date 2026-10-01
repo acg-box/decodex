@@ -782,6 +782,7 @@ impl AgentSurface {
 
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		let owner = cx.entity().downgrade();
+
 		// Only the capsule occludes history; the measured footer reserves scroll space.
 		div()
 			.absolute()
@@ -2501,6 +2502,7 @@ mod tests {
 		});
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
 		thread::sleep(std::time::Duration::from_millis(240));
 

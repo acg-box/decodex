@@ -443,6 +443,7 @@ mod tests {
 
 			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
 		}
+
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, |s, cx| {
 			let mut final_entry = s.native_history.entries[0].clone();

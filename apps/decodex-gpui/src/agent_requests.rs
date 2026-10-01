@@ -46,6 +46,7 @@ impl QuestionTimer {
 		}
 
 		let elapsed = now.saturating_duration_since(self.started).as_secs();
+
 		// Upstream ignores deprecated autoResolutionMs: 60s grace, then 60s visible.
 		(elapsed >= 60).then(|| 120_u64.saturating_sub(elapsed))
 	}
@@ -54,6 +55,7 @@ impl QuestionTimer {
 		if self.remaining(now) != Some(0) {
 			return false;
 		}
+
 		// Never retry an automatic response, including after an uncertain acknowledgment.
 		self.disabled = true;
 
@@ -666,6 +668,7 @@ mod timing_tests {
 			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.draw(cx).clear();
 		});
+
 		// Let the fixture's dock-close animation settle before choosing a
 		// scroll offset and clicking the request pagination control.
 		thread::sleep(std::time::Duration::from_millis(240));
@@ -867,6 +870,7 @@ mod timing_tests {
 			s.prepare_question_inputs(&request, cx);
 
 			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
+
 			// JSON escaping exceeds the wire limit even though the editable answer fits.
 			let answer = "\"".repeat(9_000);
 

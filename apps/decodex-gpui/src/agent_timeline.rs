@@ -195,6 +195,7 @@ impl AgentSurface {
 				cx,
 			)),
 		);
+
 		// Reserve the first-load state before the request starts, but retain
 		// existing history during background refreshes and fallback retries.
 		if self.native_history_loading(work) {
@@ -428,6 +429,7 @@ impl AgentSurface {
 	fn refresh_native_history(&mut self, binding: Binding, page: AgentTimelinePage) -> bool {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
+
 		// Do not fold a running process out from under a reader browsing history.
 		if self.history_follow_paused.contains(&work) && !self.native_history.entries.is_empty() {
 			for entry in &page.entries {
@@ -658,6 +660,7 @@ impl Timeline {
 		self.unsupported =
 			matches!(result, Some(decodex_protocol::AgentTimelineResult::Unsupported));
 		self.failures = self.failures.saturating_add(1);
+
 		// Native background migration can make a legacy thread readable without
 		// another turn or process replacement. Recheck infrequently while selected.
 		let delay = if self.unsupported {
@@ -737,6 +740,7 @@ impl Timeline {
 
 			return true;
 		}
+
 		// Without overlap the middle is unknown. Restart at the native page boundary;
 		// retaining old rows here would hide an unobserved gap behind a false adjacency.
 		self.replace(binding, page)
@@ -913,6 +917,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
+
 		// A failed native read still permits the saved-history fallback.
 		surface.update(visual, |s, cx| {
 			s.native_history.task = None;
@@ -926,6 +931,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
 		assert!(visual.debug_bounds("saved-local-history").is_some());
+
 		// Retrying a failed read must retain the fallback, too.
 		surface.update(visual, |s, cx| {
 			s.native_history.failed(None, std::time::Instant::now());
@@ -1292,6 +1298,7 @@ mod tests {
 		state.retry_after_turn_change(Some("first-turn"));
 
 		assert!(state.can_retry(now));
+
 		// A legacy thread can still refuse the retry. Do not keep polling it for
 		// the same acknowledged turn, including after terminal status changes.
 		state.requested_turn = Some("first-turn".into());
@@ -1300,6 +1307,7 @@ mod tests {
 		state.retry_after_turn_change(Some("first-turn"));
 
 		assert!(!state.can_retry(now + std::time::Duration::from_secs(299)));
+
 		// New execution while the earlier read was pending must also rearm it.
 		state.retry_after_turn_change(Some("second-turn"));
 

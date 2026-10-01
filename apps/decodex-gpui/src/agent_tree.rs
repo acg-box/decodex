@@ -323,6 +323,7 @@ mod tests {
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		// Hit-test the settled sidebar, after its entrance animation.
 		thread::sleep(std::time::Duration::from_millis(240));
 

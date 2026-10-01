@@ -280,6 +280,7 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 			s.update_permission_profiles("root".into(), selection, cx);
 
 			assert!(s.permission_profiles.task.is_some());
+
 			// Advance the snapshot generation before this operation can complete.
 			s.generation += 1;
 

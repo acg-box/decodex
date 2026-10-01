@@ -133,6 +133,7 @@ impl<'a> MathMarkdown<'a> {
 			};
 			let span = start..end + close.len();
 			let formula = &input[offset..end];
+
 			// Every matched display owns its closer, including rejected expressions.
 			if display {
 				offset = span.end;
@@ -165,6 +166,7 @@ impl<'a> MathMarkdown<'a> {
 				containers.peek().is_some_and(|range| range.contains(&start)),
 				width,
 			);
+
 			// Dollars are ordinary text in the Markdown parser and cannot form an HTML tag.
 			result.markdown.to_mut().replace_range(span.clone(), &"$".repeat(span.len()));
 

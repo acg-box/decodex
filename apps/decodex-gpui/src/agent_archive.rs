@@ -82,6 +82,7 @@ impl AgentSurface {
 		let epoch = self.archive.epoch;
 
 		self.archive.last_read = Some(std::time::Instant::now());
+
 		// Keep the archived reading view stable while checking. The request guard
 		// disables Unarchive until this read completes.
 		let request = cx.background_executor().spawn(async move {

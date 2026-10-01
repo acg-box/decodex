@@ -117,6 +117,7 @@ impl NativeMenuBarHost {
 		{
 			self.bridge.as_mut().map_err(|failure| *failure)?.apply(enabled)
 		}
+
 		#[cfg(test)]
 		{
 			self.visible = enabled;
@@ -138,6 +139,7 @@ impl NativeMenuBarHost {
 		{
 			Ok(self.bridge.as_mut().map_err(|failure| *failure)?.launch_at_login_state())
 		}
+
 		#[cfg(test)]
 		{
 			Ok(self.launch_at_login)
@@ -190,6 +192,7 @@ impl NativeMenuBarHost {
 				Err(NativeMenuBarFailure::LoginItemFailed)
 			}
 		}
+
 		#[cfg(test)]
 		{
 			Ok(())
@@ -205,6 +208,7 @@ impl NativeMenuBarHost {
 		{
 			self.bridge.as_ref().is_ok_and(|bridge| bridge.launched_as_login_item)
 		}
+
 		#[cfg(any(test, not(target_os = "macos")))]
 		{
 			self.launched_as_login_item
@@ -249,11 +253,13 @@ impl SwiftMenuBarBridge {
 
 		// SAFETY: every symbol is verified non-null before it is copied to its exact C ABI type.
 		let abi: VersionFn = unsafe { symbol(image, c"decodex_menu_bar_abi_version")? };
+
 		// SAFETY: the version function has no arguments and no side effects outside the loaded
 		// image.
 		if unsafe { abi() } != MENU_BAR_ABI_VERSION {
 			return Err(NativeMenuBarFailure::Incompatible);
 		}
+
 		// SAFETY: each exported symbol has a fixed ABI that is covered by Swift and Rust tests.
 		let create: CreateFn = unsafe { symbol(image, c"decodex_menu_bar_create")? };
 		// SAFETY: same exact checked ABI boundary.
@@ -358,6 +364,7 @@ pub(crate) unsafe fn symbol<T: Copy>(
 	if address.is_null() || std::mem::size_of::<T>() != std::mem::size_of::<*mut c_void>() {
 		return Err(NativeMenuBarFailure::Incompatible);
 	}
+
 	// SAFETY: the caller selects the exact exported C function type after the size check.
 	Ok(unsafe { std::mem::transmute_copy(&address) })
 }

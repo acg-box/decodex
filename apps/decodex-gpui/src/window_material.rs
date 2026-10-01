@@ -32,6 +32,7 @@ mod macos {
 			.subviews()
 			.iter()
 			.find(|child| unsafe { msg_send![&**child, isKindOfClass: class] });
+
 		// Foreground panels own their GPUI view through contentView. Never remove
 		// that view when updating the window-backdrop preference.
 		if let Some(glass) = existing.as_ref() {
@@ -130,8 +131,10 @@ impl GlassStyle {
 		if cached < 2 {
 			return if cached == 1 { Self::Clear } else { Self::Regular };
 		}
+
 		#[allow(unused_mut)]
 		let mut clear = env::var("DECODEX_GLASS_STYLE").as_deref() == Ok("clear");
+
 		#[cfg(all(target_os = "macos", not(test)))]
 		if std::env::var_os("DECODEX_GLASS_STYLE").is_none() {
 			clear = macos::saved_clear();
@@ -144,6 +147,7 @@ impl GlassStyle {
 
 	pub(crate) fn select(self, cx: &mut App) {
 		STYLE.store(u8::from(self == Self::Clear), Ordering::Relaxed);
+
 		#[cfg(all(target_os = "macos", not(test)))]
 		macos::save_clear(self == Self::Clear);
 
@@ -176,6 +180,7 @@ pub(crate) fn apply(window: &mut Window, style: GlassStyle) {
 	let _ = style;
 
 	window.set_background_appearance(WindowBackgroundAppearance::Blurred);
+
 	#[cfg(all(target_os = "macos", not(test)))]
 	macos::configure_vibrancy(window);
 }

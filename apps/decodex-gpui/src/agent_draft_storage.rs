@@ -168,6 +168,7 @@ impl AgentSurface {
 
 		if accepted {
 			profile.prompt_edits.remove(key);
+
 			// Keep a manually restorable copy; acceptance never loses canonical media.
 			let mut copy = DesktopProfileDraft::default();
 
@@ -484,6 +485,7 @@ impl AgentSurface {
 			.ok_or("Draft service identity is unavailable.")?
 			.draft_scope_key();
 		let mut draft = self.capture_draft_document(cx).ok_or("Draft identity is unavailable.")?;
+
 		// Capture the original source and choices before asynchronous dispatch.
 		// Other editors remain in the current document, not in this alternative.
 		draft.parked.clear();
@@ -872,6 +874,7 @@ fn confirm_unconfirmed_publication(
 	if actual.payload != bytes {
 		return Err(SaveFailure::Failed);
 	}
+
 	// A visible rename can precede a failed directory sync. Require one successful
 	// atomic publication, using the observed revision so a competing writer wins.
 	// Do not recurse if this publication is also unconfirmed.

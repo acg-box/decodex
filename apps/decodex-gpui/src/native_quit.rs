@@ -39,6 +39,7 @@ pub(crate) fn install() -> bool {
 	if !install_on_class(class) {
 		return false;
 	}
+
 	// Refresh AppKit's optional-delegate-method cache while retaining the exact
 	// GPUI object, its ivars, and every existing lifecycle implementation.
 	application.setDelegate(None);
@@ -58,6 +59,7 @@ pub(crate) fn awaiting_reply() -> bool {
 pub(crate) fn request() {
 	let Some(main) = MainThreadMarker::new() else { return };
 	let application = NSApplication::sharedApplication(main);
+
 	// NSTerminateLater starts a nested run loop. Start termination from a run-loop
 	// selector, not a main-dispatch-queue block which would prevent queued GPUI
 	// futures from running until that nested loop has already returned.
@@ -70,6 +72,7 @@ pub(crate) fn reply(saved: bool) {
 	if !awaiting_reply() || REPLY_QUEUED.swap(true, Ordering::SeqCst) {
 		return;
 	}
+
 	// Termination calls GPUI shutdown synchronously. Dispatch outside the current
 	// App borrow, as GPUI's own Platform::quit does for NSApplication.terminate.
 	unsafe {
@@ -97,6 +100,7 @@ fn install_on_class(class: &AnyClass) -> bool {
 	if class.instance_method(selector).is_some() {
 		return false;
 	}
+
 	// macOS uses a 64-bit NSUInteger result, followed by self, selector, and sender.
 	// Only add the absent optional method; never replace an existing implementation.
 	unsafe {
@@ -118,6 +122,7 @@ fn install_on_class(class: &AnyClass) -> bool {
 extern "C-unwind" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObject) -> usize {
 	if !AWAITING_REPLY.swap(true, Ordering::SeqCst) {
 		REQUESTED.store(true, Ordering::SeqCst);
+
 		// Queue once outside AppKit's delegate call and any active GPUI borrow.
 		unsafe {
 			dispatch_async_f(std::ptr::addr_of!(_dispatch_main_q), ptr::null_mut(), notify_request);

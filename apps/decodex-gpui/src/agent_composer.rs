@@ -288,6 +288,7 @@ impl AgentSurface {
 			})
 			.detach();
 		}
+
 		#[cfg(test)]
 		let _ = cx;
 	}

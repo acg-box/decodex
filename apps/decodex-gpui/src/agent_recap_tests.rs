@@ -93,6 +93,7 @@ fn lost_recap_reply_is_read_back_and_cancelled_by_exact_request_without_replay()
 		time::timeout(Duration::from_secs(10), results.changed()).await.unwrap().unwrap();
 
 		assert_eq!(results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase, Phase::Pending);
+
 		// Closing the panel drops its sender while the native request is pending.
 		drop(cancel);
 

@@ -247,6 +247,7 @@ impl AgentSurface {
 		state.reconcilable = false;
 		state.seeded = false;
 		state.busy = false;
+
 		// Every parked profile is already captured in the document. Discard stale
 		// editor caches so an unchanged profile adopts the newer disk version.
 		self.draft_profiles.saved.clear();
@@ -349,6 +350,7 @@ mod tests {
 		});
 
 		assert_eq!(store.load().unwrap().revision, 2);
+
 		// Recovery controls belong to a loaded empty workspace, not the cold
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {

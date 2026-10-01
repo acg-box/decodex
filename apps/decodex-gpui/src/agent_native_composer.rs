@@ -155,6 +155,7 @@ impl AgentSurface {
 		}
 		if self.native_composer.enabled != enabled {
 			self.native_composer.enabled = enabled;
+
 			// Shell owns the decision, but Agent owns the cached composer layout.
 			cx.notify();
 		}
@@ -172,6 +173,7 @@ impl AgentSurface {
 
 		let owner = cx.entity();
 		let parent = window.window_handle();
+
 		// Opening draws the new root immediately. Do this after releasing Agent's borrow.
 		cx.defer(move |cx| {
 			let result = parent

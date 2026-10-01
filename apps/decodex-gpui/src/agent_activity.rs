@@ -274,6 +274,7 @@ impl AgentSurface {
 
 	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
 		let delta = event.delta.pixel_delta(px(BODY_LINE_HEIGHT));
+
 		// macOS also sends phase-only and horizontal gesture events. They do
 		// not move the transcript and must not cancel its current scroll state.
 		if delta.y == px(0.) {
@@ -867,6 +868,7 @@ mod tests {
 				assert_eq!(bounds.size.width, original.size.width);
 			}
 		}
+
 		// The explicit toggle still controls the reserved rail width.
 		surface.update(visual, |s, cx| {
 			s.timeline_visible = false;
@@ -1545,6 +1547,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		// Panel animation uses wall time, including in optimized test builds.
 		thread::sleep(std::time::Duration::from_millis(240));
 
@@ -1710,6 +1713,7 @@ mod tests {
 
 			cx.notify();
 		});
+
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		thread::sleep(std::time::Duration::from_millis(240));
 
@@ -1752,6 +1756,7 @@ mod tests {
 			assert!(s.history_navigation.is_none());
 			assert!(!s.history_follow_paused.contains("agent"));
 		});
+
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		thread::sleep(std::time::Duration::from_millis(240));
 
@@ -1797,11 +1802,13 @@ mod tests {
 			s.toggle_connection_details(cx);
 
 			assert_eq!(s.latest_follow_work.as_deref(), Some("agent"));
+
 			// Model the frame between a growing footer's layout and bottom-follow.
 			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
 
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
+
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		thread::sleep(std::time::Duration::from_millis(240));
 

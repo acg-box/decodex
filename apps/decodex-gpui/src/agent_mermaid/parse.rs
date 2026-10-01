@@ -110,6 +110,7 @@ pub(super) fn identifier<'a>(rest: &mut &'a str) -> Result<&'a str, RenderError>
 
 fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
 	let id = identifier(rest)?;
+
 	// Reserved constructs must not be interpreted as ordinary node declarations.
 	if matches!(
 		id,

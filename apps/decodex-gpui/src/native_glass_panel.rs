@@ -144,6 +144,7 @@ impl GlassPanel {
 
 		if self.frame != Some(frame) {
 			self.native.setFrame_display(frame, true);
+
 			// AppKit does not guarantee autoresizing a reparented Metal view.
 			// Explicit sizing also delivers GPUI's setFrameSize resize callback.
 			if let Some(content) = self.native.contentView() {
@@ -284,6 +285,7 @@ fn reduced_transparency() -> bool {
 fn view(window: &Window) -> Option<Retained<NSView>> {
 	let handle = HasWindowHandle::window_handle(window).ok()?;
 	let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return None };
+
 	// Called on the main thread while the GPUI window owns the native view.
 	unsafe { Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()) }
 }

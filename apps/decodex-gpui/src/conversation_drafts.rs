@@ -136,6 +136,7 @@ impl Conversations {
 		}
 
 		let Some(pending) = state.pending_command.take() else { return false };
+
 		// Taking the queue entry under the dispatch lock proves that no transport
 		// has taken this command. A dispatched or restored command cannot enter here.
 		state.confirm_delivery(&pending.envelope);
@@ -332,6 +333,7 @@ impl State {
 
 		self.delivery.readbacks.retain(|(original, _)| original != command);
 		self.delivery.readbacks.push((command.clone(), result));
+
 		// Local creation does not prove provider completion or clear the saved original.
 		(ConversationRouteOutcome::Fresh, false)
 	}
