@@ -1,9 +1,11 @@
 //! Exact native-history grants carried by delivered user messages.
 
-use crate::{SqliteStore, StoreError, error::sqlite_error};
-use rusqlite::{Connection, OptionalExtension as _, params};
-use serde_json::Value;
 use std::collections::HashSet;
+
+use rusqlite::{Connection, OptionalExtension as _};
+use serde_json::Value;
+
+use crate::{SqliteStore, StoreError, error};
 
 impl SqliteStore {
 	/// A delivered user message grants only the exact referenced work and thread.
@@ -21,8 +23,8 @@ impl SqliteStore {
 				 AND e.event_kind='user_message' AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>''
 				 AND json_extract(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.source')='user'
 				 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.workId')=?2 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.threadId')=?3)",
-				params![recipient,target,thread], |row| row.get(0),
-			).map_err(|error| sqlite_error(error).into())
+				rusqlite::params![recipient,target,thread], |row| row.get(0),
+			).map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -41,8 +43,8 @@ impl SqliteStore {
 				 AND e.event_kind='user_message' AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>''
 				 AND json_extract(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.source')='user'
 				 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.threadId')=?2
-				 ORDER BY w.id LIMIT 1", params![recipient,thread], |row| row.get(0),
-			).optional().map_err(|error| sqlite_error(error).into())
+				 ORDER BY w.id LIMIT 1", rusqlite::params![recipient,thread], |row| row.get(0),
+			).optional().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 }
@@ -78,7 +80,7 @@ pub(crate) fn validate_references(
 
 		let target = field(reference, "workId", 512)?;
 		let thread = field(reference, "threadId", 512)?;
-		let _title = field(reference, "title", 1024)?;
+		let _title = field(reference, "title", 1_024)?;
 
 		if !seen.insert((target, thread)) {
 			return Err(StoreError::InvalidInput("duplicate task reference"));
@@ -87,10 +89,10 @@ pub(crate) fn validate_references(
 		let current: bool = connection
 			.query_row(
 				"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
-				params![target, thread],
+				rusqlite::params![target, thread],
 				|row| row.get(0),
 			)
-			.map_err(sqlite_error)?;
+			.map_err(error::sqlite_error)?;
 
 		if !current {
 			return Err(StoreError::InvalidInput("referenced task changed; select it again"));

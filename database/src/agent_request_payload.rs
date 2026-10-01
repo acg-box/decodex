@@ -1,15 +1,17 @@
 //! Complete native event details; inbox scans retain only routing identity.
 //! Approval compaction is validated here; App UI call receipts use their dedicated owner API.
-use crate::{AgentInboxEvent, EnqueueAgentEvent, StoreError, error::sqlite_error};
 use rusqlite::{Connection, OptionalExtension as _};
-use serde_json::{Value, json};
+use serde_json::{Map, Value};
+
+use crate::{AgentInboxEvent, EnqueueAgentEvent, StoreError, error};
+use decodex_core::{MAX_APPROVAL_ENVELOPE_BYTES, MAX_NATIVE_MESSAGE_BYTES};
 
 pub(crate) fn compact(input: &EnqueueAgentEvent) -> Result<Option<String>, StoreError> {
-	if input.payload.len() <= 65536 {
+	if input.payload.len() <= 65_536 {
 		return Ok(None);
 	}
 	if !matches!(input.event_kind.as_str(), "permission_pending" | "server_request_pending")
-		|| input.payload.len() > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES
+		|| input.payload.len() > MAX_APPROVAL_ENVELOPE_BYTES
 	{
 		return Err(StoreError::InvalidInput("Agent event payload is too large"));
 	}
@@ -31,7 +33,7 @@ pub(crate) fn compact(input: &EnqueueAgentEvent) -> Result<Option<String>, Store
 		return Err(StoreError::InvalidInput("large event is not a native approval"));
 	}
 
-	let frame_limit = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+	let frame_limit = MAX_NATIVE_MESSAGE_BYTES;
 
 	if value["params"].to_string().len() > frame_limit {
 		return Err(StoreError::InvalidInput("native request parameters are too large"));
@@ -46,7 +48,7 @@ pub(crate) fn compact(input: &EnqueueAgentEvent) -> Result<Option<String>, Store
 		return Err(StoreError::InvalidInput("native file evidence is invalid or too large"));
 	}
 
-	let metadata: serde_json::Map<String, Value> = value
+	let metadata: Map<String, Value> = value
 		.as_object()
 		.ok_or(StoreError::InvalidInput("native approval envelope is invalid"))?
 		.iter()
@@ -54,11 +56,11 @@ pub(crate) fn compact(input: &EnqueueAgentEvent) -> Result<Option<String>, Store
 		.map(|(key, value)| (key.clone(), value.clone()))
 		.collect();
 
-	if Value::Object(metadata).to_string().len() > 65536 {
+	if Value::Object(metadata).to_string().len() > 65_536 {
 		return Err(StoreError::InvalidInput("native approval metadata is too large"));
 	}
 
-	let mut params = serde_json::Map::new();
+	let mut params = Map::new();
 
 	for key in ["threadId", "turnId", "itemId"] {
 		if let Some(field) = value["params"].get(key) {
@@ -66,11 +68,11 @@ pub(crate) fn compact(input: &EnqueueAgentEvent) -> Result<Option<String>, Store
 		}
 	}
 
-	let compact = json!({"id":value["id"],"method":value["method"],
+	let compact = serde_json::json!({"id":value["id"],"method":value["method"],
 		"params":params,"ownerThreadId":value["ownerThreadId"],"detailsStored":true})
 	.to_string();
 
-	if compact.len() > 65536 {
+	if compact.len() > 65_536 {
 		return Err(StoreError::InvalidInput("native approval identity is too large"));
 	}
 
@@ -88,7 +90,7 @@ pub(crate) fn hydrate(
 			|row| row.get::<_, String>(0),
 		)
 		.optional()
-		.map_err(sqlite_error)?
+		.map_err(error::sqlite_error)?
 	{
 		event.payload = payload;
 	}
