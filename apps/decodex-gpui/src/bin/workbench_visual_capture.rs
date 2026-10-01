@@ -62,7 +62,7 @@ use objc2 as _;
 
 use std::path::PathBuf;
 
-use gpui::{self, AppContext as _, Result, VisualTestAppContext};
+use gpui::{self, AnyWindowHandle, AppContext as _, VisualTestAppContext};
 
 use crate::shell::{Destination, Shell, agent_surface::AgentSurface};
 
@@ -91,7 +91,7 @@ type ServiceProjection = (
 	decodex_protocol::ClientProfile,
 );
 
-fn main() -> Result<()> {
+fn main() -> gpui::Result<()> {
 	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
 		.map(PathBuf::from)
 		.unwrap_or_else(|| PathBuf::from("target/visual-tests/codex-workbench.png"));
@@ -127,7 +127,7 @@ fn main() -> Result<()> {
 			read_service_projection(PathBuf::from(root), &output, automatic_recap || live_media)
 		})
 		.transpose()?;
-	let window: gpui::AnyWindowHandle = if integrations {
+	let window: AnyWindowHandle = if integrations {
 		cx.open_offscreen_window(gpui::size(gpui::px(1_180.0), gpui::px(1_400.0)), |_, cx| {
 			cx.new(|cx| {
 				let mut surface = AgentSurface::new(cx);
@@ -221,9 +221,9 @@ fn main() -> Result<()> {
 
 fn capture_integrations(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
+	window: AnyWindowHandle,
 	output: &Path,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	cx.capture_screenshot(window)?.save(output.with_extension("top.png"))?;
 	// The isolated 1180-pixel-wide fixture puts the status viewport below its controls.
 	cx.simulate_event(
@@ -239,7 +239,7 @@ fn capture_integrations(
 	Ok(())
 }
 
-fn layout_fixtures() -> Result<bool> {
+fn layout_fixtures() -> gpui::Result<bool> {
 	let integrations = env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
 
 	if integrations && env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
@@ -253,7 +253,7 @@ fn read_service_projection(
 	root: PathBuf,
 	output: &Path,
 	require_fixture: bool,
-) -> Result<ServiceProjection> {
+) -> gpui::Result<ServiceProjection> {
 	if require_fixture
 		&& root
 			.parent()
@@ -330,9 +330,9 @@ fn read_service_projection(
 
 fn animate_panel_motion(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
+	window: AnyWindowHandle,
 	panel_motion: &str,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	let keys = match panel_motion {
 		"left" => "cmd-e",
 		"right" => "cmd-b",
@@ -361,8 +361,8 @@ fn animate_panel_motion(
 // Sample dismissal over the real composer, including its Live button.
 fn capture_status_dismissal(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
-) -> Result<()> {
+	window: AnyWindowHandle,
+) -> gpui::Result<()> {
 	let Some(delay) =
 		env::var("DECODEX_VISUAL_STATUS_CLOSE_MS").ok().and_then(|value| value.parse::<u64>().ok())
 	else {
@@ -430,8 +430,8 @@ fn verify_native_composer_focus(
 
 fn capture_interactions(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
-) -> Result<()> {
+	window: AnyWindowHandle,
+) -> gpui::Result<()> {
 	#[cfg(target_os = "macos")]
 	verify_native_composer_focus(cx, window)?;
 	capture_status_dismissal(cx, window)?;
@@ -477,7 +477,7 @@ fn prove_composer_send(
 	profile: decodex_protocol::ClientProfile,
 	message: &str,
 	output: &Path,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	cx.background_executor.allow_parking();
 
 	let before = cx.update_window(handle.into(), |view, window, cx| {
@@ -538,7 +538,7 @@ fn prove_automatic_recap(
 	handle: WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	output: &Path,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	// This capture intentionally combines deterministic UI scheduling with real service I/O.
 	cx.background_executor.allow_parking();
 
@@ -580,7 +580,7 @@ fn prove_media(
 	profile: decodex_protocol::ClientProfile,
 	root: &Path,
 	output: &Path,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	let request: AgentMediaRequest = serde_json::from_slice(&fs::read(
 		root.parent().expect("fixture parent").join("media-source.json"),
 	)?)?;
@@ -638,7 +638,7 @@ fn prove_steer_receipt(
 	profile: decodex_protocol::ClientProfile,
 	identity: &str,
 	output: &Path,
-) -> Result<()> {
+) -> gpui::Result<()> {
 	let identity: AgentSteerIdentity = serde_json::from_str(identity)?;
 	let before = cx.update_window(handle.into(), |view, window, cx| {
 		let evidence = view.downcast::<AgentSurface>().expect("Agent capture root").update(
