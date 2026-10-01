@@ -21,15 +21,16 @@ use futures_util::{
 	FutureExt as _, SinkExt as _, StreamExt as _,
 	stream::{SplitSink, SplitStream},
 };
-
 use tokio::{
-	sync::{mpsc, mpsc::Receiver, oneshot, watch},
-	task::{AbortHandle, JoinError, JoinHandle, JoinSet},
-	time,
+	sync::{
+		mpsc::{self, error::TrySendError},
+		oneshot, watch,
+	},
+	task::{AbortHandle, Id, JoinError, JoinHandle, JoinSet},
+	time::{self, Interval, MissedTickBehavior, Sleep, error::Elapsed},
 };
-
 use tokio_tungstenite::{
-	WebSocketStream, accept_hdr_async_with_config,
+	self, WebSocketStream,
 	tungstenite::{
 		Message,
 		error::ProtocolError,
@@ -40,13 +41,11 @@ use tokio_tungstenite::{
 };
 
 use crate::{Application, ApplicationEventPublication, ApplicationPublication};
-
 use decodex_core::ServerIdentity;
-
 use decodex_protocol::{
-	self, AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, CausationId, ClientCommandId,
-	ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome, CommandReceipt,
-	CommandResultEnvelope, CorrelationId, Cursor, EventEnvelope, IdempotencyKey,
+	self, AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, CURRENT_VERSION, CausationId,
+	ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome,
+	CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, EventEnvelope, IdempotencyKey,
 	LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal, LocalTransportStream,
 	ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReceiptDisposition, ReconnectMode,
 	Refusal, RefusalEnvelope, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
@@ -304,7 +303,11 @@ where
 			.max_frame_size(Some(self.inner.config.maximum_message_bytes));
 		let handshake = time::timeout(
 			self.inner.config.hello_timeout,
-			accept_hdr_async_with_config(stream, validate_websocket_route, Some(config)),
+			tokio_tungstenite::accept_hdr_async_with_config(
+				stream,
+				validate_websocket_route,
+				Some(config),
+			),
 		);
 		let socket = tokio::select! {
 			biased;
@@ -341,7 +344,7 @@ where
 							server_id: self.inner.server_id.clone(),
 							refusal: Refusal::ServiceVersionMismatch {
 								requested: hello.version,
-								supported: decodex_protocol::CURRENT_VERSION,
+								supported: CURRENT_VERSION,
 							},
 						}),
 					)
@@ -878,7 +881,7 @@ where
 }
 
 struct RegisteredSessionContext {
-	outbound_receiver: Receiver<OutboundItem>,
+	outbound_receiver: mpsc::Receiver<OutboundItem>,
 	seal_receiver: oneshot::Receiver<SessionSealReason>,
 	connection_id: u64,
 	negotiated: ProtocolVersion,
@@ -955,7 +958,6 @@ where
 			write_timeout: server.inner.config.write_timeout,
 			maximum_message_bytes: server.inner.config.maximum_message_bytes,
 		};
-		let mut peer_close_reply_flushed = false;
 		let reader = server.read_messages(
 			&mut socket_reader,
 			transport.connection_id,
@@ -963,6 +965,7 @@ where
 			&actor_sender,
 			stop,
 		);
+		let mut peer_close_reply_flushed = false;
 
 		tokio::pin!(reader);
 
@@ -1009,34 +1012,15 @@ where
 				);
 			}
 
-			let flush = time::timeout(transport.write_timeout, socket_writer.flush());
-
-			tokio::pin!(flush);
-
-			let flush_result = if frozen_reader.is_some() {
-				flush.await
-			} else {
-				tokio::select! {
-					biased;
-
-					result = &mut flush => result,
-					completion = &mut reader => {
-						let peer_close = completion.is_peer_close();
-
-						frozen_reader = Some(completion);
-
-						outbound_receiver.close();
-
-						let result = flush.await;
-
-						if peer_close && matches!(&result, Ok(Ok(()))) {
-							peer_close_reply_flushed = true;
-						}
-
-						result
-					},
-				}
-			};
+			let flush_result = Self::flush_with_reader(
+				&mut socket_writer,
+				transport.write_timeout,
+				&mut frozen_reader,
+				&mut outbound_receiver,
+				reader.as_mut(),
+				&mut peer_close_reply_flushed,
+			)
+			.await;
 
 			if frozen_reader.is_some_and(SessionReaderCompletion::is_peer_close)
 				&& Self::is_send_after_closing(&flush_result)
@@ -1058,8 +1042,49 @@ where
 		}
 	}
 
+	async fn flush_with_reader<F>(
+		socket_writer: &mut SplitSink<WebSocket, Message>,
+		write_timeout: Duration,
+		frozen_reader: &mut Option<SessionReaderCompletion>,
+		outbound_receiver: &mut mpsc::Receiver<OutboundItem>,
+		mut reader: Pin<&mut F>,
+		peer_close_reply_flushed: &mut bool,
+	) -> Result<Result<(), tokio_tungstenite::tungstenite::Error>, Elapsed>
+	where
+		F: Future<Output = SessionReaderCompletion>,
+	{
+		let flush = time::timeout(write_timeout, socket_writer.flush());
+
+		tokio::pin!(flush);
+
+		if frozen_reader.is_some() {
+			flush.await
+		} else {
+			tokio::select! {
+				biased;
+
+				result = &mut flush => result,
+				completion = &mut reader => {
+					let peer_close = completion.is_peer_close();
+
+					*frozen_reader = Some(completion);
+
+					outbound_receiver.close();
+
+					let result = flush.await;
+
+					if peer_close && matches!(&result, Ok(Ok(()))) {
+						*peer_close_reply_flushed = true;
+					}
+
+					result
+				},
+			}
+		}
+	}
+
 	fn is_send_after_closing(
-		result: &Result<Result<(), tokio_tungstenite::tungstenite::Error>, time::error::Elapsed>,
+		result: &Result<Result<(), tokio_tungstenite::tungstenite::Error>, Elapsed>,
 	) -> bool {
 		matches!(
 			result,
@@ -1070,7 +1095,7 @@ where
 	}
 
 	async fn next_outbound_item<F>(
-		outbound_receiver: &mut Receiver<OutboundItem>,
+		outbound_receiver: &mut mpsc::Receiver<OutboundItem>,
 		frozen_reader: &mut Option<SessionReaderCompletion>,
 		mut reader: Pin<&mut F>,
 	) -> Option<OutboundItem>
@@ -1334,7 +1359,7 @@ where
 {
 	server: ProtocolServer<A>,
 	listener: LocalTransportListener,
-	listener_health: time::Interval,
+	listener_health: Interval,
 	shutdown_receiver: oneshot::Receiver<()>,
 	phase: OwnerPhase,
 	deadline: Option<OwnerDeadline>,
@@ -1434,7 +1459,7 @@ where
 		let services = server.inner.application.daemon_service_tasks(service_stop_receiver);
 		let mut listener_health = time::interval(LISTENER_PUBLICATION_HEALTH_INTERVAL);
 
-		listener_health.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+		listener_health.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
 		let mut owner = Self {
 			server,
@@ -1909,7 +1934,7 @@ where
 			Some(publication) => {
 				self.enforce_deadline();
 
-				self.publish_event_locked(decodex_protocol::CURRENT_VERSION, publication)
+				self.publish_event_locked(CURRENT_VERSION, publication)
 			},
 			None => {
 				self.event_eof = true;
@@ -2402,8 +2427,7 @@ where
 		let mut directive = OwnerDirective::Continue;
 
 		while let Some(publication) = self.deferred_events.pop_front() {
-			let publication_directive =
-				self.publish_event_locked(decodex_protocol::CURRENT_VERSION, publication);
+			let publication_directive = self.publish_event_locked(CURRENT_VERSION, publication);
 
 			directive = Self::combine_directives(directive, publication_directive);
 		}
@@ -2413,7 +2437,7 @@ where
 
 	fn harvest_task(
 		&mut self,
-		joined: Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>,
+		joined: Result<(Id, OwnedTaskCompletion), JoinError>,
 	) -> OwnerDirective {
 		self.receipt.record_harvested_task();
 
@@ -2504,43 +2528,44 @@ where
 					},
 				}
 			},
-			Err(error) => {
-				let Some(record) = self.tasks.take_record(error.id()) else {
-					self.receipt.record_failed_task(None);
+			Err(error) => self.harvest_join_error(error),
+		}
+	}
 
-					return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
-				};
-				let identity = record.identity;
-				let mut deadline_cancel = false;
+	fn harvest_join_error(&mut self, error: JoinError) -> OwnerDirective {
+		let Some(record) = self.tasks.take_record(error.id()) else {
+			self.receipt.record_failed_task(None);
 
-				if let Some(connection_id) = record.connection_id {
-					deadline_cancel = error.is_cancelled()
-						&& record.deadline_classified
-						&& matches!(
-							self.state.reconcile_deadline_cancel(connection_id),
-							SessionCompletionClassification::Deadline
-						);
+			return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
+		};
+		let identity = record.identity;
+		let mut deadline_cancel = false;
 
-					if !deadline_cancel {
-						self.state
-							.resolve_failed_session(connection_id, record.deadline_classified);
-					}
-				}
+		if let Some(connection_id) = record.connection_id {
+			deadline_cancel = error.is_cancelled()
+				&& record.deadline_classified
+				&& matches!(
+					self.state.reconcile_deadline_cancel(connection_id),
+					SessionCompletionClassification::Deadline
+				);
 
-				if error.is_panic() {
-					self.receipt.record_panicked_task(identity);
+			if !deadline_cancel {
+				self.state.resolve_failed_session(connection_id, record.deadline_classified);
+			}
+		}
 
-					OwnerDirective::BeginStopping(StopCause::ChildPanic(identity))
-				} else if deadline_cancel {
-					self.receipt.record_forced_cancelled_task(identity);
+		if error.is_panic() {
+			self.receipt.record_panicked_task(identity);
 
-					OwnerDirective::BeginStopping(StopCause::DeadlineClassification(identity))
-				} else {
-					self.receipt.record_failed_task(Some(identity));
+			OwnerDirective::BeginStopping(StopCause::ChildPanic(identity))
+		} else if deadline_cancel {
+			self.receipt.record_forced_cancelled_task(identity);
 
-					OwnerDirective::BeginStopping(StopCause::ChildFailure(identity))
-				}
-			},
+			OwnerDirective::BeginStopping(StopCause::DeadlineClassification(identity))
+		} else {
+			self.receipt.record_failed_task(Some(identity));
+
+			OwnerDirective::BeginStopping(StopCause::ChildFailure(identity))
 		}
 	}
 
@@ -2635,7 +2660,7 @@ where
 
 struct OwnerDeadline {
 	at: time::Instant,
-	sleep: Pin<Box<time::Sleep>>,
+	sleep: Pin<Box<Sleep>>,
 	state: OwnerDeadlineState,
 }
 
@@ -2964,7 +2989,7 @@ struct OwnedTaskRecord {
 
 struct OwnedTasks {
 	set: JoinSet<OwnedTaskCompletion>,
-	identities: HashMap<tokio::task::Id, OwnedTaskRecord>,
+	identities: HashMap<Id, OwnedTaskRecord>,
 	next_spawn_id: u64,
 	active_sessions: usize,
 }
@@ -3021,7 +3046,7 @@ impl OwnedTasks {
 		self.active_sessions
 	}
 
-	fn take_record(&mut self, task_id: tokio::task::Id) -> Option<OwnedTaskRecord> {
+	fn take_record(&mut self, task_id: Id) -> Option<OwnedTaskRecord> {
 		let record = self.identities.remove(&task_id)?;
 
 		if record.identity.kind == OwnedTaskKind::Session {
@@ -3317,7 +3342,7 @@ enum CommandShutdownState {
 enum AcceptingWake {
 	RequestedShutdown,
 	ListenerHealth,
-	OwnedTask(Option<Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>>),
+	OwnedTask(Option<Result<(Id, OwnedTaskCompletion), JoinError>>),
 	Operation(ActiveActorOperationCompletion),
 	Ordinary(Box<AcceptingOrdinaryWake>),
 }
@@ -3330,7 +3355,7 @@ enum AcceptingOrdinaryWake {
 
 enum StoppingWake {
 	Deadline,
-	OwnedTask(Option<Result<(tokio::task::Id, OwnedTaskCompletion), JoinError>>),
+	OwnedTask(Option<Result<(Id, OwnedTaskCompletion), JoinError>>),
 	Operation(ActiveActorOperationCompletion),
 	ApplicationSettled,
 	Request(Option<PublicationRequest>),
@@ -3574,8 +3599,8 @@ fn accept_for_session(
 
 				Ok(ordinal)
 			},
-			Err(mpsc::error::TrySendError::Full(_)) => Err(SessionSealReason::OutboundFull),
-			Err(mpsc::error::TrySendError::Closed(_)) => Err(SessionSealReason::OutboundClosed),
+			Err(TrySendError::Full(_)) => Err(SessionSealReason::OutboundFull),
+			Err(TrySendError::Closed(_)) => Err(SessionSealReason::OutboundClosed),
 		}
 	} else {
 		Err(SessionSealReason::OrdinalExhausted)
