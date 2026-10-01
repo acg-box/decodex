@@ -1,7 +1,11 @@
 //! Compact in-message weather presentation.
 use gpui::{
-	AnyElement, App, BoxShadow, FontWeight, Role, SharedString, Window, div, point, prelude::*, px,
-	rgb, rgba,
+	AnyElement, App, BoxShadow, FontWeight, Role, SharedString, Window, div, point,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, RenderOnce,
+		StatefulInteractiveElement, Styled,
+	},
+	px, rgb, rgba,
 };
 
 use decodex_protocol::WeatherForecast;

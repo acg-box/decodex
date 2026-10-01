@@ -10,9 +10,11 @@ mod probe {
 	use crate::composer_input::{self, ComposerInput, SubmitComposer};
 
 	use gpui::{
-		App, Bounds, Context, Entity, IntoElement, Render, Window, WindowBackgroundAppearance,
-		WindowBounds, WindowHandle, WindowKind, WindowOptions, div, point, prelude::*, px, rgb,
-		rgba, size,
+		App, AppContext as _, Bounds, Context, Entity, IntoElement, Render, Window,
+		WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
+		point,
+		prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
+		px, rgb, rgba, size,
 	};
 
 	use objc2::{msg_send, rc::Retained, runtime::AnyClass};

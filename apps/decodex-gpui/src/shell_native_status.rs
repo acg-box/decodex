@@ -1,7 +1,8 @@
 //! Keep notifications above native composer windows without moving the editor.
 use gpui::{
-	self, AnyWindowHandle, App, Bounds, Context, Entity, Render, Subscription, Window,
-	WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions, prelude::*,
+	self, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Render, Subscription,
+	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
+	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
 use crate::{

@@ -16,7 +16,10 @@ use gpui::{
 	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, SharedString, Style,
 	TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine, actions, div, fill, point,
-	prelude::*, px, relative, rgb, rgba, size,
+	prelude::{
+		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
+	},
+	px, relative, rgb, rgba, size,
 };
 
 use crate::ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL};

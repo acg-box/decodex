@@ -3,7 +3,9 @@ use std::time::Instant;
 
 use gpui::{
 	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
-	point, prelude::*, px,
+	point,
+	prelude::{InteractiveElement, StatefulInteractiveElement, Styled},
+	px,
 };
 
 use crate::{ui_motion, ui_preferences, ui_theme::BODY_LINE_HEIGHT};

@@ -2,9 +2,10 @@
 use std::time::Duration;
 
 use gpui::{
-	self, Action, AnyElement, AnyWindowHandle, App, Bounds, Context, Entity, Focusable,
-	MouseButton, Pixels, Render, Subscription, Window, WindowBackgroundAppearance, WindowBounds,
-	WindowHandle, WindowKind, WindowOptions, prelude::*,
+	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
+	Focusable, MouseButton, Pixels, Render, Subscription, Window, WindowBackgroundAppearance,
+	WindowBounds, WindowHandle, WindowKind, WindowOptions,
+	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
 use crate::{

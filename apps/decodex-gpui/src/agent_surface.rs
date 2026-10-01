@@ -62,9 +62,14 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, Bounds, ClipboardItem, Context, Div, Entity, FocusHandle, FontWeight, KeyDownEvent,
-	Pixels, Point, Render, Role, ScrollHandle, SharedString, Task, Window, div, prelude::*, px,
-	rgb, rgba,
+	AnyElement, AppContext as _, Bounds, ClipboardItem, Context, Div, Entity, FocusHandle,
+	FontWeight, KeyDownEvent, Pixels, Point, Render, Role, ScrollHandle, SharedString, Task,
+	Window, div,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled, StyledImage,
+	},
+	px, rgb, rgba,
 };
 use tokio::runtime::Builder;
 

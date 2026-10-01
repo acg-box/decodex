@@ -3,7 +3,11 @@ use std::f32::consts::TAU;
 
 use gpui::{
 	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder,
-	Pixels, RenderOnce, SharedString, Window, prelude::*,
+	Pixels, RenderOnce, SharedString, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::shell::agent_surface::{

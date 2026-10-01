@@ -1,7 +1,7 @@
 //! Restore a native text part without dropping its markers or undo metadata.
 use serde_json::Value;
 
-use crate::composer_input::*;
+use crate::composer_input::{ComposerInput, Context};
 use decodex_protocol::PromptDraft;
 
 pub(super) const MAX_NATIVE_EDITOR_BYTES: usize = 8 * 1_024 * 1_024;
@@ -48,7 +48,9 @@ impl ComposerInput {
 
 #[cfg(test)]
 mod tests {
-	use crate::composer_input::native::*;
+	use gpui::AppContext as _;
+
+	use crate::composer_input::{Redo, Undo, native::*};
 
 	#[gpui::test]
 	fn large_native_edits_keep_a_bounded_undo_history(cx: &mut gpui::TestAppContext) {

@@ -7,7 +7,10 @@ use std::{
 
 use gpui::{
 	self, App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels,
-	RenderOnce, Role, SharedString, Window, prelude::*,
+	RenderOnce, Role, SharedString, Window,
+	prelude::{
+		InteractiveElement as _, ParentElement as _, StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};

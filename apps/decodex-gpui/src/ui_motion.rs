@@ -3,7 +3,11 @@ use std::time::{Duration, Instant};
 
 use gpui::{
 	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
-	Window, div, prelude::*, px,
+	Window, div,
+	prelude::{
+		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
+	},
+	px,
 };
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{

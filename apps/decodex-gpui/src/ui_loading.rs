@@ -2,7 +2,11 @@
 use std::{f32::consts::TAU, time::Instant};
 
 use gpui::{
-	self, App, IntoElement, PathBuilder, RenderOnce, Role, SharedString, Window, prelude::*,
+	self, App, IntoElement, PathBuilder, RenderOnce, Role, SharedString, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
