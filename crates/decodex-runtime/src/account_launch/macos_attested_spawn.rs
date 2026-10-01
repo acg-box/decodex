@@ -8,10 +8,12 @@
 //! resumes only after all checks succeed.
 
 use std::{
-	ffi::{CString, OsStr, OsString, c_char, c_short, c_void},
+	ffi::{CStr, CString, OsStr, OsString, c_char, c_short, c_void},
 	fmt::{Debug, Formatter},
-	fs::{self, File},
+	fs::{self, File, Permissions},
 	io::{self, ErrorKind},
+	iter,
+	mem::MaybeUninit,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _},
 		unix::{
@@ -26,8 +28,6 @@ use std::{
 	time::Duration,
 };
 
-use zeroize::Zeroizing;
-
 use core_foundation::{
 	base::{CFGetTypeID, CFTypeRef, OSStatus, TCFType as _},
 	data::{CFDataGetBytePtr, CFDataGetLength, CFDataGetTypeID, CFDataRef},
@@ -35,19 +35,18 @@ use core_foundation::{
 	string::{CFString, CFStringRef},
 	url::{CFURL, CFURLGetTypeID, CFURLRef},
 };
-
 use libc::{
 	EINTR, ESRCH, F_GETFD, F_GETFL, F_SETFL, FD_CLOEXEC, O_CLOEXEC, O_NOFOLLOW, O_NONBLOCK,
-	O_RDONLY, O_WRONLY, SIGCONT, SIGKILL, WNOHANG, posix_spawn_file_actions_t, posix_spawnattr_t,
+	O_RDONLY, O_WRONLY, POSIX_SPAWN_CLOEXEC_DEFAULT, POSIX_SPAWN_SETSIGDEF,
+	POSIX_SPAWN_START_SUSPENDED, SIGCONT, SIGKILL, SIGPIPE, STDERR_FILENO, STDIN_FILENO,
+	STDOUT_FILENO, WNOHANG, c_int, mode_t, pid_t, posix_spawn_file_actions_t, posix_spawnattr_t,
+	sigset_t,
 };
-
 use security_framework::os::macos::code_signing::{
 	Flags, GuestAttributes, SecCode, SecRequirement, SecStaticCode,
 };
-
-use tempfile::TempDir;
-
-use std::iter;
+use tempfile::{Builder, TempDir};
+use zeroize::Zeroizing;
 
 pub(super) const PRIVATE_STDIO_STARTUP_ENV: &str =
 	"CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
@@ -75,7 +74,7 @@ unsafe extern "C" {
 	static kSecCodeInfoMainExecutable: CFStringRef;
 	static kSecCodeAttributeArchitecture: CFStringRef;
 	fn SecStaticCodeCreateWithPathAndAttributes(
-		path: core_foundation::url::CFURLRef,
+		path: CFURLRef,
 		flags: u32,
 		attributes: CFDictionaryRef,
 		code: *mut *const c_void,
@@ -97,11 +96,11 @@ unsafe extern "C" {
 	fn posix_spawn_file_actions_addchdir_np(
 		actions: *mut posix_spawn_file_actions_t,
 		path: *const c_char,
-	) -> libc::c_int;
+	) -> c_int;
 	fn posix_spawn_file_actions_addfchdir_np(
 		actions: *mut posix_spawn_file_actions_t,
-		descriptor: libc::c_int,
-	) -> libc::c_int;
+		descriptor: c_int,
+	) -> c_int;
 }
 
 /// Statically validated identity rooted in a reference snapshot for one execution path.
@@ -250,7 +249,7 @@ impl Drop for SuspendedAttestedSpawn {
 
 /// Minimal owned child handle for a pid returned directly by `posix_spawn`.
 pub(super) struct AttestedChild {
-	pid: libc::pid_t,
+	pid: pid_t,
 	status: Option<ExitStatus>,
 }
 impl AttestedChild {
@@ -293,7 +292,7 @@ impl AttestedChild {
 			.ok_or_else(|| io::Error::other("blocking wait returned no status"))
 	}
 
-	fn wait_with_options(&mut self, options: libc::c_int) -> io::Result<Option<ExitStatus>> {
+	fn wait_with_options(&mut self, options: c_int) -> io::Result<Option<ExitStatus>> {
 		loop {
 			let mut raw_status = 0;
 			// SAFETY: this handle exclusively waits for its own positive child pid and supplies a
@@ -344,9 +343,9 @@ struct ProtocolFifos {
 }
 impl ProtocolFifos {
 	fn new() -> io::Result<Self> {
-		let directory = tempfile::Builder::new().prefix("decodex-app-server-fifos-").tempdir()?;
+		let directory = Builder::new().prefix("decodex-app-server-fifos-").tempdir()?;
 
-		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+		fs::set_permissions(directory.path(), Permissions::from_mode(0o700))?;
 
 		validate_private_directory(directory.path())?;
 
@@ -376,11 +375,11 @@ impl ProtocolFifos {
 		Ok(Self { directory, stdin_path, stdout_path, parent_stdin, parent_stdout })
 	}
 
-	fn stdin_path(&self) -> &std::ffi::CStr {
+	fn stdin_path(&self) -> &CStr {
 		&self.stdin_path
 	}
 
-	fn stdout_path(&self) -> &std::ffi::CStr {
+	fn stdout_path(&self) -> &CStr {
 		&self.stdout_path
 	}
 
@@ -415,10 +414,10 @@ impl SpawnFileActions {
 
 	fn open(
 		&mut self,
-		descriptor: libc::c_int,
-		path: &std::ffi::CStr,
-		flags: libc::c_int,
-		mode: libc::mode_t,
+		descriptor: c_int,
+		path: &CStr,
+		flags: c_int,
+		mode: mode_t,
 	) -> io::Result<()> {
 		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
 		let result = unsafe {
@@ -441,7 +440,7 @@ impl SpawnFileActions {
 		spawn_configuration_result(result)
 	}
 
-	fn fchdir(&mut self, descriptor: libc::c_int) -> io::Result<()> {
+	fn fchdir(&mut self, descriptor: c_int) -> io::Result<()> {
 		// SAFETY: the actions object is initialized and the caller retains the live descriptor
 		// through the complete posix_spawn call.
 		let result = unsafe { posix_spawn_file_actions_addfchdir_np(&mut self.0, descriptor) };
@@ -473,14 +472,14 @@ impl SpawnAttributes {
 	}
 
 	fn set_attested_flags(&mut self) -> io::Result<()> {
-		let mut default_signals = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+		let mut default_signals = MaybeUninit::<sigset_t>::uninit();
 
 		// SAFETY: sigemptyset initializes the complete output object before it is read.
 		if unsafe { libc::sigemptyset(default_signals.as_mut_ptr()) } != 0 {
 			return Err(io::Error::last_os_error());
 		}
 		// SAFETY: the set was initialized above and SIGPIPE is a valid signal number.
-		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), libc::SIGPIPE) } != 0 {
+		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), SIGPIPE) } != 0 {
 			return Err(io::Error::last_os_error());
 		}
 
@@ -490,9 +489,8 @@ impl SpawnAttributes {
 
 		spawn_configuration_result(result)?;
 
-		let exposed = libc::POSIX_SPAWN_START_SUSPENDED
-			| libc::POSIX_SPAWN_CLOEXEC_DEFAULT
-			| libc::POSIX_SPAWN_SETSIGDEF;
+		let exposed =
+			POSIX_SPAWN_START_SUSPENDED | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF;
 		let flags = c_short::try_from(exposed)
 			.map_err(|_| invalid_input("Darwin spawn flags do not fit posix_spawnattr_setflags"))?
 			| POSIX_SPAWN_SETSID_DARWIN;
@@ -521,7 +519,7 @@ enum SuspendedEnvironment<'a> {
 #[derive(Clone, Copy)]
 enum SuspendedWorkingDirectory<'a> {
 	Path(&'a Path),
-	Descriptor(libc::c_int),
+	Descriptor(c_int),
 }
 
 /// Spawn one canonical executable and return it still suspended.
@@ -566,7 +564,7 @@ pub(super) fn spawn_private_stdio_suspended(
 pub(super) fn spawn_private_stdio_suspended_at(
 	identity: &AttestedCodeIdentity,
 	args: &[OsString],
-	working_directory_descriptor: libc::c_int,
+	working_directory_descriptor: c_int,
 	home: &Path,
 	personal_access_token: Option<&str>,
 ) -> io::Result<SuspendedAttestedSpawn> {
@@ -637,9 +635,9 @@ fn spawn_suspended_with_environment(
 	let protocol = ProtocolFifos::new()?;
 	let mut actions = SpawnFileActions::new()?;
 
-	actions.open(libc::STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
-	actions.open(libc::STDOUT_FILENO, protocol.stdout_path(), O_WRONLY | O_NOFOLLOW, 0)?;
-	actions.open(libc::STDERR_FILENO, c"/dev/null", O_WRONLY, 0)?;
+	actions.open(STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
+	actions.open(STDOUT_FILENO, protocol.stdout_path(), O_WRONLY | O_NOFOLLOW, 0)?;
+	actions.open(STDERR_FILENO, c"/dev/null", O_WRONLY, 0)?;
 
 	match (working_directory, working_directory_path.as_ref()) {
 		(SuspendedWorkingDirectory::Path(_), Some(path)) => actions.chdir(path)?,
@@ -718,7 +716,7 @@ fn check_static_validity(code: &SecStaticCode) -> io::Result<()> {
 	security_status(status, "static code validation failed")
 }
 
-fn verify_dynamic_identity(pid: libc::pid_t, expected: &AttestedCodeIdentity) -> io::Result<()> {
+fn verify_dynamic_identity(pid: pid_t, expected: &AttestedCodeIdentity) -> io::Result<()> {
 	if expected.architectures.first().map(Vec::as_slice) != Some(expected.unique()) {
 		return Err(permission_denied("captured code identity is inconsistent"));
 	}
@@ -812,7 +810,7 @@ fn exact_cdhash_requirement(unique: &[u8]) -> io::Result<SecRequirement> {
 	text.parse().map_err(|_| invalid_data("exact CDHash requirement is unavailable"))
 }
 
-fn verify_session_and_process_group(pid: libc::pid_t) -> io::Result<()> {
+fn verify_session_and_process_group(pid: pid_t) -> io::Result<()> {
 	// SAFETY: `pid` names the live suspended child; getsid only reads kernel process metadata.
 	let session = unsafe { libc::getsid(pid) };
 
@@ -836,7 +834,7 @@ fn verify_session_and_process_group(pid: libc::pid_t) -> io::Result<()> {
 	Ok(())
 }
 
-fn dynamic_code_for_pid(pid: libc::pid_t) -> io::Result<SecCode> {
+fn dynamic_code_for_pid(pid: pid_t) -> io::Result<SecCode> {
 	for attempt in 0..DYNAMIC_CODE_LOOKUP_ATTEMPTS {
 		let mut attributes = GuestAttributes::new();
 
@@ -958,7 +956,7 @@ fn validate_private_directory(path: &Path) -> io::Result<()> {
 	Ok(())
 }
 
-fn create_fifo(path: &std::ffi::CStr) -> io::Result<()> {
+fn create_fifo(path: &CStr) -> io::Result<()> {
 	// SAFETY: `path` is NUL-terminated and names a not-yet-existing entry in a private directory.
 	if unsafe { libc::mkfifo(path.as_ptr(), 0o600) } == 0 {
 		Ok(())
@@ -967,7 +965,7 @@ fn create_fifo(path: &std::ffi::CStr) -> io::Result<()> {
 	}
 }
 
-fn open_fifo(path: &std::ffi::CStr, flags: libc::c_int) -> io::Result<File> {
+fn open_fifo(path: &CStr, flags: c_int) -> io::Result<File> {
 	// SAFETY: `path` is NUL-terminated. The flags establish an atomic close-on-exec descriptor and
 	// O_NOFOLLOW rejects replacement by a symlink.
 	let descriptor = unsafe { libc::open(path.as_ptr(), flags) };
@@ -979,14 +977,14 @@ fn open_fifo(path: &std::ffi::CStr, flags: libc::c_int) -> io::Result<File> {
 	// SAFETY: open returned one newly owned descriptor.
 	let file = unsafe { File::from_raw_fd(descriptor) };
 
-	if descriptor <= libc::STDERR_FILENO || !descriptor_is_close_on_exec(&file)? {
+	if descriptor <= STDERR_FILENO || !descriptor_is_close_on_exec(&file)? {
 		return Err(permission_denied("protocol FIFO descriptor boundary is invalid"));
 	}
 
 	Ok(file)
 }
 
-fn validate_fifo(path: &std::ffi::CStr, file: &File) -> io::Result<()> {
+fn validate_fifo(path: &CStr, file: &File) -> io::Result<()> {
 	let path = Path::new(OsStr::from_bytes(path.to_bytes()));
 	let path_metadata = path.symlink_metadata()?;
 	let file_metadata = file.metadata()?;
@@ -1028,7 +1026,7 @@ fn set_blocking(file: &File) -> io::Result<()> {
 	}
 }
 
-fn unlink_fifo(path: &std::ffi::CStr) -> io::Result<()> {
+fn unlink_fifo(path: &CStr) -> io::Result<()> {
 	// SAFETY: `path` is a live NUL-terminated FIFO name in the private temporary directory.
 	if unsafe { libc::unlink(path.as_ptr()) } == 0 {
 		Ok(())
@@ -1037,7 +1035,7 @@ fn unlink_fifo(path: &std::ffi::CStr) -> io::Result<()> {
 	}
 }
 
-fn kill_and_reap(pid: libc::pid_t) {
+fn kill_and_reap(pid: pid_t) {
 	// SAFETY: the caller owns an unreaped positive child pid. ESRCH only means it has already
 	// exited; waitpid still collects its terminal status.
 	unsafe { libc::kill(pid, SIGKILL) };
@@ -1076,7 +1074,7 @@ fn security_status(status: OSStatus, message: &'static str) -> io::Result<()> {
 	if status == 0 { Ok(()) } else { Err(permission_denied(message)) }
 }
 
-fn spawn_configuration_result(result: libc::c_int) -> io::Result<()> {
+fn spawn_configuration_result(result: c_int) -> io::Result<()> {
 	if result == 0 { Ok(()) } else { Err(io::Error::from_raw_os_error(result)) }
 }
 

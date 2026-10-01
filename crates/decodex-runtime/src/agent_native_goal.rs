@@ -15,7 +15,10 @@ use decodex_codex::app_server_client::{
 	ClientError, NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus,
 };
 use decodex_database::SqliteStore;
-use decodex_protocol::{AgentGoalEdit, AgentNativeGoalResult, EntityId, WireText};
+use decodex_protocol::{
+	AgentGoalBudgetEdit, AgentGoalEdit, AgentNativeGoalResult, AgentNativeGoalStatus, EntityId,
+	WireText,
+};
 
 pub(crate) async fn read<F, Fut>(
 	store: &SqliteStore,
@@ -115,8 +118,6 @@ where
 	F: Fn() -> Fut,
 	Fut: Future<Output = Option<Source>>,
 {
-	use decodex_protocol::{AgentGoalBudgetEdit, AgentNativeGoalStatus};
-
 	if edit.objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
 		|| matches!(edit.budget,AgentGoalBudgetEdit::Set(n) if n<=0)
 		|| edit.status.as_ref().is_some_and(|status| {
