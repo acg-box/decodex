@@ -1,5 +1,29 @@
-use super::*;
-use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+use crate::{
+	AgentDispatchState, AgentForkAttempt, AgentForkBoundary, AgentForkReceipt,
+	AgentPromptEditAttempt, AgentWorkItem, AgentWorkKind, AgentWorkStatus, SqliteStore,
+};
+
+fn attempt(boundary: AgentForkBoundary) -> AgentForkAttempt {
+	AgentForkAttempt {
+		source: AgentPromptEditAttempt {
+			work: "main".into(),
+			thread: "source-native".into(),
+			generation: None,
+			review_token: "a".repeat(64),
+			attempt_id: "review".into(),
+			before_turn_id: "first".into(),
+			item_id: "input".into(),
+			turn_ids: vec!["first".into(), "second".into()],
+			content: vec![
+				serde_json::json!({"type":"text","text":"Original input"}),
+				serde_json::json!({"type":"image","fileId":"native-file"}),
+				serde_json::json!({"type":"skill","name":"review","path":"/skills/review (local)/SKILL.md"}),
+			],
+		},
+		target_work: "branch".into(),
+		boundary,
+	}
+}
 
 async fn seed(store: &SqliteStore) {
 	store
@@ -22,25 +46,25 @@ async fn seed(store: &SqliteStore) {
 	store.bind_agent_thread("main".into(), "source-native".into()).await.unwrap();
 }
 
-fn attempt(boundary: AgentForkBoundary) -> AgentForkAttempt {
-	AgentForkAttempt {
-		source: AgentPromptEditAttempt {
-			work: "main".into(),
-			thread: "source-native".into(),
-			generation: None,
-			review_token: "a".repeat(64),
-			attempt_id: "review".into(),
-			before_turn_id: "first".into(),
-			item_id: "input".into(),
-			turn_ids: vec!["first".into(), "second".into()],
-			content: vec![
-				json!({"type":"text","text":"Original input"}),
-				json!({"type":"image","fileId":"native-file"}),
-				json!({"type":"skill","name":"review","path":"/skills/review (local)/SKILL.md"}),
-			],
-		},
-		target_work: "branch".into(),
-		boundary,
+async fn assert_fork_draft(
+	store: &SqliteStore,
+	boundary: AgentForkBoundary,
+	a: &AgentForkAttempt,
+	result: &AgentForkReceipt,
+) {
+	if boundary == AgentForkBoundary::BeforeInput {
+		let edit = store
+			.agent_prompt_edit_receipt("branch".into(), "fork-native".into())
+			.await
+			.unwrap()
+			.unwrap();
+
+		assert_eq!(edit.id, result.edit_receipt_id.unwrap());
+		assert_eq!(edit.state, "applied");
+		assert_eq!(edit.attempt.content, a.source.content);
+		assert!(store.release_agent_prompt_edit_draft(edit.id, None).await.unwrap());
+	} else {
+		assert!(result.edit_receipt_id.is_none());
 	}
 }
 
@@ -155,20 +179,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 			result
 		);
 
-		if boundary == AgentForkBoundary::BeforeInput {
-			let edit = store
-				.agent_prompt_edit_receipt("branch".into(), "fork-native".into())
-				.await
-				.unwrap()
-				.unwrap();
-
-			assert_eq!(edit.id, result.edit_receipt_id.unwrap());
-			assert_eq!(edit.state, "applied");
-			assert_eq!(edit.attempt.content, a.source.content);
-			assert!(store.release_agent_prompt_edit_draft(edit.id, None).await.unwrap());
-		} else {
-			assert!(result.edit_receipt_id.is_none());
-		}
+		assert_fork_draft(&store, boundary, &a, &result).await;
 	}
 }
 
