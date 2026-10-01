@@ -3377,30 +3377,30 @@ fn incompatible(reason: &'static str) -> StoreError {
 mod snapshot_tests;
 #[cfg(test)]
 mod archive_tests {
-	use decodex_core::{
-		BlobStore, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
-		ContinuationPlanKind, ConversationId, DecodexRoot, HistoryItemId, PinnedContextSource,
-		PossibleSideEffects, ProcessExecutionEpochId, ProcessGenerationId, ProviderAttemptConsumer,
-		ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
-		ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
-		ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId, TurnId,
-		compile_context_pack,
-	};
-	use rusqlite::params;
-	use tempfile::tempdir;
-
-	use super::{
-		ArchiveConversationOutcome, ArchiveConversationRecord, ArchiveLocalConversationOutcome,
-		ArchiveLocalConversationRecord, CreateConversationRecord,
-		OrdinaryTaskConversationProjection, ReconcileStrandedConversationTurn,
-		ReconcileStrandedConversationTurnOutcome, RecoverUnknownConversationTurn,
-		RecoverUnknownConversationTurnOutcome, TerminalizeConversationTurn,
-		bounded_conversation_title,
-	};
 	use crate::{
 		CommandIdentity, ConversationTerminalizationOutcome, PlanContinuation,
-		PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, SqliteStore,
-		error::sqlite_error,
+		PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, RecordHistoryItem,
+		SqliteStore,
+		conversations::{
+			self, ArchiveConversationOutcome, ArchiveConversationRecord,
+			ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
+			ConversationResumeRejection, CreateConversationRecord,
+			OrdinaryTaskConversationProjection, ReconcileStrandedConversationTurn,
+			ReconcileStrandedConversationTurnOutcome, RecordConversationResumeRejection,
+			RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome,
+			TerminalizeConversationTurn,
+		},
+		error, runtime_sessions,
+	};
+	use decodex_core::{
+		BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
+		ContinuationPlanKind, ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind,
+		HistoryMediaType, HistoryMetadata, ItemStatus, PinnedContextSource, PossibleSideEffects,
+		ProcessExecutionEpochId, ProcessGenerationId, ProviderAttemptConsumer, ProviderAttemptId,
+		ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
+		ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
+		ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId, TurnId,
+		TurnRole,
 	};
 
 	const CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000001";
@@ -3440,9 +3440,9 @@ mod archive_tests {
 					.execute(
 						"INSERT INTO account_identities (account_id, created_at_micros)
 						 VALUES (?1, 1)",
-						params![ACCOUNT_ID],
+						rusqlite::params![ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO accounts (
@@ -3450,9 +3450,9 @@ mod archive_tests {
 						 provider_account_id, created_at_micros, updated_at_micros
 						 ) VALUES (?1, 'Local fixture', 1, 'available', 1, 'chatgpt',
 						 'local-fixture-provider', 1, 1)",
-						params![ACCOUNT_ID],
+						rusqlite::params![ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO runtime_sessions (
@@ -3470,9 +3470,9 @@ mod archive_tests {
 						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
 						 'starting', 0, 3, 1, 1
 						 )",
-						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+						rusqlite::params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -3481,23 +3481,17 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn resume_rejection_is_atomic_durable_and_idempotent() {
-		exercise_resume_rejection(super::ConversationResumeRejection::SandboxConfiguration).await;
+		exercise_resume_rejection(ConversationResumeRejection::SandboxConfiguration).await;
 	}
 
 	#[tokio::test]
 	async fn closing_resume_rejection_survives_restart_without_replacing_session() {
-		exercise_resume_rejection(super::ConversationResumeRejection::ClosingThread).await;
+		exercise_resume_rejection(ConversationResumeRejection::ClosingThread).await;
 	}
 
 	#[tokio::test]
 	async fn ordinary_warning_history_survives_reopen_without_terminalizing_user_turn() {
-		use crate::RecordHistoryItem;
-
-		use decodex_core::{
-			HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, TurnRole,
-		};
-
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let paths = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap().paths();
 		let blobs = BlobStore::open(paths.clone()).unwrap();
 		let store = SqliteStore::open(&paths).unwrap();
@@ -3533,11 +3527,11 @@ mod archive_tests {
 		let store = SqliteStore::open(&paths).unwrap();
 
 		store.with_connection(|connection| {
-			let turn:(String,i64)=connection.query_row("SELECT status,revision FROM turns WHERE turn_id=?1",[TURN_ID],|row|Ok((row.get(0)?,row.get(1)?))).map_err(sqlite_error)?;
+			let turn:(String,i64)=connection.query_row("SELECT status,revision FROM turns WHERE turn_id=?1",[TURN_ID],|row|Ok((row.get(0)?,row.get(1)?))).map_err(error::sqlite_error)?;
 
 			assert_eq!(turn,("active".into(),1));
 
-			let count:i64=connection.query_row("SELECT count(*) FROM history_items WHERE history_item_id=?1 AND kind='status' AND inline_text LIKE 'Codex warning:%'",[INTERRUPTION_HISTORY_ID],|row|row.get(0)).map_err(sqlite_error)?;
+			let count:i64=connection.query_row("SELECT count(*) FROM history_items WHERE history_item_id=?1 AND kind='status' AND inline_text LIKE 'Codex warning:%'",[INTERRUPTION_HISTORY_ID],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			assert_eq!(count,1);
 
@@ -3545,10 +3539,8 @@ mod archive_tests {
 		}).unwrap();
 	}
 
-	async fn exercise_resume_rejection(reason: super::ConversationResumeRejection) {
-		use super::RecordConversationResumeRejection;
-
-		let directory = tempdir().expect("temporary database directory");
+	async fn exercise_resume_rejection(reason: ConversationResumeRejection) {
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let paths = DecodexRoot::new(directory.path().canonicalize().expect("canonical root"))
 			.expect("root")
 			.paths();
@@ -3559,9 +3551,9 @@ mod archive_tests {
 		seed_active_user_turn(&store);
 
 		store.with_connection(|connection| {
-			connection.execute("UPDATE runtime_sessions SET state='active', codex_thread_id='native-thread', thread_start_request_id=1, thread_start_response_id=1, has_acknowledged_turn=1 WHERE runtime_session_id=?1", params![RUNTIME_SESSION_ID]).map_err(sqlite_error)?;
+			connection.execute("UPDATE runtime_sessions SET state='active', codex_thread_id='native-thread', thread_start_request_id=1, thread_start_response_id=1, has_acknowledged_turn=1 WHERE runtime_session_id=?1", rusqlite::params![RUNTIME_SESSION_ID]).map_err(error::sqlite_error)?;
 
-			connection.execute_batch("CREATE TRIGGER fail_diagnostic BEFORE INSERT ON history_items BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;").map_err(sqlite_error)
+			connection.execute_batch("CREATE TRIGGER fail_diagnostic BEFORE INSERT ON history_items BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;").map_err(error::sqlite_error)
 		}).expect("prepare bound session and failure injection");
 
 		let request = RecordConversationResumeRejection {
@@ -3587,10 +3579,10 @@ mod archive_tests {
 				let state: (String, i64) = connection
 					.query_row(
 						"SELECT status,revision FROM turns WHERE turn_id=?1",
-						params![TURN_ID],
+						rusqlite::params![TURN_ID],
 						|row| Ok((row.get(0)?, row.get(1)?)),
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				assert_eq!(
 					state,
@@ -3598,7 +3590,9 @@ mod archive_tests {
 					"history failure rolls back turn finalization"
 				);
 
-				connection.execute_batch("DROP TRIGGER fail_diagnostic").map_err(sqlite_error)
+				connection
+					.execute_batch("DROP TRIGGER fail_diagnostic")
+					.map_err(error::sqlite_error)
 			})
 			.expect("rollback inspection");
 
@@ -3639,16 +3633,16 @@ mod archive_tests {
 				let state: (String, i64) = connection
 					.query_row(
 						"SELECT status,revision FROM turns WHERE turn_id=?1",
-						params![TURN_ID],
+						rusqlite::params![TURN_ID],
 						|row| Ok((row.get(0)?, row.get(1)?)),
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				assert_eq!(state, ("failed".into(), 2));
 
 				let count: i64 = connection
 					.query_row("SELECT COUNT(*) FROM runtime_sessions", [], |row| row.get(0))
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				assert_eq!(count, 1, "no replacement session");
 
@@ -3659,20 +3653,20 @@ mod archive_tests {
 
 	#[test]
 	fn derived_conversation_titles_are_normalized_and_sidebar_bounded() {
-		let title = bounded_conversation_title(&format!(
+		let title = conversations::bounded_conversation_title(&format!(
 			"  Verify\n\t{}  ",
 			"the persisted provider conversation ".repeat(10)
 		));
 
 		assert!(!title.contains('\n'));
 		assert!(!title.contains('\t'));
-		assert!(title.len() <= super::MAX_CONVERSATION_TITLE_BYTES);
+		assert!(title.len() <= conversations::MAX_CONVERSATION_TITLE_BYTES);
 		assert!(title.starts_with("Verify the persisted provider conversation"));
 	}
 
 	#[tokio::test]
 	async fn unsafe_legacy_title_degrades_without_hiding_the_conversation() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 
@@ -3688,9 +3682,9 @@ mod archive_tests {
 					connection
 						.execute(
 							"UPDATE conversations SET title = ?2 WHERE conversation_id = ?1",
-							params![CONVERSATION_ID, unsafe_title],
+							rusqlite::params![CONVERSATION_ID, unsafe_title],
 						)
-						.map_err(sqlite_error)?;
+						.map_err(error::sqlite_error)?;
 
 					Ok(())
 				})
@@ -3719,9 +3713,9 @@ mod archive_tests {
 						 possible_side_effects, status, revision, created_at_micros,
 						 updated_at_micros
 						 ) VALUES (?1, ?2, ?3, 1, 'user', 'none', 'active', 1, 1, 1)",
-						params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+						rusqlite::params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -3738,9 +3732,9 @@ mod archive_tests {
 						 thread_start_request_sha256 = ?2, thread_start_response_id = 1,
 						 thread_start_response_sha256 = ?2, has_acknowledged_turn = 1,
 						 revision = 7 WHERE runtime_session_id = ?1",
-						params![RUNTIME_SESSION_ID, "b".repeat(64)],
+						rusqlite::params![RUNTIME_SESSION_ID, "b".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO account_operations (
@@ -3750,9 +3744,9 @@ mod archive_tests {
 						 ) VALUES ('11000000-0000-4000-8000-000000000001', ?1, 'import',
 						 'committed', 'chatgpt', 'local-fixture-provider', 'Local fixture', 1,
 						 1, 1, 1)",
-						params![ACCOUNT_ID],
+						rusqlite::params![ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO routing_decisions (
@@ -3767,9 +3761,9 @@ mod archive_tests {
 						 'conversation_account_registry', ?1, ?2, 1,
 						 '23000000-0000-4000-8000-000000000001', '{}', 'selected', ?3, 1,
 						 1, 'known_available', '[]', '[]', 1)",
-						params![CONVERSATION_ID, TURN_ID, ACCOUNT_ID, "c".repeat(64)],
+						rusqlite::params![CONVERSATION_ID, TURN_ID, ACCOUNT_ID, "c".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO continuation_plans (
@@ -3782,7 +3776,7 @@ mod archive_tests {
 						 '32000000-0000-4000-8000-000000000001', 'unknown-plan', ?4,
 						 ?1, ?2, '21000000-0000-4000-8000-000000000001', ?3, 7, ?5, ?3,
 						 'initial_thread', 1)",
-						params![
+						rusqlite::params![
 							CONVERSATION_ID,
 							TURN_ID,
 							RUNTIME_SESSION_ID,
@@ -3790,15 +3784,15 @@ mod archive_tests {
 							ACCOUNT_ID,
 						],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO process_execution_epochs (
 						 execution_epoch_id, authorization_sha256, created_at_micros
 						 ) VALUES ('41000000-0000-4000-8000-000000000009', ?1, 1)",
-						params!["e".repeat(64)],
+						rusqlite::params!["e".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO process_generations (
@@ -3812,9 +3806,14 @@ mod archive_tests {
 						 'test-runner', 'test-boot', 'stdio_only_best_effort_eof', 'session',
 						 1, 1, 1, ?4, '11000000-0000-4000-8000-000000000001', 'chatgpt',
 						 'local-fixture-provider', ?4, 'starting', 1, 1, 1)",
-						params![GENERATION_ID, ACCOUNT_ID, RUNTIME_SESSION_ID, "f".repeat(64)],
+						rusqlite::params![
+							GENERATION_ID,
+							ACCOUNT_ID,
+							RUNTIME_SESSION_ID,
+							"f".repeat(64)
+						],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO provider_attempts (
@@ -3829,7 +3828,7 @@ mod archive_tests {
 						 '41000000-0000-4000-8000-000000000009',
 						 '61000000-0000-4000-8000-000000000001', ?7,
 						 'app-server:test:1', 'unknown', 'dispatch_outcome_unavailable', 1, 1, 1)",
-						params![
+						rusqlite::params![
 							ATTEMPT_ID,
 							CONVERSATION_ID,
 							TURN_ID,
@@ -3839,7 +3838,7 @@ mod archive_tests {
 							"1".repeat(64),
 						],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -3856,17 +3855,17 @@ mod archive_tests {
 						 observed_at_micros
 						 ) VALUES ('71000000-0000-4000-8000-000000000001', ?1,
 						 'spawn_not_created', 'test-boot', ?2, 2)",
-						params![GENERATION_ID, "2".repeat(64)],
+						rusqlite::params![GENERATION_ID, "2".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"UPDATE process_generations SET state = 'dead',
 						 death_evidence_id = '71000000-0000-4000-8000-000000000001',
 						 revision = 2, updated_at_micros = 2 WHERE generation_id = ?1",
-						params![GENERATION_ID],
+						rusqlite::params![GENERATION_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -3875,7 +3874,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn verified_archive_atomically_closes_the_projection_and_replays_exactly() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
@@ -3960,10 +3959,10 @@ mod archive_tests {
 					.query_row(
 						"SELECT state, revision, ended_at_micros FROM runtime_sessions
 						 WHERE runtime_session_id = ?1",
-						params![RUNTIME_SESSION_ID],
+						rusqlite::params![RUNTIME_SESSION_ID],
 						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
 					)
-					.map_err(sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read ended RuntimeSession");
 
@@ -3974,7 +3973,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn stranded_turn_reconciliation_requires_exact_inactive_owner_coordinates() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 
@@ -4030,10 +4029,10 @@ mod archive_tests {
 				connection
 					.query_row(
 						"SELECT status, revision, completed_at_micros FROM turns WHERE turn_id = ?1",
-						params![TURN_ID],
+						rusqlite::params![TURN_ID],
 						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
 					)
-					.map_err(sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read reconciled Turn");
 
@@ -4044,7 +4043,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn unknown_turn_recovery_requires_death_and_keeps_attempt_evidence() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 
@@ -4132,10 +4131,10 @@ mod archive_tests {
 						 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
 						 JOIN history_items AS h ON h.turn_id = t.turn_id
 						 WHERE t.turn_id = ?1 AND h.history_item_id = ?2",
-						params![TURN_ID, INTERRUPTION_HISTORY_ID],
+						rusqlite::params![TURN_ID, INTERRUPTION_HISTORY_ID],
 						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
 					)
-					.map_err(sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read recovered evidence");
 
@@ -4159,7 +4158,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn positive_evidence_with_an_active_turn_is_durably_terminalizable() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 
@@ -4239,7 +4238,7 @@ mod archive_tests {
 	#[tokio::test]
 	async fn positive_non_submission_finishes_input_atomically_and_survives_reopen() {
 		for acknowledged in [false, true] {
-			let directory = tempdir().unwrap();
+			let directory = tempfile::tempdir().unwrap();
 			let path = directory.path().join("non-submission.sqlite3");
 			let store = SqliteStore::open_test(&path).unwrap();
 
@@ -4252,9 +4251,9 @@ mod archive_tests {
 					connection
 						.execute(
 							"UPDATE runtime_sessions SET has_acknowledged_turn=?1 WHERE runtime_session_id=?2",
-							params![acknowledged, RUNTIME_SESSION_ID],
+							rusqlite::params![acknowledged, RUNTIME_SESSION_ID],
 						)
-						.map_err(sqlite_error)
+						.map_err(error::sqlite_error)
 				})
 				.unwrap();
 
@@ -4283,7 +4282,7 @@ mod archive_tests {
 				ProviderAttemptState::Unknown
 			);
 
-			store.with_connection(|connection|connection.execute_batch("CREATE TRIGGER refuse_non_submission_history BEFORE INSERT ON history_items WHEN json_extract(NEW.metadata_json,'$.type')='native_turn_not_submitted' BEGIN SELECT RAISE(ABORT,'fixture history failure'); END;").map_err(sqlite_error)).unwrap();
+			store.with_connection(|connection|connection.execute_batch("CREATE TRIGGER refuse_non_submission_history BEFORE INSERT ON history_items WHEN json_extract(NEW.metadata_json,'$.type')='native_turn_not_submitted' BEGIN SELECT RAISE(ABORT,'fixture history failure'); END;").map_err(error::sqlite_error)).unwrap();
 
 			assert!(store.record_provider_attempt_positive_evidence(1, &evidence).await.is_err());
 			assert_eq!(
@@ -4295,7 +4294,7 @@ mod archive_tests {
 				.with_connection(|connection| {
 					connection
 						.execute_batch("DROP TRIGGER refuse_non_submission_history;")
-						.map_err(sqlite_error)
+						.map_err(error::sqlite_error)
 				})
 				.unwrap();
 
@@ -4313,7 +4312,7 @@ mod archive_tests {
 				ProviderAttemptMutationOutcome::Replayed(_)
 			));
 
-			let session: (bool, Option<String>, i64) = store.with_connection(|connection| connection.query_row("SELECT has_acknowledged_turn,last_known_turn_id,revision FROM runtime_sessions WHERE runtime_session_id=?1",[RUNTIME_SESSION_ID],|row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+			let session: (bool, Option<String>, i64) = store.with_connection(|connection| connection.query_row("SELECT has_acknowledged_turn,last_known_turn_id,revision FROM runtime_sessions WHERE runtime_session_id=?1",[RUNTIME_SESSION_ID],|row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(error::sqlite_error)).unwrap();
 
 			assert_eq!(
 				session,
@@ -4321,7 +4320,7 @@ mod archive_tests {
 				"Refusal must not invent a native turn or revise native session evidence"
 			);
 
-			let saved: (String,String,i64) = store.with_connection(|connection|connection.query_row("SELECT t.status,p.state,(SELECT count(*) FROM history_items h WHERE h.turn_id=t.turn_id AND json_extract(h.metadata_json,'$.type')='native_turn_not_submitted') FROM turns t JOIN provider_attempts p ON p.turn_id=t.turn_id WHERE p.attempt_id=?1",[ATTEMPT_ID],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+			let saved: (String,String,i64) = store.with_connection(|connection|connection.query_row("SELECT t.status,p.state,(SELECT count(*) FROM history_items h WHERE h.turn_id=t.turn_id AND json_extract(h.metadata_json,'$.type')='native_turn_not_submitted') FROM turns t JOIN provider_attempts p ON p.turn_id=t.turn_id WHERE p.attempt_id=?1",[ATTEMPT_ID],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(error::sqlite_error)).unwrap();
 
 			assert_eq!(saved, ("failed".into(), "not_submitted".into(), 1));
 
@@ -4342,7 +4341,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn recovered_unknown_turn_uses_one_persisted_same_account_context_fallback() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let canonical = directory.path().canonicalize().expect("canonical temporary root");
 		let root = DecodexRoot::new(canonical).expect("typed Decodex root");
 		let paths = root.paths();
@@ -4467,8 +4466,8 @@ mod archive_tests {
 		);
 	}
 
-	fn recovery_context_pack(conversation_id: &ConversationId) -> decodex_core::ContextPack {
-		compile_context_pack(ContextPackInput {
+	fn recovery_context_pack(conversation_id: &ConversationId) -> ContextPack {
+		decodex_core::compile_context_pack(ContextPackInput {
 			conversation_id: conversation_id.clone(),
 			possible_side_effects: PossibleSideEffects::Unknown,
 			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
@@ -4494,14 +4493,14 @@ mod archive_tests {
 						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
 						 JOIN turns AS turn ON turn.turn_id = ?3
 						 WHERE source.runtime_session_id = ?1",
-						params![
+						rusqlite::params![
 							RUNTIME_SESSION_ID,
 							request.fallback_runtime_session_id,
 							SUCCESSOR_TURN_ID,
 						],
 						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
 					)
-					.map_err(sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read fallback ownership");
 
@@ -4522,9 +4521,9 @@ mod archive_tests {
 						 possible_side_effects, status, revision, created_at_micros,
 						 updated_at_micros
 						 ) VALUES (?1, ?2, ?3, 2, 'user', 'unknown', 'active', 1, 3, 3)",
-						params![SUCCESSOR_TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+						rusqlite::params![SUCCESSOR_TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO history_items (
@@ -4533,9 +4532,9 @@ mod archive_tests {
 						 created_at_micros, updated_at_micros
 						 ) VALUES (?1, ?2, ?3, 2, 'message', 'user', 'completed',
 						 'text/markdown', 'Continue safely.', '{}', 1, 3, 3)",
-						params![SUCCESSOR_HISTORY_ID, CONVERSATION_ID, SUCCESSOR_TURN_ID],
+						rusqlite::params![SUCCESSOR_HISTORY_ID, CONVERSATION_ID, SUCCESSOR_TURN_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO routing_decisions (
@@ -4552,7 +4551,7 @@ mod archive_tests {
 						 '41000000-0000-4000-8000-000000000001',
 						 '42000000-0000-4000-8000-000000000001', 'selected', ?5, 1, 1,
 						 'known_available', '[]', '[]', 3)",
-						params![
+						rusqlite::params![
 							CONVERSATION_ID,
 							SUCCESSOR_TURN_ID,
 							RUNTIME_SESSION_ID,
@@ -4560,7 +4559,7 @@ mod archive_tests {
 							ACCOUNT_ID,
 						],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -4577,17 +4576,17 @@ mod archive_tests {
 						 thread_start_request_sha256 = ?2, thread_start_response_id = 2,
 						 thread_start_response_sha256 = ?2, revision = 3
 						 WHERE runtime_session_id = ?1 AND state = 'starting' AND revision = 1",
-						params![request.fallback_runtime_session_id, "4".repeat(64)],
+						rusqlite::params![request.fallback_runtime_session_id, "4".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO process_execution_epochs (
 						 execution_epoch_id, authorization_sha256, created_at_micros
 						 ) VALUES ('73000000-0000-4000-8000-000000000002', ?1, 4)",
-						params!["5".repeat(64)],
+						rusqlite::params!["5".repeat(64)],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO process_generations (
@@ -4605,9 +4604,13 @@ mod archive_tests {
 						 'fallback-process', 44, 44, 1, 1, 1, ?3,
 						 '11000000-0000-4000-8000-000000000001', 'chatgpt',
 						 'local-fixture-provider', ?3, 'ready', 1, 4, 4)",
-						params![ACCOUNT_ID, request.fallback_runtime_session_id, "6".repeat(64),],
+						rusqlite::params![
+							ACCOUNT_ID,
+							request.fallback_runtime_session_id,
+							"6".repeat(64),
+						],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -4686,7 +4689,7 @@ mod archive_tests {
 			PrepareProviderAttemptOutcome::Rejected { .. }
 		));
 
-		let acknowledgement_digest = crate::runtime_sessions::digest(&[
+		let acknowledgement_digest = runtime_sessions::digest(&[
 			"silent-recovery-successor",
 			predecessor_attempt_id.as_str(),
 			SUCCESSOR_TURN_ID,
@@ -4720,7 +4723,7 @@ mod archive_tests {
 			stored_successor.duplicate_risk,
 			ProviderDuplicateRisk::AcknowledgedSuccessor {
 				predecessor_attempt_id,
-				acknowledgement_digest: crate::runtime_sessions::digest(&[
+				acknowledgement_digest: runtime_sessions::digest(&[
 					"silent-recovery-successor",
 					ATTEMPT_ID,
 					SUCCESSOR_TURN_ID,
@@ -4737,9 +4740,9 @@ mod archive_tests {
 					.execute(
 						"INSERT INTO account_identities (account_id, created_at_micros)
 						 VALUES (?1, 1)",
-						params![ACCOUNT_ID],
+						rusqlite::params![ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO accounts (
@@ -4747,9 +4750,9 @@ mod archive_tests {
 						 provider_account_id, created_at_micros, updated_at_micros
 						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
 						 'archive-fixture-provider', 1, 1)",
-						params![ACCOUNT_ID],
+						rusqlite::params![ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO runtime_sessions (
@@ -4772,9 +4775,9 @@ mod archive_tests {
 						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
 						 1, 7, 1, 1
 						 )",
-						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+						rusqlite::params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -4783,7 +4786,7 @@ mod archive_tests {
 
 	#[tokio::test]
 	async fn local_archive_rejects_an_active_turn_then_closes_the_safe_projection() {
-		let directory = tempdir().expect("temporary database directory");
+		let directory = tempfile::tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
 
@@ -4816,9 +4819,9 @@ mod archive_tests {
 					.execute(
 						"UPDATE turns SET status = 'failed', revision = 2,
 						 completed_at_micros = 2, updated_at_micros = 2 WHERE turn_id = ?1",
-						params![TURN_ID],
+						rusqlite::params![TURN_ID],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -4852,10 +4855,10 @@ mod archive_tests {
 						"SELECT c.state, s.state FROM conversations AS c
 						 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
 						 WHERE c.conversation_id = ?1",
-						params![CONVERSATION_ID],
+						rusqlite::params![CONVERSATION_ID],
 						|row| Ok((row.get(0)?, row.get(1)?)),
 					)
-					.map_err(sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read archived local projection");
 
