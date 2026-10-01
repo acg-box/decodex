@@ -19,7 +19,7 @@ use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
 	StrikethroughStyle,
 };
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
 
 use crate::{shell::agent_surface::*, ui_motion, ui_theme::HOVER_FILL};
@@ -312,7 +312,7 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 		Tag::List(start) => Kind::List(start),
 		Tag::Item => Kind::Item,
 		Tag::BlockQuote => Kind::Quote,
-		Tag::CodeBlock(pulldown_cmark::CodeBlockKind::Fenced(info))
+		Tag::CodeBlock(CodeBlockKind::Fenced(info))
 			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
 			Kind::Mermaid { content_end: range.start, fence: range },
 		Tag::CodeBlock(_) => Kind::Code,

@@ -1,6 +1,10 @@
 //! Confirmation crosses the socket only after the exact local record is durable.
 use std::{
-	fs, fs::Permissions, os::unix::fs::PermissionsExt as _, sync::mpsc, thread, time::Duration,
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+	sync::mpsc,
+	thread,
+	time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};

@@ -5,7 +5,6 @@ use gpui::{
 	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
 	Window, div, prelude::*, px,
 };
-
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
 	msg_send,

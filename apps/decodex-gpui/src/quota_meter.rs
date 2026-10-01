@@ -1,11 +1,22 @@
 //! One value drives the quota percentage and bar during a confirmed reset.
+use std::{
+	ffi::CStr,
+	mem::MaybeUninit,
+	sync::Arc,
+	time::{Duration, Instant},
+};
+
+use gpui::{
+	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window, div, prelude::*, px, rgb, rgba,
+};
+use libc::{c_char, time_t, tm};
+
+use crate::{
+	shell::{WB_AMBER, WB_BLUE, WB_TEXT_FAINT},
+	ui_motion,
+	ui_theme::{ERROR, FONT_FAMILY},
+};
 use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto, EntityRevision};
-
-use gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*, px, rgb, rgba};
-
-use std::time::{Duration, Instant};
-
-use crate::ui_motion;
 
 pub(super) const FILL_DURATION: Duration = Duration::from_millis(850);
 
@@ -61,7 +72,7 @@ impl RenderOnce for QuotaMeter {
 			window.request_animation_frame();
 		}
 
-		let color = if observed.is_some() { quota_color(value) } else { super::WB_TEXT_FAINT };
+		let color = if observed.is_some() { quota_color(value) } else { WB_TEXT_FAINT };
 
 		div()
 			.flex_1()
@@ -69,9 +80,9 @@ impl RenderOnce for QuotaMeter {
 			.flex()
 			.items_center()
 			.gap(px(4.))
-			.font_family(crate::ui_theme::FONT_FAMILY)
+			.font_family(FONT_FAMILY)
 			.text_size(px(10.))
-			.text_color(rgb(super::WB_TEXT_FAINT))
+			.text_color(rgb(WB_TEXT_FAINT))
 			.child(div().w(px(15.)).flex_none().child(self.label))
 			.child(
 				div()
@@ -104,10 +115,7 @@ impl RenderOnce for QuotaMeter {
 					.text_right()
 					.whitespace_nowrap()
 					.debug_selector(move || format!("quota-reset-{}", self.label))
-					.font_features(gpui::FontFeatures(std::sync::Arc::new(vec![(
-						"tnum".into(),
-						1,
-					)])))
+					.font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
 					.child(match self.quota.result {
 						AccountQuotaStateDto::Current { resets_at_unix_micros, .. } =>
 							reset_time(resets_at_unix_micros).unwrap_or_else(|| "—".into()),
@@ -122,14 +130,14 @@ pub(super) fn meter(
 	label: &'static str,
 	quota: AccountQuotaWindowDto,
 	fill: Option<ResetFill>,
-) -> gpui::AnyElement {
+) -> AnyElement {
 	QuotaMeter { label, quota, fill }.into_any_element()
 }
 
 pub(super) fn local_date_time(seconds: i64) -> Option<String> {
-	let seconds: libc::time_t = seconds;
-	let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
-	let mut output = [0 as libc::c_char; 64];
+	let seconds: time_t = seconds;
+	let mut local = MaybeUninit::<tm>::uninit();
+	let mut output = [0 as c_char; 64];
 	// libc applies the host time zone, including the offset at the reset date.
 	unsafe {
 		if libc::localtime_r(&seconds, local.as_mut_ptr()).is_null() {
@@ -145,7 +153,7 @@ pub(super) fn local_date_time(seconds: i64) -> Option<String> {
 			return None;
 		}
 
-		Some(std::ffi::CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
+		Some(CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
 	}
 }
 
@@ -166,9 +174,9 @@ fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
 // Keep the framework-specific colors here; the shared fixture checks the quota bands.
 fn quota_color(remaining: f32) -> u32 {
 	match quota_tone(remaining) {
-		"critical" => crate::ui_theme::ERROR,
-		"warning" => super::WB_AMBER,
-		_ => super::WB_BLUE,
+		"critical" => ERROR,
+		"warning" => WB_AMBER,
+		_ => WB_BLUE,
 	}
 }
 

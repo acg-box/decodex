@@ -1,10 +1,8 @@
 //! Read-only progress qualification through the same-UID protocol client.
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};

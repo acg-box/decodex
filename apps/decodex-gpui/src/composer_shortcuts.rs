@@ -1,4 +1,7 @@
 //! Standard text navigation and deletion; no editor modes or extra UI.
+use gpui::{Div, Stateful};
+use ui_theme::BODY_LINE_HEIGHT;
+
 use crate::composer_input::*;
 
 actions!(
@@ -55,8 +58,8 @@ impl ComposerInput {
 					match boundary {
 						Boundary::LineStart => position.x = px(0.),
 						Boundary::LineEnd => position.x = px(1_000_000.),
-						Boundary::RowUp => position.y -= px(ui_theme::BODY_LINE_HEIGHT),
-						Boundary::RowDown => position.y += px(ui_theme::BODY_LINE_HEIGHT),
+						Boundary::RowUp => position.y -= px(BODY_LINE_HEIGHT),
+						Boundary::RowDown => position.y += px(BODY_LINE_HEIGHT),
 						_ => unreachable!(),
 					}
 
@@ -132,10 +135,7 @@ pub(super) fn bind_keys(cx: &mut App) {
 	]);
 }
 
-pub(super) fn bind_actions(
-	input: gpui::Stateful<gpui::Div>,
-	cx: &mut Context<ComposerInput>,
-) -> gpui::Stateful<gpui::Div> {
+pub(super) fn bind_actions(input: Stateful<Div>, cx: &mut Context<ComposerInput>) -> Stateful<Div> {
 	input
 		.on_action(
 			cx.listener(|s, _: &WordLeft, _, cx| s.move_boundary(Boundary::WordStart, false, cx)),

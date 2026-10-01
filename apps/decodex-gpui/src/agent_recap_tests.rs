@@ -1,10 +1,8 @@
 //! Recap transport tests use a synthetic same-UID socket, not a model provider.
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 

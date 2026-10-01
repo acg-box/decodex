@@ -1,16 +1,16 @@
 //! Nonblocking model questions are explicit user messages, not approval callbacks.
+use std::{cell::RefCell, collections::BTreeMap, mem};
+
+use gpui::{AnyElement, Bounds, Focusable, KeyDownEvent, Point};
+
 use crate::shell::agent_surface::*;
-
-use std::mem;
-
-use gpui::Focusable;
+use decodex_protocol::{AgentAsyncQuestionDto, HistoryText, WireText};
 
 #[derive(Default)]
 pub(super) struct ChoiceDraft {
 	selected: Option<String>,
 	custom: Option<Entity<ComposerInput>>,
-	visible:
-		std::cell::RefCell<std::collections::BTreeMap<String, std::rc::Rc<std::cell::Cell<bool>>>>,
+	visible: RefCell<BTreeMap<String, std::rc::Rc<std::cell::Cell<bool>>>>,
 }
 
 impl AgentSurface {
@@ -98,7 +98,7 @@ impl AgentSurface {
 	fn restore_async_drafts(
 		&mut self,
 		work: &str,
-		questions: &[decodex_protocol::AgentAsyncQuestionDto],
+		questions: &[AgentAsyncQuestionDto],
 		truncated: bool,
 		cx: &mut Context<Self>,
 	) {
@@ -240,7 +240,7 @@ impl AgentSurface {
 		option: Option<&str>,
 		selected: bool,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let visible = std::rc::Rc::new(std::cell::Cell::new(false));
 
 		if let Some(option) = option
@@ -272,7 +272,7 @@ impl AgentSurface {
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.select_async_choice(&owner, option.as_deref(), window, cx)
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if matches!(event.keystroke.key.as_str(), "enter" | "space") {
 					if !event.is_held {
 						s.select_async_choice(&key_owner, key_option.as_deref(), window, cx);
@@ -285,10 +285,10 @@ impl AgentSurface {
 			.child(
 				gpui::canvas(
 					move |bounds, window, _| {
-						let mask = window.content_mask().bounds.intersect(&gpui::Bounds::new(
-							gpui::Point::default(),
-							window.viewport_size(),
-						));
+						let mask = window
+							.content_mask()
+							.bounds
+							.intersect(&Bounds::new(Point::default(), window.viewport_size()));
 
 						visible.set(
 							bounds.size.width > px(0.0)
@@ -312,9 +312,7 @@ impl AgentSurface {
 		let Some(input) = self.async_question_inputs.get(&(work.into(), question.into())) else {
 			return;
 		};
-		let Ok(answer) =
-			decodex_protocol::HistoryText::new(input.read(cx).content().trim().to_owned())
-		else {
+		let Ok(answer) = HistoryText::new(input.read(cx).content().trim().to_owned()) else {
 			return;
 		};
 
@@ -357,9 +355,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let (Ok(work_id), Ok(question_id)) =
-			(EntityId::new(work), decodex_protocol::WireText::new(question))
-		else {
+		let (Ok(work_id), Ok(question_id)) = (EntityId::new(work), WireText::new(question)) else {
 			return;
 		};
 
@@ -371,15 +367,13 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		question: &str,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Some(thread) = &work.codex_thread_id else {
 			return div().into_any_element();
 		};
-		let (Ok(work_id), Ok(thread_id), Ok(question_id)) = (
-			EntityId::new(&work.id),
-			decodex_protocol::WireText::new(thread),
-			decodex_protocol::WireText::new(question),
-		) else {
+		let (Ok(work_id), Ok(thread_id), Ok(question_id)) =
+			(EntityId::new(&work.id), WireText::new(thread), WireText::new(question))
+		else {
 			return div().into_any_element();
 		};
 		let action = AgentActionDto::SkipQuestion { work_id, thread_id, question_id };
@@ -399,7 +393,7 @@ impl AgentSurface {
 					s.execute(action.clone(), None, cx);
 				}
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if matches!(event.keystroke.key.as_str(), "enter" | "space") && !event.is_held {
 					if !s.sending && !s.uncertain {
 						s.execute(key_action.clone(), None, cx);
@@ -426,7 +420,7 @@ impl AgentSurface {
 		work: &str,
 		count: usize,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let collapsed = self.collapsed_async_questions.contains(work);
 		let label = if collapsed {
 			format!("Show questions ({count})")
@@ -447,7 +441,7 @@ impl AgentSurface {
 			.on_click(
 				cx.listener(move |s, _, window, cx| s.toggle_async_questions(&owner, window, cx)),
 			)
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if matches!(event.keystroke.key.as_str(), "enter" | "space") && !event.is_held {
 					s.toggle_async_questions(&key_owner, window, cx);
 					cx.stop_propagation();
@@ -461,7 +455,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		for (key, state) in &self.async_question_choices {
 			if key.0 == work.id {
 				state.visible.borrow_mut().clear();
@@ -546,7 +540,7 @@ impl AgentSurface {
 
 			card = card
 				.key_context("AsyncQuestion")
-				.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 					let modifiers = event.keystroke.modifiers;
 
 					if event.keystroke.key == "enter"

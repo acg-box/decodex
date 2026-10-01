@@ -2,22 +2,32 @@
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
-use crate::shell::agent_surface::*;
-
-use decodex_protocol::AgentAttachmentDto;
-
-use std::env;
-
-use tokio::time;
-
-use crate::{shell::workspace_symbols, ui_motion};
-
-use crate::shell::workspace_symbols::{Symbol, icon};
-
 use std::{
-	io::Write,
+	env,
+	f32::consts::{FRAC_PI_2, TAU},
+	fs::{DirBuilder, OpenOptions},
+	io::{Error, Result, Write},
 	os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+	time::{Duration, Instant},
 };
+
+use gpui::{
+	AnyElement, ClipboardEntry, Div, ExternalPaths, FontWeight, Image, ImageFormat, KeyDownEvent,
+	MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions, Stateful,
+};
+use tokio::{runtime::Builder, time};
+use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED};
+
+use crate::{
+	shell::{
+		agent_surface::*,
+		workspace_symbols,
+		workspace_symbols::{Symbol, icon},
+	},
+	ui_motion,
+};
+use controls::{PrimaryMark, PrimaryMode};
+use decodex_protocol::AgentAttachmentDto;
 
 struct ComposerTip(String);
 impl Render for ComposerTip {
@@ -28,7 +38,7 @@ impl Render for ComposerTip {
 			.rounded(px(7.0))
 			.bg(rgb(0x242429))
 			.text_size(px(11.0))
-			.text_color(rgb(ui_theme::TEXT))
+			.text_color(rgb(TEXT))
 			.child(self.0.clone())
 	}
 }
@@ -106,7 +116,7 @@ impl AgentSurface {
 
 	fn escape_stop_armed(&self) -> bool {
 		self.escape_stop.as_ref().is_some_and(|(work, turn, at)| {
-			at.elapsed() < std::time::Duration::from_secs(2)
+			at.elapsed() < Duration::from_secs(2)
 				&& self
 					.running_turn()
 					.is_some_and(|(w, t)| w.as_str() == work && t.as_str() == turn)
@@ -146,11 +156,11 @@ impl AgentSurface {
 
 			return;
 		};
-		let armed = (work.as_str().to_owned(), turn.as_str().to_owned(), std::time::Instant::now());
+		let armed = (work.as_str().to_owned(), turn.as_str().to_owned(), Instant::now());
 
 		self.escape_stop = Some(armed.clone());
 		cx.spawn(async move |owner, cx| {
-			cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+			cx.background_executor().timer(Duration::from_secs(2)).await;
 
 			let _ = owner.update(cx, |s, cx| {
 				if s.escape_stop.as_ref() == Some(&armed) {
@@ -200,7 +210,7 @@ impl AgentSurface {
 
 		let target_for_readback = target.clone();
 		let request = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
+			let runtime = Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Cannot start cancellation".to_string())?;
@@ -223,7 +233,7 @@ impl AgentSurface {
 
                         if ended { break; }
 
-                        time::sleep(std::time::Duration::from_millis(80)).await;
+                        time::sleep(Duration::from_millis(80)).await;
 
                         snapshot = client.query().await.ok();
                     }
@@ -282,7 +292,7 @@ impl AgentSurface {
 		let _ = cx;
 	}
 
-	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> gpui::Div {
+	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
 		div()
 			.mx_4()
 			.mb_3()
@@ -302,7 +312,7 @@ impl AgentSurface {
 					.child(
 						div()
 							.text_size(px(11.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child("Draft only · Sending paused"),
 					)
 					.child(self.composer_control(
@@ -333,7 +343,7 @@ impl AgentSurface {
 		&self,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		#[cfg(all(target_os = "macos", not(test)))]
 		if self.native_composer.enabled {
 			return self.render_native_composer_anchor(cx);
@@ -358,7 +368,7 @@ impl AgentSurface {
 		native: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> gpui::Stateful<gpui::Div> {
+	) -> Stateful<Div> {
 		let editor = div()
 			.id("composer-editor-area")
 			.flex()
@@ -367,7 +377,7 @@ impl AgentSurface {
 			.min_w_0()
 			.when(native, |d| {
 				d.on_mouse_down(
-					gpui::MouseButton::Left,
+					MouseButton::Left,
 					cx.listener(|s, _, _, cx| {
 						s.composer_menu = None;
 
@@ -405,7 +415,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(px(4.))
-			.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
 					if !e.is_held {
 						s.escape_interrupt(cx);
@@ -414,9 +424,9 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
-				s.attach_paths(paths.0.to_vec(), cx)
-			}))
+			.on_drop(
+				cx.listener(|s, paths: &ExternalPaths, _, cx| s.attach_paths(paths.0.to_vec(), cx)),
+			)
 			.children(self.attachment_row(cx))
 			.children(self.task_reference_row(cx))
 			.child(
@@ -501,7 +511,7 @@ impl AgentSurface {
 							.rounded(px(12.))
 							.bg(rgb(0x29292d))
 							.text_size(px(12.))
-							.text_color(rgb(ui_theme::TEXT))
+							.text_color(rgb(TEXT))
 							.child(text),
 					)
 					.priority(3)
@@ -509,7 +519,7 @@ impl AgentSurface {
 			})
 	}
 
-	fn attachment_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn attachment_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let device =
 			if self.audio_input.is_empty() { "System default" } else { self.audio_input.as_str() };
 
@@ -602,7 +612,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
 		if let Some(controls) = self.dictation_controls(cx) {
 			return controls;
 		}
@@ -613,7 +623,7 @@ impl AgentSurface {
 		self.text_composer_toolbar(cx)
 	}
 
-	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
 		let model = self.composer_model_label(cx);
 
 		div()
@@ -703,7 +713,7 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(tooltip.clone())
-			.h(px(ui_theme::CONTROL_SIZE))
+			.h(px(CONTROL_SIZE))
 			.px(px(6.0))
 			.flex_none()
 			.rounded(px(if send { 8.0 } else { 7.0 }))
@@ -721,16 +731,16 @@ impl AgentSurface {
 					"audio-item",
 				]
 				.contains(&id),
-				|d| d.w(px(ui_theme::CONTROL_SIZE)).px_0(),
+				|d| d.w(px(CONTROL_SIZE)).px_0(),
 			)
 			.flex()
 			.items_center()
 			.justify_center()
 			.text_size(px(12.0))
 			.line_height(px(16.0))
-			.text_color(rgb(if send { ui_theme::TEXT } else { ui_theme::TEXT_MUTED }))
+			.text_color(rgb(if send { TEXT } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
-				d.px(px(4.)).text_size(px(11.)).font_weight(gpui::FontWeight::NORMAL)
+				d.px(px(4.)).text_size(px(11.)).font_weight(FontWeight::NORMAL)
 			})
 			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
 				d.w_full().h(px(32.)).justify_start().text_size(px(12.))
@@ -743,18 +753,14 @@ impl AgentSurface {
 				d.bg(if send {
 					rgb(0x606064)
 				} else {
-					rgba(if menu_active {
-						ui_theme::SELECTED_HOVER_FILL
-					} else {
-						ui_theme::HOVER_FILL
-					})
+					rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
 				})
 			})
 			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
 			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
-			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					action(s, window, cx);
 
@@ -779,25 +785,20 @@ impl AgentSurface {
 			.smooth()
 	}
 
-	fn composer_control_content(
-		&self,
-		id: &str,
-		label: String,
-		cx: &Context<Self>,
-	) -> gpui::AnyElement {
+	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
-			"send" => controls::PrimaryMark {
+			"send" => PrimaryMark {
 				mode: if self.dictation.is_some() {
-					controls::PrimaryMode::Done
+					PrimaryMode::Done
 				} else if self.stop_button(cx) {
-					controls::PrimaryMode::Stop
+					PrimaryMode::Stop
 				} else if self.composer.read(cx).content().trim().is_empty()
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
 				{
-					controls::PrimaryMode::Live
+					PrimaryMode::Live
 				} else {
-					controls::PrimaryMode::Send
+					PrimaryMode::Send
 				},
 				armed: self.escape_stop_armed(),
 				pending: self.awaiting_start(cx) || self.interrupting.is_some(),
@@ -820,11 +821,7 @@ impl AgentSurface {
 				.child("Microphone")
 				.child(div().flex_1())
 				.child(
-					div()
-						.max_w(px(110.))
-						.text_ellipsis()
-						.text_color(rgb(ui_theme::TEXT_MUTED))
-						.child(label),
+					div().max_w(px(110.)).text_ellipsis().text_color(rgb(TEXT_MUTED)).child(label),
 				)
 				.child(workspace_symbols::disclosure_chevron(
 					"microphone-chevron",
@@ -840,7 +837,7 @@ impl AgentSurface {
 				.child(div().w(px(16.)).flex_none())
 				.child("Send mode")
 				.child(div().flex_1())
-				.child(div().text_color(rgb(ui_theme::TEXT)).child(label))
+				.child(div().text_color(rgb(TEXT)).child(label))
 				.child(div().w(px(12.)).flex_none())
 				.into_any_element(),
 			"model" => div()
@@ -848,12 +845,10 @@ impl AgentSurface {
 				.items_center()
 				.gap(px(2.))
 				.whitespace_nowrap()
-				.text_color(rgb(ui_theme::TEXT))
-				.when(self.fast, |d| {
-					d.child(div().text_color(rgb(ui_theme::BLUE)).child(icon(Symbol::Fast)))
-				})
+				.text_color(rgb(TEXT))
+				.when(self.fast, |d| d.child(div().text_color(rgb(BLUE)).child(icon(Symbol::Fast))))
 				.child(div().max_w(px(180.)).text_ellipsis().child(label))
-				.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child("·"))
+				.child(div().text_color(rgb(TEXT_MUTED)).child("·"))
 				.child(controls::effort_indicator(&self.composer_effort_value()))
 				.into_any_element(),
 			_ => div().child(label).into_any_element(),
@@ -878,7 +873,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	fn composer_options(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	fn composer_options(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		// Keep content mounted while the disclosure animates closed.
 		let menu = self.composer_menu.or(self.composer_menu_content)?;
 		let anchor = self.menu_trigger_bounds.get("attach").copied();
@@ -894,7 +889,7 @@ impl AgentSurface {
 			div()
 				.id("composer-menu-popover")
 				.occlude()
-				.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 					if event.keystroke.key == "escape" {
 						s.composer_menu = None;
 						s.effort_drag = None;
@@ -904,7 +899,7 @@ impl AgentSurface {
 						cx.stop_propagation();
 					}
 				}))
-				.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
+				.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
 					let trigger_hit = {
 						#[cfg(all(target_os = "macos", not(test)))]
 						let same_window = !s.native_composer.enabled;
@@ -998,7 +993,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn usage_line(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	pub(super) fn usage_line(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		let (id, AgentHistoryResult::Available { usage: Some(usage), .. }) =
 			self.history.as_ref()?
 		else {
@@ -1015,12 +1010,12 @@ impl AgentSurface {
 		Some(
 			div()
 				.id("composer-context")
-				.size(px(ui_theme::CONTROL_SIZE))
+				.size(px(CONTROL_SIZE))
 				.flex_none()
 				.flex()
 				.items_center()
 				.text_size(px(10.5))
-				.text_color(rgb(ui_theme::TEXT_MUTED))
+				.text_color(rgb(TEXT_MUTED))
 				.aria_label(format!("Context {percent:.0}%"))
 				.on_hover(cx.listener(|s, hovered, _, cx| {
 					s.context_tip_visible = *hovered;
@@ -1033,7 +1028,7 @@ impl AgentSurface {
 		)
 	}
 
-	fn attachment_row(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	fn attachment_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		if self.attachments.is_empty() {
 			return None;
 		}
@@ -1085,7 +1080,7 @@ impl AgentSurface {
 							cx.notify();
 						}
 					}))
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if ["enter", "space", "backspace"].contains(&e.keystroke.key.as_str()) {
 							s.attachments.retain(|f| f != &remove);
 							cx.notify();
@@ -1102,7 +1097,7 @@ impl AgentSurface {
 	fn pick_attachments(&mut self, cx: &mut Context<Self>) {
 		let epoch = self.command_epoch;
 		let owner = self.composer_manager.clone();
-		let result = cx.prompt_for_paths(gpui::PathPromptOptions {
+		let result = cx.prompt_for_paths(PathPromptOptions {
 			files: true,
 			directories: true,
 			multiple: true,
@@ -1155,9 +1150,8 @@ impl AgentSurface {
 	pub(super) fn attach_clipboard(&mut self, item: &ClipboardItem, cx: &mut Context<Self>) {
 		for entry in &item.entries {
 			match entry {
-				gpui::ClipboardEntry::ExternalPaths(paths) =>
-					self.attach_paths(paths.0.to_vec(), cx),
-				gpui::ClipboardEntry::Image(image) => match save_clipboard_image(image) {
+				ClipboardEntry::ExternalPaths(paths) => self.attach_paths(paths.0.to_vec(), cx),
+				ClipboardEntry::Image(image) => match save_clipboard_image(image) {
 					Ok(path) => self.attach_paths(vec![path], cx),
 					Err(error) => {
 						self.feedback = format!("Cannot attach clipboard image: {error}");
@@ -1171,23 +1165,22 @@ impl AgentSurface {
 	}
 }
 
-fn save_clipboard_image(image: &gpui::Image) -> std::io::Result<std::path::PathBuf> {
-	let home =
-		env::var_os("HOME").ok_or_else(|| std::io::Error::other("Home directory unavailable"))?;
+fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
+	let home = env::var_os("HOME").ok_or_else(|| Error::other("Home directory unavailable"))?;
 	let dir = std::path::PathBuf::from(home).join(".decodex/attachments");
 
-	std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
+	DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
 
 	let ext = match image.format {
-		gpui::ImageFormat::Png => "png",
-		gpui::ImageFormat::Jpeg => "jpg",
-		gpui::ImageFormat::Webp => "webp",
-		gpui::ImageFormat::Gif => "gif",
-		_ => return Err(std::io::Error::other("Paste a PNG, JPEG, WebP, or GIF image")),
+		ImageFormat::Png => "png",
+		ImageFormat::Jpeg => "jpg",
+		ImageFormat::Webp => "webp",
+		ImageFormat::Gif => "gif",
+		_ => return Err(Error::other("Paste a PNG, JPEG, WebP, or GIF image")),
 	};
 	let path = dir.join(format!("{}.{ext}", unique_command()));
 
-	std::fs::OpenOptions::new()
+	OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
@@ -1206,12 +1199,11 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 					continue;
 				}
 
-				let mut path = gpui::PathBuilder::stroke(px(1.6));
+				let mut path = PathBuilder::stroke(px(1.6));
 				let steps = (portion * 64.0).ceil() as usize;
 
 				for step in 0..=steps {
-					let angle = -std::f32::consts::FRAC_PI_2
-						+ std::f32::consts::TAU * portion * step as f32 / steps as f32;
+					let angle = -FRAC_PI_2 + TAU * portion * step as f32 / steps as f32;
 					let point =
 						bounds.center() + gpui::point(px(angle.cos() * 5.7), px(angle.sin() * 5.7));
 

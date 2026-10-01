@@ -1,10 +1,7 @@
 //! Explicit canonical send. Unknown results are reconciled by reads, never replayed.
 use std::time::Duration;
 
-use tokio::sync::{
-	oneshot,
-	oneshot::{Receiver, Sender},
-};
+use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::shell::agent_surface::prompt_edit::{confirmation, *};
 use decodex_protocol::{AgentExecutionOverrides, PromptInputUpload};

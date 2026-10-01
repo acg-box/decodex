@@ -1,14 +1,12 @@
 //! Handback requires saved input and refreshed presentation before acknowledgement.
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
 	sync::{
 		mpsc,
 		mpsc::{Receiver, Sender},
 	},
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 

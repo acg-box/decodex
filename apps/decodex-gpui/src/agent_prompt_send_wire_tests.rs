@@ -1,15 +1,19 @@
 //! Lost send replies are reconciled through read-only receipts, with one submission.
-use crate::shell::agent_surface::drafts::storage::*;
-use decodex_protocol::*;
+use std::{
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+	sync::{mpsc, mpsc::Sender},
+	thread::{self, JoinHandle},
+	time::Duration,
+};
+
 use futures_util::{SinkExt as _, StreamExt as _};
-use std::os::unix::fs::PermissionsExt as _;
-use tokio_tungstenite::tungstenite::Message;
+use gpui::TestAppContext;
+use tokio::{net::UnixStream, runtime::Builder, time};
+use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
-use std::{fs, sync::mpsc, thread};
-
-use tokio::time;
-
-use crate::shell::agent_surface::drafts::tests;
+use crate::shell::agent_surface::drafts::{storage::*, tests};
+use decodex_protocol::*;
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct View {
@@ -23,7 +27,7 @@ impl Render for View {
 }
 
 #[gpui::test]
-fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppContext) {
+fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) {
 	cx.background_executor.allow_parking();
 
 	let (service, profile, _) = tests::profiles();
@@ -34,7 +38,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 	let socket_path = service.path().join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
@@ -123,7 +127,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 
 	for _ in 0..400 {
 		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(20));
+		visual.executor().advance_clock(Duration::from_millis(20));
 
 		check_receipt |= unknown_reply.try_recv().is_ok();
 
@@ -146,7 +150,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 			}
 		}
 
-		thread::sleep(std::time::Duration::from_millis(5));
+		thread::sleep(Duration::from_millis(5));
 	}
 
 	server.join().unwrap();
@@ -166,136 +170,132 @@ fn spawn_server(
 	listener: std::os::unix::net::UnixListener,
 	inspect: ClientDraftStore,
 	inspect_scope: String,
-	unknown: std::sync::mpsc::Sender<()>,
-) -> std::thread::JoinHandle<()> {
+	unknown: Sender<()>,
+) -> JoinHandle<()> {
 	thread::spawn(move || {
-		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
-			async {
-				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
+		Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-				time::timeout(std::time::Duration::from_secs(10), async {
-					let mut submitted = None;
+			time::timeout(Duration::from_secs(10), async {
+				let mut submitted = None;
 
-					for step in 0..5 {
-						let mut socket =
-							tokio_tungstenite::accept_async(listener.accept().await.unwrap().0)
+				for step in 0..5 {
+					let mut socket =
+						tokio_tungstenite::accept_async(listener.accept().await.unwrap().0)
+							.await
+							.unwrap();
+
+					welcome(&mut socket).await;
+
+					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+						panic!("request")
+					};
+					let request: ClientMessage = serde_json::from_str(&text).unwrap();
+
+					match request {
+						ClientMessage::Command(command) => {
+							assert_eq!(step, 2, "only one model-input submission is permitted");
+
+							let CommandPayload::Agent { action } = command.payload else {
+								panic!("Agent command")
+							};
+							let AgentActionDto::SendPromptInput {
+								work_id,
+								thread_id,
+								input_id,
+								edit_receipt_id,
+								sha256,
+								execution,
+							} = *action
+							else {
+								panic!("send action")
+							};
+							let identity = PromptInputSendIdentity {
+								work_id,
+								thread_id,
+								edit_receipt_id,
+								send: PromptInputSend {
+									input_id,
+									sha256,
+									execution,
+									command_key: command.idempotency_key,
+								},
+							};
+							let disk =
+								DesktopDraftDocument::decode(&inspect.load().unwrap().payload)
+									.unwrap();
+							let draft =
+								&disk.profiles[&inspect_scope].prompt_edits[&"a".repeat(64)];
+
+							assert_eq!(draft.send_identity().unwrap(), identity);
+							assert_eq!(
+								disk.profiles[&inspect_scope].composer.text,
+								"Unrelated main input"
+							);
+
+							submitted = Some(identity);
+							// Lose the reply after simulated durable acceptance.
+						},
+						ClientMessage::Query(query) => {
+							let payload = match query.payload {
+								QueryPayload::GetAgentModelSettings { work_id } if step == 0 =>
+									QueryResultPayload::AgentModelSettings(
+										AgentModelSettingsResult::Available {
+											work_id,
+											thread_id: EntityId::new("thread").unwrap(),
+											account_id: EntityId::new("account").unwrap(),
+											model_provider: None,
+											model: Some(WireText::new("model").unwrap()),
+											reasoning_effort: None,
+										},
+									),
+								QueryPayload::GetAgentPromptInputUpload { upload } if step == 1 =>
+									QueryResultPayload::AgentPromptInputUpload(
+										PromptInputUploadStatus::Ready { upload, input_id: 7 },
+									),
+								QueryPayload::GetAgentPromptInputSend { identity }
+									if step == 3 || step == 4 =>
+								{
+									assert_eq!(Some(&identity), submitted.as_ref());
+
+									QueryResultPayload::AgentPromptInputSend(
+										PromptInputSendStatus {
+											identity,
+											accepted_event_id: (step == 4).then_some(42),
+										},
+									)
+								},
+								_ => panic!("unexpected query at step {step}"),
+							};
+							let response = ServerMessage::QueryResult(QueryResultEnvelope {
+								version: CURRENT_VERSION,
+								server_id: ServerId::new(SERVER).unwrap(),
+								query_id: query.query_id,
+								payload,
+							});
+
+							socket
+								.send(Message::Text(
+									serde_json::to_string(&response).unwrap().into(),
+								))
 								.await
 								.unwrap();
 
-						welcome(&mut socket).await;
-
-						let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-							panic!("request")
-						};
-						let request: ClientMessage = serde_json::from_str(&text).unwrap();
-
-						match request {
-							ClientMessage::Command(command) => {
-								assert_eq!(step, 2, "only one model-input submission is permitted");
-
-								let CommandPayload::Agent { action } = command.payload else {
-									panic!("Agent command")
-								};
-								let AgentActionDto::SendPromptInput {
-									work_id,
-									thread_id,
-									input_id,
-									edit_receipt_id,
-									sha256,
-									execution,
-								} = *action
-								else {
-									panic!("send action")
-								};
-								let identity = PromptInputSendIdentity {
-									work_id,
-									thread_id,
-									edit_receipt_id,
-									send: PromptInputSend {
-										input_id,
-										sha256,
-										execution,
-										command_key: command.idempotency_key,
-									},
-								};
-								let disk =
-									DesktopDraftDocument::decode(&inspect.load().unwrap().payload)
-										.unwrap();
-								let draft =
-									&disk.profiles[&inspect_scope].prompt_edits[&"a".repeat(64)];
-
-								assert_eq!(draft.send_identity().unwrap(), identity);
-								assert_eq!(
-									disk.profiles[&inspect_scope].composer.text,
-									"Unrelated main input"
-								);
-
-								submitted = Some(identity);
-								// Lose the reply after simulated durable acceptance.
-							},
-							ClientMessage::Query(query) => {
-								let payload = match query.payload {
-									QueryPayload::GetAgentModelSettings { work_id }
-										if step == 0 =>
-										QueryResultPayload::AgentModelSettings(
-											AgentModelSettingsResult::Available {
-												work_id,
-												thread_id: EntityId::new("thread").unwrap(),
-												account_id: EntityId::new("account").unwrap(),
-												model_provider: None,
-												model: Some(WireText::new("model").unwrap()),
-												reasoning_effort: None,
-											},
-										),
-									QueryPayload::GetAgentPromptInputUpload { upload }
-										if step == 1 =>
-										QueryResultPayload::AgentPromptInputUpload(
-											PromptInputUploadStatus::Ready { upload, input_id: 7 },
-										),
-									QueryPayload::GetAgentPromptInputSend { identity }
-										if step == 3 || step == 4 =>
-									{
-										assert_eq!(Some(&identity), submitted.as_ref());
-
-										QueryResultPayload::AgentPromptInputSend(
-											PromptInputSendStatus {
-												identity,
-												accepted_event_id: (step == 4).then_some(42),
-											},
-										)
-									},
-									_ => panic!("unexpected query at step {step}"),
-								};
-								let response = ServerMessage::QueryResult(QueryResultEnvelope {
-									version: CURRENT_VERSION,
-									server_id: ServerId::new(SERVER).unwrap(),
-									query_id: query.query_id,
-									payload,
-								});
-
-								socket
-									.send(Message::Text(
-										serde_json::to_string(&response).unwrap().into(),
-									))
-									.await
-									.unwrap();
-
-								if step == 3 {
-									unknown.send(()).unwrap();
-								}
-							},
-							_ => panic!("unexpected request"),
-						}
+							if step == 3 {
+								unknown.send(()).unwrap();
+							}
+						},
+						_ => panic!("unexpected request"),
 					}
-				})
-				.await
-				.unwrap();
-			},
-		);
+				}
+			})
+			.await
+			.unwrap();
+		});
 	})
 }
 
-async fn welcome(socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>) {
+async fn welcome(socket: &mut WebSocketStream<UnixStream>) {
 	let _ = socket.next().await;
 
 	for message in [

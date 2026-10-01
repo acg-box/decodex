@@ -14,8 +14,8 @@ use gpui::{
 use crate::shell::agent_surface::{
 	activity::HistoryKey,
 	native_timeline::{
-		AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding, Context,
-		key,
+		self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding,
+		Context,
 	},
 };
 
@@ -376,7 +376,7 @@ impl AgentSurface {
 }
 
 fn row_key(entry: &AgentTimelineEntry) -> RowKey {
-	let (position, kind, id) = key(entry);
+	let (position, kind, id) = native_timeline::key(entry);
 
 	(position, kind, id.into())
 }

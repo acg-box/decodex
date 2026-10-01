@@ -1,9 +1,14 @@
 //! Content bounds and direct manipulation for the Agent workspace.
-use crate::shell::agent_surface::*;
+use gpui::{
+	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+	Stateful,
+};
 
-use gpui::{AnyElement, MouseButton, MouseMoveEvent};
-
-use crate::ui_motion;
+use crate::{
+	panel_preferences::PanelDefaults,
+	shell::{WINDOW_CONTROLS_CLEARANCE, agent_surface::*},
+	ui_motion,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Panel {
@@ -26,7 +31,7 @@ impl AgentSurface {
 		window: &Window,
 		cx: &mut Context<Self>,
 	) {
-		let defaults = crate::panel_preferences::PanelDefaults::configured();
+		let defaults = PanelDefaults::configured();
 		let width = f32::from(window.viewport_size().width);
 		let visible = [
 			self.sidebar_visible && width > 1_000.0,
@@ -105,7 +110,7 @@ impl AgentSurface {
 		};
 		let available = (
 			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
+			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
 		if !self.graph_expanded {
@@ -158,7 +163,7 @@ impl AgentSurface {
 			.hover(|s| s.bg(rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
-				cx.listener(|s, event: &gpui::MouseDownEvent, window, cx| {
+				cx.listener(|s, event: &MouseDownEvent, window, cx| {
 					s.sidebar_drag = Some((
 						event.position.x.into(),
 						sidebar_width(s.sidebar_width, window.viewport_size().width.into()),
@@ -167,15 +172,14 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}),
 			)
-			.on_click(cx.listener(|s, event: &gpui::ClickEvent, _, cx| {
+			.on_click(cx.listener(|s, event: &ClickEvent, _, cx| {
 				if event.click_count() == 2 {
-					s.sidebar_width =
-						crate::panel_preferences::PanelDefaults::configured().sidebar.into();
+					s.sidebar_width = PanelDefaults::configured().sidebar.into();
 
 					cx.notify();
 				}
 			}))
-			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(|s, event: &KeyDownEvent, window, cx| {
 				let delta = match event.keystroke.key.as_str() {
 					"left" => -16.0,
 					"right" => 16.0,
@@ -190,10 +194,7 @@ impl AgentSurface {
 			}))
 	}
 
-	pub(super) fn workspace_resize_root(
-		&self,
-		cx: &mut Context<Self>,
-	) -> gpui::Stateful<gpui::Div> {
+	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		div()
 			.id("agent-workspace")
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {

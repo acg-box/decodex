@@ -1,6 +1,12 @@
 //! Explicit typed replies to live MCP elicitation requests.
-use crate::shell::agent_surface::*;
+use std::rc::Rc;
+
+use gpui::{AnyElement, Div, KeyDownEvent, Stateful};
+use reqwest::Url;
 use serde_json::{Value, json};
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::McpFormField;
 
 impl AgentSurface {
 	fn mcp_request_is_current(&self, event: i64) -> bool {
@@ -132,7 +138,7 @@ impl AgentSurface {
 		event: i64,
 		value: &Value,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if value["_meta"]["codex_approval_kind"] == "tool_suggestion" {
 			return self.installation_panel(event, value, cx);
 		}
@@ -243,16 +249,14 @@ impl AgentSurface {
 
 	fn mcp_verification_link(
 		&self,
-		mut panel: gpui::Stateful<gpui::Div>,
+		mut panel: Stateful<Div>,
 		event: i64,
 		value: &Value,
 		cx: &mut Context<Self>,
-	) -> gpui::Stateful<gpui::Div> {
+	) -> Stateful<Div> {
 		if value["mode"] == "url" {
-			if let Some(url) = value["url"]
-				.as_str()
-				.and_then(|text| reqwest::Url::parse(text).ok())
-				.filter(|url| {
+			if let Some(url) =
+				value["url"].as_str().and_then(|text| Url::parse(text).ok()).filter(|url| {
 					matches!(url.scheme(), "https" | "http")
 						&& url.username().is_empty()
 						&& url.password().is_none()
@@ -304,12 +308,7 @@ impl AgentSurface {
 		panel
 	}
 
-	fn mcp_field_row(
-		&self,
-		event: i64,
-		field: decodex_protocol::McpFormField,
-		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	fn mcp_field_row(&self, event: i64, field: McpFormField, cx: &mut Context<Self>) -> Div {
 		let mut row = div().flex().flex_col().gap_2().child(format!(
 			"{}{}",
 			field.title,
@@ -373,8 +372,8 @@ pub(super) fn mcp_button(
 	selected: bool,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
-) -> gpui::AnyElement {
-	let action = std::rc::Rc::new(action);
+) -> AnyElement {
+	let action = Rc::new(action);
 	let click = action.clone();
 
 	div()
@@ -388,7 +387,7 @@ pub(super) fn mcp_button(
 		.bg(rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, key: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&key.keystroke.key.as_str()) {
 				cx.stop_propagation();
 

@@ -26,13 +26,13 @@ use decodex_protocol::{
 	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
 	CommandResultEnvelope, ConversationExecutionOverrides, ConversationExecutionSettings,
 	ConversationHistoryPage, ConversationListCursor, ConversationListResult, ConversationListSize,
-	ConversationModel, ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult,
-	ConversationState, ConversationSummary, ConversationWorkingDirectory, CorrelationId,
-	DesktopCreationIntent, EntityId, EntityRevision, EventEnvelope, EventPayload, HistoryText,
-	IdempotencyKey, InitialExecutionDefaults, InitialModelCatalogRequest,
-	InitialModelCatalogResult, InitialModelDefaults, ModelCatalogPurpose, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload,
-	ServerId,
+	ConversationModel, ConversationModelReviewResult, ConversationReasoningEffort,
+	ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
+	ConversationWorkingDirectory, CorrelationId, DesktopCreationIntent, EntityId, EntityRevision,
+	EventEnvelope, EventPayload, HistoryText, IdempotencyKey, InitialExecutionDefaults,
+	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelDefaults,
+	ModelCatalogPurpose, QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, ReceiptDisposition, ResultPayload, ServerId,
 };
 use drafts::DeliveryDrafts;
 use model_settings::Observation;
@@ -1497,9 +1497,9 @@ impl State {
 		self.catalog = None;
 		self.catalog_source = None;
 
-		let QueryResultPayload::ConversationModelReview(
-			decodex_protocol::ConversationModelReviewResult::Available(review),
-		) = payload
+		let QueryResultPayload::ConversationModelReview(ConversationModelReviewResult::Available(
+			review,
+		)) = payload
 		else {
 			return;
 		};
@@ -2805,7 +2805,7 @@ pub(crate) mod tests {
 		ConversationWorkingDirectory, Conversations, ConversationsInner, ConversationsLoadState,
 		EntityId, EventEnvelope, EventPayload, HistoryText, IdempotencyKey, MAX_LIVE_DELTA_BYTES,
 		Mutex, Notify, QueryEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-		ReceiptDisposition, ResultPayload, ServerId, State,
+		ReceiptDisposition, ResultPayload, ServerId, State, creation_defaults_tests,
 	};
 	use decodex_protocol::{ConversationListPage, EntityRevision};
 
@@ -4190,7 +4190,7 @@ pub(crate) mod tests {
 
 				let selection = conversations.snapshot().execution;
 
-				super::creation_defaults_tests::install_defaults(
+				creation_defaults_tests::install_defaults(
 					&conversations,
 					&server_id,
 					decodex_protocol::InitialModelDefaults {
