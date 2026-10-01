@@ -11,33 +11,38 @@ use tokio::{sync::Mutex, time};
 use crate::agent_usage_estimate::{Source, SourceKey};
 use decodex_codex::app_server_client::ClientError;
 use decodex_protocol::{
-	AgentTranscriptRequest, AgentTranscriptResult as Result, EntityId, TRANSCRIPT_CHUNK_BYTES,
+	AgentTranscriptRequest, AgentTranscriptResult, EntityId, TRANSCRIPT_CHUNK_BYTES,
 };
 
 #[derive(Clone, Default)]
 pub(crate) struct Transcripts(Arc<Mutex<Option<Document>>>);
 impl Transcripts {
-	pub(crate) async fn read<F, Fut>(&self, source: F, request: &AgentTranscriptRequest) -> Result
+	pub(crate) async fn read<F, Fut>(
+		&self,
+		source: F,
+		request: &AgentTranscriptRequest,
+	) -> AgentTranscriptResult
 	where
 		F: Fn() -> Fut,
 		Fut: Future<Output = Option<Source>>,
 	{
-		let Some(before) = source().await else { return Result::Unavailable };
+		let Some(before) = source().await else { return AgentTranscriptResult::Unavailable };
 
 		if before.key.work != request.work_id.as_str()
 			|| before.key.thread != request.thread_id.as_str()
 		{
-			return Result::Unavailable;
+			return AgentTranscriptResult::Unavailable;
 		}
 		if request.offset == 0 && request.token.is_none() {
 			let text = match before.client.thread_markdown_transcript(&before.key.thread).await {
 				Ok(text) => text,
-				Err(ClientError::CapacityExceeded) => return Result::CapacityExceeded,
-				Err(_) => return Result::Unavailable,
+				Err(ClientError::CapacityExceeded) =>
+					return AgentTranscriptResult::CapacityExceeded,
+				Err(_) => return AgentTranscriptResult::Unavailable,
 			};
 
 			if source().await.is_none_or(|after| after.key != before.key) {
-				return Result::Unavailable;
+				return AgentTranscriptResult::Unavailable;
 			}
 
 			let mut hash = Sha256::new();
@@ -77,31 +82,31 @@ impl Transcripts {
 		}
 
 		let mut cache = self.0.lock().await;
-		let Some(document) = cache.as_ref() else { return Result::Unavailable };
+		let Some(document) = cache.as_ref() else { return AgentTranscriptResult::Unavailable };
 
 		if document.created.elapsed() > Duration::from_secs(120) {
 			*cache = None;
 
-			return Result::Unavailable;
+			return AgentTranscriptResult::Unavailable;
 		}
 		if document.owner != before.key
 			|| request.token.as_ref().is_some_and(|token| token != &document.token)
 			|| (request.offset > 0 && request.token.is_none())
 		{
-			return Result::Unavailable;
+			return AgentTranscriptResult::Unavailable;
 		}
 
 		let start = request.offset as usize;
 
 		if start >= document.bytes.len() {
-			return Result::Unavailable;
+			return AgentTranscriptResult::Unavailable;
 		}
 
 		let end = (start + TRANSCRIPT_CHUNK_BYTES).min(document.bytes.len());
 		let Ok(account_id) = EntityId::new(document.owner.account.as_str()) else {
-			return Result::Unavailable;
+			return AgentTranscriptResult::Unavailable;
 		};
-		let result = Result::Available {
+		let result = AgentTranscriptResult::Available {
 			request: request.clone(),
 			account_id,
 			token: document.token.clone(),
@@ -128,8 +133,8 @@ mod tests {
 	use tokio::io;
 
 	use crate::agent_transcript::{
-		AgentTranscriptRequest, Document, EntityId, Instant, Result, Source, SourceKey,
-		TRANSCRIPT_CHUNK_BYTES, Transcripts,
+		AgentTranscriptRequest, AgentTranscriptResult, Document, EntityId, Instant, Source,
+		SourceKey, TRANSCRIPT_CHUNK_BYTES, Transcripts,
 	};
 	use decodex_core::{AccountId, ProcessGenerationId};
 
@@ -167,7 +172,7 @@ mod tests {
 
 		stale.token = Some(EntityId::new("other-export").unwrap());
 
-		assert_eq!(cache.read(source, &stale).await, Result::Unavailable);
+		assert_eq!(cache.read(source, &stale).await, AgentTranscriptResult::Unavailable);
 
 		let mut foreign = key.clone();
 
@@ -180,11 +185,13 @@ mod tests {
 					&request
 				)
 				.await,
-			Result::Unavailable
+			AgentTranscriptResult::Unavailable
 		);
 
 		let first = cache.read(source, &request).await;
-		let Result::Available { bytes, total_bytes, .. } = &first else { panic!("{first:?}") };
+		let AgentTranscriptResult::Available { bytes, total_bytes, .. } = &first else {
+			panic!("{first:?}")
+		};
 
 		assert_eq!(bytes.len(), TRANSCRIPT_CHUNK_BYTES);
 		assert_eq!(*total_bytes as usize, TRANSCRIPT_CHUNK_BYTES + 3);
@@ -195,7 +202,7 @@ mod tests {
 		last.offset += TRANSCRIPT_CHUNK_BYTES as u32;
 
 		assert!(
-			matches!(cache.read(source,&last).await,Result::Available{bytes,..} if bytes==vec![b'x';2])
+			matches!(cache.read(source,&last).await,AgentTranscriptResult::Available{bytes,..} if bytes==vec![b'x';2])
 		);
 		assert!(cache.0.lock().await.is_none());
 	}

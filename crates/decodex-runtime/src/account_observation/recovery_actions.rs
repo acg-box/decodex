@@ -4,17 +4,21 @@ use reqwest::Url;
 use crate::account_observation::{AccountId, AccountObservationService};
 use decodex_codex::AccountApiRecoveryContext;
 use decodex_protocol::{
-	AccountRecoveryAction as A, AccountRecoveryBanner, AccountRecoveryDestination as D,
-	AccountRecoveryPreparation as P, AccountRecoveryResult, AccountRecoveryState, WireText,
+	AccountRecoveryAction, AccountRecoveryBanner, AccountRecoveryDestination,
+	AccountRecoveryPreparation, AccountRecoveryResult, AccountRecoveryState, WireText,
 };
 
 impl AccountObservationService {
-	pub(crate) async fn prepare_recovery(&self, expected: &AccountRecoveryResult, action: A) -> P {
+	pub(crate) async fn prepare_recovery(
+		&self,
+		expected: &AccountRecoveryResult,
+		action: AccountRecoveryAction,
+	) -> AccountRecoveryPreparation {
 		let current = self.recovery(&expected.account_id, expected.account_revision).await;
 		let (AccountRecoveryState::Current(before), AccountRecoveryState::Current(banner)) =
 			(&expected.state, &current.state)
 		else {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		};
 
 		if before != banner
@@ -22,58 +26,60 @@ impl AccountObservationService {
 			|| expected.observed_at_unix_micros > current.observed_at_unix_micros
 			|| !banner.actions.iter().any(|cta| cta.action == action)
 		{
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		}
 
 		let Ok(id) = AccountId::new(current.account_id.as_str()) else {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		};
 		let cached = self.state.read().await.banners.get(&id).cloned();
 		let Some(cached) = cached.filter(|entry| {
 			entry.current && Some(entry.observed_at) == current.observed_at_unix_micros
 		}) else {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		};
 		let Some(context) = cached.context else {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		};
 		let Some(destination) = destination(&context, banner, action) else {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		};
 
 		if self.recovery(&expected.account_id, expected.account_revision).await != current {
-			return P::Unavailable;
+			return AccountRecoveryPreparation::Unavailable;
 		}
 
-		P::Ready { source: Box::new(current), action, destination }
+		AccountRecoveryPreparation::Ready { source: Box::new(current), action, destination }
 	}
 }
 
 fn destination(
 	context: &AccountApiRecoveryContext,
 	banner: &AccountRecoveryBanner,
-	action: A,
-) -> Option<D> {
+	action: AccountRecoveryAction,
+) -> Option<AccountRecoveryDestination> {
 	let usage = "https://chatgpt.com/codex/settings/usage";
 	let url = match action {
-		A::ResetUsage => return Some(D::ResetPicker),
-		A::NotifyOwner => return Some(D::RequestCredits),
-		A::RequestIncrease => match &banner.request_url {
+		AccountRecoveryAction::ResetUsage => return Some(AccountRecoveryDestination::ResetPicker),
+		AccountRecoveryAction::NotifyOwner =>
+			return Some(AccountRecoveryDestination::RequestCredits),
+		AccountRecoveryAction::RequestIncrease => match &banner.request_url {
 			Some(url) => return validated_url(url.as_str()),
-			None => return Some(D::RequestUsageIncrease),
+			None => return Some(AccountRecoveryDestination::RequestUsageIncrease),
 		},
-		A::AddCredits =>
+		AccountRecoveryAction::AddCredits =>
 			if workspace(context.plan_type.as_deref()?)? {
 				"https://chatgpt.com/admin/billing?codex_credit_action=add_credits".into()
 			} else {
 				format!("{usage}?credits_modal=true")
 			},
-		A::BuyReset => "https://chatgpt.com/codex/purchase/reset".into(),
-		A::ViewUsage => usage.into(),
-		A::ViewWorkspaceUsage => "https://chatgpt.com/admin/usage-limits/workspace".into(),
-		A::PlusPricing => "https://chatgpt.com/explore/plus".into(),
-		A::ProPricing => "https://chatgpt.com/explore/pro".into(),
-		A::Pricing => {
+		AccountRecoveryAction::BuyReset => "https://chatgpt.com/codex/purchase/reset".into(),
+		AccountRecoveryAction::ViewUsage => usage.into(),
+		AccountRecoveryAction::ViewWorkspaceUsage =>
+			"https://chatgpt.com/admin/usage-limits/workspace".into(),
+		AccountRecoveryAction::PlusPricing => "https://chatgpt.com/explore/plus".into(),
+		AccountRecoveryAction::ProPricing => "https://chatgpt.com/explore/pro".into(),
+		AccountRecoveryAction::Pricing => {
 			let plan = context.plan_type.as_deref()?;
 
 			workspace(plan)?;
@@ -111,7 +117,7 @@ fn destination(
 		url.query_pairs_mut().append_pair("account_id", &context.provider_account_id);
 	}
 
-	Some(D::OpenUrl(WireText::new(url.as_str()).ok()?))
+	Some(AccountRecoveryDestination::OpenUrl(WireText::new(url.as_str()).ok()?))
 }
 
 fn workspace(plan: &str) -> Option<bool> {
@@ -132,7 +138,7 @@ fn workspace(plan: &str) -> Option<bool> {
 	}
 }
 
-fn validated_url(raw: &str) -> Option<D> {
+fn validated_url(raw: &str) -> Option<AccountRecoveryDestination> {
 	let url = Url::parse(raw).ok()?;
 
 	if !matches!(url.scheme(), "https" | "http")
@@ -143,13 +149,14 @@ fn validated_url(raw: &str) -> Option<D> {
 		return None;
 	}
 
-	Some(D::OpenUrl(WireText::new(url.as_str()).ok()?))
+	Some(AccountRecoveryDestination::OpenUrl(WireText::new(url.as_str()).ok()?))
 }
 
 #[cfg(test)]
 mod tests {
 	use crate::account_observation::recovery_actions::{
-		self, A, AccountApiRecoveryContext, AccountRecoveryBanner, D, WireText,
+		self, AccountApiRecoveryContext, AccountRecoveryAction, AccountRecoveryBanner,
+		AccountRecoveryDestination, WireText,
 	};
 	fn banner() -> AccountRecoveryBanner {
 		AccountRecoveryBanner {
@@ -168,9 +175,11 @@ mod tests {
 	fn url(
 		context: &AccountApiRecoveryContext,
 		banner: &AccountRecoveryBanner,
-		action: A,
+		action: AccountRecoveryAction,
 	) -> reqwest::Url {
-		let Some(D::OpenUrl(url)) = recovery_actions::destination(context, banner, action) else {
+		let Some(AccountRecoveryDestination::OpenUrl(url)) =
+			recovery_actions::destination(context, banner, action)
+		else {
 			panic!("url")
 		};
 
@@ -183,7 +192,7 @@ mod tests {
 			plan_type: Some("edu_plus".into()),
 		};
 		let banner = banner();
-		let target = url(&context, &banner, A::AddCredits);
+		let target = url(&context, &banner, AccountRecoveryAction::AddCredits);
 
 		assert_eq!(target.path(), "/admin/billing");
 		assert_eq!(
@@ -194,9 +203,12 @@ mod tests {
 
 		context.plan_type = Some("prolite".into());
 
-		assert_eq!(url(&context, &banner, A::AddCredits).path(), "/codex/settings/usage");
+		assert_eq!(
+			url(&context, &banner, AccountRecoveryAction::AddCredits).path(),
+			"/codex/settings/usage"
+		);
 
-		let target = url(&context, &banner, A::Pricing);
+		let target = url(&context, &banner, AccountRecoveryAction::Pricing);
 
 		assert!(target.query_pairs().any(|(k, v)| k == "highlight_plan" && v == "pro"));
 		assert!(target.query_pairs().any(|(k, v)| k == "pro_variant" && v == "2x"));
@@ -204,8 +216,14 @@ mod tests {
 
 		context.plan_type = Some("future-plan".into());
 
-		assert!(recovery_actions::destination(&context, &banner, A::AddCredits).is_none());
-		assert!(recovery_actions::destination(&context, &banner, A::Pricing).is_none());
+		assert!(
+			recovery_actions::destination(&context, &banner, AccountRecoveryAction::AddCredits)
+				.is_none()
+		);
+		assert!(
+			recovery_actions::destination(&context, &banner, AccountRecoveryAction::Pricing)
+				.is_none()
+		);
 	}
 	#[test]
 	fn request_url_does_not_change_effect_or_leak_workspace_identity() {
@@ -216,29 +234,40 @@ mod tests {
 		let mut banner = banner();
 
 		assert_eq!(
-			recovery_actions::destination(&context, &banner, A::RequestIncrease),
-			Some(D::RequestUsageIncrease)
+			recovery_actions::destination(
+				&context,
+				&banner,
+				AccountRecoveryAction::RequestIncrease
+			),
+			Some(AccountRecoveryDestination::RequestUsageIncrease)
 		);
 		assert_eq!(
-			recovery_actions::destination(&context, &banner, A::ResetUsage),
-			Some(D::ResetPicker)
+			recovery_actions::destination(&context, &banner, AccountRecoveryAction::ResetUsage),
+			Some(AccountRecoveryDestination::ResetPicker)
 		);
 		assert_eq!(
-			recovery_actions::destination(&context, &banner, A::NotifyOwner),
-			Some(D::RequestCredits)
+			recovery_actions::destination(&context, &banner, AccountRecoveryAction::NotifyOwner),
+			Some(AccountRecoveryDestination::RequestCredits)
 		);
 
 		banner.request_url =
 			Some(WireText::new("https://chatgpt.com/admin/custom?ticket=1").unwrap());
 
-		let target = url(&context, &banner, A::RequestIncrease);
+		let target = url(&context, &banner, AccountRecoveryAction::RequestIncrease);
 
 		assert_eq!(target.query(), Some("ticket=1"));
 
 		for invalid in ["javascript:alert(1)", "https://user@host/path", "file:///tmp/example"] {
 			banner.request_url = Some(WireText::new(invalid).unwrap());
 
-			assert!(recovery_actions::destination(&context, &banner, A::RequestIncrease).is_none());
+			assert!(
+				recovery_actions::destination(
+					&context,
+					&banner,
+					AccountRecoveryAction::RequestIncrease
+				)
+				.is_none()
+			);
 		}
 	}
 }

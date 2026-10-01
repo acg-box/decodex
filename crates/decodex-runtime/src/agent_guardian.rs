@@ -5,9 +5,8 @@ use decodex_codex::guardian;
 use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 use decodex_database::{AgentGuardianReview, SqliteStore};
 use decodex_protocol::{
-	AgentGuardianDetailResult as Detail, AgentGuardianReviewDto, AgentGuardianReviewsResult,
-	AgentGuardianStatus as Status, AgentGuardianSubmission as Submission,
-	GUARDIAN_DETAIL_PAGE_BYTES,
+	AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
+	AgentGuardianStatus, AgentGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
 };
 
 /// Read complete details from the existing saved observation. No native request is sent.
@@ -17,17 +16,17 @@ pub(crate) async fn detail(
 	row_id: i64,
 	digest: &str,
 	offset: usize,
-) -> Detail {
+) -> AgentGuardianDetailResult {
 	let Ok(Some(row)) = store.agent_guardian_review(work.into(), row_id).await else {
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	};
 
 	if row.digest() != digest {
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	}
 
 	let Ok(event) = serde_json::from_str::<Value>(&row.event_json) else {
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	};
 	let method = if row.status == "inProgress" {
 		"item/autoApprovalReview/started"
@@ -36,19 +35,19 @@ pub(crate) async fn detail(
 	};
 
 	if guardian::decode_review(method, &event).is_none() {
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	}
 
 	let action = match serde_json::to_string(&event["action"]) {
 		Ok(action) => action,
-		Err(_) => return Detail::Unavailable,
+		Err(_) => return AgentGuardianDetailResult::Unavailable,
 	};
 	let rationale = event["review"]["rationale"].as_str().unwrap_or("");
 
 	if decodex_core::contains_credential_material(&action)
 		|| decodex_core::contains_credential_material(rationale)
 	{
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	}
 
 	let text = format!("Action\n{action}\n\nFindings\n{rationale}");
@@ -57,7 +56,7 @@ pub(crate) async fn detail(
 		|| offset >= text.len()
 		|| !text.is_char_boundary(offset)
 	{
-		return Detail::Unavailable;
+		return AgentGuardianDetailResult::Unavailable;
 	}
 
 	let mut end = offset.saturating_add(GUARDIAN_DETAIL_PAGE_BYTES).min(text.len());
@@ -66,7 +65,7 @@ pub(crate) async fn detail(
 		end -= 1;
 	}
 
-	Detail::Available {
+	AgentGuardianDetailResult::Available {
 		row_id,
 		digest: digest.into(),
 		offset,
@@ -111,7 +110,7 @@ pub(crate) async fn read(
 			) {
 			review.can_approve = false;
 
-			if review.status == Status::Denied {
+			if review.status == AgentGuardianStatus::Denied {
 				review.approval_unavailable =
 					Some("The task has moved to another turn or is reconnecting.".into());
 			}
@@ -146,17 +145,17 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 		&event,
 	)?;
 	let status = match row.status.as_str() {
-		"inProgress" => Status::InProgress,
-		"approved" => Status::Approved,
-		"denied" => Status::Denied,
-		"timedOut" => Status::TimedOut,
-		"aborted" => Status::Aborted,
+		"inProgress" => AgentGuardianStatus::InProgress,
+		"approved" => AgentGuardianStatus::Approved,
+		"denied" => AgentGuardianStatus::Denied,
+		"timedOut" => AgentGuardianStatus::TimedOut,
+		"aborted" => AgentGuardianStatus::Aborted,
 		_ => return None,
 	};
 	let submission = match row.approval_state.as_deref() {
-		Some("pending") => Some(Submission::Pending),
-		Some("submitted") => Some(Submission::Submitted),
-		Some("rejected") => Some(Submission::Rejected),
+		Some("pending") => Some(AgentGuardianSubmission::Pending),
+		Some("submitted") => Some(AgentGuardianSubmission::Submitted),
+		Some("rejected") => Some(AgentGuardianSubmission::Rejected),
 		None => None,
 		_ => return None,
 	};
@@ -200,11 +199,14 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 		result.rationale = None;
 		result.details_paged = true;
 	}
-	if status == Status::Denied {
+	if status == AgentGuardianStatus::Denied {
 		result.approval_unavailable =
 			if row.conflicted {
 				Some("Conflicting review evidence was received. This saved action cannot be approved.".into())
-			} else if matches!(submission, Some(Submission::Pending | Submission::Submitted)) {
+			} else if matches!(
+				submission,
+				Some(AgentGuardianSubmission::Pending | AgentGuardianSubmission::Submitted)
+			) {
 				Some("An approval submission is already recorded.".into())
 			} else if result.details_unavailable.is_some() {
 				Some("Complete action details are required before approval.".into())
@@ -222,7 +224,7 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 #[cfg(test)]
 mod tests {
 
-	use crate::agent_guardian::{self, AgentGuardianReview, Status};
+	use crate::agent_guardian::{self, AgentGuardianReview, AgentGuardianStatus};
 	fn denial() -> AgentGuardianReview {
 		AgentGuardianReview {id:1,thread_id:"thread".into(),turn_id:"turn".into(),review_id:"review".into(),
 			connection_id:"connection".into(),generation_id:Some("generation".into()),status:"denied".into(),
@@ -243,7 +245,7 @@ mod tests {
 
 			let result = agent_guardian::project(&row, Some("new-generation")).unwrap();
 
-			assert_eq!(result.status, Status::Denied);
+			assert_eq!(result.status, AgentGuardianStatus::Denied);
 			assert!(!result.current_process);
 			assert_eq!(result.can_approve, state == "rejected");
 			assert_eq!(result.submission_key.as_deref(), Some("exact-command"));

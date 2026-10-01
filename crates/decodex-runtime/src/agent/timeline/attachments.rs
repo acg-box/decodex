@@ -3,11 +3,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use decodex_protocol::{
-	AgentTimelineAttachment as Attachment, AgentTimelineAttachmentSource as Source,
-};
+use decodex_protocol::{AgentTimelineAttachment, AgentTimelineAttachmentSource};
 
-pub(super) fn project(item: &Value) -> (Vec<Attachment>, bool) {
+pub(super) fn project(item: &Value) -> (Vec<AgentTimelineAttachment>, bool) {
 	match item["type"].as_str() {
 		Some("userMessage") => parts(&item["content"], "text", describe),
 		Some("functionCallOutput") if item["output"].is_array() =>
@@ -16,13 +14,27 @@ pub(super) fn project(item: &Value) -> (Vec<Attachment>, bool) {
 			parts(&item["contentItems"], "inputText", dynamic),
 		Some("mcpToolCall") if !item["result"].is_null() =>
 			parts(&item["result"]["content"], "text", mcp),
-		Some("imageView") =>
-			one(make(0, "imageView", "Image from execution environment", Source::Unknown)),
+		Some("imageView") => one(make(
+			0,
+			"imageView",
+			"Image from execution environment",
+			AgentTimelineAttachmentSource::Unknown,
+		)),
 		Some("imageGeneration") => {
 			if item["result"].as_str().is_some_and(|result| !result.is_empty()) {
-				one(make(0, "imageGeneration", "Generated image", Source::Inline))
+				one(make(
+					0,
+					"imageGeneration",
+					"Generated image",
+					AgentTimelineAttachmentSource::Inline,
+				))
 			} else if item["savedPath"].as_str().is_some_and(|path| !path.is_empty()) {
-				one(make(0, "imageGeneration", "Generated image", Source::Unknown))
+				one(make(
+					0,
+					"imageGeneration",
+					"Generated image",
+					AgentTimelineAttachmentSource::Unknown,
+				))
 			} else {
 				(vec![], false)
 			}
@@ -34,8 +46,8 @@ pub(super) fn project(item: &Value) -> (Vec<Attachment>, bool) {
 fn parts(
 	value: &Value,
 	text_kind: &str,
-	describe: fn(u32, &Value) -> (Attachment, bool),
-) -> (Vec<Attachment>, bool) {
+	describe: fn(u32, &Value) -> (AgentTimelineAttachment, bool),
+) -> (Vec<AgentTimelineAttachment>, bool) {
 	let Some(parts) = value.as_array() else {
 		return (vec![], true);
 	};
@@ -64,39 +76,42 @@ fn parts(
 	(attachments, omitted)
 }
 
-fn uri_source(url: Option<&str>) -> Source {
+fn uri_source(url: Option<&str>) -> AgentTimelineAttachmentSource {
 	match url {
-		Some(url) if url.starts_with("data:") => Source::Inline,
-		Some(url) if url.starts_with("https://") || url.starts_with("http://") => Source::Remote,
-		_ => Source::Unknown,
+		Some(url) if url.starts_with("data:") => AgentTimelineAttachmentSource::Inline,
+		Some(url) if url.starts_with("https://") || url.starts_with("http://") =>
+			AgentTimelineAttachmentSource::Remote,
+		_ => AgentTimelineAttachmentSource::Unknown,
 	}
 }
 
-fn dynamic(index: u32, part: &Value) -> (Attachment, bool) {
+fn dynamic(index: u32, part: &Value) -> (AgentTimelineAttachment, bool) {
 	match part["type"].as_str() {
 		Some("inputImage") =>
 			make(index, "inputImage", "Image", uri_source(part["imageUrl"].as_str())),
 		Some("inputAudio") =>
 			make(index, "inputAudio", "Audio", uri_source(part["audioUrl"].as_str())),
-		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
+		_ =>
+			make(index, "unknown", "Unsupported attachment", AgentTimelineAttachmentSource::Unknown),
 	}
 }
 
-fn standalone(index: u32, part: &Value) -> (Attachment, bool) {
+fn standalone(index: u32, part: &Value) -> (AgentTimelineAttachment, bool) {
 	match part["type"].as_str() {
 		Some("input_image")
 			if part["image_url"].as_str().is_none()
 				&& part["file_id"].as_str().is_some_and(|id| !id.is_empty()) =>
-			make(index, "inputImage", "Stored image", Source::Stored),
+			make(index, "inputImage", "Stored image", AgentTimelineAttachmentSource::Stored),
 		Some("input_image") =>
 			make(index, "inputImage", "Image", uri_source(part["image_url"].as_str())),
 		Some("input_audio") =>
 			make(index, "inputAudio", "Audio", uri_source(part["audio_url"].as_str())),
-		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
+		_ =>
+			make(index, "unknown", "Unsupported attachment", AgentTimelineAttachmentSource::Unknown),
 	}
 }
 
-fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
+fn mcp(index: u32, part: &Value) -> (AgentTimelineAttachment, bool) {
 	match part["type"].as_str() {
 		Some(kind @ ("image" | "audio")) => {
 			let present = part["data"].as_str().is_some_and(|data| !data.is_empty())
@@ -106,7 +121,11 @@ fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
 				index,
 				kind,
 				if kind == "image" { "Image" } else { "Audio" },
-				if present { Source::Inline } else { Source::Unknown },
+				if present {
+					AgentTimelineAttachmentSource::Inline
+				} else {
+					AgentTimelineAttachmentSource::Unknown
+				},
 			)
 		},
 		Some("resource_link") => make(
@@ -114,9 +133,9 @@ fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
 			"resource_link",
 			part["name"].as_str().unwrap_or("Resource"),
 			if part["uri"].as_str().is_some_and(|uri| !uri.is_empty()) {
-				Source::Reference
+				AgentTimelineAttachmentSource::Reference
 			} else {
-				Source::Unknown
+				AgentTimelineAttachmentSource::Unknown
 			},
 		),
 		Some("resource") => {
@@ -128,37 +147,54 @@ fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
 				index,
 				"resource",
 				"Embedded resource",
-				if present { Source::Inline } else { Source::Unknown },
+				if present {
+					AgentTimelineAttachmentSource::Inline
+				} else {
+					AgentTimelineAttachmentSource::Unknown
+				},
 			)
 		},
-		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
+		_ =>
+			make(index, "unknown", "Unsupported attachment", AgentTimelineAttachmentSource::Unknown),
 	}
 }
 
-fn one((attachment, omitted): (Attachment, bool)) -> (Vec<Attachment>, bool) {
+fn one(
+	(attachment, omitted): (AgentTimelineAttachment, bool),
+) -> (Vec<AgentTimelineAttachment>, bool) {
 	(vec![attachment], omitted)
 }
 
-fn describe(index: u32, part: &Value) -> (Attachment, bool) {
+fn describe(index: u32, part: &Value) -> (AgentTimelineAttachment, bool) {
 	match part["type"].as_str() {
 		Some("localImage") => local(index, "localImage", part["path"].as_str(), "Image"),
 		Some("localAudio") => local(index, "localAudio", part["path"].as_str(), "Audio"),
 		Some("image")
 			if part["url"].as_str().is_none()
 				&& part["fileId"].as_str().is_some_and(|id| !id.is_empty()) =>
-			make(index, "image", "Stored image", Source::Stored),
+			make(index, "image", "Stored image", AgentTimelineAttachmentSource::Stored),
 		Some(kind @ ("image" | "audio")) => {
 			let source = uri_source(part["url"].as_str());
 
 			make(index, kind, if kind == "image" { "Image" } else { "Audio" }, source)
 		},
-		Some(kind @ ("skill" | "mention")) =>
-			make(index, kind, part["name"].as_str().unwrap_or(kind), Source::Reference),
-		_ => make(index, "unknown", "Unsupported attachment", Source::Unknown),
+		Some(kind @ ("skill" | "mention")) => make(
+			index,
+			kind,
+			part["name"].as_str().unwrap_or(kind),
+			AgentTimelineAttachmentSource::Reference,
+		),
+		_ =>
+			make(index, "unknown", "Unsupported attachment", AgentTimelineAttachmentSource::Unknown),
 	}
 }
 
-fn local(index: u32, kind: &str, path: Option<&str>, fallback: &str) -> (Attachment, bool) {
+fn local(
+	index: u32,
+	kind: &str,
+	path: Option<&str>,
+	fallback: &str,
+) -> (AgentTimelineAttachment, bool) {
 	let label = path
 		.filter(|path| !path.is_empty())
 		.and_then(|path| Path::new(path).file_name().and_then(|name| name.to_str()));
@@ -167,13 +203,23 @@ fn local(index: u32, kind: &str, path: Option<&str>, fallback: &str) -> (Attachm
 		index,
 		kind,
 		label.unwrap_or(fallback),
-		if label.is_some() { Source::Local } else { Source::Unknown },
+		if label.is_some() {
+			AgentTimelineAttachmentSource::Local
+		} else {
+			AgentTimelineAttachmentSource::Unknown
+		},
 	)
 }
 
-fn make(index: u32, kind: &str, label: &str, source: Source) -> (Attachment, bool) {
+fn make(
+	index: u32,
+	kind: &str,
+	label: &str,
+	source: AgentTimelineAttachmentSource,
+) -> (AgentTimelineAttachment, bool) {
 	let sensitive = decodex_core::contains_credential_material(label);
-	let shortened = label.len() > 256 || sensitive || source == Source::Unknown;
+	let shortened =
+		label.len() > 256 || sensitive || source == AgentTimelineAttachmentSource::Unknown;
 	let label = if sensitive {
 		"Details omitted".into()
 	} else {
@@ -183,13 +229,13 @@ fn make(index: u32, kind: &str, label: &str, source: Source) -> (Attachment, boo
 			.collect()
 	};
 
-	(Attachment { index, kind: kind.into(), label, source }, shortened)
+	(AgentTimelineAttachment { index, kind: kind.into(), label, source }, shortened)
 }
 
 #[cfg(test)]
 mod tests {
 
-	use crate::agent::timeline::attachments::{self, Source};
+	use crate::agent::timeline::attachments::{self, AgentTimelineAttachmentSource};
 	#[test]
 	fn native_parts_keep_source_indices_without_exposing_embedded_or_remote_data() {
 		let item = serde_json::json!({"type":"userMessage","content":[
@@ -206,9 +252,9 @@ mod tests {
 			vec![1, 2, 3, 4, 5, 6]
 		);
 		assert_eq!(attachments[0].label, "photo.png");
-		assert_eq!(attachments[1].source, Source::Inline);
-		assert_eq!(attachments[2].source, Source::Stored);
-		assert_eq!(attachments[3].source, Source::Remote);
+		assert_eq!(attachments[1].source, AgentTimelineAttachmentSource::Inline);
+		assert_eq!(attachments[2].source, AgentTimelineAttachmentSource::Stored);
+		assert_eq!(attachments[3].source, AgentTimelineAttachmentSource::Remote);
 
 		let encoded = serde_json::to_string(&attachments).unwrap();
 
@@ -234,8 +280,11 @@ mod tests {
 
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
-		assert_eq!((parts[0].label.as_str(), parts[0].source), ("Stored image", Source::Stored));
-		assert_eq!(parts[1].source, Source::Inline);
+		assert_eq!(
+			(parts[0].label.as_str(), parts[0].source),
+			("Stored image", AgentTimelineAttachmentSource::Stored)
+		);
+		assert_eq!(parts[1].source, AgentTimelineAttachmentSource::Inline);
 
 		let encoded = serde_json::to_string(&parts).unwrap();
 
@@ -246,7 +295,10 @@ mod tests {
 				{"type":"input_image","file_id":""}, {"type":"input_image","file_id":42}
 			]}));
 
-		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
+		assert!(
+			omitted
+				&& parts.iter().all(|part| part.source == AgentTimelineAttachmentSource::Unknown)
+		);
 	}
 
 	#[test]
@@ -260,8 +312,14 @@ mod tests {
 
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
-		assert_eq!((parts[0].kind.as_str(), parts[0].source), ("inputImage", Source::Inline));
-		assert_eq!((parts[1].kind.as_str(), parts[1].source), ("inputAudio", Source::Remote));
+		assert_eq!(
+			(parts[0].kind.as_str(), parts[0].source),
+			("inputImage", AgentTimelineAttachmentSource::Inline)
+		);
+		assert_eq!(
+			(parts[1].kind.as_str(), parts[1].source),
+			("inputAudio", AgentTimelineAttachmentSource::Remote)
+		);
 		assert!(!serde_json::to_string(&parts).unwrap().contains("PRIVATE"));
 		assert_eq!(
 			attachments::project(
@@ -279,7 +337,10 @@ mod tests {
 				{"type":"inputImage","imageUrl":null}, {"type":"futurePart"}
 			]}));
 
-		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
+		assert!(
+			omitted
+				&& parts.iter().all(|part| part.source == AgentTimelineAttachmentSource::Unknown)
+		);
 	}
 
 	#[test]
@@ -295,8 +356,11 @@ mod tests {
 
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
-		assert!(parts[..3].iter().all(|part| part.source == Source::Inline));
-		assert_eq!((parts[3].label.as_str(), parts[3].source), ("Report", Source::Reference));
+		assert!(parts[..3].iter().all(|part| part.source == AgentTimelineAttachmentSource::Inline));
+		assert_eq!(
+			(parts[3].label.as_str(), parts[3].source),
+			("Report", AgentTimelineAttachmentSource::Reference)
+		);
 		assert!(!serde_json::to_string(&parts).unwrap().contains("PRIVATE"));
 		assert_eq!(
 			attachments::project(&serde_json::json!({"type":"mcpToolCall","result":null})),
@@ -309,7 +373,10 @@ mod tests {
 				{"type":"resource_link","name":"Link"}, {"type":"futureBlock"}
 			]}}));
 
-		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
+		assert!(
+			omitted
+				&& parts.iter().all(|part| part.source == AgentTimelineAttachmentSource::Unknown)
+		);
 	}
 
 	#[test]
@@ -318,7 +385,7 @@ mod tests {
 			&serde_json::json!({"type":"userMessage","content":[{"type":"futureContent","value":"private"},{"type":"localAudio","path":format!("/tmp/{}", "界".repeat(100))}]}),
 		);
 
-		assert!(omitted && parts[0].source == Source::Unknown);
+		assert!(omitted && parts[0].source == AgentTimelineAttachmentSource::Unknown);
 		assert!(parts[1].label.len() <= 256 && parts[1].label.ends_with('界'));
 
 		let (parts, omitted) = attachments::project(
@@ -332,19 +399,19 @@ mod tests {
 			&serde_json::json!({"type":"imageGeneration","result":"PRIVATE_BYTES","savedPath":"/tmp/result.png"}),
 		);
 
-		assert_eq!(parts[0].source, Source::Inline);
+		assert_eq!(parts[0].source, AgentTimelineAttachmentSource::Inline);
 		assert_eq!(parts[0].label, "Generated image");
 
 		let (parts, _) = attachments::project(
 			&serde_json::json!({"type":"imageGeneration","savedPath":"/tmp/result.png"}),
 		);
 
-		assert_eq!(parts[0].source, Source::Unknown);
+		assert_eq!(parts[0].source, AgentTimelineAttachmentSource::Unknown);
 
 		let (parts, _) = attachments::project(
 			&serde_json::json!({"type":"imageGeneration","result":"PRIVATE_BYTES"}),
 		);
 
-		assert_eq!(parts[0].source, Source::Inline);
+		assert_eq!(parts[0].source, AgentTimelineAttachmentSource::Inline);
 	}
 }

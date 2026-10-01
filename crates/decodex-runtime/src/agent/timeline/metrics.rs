@@ -2,7 +2,7 @@
 use crate::agent::observations;
 use decodex_codex::ThreadTokenUsage;
 use decodex_database::{AgentResponseUsageSummary, AgentTurnMetrics, SqliteStore, StoreError};
-use decodex_protocol::{AgentTimelineContent as Content, AgentTimelinePage, AgentTurnUsageDto};
+use decodex_protocol::{AgentTimelineContent, AgentTimelinePage, AgentTurnUsageDto};
 
 pub(crate) async fn enrich(
 	store: &SqliteStore,
@@ -13,7 +13,7 @@ pub(crate) async fn enrich(
 		.entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
-			Content::Item { turn_id, item_id, activity: Some(activity), .. }
+			AgentTimelineContent::Item { turn_id, item_id, activity: Some(activity), .. }
 				if activity.duration_ms.is_none() && activity.status != "running" =>
 				Some((turn_id.clone(), item_id.clone())),
 			_ => None,
@@ -25,7 +25,7 @@ pub(crate) async fn enrich(
 			store.read_agent_activity_durations(work.into(), page.thread_id.clone(), items).await?;
 
 		for entry in &mut page.entries {
-			if let Content::Item { turn_id, item_id, activity: Some(activity), .. } =
+			if let AgentTimelineContent::Item { turn_id, item_id, activity: Some(activity), .. } =
 				&mut entry.content
 				&& activity.duration_ms.is_none()
 				&& activity.status != "running"
@@ -41,7 +41,8 @@ pub(crate) async fn enrich(
 		.entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
-			Content::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id.clone()),
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
+				Some(turn_id.clone()),
 			_ => None,
 		})
 		.collect::<Vec<_>>();
@@ -55,8 +56,13 @@ pub(crate) async fn enrich(
 	let saved = store.read_agent_turn_metrics(work.into(), page.thread_id.clone(), turns).await?;
 
 	for entry in &mut page.entries {
-		if let Content::TurnBoundary { turn_id, completed: true, usage_summary, usage, .. } =
-			&mut entry.content
+		if let AgentTimelineContent::TurnBoundary {
+			turn_id,
+			completed: true,
+			usage_summary,
+			usage,
+			..
+		} = &mut entry.content
 		{
 			*usage = saved
 				.iter()
@@ -173,7 +179,7 @@ fn summary(saved: &AgentTurnMetrics) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::agent::timeline::metrics::{self, Content};
+	use crate::agent::timeline::metrics::{self, AgentTimelineContent};
 
 	use crate::agent_usage_estimate::{Source, SourceKey};
 
@@ -374,11 +380,11 @@ mod tests {
 				};
 
 				assert!(
-					matches!(&page.entries[0].content,Content::TurnBoundary {usage_summary:Some(text),..} if text=="Turn tokens: input 11, output 2.")
+					matches!(&page.entries[0].content,AgentTimelineContent::TurnBoundary {usage_summary:Some(text),..} if text=="Turn tokens: input 11, output 2.")
 				);
 				assert!(matches!(
 					&page.entries[1].content,
-					Content::TurnBoundary { usage_summary: None, .. }
+					AgentTimelineContent::TurnBoundary { usage_summary: None, .. }
 				));
 			}
 		}

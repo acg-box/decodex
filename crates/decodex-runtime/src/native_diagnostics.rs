@@ -7,13 +7,13 @@ use tokio::time;
 
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_core::ProcessGenerationId;
-use decodex_protocol::NativeProcessDiagnostics as Result;
+use decodex_protocol::NativeProcessDiagnostics;
 
 pub(crate) async fn read(
 	source: impl Fn() -> Option<(ProcessGenerationId, AppServerClient)>,
-) -> Result {
+) -> NativeProcessDiagnostics {
 	let Some((generation, client)) = source() else {
-		return Result::Inactive;
+		return NativeProcessDiagnostics::Inactive;
 	};
 	let response = time::timeout(
 		Duration::from_secs(2),
@@ -22,17 +22,18 @@ pub(crate) async fn read(
 	.await;
 
 	if source().is_none_or(|(current, _)| current != generation) {
-		return Result::Unavailable;
+		return NativeProcessDiagnostics::Unavailable;
 	}
 
 	match response {
-		Ok(Ok(value)) => project(&value).unwrap_or(Result::Unavailable),
-		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 => Result::Unsupported,
-		_ => Result::Unavailable,
+		Ok(Ok(value)) => project(&value).unwrap_or(NativeProcessDiagnostics::Unavailable),
+		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 =>
+			NativeProcessDiagnostics::Unsupported,
+		_ => NativeProcessDiagnostics::Unavailable,
 	}
 }
 
-fn project(value: &Value) -> Option<Result> {
+fn project(value: &Value) -> Option<NativeProcessDiagnostics> {
 	#[derive(Deserialize)]
 	#[serde(rename_all = "camelCase")]
 	struct Process {
@@ -43,7 +44,7 @@ fn project(value: &Value) -> Option<Result> {
 
 	let process: Process = serde_json::from_value(value["process"].clone()).ok()?;
 
-	(process.id != 0).then_some(Result::Available {
+	(process.id != 0).then_some(NativeProcessDiagnostics::Available {
 		process_id: process.id,
 		resident_memory_bytes: process.resident_memory_bytes,
 		physical_footprint_bytes: process.physical_footprint_bytes,
@@ -56,7 +57,9 @@ mod tests {
 
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::native_diagnostics::{self, AppServerClient, ProcessGenerationId, Result, Value};
+	use crate::native_diagnostics::{
+		self, AppServerClient, NativeProcessDiagnostics, ProcessGenerationId, Value,
+	};
 
 	#[test]
 	fn resource_samples_keep_unknown_memory_and_ignore_unselected_gauges() {
@@ -64,7 +67,7 @@ mod tests {
 			native_diagnostics::project(
 				&serde_json::json!({"process":{"id":17,"residentMemoryBytes":42},"gauges":[{"name":"PRIVATE","value":7}]})
 			),
-			Some(Result::Available {
+			Some(NativeProcessDiagnostics::Available {
 				process_id: 17,
 				resident_memory_bytes: Some(42),
 				physical_footprint_bytes: None
@@ -81,7 +84,7 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn diagnostic_read_does_not_start_a_process_and_rejects_changed_generation() {
-		assert_eq!(native_diagnostics::read(|| None).await, Result::Inactive);
+		assert_eq!(native_diagnostics::read(|| None).await, NativeProcessDiagnostics::Inactive);
 
 		for state in ["same", "stopped", "replaced"] {
 			let (local, remote) = io::duplex(4_096);
@@ -130,9 +133,9 @@ mod tests {
 			assert_eq!(
 				result,
 				if state != "same" {
-					Result::Unavailable
+					NativeProcessDiagnostics::Unavailable
 				} else {
-					Result::Available {
+					NativeProcessDiagnostics::Available {
 						process_id: 17,
 						resident_memory_bytes: None,
 						physical_footprint_bytes: None,
