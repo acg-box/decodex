@@ -1,24 +1,28 @@
 //! Source-bound live settings inspection and durable, non-replayed publication.
-use crate::agent_usage_estimate::Source;
+use std::{future::Future, time::Duration};
 
+use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{
+	agent_capabilities,
+	agent_host::AgentHostError::{self, Rejected, Unknown},
+	agent_usage_estimate::Source,
+};
 use decodex_codex::app_server_client::{
 	ClientError, LiveModelUpdate, LiveReviewer, LiveSettingsOutcome,
 };
-
-use decodex_database::{AgentLiveSettingsAttempt, AgentLiveSettingsEdit, SqliteStore};
-
-use decodex_protocol::AgentReviewer;
-
-use sha2::{Digest as _, Sha256};
-
-use crate::agent_host::AgentHostError::{Rejected, Unknown};
+use decodex_database::{
+	AgentDispatchState, AgentLiveSettingsAttempt, AgentLiveSettingsEdit, SqliteStore,
+};
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentLiveModelSelection, AgentLiveReviewerState, AgentReviewer,
+	ConversationModel, ConversationReasoningEffort, EntityId, WireText,
+};
 
 pub(crate) enum LiveEdit {
 	Reviewer(AgentReviewer),
-	Model {
-		model: decodex_protocol::ConversationModel,
-		effort: decodex_protocol::ConversationReasoningEffort,
-	},
+	Model { model: ConversationModel, effort: ConversationReasoningEffort },
 }
 impl From<AgentReviewer> for LiveEdit {
 	fn from(reviewer: AgentReviewer) -> Self {
@@ -27,18 +31,15 @@ impl From<AgentReviewer> for LiveEdit {
 }
 
 struct Inspection {
-	state: decodex_protocol::AgentLiveReviewerState,
+	state: AgentLiveReviewerState,
 	previous_id: Option<i64>,
 }
 
 #[cfg(test)]
-pub(crate) async fn read<F, Fut>(
-	store: &SqliteStore,
-	source: F,
-) -> decodex_protocol::AgentLiveReviewerState
+pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> AgentLiveReviewerState
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	read_options(store, false, source).await
 }
@@ -47,19 +48,19 @@ pub(crate) async fn read_options<F, Fut>(
 	store: &SqliteStore,
 	include_models: bool,
 	source: F,
-) -> decodex_protocol::AgentLiveReviewerState
+) -> AgentLiveReviewerState
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return decodex_protocol::AgentLiveReviewerState::Unavailable;
+		return AgentLiveReviewerState::Unavailable;
 	};
 	let mut result = inspect(store, &before).await;
 
 	if include_models && let Some(ref mut inspected) = result {
-		let choices = tokio::time::timeout(std::time::Duration::from_secs(16), async {
-			if crate::agent_capabilities::feature_enabled(
+		let choices = time::timeout(Duration::from_secs(16), async {
+			if agent_capabilities::feature_enabled(
 				&before.client,
 				"step_model_switching",
 				Some(&before.key.thread),
@@ -70,8 +71,8 @@ where
 				return None;
 			}
 
-			match crate::agent_capabilities::read(&before.client).await {
-				decodex_protocol::AgentCapabilitiesResult::Available { models, .. } => Some(
+			match agent_capabilities::read(&before.client).await {
+				AgentCapabilitiesResult::Available { models, .. } => Some(
 					models
 						.into_iter()
 						.filter(|m| m.model.as_str() != "gpt-reserve" && !m.efforts.is_empty())
@@ -84,26 +85,24 @@ where
 		.ok()
 		.flatten();
 
-		if let decodex_protocol::AgentLiveReviewerState::Available { model_choices, .. } =
-			&mut inspected.state
-		{
+		if let AgentLiveReviewerState::Available { model_choices, .. } = &mut inspected.state {
 			*model_choices = choices;
 		}
 	}
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return decodex_protocol::AgentLiveReviewerState::Unavailable;
+		return AgentLiveReviewerState::Unavailable;
 	}
 	if include_models {
 		let current = inspect(store, &before).await;
 		let unchanged = matches!((&result,&current), (Some(a),Some(b)) if matches!((&a.state,&b.state),
-            (decodex_protocol::AgentLiveReviewerState::Available { review_token:a,.. },decodex_protocol::AgentLiveReviewerState::Available { review_token:b,.. }) if a==b));
+            (AgentLiveReviewerState::Available { review_token:a,.. },AgentLiveReviewerState::Available { review_token:b,.. }) if a==b));
 
 		if !unchanged {
-			return decodex_protocol::AgentLiveReviewerState::Unavailable;
+			return AgentLiveReviewerState::Unavailable;
 		}
 	}
 
-	result.map_or(decodex_protocol::AgentLiveReviewerState::Unavailable, |v| v.state)
+	result.map_or(AgentLiveReviewerState::Unavailable, |v| v.state)
 }
 
 pub(crate) async fn write<F, Fut>(
@@ -113,21 +112,17 @@ pub(crate) async fn write<F, Fut>(
 	review: &str,
 	edit: LiveEdit,
 	attempt: &str,
-) -> Result<(), crate::agent_host::AgentHostError>
+) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let before = source().await.ok_or(Rejected("Live task source is unavailable."))?;
 	let inspected = inspect(store, &before)
 		.await
 		.ok_or(Rejected("Refresh the live task before changing its settings."))?;
-	let decodex_protocol::AgentLiveReviewerState::Available {
-		turn_id,
-		review_token,
-		can_update,
-		..
-	} = &inspected.state
+	let AgentLiveReviewerState::Available { turn_id, review_token, can_update, .. } =
+		&inspected.state
 	else {
 		return Err(Rejected("Live task is unavailable."));
 	};
@@ -230,9 +225,7 @@ where
 	}
 }
 
-fn persisted_edit(
-	edit: &LiveEdit,
-) -> Result<AgentLiveSettingsEdit, crate::agent_host::AgentHostError> {
+fn persisted_edit(edit: &LiveEdit) -> Result<AgentLiveSettingsEdit, AgentHostError> {
 	Ok(match edit {
 		LiveEdit::Reviewer(reviewer) => AgentLiveSettingsEdit::Reviewer {
 			reviewer: match reviewer {
@@ -269,7 +262,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	let work = store.get_agent_work_item(key.work.clone()).await.ok()?;
 
 	if work.codex_thread_id.as_deref() != Some(&key.thread)
-		|| work.dispatch_state != decodex_database::AgentDispatchState::Running
+		|| work.dispatch_state != AgentDispatchState::Running
 	{
 		return None;
 	}
@@ -299,8 +292,8 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			_ => None,
 		})
 		.and_then(|(model, effort)| {
-			Some(decodex_protocol::AgentLiveModelSelection {
-				model: decodex_protocol::ConversationModel::new(model.clone()).ok()?,
+			Some(AgentLiveModelSelection {
+				model: ConversationModel::new(model.clone()).ok()?,
 				effort: serde_json::from_value(serde_json::json!(effort)).ok()?,
 			})
 		});
@@ -325,10 +318,10 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 
 	Some(Inspection {
 		previous_id,
-		state: decodex_protocol::AgentLiveReviewerState::Available {
-			thread_id: decodex_protocol::EntityId::new(key.thread.clone()).ok()?,
-			turn_id: decodex_protocol::EntityId::new(turn).ok()?,
-			review_token: decodex_protocol::WireText::new(token).ok()?,
+		state: AgentLiveReviewerState::Available {
+			thread_id: EntityId::new(key.thread.clone()).ok()?,
+			turn_id: EntityId::new(turn).ok()?,
+			review_token: WireText::new(token).ok()?,
 			can_update,
 			last_reviewer,
 			last_model,
@@ -342,16 +335,14 @@ async fn prepare_model_update(
 	before: &Source,
 	turn: &str,
 	edit: &LiveEdit,
-) -> Result<Option<LiveModelUpdate>, crate::agent_host::AgentHostError> {
-	use crate::agent_host::AgentHostError::Rejected;
-
+) -> Result<Option<LiveModelUpdate>, AgentHostError> {
 	if let LiveEdit::Model { model, effort } = &edit {
-		let capabilities = crate::agent_capabilities::read(&before.client).await;
-		let supported = matches!(capabilities, decodex_protocol::AgentCapabilitiesResult::Available { models, .. }
+		let capabilities = agent_capabilities::read(&before.client).await;
+		let supported = matches!(capabilities, AgentCapabilitiesResult::Available { models, .. }
             if models.iter().any(|entry| entry.model == *model && entry.efforts.contains(effort)));
-		let enabled = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
-			crate::agent_capabilities::feature_enabled(
+		let enabled = time::timeout(
+			Duration::from_secs(8),
+			agent_capabilities::feature_enabled(
 				&before.client,
 				"step_model_switching",
 				Some(&before.key.thread),
