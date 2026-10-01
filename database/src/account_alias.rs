@@ -115,6 +115,7 @@ mod tests {
 			.unwrap();
 
 		assert_eq!(original, account_alias::for_enrollment(&connection, &a).unwrap());
+
 		// Replaying the deterministic backfill retains names for the same population.
 		connection.execute("DELETE FROM accounts WHERE account_id = 'local-c'", []).unwrap();
 

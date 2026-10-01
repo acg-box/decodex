@@ -30,8 +30,9 @@ use decodex_database::{
 	AuthorizeProviderDispatchOutcome, BindConversationContinuation,
 	BindRuntimeSessionThreadOutcome, CodexAccountCapabilityAttestation, CommandIdentity,
 	ConversationInitialRouteOutcome, ConversationNativeSettings, ConversationPreEffectEvidenceKind,
-	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
-	CreateConversationRecord, CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
+	ConversationRoutingSuccessorOutcome, ConversationTerminalizationOutcome,
+	ConversationThreadEstablishmentReadback, CreateConversationRecord,
+	CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
 	FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
 	InitialConversationTurnAdmissionOutcome, InitialModelReviewOutcome, InitialModelSource,
 	LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferOutcome,
@@ -1595,7 +1596,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 		.await
 		.expect("create successor")
 	{
-		decodex_database::ConversationRoutingSuccessorOutcome::Fresh(successor) => successor,
+		ConversationRoutingSuccessorOutcome::Fresh(successor) => successor,
 		other => panic!("unexpected successor: {other:?}"),
 	};
 
