@@ -146,9 +146,10 @@ struct Entry {
 
 #[cfg(test)]
 mod tests {
-	use crate::app_server_client::{AppServerClient, live_reviews::*};
-	use serde_json;
+	use serde_json::Value;
 	use tokio::sync::mpsc;
+
+	use crate::app_server_client::{AppServerClient, ClientError};
 
 	fn error(thread: &str) -> Value {
 		serde_json::json!({"method":"error","params":{"threadId":thread,"turnId":"failed","willRetry":false,"error":{"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}}}})

@@ -2207,6 +2207,7 @@ mod tests {
 	#[test]
 	fn native_provider_is_retained_and_invalid_identifiers_are_rejected() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 		// The top-level value is the current session provider. Thread metadata may
 		// describe its original provider; do not substitute the historical value.
 		response["modelProvider"] = serde_json::json!("current-provider");

@@ -1,18 +1,23 @@
 //! Connector-level exposure preferences. Native Codex owns tool filtering and approvals.
+use std::{
+	collections::HashSet,
+	fmt::{Debug, Formatter},
+	path::Path,
+	time::Duration,
+};
+
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
+use tokio::{sync::mpsc::Sender, time};
+
 use crate::app_server_client::{
 	AppServerClient, ClientError, HistoryGuard, Outbound, app_link_settings,
 };
 
-use serde_json::Value;
-
-use std::{path::Path, time::Duration};
-
-use tokio::sync::mpsc;
-
 /// A reviewed connector preference, separate from connected-account approval settings.
 #[derive(Clone)]
 pub struct AppToolExposureSettings {
-	connection: mpsc::Sender<Outbound>,
+	connection: Sender<Outbound>,
 	cwd: String,
 	app: String,
 	file: String,
@@ -35,8 +40,6 @@ impl AppToolExposureSettings {
 
 	/// Bind the reviewed preference to its native scope, version and effective configuration.
 	pub fn fingerprint(&self) -> String {
-		use sha2::{Digest as _, Sha256};
-
 		let facts = serde_json::json!([
 			self.cwd,
 			self.app,
@@ -50,8 +53,8 @@ impl AppToolExposureSettings {
 	}
 }
 
-impl std::fmt::Debug for AppToolExposureSettings {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for AppToolExposureSettings {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_str("AppToolExposureSettings([private native connector scope])")
 	}
 }
@@ -80,7 +83,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let value = tokio::time::timeout(
+		let value = time::timeout(
 			Duration::from_secs(15),
 			self.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true})),
 		)
@@ -129,7 +132,7 @@ impl AppServerClient {
 
 		let params = serde_json::json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
 			"edits":[{"keyPath":format!("apps.{}.omit_tools_from",app_link_settings::quoted_key(&observed.app)),"value":preference,"mergeStrategy":"replace"}]});
-		let receipt = tokio::time::timeout(
+		let receipt = time::timeout(
 			Duration::from_secs(15),
 			self.request_with_history("config/batchWrite", params, guard),
 		)
@@ -219,7 +222,7 @@ fn omissions(config: &Value, app: &str) -> Result<Option<Vec<String>>, ClientErr
 				.map(app_link_settings::required_string)
 				.collect::<Result<Vec<_>, _>>()?;
 
-			if values.iter().collect::<std::collections::HashSet<_>>().len() != values.len() {
+			if values.iter().collect::<HashSet<_>>().len() != values.len() {
 				return Err(ClientError::InvalidFrame);
 			}
 
@@ -233,7 +236,7 @@ fn valid_preference(values: Option<&[String]>) -> bool {
 	values.is_none_or(|values| {
 		values.len() <= 3
 			&& values.iter().all(|v| matches!(v.as_str(), "code_mode" | "deferred" | "direct"))
-			&& values.iter().collect::<std::collections::HashSet<_>>().len() == values.len()
+			&& values.iter().collect::<HashSet<_>>().len() == values.len()
 	})
 }
 

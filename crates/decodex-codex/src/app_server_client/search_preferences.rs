@@ -2,6 +2,7 @@
 use std::{path::Path, time::Duration};
 
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use tokio::{sync::mpsc::Sender, time};
 
 use crate::app_server_client::{AppServerClient, ClientError, Outbound};
@@ -25,8 +26,6 @@ pub struct NativeSearchSettings {
 impl NativeSearchSettings {
 	/// Bind the review to the native file version, choices and effective project default.
 	pub fn fingerprint(&self) -> String {
-		use sha2::{Digest as _, Sha256};
-
 		Sha256::digest(
 			serde_json::json!([
 				self.cwd,

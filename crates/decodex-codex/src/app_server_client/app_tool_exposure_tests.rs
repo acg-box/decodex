@@ -2,7 +2,10 @@ use std::fs;
 
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-use crate::app_server_client::{app_link_settings::tests, app_tool_exposure::*};
+use crate::app_server_client::{
+	app_link_settings::tests,
+	app_tool_exposure::{self, AppServerClient, ClientError, Value},
+};
 
 fn config(preference: Value, version: &str) -> Value {
 	let user = serde_json::json!({"apps":{"connector.with.dot":{"omit_tools_from":preference,
@@ -17,7 +20,7 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 	let params = serde_json::json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
   "edits":[{"keyPath":"apps.\"a.\\\"quoted\\\\id\".omit_tools_from","value":[],"mergeStrategy":"replace"}]});
 
-	assert!(is_app_tool_exposure_write(&params));
+	assert!(app_tool_exposure::is_app_tool_exposure_write(&params));
 
 	for path in [
 		"apps._default.omit_tools_from",
@@ -29,7 +32,7 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 
 		changed["edits"][0]["keyPath"] = serde_json::json!(path);
 
-		assert!(!is_app_tool_exposure_write(&changed));
+		assert!(!app_tool_exposure::is_app_tool_exposure_write(&changed));
 	}
 	for value in [
 		serde_json::json!(["direct", "direct"]),
@@ -40,16 +43,20 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 
 		changed["edits"][0]["value"] = value;
 
-		assert!(!is_app_tool_exposure_write(&changed));
+		assert!(!app_tool_exposure::is_app_tool_exposure_write(&changed));
 	}
 
 	let mut missing = params.clone();
 
 	missing["edits"][0].as_object_mut().unwrap().remove("value");
 
-	assert!(!is_app_tool_exposure_write(&missing));
+	assert!(!app_tool_exposure::is_app_tool_exposure_write(&missing));
 	assert_eq!(
-		omissions(&serde_json::json!({"apps":{"a":{"omit_tools_from":["future"]}}}), "a").unwrap(),
+		app_tool_exposure::omissions(
+			&serde_json::json!({"apps":{"a":{"omit_tools_from":["future"]}}}),
+			"a"
+		)
+		.unwrap(),
 		Some(vec!["future".into()])
 	);
 
@@ -58,7 +65,7 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 		serde_json::json!({"apps":{"a":[]}}),
 		serde_json::json!({"apps":{"a":{"omit_tools_from":[false]}}}),
 	] {
-		assert!(omissions(&malformed, "a").is_err());
+		assert!(app_tool_exposure::omissions(&malformed, "a").is_err());
 	}
 }
 
@@ -78,7 +85,7 @@ async fn connector_edits_keep_inheritance_separate_and_preserve_native_scope() {
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 				let result = if index == 1 {
 					assert_eq!(request["method"], "config/batchWrite");
-					assert!(is_app_tool_exposure_write(&request["params"]));
+					assert!(app_tool_exposure::is_app_tool_exposure_write(&request["params"]));
 					assert_eq!(
 						request["params"],
 						serde_json::json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,

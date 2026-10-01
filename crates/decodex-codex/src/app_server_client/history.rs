@@ -421,11 +421,14 @@ fn charge(page: &Value, budget: &mut usize) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
 	use crate::app_server_client::history::{
 		self, AppServerClient, ClientError, MAX_PAGES, Pages, Value,
 	};
-
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	fn metadata() -> Value {
 		serde_json::json!({"thread":{"id":"thread/opaque","historyMode":"paginated","status":{"type":"idle"},"turns":[]}})
@@ -464,11 +467,11 @@ mod tests {
 		pages: Vec<(&'static str, Value)>,
 		mode: Option<Option<&str>>,
 	) -> (Result<Value, ClientError>, Vec<Value>) {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut requests = Vec::new();
 
@@ -504,7 +507,7 @@ mod tests {
 
 		(
 			result,
-			tokio::time::timeout(std::time::Duration::from_secs(2), server)
+			time::timeout(std::time::Duration::from_secs(2), server)
 				.await
 				.expect("history reader did not send the expected requests")
 				.unwrap(),

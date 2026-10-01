@@ -1,5 +1,11 @@
-use crate::app_server_client::hooks::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	time,
+};
+
+use crate::app_server_client::hooks::{
+	self, AppServerClient, HookSettingsChange, HookSettingsReview, HookSettingsWrite, Value,
+};
 
 fn review() -> HookSettingsReview {
 	HookSettingsReview {
@@ -13,13 +19,13 @@ fn review() -> HookSettingsReview {
 fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 	let review = review();
 
-	validate_inventory(&review.inventory).unwrap();
+	hooks::validate_inventory(&review.inventory).unwrap();
 
 	let key = review.inventory["hooks"][0]["key"].as_str().unwrap();
 	let params = review.change(key, HookSettingsChange::Trust).unwrap();
 
 	assert_eq!(params["edits"][0]["value"], "hash-one");
-	assert!(is_hook_settings_write(&params));
+	assert!(hooks::is_hook_settings_write(&params));
 
 	for (field, value) in [
 		("filePath", serde_json::json!("/other")),
@@ -30,7 +36,7 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 
 		invalid[field] = value;
 
-		assert!(!is_hook_settings_write(&invalid));
+		assert!(!hooks::is_hook_settings_write(&invalid));
 	}
 	for path in [
 		"hooks.state.unquoted.enabled",
@@ -42,7 +48,7 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 
 		invalid["edits"][0]["keyPath"] = serde_json::json!(path);
 
-		assert!(!is_hook_settings_write(&invalid));
+		assert!(!hooks::is_hook_settings_write(&invalid));
 	}
 
 	let mut managed = review.clone();
@@ -55,15 +61,15 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 
 	duplicate["hooks"].as_array_mut().unwrap().push(review.inventory["hooks"][0].clone());
 
-	assert!(validate_inventory(&duplicate).is_err());
+	assert!(hooks::validate_inventory(&duplicate).is_err());
 	assert_eq!(review.inventory["warnings"], serde_json::json!(["partial"]));
 }
 
 #[tokio::test]
 async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 	for status in [Some("okOverridden"), None] {
-		let (local, remote) = tokio::io::duplex(8_192);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(8_192);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let guard = client.thread_settings_guard("task").unwrap();
 		let review = review();
@@ -74,7 +80,7 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 			)
 			.unwrap();
 		let backend = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -87,7 +93,7 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 				w.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"status":status,"version":"two","filePath":"/home/config.toml"}})).as_bytes()).await.unwrap();
 
 				assert!(
-					tokio::time::timeout(std::time::Duration::from_millis(50), lines.next_line())
+					time::timeout(std::time::Duration::from_millis(50), lines.next_line())
 						.await
 						.is_err()
 				);
@@ -107,11 +113,11 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 
 #[tokio::test]
 async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
-	let (local, remote) = tokio::io::duplex(16_384);
-	let (r, w) = tokio::io::split(local);
+	let (local, remote) = io::duplex(16_384);
+	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let server = tokio::spawn(async move {
-		let (r, mut w) = tokio::io::split(remote);
+		let (r, mut w) = io::split(remote);
 		let mut lines = BufReader::new(r).lines();
 		let read: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 

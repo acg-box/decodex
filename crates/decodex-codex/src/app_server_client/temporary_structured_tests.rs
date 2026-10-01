@@ -1,6 +1,11 @@
-use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::{mpsc, watch},
+};
 
-use crate::app_server_client::temporary_structured::*;
+use crate::app_server_client::temporary_structured::{
+	self, AppServerClient, MAX_RESPONSE, ServerEvent, TemporaryStructuredOptions, Value,
+};
 
 fn options() -> TemporaryStructuredOptions {
 	TemporaryStructuredOptions {
@@ -16,7 +21,7 @@ fn options() -> TemporaryStructuredOptions {
 fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration() {
 	let effective =
 		serde_json::json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
-	let config = isolation_config(&effective, &["observed".into()]).unwrap();
+	let config = temporary_structured::isolation_config(&effective, &["observed".into()]).unwrap();
 
 	assert_eq!(
 		config["mcp_servers"],
@@ -28,7 +33,10 @@ fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration(
 	assert_eq!(config["skills.include_instructions"], false);
 	assert_eq!(config["web_search"], "disabled");
 	assert_eq!(effective["mcp_servers"]["native"]["required"], true);
-	assert!(isolation_config(&serde_json::json!({"mcp_servers":[]}), &[]).is_err());
+	assert!(
+		temporary_structured::isolation_config(&serde_json::json!({"mcp_servers":[]}), &[])
+			.is_err()
+	);
 }
 
 fn message(thread: &str, turn: &str, text: &str) -> ServerEvent {
@@ -116,7 +124,7 @@ async fn collector_keeps_latest_exact_turn_and_rejects_incomplete_or_oversized_r
 		tx.send(event).await.unwrap();
 	}
 
-	assert_eq!(collect(&mut rx, "thread", "turn").await.unwrap(), "latest");
+	assert_eq!(temporary_structured::collect(&mut rx, "thread", "turn").await.unwrap(), "latest");
 
 	for event in [
 		message("thread", "turn", &"x".repeat(MAX_RESPONSE + 1)),
@@ -129,7 +137,7 @@ async fn collector_keeps_latest_exact_turn_and_rejects_incomplete_or_oversized_r
 
 		drop(tx);
 
-		assert!(collect(&mut rx, "thread", "turn").await.is_err());
+		assert!(temporary_structured::collect(&mut rx, "thread", "turn").await.is_err());
 	}
 }
 

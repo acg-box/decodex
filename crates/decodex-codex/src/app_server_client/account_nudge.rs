@@ -52,6 +52,7 @@ impl AppServerClient {
 				return AccountNudgeOutcome::Unsupported,
 			_ => return AccountNudgeOutcome::Uncertain,
 		};
+
 		#[derive(Deserialize)]
 		#[serde(rename_all = "snake_case")]
 		enum Status {
@@ -75,10 +76,14 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
+
 	use crate::app_server_client::account_nudge::{
 		AccountNudgeCreditType, AccountNudgeOutcome, AppServerClient,
 	};
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 	#[tokio::test]
 	async fn native_nudge_keeps_exact_purpose_and_never_retries_unknown_delivery() {
 		for (credit_type, response, expected) in [
@@ -108,11 +113,11 @@ mod tests {
 				AccountNudgeOutcome::Uncertain,
 			),
 		] {
-			let (local, remote) = tokio::io::duplex(4_096);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let request: serde_json::Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -125,9 +130,10 @@ mod tests {
 				reply["id"] = request["id"].clone();
 
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+
 				// Any subsequent bytes would be an unauthorized replay of this attempt.
 				assert!(
-					tokio::time::timeout(std::time::Duration::from_millis(25), lines.next_line())
+					time::timeout(std::time::Duration::from_millis(25), lines.next_line())
 						.await
 						.is_err()
 				);
@@ -141,8 +147,8 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn connection_loss_after_request_is_uncertain() {
-		let (local, remote) = tokio::io::duplex(4_096);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(4_096);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let mut lines = BufReader::new(remote).lines();

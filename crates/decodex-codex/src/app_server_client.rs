@@ -82,30 +82,35 @@ pub use self::{
 	usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup},
 };
 
-use serde::{Deserialize, Serialize};
-
-use serde_json::Value;
-
 use std::{
 	collections::HashMap,
-	fmt,
+	error::Error,
+	fmt::{self, Debug, Display, Formatter},
+	path::PathBuf,
 	process::{self, Stdio},
+	sync::{Arc, OnceLock},
+	time::Duration,
 };
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::{
 	io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
 	process::{Child, Command},
-	sync::{mpsc, oneshot, watch},
+	sync::{
+		mpsc::{self, error::TrySendError},
+		oneshot, watch,
+	},
+	time,
 };
 
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 use server_requests::ServerRequests;
-
-use tokio::time;
 
 type Reply = oneshot::Sender<Result<Value, ClientError>>;
 
 /// Shared JSON-RPC frame bound for direct and admitted native process transports.
-pub const MAX_FRAME_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+pub const MAX_FRAME_BYTES: usize = MAX_NATIVE_MESSAGE_BYTES;
 
 const MAX_PENDING_REQUESTS: usize = 256;
 const MAX_BUFFERED_EVENTS: usize = 256;
@@ -144,10 +149,10 @@ pub enum ClientError {
 	/// The provider rejected a request.
 	Remote(RpcError),
 }
-impl std::error::Error for ClientError {}
+impl Error for ClientError {}
 
-impl fmt::Display for ClientError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ClientError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "app-server: {self:?}")
 	}
 }
@@ -240,8 +245,8 @@ impl FrameSink {
 				}
 
 				sender.try_send(value).map_err(|error| match error {
-					mpsc::error::TrySendError::Full(_) => ClientError::CapacityExceeded,
-					mpsc::error::TrySendError::Closed(_) => ClientError::Closed,
+					TrySendError::Full(_) => ClientError::CapacityExceeded,
+					TrySendError::Closed(_) => ClientError::Closed,
 				})
 			},
 		}
@@ -283,8 +288,8 @@ pub struct RpcError {
 	/// Optional private error details.
 	pub data: Option<Value>,
 }
-impl fmt::Debug for RpcError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for RpcError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("RpcError").field("code", &self.code).finish_non_exhaustive()
 	}
 }
@@ -293,7 +298,7 @@ impl fmt::Debug for RpcError {
 #[derive(Clone)]
 pub struct AppServerClient {
 	connection_identity: String,
-	native_home: std::sync::Arc<std::sync::OnceLock<std::path::PathBuf>>,
+	native_home: Arc<OnceLock<PathBuf>>,
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
 	server_requests: ServerRequests,
@@ -313,7 +318,7 @@ impl AppServerClient {
 	}
 
 	/// Bind the native host home reported by initialization or attested process admission.
-	pub fn bind_native_home(&self, home: std::path::PathBuf) -> Result<(), ClientError> {
+	pub fn bind_native_home(&self, home: PathBuf) -> Result<(), ClientError> {
 		if !home.is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
@@ -689,7 +694,7 @@ impl AppServerClient {
 		let result = self.request("initialize", params).await?;
 
 		if let Some(home) = result["codexHome"].as_str() {
-			self.bind_native_home(std::path::PathBuf::from(home))?;
+			self.bind_native_home(PathBuf::from(home))?;
 		}
 
 		self.notify("initialized", Value::Null).await?;
@@ -847,8 +852,8 @@ fn dispatch(
 	server_requests.observe(&event)?;
 
 	events.try_send(event).map_err(|error| match error {
-		mpsc::error::TrySendError::Full(_) => ClientError::CapacityExceeded,
-		mpsc::error::TrySendError::Closed(_) => ClientError::Closed,
+		TrySendError::Full(_) => ClientError::CapacityExceeded,
+		TrySendError::Closed(_) => ClientError::Closed,
 	})
 }
 
@@ -864,7 +869,7 @@ where
 
 	bytes.push(b'\n');
 
-	time::timeout(std::time::Duration::from_secs(30), async {
+	time::timeout(Duration::from_secs(30), async {
 		writer.write_all(&bytes).await.map_err(|_| ClientError::Io)?;
 
 		writer.flush().await.map_err(|_| ClientError::Io)
@@ -1328,6 +1333,7 @@ mod tests {
 			.unwrap();
 
 			rpc.await.unwrap().unwrap();
+
 			// Both notifications are still unread in the owner's event queue.
 			assert!(!guard.is_live());
 			assert_eq!(client.history_revision(), 2 * u64::from(method == "thread/reverted"));
@@ -1442,6 +1448,7 @@ mod tests {
 
 		assert_eq!(method, "item/commandExecution/requestApproval");
 		assert_eq!(params["threadId"], "peer");
+
 		// There is no automatic response, including for an unknown request method.
 		let mut byte = [0];
 

@@ -3,7 +3,7 @@ use std::{env, process::Stdio};
 
 use tokio::process::{Child, Command};
 
-use crate::app_server_client::app_link_settings::*;
+use crate::app_server_client::app_link_settings::{AppServerClient, Path};
 
 pub(crate) async fn native(home: &Path) -> (AppServerClient, Child) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit installed binary");
