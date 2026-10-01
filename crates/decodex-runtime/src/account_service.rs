@@ -1495,7 +1495,6 @@ impl AccountService {
 			Err(_) if matches!(shared_family, SharedFamilyRefreshPolicy::ProvedInactive) => None,
 			Err(_) => return Err(CredentialRefreshError::OwnerBusy),
 		};
-		let mut projected_source = None;
 		let shared_is_other_managed_account = matches!(
 			&shared,
 			Some(SharedCodexAuthSnapshot::Managed { credential, .. })
@@ -1508,6 +1507,7 @@ impl AccountService {
 					| SharedCodexAuthSnapshot::PersonalAccessToken { .. }
 			)
 		);
+		let mut projected_source = None;
 
 		if let Some(SharedCodexAuthSnapshot::Managed { version, credential }) = shared
 			&& credential.provider == current.provider
@@ -1584,6 +1584,15 @@ impl AccountService {
 			return Err(CredentialRefreshError::OwnerBusy);
 		}
 
+		self.refresh_provider_or_recover_shared(current, stored, projected_source).await
+	}
+
+	async fn refresh_provider_or_recover_shared(
+		&self,
+		current: &CredentialBinding,
+		stored: StoredCredential,
+		projected_source: Option<SharedCodexAuthVersion>,
+	) -> Result<RefreshResolution, CredentialRefreshError> {
 		let refresher = Arc::clone(&self.refresher);
 		let (result, stored) = task::spawn_blocking(move || {
 			let result = refresher.refresh(stored.bundle());
@@ -1677,7 +1686,6 @@ impl AccountService {
 		}
 	}
 
-	#[allow(clippy::too_many_lines)] // Keep the generation-bound refresh state machine auditable as one sequence.
 	async fn refresh_while_locked(
 		&self,
 		operation_id: AccountOperationId,
@@ -1780,11 +1788,30 @@ impl AccountService {
 			None =>
 				self.refresh_or_reconcile_shared(account_id, current, stored, shared_family).await,
 		};
+
+		self.complete_refresh_while_locked(
+			&operation_id,
+			account_id,
+			current,
+			callback_generation,
+			refreshed,
+		)
+		.await
+	}
+
+	async fn complete_refresh_while_locked(
+		&self,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		current: &CredentialBinding,
+		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
+		refreshed: Result<RefreshResolution, CredentialRefreshError>,
+	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
 		let resolution = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(CredentialRefreshError::Rejected) => {
 				self.recover_or_cancel(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					"provider_refresh_rejected",
 					true,
@@ -1795,7 +1822,7 @@ impl AccountService {
 			},
 			Err(CredentialRefreshError::OwnerBusy) => {
 				self.recover_or_cancel(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					"shared_auth_owner_busy",
 					false,
@@ -1806,7 +1833,7 @@ impl AccountService {
 			},
 			Err(error @ CredentialRefreshError::Unavailable) => {
 				self.recover_or_cancel(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					"provider_refresh_unavailable",
 					false,
@@ -1817,7 +1844,7 @@ impl AccountService {
 			},
 			Err(error @ CredentialRefreshError::Ambiguous) => {
 				self.recover_or_cancel(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					"provider_refresh_ambiguous",
 					true,
@@ -1832,7 +1859,7 @@ impl AccountService {
 				(refreshed, projected_source),
 			RefreshResolution::Current => {
 				self.recover_or_cancel(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					"shared_auth_predecessor_repaired",
 					false,
@@ -1843,11 +1870,11 @@ impl AccountService {
 			},
 		};
 		let target =
-			match refreshed_credential_target(current, account_id, &operation_id, &refreshed) {
+			match refreshed_credential_target(current, account_id, operation_id, &refreshed) {
 				Ok(target) => target,
 				Err(AccountLifecycleError::ProviderMismatch) => {
 					self.recover_or_cancel(
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::ProviderEffectPending,
 						PROVIDER_REFRESH_OUTCOME_UNKNOWN,
 						true,
@@ -1859,13 +1886,13 @@ impl AccountService {
 				Err(error) => return Err(error),
 			};
 
-		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
+		accepted_phase(self.store.set_account_operation_target(operation_id, &target).await?)?;
 
 		if let Err(error) =
 			self.credentials.compare_and_swap_rotate(account_id, current, &target, refreshed.bundle)
 		{
 			self.recover_or_cancel(
-				&operation_id,
+				operation_id,
 				AccountOperationPhase::ProviderEffectPending,
 				"credential_rotate_failed",
 				true,
@@ -1878,7 +1905,7 @@ impl AccountService {
 		accepted_phase(
 			self.store
 				.advance_account_operation(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::ProviderEffectPending,
 					AccountOperationPhase::StoreApplied,
 					None,
@@ -1887,7 +1914,7 @@ impl AccountService {
 		)?;
 
 		self.commit_and_project_refresh_result(
-			&operation_id,
+			operation_id,
 			account_id,
 			callback_generation,
 			projected_source,
@@ -4062,8 +4089,28 @@ impl AccountService {
 		minimum_validity: Duration,
 	) -> Result<AccountApiCredential, AccountLifecycleError> {
 		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
-		let mut account = self.load_account(account_id).await?;
-		let mut stored = self.read_exact_for_api(&account).await?;
+		let account = self.load_account(account_id).await?;
+		let stored = self.read_exact_for_api(&account).await?;
+		let (account, stored) = self
+			.refresh_observation_credential(account_id, minimum_validity, account, stored)
+			.await?;
+		let binding = account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
+
+		Ok(AccountApiCredential {
+			stored,
+			binding,
+			account_revision: account.revision,
+			_launch_guard: launch_guard,
+		})
+	}
+
+	async fn refresh_observation_credential(
+		&self,
+		account_id: &AccountId,
+		minimum_validity: Duration,
+		mut account: AccountRecord,
+		mut stored: StoredCredential,
+	) -> Result<(AccountRecord, StoredCredential), AccountLifecycleError> {
 		let now_unix_micros = current_unix_micros()?;
 
 		if access_token_needs_refresh(
@@ -4096,14 +4143,7 @@ impl AccountService {
 			)?;
 		}
 
-		let binding = account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
-
-		Ok(AccountApiCredential {
-			stored,
-			binding,
-			account_revision: account.revision,
-			_launch_guard: launch_guard,
-		})
+		Ok((account, stored))
 	}
 
 	/// Hold the selected account's mutation lock through a manual reset. Never refresh or
