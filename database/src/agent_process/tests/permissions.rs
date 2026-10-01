@@ -1,9 +1,12 @@
 //! Recovery uses durable process death and the new owner's native observation, never RPC replay.
-use super::*;
-use serde_json::json;
+use crate::{
+	AgentPermissionAttempt, PrepareProcessGenerationOutcome, SqliteStore,
+	agent_process::tests::{self, DIGEST, OTHER_DIGEST},
+};
+use decodex_core::ProcessAuthorityLossReason;
 
 fn facts(profile: Option<&str>) -> String {
-	json!({"profileId":profile,"cwd":"/native","approvalsReviewer":"user","approvalPolicy":"on-request","sandboxPolicy":{"type":"readOnly"}}).to_string()
+	serde_json::json!({"profileId":profile,"cwd":"/native","approvalsReviewer":"user","approvalPolicy":"on-request","sandboxPolicy":{"type":"readOnly"}}).to_string()
 }
 #[tokio::test]
 async fn permission_recovery_requires_dead_old_process_and_current_complete_owner_facts() {
@@ -13,29 +16,15 @@ async fn permission_recovery_requires_dead_old_process_and_current_complete_owne
 		let store = SqliteStore::open_test(&path).unwrap();
 		let (reserved, attempt) = prepare_unknown_permission_selection(&store, profile).await;
 
-		confirm_original_process_death(&store).await;
+		tests::confirm_original_process_death(&store).await;
 
-		assert!(matches!(
-			store
-				.prepare_agent_bound_process_generation(
-					&intent(1, 2),
-					&binding(1),
-					"root",
-					"second"
-				)
-				.await
-				.unwrap(),
-			PrepareProcessGenerationOutcome::Fresh(_)
-		));
-
-		store.bind_process_generation_identity(&generation_id(2), 1, &identity(124)).await.unwrap();
-		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+		admit_recovery_process(&store).await;
 
 		assert!(
 			store
 				.record_agent_task_permissions_publication(
 					"task".into(),
-					Some(generation_id(1).as_str().into()),
+					Some(tests::generation_id(1).as_str().into()),
 					Some(facts(Some("scoped"))),
 					OTHER_DIGEST.into()
 				)
@@ -47,7 +36,7 @@ async fn permission_recovery_requires_dead_old_process_and_current_complete_owne
 		store
 			.record_agent_task_permissions_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				None,
 				OTHER_DIGEST.into(),
 			)
@@ -67,8 +56,8 @@ async fn permission_recovery_requires_dead_old_process_and_current_complete_owne
 		store
 			.record_agent_task_permissions_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
-				Some(json!({"profileId":profile}).to_string()),
+				Some(tests::generation_id(2).as_str().into()),
+				Some(serde_json::json!({"profileId":profile}).to_string()),
 				OTHER_DIGEST.into(),
 			)
 			.await
@@ -88,7 +77,7 @@ async fn permission_recovery_requires_dead_old_process_and_current_complete_owne
 		store
 			.record_agent_task_permissions_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				Some(facts(profile)),
 				OTHER_DIGEST.into(),
 			)
@@ -135,31 +124,39 @@ async fn permission_recovery_requires_dead_old_process_and_current_complete_owne
 async fn prepare_unknown_permission_selection(
 	store: &SqliteStore,
 	profile: Option<&str>,
-) -> (i64, crate::AgentPermissionAttempt) {
-	seed(store).await;
+) -> (i64, AgentPermissionAttempt) {
+	tests::seed(store).await;
 
 	store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 	store
-		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+		.prepare_agent_bound_process_generation(
+			&tests::intent(1, 1),
+			&tests::binding(1),
+			"root",
+			"first",
+		)
 		.await
 		.unwrap();
-	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+	store
+		.bind_process_generation_identity(&tests::generation_id(1), 1, &tests::identity(123))
+		.await
+		.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
 	let event = store
 		.record_agent_task_permissions_publication(
 			"task".into(),
-			Some(generation_id(1).as_str().into()),
+			Some(tests::generation_id(1).as_str().into()),
 			Some(facts(Some("readonly"))),
 			DIGEST.into(),
 		)
 		.await
 		.unwrap()
 		.unwrap();
-	let attempt = crate::AgentPermissionAttempt {
+	let attempt = AgentPermissionAttempt {
 		work: "root".into(),
 		thread: "task".into(),
-		generation: Some(generation_id(1).as_str().into()),
+		generation: Some(tests::generation_id(1).as_str().into()),
 		settings_event: event,
 		profile: "scoped".into(),
 		review_token: DIGEST.into(),
@@ -177,16 +174,21 @@ async fn prepare_unknown_permission_selection(
 
 	store
 		.mark_process_generation_death_unknown(
-			&generation_id(1),
+			&tests::generation_id(1),
 			3,
-			decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			ProcessAuthorityLossReason::SupervisorRestarted,
 		)
 		.await
 		.unwrap();
 
 	assert!(matches!(
 		store
-			.prepare_agent_bound_process_generation(&intent(1, 2), &binding(1), "root", "too-early")
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 2),
+				&tests::binding(1),
+				"root",
+				"too-early"
+			)
 			.await
 			.unwrap(),
 		PrepareProcessGenerationOutcome::Rejected { .. }
@@ -195,7 +197,7 @@ async fn prepare_unknown_permission_selection(
 		store
 			.record_agent_task_permissions_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				Some(facts(profile)),
 				OTHER_DIGEST.into()
 			)
@@ -209,4 +211,25 @@ async fn prepare_unknown_permission_selection(
 	);
 
 	(reserved, attempt)
+}
+
+async fn admit_recovery_process(store: &SqliteStore) {
+	assert!(matches!(
+		store
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 2),
+				&tests::binding(1),
+				"root",
+				"second"
+			)
+			.await
+			.unwrap(),
+		PrepareProcessGenerationOutcome::Fresh(_)
+	));
+
+	store
+		.bind_process_generation_identity(&tests::generation_id(2), 1, &tests::identity(124))
+		.await
+		.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(2), 2).await.unwrap();
 }
