@@ -1,9 +1,12 @@
 //! Recovery uses durable process death and the new owner's native observation, never RPC replay.
-use super::*;
-use serde_json::json;
+use crate::{
+	AgentModelAttempt, PrepareProcessGenerationOutcome, SqliteStore,
+	agent_process::tests::{self, DIGEST, OTHER_DIGEST},
+};
+use decodex_core::ProcessAuthorityLossReason;
 
 fn facts(profile: Option<&str>) -> String {
-	json!({"model":profile.unwrap_or("other"),"modelProvider":"fixture","effort":null,"serviceTier":null}).to_string()
+	serde_json::json!({"model":profile.unwrap_or("other"),"modelProvider":"fixture","effort":null,"serviceTier":null}).to_string()
 }
 
 #[tokio::test]
@@ -14,13 +17,13 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		let store = SqliteStore::open_test(&path).unwrap();
 		let (reserved, attempt) = prepare_unknown_model_selection(&store, profile).await;
 
-		confirm_original_process_death(&store).await;
+		tests::confirm_original_process_death(&store).await;
 
 		assert!(matches!(
 			store
 				.prepare_agent_bound_process_generation(
-					&intent(1, 2),
-					&binding(1),
+					&tests::intent(1, 2),
+					&tests::binding(1),
 					"root",
 					"second"
 				)
@@ -29,14 +32,17 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 			PrepareProcessGenerationOutcome::Fresh(_)
 		));
 
-		store.bind_process_generation_identity(&generation_id(2), 1, &identity(124)).await.unwrap();
-		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+		store
+			.bind_process_generation_identity(&tests::generation_id(2), 1, &tests::identity(124))
+			.await
+			.unwrap();
+		store.mark_process_generation_ready(&tests::generation_id(2), 2).await.unwrap();
 
 		assert!(
 			store
 				.record_agent_task_models_publication(
 					"task".into(),
-					Some(generation_id(1).as_str().into()),
+					Some(tests::generation_id(1).as_str().into()),
 					Some(facts(Some("scoped"))),
 					OTHER_DIGEST.into()
 				)
@@ -48,7 +54,7 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				None,
 				OTHER_DIGEST.into(),
 			)
@@ -63,8 +69,8 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
-				Some(json!({"model":profile}).to_string()),
+				Some(tests::generation_id(2).as_str().into()),
+				Some(serde_json::json!({"model":profile}).to_string()),
 				OTHER_DIGEST.into(),
 			)
 			.await
@@ -79,7 +85,7 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				Some(facts(profile)),
 				OTHER_DIGEST.into(),
 			)
@@ -113,31 +119,39 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 async fn prepare_unknown_model_selection(
 	store: &SqliteStore,
 	profile: Option<&str>,
-) -> (i64, crate::AgentModelAttempt) {
-	seed(store).await;
+) -> (i64, AgentModelAttempt) {
+	tests::seed(store).await;
 
 	store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 	store
-		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+		.prepare_agent_bound_process_generation(
+			&tests::intent(1, 1),
+			&tests::binding(1),
+			"root",
+			"first",
+		)
 		.await
 		.unwrap();
-	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+	store
+		.bind_process_generation_identity(&tests::generation_id(1), 1, &tests::identity(123))
+		.await
+		.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
 	let event = store
 		.record_agent_task_models_publication(
 			"task".into(),
-			Some(generation_id(1).as_str().into()),
+			Some(tests::generation_id(1).as_str().into()),
 			Some(facts(Some("readonly"))),
 			DIGEST.into(),
 		)
 		.await
 		.unwrap()
 		.unwrap();
-	let attempt = crate::AgentModelAttempt {
+	let attempt = AgentModelAttempt {
 		work: "root".into(),
 		thread: "task".into(),
-		generation: Some(generation_id(1).as_str().into()),
+		generation: Some(tests::generation_id(1).as_str().into()),
 		settings_event: event,
 		model: "scoped".into(),
 		model_provider: "fixture".into(),
@@ -158,16 +172,21 @@ async fn prepare_unknown_model_selection(
 
 	store
 		.mark_process_generation_death_unknown(
-			&generation_id(1),
+			&tests::generation_id(1),
 			3,
-			decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			ProcessAuthorityLossReason::SupervisorRestarted,
 		)
 		.await
 		.unwrap();
 
 	assert!(matches!(
 		store
-			.prepare_agent_bound_process_generation(&intent(1, 2), &binding(1), "root", "too-early")
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 2),
+				&tests::binding(1),
+				"root",
+				"too-early"
+			)
 			.await
 			.unwrap(),
 		PrepareProcessGenerationOutcome::Rejected { .. }
@@ -176,7 +195,7 @@ async fn prepare_unknown_model_selection(
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
-				Some(generation_id(2).as_str().into()),
+				Some(tests::generation_id(2).as_str().into()),
 				Some(facts(profile)),
 				OTHER_DIGEST.into()
 			)
