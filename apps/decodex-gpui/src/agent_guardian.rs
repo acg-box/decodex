@@ -3,9 +3,21 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use gpui::{AnyElement, Div, KeyDownEvent};
 use tokio::runtime::Builder;
-use ui_theme::BLUE;
 
-use crate::{shell::agent_surface::*, ui_loading};
+#[cfg(test)]
+use crate::shell::agent_surface::{AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto};
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+			AgentWorkItemDto, Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement,
+			ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Task, WireText,
+			px, ui_theme::BLUE,
+		},
+	},
+	ui_loading,
+};
 use decodex_protocol::{
 	AgentGuardianDetailResult as Detail, AgentGuardianReviewDto,
 	AgentGuardianReviewsResult as Reviews, AgentGuardianStatus as Status,
@@ -274,7 +286,7 @@ impl AgentSurface {
 
 		self.guardian.feedback = "Submitting approval to Codex…".into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded identity");
+		let key = IdempotencyKey::new(agent_surface::unique_command()).expect("bounded identity");
 
 		self.guardian.pending.insert(row, key.as_str().into());
 
@@ -427,14 +439,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.guardian.owner.as_deref() != Some(&work.id) {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let Some(result) = &self.guardian.result else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 		let Reviews::Available { reviews, next_before } = result else {
-			return div()
+			return agent_surface::div()
 				.child("Saved action reviews are unavailable.")
 				.child(button("guardian-refresh".into(), "Refresh reviews".into(), cx, |s, cx| {
 					s.guardian_page(None, cx)
@@ -443,7 +455,7 @@ impl AgentSurface {
 		};
 
 		if reviews.is_empty() && self.guardian.before.is_none() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let denied = reviews
@@ -455,7 +467,7 @@ impl AgentSurface {
 		} else {
 			"Action reviews".into()
 		};
-		let mut panel = div().flex().flex_col().gap_2().min_w_0().child(button(
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().min_w_0().child(button(
 			"guardian-toggle".into(),
 			title,
 			cx,
@@ -475,14 +487,18 @@ impl AgentSurface {
 			);
 		}
 
-		let mut body = div().flex().flex_col().gap_3().min_w_0();
+		let mut body = agent_surface::div().flex().flex_col().gap_3().min_w_0();
 
 		for review in reviews {
 			body = body.child(self.guardian_review_card(work, review, cx));
 		}
 
 		panel = panel.child(
-			div().id("guardian-review-list").max_h(px(360.)).overflow_y_scroll().child(body),
+			agent_surface::div()
+				.id("guardian-review-list")
+				.max_h(px(360.))
+				.overflow_y_scroll()
+				.child(body),
 		);
 
 		if self.guardian.before.is_some() {
@@ -514,7 +530,7 @@ impl AgentSurface {
 		let row = review.row_id;
 		let digest = review.digest.clone();
 		let reader = self.guardian.detail.as_ref().filter(|d| d.row == row && d.digest == digest);
-		let mut panel = div().flex().flex_col().gap_2().min_w_0();
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().min_w_0();
 
 		if let Some(Detail::Available { offset, text, next_offset, .. }) =
 			reader.and_then(|d| d.page.as_ref())
@@ -523,7 +539,7 @@ impl AgentSurface {
 				reader.and_then(|d| d.starts.iter().position(|start| start == offset)).unwrap_or(0);
 
 			panel = panel.child(format!("Action details · page {}", position + 1)).child(
-				div()
+				agent_surface::div()
 					.id("guardian-detail-text")
 					.max_h(px(240.))
 					.overflow_scroll()
@@ -556,7 +572,7 @@ impl AgentSurface {
 				}
 			}
 			if reader.is_some_and(|d| d.complete) {
-				panel = panel.child(muted("All detail pages opened."));
+				panel = panel.child(agent_surface::muted("All detail pages opened."));
 			}
 		} else if self.guardian.detail_request.is_none() {
 			panel = panel.child("Open the complete action and findings before approving.").child(
@@ -593,7 +609,7 @@ impl AgentSurface {
 			Status::TimedOut => "Review timed out",
 			Status::Aborted => "Review stopped",
 		};
-		let mut card = div()
+		let mut card = agent_surface::div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -602,7 +618,7 @@ impl AgentSurface {
 			.child(format!("{} · {state}", review.action_label));
 
 		if review.status == Status::InProgress && !review.current_process {
-			card = card.child(muted(
+			card = card.child(agent_surface::muted(
 				"Saved from an earlier or disconnected process; the result is unknown.",
 			));
 		}
@@ -645,13 +661,14 @@ impl AgentSurface {
 				card = card.child(reason.clone());
 			}
 			if let Some(action) = &review.action_json {
-				card = card.child(div().min_w_0().text_size(px(12.)).child(action.clone()));
+				card = card
+					.child(agent_surface::div().min_w_0().text_size(px(12.)).child(action.clone()));
 			}
 			if let Some(reason) = &review.details_unavailable {
 				card = card.child(reason.clone());
 			}
 			if let Some(reason) = &review.approval_unavailable {
-				card = card.child(muted(reason));
+				card = card.child(agent_surface::muted(reason));
 			}
 
 			if review.can_approve
@@ -665,7 +682,9 @@ impl AgentSurface {
 				let digest = review.digest.clone();
 
 				card = card
-					.child(muted("Send your approval to Codex. This does not rerun the action."))
+					.child(agent_surface::muted(
+						"Send your approval to Codex. This does not rerun the action.",
+					))
 					.child(button(
 						format!("guardian-approve-{row}"),
 						"Approve this action".into(),
@@ -688,14 +707,14 @@ fn button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	div()
+	agent_surface::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label.clone())
 		.cursor_pointer()
-		.text_color(rgb(BLUE))
+		.text_color(agent_surface::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -711,16 +730,26 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::guardian::*;
+	use futures_util::{SinkExt as _, StreamExt as _};
+	#[cfg(test)] use gpui::AppContext as _;
+	use tokio_tungstenite::tungstenite::Message;
+
+	#[cfg(test)]
+	use crate::shell::agent_surface::guardian::{
+		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::{
+		guardian,
+		guardian::{
+			AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
+			Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
+		},
+		wire_test_support,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
 		QueryResultPayload, ServerId, ServerMessage,
 	};
-
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
-
-	use crate::shell::agent_surface::wire_test_support;
 
 	#[gpui::test]
 	fn paged_guardian_action_requires_every_page_and_discards_changed_evidence(
@@ -758,7 +787,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.), px(1_200.)));
+			window.resize(gpui::size(guardian::px(1_180.), guardian::px(1_200.)));
 			window.draw(cx).clear();
 		});
 
@@ -927,7 +956,7 @@ mod tests {
 
 		surface.update(visual, |s, _| seed(s));
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(guardian::px(1_180.0), guardian::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 

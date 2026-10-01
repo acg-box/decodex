@@ -7,11 +7,21 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::{LoadState, drafts::tests, prompt_edit::fork::*};
+#[cfg(test)] use crate::shell::agent_surface::prompt_edit::fork::Entity;
+use crate::shell::agent_surface::{
+	LoadState,
+	drafts::tests,
+	prompt_edit::fork::{
+		AgentActionDto, AgentSnapshotResult, AgentSurface, DesktopPromptEditDraft, EntityId,
+		IdempotencyKey, Panel, PromptDraft, PromptForkBoundary, PromptForkPhase, PromptForkResult,
+		WireText,
+	},
+};
 use decodex_protocol::*;
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";

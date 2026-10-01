@@ -2,13 +2,23 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+#[cfg(test)] use gpui::AppContext as _;
+use gpui::{ParentElement, Styled, TestAppContext};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::models::{
+	AgentDispatchStateDto, AgentSnapshotResult, ClientProfile, Entity, Render, Window, WireText,
+};
 use crate::shell::agent_surface::{
-	models::*,
+	models,
+	models::{
+		AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
+		Context, ConversationModel, ConversationReasoningEffort, EntityId, IntoElement, Outcome,
+		State,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -24,7 +34,7 @@ struct ModelView {
 impl Render for ModelView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| {
-			div()
+			models::div()
 				.flex()
 				.flex_col()
 				.child(s.model_settings_panel(&work(), cx))
@@ -137,7 +147,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 		});
 
 		visual.update(|w, cx| {
-			w.resize(gpui::size(px(900.), px(700.)));
+			w.resize(gpui::size(models::px(900.), models::px(700.)));
 			w.draw(cx).clear();
 		});
 
@@ -331,7 +341,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(700.)));
+		w.resize(gpui::size(models::px(900.), models::px(700.)));
 		w.draw(cx).clear();
 	});
 
@@ -408,7 +418,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 			historical.manual = false;
 			historical.reconciled = true;
 
-			let text = history_label(&historical);
+			let text = models::history_label(&historical);
 
 			assert!(text.contains("automatic fallback"));
 			assert!(text.contains("delivery unconfirmed"));
@@ -426,7 +436,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(700.)));
+		w.resize(gpui::size(models::px(900.), models::px(700.)));
 		w.draw(cx).clear();
 	});
 

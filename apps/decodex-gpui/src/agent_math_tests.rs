@@ -1,7 +1,9 @@
 //! Product behavior tests for upstream math parsing and source-preserving copy.
 use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
 
-use crate::shell::agent_surface::markdown::*;
+use crate::shell::agent_surface::markdown::{
+	self, Context, HighlightStyle, Inline, IntoElement, Window, clipboard,
+};
 
 struct Preview {
 	text: String,
@@ -15,7 +17,7 @@ impl Render for Preview {
 fn plain(source: &str) -> String {
 	let mut out = Inline::default();
 
-	append_inline(&parse(source), HighlightStyle::default(), None, &mut out);
+	markdown::append_inline(&markdown::parse(source), HighlightStyle::default(), None, &mut out);
 
 	out.text
 }
@@ -51,7 +53,7 @@ fn math_keeps_link_ranges_and_code_bytes_correct() {
 	let source = r"$\alpha$ [中文 source](/tmp/$path.rs:12) then $x^2$.";
 	let mut out = Inline::default();
 
-	append_inline(&parse(source), HighlightStyle::default(), None, &mut out);
+	markdown::append_inline(&markdown::parse(source), HighlightStyle::default(), None, &mut out);
 
 	assert_eq!(out.links.len(), 1);
 
@@ -90,14 +92,14 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 	let mut previous_size = None;
 
 	for width in [600., 120.] {
-		visual.simulate_resize(gpui::size(px(width), px(300.)));
+		visual.simulate_resize(gpui::size(markdown::px(width), markdown::px(300.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let bounds = visual.debug_bounds("math-math-preview-0-formula-0").expect("formula");
 
-		assert!(bounds.size.width <= px(width));
+		assert!(bounds.size.width <= markdown::px(width));
 
 		let text = visual.debug_bounds("math-text-math-preview-0-formula-0").expect("formula text");
 
@@ -110,7 +112,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 		if width == 120. {
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(markdown::px(-60.), markdown::px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {
@@ -127,7 +129,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(px(60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(markdown::px(60.), markdown::px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {

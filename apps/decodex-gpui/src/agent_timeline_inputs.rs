@@ -2,7 +2,17 @@
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::{shell::agent_surface::native_timeline::*, ui_loading};
+#[cfg(test)] use crate::shell::agent_surface::native_timeline::Binding;
+use crate::{
+	shell::agent_surface::{
+		native_timeline,
+		native_timeline::{
+			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
+			IntoElement, ParentElement, Styled, Task, markdown,
+		},
+	},
+	ui_loading,
+};
 use decodex_protocol::AgentInputReceiptsResult;
 
 #[derive(Default)]
@@ -84,19 +94,21 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let state = &self.native_history.input_receipts;
-		let mut panel = div().flex().flex_col().gap_2();
+		let mut panel = native_timeline::div().flex().flex_col().gap_2();
 
 		if state.after.is_some() {
 			let owner = work.id.clone();
 
-			panel = panel.child(div().debug_selector(|| "input-receipts-first".into()).child(
-				self.workspace_action(
-					"first-input-receipts".into(),
-					"First unconfirmed inputs".into(),
-					move |surface, cx| surface.input_receipt_cursor(&owner, None, cx),
-					cx,
+			panel = panel.child(
+				native_timeline::div().debug_selector(|| "input-receipts-first".into()).child(
+					self.workspace_action(
+						"first-input-receipts".into(),
+						"First unconfirmed inputs".into(),
+						move |surface, cx| surface.input_receipt_cursor(&owner, None, cx),
+						cx,
+					),
 				),
-			));
+			);
 		}
 
 		match &state.result {
@@ -112,9 +124,9 @@ impl AgentSurface {
 					}
 
 					panel = panel.child(
-						div()
+						native_timeline::div()
 							.debug_selector(|| "unconfirmed-native-input".into())
-							.child(muted("Local input · Delivery not confirmed"))
+							.child(native_timeline::muted("Local input · Delivery not confirmed"))
 							.child(markdown::render(
 								&entry.text,
 								&format!("input-receipt-{}", entry.id),
@@ -123,31 +135,38 @@ impl AgentSurface {
 				}
 
 				if *shortened {
-					panel = panel.child(muted("Some local input text is shortened."));
+					panel =
+						panel.child(native_timeline::muted("Some local input text is shortened."));
 				}
 
 				if let Some(after) = next_after {
 					let (owner, after) = (work.id.clone(), *after);
 
-					panel =
-						panel.child(div().debug_selector(|| "input-receipts-next".into()).child(
-							self.workspace_action(
+					panel = panel.child(
+						native_timeline::div()
+							.debug_selector(|| "input-receipts-next".into())
+							.child(self.workspace_action(
 								"next-input-receipts".into(),
 								"More unconfirmed inputs".into(),
 								move |surface, cx| {
 									surface.input_receipt_cursor(&owner, Some(after), cx)
 								},
 								cx,
-							),
-						));
+							)),
+					);
 				}
 
 				if entries.is_empty() && state.after.is_some() {
-					panel = panel.child(muted("No remaining unconfirmed inputs on this page."));
+					panel = panel.child(native_timeline::muted(
+						"No remaining unconfirmed inputs on this page.",
+					));
 				}
 			},
 			None => panel = panel.child(ui_loading::loading("Loading delivery records")),
-			_ => panel = panel.child(muted("Local delivery records could not be read. Retrying…")),
+			_ =>
+				panel = panel.child(native_timeline::muted(
+					"Local delivery records could not be read. Retrying…",
+				)),
 		}
 
 		panel.into_any_element()
@@ -156,7 +175,10 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_timeline::inputs::*;
+	#[cfg(test)] use crate::shell::agent_surface::native_timeline::inputs::Binding;
+	use crate::shell::agent_surface::native_timeline::inputs::{
+		AgentInputReceiptsResult, AgentSurface, EntityId,
+	};
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
 
 	fn page(work: &str, id: Option<i64>, next_after: Option<i64>) -> AgentInputReceiptsResult {

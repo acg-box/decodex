@@ -11,8 +11,18 @@ use std::{collections::BTreeSet, mem, time::Duration};
 use gpui::{AnyElement, Div};
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::wire_test_support;
 use crate::{
-	shell::agent_surface::{text_reveal::StreamingText, *},
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
+			Context, EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
+			SharedString, Styled, StyledImage, Task, WireText, auth_recovery_entry, div, markdown,
+			muted, text_reveal::StreamingText,
+		},
+	},
 	ui_loading, ui_motion,
 };
 use decodex_protocol::{
@@ -183,7 +193,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = div().flex().flex_col().gap(px(ROW_GAP)).child(
+		let mut panel = div().flex().flex_col().gap(agent_surface::px(ROW_GAP)).child(
 			div().debug_selector(|| "native-latest-action".into()).child(self.workspace_action(
 				"native-timeline-refresh".into(),
 				"Latest native history".into(),
@@ -338,25 +348,30 @@ impl AgentSurface {
 						move |cx| {
 							owner.update(cx, |s, cx| {
 								render::process_indent(
-									div().w_full().flex().flex_col().gap(px(8.)).children(
-										indices
-											.iter()
-											.filter_map(|index| {
-												s.native_history.entries.get(*index)
-											})
-											.map(|entry| {
-												s.native_timeline_content(
-													&source_work,
-													entry,
-													&format!(
-														"process-{}-{}",
-														source_work.id,
-														serde_json::json!(key(entry))
-													),
-													cx,
-												)
-											}),
-									),
+									div()
+										.w_full()
+										.flex()
+										.flex_col()
+										.gap(agent_surface::px(8.))
+										.children(
+											indices
+												.iter()
+												.filter_map(|index| {
+													s.native_history.entries.get(*index)
+												})
+												.map(|entry| {
+													s.native_timeline_content(
+														&source_work,
+														entry,
+														&format!(
+															"process-{}-{}",
+															source_work.id,
+															serde_json::json!(key(entry))
+														),
+														cx,
+													)
+												}),
+										),
 								)
 							})
 						},
@@ -882,9 +897,14 @@ fn valid_entries(entries: &[AgentTimelineEntry]) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_timeline::*;
-
 	use std::future;
+
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::native_timeline::{
+		AgentHistoryResult, AgentSurface, AgentTimelineEntry, AgentTimelinePage, Binding, Content,
+		EntityId, Timeline,
+	};
 
 	#[gpui::test]
 	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {

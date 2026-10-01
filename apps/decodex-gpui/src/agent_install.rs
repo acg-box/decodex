@@ -2,7 +2,15 @@
 use gpui::AnyElement;
 use serde_json::{Value, json};
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentRequestResult, AgentSurface, Context, InteractiveElement, IntoElement,
+	ParentElement, Styled, mcp_forms,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
+	AgentWorkStatusDto, px,
+};
 
 impl AgentSurface {
 	pub(super) fn installation_panel(
@@ -12,12 +20,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut panel =
-			div().id("installation-suggestion").flex().flex_col().gap_2().child(
+			agent_surface::div().id("installation-suggestion").flex().flex_col().gap_2().child(
 				"Configure this integration in Codex for this account, then retry the task.",
 			);
 
 		for (action, label) in [("decline", "Decline"), ("cancel", "Cancel")] {
-			panel = panel.child(mcp_button(
+			panel = panel.child(mcp_forms::mcp_button(
 				format!("install-{action}"), label.into(), false, cx,
 				move |s, cx| {
 					if matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
@@ -33,7 +41,11 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::install::*;
+
+	use crate::shell::agent_surface::install::{
+		self, AgentDispatchStateDto, AgentRequestResult, AgentSnapshotDto, AgentSnapshotResult,
+		AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
+	};
 	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
 	#[gpui::test]
@@ -49,11 +61,11 @@ mod tests {
 				pending_events: vec![AgentPendingEventDto { id: 7, source_event_id: "suggestion".into(), work_item_id: "root".into(), event_kind: "server_request_pending".into(), created_at_micros: 1, delivery_claimed: false }],
 			})));
 
-			s.request = Some(AgentRequestResult::Available { event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(), request_json: decodex_protocol::AgentRequestText::new(json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample"}}).to_string()).unwrap() });
+			s.request = Some(AgentRequestResult::Available { event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(), request_json: decodex_protocol::AgentRequestText::new(install::json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample"}}).to_string()).unwrap() });
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_400.0)));
+			window.resize(gpui::size(install::px(1_180.0), install::px(1_400.0)));
 			window.draw(cx).clear();
 		});
 

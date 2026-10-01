@@ -4,7 +4,12 @@ use gpui::{Modifiers, TestAppContext};
 use crate::{
 	client_lifecycle::ConnectionView,
 	conversations::tests,
-	shell::{Destination, Shell, agent_surface::drafts::storage::*},
+	shell::{
+		Destination, Shell,
+		agent_surface::drafts::storage::{
+			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, Storage,
+		},
+	},
 };
 use decodex_protocol::{
 	CommandPayload, ConversationReasoningEffort, ConversationTurnOutcomeState,

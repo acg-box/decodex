@@ -4,7 +4,21 @@ use std::{sync::Arc, time::Duration};
 use gpui::{AnyElement, ImageFormat, ObjectFit};
 use tokio::{runtime::Builder, time};
 
-use crate::{shell::agent_surface::native_timeline::*, ui_loading};
+#[cfg(test)]
+use crate::shell::agent_surface::native_timeline::{
+	AgentSnapshotResult, AgentTimelineEntry, Content,
+};
+use crate::{
+	shell::agent_surface::{
+		native_timeline,
+		native_timeline::{
+			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Binding,
+			ClientProfile, Context, EntityId, InteractiveElement, IntoElement, ParentElement,
+			Styled, StyledImage, Task, render,
+		},
+	},
+	ui_loading,
+};
 use decodex_protocol::{
 	AgentMediaRequest, AgentMediaResult, AgentTimelineAttachment, AgentTimelineAttachmentSource,
 };
@@ -74,7 +88,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let caption = render::attachment_caption(attachment);
 		let Some(request) = media_request(work, turn, item, attachment.index) else {
-			return muted(caption).into_any_element();
+			return native_timeline::muted(caption).into_any_element();
 		};
 		let preview = &self.native_history.preview;
 		let selected = preview.request.as_ref() == Some(&request);
@@ -83,7 +97,7 @@ impl AgentSurface {
 				attachment.kind.as_str(),
 				"image" | "localImage" | "imageView" | "imageGeneration" | "inputImage"
 			);
-		let mut row = div().flex().flex_col().gap_1().min_w_0();
+		let mut row = native_timeline::div().flex().flex_col().gap_1().min_w_0();
 
 		if can_preview {
 			row = row.debug_selector(|| "native-media-action".into()).child(self.workspace_action(
@@ -93,7 +107,7 @@ impl AgentSurface {
 				cx,
 			));
 		} else {
-			row = row.child(muted(caption));
+			row = row.child(native_timeline::muted(caption));
 		}
 		if selected {
 			if let Some(image) = &preview.image {
@@ -109,7 +123,7 @@ impl AgentSurface {
 			if preview.task.is_some() {
 				row = row.child(ui_loading::loading("Loading image"));
 			} else if let Some(notice) = preview.notice {
-				row = row.child(muted(notice));
+				row = row.child(native_timeline::muted(notice));
 			}
 		}
 
@@ -276,12 +290,17 @@ async fn load(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::native_timeline::media::*;
+
+	use gpui::{self};
+	use tokio::sync::oneshot;
+
+	use crate::shell::agent_surface::native_timeline::media::{
+		self, AgentSnapshotResult, AgentSurface, AgentTimelineEntry, Arc, Binding, Content,
+		EntityId, Preview,
+	};
 	use decodex_protocol::{
 		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelinePage,
 	};
-	use gpui::{self};
-	use tokio::sync::oneshot;
 
 	#[gpui::test]
 	fn runtime_source_change_clears_history_and_rejects_same_account_late_preview(
@@ -373,7 +392,7 @@ mod tests {
 
 			work.codex_thread_id = Some("native-thread".into());
 
-			let request = media_request(work, "turn", "image", 0).unwrap();
+			let request = media::media_request(work, "turn", "image", 0).unwrap();
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),

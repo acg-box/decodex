@@ -2,7 +2,7 @@
 #[path = "agent_draft_export.rs"] mod export;
 
 use crate::shell::agent_surface::drafts::storage::{
-	AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure, publish_document,
+	self, AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure,
 };
 use decodex_protocol::{ClientProfile, DesktopRecoveredDraft};
 
@@ -183,7 +183,7 @@ impl AgentSurface {
 				merged = merged.restore_recovered_copy(copy).map_err(SaveFailure::Invalid)?;
 			}
 
-			let revision = publish_document(&store, snapshot.revision, &merged)?;
+			let revision = storage::publish_document(&store, snapshot.revision, &merged)?;
 
 			Ok::<_, SaveFailure>((revision, merged))
 		});
@@ -283,14 +283,15 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::drafts::storage::{
-		ClientDraftStore, DesktopComposerDraft, DesktopProfileDraft, IdempotencyKey, Storage,
-		recovery::*,
-	};
-
 	use std::thread;
 
-	use crate::shell::agent_surface::drafts::tests;
+	use crate::shell::agent_surface::drafts::{
+		storage::{
+			ClientDraftStore, DesktopComposerDraft, DesktopProfileDraft, IdempotencyKey, Storage,
+			recovery::{AgentSurface, DesktopDraftDocument, DesktopRecoveredDraft},
+		},
+		tests,
+	};
 
 	#[gpui::test]
 	fn full_copy_capacity_requires_confirmed_removal_and_retains_current_input(

@@ -1,7 +1,13 @@
 //! Cold setup survives disk, profile changes and uncertain creation without replay.
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 
-use crate::shell::agent_surface::drafts::{storage::*, tests};
+#[cfg(test)] use crate::shell::agent_surface::drafts::storage::IdempotencyKey;
+use crate::shell::agent_surface::drafts::{
+	storage,
+	storage::{AgentSurface, ClientDraftStore, Context, PendingCommand, Storage},
+	tests,
+};
 use decodex_protocol::{
 	AgentSandboxDto, ConversationReasoningEffort, ConversationWorkingDirectory,
 	DesktopCreationSetup, ServiceTier,
@@ -51,7 +57,7 @@ fn creation_setup_survives_cold_reopen_without_a_message_or_auto_send(cx: &mut T
 
 		s.remember_draft_document(cx);
 
-		publish_document(&store, 0, &s.draft_profiles.storage.document)
+		storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 			.unwrap_or_else(|_| panic!("save"));
 
 		expected
@@ -92,7 +98,7 @@ fn unbound_creation_edits_survive_reopen(cx: &mut TestAppContext) {
 
 		s.remember_draft_document(cx);
 
-		publish_document(&store, 0, &s.draft_profiles.storage.document)
+		storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 			.unwrap_or_else(|_| panic!("save"));
 
 		expected
@@ -149,7 +155,7 @@ fn uncertain_creation_keeps_original_setup_and_later_edits_separate(cx: &mut Tes
 
 		s.remember_draft_document(cx);
 
-		publish_document(&store, 0, &s.draft_profiles.storage.document)
+		storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 			.unwrap_or_else(|_| panic!("save"));
 
 		original
@@ -190,7 +196,7 @@ fn restored_empty_directory_is_not_replaced_by_shell_prefill(cx: &mut TestAppCon
 
 		s.remember_draft_document(cx);
 
-		publish_document(&store, 0, &s.draft_profiles.storage.document)
+		storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 			.unwrap_or_else(|_| panic!("save"));
 	});
 

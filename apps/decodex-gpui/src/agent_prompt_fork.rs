@@ -1,12 +1,11 @@
 //! Recover explicit branches through saved native identity; never create a second fork.
 
-#[cfg(test)] use gpui::AppContext as _;
 use tokio::sync::oneshot;
 
 #[cfg(test)] use crate::shell::agent_surface::prompt_edit::Entity;
 use crate::shell::agent_surface::prompt_edit::{
-	AgentActionDto, AgentClient, AgentSnapshotResult, AgentSurface, Context,
-	DesktopPromptEditDraft, EntityId, IdempotencyKey, Panel, PromptDraft, WireText, unique_command,
+	self, AgentActionDto, AgentClient, AgentSnapshotResult, AgentSurface, Context,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, Panel, PromptDraft, WireText,
 };
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
@@ -99,7 +98,8 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 				work_id: original.work_id.clone(),
 				review_token: original.review_token.clone(),
 			},
-			IdempotencyKey::new(unique_command()).map_err(|_| "Invalid recovery identity")?,
+			IdempotencyKey::new(prompt_edit::unique_command())
+				.map_err(|_| "Invalid recovery identity")?,
 		)
 		.await;
 	let result = client

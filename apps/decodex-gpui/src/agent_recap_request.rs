@@ -1,8 +1,13 @@
 //! One submission followed by read-only polling; never replay an uncertain command.
-use tokio::time;
-use watch::{Receiver, Sender};
+use tokio::{
+	sync::watch::{Receiver, Sender},
+	time,
+};
 
-use crate::shell::agent_surface::recap::*;
+use crate::shell::agent_surface::recap::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, ClientProfile, EntityId,
+	IdempotencyKey, Phase, TaskRecapStatus, WireText,
+};
 use decodex_protocol::CommandError;
 
 type Update = Option<(Option<TaskRecapStatus>, String)>;
@@ -20,7 +25,7 @@ pub(super) async fn run(
 	}
 
 	let client = AgentClient::new(profile);
-	let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+	let key = IdempotencyKey::new(recap::unique_command()).expect("bounded command identity");
 	let mut cancellable = generate;
 	let mut request = generate.then(|| WireText::new(key.as_str()).expect("bounded identity"));
 
@@ -47,7 +52,8 @@ pub(super) async fn run(
 	loop {
 		if *cancellation.borrow() || cancellation.has_changed().is_err() {
 			if cancellable && let Some(request_id) = request {
-				let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+				let key =
+					IdempotencyKey::new(recap::unique_command()).expect("bounded command identity");
 				let _ = client
 					.execute(
 						AgentActionDto::CancelRecap { work_id: owner.clone(), request_id },

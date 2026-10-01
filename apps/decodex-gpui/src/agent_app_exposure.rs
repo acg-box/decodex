@@ -2,7 +2,16 @@
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement, ParentElement, Styled,
+	Task, WireText, mcp_forms,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	ClientProfile, Entity, Render, Window, px,
+};
 use decodex_protocol::{AgentAppExposureResult as State, AgentToolExposureSurface as Surface};
 
 #[derive(Default)]
@@ -107,7 +116,8 @@ impl AgentSurface {
 		self.app_exposure.feedback =
 			if save { "Saving App settings…" } else { "Reading App settings…" }.into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let key =
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
@@ -150,14 +160,14 @@ impl AgentSurface {
 
 	pub(super) fn app_exposure_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, connector)) = &self.app_exposure.owner else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 
 		if owner != work {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
-		let mut panel = div()
+		let mut panel = agent_surface::div()
 			.id("app-exposure-panel")
 			.flex()
 			.flex_col()
@@ -166,7 +176,7 @@ impl AgentSurface {
 			.child(self.app_exposure.feedback.clone());
 		let (owner, app) = (owner.clone(), connector.clone());
 
-		panel = panel.child(mcp_button(
+		panel = panel.child(mcp_forms::mcp_button(
 			"app-exposure-refresh".into(),
 			"Refresh App settings".into(),
 			false,
@@ -212,7 +222,7 @@ impl AgentSurface {
 				.into_any_element();
 		}
 
-		panel = panel.child(mcp_button(
+		panel = panel.child(mcp_forms::mcp_button(
 			"app-exposure-inherit".into(),
 			"Use inherited settings".into(),
 			self.app_exposure.draft.is_none(),
@@ -223,7 +233,7 @@ impl AgentSurface {
 				cx.notify();
 			},
 		));
-		panel = panel.child(mcp_button(
+		panel = panel.child(mcp_forms::mcp_button(
 			"app-exposure-clear".into(),
 			"Clear App-specific omissions".into(),
 			self.app_exposure.draft == Some(vec![]),
@@ -244,7 +254,7 @@ impl AgentSurface {
 			let selected =
 				self.app_exposure.draft.as_ref().unwrap_or(&inherited).contains(&surface);
 
-			panel = panel.child(mcp_button(
+			panel = panel.child(mcp_forms::mcp_button(
 				format!("app-exposure-surface-{index}"),
 				label.into(),
 				selected,
@@ -268,7 +278,7 @@ impl AgentSurface {
 		if changed {
 			let (owner, app) = (work.to_owned(), connector.clone());
 
-			panel = panel.child(mcp_button(
+			panel = panel.child(mcp_forms::mcp_button(
 				"app-exposure-save".into(),
 				"Save App settings".into(),
 				false,

@@ -12,15 +12,26 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, ClipboardEntry, Div, ExternalPaths, FontWeight, Image, ImageFormat, KeyDownEvent,
-	MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions, Stateful,
+	AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, FontWeight, Image,
+	ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions,
+	Stateful,
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED};
 
+#[cfg(test)] use crate::shell::agent_surface::ConversationModel;
+#[cfg(not(test))] use crate::shell::agent_surface::prompts;
 use crate::{
 	shell::{
-		agent_surface::*,
+		agent_surface::{
+			AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+			AgentHistoryResult, AgentSnapshotResult, AgentSurface, ClipboardItem, ComposerInput,
+			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
+			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
+			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
+			Styled, SubmitComposer, Window, WireText, compact_tokens, div, model_settings, px, rgb,
+			rgba, ui_theme, unique_command,
+		},
 		workspace_symbols,
 		workspace_symbols::{Symbol, icon},
 	},
@@ -1226,9 +1237,14 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::composer::*;
-
 	use std::fs;
+
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::composer::{
+		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
+		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
+	};
 
 	#[gpui::test]
 	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {

@@ -2,13 +2,22 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::hooks::{
+	self, AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity,
+	Render, Window,
+};
 use crate::shell::agent_surface::{
-	hooks::*,
+	hooks::{
+		AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Change, Context,
+		EntityId, IntoElement, State, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -97,7 +106,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 		});
 
 		visual.update(|w, cx| {
-			w.resize(gpui::size(px(900.), px(700.)));
+			w.resize(gpui::size(hooks::px(900.), hooks::px(700.)));
 			w.draw(cx).clear();
 		});
 
@@ -236,7 +245,7 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut Tes
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(700.)));
+		w.resize(gpui::size(hooks::px(900.), hooks::px(700.)));
 		w.draw(cx).clear();
 	});
 

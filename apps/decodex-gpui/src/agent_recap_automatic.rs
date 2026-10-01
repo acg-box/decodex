@@ -8,7 +8,15 @@ use std::{
 use gpui::Subscription;
 use tokio::{runtime::Builder, time};
 
-use crate::shell::agent_surface::recap::*;
+#[cfg(test)]
+use crate::shell::agent_surface::recap::{
+	AgentActionDto, AgentSnapshotResult, AgentWorkItemDto, Entity, IntoElement, LoadState, Render,
+	div, watch,
+};
+use crate::shell::agent_surface::recap::{
+	AgentClient, AgentDispatchStateDto, AgentSnapshotDto, AgentSurface, ClientProfile, Context,
+	EntityId, Phase, Task, TaskRecapStatus, Window, WireText,
+};
 use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
 
 const DELAY: Duration = Duration::from_secs(30 * 60);
@@ -438,11 +446,17 @@ async fn read_progress_inner(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::recap::automatic::*;
-
 	use std::future;
 
-	use crate::shell::agent_surface::drafts::tests;
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::{
+		drafts::tests,
+		recap::automatic::{
+			AgentDispatchStateDto, AgentSnapshotResult, AgentSurface, Automatic, DELAY, Duration,
+			EntityId, Instant, LoadState, Phase, RETRY, TaskRecapStatus, WireText, watch,
+		},
+	};
 
 	#[test]
 	fn deadline_requires_opt_in_and_thirty_minutes_after_latest_activity() {

@@ -7,7 +7,15 @@ pub(super) use automatic::Automatic;
 use gpui::AnyElement;
 use tokio::sync::watch::{self, Sender};
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto, AgentSnapshotDto,
+	AgentSurface, ClientProfile, Context, EntityId, IdempotencyKey, IntoElement, ParentElement,
+	Styled, Task, Window, WireText, div, markdown, mcp_forms, px, unique_command,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentSnapshotResult, AgentWorkItemDto, Entity, LoadState, Render,
+};
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
 
 #[derive(Default)]
@@ -215,7 +223,7 @@ impl AgentSurface {
 			.flex_col()
 			.items_start()
 			.gap_2()
-			.child(mcp_button(
+			.child(mcp_forms::mcp_button(
 				"recap-toggle".into(),
 				"Task recap".into(),
 				opened,
@@ -247,7 +255,7 @@ impl AgentSurface {
 		}
 
 		if self.recap.busy() {
-			panel = panel.child(mcp_button(
+			panel = panel.child(mcp_forms::mcp_button(
 				"recap-cancel".into(),
 				"Cancel recap".into(),
 				false,
@@ -276,10 +284,13 @@ impl AgentSurface {
 
 				let owner = work.to_owned();
 
-				actions =
-					actions.child(mcp_button(id.into(), label.into(), false, cx, move |s, cx| {
-						s.read_recap(&owner, generate, cx)
-					}));
+				actions = actions.child(mcp_forms::mcp_button(
+					id.into(),
+					label.into(),
+					false,
+					cx,
+					move |s, cx| s.read_recap(&owner, generate, cx),
+				));
 			}
 
 			panel = panel.child(actions);

@@ -3,7 +3,11 @@ use std::{ops::Range, path::Path};
 
 use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText};
 
-use crate::shell::agent_surface::{markdown, *};
+use crate::shell::agent_surface::{
+	self, ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
+	StatefulInteractiveElement, Styled, Window, markdown,
+};
+#[cfg(test)] use crate::shell::agent_surface::{Context, FontWeight};
 
 #[derive(IntoElement)]
 pub(super) struct SelectableText {
@@ -36,7 +40,7 @@ impl RenderOnce for SelectableText {
 		let down_text = self.text.clone();
 		let selector = self.key.clone();
 
-		div()
+		agent_surface::div()
 			.id(SharedString::from(self.key))
 			.debug_selector(move || selector.clone())
 			.role(Role::Label)
@@ -185,7 +189,7 @@ fn selection_highlights(
 				.unwrap_or_default();
 
 			if selection.contains(&range.start) {
-				style.background_color = Some(rgba(0x788dff66).into());
+				style.background_color = Some(agent_surface::rgba(0x788dff66).into());
 			}
 
 			(range, style)
@@ -194,7 +198,10 @@ fn selection_highlights(
 }
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::selectable_text::*;
+
+	use crate::shell::agent_surface::selectable_text::{
+		self, ClipboardItem, Context, FontWeight, IntoElement, SelectableText, Window,
+	};
 
 	struct Preview {
 		text: String,
@@ -214,7 +221,11 @@ mod tests {
 	fn selection_splits_styled_runs_without_overlap() {
 		let bold =
 			gpui::HighlightStyle { font_weight: Some(FontWeight::BOLD), ..Default::default() };
-		let runs = selection_highlights(12, vec![(0..6, bold), (6..12, Default::default())], 3..9);
+		let runs = selectable_text::selection_highlights(
+			12,
+			vec![(0..6, bold), (6..12, Default::default())],
+			3..9,
+		);
 
 		assert_eq!(
 			runs.iter().map(|(r, _)| r.clone()).collect::<Vec<_>>(),

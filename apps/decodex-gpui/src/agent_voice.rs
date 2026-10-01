@@ -14,7 +14,19 @@ use serde_json::{Value, json};
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, TEXT_MUTED};
 
-use crate::{shell::agent_surface::*, ui_motion, ui_theme::HOVER_FILL};
+#[cfg(test)] use crate::shell::agent_surface::{Entity, Render};
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, InteractiveElement,
+			IntoElement, ParentElement, Role, SmoothControl, StatefulInteractiveElement, Styled,
+			Window, div, px, ui_theme,
+		},
+	},
+	ui_motion,
+	ui_theme::HOVER_FILL,
+};
 use decodex_protocol::{
 	AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, HistoryText, VoiceSdp,
 };
@@ -369,7 +381,8 @@ impl AgentSurface {
 			return;
 		}
 
-		let session = EntityId::new(unique_command()).expect("bounded voice identity");
+		let session =
+			EntityId::new(agent_surface::unique_command()).expect("bounded voice identity");
 
 		self.voice = Some(VoiceUi {
 			options,
@@ -622,7 +635,7 @@ impl AgentSurface {
 					.text_size(px(12.))
 					.child(div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
-					.hover(|d| d.bg(rgba(HOVER_FILL)))
+					.hover(|d| d.bg(agent_surface::rgba(HOVER_FILL)))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
@@ -669,7 +682,7 @@ impl AgentSurface {
 						.w(px(3.))
 						.h(px(height))
 						.rounded_full()
-						.bg(rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
+						.bg(agent_surface::rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
 				}))
 				.into_any_element(),
 		)
@@ -692,7 +705,7 @@ impl AgentSurface {
 				.items_center()
 				.gap(px(8.))
 				.text_size(px(11.))
-				.text_color(rgb(TEXT_MUTED))
+				.text_color(agent_surface::rgb(TEXT_MUTED))
 				.child(
 					div()
 						.id("voice-status")
@@ -817,7 +830,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.children(captions.into_iter().enumerate().map(|(i, caption)| {
-					history_entry(&decodex_protocol::AgentHistoryEntryDto {
+					agent_surface::history_entry(&decodex_protocol::AgentHistoryEntryDto {
 						native_source: None,
 						turn_id: None,
 						weather: Vec::new(),
@@ -1051,9 +1064,20 @@ fn bound_caption(caption: &mut Caption) {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::voice::*;
+	#[cfg(test)] use gpui::AppContext as _;
+	use gpui::{EntityInputHandler as _, Focusable as _, ParentElement};
+	use raw_window_handle as _;
 
-	use gpui::{EntityInputHandler as _, Focusable as _};
+	#[cfg(any(all(target_os = "macos", not(test)), any(not(target_os = "macos"), test)))]
+	use crate::shell::agent_surface::voice::Media;
+	#[cfg(test)] use crate::shell::agent_surface::voice::{Entity, Render};
+	use crate::shell::agent_surface::{
+		voice,
+		voice::{
+			AgentHistoryResult, AgentSurface, AgentVoicePhase, AgentVoiceRequest, Caption, Context,
+			EntityId, IntoElement, VoiceUi, Window,
+		},
+	};
 
 	struct VoiceComposerView(Entity<AgentSurface>);
 
@@ -1067,7 +1091,7 @@ mod tests {
 
 	impl Render for VoiceToolbarView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |s, cx| div().children(s.voice_toolbar(cx)))
+			self.0.update(cx, |s, cx| voice::div().children(s.voice_toolbar(cx)))
 		}
 	}
 
@@ -1076,12 +1100,12 @@ mod tests {
 		let mut captions = Vec::new();
 
 		for event in [
-			json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
-			json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
-			json!({"type":"turn.delta","turn_id":"u","delta":" world"}),
-			json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
+			voice::json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
+			voice::json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
+			voice::json!({"type":"turn.delta","turn_id":"u","delta":" world"}),
+			voice::json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
 		] {
-			update_caption(&event, &mut captions);
+			voice::update_caption(&event, &mut captions);
 		}
 
 		assert_eq!(
@@ -1089,8 +1113,8 @@ mod tests {
 			vec![("user", "Hello, world!"), ("assistant", "Hi")]
 		);
 
-		update_caption(
-			&json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
+		voice::update_caption(
+			&voice::json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
 			&mut captions,
 		);
 
@@ -1103,14 +1127,14 @@ mod tests {
 		let mut captions = Vec::new();
 
 		for event in [
-			json!({"type":"input_transcript.added","item":{"text":"hello"}}),
-			json!({"type":"output_transcript.added","item":{"text":"reply"}}),
-			json!({"type":"input_transcript.added","item":{"text":" world"}}),
-			json!({"type":"turn.done","turn":{"role":"user","transcript":"Hello, world!"}}),
-			json!({"type":"turn.done","turn":{"id":"late-id","role":"assistant","transcript":"Reply."}}),
-			json!({"type":"turn.done","turn":{"id":"final-only","role":"user","transcript":"Another sentence."}}),
+			voice::json!({"type":"input_transcript.added","item":{"text":"hello"}}),
+			voice::json!({"type":"output_transcript.added","item":{"text":"reply"}}),
+			voice::json!({"type":"input_transcript.added","item":{"text":" world"}}),
+			voice::json!({"type":"turn.done","turn":{"role":"user","transcript":"Hello, world!"}}),
+			voice::json!({"type":"turn.done","turn":{"id":"late-id","role":"assistant","transcript":"Reply."}}),
+			voice::json!({"type":"turn.done","turn":{"id":"final-only","role":"user","transcript":"Another sentence."}}),
 		] {
-			update_caption(&event, &mut captions);
+			voice::update_caption(&event, &mut captions);
 		}
 
 		assert_eq!(
@@ -1122,20 +1146,20 @@ mod tests {
 			]
 		);
 
-		update_caption(
-			&json!({"type":"input_transcript.added","item":{"text":"discard"}}),
+		voice::update_caption(
+			&voice::json!({"type":"input_transcript.added","item":{"text":"discard"}}),
 			&mut captions,
 		);
-		update_caption(
-			&json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
+		voice::update_caption(
+			&voice::json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
 			&mut captions,
 		);
 
 		assert_eq!(captions.len(), 4);
 		assert!(captions[3].text.is_empty() && captions[3].complete);
 
-		update_caption(
-			&json!({"type":"input_transcript.added","item":{"text":"界".repeat(12_000)}}),
+		voice::update_caption(
+			&voice::json!({"type":"input_transcript.added","item":{"text":"界".repeat(12_000)}}),
 			&mut captions,
 		);
 
@@ -1151,14 +1175,14 @@ mod tests {
 			let mut captions = Vec::new();
 
 			if finalized {
-				update_caption(
-					&json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
+				voice::update_caption(
+					&voice::json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
 					&mut captions,
 				);
 			} else {
 				for text in [&*prefix, suffix] {
-					update_caption(
-						&json!({"type":"input_transcript.added","item":{"text":text}}),
+					voice::update_caption(
+						&voice::json!({"type":"input_transcript.added","item":{"text":text}}),
 						&mut captions,
 					);
 				}
@@ -1176,19 +1200,19 @@ mod tests {
 	fn retiring_media_reads_queued_corrections_before_finalizing_captions() {
 		let mut captions = Vec::new();
 
-		update_caption(
-			&json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
+		voice::update_caption(
+			&voice::json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
 			&mut captions,
 		);
 
 		let mut pending = std::collections::VecDeque::from([
-			json!({"type":"level","level":0.2}),
-			json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
-			json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
-			json!({"type":"ended"}),
+			voice::json!({"type":"level","level":0.2}),
+			voice::json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
+			voice::json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
+			voice::json!({"type":"ended"}),
 		]);
 
-		drain_caption_events(&mut captions, || pending.pop_front());
+		voice::drain_caption_events(&mut captions, || pending.pop_front());
 
 		assert!(pending.is_empty());
 		assert_eq!(
@@ -1198,10 +1222,10 @@ mod tests {
 
 		let mut polled = 0;
 
-		drain_caption_events(&mut captions, || {
+		voice::drain_caption_events(&mut captions, || {
 			polled += 1;
 
-			Some(json!({"type":"level"}))
+			Some(voice::json!({"type":"level"}))
 		});
 
 		assert_eq!(polled, 128, "Retirement must not wait for an ongoing producer");
@@ -1375,7 +1399,7 @@ mod tests {
 
 		for width in [320., 800.] {
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(width), px(400.)));
+				window.resize(gpui::size(voice::px(width), voice::px(400.)));
 				window.focus(&input.focus_handle(cx), cx);
 				window.draw(cx).clear();
 			});
@@ -1386,9 +1410,9 @@ mod tests {
 						.bounds_for_range(0..5, Default::default(), window, cx)
 						.expect("the visible draft must have text layout");
 
-					assert!(text.size.width > px(0.) && text.size.height > px(0.));
-					assert!(text.origin.x >= px(0.) && text.origin.y >= px(0.));
-					assert!(text.origin.x + text.size.width <= px(width));
+					assert!(text.size.width > voice::px(0.) && text.size.height > voice::px(0.));
+					assert!(text.origin.x >= voice::px(0.) && text.origin.y >= voice::px(0.));
+					assert!(text.origin.x + text.size.width <= voice::px(width));
 				});
 			});
 		}

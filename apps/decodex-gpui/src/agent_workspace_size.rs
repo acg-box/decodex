@@ -6,7 +6,13 @@ use gpui::{
 
 use crate::{
 	panel_preferences::PanelDefaults,
-	shell::{WINDOW_CONTROLS_CLEARANCE, agent_surface::*},
+	shell::{
+		WINDOW_CONTROLS_CLEARANCE, agent_surface,
+		agent_surface::{
+			AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
+			StatefulInteractiveElement, Styled, Window, graph, px,
+		},
+	},
 	ui_motion,
 };
 
@@ -137,19 +143,19 @@ impl AgentSurface {
 			cx,
 		);
 
-		div()
+		agent_surface::div()
 			.flex_none()
 			.w(px(width * fraction))
 			.h_full()
 			.overflow_hidden()
 			.id("left-panel-slot")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Left)))
-			.child(div().w(px(width)).h_full().child(self.workspace_sidebar(cx)))
+			.child(agent_surface::div().w(px(width)).h_full().child(self.workspace_sidebar(cx)))
 			.into_any_element()
 	}
 
 	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
+		agent_surface::div()
 			.id("agent-sidebar-resize")
 			.absolute()
 			.right_0()
@@ -160,7 +166,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.role(Role::Slider)
 			.aria_label("Sidebar width. Drag or use Left and Right. Double-click to reset.")
-			.hover(|s| s.bg(rgba(0xffffff18)))
+			.hover(|s| s.bg(agent_surface::rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -195,7 +201,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-		div()
+		agent_surface::div()
 			.id("agent-workspace")
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
 				let Some((start, width)) = s.sidebar_drag else {
@@ -237,12 +243,13 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::workspace_size::*;
+
+	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
 	#[gpui::test]
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.0), px(900.0)));
+		visual.simulate_resize(gpui::size(workspace_size::px(1_400.0), workspace_size::px(900.0)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -254,7 +261,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		let point = |x| gpui::point(px(x), px(300.0));
+		let point = |x| gpui::point(workspace_size::px(x), workspace_size::px(300.0));
 
 		visual.simulate_mouse_down(point(189.0), MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(point(269.0), MouseButton::Left, Default::default());
@@ -274,7 +281,7 @@ mod tests {
 	fn panel_shortcuts_resize_only_the_selected_visible_panels(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.0), px(900.0)));
+		visual.simulate_resize(gpui::size(workspace_size::px(1_400.0), workspace_size::px(900.0)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
@@ -327,7 +334,7 @@ mod tests {
 	fn graph_panel_respects_manual_height_and_available_space(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_200.), px(900.)));
+		visual.simulate_resize(gpui::size(workspace_size::px(1_200.), workspace_size::px(900.)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
@@ -362,7 +369,7 @@ mod tests {
 			});
 		});
 
-		visual.simulate_resize(gpui::size(px(1_200.), px(300.)));
+		visual.simulate_resize(gpui::size(workspace_size::px(1_200.), workspace_size::px(300.)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, _| {
@@ -378,9 +385,9 @@ mod tests {
 	}
 	#[test]
 	fn sidebar_limits_preserve_main_space() {
-		assert_eq!(sidebar_width(80.0, 1_200.0), 160.0);
-		assert_eq!(sidebar_width(500.0, 1_200.0), 480.0);
-		assert_eq!(sidebar_width(300.0, 800.0), 200.0);
-		assert_eq!(sidebar_width(256.0, 1_200.0), 256.0);
+		assert_eq!(workspace_size::sidebar_width(80.0, 1_200.0), 160.0);
+		assert_eq!(workspace_size::sidebar_width(500.0, 1_200.0), 480.0);
+		assert_eq!(workspace_size::sidebar_width(300.0, 800.0), 200.0);
+		assert_eq!(workspace_size::sidebar_width(256.0, 1_200.0), 256.0);
 	}
 }

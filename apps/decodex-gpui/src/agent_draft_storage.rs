@@ -8,9 +8,16 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use execution_intent::Intents;
-
-use crate::shell::agent_surface::drafts::*;
+#[cfg(test)]
+use crate::shell::agent_surface::drafts::{
+	AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
+	ConversationWorkingDirectory, Entity, IdempotencyKey, IntoElement, LoadState, Render, Window,
+	px,
+};
+use crate::shell::agent_surface::drafts::{
+	AgentSurface, BTreeMap, ClientProfile, Context, Drafts, EntityId, PendingCommand, Task,
+	WireText, execution_intent::Intents,
+};
 use decodex_protocol::{
 	AgentSteerIdentity, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
 	DesktopPendingDraft, DesktopProfileDraft, DesktopPromptEditDraft,
@@ -897,11 +904,23 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::drafts::storage::*;
-
 	use std::os::unix::fs::OpenOptionsExt as _;
 
-	use crate::shell::agent_surface::drafts::tests;
+	#[cfg(test)] use gpui::AppContext as _;
+
+	#[cfg(test)]
+	use crate::shell::agent_surface::drafts::storage::{
+		AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
+		ConversationWorkingDirectory, IdempotencyKey, LoadState,
+	};
+	use crate::shell::agent_surface::drafts::{
+		storage,
+		storage::{
+			AgentSurface, ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, Drafts,
+			Duration, EntityId, PendingCommand, SaveFailure, Storage, WireText,
+		},
+		tests,
+	};
 
 	#[test]
 	fn unconfirmed_publication_requires_a_successful_save_before_acknowledgement() {
@@ -912,7 +931,7 @@ mod tests {
 		let bytes = DesktopDraftDocument::default().encode().unwrap();
 		let observed_revision = store.save(0, &bytes).unwrap();
 		// Model a completed rename followed by a failed parent-directory sync.
-		let acknowledged = confirm_unconfirmed_publication(&store, &bytes)
+		let acknowledged = storage::confirm_unconfirmed_publication(&store, &bytes)
 			.unwrap_or_else(|_| panic!("confirm through a fresh durable publication"));
 
 		assert!(
@@ -942,7 +961,10 @@ mod tests {
 		lock.try_lock().unwrap();
 
 		assert!(
-			matches!(confirm_unconfirmed_publication(&store, &bytes), Err(SaveFailure::Busy)),
+			matches!(
+				storage::confirm_unconfirmed_publication(&store, &bytes),
+				Err(SaveFailure::Busy)
+			),
 			"matching bytes do not bypass a competing writer"
 		);
 		assert_eq!(store.load().unwrap().revision, revision);
@@ -953,7 +975,7 @@ mod tests {
 		let newer = store.save(revision, other).unwrap();
 
 		assert!(matches!(
-			confirm_unconfirmed_publication(&store, &bytes),
+			storage::confirm_unconfirmed_publication(&store, &bytes),
 			Err(SaveFailure::Failed)
 		));
 		assert_eq!(store.load().unwrap().revision, newer);
@@ -1204,7 +1226,7 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("Later unsent edit", cx));
 			s.remember_draft_document(cx);
 
-			publish_document(&store, 0, &s.draft_profiles.storage.document)
+			storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 				.unwrap_or_else(|_| panic!("saved"));
 		});
 
@@ -1826,10 +1848,21 @@ mod tests {
 mod creation_tests;
 #[cfg(test)]
 mod ordinary_owner_tests {
+	#[cfg(test)] use gpui::AppContext as _;
+
 	use crate::{
 		client_lifecycle::ConnectionView,
 		conversations::{creation_defaults_tests, tests},
-		shell::{Destination, Shell, agent_surface::drafts::storage::*},
+		shell::{
+			Destination, Shell,
+			agent_surface::drafts::{
+				storage,
+				storage::{
+					AgentSurface, ClientDraftStore, DesktopDraftDocument, EntityId, Storage,
+					WireText,
+				},
+			},
+		},
 	};
 
 	#[gpui::test]
@@ -2232,7 +2265,7 @@ mod ordinary_owner_tests {
 					.is_empty()
 			);
 
-			publish_document(&store, 0, &s.draft_profiles.storage.document)
+			storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
 				.unwrap_or_else(|_| panic!("publish"));
 		});
 

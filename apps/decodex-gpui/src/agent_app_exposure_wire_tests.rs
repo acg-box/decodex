@@ -3,13 +3,22 @@
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+#[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::app_exposure::{
+	self, AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	ClientProfile, Entity, Render, Window,
+};
 use crate::shell::agent_surface::{
-	app_exposure::*,
+	app_exposure::{
+		AgentActionDto, AgentSnapshotDto, AgentSurface, Context, EntityId, IntoElement, State,
+		Surface, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -53,7 +62,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 
 	visual.run_until_parked();
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(1_180.), px(2_600.)));
+		w.resize(gpui::size(app_exposure::px(1_180.), app_exposure::px(2_600.)));
 		w.draw(cx).clear();
 	});
 

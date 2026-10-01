@@ -4,7 +4,17 @@ use std::rc::Rc;
 use gpui::{AnyElement, KeyDownEvent};
 use tokio::runtime::Builder;
 
-use crate::{shell::agent_surface::*, ui_loading};
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::{
+			AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
+			IntoElement, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled,
+		},
+	},
+	ui_loading,
+};
 use decodex_protocol::{
 	AgentAppInventory, AgentIntegrationsResult, AgentMcpInventory, AgentPluginInventory,
 };
@@ -90,7 +100,7 @@ impl AgentSurface {
 	pub(super) fn integrations_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let opened = self.integrations.as_ref().filter(|(owner, _)| owner == work);
 		let work_id = work.to_owned();
-		let mut panel = div().flex().flex_col().gap_2().child(integration_button(
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().child(integration_button(
 			"integration-toggle",
 			"Tool status",
 			cx,
@@ -106,8 +116,9 @@ impl AgentSurface {
 		));
 
 		if let Some((_, result)) = opened {
-			panel =
-				panel.child(muted("Configure plugins and connections in Codex for this account."));
+			panel = panel.child(agent_surface::muted(
+				"Configure plugins and connections in Codex for this account.",
+			));
 
 			let refresh = work.to_owned();
 
@@ -143,14 +154,15 @@ impl AgentSurface {
 
 			let text = match result {
 				None => ui_loading::loading("Loading tools and plugins").into_any_element(),
-				Some(result) => div().child(integration_text(result)).into_any_element(),
+				Some(result) =>
+					agent_surface::div().child(integration_text(result)).into_any_element(),
 			};
 
 			panel = panel.child(
-				div()
+				agent_surface::div()
 					.id("integration-status")
 					.debug_selector(|| "integration-status".into())
-					.max_h(px(300.))
+					.max_h(agent_surface::px(300.))
 					.overflow_y_scroll()
 					.child(text),
 			);
@@ -327,7 +339,7 @@ fn integration_button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	div()
+	agent_surface::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
@@ -378,20 +390,26 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::integrations::*;
+	use futures_util::{SinkExt as _, StreamExt as _};
+	#[cfg(test)] use gpui::AppContext as _;
+	use tokio_tungstenite::tungstenite::Message;
+
+	#[cfg(test)] use crate::shell::agent_surface::integrations::AgentSnapshotResult;
+	use crate::shell::agent_surface::{
+		integrations::{
+			self, AgentAppInventory, AgentIntegrationsResult, AgentMcpInventory,
+			AgentPluginInventory, AgentSurface, EntityId,
+		},
+		wire_test_support,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ServerId, ServerMessage,
 	};
 
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
-
-	use crate::shell::agent_surface::wire_test_support;
-
 	#[test]
 	fn incomplete_plugin_discovery_and_mcp_failure_never_render_as_empty_success() {
-		let text = integration_text(&AgentIntegrationsResult::Available {
+		let text = integrations::integration_text(&AgentIntegrationsResult::Available {
 			apps: AgentAppInventory::Unavailable,
 			cwd: "/repo".into(),
 			mcp: AgentMcpInventory::Available {
@@ -439,7 +457,7 @@ mod tests {
 				callable,
 			})
 			.collect();
-		let text = app_inventory_text(&AgentAppInventory::Available { apps });
+		let text = integrations::app_inventory_text(&AgentAppInventory::Available { apps });
 
 		assert!(text.contains("disabled (disabled) — Disabled by effective configuration"));
 		assert!(text.contains("empty (empty) — Enabled; no callable tools reported"));
@@ -450,7 +468,7 @@ mod tests {
 			AgentAppInventory::Unavailable,
 			AgentAppInventory::CapacityExceeded,
 		] {
-			assert!(!app_inventory_text(&state).contains("No installed Apps"));
+			assert!(!integrations::app_inventory_text(&state).contains("No installed Apps"));
 		}
 	}
 

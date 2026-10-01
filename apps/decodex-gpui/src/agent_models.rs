@@ -2,7 +2,16 @@
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{mcp_forms::mcp_button, model_settings, *};
+use crate::shell::agent_surface::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	AgentWorkItemDto, AgentWorkStatusDto, Context, EntityId, IdempotencyKey, InteractiveElement,
+	IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, div, mcp_forms,
+	model_settings, px,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, ClientProfile, Entity, Render, Window, WireText,
+};
 use decodex_protocol::{
 	AgentModelDto, AgentModelOutcome as Outcome, AgentModelSelectionReceipt,
 	AgentModelSelectionState as State, ClientFailure, ConversationModel,
@@ -151,7 +160,8 @@ impl AgentSurface {
 		self.task_models.feedback =
 			if saving { "Saving model selection…" } else { "Reading model settings…" }.into();
 
-		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
+		let key =
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
@@ -246,13 +256,14 @@ impl AgentSurface {
 		}
 
 		let owner = work.id.clone();
-		let mut panel = div().flex().flex_col().gap_2().child("Model").child(mcp_button(
-			"task-models-read".into(),
-			"Review / change model".into(),
-			false,
-			cx,
-			move |s, cx| s.update_task_models(owner.clone(), None, cx),
-		));
+		let mut panel =
+			div().flex().flex_col().gap_2().child("Model").child(mcp_forms::mcp_button(
+				"task-models-read".into(),
+				"Review / change model".into(),
+				false,
+				cx,
+				move |s, cx| s.update_task_models(owner.clone(), None, cx),
+			));
 
 		if self.task_models.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();
@@ -347,7 +358,7 @@ impl AgentSurface {
 		for (index, model) in models.iter().enumerate() {
 			let selected = model.model.clone();
 
-			choices = choices.child(mcp_button(
+			choices = choices.child(mcp_forms::mcp_button(
 				format!("task-model-{index}"),
 				model_settings::model_choice_label(model),
 				false,
@@ -370,7 +381,7 @@ impl AgentSurface {
 				let owner = work.id.clone();
 				let model = selected.model.clone();
 
-				panel = panel.child(mcp_button(
+				panel = panel.child(mcp_forms::mcp_button(
 					"task-model-preserve".into(),
 					"Use model · keep current effort".into(),
 					false,
@@ -390,7 +401,7 @@ impl AgentSurface {
 				let model = selected.model.clone();
 				let effort = effort.clone();
 
-				panel = panel.child(mcp_button(
+				panel = panel.child(mcp_forms::mcp_button(
 					format!("task-model-effort-{index}"),
 					format!("Use model · {} effort", effort.as_str()),
 					false,

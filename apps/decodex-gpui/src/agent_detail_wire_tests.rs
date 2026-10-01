@@ -5,13 +5,22 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+#[cfg(test)] use gpui::AppContext as _;
+use gpui::{ParentElement, TestAppContext};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(test)]
+use crate::shell::agent_surface::detail::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	ClientProfile, Entity, Render, Window,
+};
 use crate::shell::agent_surface::{
-	detail::*,
+	detail::{
+		self, AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentSurface,
+		AgentWorkItemDto, Context, EntityId, IntoElement, WireText,
+	},
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
@@ -40,7 +49,7 @@ impl Render for DetailView {
 					native_timestamp_ms: None,
 					duration_ms: None,
 				},
-				div().child("Patch"),
+				detail::div().child("Patch"),
 				cx,
 			)
 		})
@@ -104,7 +113,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 
 		visual.run_until_parked();
 		visual.update(|w, cx| {
-			w.resize(gpui::size(px(800.), px(600.)));
+			w.resize(gpui::size(detail::px(800.), detail::px(600.)));
 			w.draw(cx).clear();
 		});
 		// Disclosure uses wall-clock animation: measure, begin expansion, then settle.
@@ -123,7 +132,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 		let button =
 			visual.debug_bounds("detail-next-action").expect("manager can continue its full patch");
 
-		assert!(button.size.height > px(0.), "{button:?}");
+		assert!(button.size.height > detail::px(0.), "{button:?}");
 
 		visual.simulate_click(button.center(), Default::default());
 		view.read_with(visual, |v, cx| {
