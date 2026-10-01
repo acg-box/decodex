@@ -6,7 +6,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, ServerEvent,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native audio preparation"]
@@ -20,7 +22,7 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,

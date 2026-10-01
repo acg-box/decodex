@@ -3,7 +3,7 @@ use std::{env, fs, sync::Mutex};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::compaction::*;
+use crate::account_launch::agent_process::{native_tests, native_tests::compaction::*};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and packaged Code Mode helper"]
@@ -24,7 +24,7 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
 		let bodies = Arc::new(Mutex::new(Vec::new()));
-		let backend = tokio::spawn(serve_fixture_usage(
+		let backend = tokio::spawn(native_tests::serve_fixture_usage(
 			listener,
 			Arc::new(AtomicUsize::new(0)),
 			None,

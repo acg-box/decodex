@@ -6,7 +6,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, PNG, ServerEvent, Value,
+};
 
 fn assert_user_content(history: &Value, expected: &Value) {
 	let item = history["thread"]["turns"][0]["items"]
@@ -34,7 +36,7 @@ async fn qualify(omit_media: bool) {
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,

@@ -10,7 +10,9 @@ use tokio::{
 	time,
 };
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, ClientError, Duration, NativeSession, Ordering, Value,
+};
 use decodex_codex::app_server_client::TemporaryStructuredOptions;
 
 #[tokio::test]
@@ -26,7 +28,7 @@ async fn qualify() {
 	let address = listener.local_addr().expect("native temporary fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,
