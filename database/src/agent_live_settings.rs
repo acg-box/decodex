@@ -1,19 +1,18 @@
 //! Non-waking live-turn setting receipts. A reservation is never replay authority.
 //! Persisted live_reviewer event names remain stable so old attempts share the same sequence.
-use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
-#[cfg(test)] use serde_json::Value;
-use serde_json::json;
+use rusqlite::{Connection, Error, OptionalExtension as _, TransactionBehavior, types::Type};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+use crate::{SqliteStore, StoreError, agent_process, error};
+
 /// One explicit live-turn edit. Model and reviewer edits share one reservation sequence.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AgentLiveSettingsEdit {
 	Reviewer { reviewer: String },
 	Model { model: String, effort: String },
 }
-
 impl AgentLiveSettingsEdit {
 	fn valid(&self) -> bool {
 		let bounded = |s: &str, limit| {
@@ -47,18 +46,6 @@ pub struct AgentLiveSettingsReceipt {
 	pub generation_id: Option<String>,
 }
 
-fn latest(
-	connection: &rusqlite::Connection,
-	work: &str,
-	thread: &str,
-	turn: &str,
-) -> Result<Option<AgentLiveSettingsReceipt>, StoreError> {
-	Ok(connection.query_row(
-		"SELECT a.id,COALESCE(json_extract(a.payload,'$.edit'),json_object('kind','reviewer','reviewer',json_extract(a.payload,'$.reviewer'))),COALESCE(r.disposition_note,'reserved'),json_extract(a.payload,'$.generationId') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='live-reviewer-result:'||a.id AND r.work_item_id=a.work_item_id AND r.event_kind='live_reviewer_result' WHERE a.work_item_id=?1 AND a.event_kind='live_reviewer_attempt' AND json_extract(a.payload,'$.threadId')=?2 AND json_extract(a.payload,'$.turnId')=?3 ORDER BY a.id DESC LIMIT 1",
-		params![work,thread,turn], |row| Ok(AgentLiveSettingsReceipt {id:row.get(0)?,edit:serde_json::from_str(&row.get::<_,String>(1)?).map_err(|e|rusqlite::Error::FromSqlConversionFailure(1,rusqlite::types::Type::Text,Box::new(e)))?,outcome:row.get(2)?,generation_id:row.get(3)?})
-	).optional().map_err(sqlite_error)?)
-}
-
 impl SqliteStore {
 	/// Return the latest publication receipt, not the effective native settings.
 	pub async fn agent_live_settings_receipt(
@@ -83,17 +70,17 @@ impl SqliteStore {
 			|| a.previous_id.is_some_and(|id| id <= 0)
 			|| [&a.work_id, &a.thread_id, &a.turn_id, &a.attempt_id]
 				.iter()
-				.any(|v| v.trim().is_empty() || v.len() > 4096 || v.chars().any(char::is_control))
+				.any(|v| v.trim().is_empty() || v.len() > 4_096 || v.chars().any(char::is_control))
 		{
 			return Err(StoreError::InvalidInput("invalid live settings attempt"));
 		}
 
 		self.run(move |connection| {
-			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let live:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2 AND active_turn_id=?3 AND dispatch_state='running')",params![a.work_id,a.thread_id,a.turn_id],|r|r.get(0)).map_err(sqlite_error)?;
+			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let live:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2 AND active_turn_id=?3 AND dispatch_state='running')",rusqlite::params![a.work_id,a.thread_id,a.turn_id],|r|r.get(0)).map_err(error::sqlite_error)?;
 
-			if !live || !owns_work(&tx,&a.work_id,a.generation_id.as_deref())?
-				|| tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1 AND thread_id=?2)",params![a.work_id,a.thread_id],|r|r.get::<_,bool>(0)).map_err(sqlite_error)? {
+			if !live || !agent_process::owns_work(&tx,&a.work_id,a.generation_id.as_deref())?
+				|| tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1 AND thread_id=?2)",rusqlite::params![a.work_id,a.thread_id],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)? {
 				return Err(StoreError::OwnershipLost("live settings target"));
 			}
 
@@ -101,18 +88,18 @@ impl SqliteStore {
 
 			if prior.as_ref().map(|r|r.id)!=a.previous_id || prior.as_ref().is_some_and(|r|r.outcome=="reserved"&&r.generation_id==a.generation_id) {return Ok(None);}
 
-			let identity=json!([a.work_id,a.thread_id,a.turn_id,a.review_token]);
+			let identity=serde_json::json!([a.work_id,a.thread_id,a.turn_id,a.review_token]);
 			let digest:String=Sha256::digest(identity.to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
 			let source=format!("live-reviewer-attempt:{digest}");
 
-			if tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)",[&source],|r|r.get::<_,bool>(0)).map_err(sqlite_error)? {return Ok(None);}
+			if tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)",[&source],|r|r.get::<_,bool>(0)).map_err(error::sqlite_error)? {return Ok(None);}
 
-			let now=unix_micros()?;
-			let payload=json!({"threadId":a.thread_id,"turnId":a.turn_id,"generationId":a.generation_id,"reviewToken":a.review_token,"edit":a.edit,"attemptId":a.attempt_id}).to_string();
+			let now=crate::unix_micros()?;
+			let payload=serde_json::json!({"threadId":a.thread_id,"turnId":a.turn_id,"generationId":a.generation_id,"reviewToken":a.review_token,"edit":a.edit,"attemptId":a.attempt_id}).to_string();
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'live_reviewer_attempt',?3,?4,'resolved','reserved',?4)",params![source,a.work_id,payload,now]).map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'live_reviewer_attempt',?3,?4,'resolved','reserved',?4)",rusqlite::params![source,a.work_id,payload,now]).map_err(error::sqlite_error)?;
 
-			let id=tx.last_insert_rowid();tx.commit().map_err(sqlite_error)?;Ok(Some(id))
+			let id=tx.last_insert_rowid();tx.commit().map_err(error::sqlite_error)?;Ok(Some(id))
 		}).await
 	}
 
@@ -129,15 +116,32 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			Ok(connection.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT 'live-reviewer-result:'||id,work_item_id,'live_reviewer_result',json_set(payload,'$.attemptEventId',id),?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='live_reviewer_attempt' AND json_extract(payload,'$.attemptId')=?2",params![id,attempt,outcome,unix_micros()?]).map(|changed|changed==1).map_err(sqlite_error)?)
+			Ok(connection.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT 'live-reviewer-result:'||id,work_item_id,'live_reviewer_result',json_set(payload,'$.attemptEventId',id),?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='live_reviewer_attempt' AND json_extract(payload,'$.attemptId')=?2",rusqlite::params![id,attempt,outcome,crate::unix_micros()?]).map(|changed|changed==1).map_err(error::sqlite_error)?)
 		}).await
 	}
 }
 
+fn latest(
+	connection: &Connection,
+	work: &str,
+	thread: &str,
+	turn: &str,
+) -> Result<Option<AgentLiveSettingsReceipt>, StoreError> {
+	Ok(connection.query_row(
+		"SELECT a.id,COALESCE(json_extract(a.payload,'$.edit'),json_object('kind','reviewer','reviewer',json_extract(a.payload,'$.reviewer'))),COALESCE(r.disposition_note,'reserved'),json_extract(a.payload,'$.generationId') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='live-reviewer-result:'||a.id AND r.work_item_id=a.work_item_id AND r.event_kind='live_reviewer_result' WHERE a.work_item_id=?1 AND a.event_kind='live_reviewer_attempt' AND json_extract(a.payload,'$.threadId')=?2 AND json_extract(a.payload,'$.turnId')=?3 ORDER BY a.id DESC LIMIT 1",
+		rusqlite::params![work,thread,turn], |row| Ok(AgentLiveSettingsReceipt {id:row.get(0)?,edit:serde_json::from_str(&row.get::<_,String>(1)?).map_err(|e|Error::FromSqlConversionFailure(1,Type::Text,Box::new(e)))?,outcome:row.get(2)?,generation_id:row.get(3)?})
+	).optional().map_err(error::sqlite_error)?)
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+	use rusqlite::Connection;
+	use serde_json::Value;
+
+	use crate::{
+		AgentDispatchState, AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentWorkItem,
+		AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent, SqliteStore, agent_live_settings,
+	};
 
 	fn attempt(token: char, previous_id: Option<i64>) -> AgentLiveSettingsAttempt {
 		AgentLiveSettingsAttempt {
@@ -154,7 +158,7 @@ mod tests {
 
 	#[test]
 	fn legacy_reviewer_payload_remains_readable() {
-		let connection = rusqlite::Connection::open_in_memory().unwrap();
+		let connection = Connection::open_in_memory().unwrap();
 
 		connection.execute_batch("CREATE TABLE agent_inbox_events (id INTEGER,source_event_id TEXT,work_item_id TEXT,event_kind TEXT,payload TEXT,disposition_note TEXT);").unwrap();
 		connection
@@ -166,7 +170,8 @@ mod tests {
 			)
 			.unwrap();
 
-		let receipt = latest(&connection, "work", "thread", "turn").unwrap().unwrap();
+		let receipt =
+			agent_live_settings::latest(&connection, "work", "thread", "turn").unwrap().unwrap();
 
 		assert_eq!(
 			receipt.edit,
@@ -175,12 +180,7 @@ mod tests {
 		assert_eq!(receipt.outcome, "reserved");
 	}
 
-	#[tokio::test]
-	async fn live_reviewer_reservations_survive_crash_and_reject_competing_or_stale_edits() {
-		let dir = tempfile::tempdir().unwrap();
-		let path = dir.path().join("state.sqlite3");
-		let store = SqliteStore::open_test(&path).unwrap();
-
+	async fn prepare_bound_work(store: &SqliteStore) {
 		store
 			.create_agent_work_item(AgentWorkItem {
 				id: "work".into(),
@@ -199,6 +199,15 @@ mod tests {
 			.await
 			.unwrap();
 		store.bind_agent_thread("work".into(), "thread".into()).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn live_reviewer_reservations_survive_crash_and_reject_competing_or_stale_edits() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("state.sqlite3");
+		let store = SqliteStore::open_test(&path).unwrap();
+
+		prepare_bound_work(&store).await;
 
 		assert!(store.reserve_agent_live_settings(attempt('a', None)).await.is_err());
 
@@ -206,11 +215,11 @@ mod tests {
 		store.acknowledge_agent_dispatch("work".into(), "turn".into()).await.unwrap();
 
 		let visible = store
-			.record_agent_observation(crate::EnqueueAgentEvent {
+			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: "visible-message".into(),
 				work_item_id: "work".into(),
 				event_kind: "assistant_message".into(),
-				payload: json!({"item":{"text":"Visible message"}}).to_string(),
+				payload: serde_json::json!({"item":{"text":"Visible message"}}).to_string(),
 			})
 			.await
 			.unwrap();
