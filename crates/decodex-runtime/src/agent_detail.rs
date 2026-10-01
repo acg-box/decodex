@@ -40,11 +40,8 @@ pub(crate) async fn read(
 	turn: &str,
 	item: &str,
 ) -> AgentActivityDetailResult {
-	let result = tokio::time::timeout(
-		std::time::Duration::from_secs(8),
-		client.thread_read_turn(thread, turn),
-	)
-	.await;
+	let result =
+		tokio::time::timeout(Duration::from_secs(8), client.thread_read_turn(thread, turn)).await;
 	let Ok(Ok(history)) = result else {
 		return AgentActivityDetailResult::Unavailable;
 	};

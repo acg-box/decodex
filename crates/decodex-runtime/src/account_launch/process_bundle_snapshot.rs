@@ -1,7 +1,6 @@
 //! Preserve the signed bundle context of a CLI image during static attestation.
 
 #[cfg(target_os = "macos")] use std::os::unix::fs::OpenOptionsExt as _;
-#[cfg(test)] use std::os::unix::fs::PermissionsExt as _;
 
 #[cfg(target_os = "macos")] use crate::account_launch::process::OpenOptions;
 #[cfg(target_os = "macos")]
@@ -111,16 +110,21 @@ fn copy_context(
 
 #[cfg(test)]
 mod tests {
-	use crate::account_launch::process::bundle_snapshot::*;
-
 	use std::env;
+	#[cfg(test)] use std::os::unix::fs::PermissionsExt as _;
+
+	#[cfg(test)] use crate::account_launch::process::bundle_snapshot::{self, Command, TempDir};
+	#[cfg(all(target_os = "macos", test))]
+	use crate::account_launch::process::bundle_snapshot::{AttestedCodeIdentity, Permissions};
+	use crate::account_launch::process::bundle_snapshot::{PathBuf, SupervisionError, fs};
 
 	#[test]
 	#[ignore = "requires DECODEX_TEST_CODEX_BINARY; installed signed CLI bundle"]
 	fn installed_cli_bundle_has_an_exact_valid_snapshot_identity() {
 		let image =
 			PathBuf::from(env::var_os("DECODEX_TEST_CODEX_BINARY").expect("installed binary"));
-		let (snapshot, _) = capture_executable_snapshot(&image).expect("capture installed bundle");
+		let (snapshot, _) =
+			bundle_snapshot::capture_executable_snapshot(&image).expect("capture installed bundle");
 
 		AttestedCodeIdentity::capture(&snapshot.execution_path(), &image)
 			.expect("validate installed bundle identity");
@@ -153,7 +157,7 @@ mod tests {
 				.success()
 		);
 
-		let (snapshot, digest) = capture_executable_snapshot(&image).unwrap();
+		let (snapshot, digest) = bundle_snapshot::capture_executable_snapshot(&image).unwrap();
 
 		assert_eq!(snapshot.digest().unwrap(), digest);
 
@@ -181,7 +185,7 @@ mod tests {
 		std::os::unix::fs::symlink("/etc/hosts", bundle.join("escaped-resource")).unwrap();
 
 		assert!(matches!(
-			capture_executable_snapshot(&image),
+			bundle_snapshot::capture_executable_snapshot(&image),
 			Err(SupervisionError::ExecutableUnavailable)
 		));
 	}

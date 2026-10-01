@@ -9,7 +9,9 @@ use tokio::{
 	time,
 };
 
-use crate::account_launch::process::refresh_tests::*;
+use crate::account_launch::process::refresh_tests::{
+	self, AccountBinding, Arc, Duration, Mutex, Ordering, PROVIDER, Path, Value, serde_json, str,
+};
 use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent};
 
 fn token(serial: u8) -> String {
@@ -70,9 +72,13 @@ async fn turn(
 
 				let RequestId::Number(number) = id else { panic!("native callback numeric id") };
 				let request = serde_json::json!({"id":number,"method":method,"params":params});
-				let response =
-					handle(binding, u64::try_from(number).expect("callback id"), &method, &request)
-						.expect("production callback");
+				let response = refresh_tests::handle(
+					binding,
+					u64::try_from(number).expect("callback id"),
+					&method,
+					&request,
+				)
+				.expect("production callback");
 				let response: Value = serde_json::from_slice(&response).expect("callback frame");
 
 				if let Some(result) = response.get("result") {
@@ -133,7 +139,7 @@ async fn qualify(fail: bool) {
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"routing\"\ncli_auth_credentials_store=\"file\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.routing]\nname=\"OpenAI\"\nbase_url=\"http://{address}/v1\"\nrequires_openai_auth=true\nsupports_websockets=false\nrequest_max_retries=0\nstream_max_retries=0\n")).expect("fixture config");
 
-	let (binding, calls) = binding(&refreshed, PROVIDER, fail);
+	let (binding, calls) = refresh_tests::binding(&refreshed, PROVIDER, fail);
 	let (client, mut events, mut child) = start(&binary, home.path()).await;
 
 	login(&client, &initial).await;
