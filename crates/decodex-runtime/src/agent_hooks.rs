@@ -1,25 +1,32 @@
 //! Shared hook edits with exact native review, durable receipts and no replay.
-use crate::agent_usage_estimate::Source;
+use std::{future::Future, time::Duration};
 
+use serde_json::{self, Value};
+use sha2::{Digest as _, Sha256};
+use tokio::time;
+
+use crate::{
+	agent_config_settings,
+	agent_host::AgentHostError::{self, Rejected, Unknown},
+	agent_usage_estimate::Source,
+	native_config_warning,
+};
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, HookSettingsChange, HookSettingsReview, HookSettingsWrite,
 };
-
-use decodex_database::{AgentConfigOwner, AgentHookAttempt, AgentHookReceipt, SqliteStore};
-
-use decodex_protocol::{AgentHookDto, AgentHookEditReceipt, EntityId, WireText};
-
-use serde_json::{self, Value};
-
-use sha2::{Digest as _, Sha256};
-
-use crate::agent_host::AgentHostError::{Rejected, Unknown};
+use decodex_database::{
+	AgentConfigOwner, AgentConfigReceipt, AgentHookAttempt, AgentHookReceipt, AgentWorkStatus,
+	SqliteStore,
+};
+use decodex_protocol::{
+	AgentHookChange, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState, EntityId, WireText,
+};
 
 pub(crate) struct Selection<'a> {
 	pub thread: &'a str,
 	pub review: &'a str,
 	pub hook: &'a str,
-	pub change: decodex_protocol::AgentHookChange,
+	pub change: AgentHookChange,
 	pub attempt_id: &'a str,
 }
 
@@ -28,42 +35,36 @@ struct Review {
 	guard: HistoryGuard,
 	scope: String,
 	prior: Option<AgentHookReceipt>,
-	state: decodex_protocol::AgentHookSettingsState,
+	state: AgentHookSettingsState,
 }
 
-pub(crate) async fn read<F, Fut>(
-	store: &SqliteStore,
-	source: F,
-) -> decodex_protocol::AgentHookSettingsState
+pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> AgentHookSettingsState
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
+	time::timeout(Duration::from_secs(35), inspect(store, &source))
 		.await
 		.ok()
 		.flatten()
-		.map_or(decodex_protocol::AgentHookSettingsState::Unavailable, |(_, review)| review.state)
+		.map_or(AgentHookSettingsState::Unavailable, |(_, review)| review.state)
 }
 
 pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
 	source: F,
 	selection: Selection<'_>,
-) -> Result<(), crate::agent_host::AgentHostError>
+) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	let (before, review) =
-		tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
-			.await
-			.ok()
-			.flatten()
-			.ok_or(Rejected("Current hook settings are unavailable."))?;
-	let decodex_protocol::AgentHookSettingsState::Available {
-		review_token, can_update: true, ..
-	} = &review.state
+	let (before, review) = time::timeout(Duration::from_secs(35), inspect(store, &source))
+		.await
+		.ok()
+		.flatten()
+		.ok_or(Rejected("Current hook settings are unavailable."))?;
+	let AgentHookSettingsState::Available { review_token, can_update: true, .. } = &review.state
 	else {
 		return Err(Rejected("A shared hook edit remains unconfirmed."));
 	};
@@ -73,8 +74,8 @@ where
 	}
 
 	let change = match selection.change {
-		decodex_protocol::AgentHookChange::Trust => HookSettingsChange::Trust,
-		decodex_protocol::AgentHookChange::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
+		AgentHookChange::Trust => HookSettingsChange::Trust,
+		AgentHookChange::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
 	};
 	let params = review
 		.native
@@ -118,7 +119,7 @@ where
 	if source().await.is_some_and(|after| after.key == before.key)
 		&& let Err(error) = &response
 	{
-		crate::native_config_warning::record_settings_error(
+		native_config_warning::record_settings_error(
 			store,
 			&before,
 			"Settings write or readback failed",
@@ -170,10 +171,10 @@ fn owner(source: &Source) -> AgentConfigOwner {
 	}
 }
 
-fn field(change: decodex_protocol::AgentHookChange) -> &'static str {
+fn field(change: AgentHookChange) -> &'static str {
 	match change {
-		decodex_protocol::AgentHookChange::Trust => "trusted_hash",
-		decodex_protocol::AgentHookChange::Enabled(_) => "enabled",
+		AgentHookChange::Trust => "trusted_hash",
+		AgentHookChange::Enabled(_) => "enabled",
 	}
 }
 
@@ -199,7 +200,7 @@ fn project_hook(h: &Value, native: &HookSettingsReview) -> Option<AgentHookDto> 
 async fn inspect<F, Fut>(store: &SqliteStore, source: &F) -> Option<(Source, Review)>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let before = source().await?;
 	let k = &before.key;
@@ -229,7 +230,7 @@ where
 	if source().await.is_some_and(|after| after.key == before.key)
 		&& let Err(error) = &response
 	{
-		crate::native_config_warning::record_settings_error(
+		native_config_warning::record_settings_error(
 			store,
 			&before,
 			"Hook settings could not be read",
@@ -245,13 +246,13 @@ where
 		return None;
 	}
 
-	crate::agent_config_settings::reconcile(store, &before, cwd, &scope).await;
+	agent_config_settings::reconcile(store, &before, cwd, &scope).await;
 
 	let shared = store.agent_config_receipt(scope.clone()).await.ok()?;
 	let prior = store.agent_hook_receipt(scope.clone()).await.ok()?;
 	let work = store.get_agent_work_item(k.work.clone()).await.ok()?;
-	let can_update = work.status != decodex_database::AgentWorkStatus::Resolved
-		&& !shared.as_ref().is_some_and(crate::agent_config_settings::pending);
+	let can_update = work.status != AgentWorkStatus::Resolved
+		&& !shared.as_ref().is_some_and(agent_config_settings::pending);
 	// Consent follows native config and content, not a temporary task-settings guard lifetime.
 	let token = digest(
 		&serde_json::json!([
@@ -265,7 +266,7 @@ where
 			native.config_version(),
 			native.inventory,
 			prior.as_ref().map(|r| (r.id, &r.state)),
-			shared.as_ref().map(crate::agent_config_settings::project),
+			shared.as_ref().map(agent_config_settings::project),
 			can_update
 		])
 		.to_string(),
@@ -281,8 +282,8 @@ where
 		.map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))
 		.collect();
 
-	if let Some(decodex_database::AgentConfigReceipt::App(_)) = &shared {
-		let receipt = crate::agent_config_settings::project(shared.as_ref()?);
+	if let Some(AgentConfigReceipt::App(_)) = &shared {
+		let receipt = agent_config_settings::project(shared.as_ref()?);
 
 		notices.push(format!(
 			"Shared configuration: {} — {}. Original task: {}; Codex account: {}.",
@@ -299,7 +300,7 @@ where
 		}),
 		None => None,
 	};
-	let state = decodex_protocol::AgentHookSettingsState::Available {
+	let state = AgentHookSettingsState::Available {
 		work_id: EntityId::new(k.work.clone()).ok()?,
 		thread_id: EntityId::new(k.thread.clone()).ok()?,
 		review_token: WireText::new(token).ok()?,
