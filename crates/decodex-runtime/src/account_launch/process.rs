@@ -247,422 +247,6 @@ pub(crate) struct AccountBinding {
 	refresh_callback: Option<Arc<dyn AccountRefreshCallback>>,
 	personal_access_token: Option<Zeroizing<String>>,
 }
-
-/// Daemon-lifetime observed Codex capability evidence shared by account-scoped launches.
-///
-/// Startup constructs this profile once from one immutable executable snapshot and one generated
-/// schema preflight. Each account launch still verifies the canonical executable, binds the exact
-/// account credential revision, and uses suspended dynamic code-identity attestation before user
-/// code can run.
-#[derive(Clone)]
-pub(crate) struct AttestedAppServerProfile {
-	command: AppServerCommand,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	capability: ExactBuildLaunchCapability,
-}
-
-/// One non-forgeable account-bound app-server launch.
-///
-/// It retains the protected executable snapshot and derives the durable launch-manifest identity
-/// from the same verified executable, command, arguments, working directory, environment, account,
-/// and runtime capability that it later spawns. No mutable [`Command`] or caller-supplied runner
-/// digest crosses the ProcessSupervisor boundary.
-pub(crate) struct AttestedAppServerLaunch {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	runner_identity: ProcessRunnerIdentity,
-	capability: ExactBuildLaunchCapability,
-	timeout: Duration,
-	guard: RunnerPermit,
-	conversation_pre_spawn_check: Option<Arc<dyn ConversationPreSpawnCheck>>,
-}
-
-/// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
-pub(crate) struct AttestedProcessChild {
-	process: SupervisedProcess,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	timeout: Duration,
-	initialized: bool,
-}
-
-/// Exact request facts reserved before a RuntimeSession thread-start fence.
-pub(crate) struct PreparedThreadStart {
-	request: ConversationThreadStartRequest,
-	wire: PreparedConversationRequest,
-}
-
-/// Successful durable thread establishment ready for the exact bind command.
-pub(crate) struct EstablishedOrdinaryThread {
-	pub(crate) settings: decodex_database::ConversationNativeSettings,
-	pub(crate) codex_thread_id: String,
-	pub(crate) binding: BindRuntimeSessionThread,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Successful exact-thread resume facts ready for one affine runtime proof.
-pub(crate) struct ResumedOrdinaryThread {
-	pub(crate) settings: decodex_database::ConversationNativeSettings,
-	pub(crate) codex_thread_id: String,
-	pub(crate) request_id: i64,
-	pub(crate) request_sha256: String,
-	pub(crate) response_id: i64,
-	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
-pub(crate) struct PreparedTurnStart {
-	attempt_id: ProviderAttemptId,
-	wire: PreparedConversationRequest,
-}
-
-/// Successful `turn/start` response plus notifications observed before that response.
-pub(crate) struct StartedOrdinaryTurn {
-	pub(crate) turn_id: String,
-	pub(crate) status: decodex_codex::ConversationTurnStatus,
-	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Exact active-account identity retained only in zeroizing, redacted process memory.
-#[derive(Clone, Eq, PartialEq)]
-pub(crate) struct AccountIdentity {
-	kind: Zeroizing<String>,
-	email: Option<Zeroizing<String>>,
-	requires_openai_auth: bool,
-}
-
-/// Single-use process-scoped credential sink owned by the Codex adapter.
-pub(crate) struct CredentialProjection<'a> {
-	process: &'a mut SupervisedProcess,
-	timeout: Duration,
-	used: bool,
-}
-
-/// Exact executable contract for one supervised app-server build.
-#[derive(Clone)]
-pub(super) struct AppServerCommand {
-	program: PathBuf,
-	executable: Arc<ExecutableSnapshot>,
-	executable_digest: [u8; 32],
-	#[cfg(target_os = "macos")]
-	attested_code_identity: Option<AttestedCodeIdentity>,
-	app_server_args: Vec<OsString>,
-	version_args: Vec<OsString>,
-	schema_args: Vec<OsString>,
-	working_directory: PathBuf,
-	#[cfg(test)]
-	preflight_cleanup_test: Option<PreflightCleanupTest>,
-	#[cfg(test)]
-	before_spawn_test: Option<BeforeSpawnTest>,
-	#[cfg(test)]
-	after_verification_test: Option<BeforeSpawnTest>,
-	#[cfg(all(test, target_os = "macos"))]
-	test_spawn_path: Option<PathBuf>,
-}
-
-/// Default host-vault boundary until an operator supplies a concrete local vault.
-/// It never reads ambient credentials and always keeps runner creation unavailable.
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct UnavailableCredentialVault;
-
-pub(super) struct StdoutPump {
-	cancelled: Arc<AtomicBool>,
-	done: Receiver<()>,
-	thread: Option<JoinHandle<()>>,
-}
-
-/// Owned app-server child and its immutable account authority.
-pub(super) struct SupervisedProcess {
-	owner: ProcessGroupOwner,
-	stdin: Box<dyn Write + Send>,
-	stdout: Receiver<InboundFrame>,
-	protocol_limit_exceeded: Arc<AtomicBool>,
-	binding: AccountBinding,
-	#[cfg(test)]
-	command: AppServerCommand,
-	expected_account_identity: Option<AccountIdentity>,
-	next_request_id: u64,
-	abandoned_request_ids: BTreeSet<u64>,
-	agent_retained: bool,
-	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
-	config_warnings: Vec<serde_json::Value>,
-	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
-}
-
-/// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ReadOnlyProbeResult {
-	/// Exact-build negotiated capability profile.
-	pub profile: CapabilityProfile,
-	/// Redacted bounded thread summaries.
-	pub threads: Vec<ThreadSummary>,
-	/// Exact non-secret account selected before the child was spawned.
-	pub account_id: AccountId,
-	/// Exact OS process identity that produced the account readback.
-	pub process_id: u32,
-}
-
-/// Fake/live probe that cannot construct a turn or account-selection request.
-pub(super) struct ReadOnlyProbe {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	timeout: Duration,
-	#[cfg(test)]
-	attestation_timeout_override: Option<Duration>,
-}
-
-/// Private account-bound exact reconciliation configuration.
-///
-/// This is deliberately separate from [`ReadOnlyProbe`]: archive is never part of capability-probe
-/// execution, and no public caller can construct or dispatch this owner.
-pub(super) struct ExactThreadReconciler {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	timeout: Duration,
-}
-
-#[derive(Serialize)]
-pub(super) struct OutboundRequest<'a, P>
-where
-	P: ?Sized,
-{
-	id: u64,
-	method: &'static str,
-	params: &'a P,
-}
-
-#[derive(Serialize)]
-pub(super) struct OutboundNotification<'a, P>
-where
-	P: ?Sized,
-{
-	method: &'a str,
-	params: &'a P,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ChatgptAuthParams<'a> {
-	#[serde(rename = "type")]
-	kind: &'static str,
-	access_token: &'a str,
-	chatgpt_account_id: &'a str,
-	chatgpt_plan_type: Option<&'a str>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CredentialProjectionResponse {
-	#[serde(rename = "type")]
-	_kind: CredentialProjectionResponseKind,
-}
-
-#[derive(Deserialize)]
-pub(super) struct InboundHeader {
-	id: Option<u64>,
-	method: Option<String>,
-}
-
-#[cfg(test)]
-#[derive(Clone)]
-pub(super) struct PreflightCleanupTest {
-	trigger_spawn: u32,
-	spawn_count: Arc<AtomicU32>,
-	process_group: Arc<AtomicU32>,
-	reaper_delay: Duration,
-	quarantine: Arc<ProcessQuarantine>,
-}
-
-pub(super) struct ProbeNegotiation<'a> {
-	cache: &'a mut CapabilityCache,
-	build: &'a BuildId,
-	generated: &'a GeneratedSchemaEvidence,
-	observations: Vec<MethodObservation>,
-}
-
-pub(super) struct ReapJob {
-	child: ManagedChild,
-	process_group: u32,
-	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
-	may_signal_process_group: bool,
-	pump: Option<StdoutPump>,
-	_guard: Option<RunnerPermit>,
-	#[cfg(test)]
-	not_before: Option<Instant>,
-}
-
-pub(super) struct ProcessGroupOwner {
-	child: Option<ManagedChild>,
-	process_group: u32,
-	// This authority is monotonic: no observation can restore it after reap or wait failure.
-	may_signal_process_group: bool,
-	guard: Option<RunnerPermit>,
-	pump: Option<StdoutPump>,
-	#[cfg(test)]
-	reap_not_before: Option<Instant>,
-}
-
-/// One fixed allocation that explicitly wipes its complete contents before release.
-pub(super) struct ZeroizingInboundBlock {
-	bytes: Box<[u8]>,
-}
-
-/// Chunked inbound frame. Secret-bearing allocations never grow or reallocate.
-pub(super) struct InboundFrame {
-	blocks: Vec<ZeroizingInboundBlock>,
-	len: usize,
-}
-
-pub(super) struct QuarantineSlotLease {
-	state: Arc<ProcessQuarantineState>,
-	index: usize,
-	installed: bool,
-}
-
-pub(super) struct QuarantineSlot {
-	state: AtomicU8,
-	job: UnsafeCell<MaybeUninit<ReapJob>>,
-}
-
-pub(super) struct ProcessQuarantine {
-	state: Arc<ProcessQuarantineState>,
-	shutdown: SyncSender<()>,
-	joined: Mutex<Receiver<()>>,
-	worker_id: ThreadId,
-}
-
-struct PreparedConversationRequest {
-	resume_thread_id: Option<String>,
-	request_id: i64,
-	request_sha256: String,
-	frame: ZeroizingOutboundFrame,
-}
-
-struct ConversationWireReceipt {
-	request_id: i64,
-	request_sha256: String,
-	response_id: i64,
-	response_sha256: String,
-}
-
-struct ConversationProcessSuccess<T> {
-	value: T,
-	wire: ConversationWireReceipt,
-	events: Vec<ConversationProcessEvent>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChatgptRefreshRequest {
-	id: u64,
-	method: String,
-	params: ChatgptRefreshParams,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct ChatgptRefreshParams {
-	reason: String,
-	previous_account_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcSuccess<T> {
-	id: u64,
-	result: T,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChatgptRefreshResponse<'a> {
-	access_token: &'a str,
-	chatgpt_account_id: &'a str,
-	chatgpt_plan_type: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcError {
-	id: u64,
-	error: OutboundRpcErrorBody,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcErrorBody {
-	code: i32,
-	message: &'static str,
-}
-
-struct RpcWireReceipt {
-	request_id: i64,
-	request_digest: String,
-	response_id: i64,
-	response_digest: String,
-}
-
-struct RpcSuccess<T> {
-	value: T,
-	wire: RpcWireReceipt,
-}
-
-struct ProcessQuarantineState {
-	slots: Box<[QuarantineSlot]>,
-	ready: Condvar,
-	wake: Mutex<()>,
-	next_slot: AtomicUsize,
-	worker_cursor: AtomicUsize,
-	shutdown: AtomicBool,
-	#[cfg(test)]
-	panic_after_worker_pops: AtomicUsize,
-	lifecycle: Arc<QuarantineLifecycleProbe>,
-}
-
-struct InFlightReapJob {
-	state: Arc<ProcessQuarantineState>,
-	index: usize,
-	job: Option<ReapJob>,
-}
-
-#[derive(Default)]
-struct QuarantineLifecycleProbe {
-	started: AtomicBool,
-	exited: AtomicBool,
-	joined: AtomicBool,
-}
-
-struct ExecutableSnapshot {
-	#[cfg(target_os = "macos")]
-	_directory: TempDir,
-	#[cfg(target_os = "macos")]
-	path: PathBuf,
-	#[cfg(target_os = "linux")]
-	file: File,
-	source_device: u64,
-	source_inode: u64,
-}
-
-#[cfg(test)]
-#[derive(Clone)]
-struct BeforeSpawnTest {
-	trigger_spawn: u32,
-	spawn_count: Arc<AtomicU32>,
-	action: Arc<dyn Fn() + Send + Sync>,
-}
-
-struct ZeroizingOutboundBlock {
-	bytes: Box<[u8]>,
-}
-
-struct ZeroizingOutboundFrame {
-	blocks: Vec<ZeroizingOutboundBlock>,
-	len: usize,
-	limit_exceeded: bool,
-}
-
 impl AccountBinding {
 	pub(super) fn codex_home(&self) -> &std::path::Path {
 		&self.expected_codex_home
@@ -766,234 +350,19 @@ impl Debug for AccountBinding {
 	}
 }
 
-impl AppServerCommand {
-	/// Construct the only production command shape: Codex app-server plus read-only attestation.
-	///
-	/// Launch program and arguments are fixed. Tests use a private fixture constructor.
-	///
-	/// ```compile_fail
-	/// use decodex_codex::AppServerCommand;
-	///
-	/// let _ = AppServerCommand::new("python3", ".");
-	/// ```
-	pub fn new(working_directory: impl Into<PathBuf>) -> Result<Self, SupervisionError> {
-		let (program, executable, executable_digest) = resolve_executable(OsStr::new("codex"))?;
-		let mut command = Self::production_from_resolved(
-			program,
-			executable,
-			executable_digest,
-			working_directory.into(),
-		);
-
-		#[cfg(target_os = "macos")]
-		{
-			command.attested_code_identity = Some(
-				AttestedCodeIdentity::capture(
-					&command.executable.execution_path(),
-					&command.program,
-				)
-				.map_err(|_| SupervisionError::ExecutableUnavailable)?,
-			);
-		}
-
-		Ok(command)
-	}
-
-	fn production_from_resolved(
-		program: PathBuf,
-		executable: Arc<ExecutableSnapshot>,
-		executable_digest: [u8; 32],
-		working_directory: PathBuf,
-	) -> Self {
-		Self {
-			program,
-			executable,
-			executable_digest,
-			#[cfg(target_os = "macos")]
-			attested_code_identity: None,
-			app_server_args: vec!["app-server".into(), "--stdio".into()],
-			version_args: vec!["--version".into()],
-			schema_args: vec![
-				"app-server".into(),
-				"generate-json-schema".into(),
-				"--experimental".into(),
-				"--out".into(),
-			],
-			working_directory,
-			#[cfg(test)]
-			preflight_cleanup_test: None,
-			#[cfg(test)]
-			before_spawn_test: None,
-			#[cfg(test)]
-			after_verification_test: None,
-			#[cfg(all(test, target_os = "macos"))]
-			test_spawn_path: None,
-		}
-	}
-
-	#[cfg(test)]
-	fn new_for_test(
-		program: impl Into<PathBuf>,
-		app_server_args: impl IntoIterator<Item = impl Into<OsString>>,
-		version_args: impl IntoIterator<Item = impl Into<OsString>>,
-		schema_args: impl IntoIterator<Item = impl Into<OsString>>,
-		working_directory: impl Into<PathBuf>,
-	) -> Self {
-		let program = program.into();
-		let (program, executable, executable_digest) =
-			resolve_executable(program.as_os_str()).expect("fake executable must resolve");
-
-		Self {
-			program,
-			executable,
-			executable_digest,
-			#[cfg(target_os = "macos")]
-			attested_code_identity: None,
-			app_server_args: app_server_args.into_iter().map(Into::into).collect(),
-			version_args: version_args.into_iter().map(Into::into).collect(),
-			schema_args: schema_args.into_iter().map(Into::into).collect(),
-			working_directory: working_directory.into(),
-			preflight_cleanup_test: None,
-			before_spawn_test: None,
-			after_verification_test: None,
-			#[cfg(target_os = "macos")]
-			test_spawn_path: None,
-		}
-	}
-
-	/// Construct the repository's synthetic app-server fixture command.
-	#[cfg(test)]
-	#[doc(hidden)]
-	pub fn fixture(
-		mode: &str,
-		working_directory: impl Into<PathBuf>,
-		extra: Option<&Path>,
-	) -> Self {
-		let fixture =
-			Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_app_server.py");
-		let mut app_server_args =
-			vec!["-B".into(), fixture.clone().into_os_string(), "serve".into(), mode.into()];
-
-		if let Some(extra) = extra {
-			app_server_args.push(extra.as_os_str().to_owned());
-		}
-
-		let (program, executable, executable_digest) = resolve_executable(OsStr::new("python3"))
-			.expect("the synthetic app-server interpreter is available");
-
-		Self {
-			program,
-			executable,
-			executable_digest,
-			#[cfg(target_os = "macos")]
-			attested_code_identity: None,
-			app_server_args,
-			version_args: vec!["-B".into(), fixture.clone().into_os_string(), "--version".into()],
-			schema_args: vec![
-				"-B".into(),
-				fixture.into_os_string(),
-				"generate-json-schema".into(),
-				"--out".into(),
-			],
-			working_directory: working_directory.into(),
-			#[cfg(test)]
-			preflight_cleanup_test: None,
-			#[cfg(test)]
-			before_spawn_test: None,
-			#[cfg(test)]
-			after_verification_test: None,
-			#[cfg(all(test, target_os = "macos"))]
-			test_spawn_path: None,
-		}
-	}
-
-	#[cfg(all(test, target_os = "macos"))]
-	fn with_spawn_path_for_test(mut self, path: PathBuf) -> Self {
-		self.test_spawn_path = Some(path);
-
-		self
-	}
-
-	#[cfg(test)]
-	fn with_uncertain_preflight_for_test(
-		mut self,
-		trigger_spawn: u32,
-		spawn_count: Arc<AtomicU32>,
-		process_group: Arc<AtomicU32>,
-		reaper_delay: Duration,
-	) -> Self {
-		self.preflight_cleanup_test = Some(PreflightCleanupTest {
-			trigger_spawn,
-			spawn_count,
-			process_group,
-			reaper_delay,
-			quarantine: ProcessQuarantine::new(),
-		});
-
-		self
-	}
-
-	#[cfg(test)]
-	fn with_preflight_cleanup_control_for_test(
-		mut self,
-		trigger_spawn: u32,
-		spawn_count: Arc<AtomicU32>,
-		process_group: Arc<AtomicU32>,
-		reaper_delay: Duration,
-		quarantine: Arc<ProcessQuarantine>,
-	) -> Self {
-		self.preflight_cleanup_test = Some(PreflightCleanupTest {
-			trigger_spawn,
-			spawn_count,
-			process_group,
-			reaper_delay,
-			quarantine,
-		});
-
-		self
-	}
-
-	#[cfg(test)]
-	fn with_before_spawn_for_test(
-		mut self,
-		trigger_spawn: u32,
-		spawn_count: Arc<AtomicU32>,
-		action: Arc<dyn Fn() + Send + Sync>,
-	) -> Self {
-		self.before_spawn_test = Some(BeforeSpawnTest { trigger_spawn, spawn_count, action });
-
-		self
-	}
-
-	#[cfg(test)]
-	fn with_after_verification_for_test(
-		mut self,
-		trigger_spawn: u32,
-		spawn_count: Arc<AtomicU32>,
-		action: Arc<dyn Fn() + Send + Sync>,
-	) -> Self {
-		self.after_verification_test = Some(BeforeSpawnTest { trigger_spawn, spawn_count, action });
-
-		self
-	}
-
-	#[cfg(all(test, target_os = "macos"))]
-	fn with_attested_spawn_for_test(mut self) -> Self {
-		self.attested_code_identity = Some(
-			AttestedCodeIdentity::capture(&self.executable.execution_path(), &self.program)
-				.expect("the synthetic executable has a valid static code identity"),
-		);
-
-		self
-	}
+/// Daemon-lifetime observed Codex capability evidence shared by account-scoped launches.
+///
+/// Startup constructs this profile once from one immutable executable snapshot and one generated
+/// schema preflight. Each account launch still verifies the canonical executable, binds the exact
+/// account credential revision, and uses suspended dynamic code-identity attestation before user
+/// code can run.
+#[derive(Clone)]
+pub(crate) struct AttestedAppServerProfile {
+	command: AppServerCommand,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	capability: ExactBuildLaunchCapability,
 }
-
-impl Debug for AppServerCommand {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.debug_struct("AppServerCommand").finish_non_exhaustive()
-	}
-}
-
 impl AttestedAppServerProfile {
 	/// Existing attested control directory for account-only native operations.
 	pub(crate) fn control_working_directory(&self) -> PathBuf {
@@ -1112,6 +481,23 @@ impl Debug for AttestedAppServerProfile {
 	}
 }
 
+/// One non-forgeable account-bound app-server launch.
+///
+/// It retains the protected executable snapshot and derives the durable launch-manifest identity
+/// from the same verified executable, command, arguments, working directory, environment, account,
+/// and runtime capability that it later spawns. No mutable [`Command`] or caller-supplied runner
+/// digest crosses the ProcessSupervisor boundary.
+pub(crate) struct AttestedAppServerLaunch {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	runner_identity: ProcessRunnerIdentity,
+	capability: ExactBuildLaunchCapability,
+	timeout: Duration,
+	guard: RunnerPermit,
+	conversation_pre_spawn_check: Option<Arc<dyn ConversationPreSpawnCheck>>,
+}
 impl AttestedAppServerLaunch {
 	/// Bind one account launch to the daemon's already-attested immutable build profile.
 	pub(crate) fn bind(
@@ -1211,6 +597,14 @@ impl AttestedAppServerLaunch {
 	}
 }
 
+/// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
+pub(crate) struct AttestedProcessChild {
+	process: SupervisedProcess,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	timeout: Duration,
+	initialized: bool,
+}
 impl AttestedProcessChild {
 	pub(crate) fn process_id(&self) -> u32 {
 		self.process.process_id()
@@ -1817,6 +1211,11 @@ impl AttestedProcessChild {
 	}
 }
 
+/// Exact request facts reserved before a RuntimeSession thread-start fence.
+pub(crate) struct PreparedThreadStart {
+	request: ConversationThreadStartRequest,
+	wire: PreparedConversationRequest,
+}
 impl PreparedThreadStart {
 	pub(crate) const fn request_id(&self) -> i64 {
 		self.wire.request_id
@@ -1827,6 +1226,30 @@ impl PreparedThreadStart {
 	}
 }
 
+/// Successful durable thread establishment ready for the exact bind command.
+pub(crate) struct EstablishedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
+	pub(crate) codex_thread_id: String,
+	pub(crate) binding: BindRuntimeSessionThread,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Successful exact-thread resume facts ready for one affine runtime proof.
+pub(crate) struct ResumedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
+	pub(crate) codex_thread_id: String,
+	pub(crate) request_id: i64,
+	pub(crate) request_sha256: String,
+	pub(crate) response_id: i64,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
+pub(crate) struct PreparedTurnStart {
+	attempt_id: ProviderAttemptId,
+	wire: PreparedConversationRequest,
+}
 impl PreparedTurnStart {
 	pub(crate) const fn request_id(&self) -> i64 {
 		self.wire.request_id
@@ -1837,6 +1260,21 @@ impl PreparedTurnStart {
 	}
 }
 
+/// Successful `turn/start` response plus notifications observed before that response.
+pub(crate) struct StartedOrdinaryTurn {
+	pub(crate) turn_id: String,
+	pub(crate) status: decodex_codex::ConversationTurnStatus,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Exact active-account identity retained only in zeroizing, redacted process memory.
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct AccountIdentity {
+	kind: Zeroizing<String>,
+	email: Option<Zeroizing<String>>,
+	requires_openai_auth: bool,
+}
 impl AccountIdentity {
 	pub(crate) fn from_observation(
 		kind: &str,
@@ -1857,16 +1295,12 @@ impl Debug for AccountIdentity {
 	}
 }
 
-impl CredentialVault for UnavailableCredentialVault {
-	fn project(
-		&self,
-		_account_id: &AccountId,
-		_projection: &mut CredentialProjection<'_>,
-	) -> Result<AccountIdentity, CredentialVaultError> {
-		Err(CredentialVaultError::Unavailable)
-	}
+/// Single-use process-scoped credential sink owned by the Codex adapter.
+pub(crate) struct CredentialProjection<'a> {
+	process: &'a mut SupervisedProcess,
+	timeout: Duration,
+	used: bool,
 }
-
 impl CredentialProjection<'_> {
 	/// Verify the native PAT mode established by this child's exact launch environment.
 	pub fn authenticate_personal_access_token(
@@ -1947,6 +1381,274 @@ impl Debug for CredentialProjection<'_> {
 	}
 }
 
+/// Exact executable contract for one supervised app-server build.
+#[derive(Clone)]
+pub(super) struct AppServerCommand {
+	program: PathBuf,
+	executable: Arc<ExecutableSnapshot>,
+	executable_digest: [u8; 32],
+	#[cfg(target_os = "macos")]
+	attested_code_identity: Option<AttestedCodeIdentity>,
+	app_server_args: Vec<OsString>,
+	version_args: Vec<OsString>,
+	schema_args: Vec<OsString>,
+	working_directory: PathBuf,
+	#[cfg(test)]
+	preflight_cleanup_test: Option<PreflightCleanupTest>,
+	#[cfg(test)]
+	before_spawn_test: Option<BeforeSpawnTest>,
+	#[cfg(test)]
+	after_verification_test: Option<BeforeSpawnTest>,
+	#[cfg(all(test, target_os = "macos"))]
+	test_spawn_path: Option<PathBuf>,
+}
+impl AppServerCommand {
+	/// Construct the only production command shape: Codex app-server plus read-only attestation.
+	///
+	/// Launch program and arguments are fixed. Tests use a private fixture constructor.
+	///
+	/// ```compile_fail
+	/// use decodex_codex::AppServerCommand;
+	///
+	/// let _ = AppServerCommand::new("python3", ".");
+	/// ```
+	pub fn new(working_directory: impl Into<PathBuf>) -> Result<Self, SupervisionError> {
+		let (program, executable, executable_digest) = resolve_executable(OsStr::new("codex"))?;
+		let mut command = Self::production_from_resolved(
+			program,
+			executable,
+			executable_digest,
+			working_directory.into(),
+		);
+
+		#[cfg(target_os = "macos")]
+		{
+			command.attested_code_identity = Some(
+				AttestedCodeIdentity::capture(
+					&command.executable.execution_path(),
+					&command.program,
+				)
+				.map_err(|_| SupervisionError::ExecutableUnavailable)?,
+			);
+		}
+
+		Ok(command)
+	}
+
+	fn production_from_resolved(
+		program: PathBuf,
+		executable: Arc<ExecutableSnapshot>,
+		executable_digest: [u8; 32],
+		working_directory: PathBuf,
+	) -> Self {
+		Self {
+			program,
+			executable,
+			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
+			app_server_args: vec!["app-server".into(), "--stdio".into()],
+			version_args: vec!["--version".into()],
+			schema_args: vec![
+				"app-server".into(),
+				"generate-json-schema".into(),
+				"--experimental".into(),
+				"--out".into(),
+			],
+			working_directory,
+			#[cfg(test)]
+			preflight_cleanup_test: None,
+			#[cfg(test)]
+			before_spawn_test: None,
+			#[cfg(test)]
+			after_verification_test: None,
+			#[cfg(all(test, target_os = "macos"))]
+			test_spawn_path: None,
+		}
+	}
+
+	#[cfg(test)]
+	fn new_for_test(
+		program: impl Into<PathBuf>,
+		app_server_args: impl IntoIterator<Item = impl Into<OsString>>,
+		version_args: impl IntoIterator<Item = impl Into<OsString>>,
+		schema_args: impl IntoIterator<Item = impl Into<OsString>>,
+		working_directory: impl Into<PathBuf>,
+	) -> Self {
+		let program = program.into();
+		let (program, executable, executable_digest) =
+			resolve_executable(program.as_os_str()).expect("fake executable must resolve");
+
+		Self {
+			program,
+			executable,
+			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
+			app_server_args: app_server_args.into_iter().map(Into::into).collect(),
+			version_args: version_args.into_iter().map(Into::into).collect(),
+			schema_args: schema_args.into_iter().map(Into::into).collect(),
+			working_directory: working_directory.into(),
+			preflight_cleanup_test: None,
+			before_spawn_test: None,
+			after_verification_test: None,
+			#[cfg(target_os = "macos")]
+			test_spawn_path: None,
+		}
+	}
+
+	/// Construct the repository's synthetic app-server fixture command.
+	#[cfg(test)]
+	#[doc(hidden)]
+	pub fn fixture(
+		mode: &str,
+		working_directory: impl Into<PathBuf>,
+		extra: Option<&Path>,
+	) -> Self {
+		let fixture =
+			Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_app_server.py");
+		let mut app_server_args =
+			vec!["-B".into(), fixture.clone().into_os_string(), "serve".into(), mode.into()];
+
+		if let Some(extra) = extra {
+			app_server_args.push(extra.as_os_str().to_owned());
+		}
+
+		let (program, executable, executable_digest) = resolve_executable(OsStr::new("python3"))
+			.expect("the synthetic app-server interpreter is available");
+
+		Self {
+			program,
+			executable,
+			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
+			app_server_args,
+			version_args: vec!["-B".into(), fixture.clone().into_os_string(), "--version".into()],
+			schema_args: vec![
+				"-B".into(),
+				fixture.into_os_string(),
+				"generate-json-schema".into(),
+				"--out".into(),
+			],
+			working_directory: working_directory.into(),
+			#[cfg(test)]
+			preflight_cleanup_test: None,
+			#[cfg(test)]
+			before_spawn_test: None,
+			#[cfg(test)]
+			after_verification_test: None,
+			#[cfg(all(test, target_os = "macos"))]
+			test_spawn_path: None,
+		}
+	}
+
+	#[cfg(all(test, target_os = "macos"))]
+	fn with_spawn_path_for_test(mut self, path: PathBuf) -> Self {
+		self.test_spawn_path = Some(path);
+
+		self
+	}
+
+	#[cfg(test)]
+	fn with_uncertain_preflight_for_test(
+		mut self,
+		trigger_spawn: u32,
+		spawn_count: Arc<AtomicU32>,
+		process_group: Arc<AtomicU32>,
+		reaper_delay: Duration,
+	) -> Self {
+		self.preflight_cleanup_test = Some(PreflightCleanupTest {
+			trigger_spawn,
+			spawn_count,
+			process_group,
+			reaper_delay,
+			quarantine: ProcessQuarantine::new(),
+		});
+
+		self
+	}
+
+	#[cfg(test)]
+	fn with_preflight_cleanup_control_for_test(
+		mut self,
+		trigger_spawn: u32,
+		spawn_count: Arc<AtomicU32>,
+		process_group: Arc<AtomicU32>,
+		reaper_delay: Duration,
+		quarantine: Arc<ProcessQuarantine>,
+	) -> Self {
+		self.preflight_cleanup_test = Some(PreflightCleanupTest {
+			trigger_spawn,
+			spawn_count,
+			process_group,
+			reaper_delay,
+			quarantine,
+		});
+
+		self
+	}
+
+	#[cfg(test)]
+	fn with_before_spawn_for_test(
+		mut self,
+		trigger_spawn: u32,
+		spawn_count: Arc<AtomicU32>,
+		action: Arc<dyn Fn() + Send + Sync>,
+	) -> Self {
+		self.before_spawn_test = Some(BeforeSpawnTest { trigger_spawn, spawn_count, action });
+
+		self
+	}
+
+	#[cfg(test)]
+	fn with_after_verification_for_test(
+		mut self,
+		trigger_spawn: u32,
+		spawn_count: Arc<AtomicU32>,
+		action: Arc<dyn Fn() + Send + Sync>,
+	) -> Self {
+		self.after_verification_test = Some(BeforeSpawnTest { trigger_spawn, spawn_count, action });
+
+		self
+	}
+
+	#[cfg(all(test, target_os = "macos"))]
+	fn with_attested_spawn_for_test(mut self) -> Self {
+		self.attested_code_identity = Some(
+			AttestedCodeIdentity::capture(&self.executable.execution_path(), &self.program)
+				.expect("the synthetic executable has a valid static code identity"),
+		);
+
+		self
+	}
+}
+
+impl Debug for AppServerCommand {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.debug_struct("AppServerCommand").finish_non_exhaustive()
+	}
+}
+
+/// Default host-vault boundary until an operator supplies a concrete local vault.
+/// It never reads ambient credentials and always keeps runner creation unavailable.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct UnavailableCredentialVault;
+impl CredentialVault for UnavailableCredentialVault {
+	fn project(
+		&self,
+		_account_id: &AccountId,
+		_projection: &mut CredentialProjection<'_>,
+	) -> Result<AccountIdentity, CredentialVaultError> {
+		Err(CredentialVaultError::Unavailable)
+	}
+}
+
+pub(super) struct StdoutPump {
+	cancelled: Arc<AtomicBool>,
+	done: Receiver<()>,
+	thread: Option<JoinHandle<()>>,
+}
 impl StdoutPump {
 	fn start<R>(
 		reader: R,
@@ -2039,6 +1741,23 @@ impl StdoutPump {
 	}
 }
 
+/// Owned app-server child and its immutable account authority.
+pub(super) struct SupervisedProcess {
+	owner: ProcessGroupOwner,
+	stdin: Box<dyn Write + Send>,
+	stdout: Receiver<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+	binding: AccountBinding,
+	#[cfg(test)]
+	command: AppServerCommand,
+	expected_account_identity: Option<AccountIdentity>,
+	next_request_id: u64,
+	abandoned_request_ids: BTreeSet<u64>,
+	agent_retained: bool,
+	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
+	config_warnings: Vec<serde_json::Value>,
+	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
+}
 impl SupervisedProcess {
 	#[cfg(test)]
 	fn spawn(command: AppServerCommand, binding: AccountBinding) -> Result<Self, SupervisionError> {
@@ -3005,6 +2724,27 @@ impl Drop for SupervisedProcess {
 	}
 }
 
+/// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ReadOnlyProbeResult {
+	/// Exact-build negotiated capability profile.
+	pub profile: CapabilityProfile,
+	/// Redacted bounded thread summaries.
+	pub threads: Vec<ThreadSummary>,
+	/// Exact non-secret account selected before the child was spawned.
+	pub account_id: AccountId,
+	/// Exact OS process identity that produced the account readback.
+	pub process_id: u32,
+}
+
+/// Fake/live probe that cannot construct a turn or account-selection request.
+pub(super) struct ReadOnlyProbe {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+	#[cfg(test)]
+	attestation_timeout_override: Option<Duration>,
+}
 impl ReadOnlyProbe {
 	/// Configure a probe. Schema validation is deferred to `run` but precedes spawn.
 	pub fn new(command: AppServerCommand, binding: AccountBinding, timeout: Duration) -> Self {
@@ -3128,6 +2868,15 @@ impl ReadOnlyProbe {
 	}
 }
 
+/// Private account-bound exact reconciliation configuration.
+///
+/// This is deliberately separate from [`ReadOnlyProbe`]: archive is never part of capability-probe
+/// execution, and no public caller can construct or dispatch this owner.
+pub(super) struct ExactThreadReconciler {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+}
 impl ExactThreadReconciler {
 	pub(super) fn new(
 		command: AppServerCommand,
@@ -3216,6 +2965,64 @@ impl ExactThreadReconciler {
 	}
 }
 
+#[derive(Serialize)]
+pub(super) struct OutboundRequest<'a, P>
+where
+	P: ?Sized,
+{
+	id: u64,
+	method: &'static str,
+	params: &'a P,
+}
+
+#[derive(Serialize)]
+pub(super) struct OutboundNotification<'a, P>
+where
+	P: ?Sized,
+{
+	method: &'a str,
+	params: &'a P,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ChatgptAuthParams<'a> {
+	#[serde(rename = "type")]
+	kind: &'static str,
+	access_token: &'a str,
+	chatgpt_account_id: &'a str,
+	chatgpt_plan_type: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CredentialProjectionResponse {
+	#[serde(rename = "type")]
+	_kind: CredentialProjectionResponseKind,
+}
+
+#[derive(Deserialize)]
+pub(super) struct InboundHeader {
+	id: Option<u64>,
+	method: Option<String>,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(super) struct PreflightCleanupTest {
+	trigger_spawn: u32,
+	spawn_count: Arc<AtomicU32>,
+	process_group: Arc<AtomicU32>,
+	reaper_delay: Duration,
+	quarantine: Arc<ProcessQuarantine>,
+}
+
+pub(super) struct ProbeNegotiation<'a> {
+	cache: &'a mut CapabilityCache,
+	build: &'a BuildId,
+	generated: &'a GeneratedSchemaEvidence,
+	observations: Vec<MethodObservation>,
+}
 impl<'a> ProbeNegotiation<'a> {
 	fn new(
 		cache: &'a mut CapabilityCache,
@@ -3253,6 +3060,27 @@ impl<'a> ProbeNegotiation<'a> {
 	}
 }
 
+pub(super) struct ReapJob {
+	child: ManagedChild,
+	process_group: u32,
+	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
+	may_signal_process_group: bool,
+	pump: Option<StdoutPump>,
+	_guard: Option<RunnerPermit>,
+	#[cfg(test)]
+	not_before: Option<Instant>,
+}
+
+pub(super) struct ProcessGroupOwner {
+	child: Option<ManagedChild>,
+	process_group: u32,
+	// This authority is monotonic: no observation can restore it after reap or wait failure.
+	may_signal_process_group: bool,
+	guard: Option<RunnerPermit>,
+	pump: Option<StdoutPump>,
+	#[cfg(test)]
+	reap_not_before: Option<Instant>,
+}
 impl ProcessGroupOwner {
 	fn new(child: impl Into<ManagedChild>, guard: Option<RunnerPermit>) -> Self {
 		let child = child.into();
@@ -3371,6 +3199,10 @@ impl Drop for ProcessGroupOwner {
 	}
 }
 
+/// One fixed allocation that explicitly wipes its complete contents before release.
+pub(super) struct ZeroizingInboundBlock {
+	bytes: Box<[u8]>,
+}
 impl ZeroizingInboundBlock {
 	fn new() -> Self {
 		Self { bytes: vec![0; INBOUND_BLOCK_BYTES].into_boxed_slice() }
@@ -3389,6 +3221,11 @@ impl Drop for ZeroizingInboundBlock {
 	}
 }
 
+/// Chunked inbound frame. Secret-bearing allocations never grow or reallocate.
+pub(super) struct InboundFrame {
+	blocks: Vec<ZeroizingInboundBlock>,
+	len: usize,
+}
 impl InboundFrame {
 	#[cfg(test)]
 	pub(super) fn fixture(bytes: &[u8]) -> Self {
@@ -3449,6 +3286,11 @@ impl InboundFrame {
 	}
 }
 
+pub(super) struct QuarantineSlotLease {
+	state: Arc<ProcessQuarantineState>,
+	index: usize,
+	installed: bool,
+}
 impl QuarantineSlotLease {
 	pub(super) fn index(&self) -> usize {
 		self.index
@@ -3476,6 +3318,10 @@ impl Drop for QuarantineSlotLease {
 	}
 }
 
+pub(super) struct QuarantineSlot {
+	state: AtomicU8,
+	job: UnsafeCell<MaybeUninit<ReapJob>>,
+}
 // SAFETY: `state` grants exclusive access to `job`: only the reservation owner writes RESERVED,
 // one worker may transition READY to WORKING and read it, and that worker either restores READY
 // or clears the slot after dropping the job. No state permits concurrent `job` access.
@@ -3490,6 +3336,12 @@ impl QuarantineSlot {
 	}
 }
 
+pub(super) struct ProcessQuarantine {
+	state: Arc<ProcessQuarantineState>,
+	shutdown: SyncSender<()>,
+	joined: Mutex<Receiver<()>>,
+	worker_id: ThreadId,
+}
 impl ProcessQuarantine {
 	pub(super) fn new() -> Arc<Self> {
 		Self::try_new().expect("the cleanup owner must exist before test capacity")
@@ -3681,6 +3533,90 @@ impl Drop for ProcessQuarantine {
 	}
 }
 
+struct PreparedConversationRequest {
+	resume_thread_id: Option<String>,
+	request_id: i64,
+	request_sha256: String,
+	frame: ZeroizingOutboundFrame,
+}
+
+struct ConversationWireReceipt {
+	request_id: i64,
+	request_sha256: String,
+	response_id: i64,
+	response_sha256: String,
+}
+
+struct ConversationProcessSuccess<T> {
+	value: T,
+	wire: ConversationWireReceipt,
+	events: Vec<ConversationProcessEvent>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChatgptRefreshRequest {
+	id: u64,
+	method: String,
+	params: ChatgptRefreshParams,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ChatgptRefreshParams {
+	reason: String,
+	previous_account_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcSuccess<T> {
+	id: u64,
+	result: T,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatgptRefreshResponse<'a> {
+	access_token: &'a str,
+	chatgpt_account_id: &'a str,
+	chatgpt_plan_type: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcError {
+	id: u64,
+	error: OutboundRpcErrorBody,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcErrorBody {
+	code: i32,
+	message: &'static str,
+}
+
+struct RpcWireReceipt {
+	request_id: i64,
+	request_digest: String,
+	response_id: i64,
+	response_digest: String,
+}
+
+struct RpcSuccess<T> {
+	value: T,
+	wire: RpcWireReceipt,
+}
+
+struct ProcessQuarantineState {
+	slots: Box<[QuarantineSlot]>,
+	ready: Condvar,
+	wake: Mutex<()>,
+	next_slot: AtomicUsize,
+	worker_cursor: AtomicUsize,
+	shutdown: AtomicBool,
+	#[cfg(test)]
+	panic_after_worker_pops: AtomicUsize,
+	lifecycle: Arc<QuarantineLifecycleProbe>,
+}
 impl ProcessQuarantineState {
 	fn worker_loop(self: Arc<Self>) {
 		while !self.shutdown.load(Ordering::Acquire) {
@@ -3749,6 +3685,11 @@ impl ProcessQuarantineState {
 	}
 }
 
+struct InFlightReapJob {
+	state: Arc<ProcessQuarantineState>,
+	index: usize,
+	job: Option<ReapJob>,
+}
 impl InFlightReapJob {
 	fn new(state: Arc<ProcessQuarantineState>, index: usize, job: ReapJob) -> Self {
 		Self { state, index, job: Some(job) }
@@ -3788,6 +3729,23 @@ impl Drop for InFlightReapJob {
 	}
 }
 
+#[derive(Default)]
+struct QuarantineLifecycleProbe {
+	started: AtomicBool,
+	exited: AtomicBool,
+	joined: AtomicBool,
+}
+
+struct ExecutableSnapshot {
+	#[cfg(target_os = "macos")]
+	_directory: TempDir,
+	#[cfg(target_os = "macos")]
+	path: PathBuf,
+	#[cfg(target_os = "linux")]
+	file: File,
+	source_device: u64,
+	source_inode: u64,
+}
 impl ExecutableSnapshot {
 	fn execution_path(&self) -> PathBuf {
 		#[cfg(target_os = "macos")]
@@ -3813,6 +3771,17 @@ impl Drop for ExecutableSnapshot {
 	}
 }
 
+#[cfg(test)]
+#[derive(Clone)]
+struct BeforeSpawnTest {
+	trigger_spawn: u32,
+	spawn_count: Arc<AtomicU32>,
+	action: Arc<dyn Fn() + Send + Sync>,
+}
+
+struct ZeroizingOutboundBlock {
+	bytes: Box<[u8]>,
+}
 impl ZeroizingOutboundBlock {
 	fn new() -> Self {
 		Self { bytes: vec![0; OUTBOUND_BLOCK_BYTES].into_boxed_slice() }
@@ -3827,6 +3796,11 @@ impl Drop for ZeroizingOutboundBlock {
 	}
 }
 
+struct ZeroizingOutboundFrame {
+	blocks: Vec<ZeroizingOutboundBlock>,
+	len: usize,
+	limit_exceeded: bool,
+}
 impl ZeroizingOutboundFrame {
 	fn new() -> Self {
 		Self { blocks: Vec::new(), len: 0, limit_exceeded: false }
@@ -3916,136 +3890,6 @@ impl Write for ZeroizingOutboundFrame {
 	}
 }
 
-impl std::error::Error for SupervisionError {}
-
-impl Display for SupervisionError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl std::error::Error for ProbeError {}
-
-impl Display for ProbeError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl From<SupervisionError> for ProbeError {
-	fn from(value: SupervisionError) -> Self {
-		Self::Supervision(value)
-	}
-}
-
-impl ReadOnlyMethod {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Initialize => "initialize",
-			Self::AccountLoginStart => "account/login/start",
-			Self::AccountRead => "account/read",
-			Self::GetAuthStatus => "getAuthStatus",
-			Self::ConfigRequirementsRead => "configRequirements/read",
-			Self::ThreadList => "thread/list",
-			Self::ThreadRead => "thread/read",
-		}
-	}
-}
-
-impl ManagedChild {
-	fn id(&self) -> u32 {
-		match self {
-			Self::Standard(child) => child.id(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.id(),
-		}
-	}
-
-	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-		match self {
-			Self::Standard(child) => child.try_wait(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.try_wait(),
-		}
-	}
-}
-
-impl From<Child> for ManagedChild {
-	fn from(child: Child) -> Self {
-		Self::Standard(child)
-	}
-}
-
-impl ExactBuildLaunchCapability {
-	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
-	/// spawn a child.
-	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
-		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-			return Err(SupervisionError::LaunchCapabilityUnavailable);
-		}
-
-		let exact_args = command.app_server_args.len() == 2
-			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
-			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
-
-		if !exact_args {
-			return Err(SupervisionError::LaunchCapabilityUnavailable);
-		}
-
-		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
-	}
-
-	const fn identity(self) -> &'static str {
-		match self {
-			Self::PrivateStdioDisabledEphemeralStartupV1 => PRIVATE_STDIO_CAPABILITY_ID,
-		}
-	}
-
-	const fn lifetime(self) -> ExactProcessGenerationLifetimeCapability {
-		match self {
-			Self::PrivateStdioDisabledEphemeralStartupV1 =>
-				ExactProcessGenerationLifetimeCapability::MacosPrivateStdioBestEffortEofV1,
-		}
-	}
-}
-
-impl ExactProcessGenerationLifetimeCapability {
-	const fn control_kind(self) -> ProcessControlKind {
-		match self {
-			Self::MacosPrivateStdioBestEffortEofV1 => ProcessControlKind::StdioOnlyBestEffortEof,
-		}
-	}
-
-	fn configure(self, _command: &mut Command) -> Result<(), SupervisionError> {
-		match self {
-			Self::MacosPrivateStdioBestEffortEofV1
-				if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
-				Ok(()),
-			Self::MacosPrivateStdioBestEffortEofV1 =>
-				Err(SupervisionError::LaunchCapabilityUnavailable),
-		}
-	}
-}
-
-impl ExactReconciliationError {
-	fn from_rpc(error: RpcError) -> Self {
-		match error {
-			RpcError::MethodRejected(-32_601) => Self::MethodUnsupported,
-			RpcError::MethodRejected(_) | RpcError::Supervision(_) => Self::Transport,
-		}
-	}
-
-	const fn archive_outcome(self) -> ArchiveReconciliationOutcome {
-		let reason = match self {
-			Self::MethodUnsupported => ArchiveUnverifiedReason::MethodUnsupported,
-			Self::AccountBindingChanged => ArchiveUnverifiedReason::AccountBindingChanged,
-			Self::Transport | Self::InvalidResult => ArchiveUnverifiedReason::ReadbackFailed,
-		};
-
-		ArchiveReconciliationOutcome::Unverified(reason)
-	}
-}
-
 /// Closed user-visible event set emitted by the private ordinary-turn child gateway.
 pub(crate) enum ConversationProcessEvent {
 	/// Display-only public notice; never turn-completion evidence.
@@ -4103,6 +3947,24 @@ pub(super) enum ExactReconciliationError {
 	MethodUnsupported,
 	InvalidResult,
 	AccountBindingChanged,
+}
+impl ExactReconciliationError {
+	fn from_rpc(error: RpcError) -> Self {
+		match error {
+			RpcError::MethodRejected(-32_601) => Self::MethodUnsupported,
+			RpcError::MethodRejected(_) | RpcError::Supervision(_) => Self::Transport,
+		}
+	}
+
+	const fn archive_outcome(self) -> ArchiveReconciliationOutcome {
+		let reason = match self {
+			Self::MethodUnsupported => ArchiveUnverifiedReason::MethodUnsupported,
+			Self::AccountBindingChanged => ArchiveUnverifiedReason::AccountBindingChanged,
+			Self::Transport | Self::InvalidResult => ArchiveUnverifiedReason::ReadbackFailed,
+		};
+
+		ArchiveReconciliationOutcome::Unverified(reason)
+	}
 }
 
 /// Closed credential-vault failure without secret, provider, or account text.
@@ -4172,6 +4034,13 @@ pub enum SupervisionError {
 	/// Process-group shutdown could not be completed.
 	ShutdownFailed,
 }
+impl std::error::Error for SupervisionError {}
+
+impl Display for SupervisionError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
 
 /// Sanitized read-only capability-probe failure.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4195,6 +4064,19 @@ pub enum ProbeError {
 	/// The selected host-vault credential could not be projected into this child.
 	CredentialVault(CredentialVaultError),
 }
+impl std::error::Error for ProbeError {}
+
+impl Display for ProbeError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl From<SupervisionError> for ProbeError {
+	fn from(value: SupervisionError) -> Self {
+		Self::Supervision(value)
+	}
+}
 
 /// Read-only methods available to the bounded foundation probe.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -4214,6 +4096,19 @@ pub enum ReadOnlyMethod {
 	/// Read one exact thread without turns.
 	ThreadRead,
 }
+impl ReadOnlyMethod {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Initialize => "initialize",
+			Self::AccountLoginStart => "account/login/start",
+			Self::AccountRead => "account/read",
+			Self::GetAuthStatus => "getAuthStatus",
+			Self::ConfigRequirementsRead => "configRequirements/read",
+			Self::ThreadList => "thread/list",
+			Self::ThreadRead => "thread/read",
+		}
+	}
+}
 
 /// Runtime launch capability derived from the current executable and protocol preflight.
 ///
@@ -4228,6 +4123,38 @@ pub enum ReadOnlyMethod {
 enum ExactBuildLaunchCapability {
 	PrivateStdioDisabledEphemeralStartupV1,
 }
+impl ExactBuildLaunchCapability {
+	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
+	/// spawn a child.
+	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
+		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+
+		let exact_args = command.app_server_args.len() == 2
+			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
+			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
+
+		if !exact_args {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+
+		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
+	}
+
+	const fn identity(self) -> &'static str {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 => PRIVATE_STDIO_CAPABILITY_ID,
+		}
+	}
+
+	const fn lifetime(self) -> ExactProcessGenerationLifetimeCapability {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 =>
+				ExactProcessGenerationLifetimeCapability::MacosPrivateStdioBestEffortEofV1,
+		}
+	}
+}
 
 /// Exact lifetime capability derived only from one accepted executable profile.
 ///
@@ -4236,6 +4163,23 @@ enum ExactBuildLaunchCapability {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ExactProcessGenerationLifetimeCapability {
 	MacosPrivateStdioBestEffortEofV1,
+}
+impl ExactProcessGenerationLifetimeCapability {
+	const fn control_kind(self) -> ProcessControlKind {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1 => ProcessControlKind::StdioOnlyBestEffortEof,
+		}
+	}
+
+	fn configure(self, _command: &mut Command) -> Result<(), SupervisionError> {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1
+				if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+				Ok(()),
+			Self::MacosPrivateStdioBestEffortEofV1 =>
+				Err(SupervisionError::LaunchCapabilityUnavailable),
+		}
+	}
 }
 
 #[derive(Deserialize)]
@@ -4248,6 +4192,29 @@ enum ManagedChild {
 	Standard(Child),
 	#[cfg(target_os = "macos")]
 	Attested(AttestedChild),
+}
+impl ManagedChild {
+	fn id(&self) -> u32 {
+		match self {
+			Self::Standard(child) => child.id(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.id(),
+		}
+	}
+
+	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		match self {
+			Self::Standard(child) => child.try_wait(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.try_wait(),
+		}
+	}
+}
+
+impl From<Child> for ManagedChild {
+	fn from(child: Child) -> Self {
+		Self::Standard(child)
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
