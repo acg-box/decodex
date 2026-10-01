@@ -1,5 +1,5 @@
 //! Connector-level exposure preferences. Native Codex owns tool filtering and approvals.
-use super::{
+use crate::app_server_client::{
 	AppServerClient, ClientError, HistoryGuard, Outbound,
 	app_link_settings::{quoted_key, required_string, take_quoted_key, valid_identity},
 };

@@ -1,6 +1,6 @@
 //! Connection-owned capabilities; read-only and ordinary clients do not service forms.
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
 /// Capabilities supported by this connection's request consumer.
 #[derive(Debug, Serialize)]
@@ -15,7 +15,7 @@ impl InitializeCapabilities {
 	/// Declare the native form route consumed by the retained Agent.
 	pub fn for_agent() -> Self {
 		Self {
-			extensions: Some(json!({"openai/form":{},"openai/standard-form-input":{}})),
+			extensions: Some(serde_json::json!({"openai/form":{},"openai/standard-form-input":{}})),
 			..Self::default()
 		}
 	}
@@ -33,22 +33,22 @@ impl Default for InitializeCapabilities {
 
 #[cfg(test)]
 mod tests {
-	use super::InitializeCapabilities;
-	use serde_json::json;
+
+	use crate::app_server_client::initialize::InitializeCapabilities;
 	#[test]
 	fn only_agent_advertises_the_supported_form_extension() {
 		let ordinary = serde_json::to_value(InitializeCapabilities::default()).unwrap();
 
 		assert_eq!(
 			ordinary,
-			json!({"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]})
+			serde_json::json!({"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]})
 		);
 
 		let mut agent = serde_json::to_value(InitializeCapabilities::for_agent()).unwrap();
 
 		assert_eq!(
 			agent.as_object_mut().unwrap().remove("extensions"),
-			Some(json!({"openai/form":{},"openai/standard-form-input":{}}))
+			Some(serde_json::json!({"openai/form":{},"openai/standard-form-input":{}}))
 		);
 		assert_eq!(agent, ordinary);
 	}

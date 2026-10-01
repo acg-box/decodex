@@ -1,6 +1,4 @@
 //! Bounded wire-order task settings observations, before the coordinator consumes its event queue.
-use super::settings_guard::SettingsGuard;
-use serde::Serialize;
 use std::{
 	collections::HashMap,
 	sync::{
@@ -8,6 +6,10 @@ use std::{
 		atomic::{AtomicU64, Ordering},
 	},
 };
+
+use serde::Serialize;
+
+use crate::app_server_client::settings_guard::SettingsGuard;
 #[derive(Clone)]
 pub(super) struct SettingsObservations<T>(Arc<Mutex<HashMap<String, Entry<T>>>>, Arc<AtomicU64>);
 impl<T> Default for SettingsObservations<T> {

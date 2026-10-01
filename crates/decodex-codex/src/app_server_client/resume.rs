@@ -1,7 +1,9 @@
 //! Retry only proven pre-acceptance closing refusals on the same native connection.
-use super::{AppServerClient, ClientError, Value};
-
 use std::time::Duration;
+
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, Value};
 
 pub(super) async fn resume(client: &AppServerClient, params: Value) -> Result<Value, ClientError> {
 	let thread = params["threadId"].as_str().filter(|id| !id.is_empty()).map(str::to_owned);
@@ -14,7 +16,7 @@ pub(super) async fn resume(client: &AppServerClient, params: Value) -> Result<Va
 			break;
 		}
 
-		tokio::time::sleep(Duration::from_secs(delay)).await;
+		time::sleep(Duration::from_secs(delay)).await;
 
 		let Some(guard) = client.history_guard(revision) else {
 			return Err(ClientError::InvalidFrame);
@@ -33,9 +35,9 @@ fn closing(error: &ClientError, thread: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::resume::{self, AppServerClient, ClientError, Duration, Value};
+	use serde_json;
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[tokio::test]
 	async fn pending_resume_allows_peer_metadata_and_does_not_retry_removed_thread() {
@@ -46,7 +48,7 @@ mod tests {
 		let mut lines = BufReader::new(r).lines();
 		let resuming = client.clone();
 		let resume = tokio::spawn(async move {
-			resuming.thread_resume(json!({"threadId":"cold","excludeTurns":true})).await
+			resuming.thread_resume(serde_json::json!({"threadId":"cold","excludeTurns":true})).await
 		});
 		let first: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -55,7 +57,8 @@ mod tests {
 
 		let peer = client.clone();
 		let update = tokio::spawn(async move {
-			peer.request("thread/name/set", json!({"threadId":"peer","name":"Renamed"})).await
+			peer.request("thread/name/set", serde_json::json!({"threadId":"peer","name":"Renamed"}))
+				.await
 		});
 		let next = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
 			.await
@@ -67,7 +70,7 @@ mod tests {
 		assert_eq!(next["method"], "thread/name/set");
 		assert_ne!(first["id"], next["id"]);
 
-		w.write_all(format!("{}\n", json!({"id":next["id"],"result":{}})).as_bytes())
+		w.write_all(format!("{}\n", serde_json::json!({"id":next["id"],"result":{}})).as_bytes())
 			.await
 			.unwrap();
 
@@ -78,7 +81,7 @@ mod tests {
 		w.write_all(
 			format!(
 				"{}\n",
-				json!({"id":first["id"],"error":{"code":-32_600,"message":"thread cold not found"}})
+				serde_json::json!({"id":first["id"],"error":{"code":-32_600,"message":"thread cold not found"}})
 			)
 			.as_bytes(),
 		)
@@ -98,7 +101,7 @@ mod tests {
 		let (local, remote) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
-		let params = json!({"threadId":"exact-thread","excludeTurns":true});
+		let params = serde_json::json!({"threadId":"exact-thread","excludeTurns":true});
 		let expected = params.clone();
 		let server = tokio::spawn(async move {
 			let (r, mut w) = tokio::io::split(remote);
@@ -112,9 +115,9 @@ mod tests {
 				assert_eq!(request["params"], expected);
 
 				let response = if attempt == 0 {
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"thread exact-thread is closing; retry after close"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"thread exact-thread is closing; retry after close"}})
 				} else {
-					json!({"id":request["id"],"result":{"thread":{"id":"exact-thread"}}})
+					serde_json::json!({"id":request["id"],"result":{"thread":{"id":"exact-thread"}}})
 				};
 
 				w.write_all(format!("{response}\n").as_bytes()).await.unwrap();
@@ -154,7 +157,7 @@ mod tests {
 				w.write_all(
 					format!(
 						"{}\n",
-						json!({"id":request["id"],"error":{"code":code,"message":message}})
+						serde_json::json!({"id":request["id"],"error":{"code":code,"message":message}})
 					)
 					.as_bytes(),
 				)
@@ -167,7 +170,7 @@ mod tests {
 						.is_err()
 				);
 			});
-			let result = client.thread_resume(json!({"threadId":"exact-thread"})).await;
+			let result = client.thread_resume(serde_json::json!({"threadId":"exact-thread"})).await;
 
 			if code == 0 {
 				assert!(result.is_err());
@@ -195,7 +198,7 @@ mod tests {
 
 					assert_eq!(request["method"], "thread/resume");
 
-					w.write_all(format!("{}\n",json!({"id":request["id"],"error":{"code":-32_600,"message":"thread exact-thread is closing; retry"}})).as_bytes()).await.unwrap();
+					w.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"thread exact-thread is closing; retry"}})).as_bytes()).await.unwrap();
 				}
 
 				if reverted {
@@ -211,12 +214,12 @@ mod tests {
 					.is_err()
 				);
 			});
-			let result = client.thread_resume(json!({"threadId":"exact-thread"})).await;
+			let result = client.thread_resume(serde_json::json!({"threadId":"exact-thread"})).await;
 
 			if reverted {
 				assert!(matches!(result, Err(ClientError::InvalidFrame)));
 			} else {
-				assert!(result.as_ref().is_err_and(|e| closing(e, "exact-thread")));
+				assert!(result.as_ref().is_err_and(|e| resume::closing(e, "exact-thread")));
 			}
 
 			server.await.unwrap();

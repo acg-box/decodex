@@ -1,9 +1,10 @@
 //! Transient provider wait state. Native turn lifecycle owns its duration.
-use super::{AppServerClient, ServerEvent};
 use std::{
 	collections::HashMap,
 	sync::{Arc, Mutex},
 };
+
+use crate::app_server_client::{AppServerClient, ServerEvent};
 
 #[derive(Clone, Default)]
 pub(super) struct ProviderWait(Arc<Mutex<HashMap<String, (String, bool)>>>);
@@ -69,86 +70,89 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
-	use tokio::io::AsyncWriteExt;
+	use serde_json;
+	use tokio::io::{self, AsyncWriteExt as _};
+
+	use crate::app_server_client::provider_wait::{AppServerClient, ServerEvent};
 
 	#[tokio::test]
 	async fn safety_buffering_is_exact_live_connection_state_not_replayed_history() {
-		let (local, remote) = tokio::io::duplex(8_192);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(8_192);
+		let (r, w) = io::split(local);
 		let (client, mut events) = AppServerClient::from_io(r, w);
-		let (_r, mut w) = tokio::io::split(remote);
+		let (_r, mut w) = io::split(remote);
 
 		for (method, params, expected) in [
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"old","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"old","showBufferingUi":true}),
 				None,
 			),
-			("turn/started", json!({"threadId":"t","turn":{"id":"one"}}), None),
+			("turn/started", serde_json::json!({"threadId":"t","turn":{"id":"one"}}), None),
 			(
 				"model/verification",
-				json!({"threadId":"t","turnId":"one","verifications":["trustedAccessForCyber"]}),
+				serde_json::json!({"threadId":"t","turnId":"one","verifications":["trustedAccessForCyber"]}),
 				None,
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"other","turnId":"one","showBufferingUi":true}),
+				serde_json::json!({"threadId":"other","turnId":"one","showBufferingUi":true}),
 				None,
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"old","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"old","showBufferingUi":true}),
 				None,
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
 				Some("one"),
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"one","showBufferingUi":false}),
+				serde_json::json!({"threadId":"t","turnId":"one","showBufferingUi":false}),
 				None,
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
-				Some("one"),
-			),
-			(
-				"turn/completed",
-				json!({"threadId":"t","turn":{"id":"old","status":"completed"}}),
+				serde_json::json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
 				Some("one"),
 			),
 			(
 				"turn/completed",
-				json!({"threadId":"t","turn":{"id":"one","status":"completed"}}),
+				serde_json::json!({"threadId":"t","turn":{"id":"old","status":"completed"}}),
+				Some("one"),
+			),
+			(
+				"turn/completed",
+				serde_json::json!({"threadId":"t","turn":{"id":"one","status":"completed"}}),
 				None,
 			),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"one","showBufferingUi":true}),
 				None,
 			),
-			("turn/started", json!({"threadId":"t","turn":{"id":"two"}}), None),
+			("turn/started", serde_json::json!({"threadId":"t","turn":{"id":"two"}}), None),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"two","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"two","showBufferingUi":true}),
 				Some("two"),
 			),
-			("thread/reverted", json!({"threadId":"t"}), None),
-			("turn/started", json!({"threadId":"t","turn":{"id":"three"}}), None),
+			("thread/reverted", serde_json::json!({"threadId":"t"}), None),
+			("turn/started", serde_json::json!({"threadId":"t","turn":{"id":"three"}}), None),
 			(
 				"model/safetyBuffering/updated",
-				json!({"threadId":"t","turnId":"three","showBufferingUi":true}),
+				serde_json::json!({"threadId":"t","turnId":"three","showBufferingUi":true}),
 				Some("three"),
 			),
 		] {
-			w.write_all(format!("{}\n", json!({"method":method,"params":params})).as_bytes())
-				.await
-				.unwrap();
+			w.write_all(
+				format!("{}\n", serde_json::json!({"method":method,"params":params})).as_bytes(),
+			)
+			.await
+			.unwrap();
 
 			assert!(matches!(events.recv().await, Some(ServerEvent::Notification { .. })));
 			assert_eq!(client.safety_buffering_turn("t").as_deref(), expected, "{method}");

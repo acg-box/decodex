@@ -1,9 +1,14 @@
 //! Read native connection settings to reconcile historical configuration receipts.
-use super::{AppServerClient, ClientError};
+use std::{
+	fmt::{Debug, Formatter},
+	path::Path,
+	time::Duration,
+};
 
 use serde_json::{Value, json};
+use tokio::time;
 
-use std::{path::Path, time::Duration};
+use crate::app_server_client::{AppServerClient, ClientError};
 
 /// Narrow readback. No credentials or unrelated native configuration leave this adapter.
 #[derive(Clone)]
@@ -31,8 +36,8 @@ impl AppLinkSettings {
 	}
 }
 
-impl std::fmt::Debug for AppLinkSettings {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for AppLinkSettings {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_str("AppLinkSettings([private native account scope])")
 	}
 }
@@ -60,7 +65,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(
+		time::timeout(
 			Duration::from_secs(30),
 			self.request("config/read", json!({"cwd":cwd,"includeLayers":true})),
 		)

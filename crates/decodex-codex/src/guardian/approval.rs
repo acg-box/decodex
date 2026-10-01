@@ -1,11 +1,14 @@
 //! Explicit public-to-core action conversion for the native denial approval RPC.
-use super::{GuardianReview, ReviewStatus, decode_review};
+use std::{num::NonZeroUsize, path::Path};
 
-use serde::Deserialize;
-
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use url::Url;
 
-use std::num::NonZeroUsize;
+use crate::{
+	app_server_client::AppServerClient,
+	guardian::{GuardianReview, ReviewStatus, decode_review},
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,7 +94,7 @@ impl Action {
 			Self::Command { source, command, cwd } =>
 				json!({"type":"command","source":source.core(),"command":command,"cwd":cwd}),
 			Self::Execve { source, program, argv, cwd } => {
-				if !std::path::Path::new(&cwd).is_absolute() {
+				if !Path::new(&cwd).is_absolute() {
 					return None;
 				}
 
@@ -111,7 +114,7 @@ impl Action {
 	}
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Access {
 	Read,
@@ -119,7 +122,7 @@ enum Access {
 	Deny,
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum PermissionPath {
 	Path { path: String },
@@ -127,7 +130,7 @@ enum PermissionPath {
 	Special { value: SpecialPath },
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum SpecialPath {
 	Root,
@@ -256,7 +259,7 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 		"action":action.into_core()?
 	});
 	// Check the complete native frame before the service reserves a submission.
-	crate::app_server_client::AppServerClient::preflight_request(
+	AppServerClient::preflight_request(
 		"thread/approveGuardianDeniedAction",
 		&json!({"threadId":review.thread_id,"event":&converted}),
 	)
@@ -311,7 +314,7 @@ fn native_path_uri(path: &str) -> Option<String> {
 		parts.push("");
 	}
 
-	let mut uri = url::Url::parse("file:///").ok()?;
+	let mut uri = Url::parse("file:///").ok()?;
 
 	uri.path_segments_mut().ok()?.clear().extend(parts);
 
@@ -320,54 +323,58 @@ fn native_path_uri(path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::guardian::approval::{self, Value};
 	#[test]
 	fn a_retained_review_that_cannot_fit_its_approval_frame_is_not_submittable() {
-		let mut event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
+		let mut event = approval::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
 		let overhead = serde_json::to_vec(&event).unwrap().len();
 
 		event["action"]["command"] =
-			json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
+			approval::json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
 
-		let observed = decode_review("item/autoApprovalReview/completed", &event).unwrap();
+		let observed =
+			approval::decode_review("item/autoApprovalReview/completed", &event).unwrap();
 
-		assert!(core_denial_event(&observed).is_none());
+		assert!(approval::core_denial_event(&observed).is_none());
 	}
 	fn convert(action: Value) -> Option<Value> {
-		let event = json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
+		let event = approval::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
 
-		core_denial_event(&decode_review("item/autoApprovalReview/completed", &event)?)
+		approval::core_denial_event(&approval::decode_review(
+			"item/autoApprovalReview/completed",
+			&event,
+		)?)
 	}
 	#[test]
 	fn maps_all_native_actions_without_rewriting_arbitrary_strings() {
 		let cases = [
 			(
-				json!({"type":"command","source":"unifiedExec","command":"echo toolName","cwd":"/tmp"}),
-				json!({"type":"command","source":"unified_exec","command":"echo toolName","cwd":"/tmp"}),
+				approval::json!({"type":"command","source":"unifiedExec","command":"echo toolName","cwd":"/tmp"}),
+				approval::json!({"type":"command","source":"unified_exec","command":"echo toolName","cwd":"/tmp"}),
 			),
 			(
-				json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
-				json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
+				approval::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
+				approval::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
 			),
 			(
-				json!({"type":"writeStdin","approvalId":"child","processId":"terminal","stdin":"toolName\n","cwd":"/tmp/a #/%/中文/"}),
-				json!({"type":"write_stdin","approval_id":"child","process_id":"terminal","stdin":"toolName\n","cwd":"file:///tmp/a%20%23/%25/%E4%B8%AD%E6%96%87/"}),
+				approval::json!({"type":"writeStdin","approvalId":"child","processId":"terminal","stdin":"toolName\n","cwd":"/tmp/a #/%/中文/"}),
+				approval::json!({"type":"write_stdin","approval_id":"child","process_id":"terminal","stdin":"toolName\n","cwd":"file:///tmp/a%20%23/%25/%E4%B8%AD%E6%96%87/"}),
 			),
 			(
-				json!({"type":"applyPatch","cwd":"/tmp","files":["/tmp/toolName"]}),
-				json!({"type":"apply_patch","cwd":"/tmp","files":["/tmp/toolName"]}),
+				approval::json!({"type":"applyPatch","cwd":"/tmp","files":["/tmp/toolName"]}),
+				approval::json!({"type":"apply_patch","cwd":"/tmp","files":["/tmp/toolName"]}),
 			),
 			(
-				json!({"type":"networkAccess","target":"target","host":"example.test","protocol":"socks5Tcp","port":443}),
-				json!({"type":"network_access","target":"target","host":"example.test","protocol":"socks5_tcp","port":443}),
+				approval::json!({"type":"networkAccess","target":"target","host":"example.test","protocol":"socks5Tcp","port":443}),
+				approval::json!({"type":"network_access","target":"target","host":"example.test","protocol":"socks5_tcp","port":443}),
 			),
 			(
-				json!({"type":"mcpToolCall","server":"server","toolName":"toolName","connectorId":"connector","connectorName":null,"toolTitle":"Title"}),
-				json!({"type":"mcp_tool_call","server":"server","tool_name":"toolName","connector_id":"connector","connector_name":null,"tool_title":"Title"}),
+				approval::json!({"type":"mcpToolCall","server":"server","toolName":"toolName","connectorId":"connector","connectorName":null,"toolTitle":"Title"}),
+				approval::json!({"type":"mcp_tool_call","server":"server","tool_name":"toolName","connector_id":"connector","connector_name":null,"tool_title":"Title"}),
 			),
 			(
-				json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"]}}}),
-				json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
+				approval::json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"]}}}),
+				approval::json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
 			),
 		];
 
@@ -384,27 +391,27 @@ mod tests {
 
 	#[test]
 	fn explicit_permission_entries_preserve_denies_globs_and_unknown_special_paths() {
-		let entries = json!([
+		let entries = approval::json!([
 			{"path":{"type":"path","path":"/tmp/private"},"access":"deny"},
 			{"path":{"type":"glob_pattern","pattern":"**/toolName"},"access":"read"},
 			{"path":{"type":"special","value":{"kind":"unknown","path":":future","subpath":"toolName"}},"access":"write"}
 		]);
-		let mut action = json!({"type":"requestPermissions","reason":null,"permissions":{"fileSystem":{"read":["/ignored"],"write":["/also-ignored"],"entries":entries,"globScanMaxDepth":3}}});
+		let mut action = approval::json!({"type":"requestPermissions","reason":null,"permissions":{"fileSystem":{"read":["/ignored"],"write":["/also-ignored"],"entries":entries,"globScanMaxDepth":3}}});
 		let core = convert(action.clone()).unwrap();
 
 		assert_eq!(
 			core["action"]["permissions"]["file_system"],
-			json!({"entries":entries,"glob_scan_max_depth":3})
+			approval::json!({"entries":entries,"glob_scan_max_depth":3})
 		);
 
-		action["permissions"]["fileSystem"]["entries"] = json!([]);
+		action["permissions"]["fileSystem"]["entries"] = approval::json!([]);
 
 		assert_eq!(
 			convert(action.clone()).unwrap()["action"]["permissions"]["file_system"]["entries"],
-			json!([])
+			approval::json!([])
 		);
 
-		action["permissions"]["fileSystem"]["globScanMaxDepth"] = json!(0);
+		action["permissions"]["fileSystem"]["globScanMaxDepth"] = approval::json!(0);
 
 		assert!(convert(action).is_none());
 	}
@@ -412,16 +419,16 @@ mod tests {
 	#[test]
 	fn refuses_unknown_fields_variants_and_lossy_path_conversion() {
 		for action in [
-			json!({"type":"command","source":"shell","command":"echo x","cwd":"/tmp","futurePolicy":true}),
-			json!({"type":"futureAction"}),
-			json!({"type":"requestPermissions","permissions":{"futurePermission":true}}),
-			json!({"type":"writeStdin","approvalId":"a","processId":"p","stdin":"x","cwd":"relative"}),
+			approval::json!({"type":"command","source":"shell","command":"echo x","cwd":"/tmp","futurePolicy":true}),
+			approval::json!({"type":"futureAction"}),
+			approval::json!({"type":"requestPermissions","permissions":{"futurePermission":true}}),
+			approval::json!({"type":"writeStdin","approvalId":"a","processId":"p","stdin":"x","cwd":"relative"}),
 		] {
 			assert!(convert(action).is_none());
 		}
 
-		assert_eq!(native_path_uri("/tmp/a/.././b//"), Some("file:///tmp/b/".into()));
-		assert_eq!(native_path_uri("/C:/tmp"), None);
-		assert_eq!(native_path_uri("/tmp/\0"), None);
+		assert_eq!(approval::native_path_uri("/tmp/a/.././b//"), Some("file:///tmp/b/".into()));
+		assert_eq!(approval::native_path_uri("/C:/tmp"), None);
+		assert_eq!(approval::native_path_uri("/tmp/\0"), None);
 	}
 }

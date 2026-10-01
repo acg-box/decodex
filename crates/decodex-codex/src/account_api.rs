@@ -9,21 +9,21 @@ use std::{
 	fmt::{Debug, Display, Formatter},
 };
 
-use decodex_core::{
-	AccountQuotaObservationError, AccountQuotaWindow, AccountUsageConditions, ResetCardDescriptor,
-	ResetCardTimestamp,
-};
-
 use serde_json::{Map, Value};
-
 use zeroize::Zeroizing;
+
+use crate::account_api_banner;
+use decodex_core::{
+	AccountQuotaObservationError, AccountQuotaWindow, AccountUsageConditions, MAX_RESET_CARD_ITEMS,
+	ResetCardDescriptor, ResetCardTimestamp,
+};
 
 /// Maximum UTF-8 bytes retained for one exact provider credit identifier.
 pub const MAX_EXACT_RESET_CREDIT_ID_BYTES: usize = 1_024;
 /// Maximum UTF-8 bytes retained for one provider idempotency key.
 pub const MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES: usize = 256;
 /// Maximum number of reset-credit details retained from one provider response.
-pub const MAX_RESET_CARDS_PER_INVENTORY: usize = decodex_core::MAX_RESET_CARD_ITEMS;
+pub const MAX_RESET_CARDS_PER_INVENTORY: usize = MAX_RESET_CARD_ITEMS;
 /// Maximum body size accepted by the account backend decoder.
 pub const MAX_ACCOUNT_API_BODY_BYTES: usize = 256 * 1_024;
 
@@ -214,7 +214,7 @@ impl AccountApiResetCredit {
 	}
 }
 
-impl std::fmt::Debug for AccountApiResetCredit {
+impl Debug for AccountApiResetCredit {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
 			.debug_struct("AccountApiResetCredit")
@@ -365,7 +365,7 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 		reported_available_count,
 		ordinary_usage_allowed,
 		conditions: decode_usage_conditions(object)?,
-		banner: crate::account_api_banner::decode_banner(object.get("rate_limit_upsell")),
+		banner: account_api_banner::decode_banner(object.get("rate_limit_upsell")),
 		plan_type: identity("plan_type").filter(|plan| plan.len() <= 256),
 		account_id: identity("account_id"),
 		user_id: identity("user_id"),
@@ -805,7 +805,7 @@ fn is_bounded_scalar(value: &str, maximum: usize) -> bool {
 
 fn optional_object(
 	value: Option<&Value>,
-) -> Result<Option<&serde_json::Map<String, Value>>, AccountApiProtocolError> {
+) -> Result<Option<&Map<String, Value>>, AccountApiProtocolError> {
 	match value {
 		None | Some(Value::Null) => Ok(None),
 		Some(Value::Object(value)) => Ok(Some(value)),
@@ -813,9 +813,7 @@ fn optional_object(
 	}
 }
 
-fn required_object(
-	value: Option<&Value>,
-) -> Result<&serde_json::Map<String, Value>, AccountApiProtocolError> {
+fn required_object(value: Option<&Value>) -> Result<&Map<String, Value>, AccountApiProtocolError> {
 	match value {
 		Some(Value::Object(value)) => Ok(value),
 		_ => Err(AccountApiProtocolError::MalformedResponse),
@@ -984,12 +982,17 @@ fn canonical_calendar_date(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::account_api::{
+		self, AccountApiConsumeOutcome, AccountApiRecoveryContext, AccountUsageConditions,
+		MAX_PROFILE_DAILY_BUCKETS, Value,
+	};
 
 	#[test]
 	fn recovery_context_requires_both_outer_identities_and_preserves_plan_uncertainty() {
 		let mut body = serde_json::json!({"account_id":"workspace-id", "user_id":"user-id", "plan_type":"team", "rate_limit":{}, "rate_limit_upsell":{"plan_type":"pro", "account_id":"foreign"}});
-		let read = |body: &Value| decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+		let read = |body: &Value| {
+			account_api::decode_account_api_usage(body.to_string().as_bytes()).unwrap()
+		};
 		let usage = read(&body);
 
 		assert_eq!(
@@ -1050,7 +1053,8 @@ mod tests {
 			"stats": {"lifetime_tokens": 12, "daily_usage_buckets": buckets}
 		})
 		.to_string();
-		let profile = decode_account_api_profile(body.as_bytes()).expect("profile should decode");
+		let profile = account_api::decode_account_api_profile(body.as_bytes())
+			.expect("profile should decode");
 
 		assert_eq!(profile.display_name.as_deref(), Some("Val"));
 		assert_eq!(profile.peak_daily_tokens, None);
@@ -1068,7 +1072,7 @@ mod tests {
 				"peak_daily_tokens": reported,
 				"daily_usage_buckets": [{"start_date": "2026-09-09", "tokens": 500}]
 			}});
-			let profile = decode_account_api_profile(body.to_string().as_bytes())
+			let profile = account_api::decode_account_api_profile(body.to_string().as_bytes())
 				.expect("optional peak should decode");
 
 			assert_eq!(profile.peak_daily_tokens, expected);
@@ -1078,7 +1082,7 @@ mod tests {
 
 	#[test]
 	fn accepts_upstream_profile_with_empty_optional_stats() {
-		let profile = decode_account_api_profile(br#"{"stats":{}}"#)
+		let profile = account_api::decode_account_api_profile(br#"{"stats":{}}"#)
 			.expect("the upstream stats fields are individually optional");
 
 		assert_eq!(profile.daily_usage, Vec::new());
@@ -1096,7 +1100,8 @@ mod tests {
 			"rate_limit_reset_credits": {"available_count": 2}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(usage.reported_available_count, Some(2));
 		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 12);
@@ -1107,7 +1112,9 @@ mod tests {
 	fn credits_and_account_limits_are_independent_identity_bound_facts() {
 		let mut body = serde_json::json!({"account_id":"a","user_id":"u","rate_limit":{"allowed":false},
 			"credits":{"has_credits":true,"unlimited":false},"spend_control":{"reached":false}});
-		let read = |body: &Value| decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+		let read = |body: &Value| {
+			account_api::decode_account_api_usage(body.to_string().as_bytes()).unwrap()
+		};
 		let usage = read(&body);
 		let conditions = usage.conditions_for("a", "u");
 
@@ -1142,7 +1149,7 @@ mod tests {
 
 		body["credits"] = serde_json::json!({"has_credits":"true"});
 
-		assert!(decode_account_api_usage(body.to_string().as_bytes()).is_err());
+		assert!(account_api::decode_account_api_usage(body.to_string().as_bytes()).is_err());
 	}
 
 	#[test]
@@ -1155,7 +1162,7 @@ mod tests {
 				}}
 			});
 			let decode = |value: &serde_json::Value| {
-				decode_account_api_usage(value.to_string().as_bytes()).unwrap()
+				account_api::decode_account_api_usage(value.to_string().as_bytes()).unwrap()
 			};
 			let usage = decode(&body);
 
@@ -1182,7 +1189,7 @@ mod tests {
 			"rate_limit": {"allowed": false, "primary_window": {
 				"used_percent": 7, "limit_window_seconds": 604_800, "reset_at": 1_800_100_000
 			}}});
-			let usage = decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+			let usage = account_api::decode_account_api_usage(body.to_string().as_bytes()).unwrap();
 
 			assert_eq!(usage.ordinary_usage_allowed_for("a", value.as_str().unwrap_or("")), None);
 			assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 7);
@@ -1203,7 +1210,8 @@ mod tests {
 			}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(
 			usage.quota_windows[0].result.unwrap().unwrap().resets_at_unix_micros,
@@ -1225,7 +1233,8 @@ mod tests {
 			}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 42);
@@ -1245,7 +1254,8 @@ mod tests {
 			}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
@@ -1271,7 +1281,8 @@ mod tests {
 			"rate_limit_reset_credits": {"available_count": 0}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 17);
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 41);
@@ -1291,7 +1302,8 @@ mod tests {
 			}
 		})
 		.to_string();
-		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		let usage =
+			account_api::decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
@@ -1301,7 +1313,8 @@ mod tests {
 	fn nonexpiring_reset_credits_are_complete_but_missing_expiry_is_not() {
 		let mut body = serde_json::json!({"available_count":1,"credits":[{"id":"credit","reset_type":"codexRateLimits","status":"available","granted_at":100,"expires_at":null}]});
 		let credits =
-			decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap()).unwrap();
+			account_api::decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap())
+				.unwrap();
 
 		assert!(credits.details_complete);
 		assert!(credits.credits[0].descriptor().expires_at().is_none());
@@ -1309,7 +1322,7 @@ mod tests {
 		body["credits"][0].as_object_mut().unwrap().remove("expires_at");
 
 		assert!(
-			!decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap())
+			!account_api::decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap())
 				.unwrap()
 				.details_complete
 		);
@@ -1329,16 +1342,18 @@ mod tests {
 				}]
 			})
 			.to_string();
-			let credits =
-				decode_account_api_reset_credits(body.as_bytes()).expect("credits should decode");
+			let credits = account_api::decode_account_api_reset_credits(body.as_bytes())
+				.expect("credits should decode");
 
 			assert!(credits.details_complete);
 			assert_eq!(credits.credits[0].descriptor().granted_at().unix_seconds(), 1_800_000_000);
 		}
 
 		assert_eq!(
-			decode_account_api_consume(br#"{"code":"nothing_to_reset","windows_reset":0}"#)
-				.unwrap(),
+			account_api::decode_account_api_consume(
+				br#"{"code":"nothing_to_reset","windows_reset":0}"#
+			)
+			.unwrap(),
 			AccountApiConsumeOutcome::NothingToReset
 		);
 	}

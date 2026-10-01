@@ -8,11 +8,12 @@ use sha2::{Digest as _, Sha256};
 use zeroize::Zeroizing;
 
 use crate::conversation::{ConversationTurnStatus, ExactTurnId};
+use decodex_core::MAX_PROVIDER_THREAD_ID_BYTES;
 
 pub(crate) const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
 
 /// Maximum UTF-8 bytes in an executable Codex thread identifier.
-pub const MAX_EXACT_THREAD_ID_BYTES: usize = decodex_core::MAX_PROVIDER_THREAD_ID_BYTES;
+pub const MAX_EXACT_THREAD_ID_BYTES: usize = MAX_PROVIDER_THREAD_ID_BYTES;
 /// Maximum UTF-8 bytes in a Decodex-owned list search term.
 pub const MAX_THREAD_SEARCH_TERM_BYTES: usize = 512;
 /// Maximum UTF-8 bytes in a Codex thread title.

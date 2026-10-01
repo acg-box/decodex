@@ -1,12 +1,14 @@
 //! Read native creation defaults without selecting a model or creating a thread.
-use super::{AppServerClient, ClientError};
+use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError};
 
 /// Defaults from one native configuration source, before explicit user overrides.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct NativeExecutionDefaults {
 	/// Configured model; absent means this source supplies no default.
 	pub model: Option<String>,
@@ -44,14 +46,11 @@ impl AppServerClient {
 		&self,
 		cwd: &str,
 	) -> Result<NativeModelDefaults, ClientError> {
-		if !std::path::Path::new(cwd).is_absolute()
-			|| cwd.len() > 4_096
-			|| cwd.chars().any(char::is_control)
-		{
+		if !Path::new(cwd).is_absolute() || cwd.len() > 4_096 || cwd.chars().any(char::is_control) {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(8), async {
+		time::timeout(Duration::from_secs(8), async {
 			let configured =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":false})).await?;
 			let configured = NativeExecutionDefaults::from_config_response(&configured)?;
@@ -114,12 +113,15 @@ fn project(value: &Value, managed: bool) -> Result<NativeExecutionDefaults, Clie
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::model_defaults::{
+		self, AppServerClient, NativeExecutionDefaults, Value,
+	};
 	#[test]
 	fn projection_preserves_sources_and_omits_unrelated_sensitive_fields() {
-		let configured=project(&json!({"config":{"model":"project-model","model_reasoning_effort":"future-effort","service_tier":"flex","model_providers":{"secret":"never-public"}}}),false).unwrap();
-		let managed=project(&json!({"requirements":{"models":{"newThread":{"model":"managed-model","modelReasoningEffort":"low","serviceTier":"default"}}}}),true).unwrap();
+		let configured=model_defaults::project(&model_defaults::json!({"config":{"model":"project-model","model_reasoning_effort":"future-effort","service_tier":"flex","model_providers":{"secret":"never-public"}}}),false).unwrap();
+		let managed=model_defaults::project(&model_defaults::json!({"requirements":{"models":{"newThread":{"model":"managed-model","modelReasoningEffort":"low","serviceTier":"default"}}}}),true).unwrap();
 
 		assert_eq!(configured.model.as_deref(), Some("project-model"));
 		assert_eq!(configured.reasoning_effort.as_deref(), Some("future-effort"));
@@ -128,49 +130,49 @@ mod tests {
 		assert_eq!(managed.reasoning_effort.as_deref(), Some("low"));
 		assert!(!serde_json::to_string(&configured).unwrap().contains("never-public"));
 		assert_eq!(
-			project(&json!({"requirements":null}), true).unwrap(),
+			model_defaults::project(&model_defaults::json!({"requirements":null}), true).unwrap(),
 			NativeExecutionDefaults::default()
 		);
 		assert_eq!(
-			project(&json!({"config":{}}), false).unwrap(),
+			model_defaults::project(&model_defaults::json!({"config":{}}), false).unwrap(),
 			NativeExecutionDefaults::default()
 		);
 
 		for invalid in [
-			json!({}),
-			json!({"config":null}),
-			json!({"config":{"model":42}}),
-			json!({"config":{"service_tier":"\n"}}),
+			model_defaults::json!({}),
+			model_defaults::json!({"config":null}),
+			model_defaults::json!({"config":{"model":42}}),
+			model_defaults::json!({"config":{"service_tier":"\n"}}),
 		] {
-			assert!(project(&invalid, false).is_err());
+			assert!(model_defaults::project(&invalid, false).is_err());
 		}
 		for invalid in [
-			json!({}),
-			json!({"requirements":[]}),
-			json!({"requirements":{"models":{"newThread":42}}}),
+			model_defaults::json!({}),
+			model_defaults::json!({"requirements":[]}),
+			model_defaults::json!({"requirements":{"models":{"newThread":42}}}),
 		] {
-			assert!(project(&invalid, true).is_err());
+			assert!(model_defaults::project(&invalid, true).is_err());
 		}
 	}
 	#[tokio::test]
 	async fn reads_exact_directory_and_requirements_without_launch_or_write() {
-		let (local, remote) = tokio::io::duplex(8_192);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(8_192);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 
 			for (method, params, result) in [
 				(
 					"config/read",
-					json!({"cwd":"/workspace/saved","includeLayers":false}),
-					json!({"config":{"model":"project"}}),
+					model_defaults::json!({"cwd":"/workspace/saved","includeLayers":false}),
+					model_defaults::json!({"config":{"model":"project"}}),
 				),
 				(
 					"configRequirements/read",
-					json!({}),
-					json!({"requirements":{"models":{"newThread":{"model":"managed"}}}}),
+					model_defaults::json!({}),
+					model_defaults::json!({"requirements":{"models":{"newThread":{"model":"managed"}}}}),
 				),
 			] {
 				let request: Value =
@@ -180,7 +182,8 @@ mod tests {
 				assert_eq!(request["params"], params);
 
 				w.write_all(
-					format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+					format!("{}\n", model_defaults::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();

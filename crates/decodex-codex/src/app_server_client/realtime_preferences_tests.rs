@@ -1,4 +1,11 @@
-use super::*;
+use std::{env, fs, process::Stdio};
+
+use tokio::{
+	io,
+	process::{Child, Command},
+};
+
+use crate::app_server_client::realtime_preferences::*;
 
 #[test]
 fn voice_write_bridge_accepts_only_one_conditional_preference() {
@@ -29,21 +36,21 @@ fn voice_write_bridge_accepts_only_one_conditional_preference() {
 	assert!(!is_realtime_voice_write(&extra));
 }
 
-async fn native(home: &Path) -> (AppServerClient, tokio::process::Child) {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit installed binary");
+async fn native(home: &Path) -> (AppServerClient, Child) {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit installed binary");
 
 	assert!(Path::new(&binary).is_absolute());
 
-	let mut child = tokio::process::Command::new(binary)
+	let mut child = Command::new(binary)
 		.arg("app-server")
 		.env_clear()
 		.env("HOME", home)
 		.env("CODEX_HOME", home)
 		.env("PATH", "/usr/bin:/bin")
 		.current_dir(home)
-		.stdin(std::process::Stdio::piped())
-		.stdout(std::process::Stdio::piped())
-		.stderr(std::process::Stdio::null())
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
 		.kill_on_drop(true)
 		.spawn()
 		.unwrap();
@@ -68,9 +75,9 @@ async fn native_voice_preferences_survive_restart_and_preserve_project_override(
 	let home = temp.path().canonicalize().unwrap();
 	let project = home.join("project");
 
-	std::fs::create_dir_all(project.join(".codex")).unwrap();
-	std::fs::write(project.join(".codex/config.toml"), "[realtime]\nvoice = \"maple\"\n").unwrap();
-	std::fs::write(home.join("config.toml"), format!(
+	fs::create_dir_all(project.join(".codex")).unwrap();
+	fs::write(project.join(".codex/config.toml"), "[realtime]\nvoice = \"maple\"\n").unwrap();
+	fs::write(home.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\n[realtime]\nvoice = \"juniper\"\n[projects.{:?}]\ntrust_level = \"trusted\"\n", project.to_str().unwrap())).unwrap();
 
 	let (client, mut child) = native(&home).await;
@@ -131,8 +138,8 @@ async fn native_voice_preferences_survive_restart_and_preserve_project_override(
 async fn lost_voice_write_reply_does_not_repeat_the_native_edit() {
 	use tokio::io::{AsyncBufReadExt as _, BufReader};
 
-	let (local, remote) = tokio::io::duplex(8_192);
-	let (read, write) = tokio::io::split(local);
+	let (local, remote) = io::duplex(8_192);
+	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let observed = NativeVoiceSettings {
 		connection: client.outbound.clone(),
@@ -144,7 +151,7 @@ async fn lost_voice_write_reply_does_not_repeat_the_native_edit() {
 		preference: Some("maple".into()),
 	};
 	let server = tokio::spawn(async move {
-		let (read, _write) = tokio::io::split(remote);
+		let (read, _write) = io::split(remote);
 		let line = BufReader::new(read).lines().next_line().await.unwrap().unwrap();
 		let request: Value = serde_json::from_str(&line).unwrap();
 

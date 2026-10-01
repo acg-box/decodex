@@ -1,12 +1,11 @@
 //! Observe native thread plugin exclusions without exposing a local selection write.
-use serde::{Deserialize, Serialize};
-
-use serde_json::Value;
-
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 /// Saved selection for subsequent turns, not proof of the active tool catalog.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct NativeTaskPlugins {
 	/// Canonical plugin IDs; an explicitly reported empty list means none excluded.
@@ -36,28 +35,29 @@ fn valid_list(ids: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json;
+
+	use crate::app_server_client::{
+		ServerEvent, ServerRequests, thread_plugins::NativeTaskPlugins,
+	};
 
 	#[test]
 	fn plugin_publications_invalidate_old_guards_and_do_not_revive_missing_facts() {
-		use super::super::{ServerEvent, ServerRequests};
-
 		let requests = ServerRequests::default();
 		let publish = |value| {
 			requests
 				.observe(&ServerEvent::Notification {
 					method: "thread/settings/updated".into(),
-					params: json!({"threadId":"task","threadSettings":value}),
+					params: serde_json::json!({"threadId":"task","threadSettings":value}),
 				})
 				.unwrap()
 		};
 
-		publish(json!({"disabledPluginIds":["one@market"]}));
+		publish(serde_json::json!({"disabledPluginIds":["one@market"]}));
 
 		let (_, old) = requests.plugin_observation("task").unwrap();
 
-		publish(json!({"disabledPluginIds":["two@market"]}));
+		publish(serde_json::json!({"disabledPluginIds":["two@market"]}));
 
 		assert!(!old.is_live());
 
@@ -68,31 +68,33 @@ mod tests {
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "turn/started".into(),
-				params: json!({"threadId":"task","turn":{"id":"turn"}}),
+				params: serde_json::json!({"threadId":"task","turn":{"id":"turn"}}),
 			})
 			.unwrap();
 
 		assert!(requests.plugin_observation("task").is_none());
 
-		publish(json!({"disabledPluginIds":[]}));
+		publish(serde_json::json!({"disabledPluginIds":[]}));
 
 		assert!(requests.plugin_observation("task").is_none());
 
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"task","turn":{"id":"turn"}}),
+				params: serde_json::json!({"threadId":"task","turn":{"id":"turn"}}),
 			})
 			.unwrap();
 
 		assert!(requests.plugin_observation("task").unwrap().0.disabled_plugin_ids.is_empty());
 
-		publish(json!({}));
+		publish(serde_json::json!({}));
 
 		assert!(requests.plugin_observation("task").is_none());
 
-		requests
-			.observe_permission_hydration("task", &json!({"disabledPluginIds":["cold@market"]}));
+		requests.observe_permission_hydration(
+			"task",
+			&serde_json::json!({"disabledPluginIds":["cold@market"]}),
+		);
 
 		assert_eq!(
 			requests.plugin_observation("task").unwrap().0.disabled_plugin_ids,
@@ -106,16 +108,16 @@ mod tests {
 
 	#[test]
 	fn plugin_observations_distinguish_missing_invalid_and_empty_exclusions() {
-		assert!(NativeTaskPlugins::from_settings(&json!({})).is_none());
+		assert!(NativeTaskPlugins::from_settings(&serde_json::json!({})).is_none());
 		assert!(
-			NativeTaskPlugins::from_settings(&json!({"disabledPluginIds":[]}))
+			NativeTaskPlugins::from_settings(&serde_json::json!({"disabledPluginIds":[]}))
 				.unwrap()
 				.disabled_plugin_ids
 				.is_empty()
 		);
 		assert_eq!(
 			NativeTaskPlugins::from_settings(
-				&json!({"disabledPluginIds":["sample@market","other@market"]})
+				&serde_json::json!({"disabledPluginIds":["sample@market","other@market"]})
 			)
 			.unwrap()
 			.disabled_plugin_ids,
@@ -123,13 +125,16 @@ mod tests {
 		);
 
 		for list in [
-			json!(null),
-			json!(["same", "same"]),
-			json!(["bad\n"]),
-			json!([42]),
-			json!(vec!["x"; 129]),
+			serde_json::json!(null),
+			serde_json::json!(["same", "same"]),
+			serde_json::json!(["bad\n"]),
+			serde_json::json!([42]),
+			serde_json::json!(vec!["x"; 129]),
 		] {
-			assert!(NativeTaskPlugins::from_settings(&json!({"disabledPluginIds":list})).is_none());
+			assert!(
+				NativeTaskPlugins::from_settings(&serde_json::json!({"disabledPluginIds":list}))
+					.is_none()
+			);
 		}
 	}
 }

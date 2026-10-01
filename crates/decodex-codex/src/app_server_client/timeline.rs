@@ -1,7 +1,11 @@
 //! Native mixed history pages. The cursor moves backward; each page is chronological.
 
-use super::{AppServerClient, ClientError};
+use std::time::Duration;
+
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError};
 
 impl AppServerClient {
 	/// Read a bounded native timeline without resuming a thread or executing a turn.
@@ -20,7 +24,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(20), async {
+		time::timeout(Duration::from_secs(20), async {
 			let metadata = self.thread_read(json!({"threadId":thread})).await?;
 
 			if metadata.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
@@ -118,49 +122,49 @@ fn entry_key(row: &Value) -> Result<(u64, u8, &str), ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::timeline::{self, AppServerClient, ClientError, Value};
 
 	#[test]
 	fn equal_positions_keep_native_kind_order_and_opening_voice_state() {
-		let page = json!({"data":[
+		let page = timeline::json!({"data":[
 			{"type":"turnStarted","position":5,"turnId":"turn"},
 			{"type":"item","position":5,"turnId":"turn","item":{"type":"userMessage","id":"message"}},
 			{"type":"realtime","position":5,"item":{"type":"transcriptSegment","id":"speech","realtimeSessionId":"voice"}},
 			{"type":"turnCompleted","position":5,"turnId":"turn"}
 		],"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"});
 
-		assert!(validate_page(&page, None, 4).is_ok());
+		assert!(timeline::validate_page(&page, None, 4).is_ok());
 
 		let mut reversed = page.clone();
 
 		reversed["data"].as_array_mut().unwrap().reverse();
 
-		assert!(validate_page(&reversed, None, 4).is_err());
+		assert!(timeline::validate_page(&reversed, None, 4).is_err());
 
 		let mut duplicate = page.clone();
 
 		duplicate["data"][1] = duplicate["data"][0].clone();
 
-		assert!(validate_page(&duplicate, None, 4).is_err());
-		assert!(validate_page(&page, Some("older"), 4).is_err());
+		assert!(timeline::validate_page(&duplicate, None, 4).is_err());
+		assert!(timeline::validate_page(&page, Some("older"), 4).is_err());
 	}
 
 	#[test]
 	fn incomplete_pages_are_not_empty_history() {
 		for page in [
-			json!({}),
-			json!({"data":[],"nextCursor":null}),
-			json!({"data":[],"nextCursor":"older","activeRealtimeSessionAtPageStart":null}),
-			json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":""}),
+			timeline::json!({}),
+			timeline::json!({"data":[],"nextCursor":null}),
+			timeline::json!({"data":[],"nextCursor":"older","activeRealtimeSessionAtPageStart":null}),
+			timeline::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":""}),
 		] {
-			assert!(validate_page(&page, None, 10).is_err());
+			assert!(timeline::validate_page(&page, None, 10).is_err());
 		}
 
 		assert!(
-			validate_page(
-				&json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
+			timeline::validate_page(
+				&timeline::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
 				None,
 				10
 			)
@@ -170,27 +174,27 @@ mod tests {
 
 	#[tokio::test]
 	async fn legacy_refusal_does_not_disable_another_threads_timeline() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for (method, thread, mut response) in [
-				("thread/read", "legacy", json!({"result":{"thread":{"id":"legacy"}}})),
+				("thread/read", "legacy", timeline::json!({"result":{"thread":{"id":"legacy"}}})),
 				(
 					"thread/timeline/list",
 					"legacy",
-					json!({"error":{"code":-32_601,"message":"unsupported"}}),
+					timeline::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 				),
-				("thread/read", "paged", json!({"result":{"thread":{"id":"paged"}}})),
+				("thread/read", "paged", timeline::json!({"result":{"thread":{"id":"paged"}}})),
 				(
 					"thread/timeline/list",
 					"paged",
-					json!({"result":{"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
+					timeline::json!({"result":{"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
 				),
-				("thread/read", "wrong", json!({"result":{"thread":{"id":"unrelated"}}})),
+				("thread/read", "wrong", timeline::json!({"result":{"thread":{"id":"unrelated"}}})),
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -201,7 +205,7 @@ mod tests {
 				if method == "thread/timeline/list" {
 					assert_eq!(
 						request["params"],
-						json!({"threadId":thread,"limit":10,"cursor":null})
+						timeline::json!({"threadId":thread,"limit":10,"cursor":null})
 					);
 				}
 

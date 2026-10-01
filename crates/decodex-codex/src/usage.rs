@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Provider-reported counters for a response or a thread.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsageBreakdown {
 	/// Provider total; do not reconstruct it by adding overlapping subtotals.
@@ -36,7 +36,7 @@ impl TokenUsageBreakdown {
 }
 
 /// One native `thread/tokenUsage/updated` observation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadTokenUsage {
 	/// Cumulative thread usage, not usage for just the current turn.
@@ -57,16 +57,16 @@ impl ThreadTokenUsage {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::usage::ThreadTokenUsage;
 
 	#[test]
 	fn native_usage_preserves_distinct_totals_and_unknown_context() {
-		let counts = json!({"totalTokens":1_200,"inputTokens":1_000,"cachedInputTokens":500,
+		let counts = serde_json::json!({"totalTokens":1_200,"inputTokens":1_000,"cachedInputTokens":500,
 			"outputTokens":200,"reasoningOutputTokens":100});
-		let mut value = json!({"total":counts,"last":counts,"modelContextWindow":null});
+		let mut value = serde_json::json!({"total":counts,"last":counts,"modelContextWindow":null});
 
-		value["total"]["totalTokens"] = json!(9_000);
+		value["total"]["totalTokens"] = serde_json::json!(9_000);
 
 		let usage: ThreadTokenUsage = serde_json::from_value(value.clone()).unwrap();
 
@@ -76,7 +76,7 @@ mod tests {
 		assert_eq!(usage.last.cache_write_input_tokens, 0);
 		assert_eq!(usage.model_context_window, None);
 
-		value["last"]["inputTokens"] = json!(-1);
+		value["last"]["inputTokens"] = serde_json::json!(-1);
 
 		assert!(serde_json::from_value::<ThreadTokenUsage>(value).is_err());
 	}

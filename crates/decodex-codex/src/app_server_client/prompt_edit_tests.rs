@@ -1,4 +1,4 @@
-use super::*;
+use crate::app_server_client::prompt_edit::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 fn user(id: &str, content: Value) -> Value {

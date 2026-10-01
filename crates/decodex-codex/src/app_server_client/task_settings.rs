@@ -4,7 +4,7 @@ use serde_json::Value;
 
 /// Known model settings from one native publication, not per-inference usage metadata.
 /// Native collaboration instructions and permission settings are deliberately not copied.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct NativeTaskModelSettings {
 	/// Exact configured model.
@@ -52,11 +52,12 @@ fn valid(text: &str, limit: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json;
+
+	use crate::app_server_client::task_settings::{NativeTaskModelSettings, Value};
 	#[test]
 	fn complete_model_facts_keep_unknown_values_and_distinguish_missing_from_null() {
-		let good = json!({"model":"future-model","modelProvider":"custom","effort":null,"serviceTier":"future-tier",
+		let good = serde_json::json!({"model":"future-model","modelProvider":"custom","effort":null,"serviceTier":"future-tier",
 			"collaborationMode":{"settings":{"developer_instructions":"private instructions"}},"approvalPolicy":"never"});
 		let projected = NativeTaskModelSettings::from_notification(&good).unwrap();
 
@@ -82,7 +83,7 @@ mod tests {
 
 			let mut invalid = good.clone();
 
-			invalid[field] = json!("\n");
+			invalid[field] = serde_json::json!("\n");
 
 			assert!(NativeTaskModelSettings::from_notification(&invalid).is_none());
 		}

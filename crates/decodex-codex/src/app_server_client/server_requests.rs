@@ -1,10 +1,4 @@
 //! Transport-observed request liveness, independent of an owner's event queue.
-use super::{ClientError, RequestId, ServerEvent};
-
-use serde_json::{Value, json};
-
-use sha2::{Digest as _, Sha256};
-
 use std::{
 	collections::HashMap,
 	sync::{
@@ -13,17 +7,28 @@ use std::{
 	},
 };
 
+use serde_json::{self, Value};
+use sha2::{Digest as _, Sha256};
+
+use crate::app_server_client::{
+	ClientError, RequestId, ServerEvent,
+	live_reviews::{LiveReviewGuard, LiveReviews},
+	permission_observations::SettingsObservations,
+	provider_wait::ProviderWait,
+	settings_guard::SettingsRevisions,
+};
+
 #[derive(Clone, Default)]
 pub(super) struct ServerRequests(
 	Arc<Mutex<HashMap<RequestId, Entry>>>,
 	Arc<AtomicU64>,
 	Arc<AtomicU64>,
-	super::settings_guard::SettingsRevisions,
-	super::permission_observations::SettingsObservations<super::NativeTaskPermissions>,
-	super::permission_observations::SettingsObservations<super::NativeTaskPlugins>,
-	super::permission_observations::SettingsObservations<super::NativeTaskModelSettings>,
-	super::live_reviews::LiveReviews,
-	super::provider_wait::ProviderWait,
+	SettingsRevisions,
+	SettingsObservations<super::NativeTaskPermissions>,
+	SettingsObservations<super::NativeTaskPlugins>,
+	SettingsObservations<super::NativeTaskModelSettings>,
+	LiveReviews,
+	ProviderWait,
 );
 impl ServerRequests {
 	pub(super) fn safety_buffering_turn(&self, thread: &str) -> Option<String> {
@@ -355,7 +360,7 @@ pub struct HistoryGuard {
 	requests: ServerRequests,
 	revision: u64,
 	questions: bool,
-	review: Option<super::live_reviews::LiveReviewGuard>,
+	review: Option<LiveReviewGuard>,
 	settings: Option<super::settings_guard::SettingsGuard>,
 }
 impl HistoryGuard {
@@ -434,5 +439,5 @@ pub fn invalidates_question_state(method: &str, params: &Value) -> bool {
 }
 
 fn digest(method: &str, params: &Value) -> [u8; 32] {
-	Sha256::digest(json!([method, params]).to_string().as_bytes()).into()
+	Sha256::digest(serde_json::json!([method, params]).to_string().as_bytes()).into()
 }

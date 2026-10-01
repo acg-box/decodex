@@ -1,7 +1,10 @@
 //! Exact-thread archive membership. Native thread/read has no archived field.
-use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+use std::{collections::HashSet, time::Duration};
+
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
 
 /// Observed native list membership, never inferred from a path or error message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,7 +28,7 @@ impl AppServerClient {
 	) -> Result<ThreadArchiveState, ClientError> {
 		valid_id(thread)?;
 
-		tokio::time::timeout(std::time::Duration::from_secs(8), async {
+		time::timeout(Duration::from_secs(8), async {
 			let before = self.thread_read(json!({"threadId":thread,"includeTurns":false})).await?;
 			let cwd = archive_directory(&before, thread)?;
 			let mut budget = MAX_FRAME_BYTES;
@@ -118,8 +121,8 @@ impl AppServerClient {
 	pub async fn thread_unarchive(&self, thread: &str) -> Result<(), ClientError> {
 		valid_id(thread)?;
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
+		let response = time::timeout(
+			Duration::from_secs(8),
 			self.request("thread/unarchive", json!({"threadId":thread})),
 		)
 		.await
@@ -154,12 +157,14 @@ fn valid_id(id: &str) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::archive::{
+		self, AppServerClient, ClientError, ThreadArchiveState, Value,
+	};
 
 	fn page(ids: &[&str], next: Value) -> Value {
-		json!({"data":ids.iter().map(|id|json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
+		archive::json!({"data":ids.iter().map(|id|archive::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
 	}
 
 	async fn inspect(pages: Vec<Value>) -> Result<ThreadArchiveState, ClientError> {
@@ -171,11 +176,11 @@ mod tests {
 		before: &'static str,
 		after: &'static str,
 	) -> Result<ThreadArchiveState, ClientError> {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 			let mut pages = std::collections::VecDeque::from(pages);
 			let mut reads = 0;
@@ -188,10 +193,10 @@ mod tests {
 
 					reads += 1;
 
-					json!({"thread":{"id":"target","cwd":if reads==1 {before} else {after}}})
+					archive::json!({"thread":{"id":"target","cwd":if reads==1 {before} else {after}}})
 				} else {
 					assert_eq!(request["method"], "thread/list");
-					assert_eq!(request["params"]["modelProviders"], json!([]));
+					assert_eq!(request["params"]["modelProviders"], archive::json!([]));
 					assert_eq!(request["params"]["sourceKinds"].as_array().unwrap().len(), 10);
 					assert_eq!(request["params"]["limit"], 100);
 					assert_eq!(request["params"]["cwd"], before);
@@ -204,9 +209,11 @@ mod tests {
 					}
 				};
 
-				w.write_all(format!("{}\n", json!({"id":request["id"],"result":page})).as_bytes())
-					.await
-					.unwrap();
+				w.write_all(
+					format!("{}\n", archive::json!({"id":request["id"],"result":page})).as_bytes(),
+				)
+				.await
+				.unwrap();
 			}
 		});
 		let result = client.thread_archive_state("target").await;
@@ -251,7 +258,7 @@ mod tests {
 
 		assert_eq!(
 			inspect(vec![
-				page(&["first"], json!("next")),
+				page(&["first"], archive::json!("next")),
 				page(&["target"], Value::Null),
 				page(&[], Value::Null)
 			])
@@ -264,11 +271,14 @@ mod tests {
 	#[tokio::test]
 	async fn incomplete_and_malformed_lists_never_become_active_or_missing() {
 		for pages in [
-			vec![json!({"data":[]})],
-			vec![page(&[], json!(""))],
+			vec![archive::json!({"data":[]})],
+			vec![page(&[], archive::json!(""))],
 			vec![page(&["same", "same"], Value::Null)],
-			vec![page(&["first"], json!("loop")), page(&["second"], json!("loop"))],
-			vec![page(&["target"], Value::Null), json!({"data":null,"nextCursor":null})],
+			vec![
+				page(&["first"], archive::json!("loop")),
+				page(&["second"], archive::json!("loop")),
+			],
+			vec![page(&["target"], Value::Null), archive::json!({"data":null,"nextCursor":null})],
 		] {
 			assert!(matches!(inspect(pages).await, Err(ClientError::InvalidFrame)));
 		}
@@ -278,21 +288,24 @@ mod tests {
 
 	#[tokio::test]
 	async fn unarchive_is_one_exact_mutation_and_rejects_a_foreign_reply() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (r, w) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let server = tokio::spawn(async move {
-			let (r, mut w) = tokio::io::split(remote);
+			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 			assert_eq!(request["method"], "thread/unarchive");
-			assert_eq!(request["params"], json!({"threadId":"target"}));
+			assert_eq!(request["params"], archive::json!({"threadId":"target"}));
 
 			w.write_all(
-				format!("{}\n", json!({"id":request["id"],"result":{"thread":{"id":"foreign"}}}))
-					.as_bytes(),
+				format!(
+					"{}\n",
+					archive::json!({"id":request["id"],"result":{"thread":{"id":"foreign"}}})
+				)
+				.as_bytes(),
 			)
 			.await
 			.unwrap();

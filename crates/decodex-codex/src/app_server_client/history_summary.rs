@@ -1,7 +1,10 @@
 //! Display-only summaries. Never use these pages to reconcile execution.
-use super::{AppServerClient, ClientError};
+use std::{collections::HashSet, time::Duration};
+
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError};
 
 impl AppServerClient {
 	/// Read recent paginated turns in chronological order without obtaining a writer lease.
@@ -15,7 +18,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(10), async {
+		time::timeout(Duration::from_secs(10), async {
             let metadata = self.thread_read(json!({"threadId":thread})).await?;
 
             if metadata["thread"]["id"] != thread || metadata["thread"]["historyMode"] != "paginated" {
@@ -44,36 +47,42 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::history_summary::{self, AppServerClient, Value};
 
 	#[tokio::test]
 	async fn summary_rejects_wrong_identity_legacy_and_incomplete_pages() {
 		for (metadata, page) in [
-			(json!({"id":"wrong","historyMode":"paginated"}), None),
-			(json!({"id":"thread","historyMode":"legacy"}), None),
+			(history_summary::json!({"id":"wrong","historyMode":"paginated"}), None),
+			(history_summary::json!({"id":"thread","historyMode":"legacy"}), None),
 			(
-				json!({"id":"thread","historyMode":"paginated"}),
-				Some(json!({"data":[{"id":"t","items":[],"itemsView":"notLoaded"}]})),
-			),
-			(
-				json!({"id":"thread","historyMode":"paginated"}),
+				history_summary::json!({"id":"thread","historyMode":"paginated"}),
 				Some(
-					json!({"data":[{"id":"t","items":[],"itemsView":"summary"},{"id":"t","items":[],"itemsView":"summary"}]}),
+					history_summary::json!({"data":[{"id":"t","items":[],"itemsView":"notLoaded"}]}),
 				),
 			),
 			(
-				json!({"id":"thread","historyMode":"paginated"}),
-				Some(json!({"data":vec![json!({"id":"t","items":[],"itemsView":"summary"});101]})),
+				history_summary::json!({"id":"thread","historyMode":"paginated"}),
+				Some(
+					history_summary::json!({"data":[{"id":"t","items":[],"itemsView":"summary"},{"id":"t","items":[],"itemsView":"summary"}]}),
+				),
+			),
+			(
+				history_summary::json!({"id":"thread","historyMode":"paginated"}),
+				Some(
+					history_summary::json!({"data":vec![history_summary::json!({"id":"t","items":[],"itemsView":"summary"});101]}),
+				),
 			),
 		] {
-			let (local, remote) = tokio::io::duplex(65_536);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
 			let (client, _) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
-				let mut replies = vec![("thread/read", json!({"thread":metadata}))];
+				let mut replies =
+					vec![("thread/read", history_summary::json!({"thread":metadata}))];
 
 				if let Some(page) = page {
 					replies.push(("thread/turns/list", page));
@@ -89,7 +98,11 @@ mod tests {
 
 					writer
 						.write_all(
-							format!("{}\n", json!({"id":request["id"],"result":value})).as_bytes(),
+							format!(
+								"{}\n",
+								history_summary::json!({"id":request["id"],"result":value})
+							)
+							.as_bytes(),
 						)
 						.await
 						.expect("reply");
@@ -103,23 +116,23 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn summary_is_chronological_display_content_without_writer_or_full_cursor() {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for (method, expected, result) in [
 				(
 					"thread/read",
-					json!({"threadId":"thread"}),
-					json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+					history_summary::json!({"threadId":"thread"}),
+					history_summary::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
 				),
 				(
 					"thread/turns/list",
-					json!({"threadId":"thread","cursor":null,"limit":2,"sortDirection":"desc","itemsView":"summary"}),
-					json!({"data":[{"id":"new","itemsView":"summary","items":[]},{"id":"old","itemsView":"summary","items":[]}],"nextCursor":"full-history-cursor-must-not-escape"}),
+					history_summary::json!({"threadId":"thread","cursor":null,"limit":2,"sortDirection":"desc","itemsView":"summary"}),
+					history_summary::json!({"data":[{"id":"new","itemsView":"summary","items":[]},{"id":"old","itemsView":"summary","items":[]}],"nextCursor":"full-history-cursor-must-not-escape"}),
 				),
 			] {
 				let request: Value = serde_json::from_str(
@@ -132,7 +145,11 @@ mod tests {
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						format!(
+							"{}\n",
+							history_summary::json!({"id":request["id"],"result":result})
+						)
+						.as_bytes(),
 					)
 					.await
 					.expect("response");

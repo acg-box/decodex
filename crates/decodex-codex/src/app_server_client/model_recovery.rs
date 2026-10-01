@@ -1,13 +1,15 @@
 //! Task-local ordinary model recovery. Native mode and permission policy remain authoritative.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::Value;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// One bounded model/effort update with explicit or preserved tier for an owned native task.
 /// The owner must select these values from a fresh account-bound backend banner and catalog.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ThreadModelRecoveryUpdate {
 	thread_id: String,
@@ -82,8 +84,8 @@ impl AppServerClient {
 		}
 
 		let params = serde_json::to_value(update).map_err(|_| ClientError::InvalidFrame)?;
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
+		let response = time::timeout(
+			Duration::from_secs(8),
 			self.request_with_history("thread/settings/update", params, guard),
 		)
 		.await
@@ -106,40 +108,42 @@ pub fn is_thread_model_recovery_update(value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use crate::app_server_client::model_recovery::{
+		self, AppServerClient, ThreadModelRecoveryUpdate, Value,
+	};
+	use serde_json;
+	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[test]
 	fn recovery_update_cannot_replace_task_policy_or_enter_reserve() {
-		let good = json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"});
+		let good = serde_json::json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"});
 
-		assert!(is_thread_model_recovery_update(&good));
+		assert!(model_recovery::is_thread_model_recovery_update(&good));
 
 		for (field, value) in [
-			("model", json!("gpt-reserve")),
-			("model", json!("")),
-			("threadId", json!("\n")),
+			("model", serde_json::json!("gpt-reserve")),
+			("model", serde_json::json!("")),
+			("threadId", serde_json::json!("\n")),
 			("effort", Value::Null),
 			("serviceTier", Value::Null),
-			("approvalPolicy", json!("never")),
-			("permissions", json!("full-access")),
-			("collaborationMode", json!({})),
-			("cwd", json!("/tmp")),
-			("disabledPluginIds", json!([])),
+			("approvalPolicy", serde_json::json!("never")),
+			("permissions", serde_json::json!("full-access")),
+			("collaborationMode", serde_json::json!({})),
+			("cwd", serde_json::json!("/tmp")),
+			("disabledPluginIds", serde_json::json!([])),
 		] {
 			let mut bad = good.clone();
 
 			bad[field] = value;
 
-			assert!(!is_thread_model_recovery_update(&bad));
+			assert!(!model_recovery::is_thread_model_recovery_update(&bad));
 		}
 		for key in ["model", "effort", "threadId"] {
 			let mut missing = good.clone();
 
 			missing.as_object_mut().unwrap().remove(key);
 
-			assert!(!is_thread_model_recovery_update(&missing));
+			assert!(!model_recovery::is_thread_model_recovery_update(&missing));
 		}
 	}
 
@@ -150,19 +154,22 @@ mod tests {
 				.unwrap();
 		let wire = serde_json::to_value(update).unwrap();
 
-		assert_eq!(wire, json!({"threadId":"thread","model":"replacement","effort":"medium"}));
-		assert!(is_thread_model_recovery_update(&wire));
+		assert_eq!(
+			wire,
+			serde_json::json!({"threadId":"thread","model":"replacement","effort":"medium"})
+		);
+		assert!(model_recovery::is_thread_model_recovery_update(&wire));
 	}
 
 	#[tokio::test]
 	async fn model_update_accepts_only_empty_queue_ack_and_never_retries() {
 		for response in [
-			json!({"result":{}}),
-			json!({"result":{"applied":true}}),
-			json!({"result":null}),
-			json!({"error":{"code":-32_601,"message":"unsupported"}}),
+			serde_json::json!({"result":{}}),
+			serde_json::json!({"result":{"applied":true}}),
+			serde_json::json!({"result":null}),
+			serde_json::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 		] {
-			let expected = response == json!({"result":{}});
+			let expected = response == serde_json::json!({"result":{}});
 			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
@@ -176,7 +183,7 @@ mod tests {
 				assert_eq!(request["method"], "thread/settings/update");
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"})
+					serde_json::json!({"threadId":"thread","model":"replacement","effort":"medium","serviceTier":"default"})
 				);
 
 				let mut response = response;

@@ -1,14 +1,14 @@
 //! Native resource associations. These are not model input uploads.
-use super::{AppServerClient, ClientError, MAX_FRAME_BYTES};
+use std::{collections::HashSet, time::Duration};
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::{Value, json};
+use tokio::time;
 
-use std::collections::HashSet;
+use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
 
 /// A resource owned by the native thread store, with an opaque application payload.
-#[derive(Clone, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadAttachment {
 	/// Native stable attachment identity.
@@ -24,7 +24,7 @@ pub struct ThreadAttachment {
 }
 
 /// Native add receipt. A receipt is not implied by a submitted request.
-#[derive(Clone, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadAttachmentAddResult {
 	/// Native mutation outcome.
@@ -34,7 +34,7 @@ pub struct ThreadAttachmentAddResult {
 }
 
 /// Whether this call created a resource or located its existing association.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ThreadAttachmentAddOutcome {
 	/// A new association was persisted.
@@ -52,7 +52,7 @@ impl AppServerClient {
 	) -> Result<Vec<ThreadAttachment>, ClientError> {
 		thread_id(thread)?;
 
-		tokio::time::timeout(std::time::Duration::from_secs(30), async {
+		time::timeout(Duration::from_secs(30), async {
 			let mut attachments = Vec::new();
 			let mut cursor: Option<String> = None;
 			let mut cursors = HashSet::new();
@@ -127,8 +127,8 @@ impl AppServerClient {
 			return Err(ClientError::CapacityExceeded);
 		}
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(30),
+		let response = time::timeout(
+			Duration::from_secs(30),
 			self.request(
 				"thread/attachment/add",
 				json!({"threadId":thread,"attachmentType":kind,"identityKey":key,"payload":payload}),
@@ -162,8 +162,8 @@ impl AppServerClient {
 		thread_id(thread)?;
 		identity(kind, key)?;
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(30),
+		let response = time::timeout(
+			Duration::from_secs(30),
 			self.request(
 				"thread/attachment/remove",
 				json!({"threadId":thread,"attachmentType":kind,"identityKey":key}),
@@ -211,19 +211,22 @@ fn validate(attachment: &ThreadAttachment) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+	use crate::app_server_client::attachments::{
+		self, AppServerClient, ClientError, ThreadAttachmentAddOutcome, Value,
+	};
 
 	fn attachment(id: &str, key: &str) -> Value {
-		json!({"id":id,"attachmentType":"example.resource","identityKey":key,"payload":{"title":"Original"},"createdAt":1})
+		attachments::json!({"id":id,"attachmentType":"example.resource","identityKey":key,"payload":{"title":"Original"},"createdAt":1})
 	}
 
 	fn fixture(replies: Vec<Value>) -> (AppServerClient, tokio::task::JoinHandle<Vec<Value>>) {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut requests = Vec::new();
 
@@ -246,10 +249,10 @@ mod tests {
 	#[tokio::test]
 	async fn list_and_mutations_keep_exact_identity_and_existing_payload() {
 		let (client, server) = fixture(vec![
-			json!({"result":{"data":[attachment("a","one")],"nextCursor":"opaque/next"}}),
-			json!({"result":{"data":[attachment("b","two")],"nextCursor":null}}),
-			json!({"result":{"outcome":"existing","attachment":attachment("a","one")}}),
-			json!({"result":{}}),
+			attachments::json!({"result":{"data":[attachment("a","one")],"nextCursor":"opaque/next"}}),
+			attachments::json!({"result":{"data":[attachment("b","two")],"nextCursor":null}}),
+			attachments::json!({"result":{"outcome":"existing","attachment":attachment("a","one")}}),
+			attachments::json!({"result":{}}),
 		]);
 		let rows = client.thread_attachments("thread/exact").await.unwrap();
 
@@ -261,13 +264,13 @@ mod tests {
 				"thread/exact",
 				"example.resource",
 				"one",
-				json!({"title":"Replacement"}),
+				attachments::json!({"title":"Replacement"}),
 			)
 			.await
 			.unwrap();
 
 		assert_eq!(receipt.outcome, ThreadAttachmentAddOutcome::Existing);
-		assert_eq!(receipt.attachment.payload, json!({"title":"Original"}));
+		assert_eq!(receipt.attachment.payload, attachments::json!({"title":"Original"}));
 
 		client.remove_thread_attachment("thread/exact", "example.resource", "one").await.unwrap();
 
@@ -287,13 +290,13 @@ mod tests {
 	#[tokio::test]
 	async fn incomplete_or_duplicate_pages_are_not_partial_success() {
 		for second in [
-			json!({"data":[attachment("a","one")],"nextCursor":null}),
-			json!({"data":[],"nextCursor":"again"}),
-			json!({"data":[]}),
+			attachments::json!({"data":[attachment("a","one")],"nextCursor":null}),
+			attachments::json!({"data":[],"nextCursor":"again"}),
+			attachments::json!({"data":[]}),
 		] {
 			let (client, server) = fixture(vec![
-				json!({"result":{"data":[attachment("a","one")],"nextCursor":"again"}}),
-				json!({"result":second}),
+				attachments::json!({"result":{"data":[attachment("a","one")],"nextCursor":"again"}}),
+				attachments::json!({"result":second}),
 			]);
 
 			assert!(matches!(
@@ -306,8 +309,9 @@ mod tests {
 
 	#[tokio::test]
 	async fn unsupported_store_is_not_empty_and_mutations_do_not_retry() {
-		let (client, server) =
-			fixture(vec![json!({"error":{"code":-32_601,"message":"unsupported store"}})]);
+		let (client, server) = fixture(vec![
+			attachments::json!({"error":{"code":-32_601,"message":"unsupported store"}}),
+		]);
 
 		assert!(
 			matches!(client.thread_attachments("thread").await,Err(ClientError::Remote(error)) if error.code == -32_601)
@@ -315,11 +319,13 @@ mod tests {
 		assert_eq!(server.await.unwrap().len(), 1);
 
 		let (client, server) = fixture(vec![
-			json!({"result":{"outcome":"created","attachment":attachment("a","wrong-key")}}),
+			attachments::json!({"result":{"outcome":"created","attachment":attachment("a","wrong-key")}}),
 		]);
 
 		assert!(matches!(
-			client.add_thread_attachment("thread", "example.resource", "one", json!({})).await,
+			client
+				.add_thread_attachment("thread", "example.resource", "one", attachments::json!({}))
+				.await,
 			Err(ClientError::InvalidFrame)
 		));
 		assert_eq!(server.await.unwrap().len(), 1);

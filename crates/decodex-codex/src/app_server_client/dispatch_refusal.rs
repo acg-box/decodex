@@ -27,7 +27,7 @@ pub fn classify_dispatch_refusal(code: i64, message: &str) -> Option<NativeDispa
 
 #[cfg(test)]
 mod tests {
-	use super::{NativeDispatchRefusal, classify_dispatch_refusal};
+	use crate::app_server_client::dispatch_refusal::{self, NativeDispatchRefusal};
 	#[test]
 	fn native_refusals_require_exact_code_and_message() {
 		for (message, expected) in [
@@ -37,10 +37,19 @@ mod tests {
 				NativeDispatchRefusal::ManagedProviderChanged,
 			),
 		] {
-			assert_eq!(classify_dispatch_refusal(-32_600, message), Some(expected));
-			assert_eq!(classify_dispatch_refusal(-32_603, message), None);
-			assert_eq!(classify_dispatch_refusal(-32_600, &format!("{message} ")), None);
-			assert_eq!(classify_dispatch_refusal(-32_600, &format!("prefix: {message}")), None);
+			assert_eq!(
+				dispatch_refusal::classify_dispatch_refusal(-32_600, message),
+				Some(expected)
+			);
+			assert_eq!(dispatch_refusal::classify_dispatch_refusal(-32_603, message), None);
+			assert_eq!(
+				dispatch_refusal::classify_dispatch_refusal(-32_600, &format!("{message} ")),
+				None
+			);
+			assert_eq!(
+				dispatch_refusal::classify_dispatch_refusal(-32_600, &format!("prefix: {message}")),
+				None
+			);
 		}
 	}
 }

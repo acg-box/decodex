@@ -1,11 +1,13 @@
 //! Isolated native structured requests for task recaps. The runtime owns event routing.
-use super::{AppServerClient, ClientError, ServerEvent};
-
-use serde_json::{Value, json};
-
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
-use tokio::sync::{mpsc, watch};
+use serde_json::{Value, json};
+use tokio::{
+	sync::{mpsc, watch},
+	time,
+};
+
+use crate::app_server_client::{AppServerClient, ClientError, ServerEvent};
 
 const DEADLINE: Duration = Duration::from_secs(30);
 const MAX_RESPONSE: usize = 8 * 1_024;
@@ -37,7 +39,7 @@ impl TemporaryStructuredThread {
 	}
 
 	async fn detach(&self) -> Result<(), ClientError> {
-		let response = tokio::time::timeout(
+		let response = time::timeout(
 			DEADLINE,
 			self.client.request("thread/unsubscribe", json!({"threadId":self.id})),
 		)
@@ -67,7 +69,7 @@ impl TemporaryStructuredThread {
 		mut cancellation: watch::Receiver<bool>,
 	) -> Result<String, ClientError> {
 		let mut turn_id = None;
-		let result = tokio::time::timeout(DEADLINE, async {
+		let result = time::timeout(DEADLINE, async {
 			if *cancellation.borrow() || cancellation.has_changed().is_err() {
 				return Err(ClientError::Closed);
 			}
@@ -105,7 +107,7 @@ impl TemporaryStructuredThread {
 		if result.is_err()
 			&& let Some(turn) = turn_id
 		{
-			let _ = tokio::time::timeout(
+			let _ = time::timeout(
 				DEADLINE,
 				self.client.turn_interrupt(json!({"threadId":self.id,"turnId":turn})),
 			)
@@ -135,7 +137,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let config = tokio::time::timeout(
+		let config = time::timeout(
 			DEADLINE,
 			self.request("config/read", json!({"cwd":options.cwd,"includeLayers":false})),
 		)
@@ -156,7 +158,7 @@ impl AppServerClient {
 			params["config"]["default_permissions"] = json!(":read-only");
 		}
 
-		let response = tokio::time::timeout(DEADLINE, self.thread_start(params))
+		let response = time::timeout(DEADLINE, self.thread_start(params))
 			.await
 			.map_err(|_| ClientError::Io)??;
 		let id = response["thread"]["id"]

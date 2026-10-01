@@ -1,13 +1,17 @@
 //! Exact response observations, separate from cumulative tokens and account quota.
 
-use serde::{Deserialize, Serialize};
+use std::{
+	fmt::{Debug, Formatter},
+	io::{Error, Write},
+};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::TokenUsageBreakdown;
 
 /// One native response completion. Missing observations cannot be recovered by summing tokens.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseUsage {
 	/// Exact native thread identity.
@@ -23,7 +27,7 @@ pub struct ResponseUsage {
 }
 
 /// Native usage metadata. An amount has no inferred currency or unit.
-#[derive(Clone, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseUsageMetadata {
 	/// Exact provider string, without floating-point conversion.
@@ -33,8 +37,8 @@ pub struct ResponseUsageMetadata {
 	/// True when the provider metadata exceeded the storage budget.
 	pub metadata_omitted: bool,
 }
-impl std::fmt::Debug for ResponseUsageMetadata {
-	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for ResponseUsageMetadata {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
 			.debug_struct("ResponseUsageMetadata")
 			.field("has_amount", &self.amount.is_some())
@@ -45,12 +49,12 @@ impl std::fmt::Debug for ResponseUsageMetadata {
 }
 
 struct MetadataBudget(usize);
-impl std::io::Write for MetadataBudget {
+impl Write for MetadataBudget {
 	fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
 		self.0 = self
 			.0
 			.checked_sub(bytes.len())
-			.ok_or_else(|| std::io::Error::other("usage metadata exceeds storage budget"))?;
+			.ok_or_else(|| Error::other("usage metadata exceeds storage budget"))?;
 
 		Ok(bytes.len())
 	}
@@ -114,11 +118,11 @@ pub fn decode_response_usage(params: &Value) -> Option<ResponseUsage> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+
+	use crate::response_usage::{self, Value};
 
 	fn event() -> Value {
-		json!({"threadId":"thread","turnId":"turn","responseId":"response","usage":null})
+		serde_json::json!({"threadId":"thread","turnId":"turn","responseId":"response","usage":null})
 	}
 
 	#[test]
@@ -127,9 +131,9 @@ mod tests {
 			let mut value = event();
 
 			value["usageMetadata"] =
-				json!({"amount":amount,"metadata":{"extra":[0,null,true,"provider"]}});
+				serde_json::json!({"amount":amount,"metadata":{"extra":[0,null,true,"provider"]}});
 
-			let decoded = decode_response_usage(&value).unwrap();
+			let decoded = response_usage::decode_response_usage(&value).unwrap();
 
 			assert_eq!(decoded.usage, None);
 
@@ -141,26 +145,27 @@ mod tests {
 			assert!(!format!("{metadata:?}").contains("provider"));
 		}
 
-		assert!(decode_response_usage(&event()).unwrap().usage_metadata.is_none());
+		assert!(response_usage::decode_response_usage(&event()).unwrap().usage_metadata.is_none());
 	}
 
 	#[test]
 	fn bounds_opaque_metadata_without_losing_amount_or_trusting_omission_claims() {
 		let mut value = event();
 
-		value["usageMetadata"] =
-			json!({"amount":"0","metadata":{"data":"界".repeat(12_000)},"metadataOmitted":false});
+		value["usageMetadata"] = serde_json::json!({"amount":"0","metadata":{"data":"界".repeat(12_000)},"metadataOmitted":false});
 
-		let metadata = decode_response_usage(&value).unwrap().usage_metadata.unwrap();
+		let metadata =
+			response_usage::decode_response_usage(&value).unwrap().usage_metadata.unwrap();
 
 		assert_eq!(metadata.amount.as_deref(), Some("0"));
 		assert!(metadata.metadata.is_none() && metadata.metadata_omitted);
 
-		value["usageMetadata"] = json!({"metadata":false,"metadataOmitted":true});
+		value["usageMetadata"] = serde_json::json!({"metadata":false,"metadataOmitted":true});
 
-		let metadata = decode_response_usage(&value).unwrap().usage_metadata.unwrap();
+		let metadata =
+			response_usage::decode_response_usage(&value).unwrap().usage_metadata.unwrap();
 
-		assert_eq!(metadata.metadata, Some(json!(false)));
+		assert_eq!(metadata.metadata, Some(serde_json::json!(false)));
 		assert!(!metadata.metadata_omitted);
 	}
 
@@ -169,13 +174,13 @@ mod tests {
 		let mut value = event();
 
 		for key in ["threadId", "turnId", "responseId"] {
-			value[key] = json!("\u{1}".repeat(512));
+			value[key] = serde_json::json!("\u{1}".repeat(512));
 		}
 
 		value["usageMetadata"] =
-			json!({"amount":"\u{1}".repeat(256),"metadata":"x".repeat(32_766)});
+			serde_json::json!({"amount":"\u{1}".repeat(256),"metadata":"x".repeat(32_766)});
 
-		let decoded = decode_response_usage(&value).unwrap();
+		let decoded = response_usage::decode_response_usage(&value).unwrap();
 
 		assert!(!decoded.usage_metadata.as_ref().unwrap().metadata_omitted);
 		assert!(serde_json::to_vec(&decoded).unwrap().len() <= 48 * 1_024);
@@ -184,18 +189,18 @@ mod tests {
 	#[test]
 	fn rejects_malformed_identity_amount_and_counters() {
 		for (key, invalid) in [
-			("threadId", json!("")),
-			("turnId", json!(7)),
-			("responseId", json!("x".repeat(513))),
-			("usage", json!({"totalTokens":-1})),
-			("usageMetadata", json!({"amount":0})),
-			("usageMetadata", json!({"amount":"x".repeat(257)})),
+			("threadId", serde_json::json!("")),
+			("turnId", serde_json::json!(7)),
+			("responseId", serde_json::json!("x".repeat(513))),
+			("usage", serde_json::json!({"totalTokens":-1})),
+			("usageMetadata", serde_json::json!({"amount":0})),
+			("usageMetadata", serde_json::json!({"amount":"x".repeat(257)})),
 		] {
 			let mut value = event();
 
 			value[key] = invalid;
 
-			assert!(decode_response_usage(&value).is_none());
+			assert!(response_usage::decode_response_usage(&value).is_none());
 		}
 	}
 }

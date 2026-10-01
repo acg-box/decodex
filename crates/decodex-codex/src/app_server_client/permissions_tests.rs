@@ -1,14 +1,15 @@
-use super::*;
-
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-use crate::app_server_client::{
-	PendingReply, PermissionHydration, RequestId, ServerRequests, dispatch,
-};
-
 use std::collections::HashMap;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::{mpsc, oneshot},
+	task::JoinHandle,
+	time,
+};
+
+use crate::app_server_client::{
+	self, PendingReply, PermissionHydration, RequestId, ServerEvent, ServerRequests, permissions::*,
+};
 
 #[test]
 fn selection_cannot_carry_unrelated_policy_or_configuration() {
@@ -83,11 +84,13 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 		"params":{"threadId":"task", "threadSettings":facts}})
 	};
 
-	dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
+	app_server_client::dispatch(publish(permission_facts("old")), &mut pending, &events, &requests)
+		.unwrap();
 
 	let (_, old_guard) = requests.permission_observation("task").unwrap();
 
-	dispatch(publish(permission_facts("new")), &mut pending, &events, &requests).unwrap();
+	app_server_client::dispatch(publish(permission_facts("new")), &mut pending, &events, &requests)
+		.unwrap();
 
 	assert!(!old_guard.is_live());
 
@@ -98,7 +101,13 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	// Both publications are still queued for the coordinator.
 	assert_eq!(receiver.len(), 2);
 
-	dispatch(publish(json!({"cwd":"/native"})), &mut pending, &events, &requests).unwrap();
+	app_server_client::dispatch(
+		publish(json!({"cwd":"/native"})),
+		&mut pending,
+		&events,
+		&requests,
+	)
+	.unwrap();
 
 	assert!(!current_guard.is_live());
 	assert!(requests.permission_observation("task").is_none());
@@ -126,14 +135,20 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 			)]);
 			let facts = if malformed { json!({}) } else { permission_facts("new") };
 
-			dispatch(json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
+			app_server_client::dispatch(json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
 
 			let mut old = permission_facts("old");
 
 			old["sandbox"] = old["sandboxPolicy"].take();
 			old["thread"] = json!({"id":"task"});
 
-			dispatch(json!({"id":1,"result":old}), &mut pending, &events, &requests).unwrap();
+			app_server_client::dispatch(
+				json!({"id":1,"result":old}),
+				&mut pending,
+				&events,
+				&requests,
+			)
+			.unwrap();
 
 			let observed = requests.permission_observation("task");
 
@@ -161,7 +176,13 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 	response["sandbox"] = response["sandboxPolicy"].take();
 	response["thread"] = json!({"id":"other"});
 
-	dispatch(json!({"id":1,"result":response}), &mut pending, &events, &requests).unwrap();
+	app_server_client::dispatch(
+		json!({"id":1,"result":response}),
+		&mut pending,
+		&events,
+		&requests,
+	)
+	.unwrap();
 
 	assert!(requests.permission_observation("task").is_none());
 	assert!(requests.permission_observation("other").is_none());
@@ -205,11 +226,17 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		let mut pending = HashMap::new();
 		let publish = |facts: Value| json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
 
-		dispatch(publish(permission_facts("old")), &mut pending, &events, &requests).unwrap();
+		app_server_client::dispatch(
+			publish(permission_facts("old")),
+			&mut pending,
+			&events,
+			&requests,
+		)
+		.unwrap();
 
 		let (_, old_guard) = requests.permission_observation("task").unwrap();
 
-		dispatch(
+		app_server_client::dispatch(
 			json!({"method":"turn/started","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
@@ -227,10 +254,16 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert!(selection_guard.is_live());
 
 		match update {
-			"changed" =>
-				dispatch(publish(permission_facts("new")), &mut pending, &events, &requests)
+			"changed" => app_server_client::dispatch(
+				publish(permission_facts("new")),
+				&mut pending,
+				&events,
+				&requests,
+			)
+			.unwrap(),
+			"malformed" =>
+				app_server_client::dispatch(publish(json!({})), &mut pending, &events, &requests)
 					.unwrap(),
-			"malformed" => dispatch(publish(json!({})), &mut pending, &events, &requests).unwrap(),
 			_ => {},
 		}
 
@@ -251,7 +284,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert_eq!(selection_guard.is_live(), update == "unchanged");
 		assert!(requests.permission_observation("task").is_none());
 
-		dispatch(
+		app_server_client::dispatch(
 			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"older"}}}),
 			&mut pending,
 			&events,
@@ -261,7 +294,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 
 		assert!(requests.permission_observation("task").is_none());
 
-		dispatch(
+		app_server_client::dispatch(
 			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
@@ -300,7 +333,7 @@ fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
 		let hydration = PermissionHydration::Resume { thread: "task".into(), guard: guard.clone() };
 
 		requests
-			.observe(&crate::app_server_client::ServerEvent::Notification {
+			.observe(&ServerEvent::Notification {
 				method: method.into(),
 				params: json!({"threadId":"task"}),
 			})
@@ -315,12 +348,12 @@ fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
 	}
 }
 
-async fn replies(responses: Vec<Value>) -> (AppServerClient, tokio::task::JoinHandle<Vec<Value>>) {
-	let (local, remote) = tokio::io::duplex(256 * 1_024);
-	let (reader, writer) = tokio::io::split(local);
+async fn replies(responses: Vec<Value>) -> (AppServerClient, JoinHandle<Vec<Value>>) {
+	let (local, remote) = io::duplex(256 * 1_024);
+	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 		let mut requests = Vec::new();
 
@@ -412,10 +445,10 @@ async fn selection_ack_is_only_queued_and_errors_are_not_retried() {
 
 #[tokio::test]
 async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
-	let (local, remote) = tokio::io::duplex(32_768);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(32_768);
+	let (reader, writer) = io::split(local);
 	let (client, events) = AppServerClient::from_io(reader, writer);
-	let (reader, mut writer) = tokio::io::split(remote);
+	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 	let owned_client = client.clone();
 	let hydrate = tokio::spawn(async move {
@@ -454,9 +487,5 @@ async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
 		client.queue_thread_permission_selection(&selection, old_guard).await,
 		Err(ClientError::StaleHistory)
 	));
-	assert!(
-		tokio::time::timeout(std::time::Duration::from_millis(20), lines.next_line())
-			.await
-			.is_err()
-	);
+	assert!(time::timeout(std::time::Duration::from_millis(20), lines.next_line()).await.is_err());
 }

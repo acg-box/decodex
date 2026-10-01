@@ -1,6 +1,8 @@
-use super::*;
+use std::fs;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+use crate::app_server_client::{app_link_settings::tests, app_tool_exposure::*};
 
 fn config(preference: Value, version: &str) -> Value {
 	let user = json!({"apps":{"connector.with.dot":{"omit_tools_from":preference,
@@ -59,12 +61,12 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 #[tokio::test]
 async fn connector_edits_keep_inheritance_separate_and_preserve_native_scope() {
 	for target in [None, Some(vec![]), Some(vec!["deferred".to_owned()])] {
-		let (local, remote) = tokio::io::duplex(65_536);
-		let (reader, writer) = tokio::io::split(local);
+		let (local, remote) = io::duplex(65_536);
+		let (reader, writer) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let expected = target.clone();
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = tokio::io::split(remote);
+			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
 			for index in 0..3 {
@@ -118,12 +120,12 @@ async fn connector_edits_keep_inheritance_separate_and_preserve_native_scope() {
 
 #[tokio::test]
 async fn source_changes_and_connection_loss_never_replay_a_connector_edit() {
-	let (local, remote) = tokio::io::duplex(65_536);
-	let (reader, writer) = tokio::io::split(local);
+	let (local, remote) = io::duplex(65_536);
+	let (reader, writer) = io::split(local);
 	let (client, mut events) = AppServerClient::from_io(reader, writer);
 	let guard = client.history_guard(client.history_revision()).unwrap();
 	let server = tokio::spawn(async move {
-		let (reader, mut writer) = tokio::io::split(remote);
+		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -155,8 +157,8 @@ async fn source_changes_and_connection_loss_never_replay_a_connector_edit() {
 		Err(ClientError::StaleHistory)
 	));
 
-	let (other, _peer) = tokio::io::duplex(1_024);
-	let (reader, writer) = tokio::io::split(other);
+	let (other, _peer) = io::duplex(1_024);
+	let (reader, writer) = io::split(other);
 	let (other, _events) = AppServerClient::from_io(reader, writer);
 
 	assert!(matches!(
@@ -174,14 +176,12 @@ async fn source_changes_and_connection_loss_never_replay_a_connector_edit() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native connector configuration"]
 async fn installed_native_connector_exposure_roundtrip_and_cold_conflict() {
-	use super::super::app_link_settings::tests::native;
-
 	let home = tempfile::tempdir().unwrap();
 
-	std::fs::write(home.path().join("config.toml"),"model = \"gpt-5.6-sol\"\n[features]\napps = false\n[apps.\"connector.with.dot\".links.work]\ndefault_tools_approval_mode = \"prompt\"\n").unwrap();
+	fs::write(home.path().join("config.toml"),"model = \"gpt-5.6-sol\"\n[features]\napps = false\n[apps.\"connector.with.dot\".links.work]\ndefault_tools_approval_mode = \"prompt\"\n").unwrap();
 
 	let cwd = home.path().to_str().unwrap();
-	let (client, mut child) = native(home.path()).await;
+	let (client, mut child) = tests::native(home.path()).await;
 	let observed = client.app_tool_exposure(cwd, "connector.with.dot").await.unwrap();
 
 	assert_eq!(observed.preference, None);
@@ -197,7 +197,7 @@ async fn installed_native_connector_exposure_roundtrip_and_cold_conflict() {
 
 	assert_eq!(saved.settings.preference, Some(vec!["deferred".into()]));
 
-	let (other, mut other_child) = native(home.path()).await;
+	let (other, mut other_child) = tests::native(home.path()).await;
 	let current = other.app_tool_exposure(cwd, "connector.with.dot").await.unwrap();
 
 	assert_eq!(current.preference, saved.settings.preference);
@@ -228,7 +228,7 @@ async fn installed_native_connector_exposure_roundtrip_and_cold_conflict() {
 		child.wait().await.unwrap();
 	}
 
-	let (client, mut child) = native(home.path()).await;
+	let (client, mut child) = tests::native(home.path()).await;
 	let cold = client.app_tool_exposure(cwd, "connector.with.dot").await.unwrap();
 
 	assert_eq!(cold.preference, Some(vec![]));
@@ -255,18 +255,16 @@ async fn installed_native_connector_exposure_roundtrip_and_cold_conflict() {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native config parse failure"]
 async fn installed_native_config_write_retains_parse_cause() {
-	use super::super::app_link_settings::tests::native;
-
 	let home = tempfile::tempdir().unwrap();
 	let path = home.path().join("config.toml");
 
-	std::fs::write(&path, "[features]\napps = false\n").unwrap();
+	fs::write(&path, "[features]\napps = false\n").unwrap();
 
-	let (client, mut child) = native(home.path()).await;
+	let (client, mut child) = tests::native(home.path()).await;
 	let observed =
 		client.app_tool_exposure(home.path().to_str().unwrap(), "calendar").await.unwrap();
 
-	std::fs::write(&path, "approvals_reviewer = [\n").unwrap();
+	fs::write(&path, "approvals_reviewer = [\n").unwrap();
 
 	let result = client
 		.write_app_tool_exposure(
@@ -284,5 +282,5 @@ async fn installed_native_config_write_retains_parse_cause() {
 	assert!(error.message.contains("config.toml"));
 	assert!(error.message.contains("unclosed array"));
 	assert!(!format!("{error:?}").contains("config.toml"), "private payload stays out of Debug");
-	assert_eq!(std::fs::read_to_string(path).unwrap(), "approvals_reviewer = [\n");
+	assert_eq!(fs::read_to_string(path).unwrap(), "approvals_reviewer = [\n");
 }

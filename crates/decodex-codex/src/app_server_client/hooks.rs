@@ -1,9 +1,11 @@
 //! Native hook review and narrowly scoped config edits. Callers own consent and durable receipts.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::{collections::HashSet, path::Path, time::Duration};
 
 use serde::Deserialize;
-
 use serde_json::{Value, json};
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// Native directory inventory and the reviewed active user-config revision.
 #[derive(Clone)]
@@ -80,7 +82,7 @@ pub enum HookSettingsChange {
 }
 
 /// Native config acknowledgement; read hooks again to establish effective state.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HookSettingsWrite {
 	/// The user config was saved.
 	Saved,
@@ -91,11 +93,11 @@ pub enum HookSettingsWrite {
 impl AppServerClient {
 	/// Read hook metadata and the base user config version from this native owner.
 	pub async fn hook_settings(&self, cwd: &str) -> Result<HookSettingsReview, ClientError> {
-		if !std::path::Path::new(cwd).is_absolute() {
+		if !Path::new(cwd).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		tokio::time::timeout(std::time::Duration::from_secs(30), async {
+		time::timeout(Duration::from_secs(30), async {
 			let config =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
 			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
@@ -113,7 +115,7 @@ impl AppServerClient {
 			let version = bounded_text(&layer["version"], 4_096)?.to_owned();
 			let file = bounded_text(&layer["name"]["file"], 4_096)?.to_owned();
 
-			if !std::path::Path::new(&file).is_absolute() {
+			if !Path::new(&file).is_absolute() {
 				return Err(ClientError::InvalidFrame);
 			}
 
@@ -146,8 +148,8 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let response = tokio::time::timeout(
-			std::time::Duration::from_secs(30),
+		let response = time::timeout(
+			Duration::from_secs(30),
 			self.request_with_history("config/batchWrite", params, guard),
 		)
 		.await
@@ -155,7 +157,7 @@ impl AppServerClient {
 
 		bounded_text(&response["version"], 4_096)?;
 
-		if !response["filePath"].as_str().is_some_and(|p| std::path::Path::new(p).is_absolute()) {
+		if !response["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute()) {
 			return Err(ClientError::InvalidFrame);
 		}
 
@@ -216,7 +218,7 @@ fn validate_inventory(entry: &Value) -> Result<(), ClientError> {
 	}
 
 	let hooks = entry["hooks"].as_array().ok_or(ClientError::InvalidFrame)?;
-	let mut keys = std::collections::HashSet::new();
+	let mut keys = HashSet::new();
 
 	for hook in hooks {
 		if !keys.insert(bounded_text(&hook["key"], 4_096)?)
@@ -231,7 +233,7 @@ fn validate_inventory(entry: &Value) -> Result<(), ClientError> {
 		bounded_text(&hook["handlerType"], 128)?;
 		bounded_text(&hook["eventName"], 128)?;
 
-		if !hook["sourcePath"].as_str().is_some_and(|p| std::path::Path::new(p).is_absolute()) {
+		if !hook["sourcePath"].as_str().is_some_and(|p| Path::new(p).is_absolute()) {
 			return Err(ClientError::InvalidFrame);
 		}
 	}

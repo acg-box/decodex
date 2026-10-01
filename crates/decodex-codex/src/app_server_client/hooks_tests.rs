@@ -1,4 +1,4 @@
-use super::*;
+use crate::app_server_client::hooks::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 fn review() -> HookSettingsReview {

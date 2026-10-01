@@ -1,6 +1,7 @@
 //! Markdown presentation of complete native conversation items.
-use super::{ClientError, MAX_FRAME_BYTES};
 use serde_json::Value;
+
+use crate::app_server_client::{ClientError, MAX_FRAME_BYTES};
 
 pub(super) fn render(turns: &[Value]) -> Result<String, ClientError> {
 	let mut output = String::from("# Conversation\n\n");
@@ -159,15 +160,16 @@ fn fenced(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json;
+
+	use crate::app_server_client::transcript;
 	#[test]
 	fn markdown_omits_synthetic_nested_review_prompts_but_retains_next_user() {
-		let synthetic = json!({"type":"userMessage","content":[{"type":"text","text":"Synthetic review prompt"}]});
-		let text=render(&[
-			json!({"status":"completed","items":[{"type":"enteredReviewMode"},{"type":"exitedReviewMode"}]}),
-			json!({"status":"interrupted","completedAt":null,"items":[synthetic.clone(),synthetic]}),
-			json!({"status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Real question"}]}]}),
+		let synthetic = serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"Synthetic review prompt"}]});
+		let text=transcript::render(&[
+			serde_json::json!({"status":"completed","items":[{"type":"enteredReviewMode"},{"type":"exitedReviewMode"}]}),
+			serde_json::json!({"status":"interrupted","completedAt":null,"items":[synthetic.clone(),synthetic]}),
+			serde_json::json!({"status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Real question"}]}]}),
 		]).unwrap();
 
 		assert!(!text.contains("Synthetic review prompt"));
@@ -176,7 +178,7 @@ mod tests {
 	#[test]
 	fn markdown_preserves_messages_and_hides_raw_reasoning_and_review_prompts() {
 		let text = "# Heading\n\n```rust\nlet a = 1;\n```\n\n[Link](https://example.com)";
-		let result = render(&[json!({"items":[
+		let result = transcript::render(&[serde_json::json!({"items":[
 			{"type":"userMessage","content":[{"type":"text","text":"Question"},{"type":"localImage","path":"/private/image.png"}]},
 			{"type":"reasoning","summary":["Public summary"],"content":["Hidden raw reasoning"]},
 			{"type":"enteredReviewMode","review":"Hidden review prompt"},
