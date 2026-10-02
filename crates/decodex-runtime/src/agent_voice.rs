@@ -4,6 +4,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use decodex_protocol::{
@@ -37,8 +38,6 @@ impl VoiceGateway {
 
 		match request {
 			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
-				use sha2::{Digest as _, Sha256};
-
 				let signature = (
 					work_id.clone(),
 					Sha256::digest(
@@ -235,8 +234,8 @@ mod tests {
 	#[tokio::test]
 	async fn failure_survives_cleanup_before_poll_without_another_stop() {
 		let gateway = VoiceGateway::new();
-		let mut commands = gateway.take_receiver().await.unwrap();
 		let id = EntityId::new("failed-call").unwrap();
+		let mut commands = gateway.take_receiver().await.unwrap();
 
 		gateway.exchange(&AgentVoiceRequest::Start {
 			session_id: id.clone(),
@@ -267,8 +266,8 @@ mod tests {
 	#[tokio::test]
 	async fn selected_speech_is_one_shot_and_notices_do_not_end_media() {
 		let gateway = VoiceGateway::new();
-		let mut commands = gateway.take_receiver().await.unwrap();
 		let id = EntityId::new("call").unwrap();
+		let mut commands = gateway.take_receiver().await.unwrap();
 
 		gateway.exchange(&AgentVoiceRequest::Start {
 			session_id: id.clone(),
@@ -323,7 +322,6 @@ mod tests {
 	#[tokio::test]
 	async fn lost_start_response_is_observed_without_replaying_a_call() {
 		let gateway = VoiceGateway::new();
-		let mut commands = gateway.take_receiver().await.unwrap();
 		let id = EntityId::new("call-one").unwrap();
 		let request = AgentVoiceRequest::Start {
 			session_id: id.clone(),
@@ -331,6 +329,7 @@ mod tests {
 			offer: VoiceSdp::new("offer".into()).unwrap(),
 			options: Default::default(),
 		};
+		let mut commands = gateway.take_receiver().await.unwrap();
 
 		assert_eq!(gateway.exchange(&request).phase, AgentVoicePhase::Connecting);
 		assert!(commands.recv().await.is_some());

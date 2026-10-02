@@ -72,6 +72,7 @@ async fn check_disconnected_tails(
 	let (sent, mut requests) = mpsc::unbounded_channel();
 	let server = tokio::spawn(serve_voice_transcript_fixture(remote, sent));
 	let owned = OwnedReviewer::new(home.path(), &client, "voice-thread", "active-turn").await;
+	let gateway = VoiceGateway::new();
 	let mut agent = AgentCoordinator::new(
 		owned.store.clone(),
 		client,
@@ -82,7 +83,6 @@ async fn check_disconnected_tails(
 		),
 	)
 	.expect("voice transcript fixture");
-	let gateway = VoiceGateway::new();
 
 	agent.attach_voice_host(GENERATION.into(), gateway.clone());
 
