@@ -1206,7 +1206,7 @@ fn readback_exact(file: &mut File, expected: &[u8]) -> io::Result<()> {
 mod tests {
 	use std::{
 		env, fs,
-		os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink},
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 		path::Path,
 	};
 
@@ -1282,7 +1282,7 @@ mod tests {
 
 		let root_link = fixture.path().join("root-link");
 
-		symlink(&root, &root_link).unwrap();
+		std::os::unix::fs::symlink(&root, &root_link).unwrap();
 
 		assert!(auth_projection::open_exact_sandbox_root(&root_link).is_err());
 
@@ -1293,8 +1293,7 @@ mod tests {
 		assert!(
 			auth_projection::open_exact_sandbox_root_after_metadata(&root, || {
 				fs::rename(&root, &retained).unwrap();
-
-				symlink(&retained, &root).unwrap();
+				std::os::unix::fs::symlink(&retained, &root).unwrap();
 			})
 			.is_err()
 		);
@@ -1304,7 +1303,7 @@ mod tests {
 
 		let symlink_home = root.join("symlink-home");
 
-		symlink(&home, &symlink_home).unwrap();
+		std::os::unix::fs::symlink(&home, &symlink_home).unwrap();
 
 		assert!(
 			auth_projection::open_pinned_sandbox_codex_directory(&symlink_home, &root).is_err()
@@ -1315,8 +1314,7 @@ mod tests {
 		let linked_codex_home = root.join("linked-codex-home");
 
 		fs::create_dir(&linked_codex_home).unwrap();
-
-		symlink(home.join(".codex"), linked_codex_home.join(".codex")).unwrap();
+		std::os::unix::fs::symlink(home.join(".codex"), linked_codex_home.join(".codex")).unwrap();
 
 		assert!(
 			auth_projection::open_pinned_sandbox_codex_directory(&linked_codex_home, &root)
@@ -1776,8 +1774,7 @@ mod tests {
 		let outside = symlink_home.path().join("outside");
 
 		fs::write(&outside, b"outside").unwrap();
-
-		symlink(&outside, symlink_home.path().join(".codex/auth.json")).unwrap();
+		std::os::unix::fs::symlink(&outside, symlink_home.path().join(".codex/auth.json")).unwrap();
 
 		let directory = auth_projection::open_codex_directory(symlink_home.path()).unwrap();
 

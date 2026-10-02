@@ -50,8 +50,7 @@ use crate::{
 		self, AgentConfig, AgentCoordinator, AgentDisposition, AgentError, AgentInboxEvent,
 		AgentInputExtras, AgentWorkItem, AgentWorkStatus, AppServerClient, ClientError,
 		EnqueueAgentEvent, MAX_WAKE_BATCH_BYTES, RequestId, ServerEvent, SqliteStore, Value,
-		apply_message_options, async_projection::Projection, misalignment, result_messages,
-		timeline, timeline::metrics,
+		async_projection::Projection, misalignment, result_messages, timeline, timeline::metrics,
 	},
 	application,
 };

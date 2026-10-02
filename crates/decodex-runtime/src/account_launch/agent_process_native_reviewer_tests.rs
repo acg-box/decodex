@@ -16,7 +16,7 @@ use std::{
 use serde_json::Value;
 use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
-use crate::account_launch::agent_process::native_tests::{self, NativeSession, serve_fixture};
+use crate::account_launch::agent_process::native_tests::{self, NativeSession};
 use decodex_codex::{
 	app_server_client::{
 		AppServerClient, LiveReviewer, LiveSettingsOutcome, RequestId, ServerEvent,

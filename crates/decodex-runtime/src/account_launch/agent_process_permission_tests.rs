@@ -16,9 +16,12 @@ use tokio::{
 };
 
 use crate::{
-	account_launch::agent_process::native_tests::reviewer::{
-		NativeSession,
-		store::{AppServerClient, DIGEST, GENERATION, OwnedReviewer, SqliteStore},
+	account_launch::agent_process::{
+		native_tests,
+		native_tests::reviewer::{
+			NativeSession,
+			store::{AppServerClient, DIGEST, GENERATION, OwnedReviewer, SqliteStore},
+		},
 	},
 	agent_permissions,
 };
@@ -361,7 +364,7 @@ async fn installed_native_ordinary_resume_preserves_saved_settings() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(super::super::serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,
@@ -495,7 +498,7 @@ async fn installed_native_running_builtin_permissions_preserve_pending_tools() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("backend");
 	let address = listener.local_addr().expect("address");
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(super::super::serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

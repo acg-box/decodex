@@ -305,7 +305,7 @@ pub(crate) fn inspect_process_identity(
 		if session_id == -1 {
 			let error = io::Error::last_os_error();
 
-			if error.raw_os_error() == Some(libc::ESRCH) {
+			if error.raw_os_error() == Some(ESRCH) {
 				return Ok(None);
 			}
 
@@ -361,7 +361,7 @@ pub(crate) fn attach_exit_witness(
 		if raw == -1 {
 			let error = io::Error::last_os_error();
 
-			if error.raw_os_error() == Some(libc::ESRCH) {
+			if error.raw_os_error() == Some(ESRCH) {
 				return Ok(ExactProcessObservation::NotObserved);
 			}
 
@@ -407,7 +407,7 @@ pub(crate) fn attach_exit_witness(
 		if result == -1 {
 			let error = io::Error::last_os_error();
 
-			if error.raw_os_error() == Some(libc::ESRCH) {
+			if error.raw_os_error() == Some(ESRCH) {
 				return Ok(ExactProcessObservation::NotObserved);
 			}
 
@@ -639,8 +639,8 @@ fn kernel_reports_missing(pid: i32) -> Result<bool, ProcessPlatformError> {
 	let error = io::Error::last_os_error();
 
 	match error.raw_os_error() {
-		Some(libc::ESRCH) => Ok(true),
-		Some(libc::EPERM) => Ok(false),
+		Some(ESRCH) => Ok(true),
+		Some(EPERM) => Ok(false),
 		_ => Err(ProcessPlatformError::Observation(error)),
 	}
 }

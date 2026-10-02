@@ -14,7 +14,7 @@ use std::{
 use gpui::{
 	AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, FontWeight, Image,
 	ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions,
-	Stateful, rgb, rgba,
+	Stateful,
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED};
