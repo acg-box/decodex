@@ -9,6 +9,7 @@ use std::{
 	collections::BTreeSet,
 	env,
 	fs::{self, File, Permissions},
+	net::SocketAddr,
 	os::unix::fs::PermissionsExt as _,
 	panic::AssertUnwindSafe,
 	path::{Path, PathBuf},
@@ -43,6 +44,28 @@ use decodex_protocol::{
 	PromptInputSendIdentity, PromptInputUpload, ServerId, TaskRecapPhase, WireText,
 };
 use reply_proxy::Proxy;
+
+fn write_service_profile(root: &DecodexRoot) {
+	let uid = unsafe { libc::geteuid() };
+	let config = root.as_path().join("config.toml");
+
+	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
+	fs::set_permissions(config, Permissions::from_mode(0o600)).expect("private profile");
+}
+
+fn write_native_configuration(native_home: &Path, address: SocketAddr) {
+	let catalog = native_home.join("models.json");
+
+	fs::write(
+		&catalog,
+		serde_json::to_vec(
+			&serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
+		)
+		.expect("catalog"),
+	)
+	.expect("catalog");
+	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("fixture config");
+}
 
 fn interaction_seconds(interactive: bool) -> u64 {
 	if env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some() {
@@ -148,17 +171,8 @@ async fn qualify(home: &Path) {
 			"Spoken fixture correction"
 		}),
 	));
-	let catalog = native_home.join("models.json");
 
-	fs::write(
-		&catalog,
-		serde_json::to_vec(
-			&serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
-		)
-		.expect("catalog"),
-	)
-	.expect("catalog");
-	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("fixture config");
+	write_native_configuration(&native_home, address);
 
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
@@ -214,11 +228,8 @@ async fn qualify(home: &Path) {
 		)
 		.expect("same-UID authority")
 	};
-	let uid = unsafe { libc::geteuid() };
-	let config = root.as_path().join("config.toml");
 
-	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
-	fs::set_permissions(config, Permissions::from_mode(0o600)).expect("private profile");
+	write_service_profile(&root);
 
 	let client = AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"));
 	let app = submit::application(&runtime, &store, home);
@@ -738,6 +749,37 @@ async fn prepare_voice_call(
 	store.close_agent_voice_call("recap-voice".into()).await.expect("voice call closed");
 }
 
+async fn qualify_prompt_media_directory(
+	client: &AgentClient,
+	work_id: &EntityId,
+	thread_id: &WireText,
+	home: &Path,
+) {
+	let relative = PromptDraft::new(vec![
+		serde_json::json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
+	])
+	.expect("native recap fixture");
+	let resolved = client
+		.resolve_prompt_media(work_id.clone(), thread_id.clone(), &relative)
+		.await
+		.expect("owned native directory");
+
+	assert_eq!(
+		resolved.parts()[0]["path"],
+		home.join("images/photo.png").to_str().expect("native recap fixture")
+	);
+	assert!(
+		client
+			.resolve_prompt_media(
+				work_id.clone(),
+				WireText::new("foreign-thread").expect("native recap fixture"),
+				&relative
+			)
+			.await
+			.is_err()
+	);
+}
+
 async fn qualify_native_prompt_revert(
 	store: &SqliteStore,
 	native: &AppServerClient,
@@ -851,29 +893,8 @@ async fn qualify_native_prompt_revert(
 
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
 
-	let relative = PromptDraft::new(vec![
-		serde_json::json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
-	])
-	.expect("native recap fixture");
-	let resolved = client
-		.resolve_prompt_media(work_id.clone(), thread_id.clone(), &relative)
-		.await
-		.expect("owned native directory");
+	qualify_prompt_media_directory(client, &work_id, &thread_id, home).await;
 
-	assert_eq!(
-		resolved.parts()[0]["path"],
-		home.join("images/photo.png").to_str().expect("native recap fixture")
-	);
-	assert!(
-		client
-			.resolve_prompt_media(
-				work_id.clone(),
-				WireText::new("foreign-thread").expect("native recap fixture"),
-				&relative
-			)
-			.await
-			.is_err()
-	);
 	assert_eq!(requests.load(Ordering::Acquire), count, "media directory queries do not infer");
 
 	qualify_canonical_prompt_send(client, native, work_id, thread_id, receipt_id, requests).await;

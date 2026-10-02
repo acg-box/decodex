@@ -27,47 +27,14 @@ pub(super) async fn check(
 
 	fs::write(home.join("fixture.png"), png).expect("native media fixture");
 
-	// A complete two-second PCM WAV forces several public chunks.
-	let mut wav = b"RIFF".to_vec();
-
-	wav.extend(64036_u32.to_le_bytes());
-	wav.extend(b"WAVEfmt ");
-	wav.extend(16_u32.to_le_bytes());
-	wav.extend(1_u16.to_le_bytes());
-	wav.extend(1_u16.to_le_bytes());
-	wav.extend(16000_u32.to_le_bytes());
-	wav.extend(32000_u32.to_le_bytes());
-	wav.extend(2_u16.to_le_bytes());
-	wav.extend(16_u16.to_le_bytes());
-	wav.extend(b"data");
-	wav.extend(64000_u32.to_le_bytes());
-	wav.resize(64_044, 0);
-
-	fs::write(home.join("fixture.wav"), &wav).expect("native media fixture");
-
+	let wav = write_wav_fixture(home);
 	let thread_directory = home.join("thread-directory");
 
 	fs::create_dir(&thread_directory).expect("native media fixture");
 
 	let work = EntityId::new("recap-root").expect("native media fixture");
 
-	recap_socket::accepted(
-		client,
-		AgentActionDto::Start(AgentStartDto {
-			root_id: work.clone(),
-			prompt: HistoryText::new("Prepare the media fixture.").expect("native media fixture"),
-			model: ConversationModel::new("cold-native-model").expect("native media fixture"),
-			effort: Some(
-				ConversationReasoningEffort::new("provider-effort").expect("native media fixture"),
-			),
-			cwd: ConversationWorkingDirectory::new(home.to_str().expect("native media fixture"))
-				.expect("native media fixture"),
-			account_id: Some(EntityId::new(account.as_str()).expect("native media fixture")),
-			sandbox: AgentSandboxDto::ReadOnly,
-		}),
-		"media-parent",
-	)
-	.await;
+	start_media_parent(client, &work, home, account).await;
 
 	let thread = recap_socket::settled(client).await;
 	let native = runtime.agent_client().expect("native media fixture");
@@ -171,6 +138,53 @@ pub(super) async fn check(
 	qualify_resources(client, &work).await;
 
 	assert_eq!(requests.load(Ordering::Acquire), before, "resource association cannot infer");
+}
+
+fn write_wav_fixture(home: &Path) -> Vec<u8> {
+	// A complete two-second PCM WAV forces several public chunks.
+	let mut wav = b"RIFF".to_vec();
+
+	wav.extend(64036_u32.to_le_bytes());
+	wav.extend(b"WAVEfmt ");
+	wav.extend(16_u32.to_le_bytes());
+	wav.extend(1_u16.to_le_bytes());
+	wav.extend(1_u16.to_le_bytes());
+	wav.extend(16000_u32.to_le_bytes());
+	wav.extend(32000_u32.to_le_bytes());
+	wav.extend(2_u16.to_le_bytes());
+	wav.extend(16_u16.to_le_bytes());
+	wav.extend(b"data");
+	wav.extend(64000_u32.to_le_bytes());
+	wav.resize(64_044, 0);
+
+	fs::write(home.join("fixture.wav"), &wav).expect("native media fixture");
+
+	wav
+}
+
+async fn start_media_parent(
+	client: &AgentClient,
+	work: &EntityId,
+	home: &Path,
+	account: &AccountId,
+) {
+	recap_socket::accepted(
+		client,
+		AgentActionDto::Start(AgentStartDto {
+			root_id: work.clone(),
+			prompt: HistoryText::new("Prepare the media fixture.").expect("native media fixture"),
+			model: ConversationModel::new("cold-native-model").expect("native media fixture"),
+			effort: Some(
+				ConversationReasoningEffort::new("provider-effort").expect("native media fixture"),
+			),
+			cwd: ConversationWorkingDirectory::new(home.to_str().expect("native media fixture"))
+				.expect("native media fixture"),
+			account_id: Some(EntityId::new(account.as_str()).expect("native media fixture")),
+			sandbox: AgentSandboxDto::ReadOnly,
+		}),
+		"media-parent",
+	)
+	.await;
 }
 
 async fn qualify_resources(client: &AgentClient, work: &EntityId) {

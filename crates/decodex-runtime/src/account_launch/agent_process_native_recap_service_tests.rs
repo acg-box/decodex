@@ -31,6 +31,23 @@ async fn installed_recap_uses_native_history_and_invalidates_after_new_input() {
 	.await
 	.expect("bounded recap fixture");
 }
+async fn assert_recap_invalidated(recaps: &Recaps, source: &Source) {
+	for _ in 0..100 {
+		if recaps.status(EntityId::new("work").expect("id"), Some(source)).phase
+			== TaskRecapPhase::Cancelled
+		{
+			break;
+		}
+
+		time::sleep(Duration::from_millis(10)).await;
+	}
+
+	assert_eq!(
+		recaps.status(EntityId::new("work").expect("id"), Some(source)).phase,
+		TaskRecapPhase::Cancelled
+	);
+}
+
 async fn qualify(mode: &str) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("fixture home");
@@ -134,20 +151,7 @@ async fn qualify(mode: &str) {
 		.await
 		.expect("new input");
 
-	for _ in 0..100 {
-		if recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase
-			== TaskRecapPhase::Cancelled
-		{
-			break;
-		}
-
-		time::sleep(Duration::from_millis(10)).await;
-	}
-
-	assert_eq!(
-		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
-		TaskRecapPhase::Cancelled
-	);
+	assert_recap_invalidated(&recaps, &source).await;
 
 	let _ = stop.send(());
 
