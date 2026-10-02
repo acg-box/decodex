@@ -19,8 +19,8 @@ use crate::shell::agent_surface::drafts::storage::{
 };
 use crate::shell::agent_surface::drafts::{
 	storage::{
-		AgentSurface, ClientDraftStore, Context, DesktopDraftDocument, DesktopPromptEditDraft,
-		EntityId, Storage, WireText,
+		AgentSurface, ClientDraftStore, ClientProfile, Context, DesktopDraftDocument,
+		DesktopPromptEditDraft, EntityId, Storage, WireText,
 	},
 	tests,
 };
@@ -63,65 +63,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 	let inspect_scope = scope.clone();
 	let (unknown, unknown_reply) = mpsc::channel();
 	let server = spawn_server(listener, inspect, inspect_scope, unknown);
-	let (view, visual) = cx.add_window_view(|_, cx| {
-		let surface = cx.new(AgentSurface::new);
-
-		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-
-		let work = surface.update(cx, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-			s.bind_profile(Some(profile.clone()), cx);
-
-			s.poll_task = None;
-
-			s.visual_workspace_fixture(cx);
-
-			s.state = LoadState::Ready;
-
-			let work = s.selected.clone().unwrap();
-
-			s.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|item| item.id == work)
-				.unwrap()
-				.codex_thread_id = Some("thread".into());
-
-			s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
-
-			let input = PromptDraft::new(vec![
-				serde_json::json!({"type":"text","text":"Edited input"}),
-				serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
-			])
-			.unwrap();
-
-			s.stage_prompt_editor(
-				DesktopPromptEditDraft {
-					work_id: EntityId::new(&work).unwrap(),
-					thread_id: WireText::new("thread").unwrap(),
-					before_turn_id: WireText::new("turn").unwrap(),
-					item_id: WireText::new("item").unwrap(),
-					original_hash: input.fingerprint().unwrap(),
-					review_token: WireText::new("a".repeat(64)).unwrap(),
-					receipt_id: Some(10),
-					confirmation_key: None,
-					fork: None,
-					pending_send: None,
-					handback_pending: false,
-					input,
-				},
-				cx,
-			)
-			.unwrap();
-
-			work
-		});
-
-		View { surface, work }
-	});
+	let (view, visual) = cx.add_window_view(|_, cx| send_view(&store, &profile, cx));
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 
 	for button in [
@@ -180,6 +122,66 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 		disk.recovered.last().unwrap().draft.prompt_edits[&"a".repeat(64)].input.parts()[1]["fileId"],
 		"retained-file"
 	);
+}
+
+fn send_view(store: &ClientDraftStore, profile: &ClientProfile, cx: &mut Context<View>) -> View {
+	let surface = cx.new(AgentSurface::new);
+
+	cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
+	let work = surface.update(cx, |s, cx| {
+		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
+		s.bind_profile(Some(profile.clone()), cx);
+
+		s.poll_task = None;
+
+		s.visual_workspace_fixture(cx);
+
+		s.state = LoadState::Ready;
+
+		let work = s.selected.clone().unwrap();
+
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("thread".into());
+
+		s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
+
+		let input = PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Edited input"}),
+			serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
+		])
+		.unwrap();
+
+		s.stage_prompt_editor(
+			DesktopPromptEditDraft {
+				work_id: EntityId::new(&work).unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				before_turn_id: WireText::new("turn").unwrap(),
+				item_id: WireText::new("item").unwrap(),
+				original_hash: input.fingerprint().unwrap(),
+				review_token: WireText::new("a".repeat(64)).unwrap(),
+				receipt_id: Some(10),
+				confirmation_key: None,
+				fork: None,
+				pending_send: None,
+				handback_pending: false,
+				input,
+			},
+			cx,
+		)
+		.unwrap();
+
+		work
+	});
+
+	View { surface, work }
 }
 
 fn spawn_server(
@@ -255,16 +257,7 @@ fn spawn_server(
 						ClientMessage::Query(query) => {
 							let payload = match query.payload {
 								QueryPayload::GetAgentModelSettings { work_id } if step == 0 =>
-									QueryResultPayload::AgentModelSettings(
-										AgentModelSettingsResult::Available {
-											work_id,
-											thread_id: EntityId::new("thread").unwrap(),
-											account_id: EntityId::new("account").unwrap(),
-											model_provider: None,
-											model: Some(WireText::new("model").unwrap()),
-											reasoning_effort: None,
-										},
-									),
+									model_settings_response(work_id),
 								QueryPayload::GetAgentPromptInputUpload { upload } if step == 1 =>
 									QueryResultPayload::AgentPromptInputUpload(
 										PromptInputUploadStatus::Ready { upload, input_id: 7 },
@@ -308,6 +301,17 @@ fn spawn_server(
 			.await
 			.unwrap();
 		});
+	})
+}
+
+fn model_settings_response(work_id: EntityId) -> QueryResultPayload {
+	QueryResultPayload::AgentModelSettings(AgentModelSettingsResult::Available {
+		work_id,
+		thread_id: EntityId::new("thread").unwrap(),
+		account_id: EntityId::new("account").unwrap(),
+		model_provider: None,
+		model: Some(WireText::new("model").unwrap()),
+		reasoning_effort: None,
 	})
 }
 

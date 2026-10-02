@@ -2,8 +2,8 @@
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
-	sync::mpsc,
-	thread,
+	sync::{mpsc, mpsc::Sender},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
@@ -73,7 +73,67 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 	let inspect = store.clone();
 	let scope = profile.draft_scope_key();
 	let (done, finished) = mpsc::channel();
-	let server = thread::spawn(move || {
+	let server = spawn_confirmation_server(listener, inspect, scope, boundary, done);
+	let (view, visual) =
+		cx.add_window_view(|_, cx| confirmation_view(store.clone(), profile.clone(), cx));
+
+	for button in [
+		"prompt-confirm-review",
+		match boundary {
+			None => "prompt-confirm-apply",
+			Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
+			Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
+		},
+	] {
+		let mut bounds = None;
+
+		for _ in 0..200 {
+			visual.run_until_parked();
+			visual.update(|window, cx| {
+				window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
+				window.draw(cx).clear();
+			});
+
+			bounds = visual.debug_bounds(button);
+
+			if bounds.is_some() {
+				break;
+			}
+
+			thread::sleep(Duration::from_millis(5));
+		}
+
+		visual.simulate_click(bounds.expect("confirmation control").center(), Default::default());
+	}
+	for _ in 0..300 {
+		visual.run_until_parked();
+		visual.executor().advance_clock(Duration::from_millis(50));
+
+		if finished.try_recv().is_ok() {
+			break;
+		}
+
+		thread::sleep(Duration::from_millis(5));
+	}
+
+	server.join().unwrap();
+	visual.run_until_parked();
+
+	let surface = view.read_with(visual, |v, _| v.surface.clone());
+
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.composer.read(cx).content(), "Unrelated main input")
+	});
+}
+
+fn spawn_confirmation_server(
+	listener: std::os::unix::net::UnixListener,
+	inspect: ClientDraftStore,
+	scope: String,
+	boundary: Option<PromptForkBoundary>,
+	done: Sender<()>,
+) -> JoinHandle<()> {
+	thread::spawn(move || {
 		Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
@@ -146,57 +206,7 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 		});
 
 		done.send(()).unwrap();
-	});
-	let (view, visual) =
-		cx.add_window_view(|_, cx| confirmation_view(store.clone(), profile.clone(), cx));
-
-	for button in [
-		"prompt-confirm-review",
-		match boundary {
-			None => "prompt-confirm-apply",
-			Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
-			Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
-		},
-	] {
-		let mut bounds = None;
-
-		for _ in 0..200 {
-			visual.run_until_parked();
-			visual.update(|window, cx| {
-				window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
-				window.draw(cx).clear();
-			});
-
-			bounds = visual.debug_bounds(button);
-
-			if bounds.is_some() {
-				break;
-			}
-
-			thread::sleep(Duration::from_millis(5));
-		}
-
-		visual.simulate_click(bounds.expect("confirmation control").center(), Default::default());
-	}
-	for _ in 0..300 {
-		visual.run_until_parked();
-		visual.executor().advance_clock(Duration::from_millis(50));
-
-		if finished.try_recv().is_ok() {
-			break;
-		}
-
-		thread::sleep(Duration::from_millis(5));
-	}
-
-	server.join().unwrap();
-	visual.run_until_parked();
-
-	let surface = view.read_with(visual, |v, _| v.surface.clone());
-
-	surface.read_with(visual, |s, cx| {
-		assert_eq!(s.composer.read(cx).content(), "Unrelated main input")
-	});
+	})
 }
 
 fn confirmation_view(
