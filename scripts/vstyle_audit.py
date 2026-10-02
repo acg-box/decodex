@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Attest and compare the read-only Rust vstyle audit against its accepted baseline."""
+"""Attest the read-only Rust vstyle audit and require zero findings."""
 
 from collections import Counter
-from datetime import date
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -29,7 +28,7 @@ def load_contract(path=CONTRACT_PATH):
     """Load the checked-in audit contract."""
     with Path(path).open(encoding="utf-8") as contract_file:
         contract = json.load(contract_file)
-    if contract.get("schema") != "decodex/vstyle-rust-audit/1":
+    if contract.get("schema") != "decodex/vstyle-rust-audit/2":
         raise AuditError("unsupported vstyle audit contract schema")
     tool = contract["tool"]
     if not re.fullmatch(r"[0-9a-f]{40}", tool["commit"]):
@@ -38,23 +37,12 @@ def load_contract(path=CONTRACT_PATH):
         raise AuditError("vstyle install and version identities do not match the pinned commit")
     if contract["rust_rules"] != sorted(set(contract["rust_rules"])):
         raise AuditError("vstyle Rust rule contract is not sorted and unique")
-    baseline = baseline_counter(contract)
-    accepted = contract["accepted_baseline"]
-    findings = sum(baseline.values())
-    manual = sum(count for (*_, fixable), count in baseline.items() if not fixable)
-    if findings != accepted["findings"] or manual != accepted["manual"]:
-        raise AuditError(
-            "checked-in vstyle baseline summary mismatch: "
-            f"normalized={findings}/{manual}, accepted={accepted['findings']}/{accepted['manual']}"
-        )
+    if any(key in contract for key in ("baseline", "accepted_baseline", "governance")):
+        raise AuditError("vstyle audit does not accept finding exemptions")
+    minimum = contract["minimum_checked_files"]
+    if type(minimum) is not int or minimum <= 0:
+        raise AuditError("vstyle minimum checked file count must be a positive integer")
     return contract
-
-
-def validate_governance(contract, today=None):
-    """Fail when the accepted baseline has passed its mandatory review date."""
-    review_by = date.fromisoformat(contract["governance"]["review_by"])
-    if (today or date.today()) > review_by:
-        raise AuditError(f"vstyle audit baseline review expired on {review_by.isoformat()}")
 
 
 def parse_host(rustc_output):
@@ -140,8 +128,12 @@ def parse_curate(output, allowed_rules):
         raise AuditError(f"unexpected vstyle curate output: {line!r}")
     total = sum(findings.values())
     manual = sum(count for (*_, fixable), count in findings.items() if not fixable)
-    if checked_files is None or found_summary is None:
-        raise AuditError("vstyle curate output omitted its summary")
+    if checked_files is None:
+        raise AuditError("vstyle curate output omitted its checked-file summary")
+    if found_summary is None:
+        if findings or manual_summary:
+            raise AuditError("vstyle curate output omitted its finding summary")
+        found_summary = 0
     if total != found_summary or manual != manual_summary:
         raise AuditError(
             "vstyle curate summary mismatch: "
@@ -150,31 +142,12 @@ def parse_curate(output, allowed_rules):
     return findings, {"checked_files": checked_files, "total": total, "manual": manual}
 
 
-def baseline_counter(contract):
-    """Load the reviewed baseline as a multiset."""
-    baseline = Counter()
-    for finding in contract["baseline"]:
-        key = finding_key(
-            finding["path"],
-            finding["rule"],
-            finding["message"],
-            finding["fixable"],
-        )
-        baseline[key] += finding["count"]
-    return baseline
-
-
-def compare_findings(current, baseline):
-    """Return new regressions and resolved baseline findings."""
-    return current - baseline, baseline - current
-
-
-def render_delta(prefix, delta):
-    """Render a deterministic normalized delta."""
+def render_findings(findings):
+    """Render deterministic finding diagnostics."""
     lines = []
-    for (path, rule, message, fixable), count in sorted(delta.items()):
+    for (path, rule, message, fixable), count in sorted(findings.items()):
         disposition = "fixable" if fixable else "manual"
-        lines.append(f"{prefix} {count}x {path} [{rule}] ({disposition}) {message}")
+        lines.append(f"! {count}x {path} [{rule}] ({disposition}) {message}")
     return lines
 
 
@@ -192,7 +165,6 @@ def run(command):
 def audit():
     """Execute the closed read-only audit contract."""
     contract = load_contract()
-    validate_governance(contract)
 
     rustc = run(["rustc", "-vV"])
     if rustc.returncode != 0:
@@ -224,13 +196,15 @@ def audit():
     if curate.returncode not in {0, 1}:
         raise AuditError(f"vstyle curate failed unexpectedly: {curate.stderr.strip()}")
     findings, summary = parse_curate(curate.stdout + curate.stderr, set(rules))
-    if summary["checked_files"] < contract["accepted_baseline"]["checked_files"]:
+    if summary["checked_files"] < contract["minimum_checked_files"]:
         raise AuditError(
             "vstyle audit scope shrank: "
             f"checked {summary['checked_files']} files, "
-            f"accepted at least {contract['accepted_baseline']['checked_files']}"
+            f"required at least {contract['minimum_checked_files']}"
         )
-    added, resolved = compare_findings(findings, baseline_counter(contract))
+    expected_exit = 1 if findings else 0
+    if curate.returncode != expected_exit:
+        raise AuditError("vstyle exit status contradicts its findings")
 
     print(
         "vstyle audit: "
@@ -238,20 +212,12 @@ def audit():
         f"{summary['checked_files']} files; {summary['total']} findings; "
         f"{summary['manual']} manual"
     )
-    for line in render_delta("-", resolved):
+    for line in render_findings(findings):
         print(line)
-    for line in render_delta("+", added):
-        print(line)
-    if added:
-        print(f"vstyle audit: FAILED with {sum(added.values())} new regression(s)")
+    if findings:
+        print(f"vstyle audit: FAILED with {summary['total']} finding(s)")
         return 1
-    if resolved:
-        print(
-            "vstyle audit: baseline has "
-            f"{sum(resolved.values())} resolved finding(s); reviewed refresh required"
-        )
-    else:
-        print("vstyle audit: accepted baseline matched exactly")
+    print("vstyle audit: no findings")
     return 0
 
 
@@ -259,7 +225,7 @@ def main():
     """CLI entrypoint."""
     try:
         return audit()
-    except (AuditError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (AuditError, KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
         print(f"vstyle audit: provenance or contract failure: {error}", file=sys.stderr)
         return 2
 
