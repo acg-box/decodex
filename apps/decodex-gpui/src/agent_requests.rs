@@ -686,7 +686,7 @@ mod timing_tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx); s.graph_visible = false;
+			s.visual_workspace_fixture(cx); s.workspace.graph_visible = false;
 
 			let work = s.selected.clone().unwrap();
 
@@ -710,7 +710,7 @@ mod timing_tests {
 			window.draw(cx).clear();
 		});
 		surface.update(visual, |s, cx| {
-			s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
+			s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 			cx.notify();
 		});
 		visual.update(|window, cx| {
@@ -771,7 +771,7 @@ mod timing_tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s.selected.clone().unwrap();
 
@@ -807,7 +807,7 @@ mod timing_tests {
 				window.draw(cx).clear();
 			});
 			surface.update(visual, |s, cx| {
-				s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
+				s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 				cx.notify();
 			});
 			visual.update(|window, cx| {
@@ -816,10 +816,7 @@ mod timing_tests {
 
 			if visual.debug_bounds("request-allow").is_some() {
 				surface.update(visual, |s, cx| {
-					s.transcript_scroll
-						.get(s.selected.as_ref().unwrap())
-						.unwrap()
-						.scroll_to_bottom();
+					s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 					cx.notify();
 				});
 				visual.update(|window, cx| {
@@ -932,7 +929,7 @@ mod timing_tests {
 				surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
 
-				s.graph_visible = false;
+				s.workspace.graph_visible = false;
 
 				let work = s.selected.clone().unwrap();
 
@@ -978,7 +975,7 @@ mod timing_tests {
 			surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
 
-				s.graph_visible = false;
+				s.workspace.graph_visible = false;
 
 				let work = s.selected.clone().unwrap();
 

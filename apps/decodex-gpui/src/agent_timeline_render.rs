@@ -116,7 +116,7 @@ impl AgentSurface {
 				&& !app_ui
 				&& !text.contains("![")
 				&& work.active_turn_id.as_deref() != Some(turn_id)
-				&& !self.native_history.weather.contains_key(turn_id)
+				&& !self.timeline.native.weather.contains_key(turn_id)
 				&& self.native_live_message(work, turn_id, item_id).is_none() =>
 				true,
 			AgentTimelineContent::TurnBoundary { completed: true, turn_id, .. }
@@ -127,8 +127,8 @@ impl AgentSurface {
 
 		can_window
 			.then(|| {
-				self.transcript_scroll.get(&work.id).and_then(|scroll| {
-					self.native_history.viewport.offscreen_height(
+				self.timeline.scroll.get(&work.id).and_then(|scroll| {
+					self.timeline.native.viewport.offscreen_height(
 						entry,
 						scroll.offset().y.into(),
 						scroll.bounds().size.height.into(),
@@ -157,7 +157,7 @@ impl AgentSurface {
 
 		// Historical rows have no live draft. Do not scan the entire timeline
 		// for every such row on every scroll frame.
-		if self.native_history.entries.iter().any(|entry| {
+		if self.timeline.native.entries.iter().any(|entry| {
 			matches!(&entry.content,
 			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn)
 		}) {
@@ -205,7 +205,7 @@ impl AgentSurface {
 		message.text = text.into();
 
 		if kind == "agentMessage"
-			&& let Some(forecasts) = self.native_history.weather.get(turn_id)
+			&& let Some(forecasts) = self.timeline.native.weather.get(turn_id)
 		{
 			message.weather = forecasts
 				.iter()
@@ -252,7 +252,7 @@ impl AgentSurface {
 				}))
 				.into_any_element(),
 			AgentTimelineContent::TurnBoundary { completed, turn_id, status, error, .. } => {
-				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, AgentTimelineContent::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
+				let has_reply = self.timeline.native.entries.iter().any(|entry| matches!(&entry.content, AgentTimelineContent::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
 
 				row.when(*completed && !has_reply, |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
@@ -358,7 +358,7 @@ impl AgentSurface {
 					),
 				)
 			} else {
-				let last_reply = self.native_history.entries.iter().rev().find_map(|entry| {
+				let last_reply = self.timeline.native.entries.iter().rev().find_map(|entry| {
 					match &entry.content {
 						AgentTimelineContent::Item { turn_id: turn, item_id, kind, .. }
 							if turn == turn_id && kind == "agentMessage" =>
@@ -366,7 +366,7 @@ impl AgentSurface {
 						_ => None,
 					}
 				});
-				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.native_history.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
+				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.timeline.native.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
 
 				body.child(super::super::history_entry_with_metrics(&message, identity, metrics))
 			};
@@ -656,7 +656,7 @@ impl AgentSurface {
 			})
 			.or_else(|| {
 				let mut matches =
-					self.native_history.entries.iter().filter_map(|entry| match &entry.content {
+					self.timeline.native.entries.iter().filter_map(|entry| match &entry.content {
 						AgentTimelineContent::Item {
 							turn_id: turn,
 							item_id,
@@ -784,7 +784,7 @@ mod tests {
 			))
 			.unwrap();
 
-			s.native_history.weather.insert("weather-turn".into(), vec![forecast.clone()]);
+			s.timeline.native.weather.insert("weather-turn".into(), vec![forecast.clone()]);
 
 			for kind in ["weather", "forecast"] {
 				let text = format!("Cloudy. \u{e200}{kind}\u{e202}{}\u{e201}", forecast.reference);
@@ -889,7 +889,7 @@ mod tests {
 		let selector = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -913,7 +913,7 @@ mod tests {
 				serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(&entry)])
 					.to_string();
 
-			s.native_history.replace(
+			s.timeline.native.replace(
 				Binding {
 					work: work.id.clone(),
 					thread: "native-thread".into(),
@@ -1113,7 +1113,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -1144,7 +1144,7 @@ mod tests {
 				}
 			));
 
-			s.native_history = history;
+			s.timeline.native = history;
 
 			let Some((_, decodex_protocol::AgentHistoryResult::Available { live, .. })) =
 				&mut s.history
@@ -1177,7 +1177,7 @@ mod tests {
 		assert!(visual.debug_bounds("native-live-reasoning-summary").is_some());
 
 		surface.update(visual, |s, cx| {
-			s.native_history.entries.push(plan_entry());
+			s.timeline.native.entries.push(plan_entry());
 			cx.notify();
 		});
 		visual.update(|window, cx| {
@@ -1199,7 +1199,7 @@ mod tests {
 				*text = "Final public summary".into();
 			}
 
-			s.native_history.entries.push(entry);
+			s.timeline.native.entries.push(entry);
 			cx.notify();
 		});
 
@@ -1217,7 +1217,7 @@ mod tests {
 	) -> Vec<String> {
 		s.visual_workspace_fixture(cx);
 
-		s.graph_visible = false;
+		s.workspace.graph_visible = false;
 
 		let work = s
 			.snapshot
@@ -1274,7 +1274,7 @@ mod tests {
 			}
 		));
 
-		s.native_history = history;
+		s.timeline.native = history;
 
 		cx.notify();
 
@@ -1363,7 +1363,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("saved-local-history").is_some());
 
-		surface.read_with(visual, |s, _| assert!(s.native_history.show_saved));
+		surface.read_with(visual, |s, _| assert!(s.timeline.native.show_saved));
 
 		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
 
@@ -1375,11 +1375,11 @@ mod tests {
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
 		surface.update(visual, |s, cx| {
-			let mut duplicate = s.native_history.entries[1].clone();
+			let mut duplicate = s.timeline.native.entries[1].clone();
 
 			duplicate.position = 7;
 
-			s.native_history.entries.push(duplicate);
+			s.timeline.native.entries.push(duplicate);
 			cx.notify();
 		});
 
@@ -1403,7 +1403,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -1453,7 +1453,7 @@ mod tests {
 				}
 			));
 
-			s.native_history = history;
+			s.timeline.native = history;
 
 			cx.notify();
 		});
@@ -1477,7 +1477,7 @@ mod tests {
 					*value = truncated;
 				}
 
-				s.native_history.entries = vec![entry];
+				s.timeline.native.entries = vec![entry];
 
 				cx.notify();
 			});

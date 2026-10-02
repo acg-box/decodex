@@ -24,7 +24,7 @@ impl AgentSurface {
 
 		let mut panel = gpui::div().flex().flex_col().gap_2().child("Conversation export");
 
-		if self.transcript_busy {
+		if self.timeline.transcript_busy {
 			return panel.child("Reading conversation…").into_any_element();
 		}
 
@@ -34,7 +34,7 @@ impl AgentSurface {
 			("transcript-copy-loaded", "Copy loaded excerpt", false, true),
 			("transcript-save-loaded", "Save loaded excerpt…", true, true),
 		] {
-			if loaded && !self.transcript_failed {
+			if loaded && !self.timeline.transcript_failed {
 				continue;
 			}
 
@@ -56,12 +56,13 @@ impl AgentSurface {
 		let start = text.len();
 
 		if self
-			.native_history
+			.timeline
+			.native
 			.binding
 			.as_ref()
 			.is_some_and(|b| (&b.work, &b.thread) == (&target.0, &target.1))
 		{
-			for item in self.native_history.visible_export_items() {
+			for item in self.timeline.native.visible_export_items() {
 				if let AgentTimelineContent::Item { kind, text: body, truncated, .. } = item {
 					if body.is_empty() {
 						continue;
@@ -91,7 +92,7 @@ impl AgentSurface {
 	}
 
 	fn export_transcript(&mut self, save: bool, loaded: bool, cx: &mut Context<Self>) {
-		if self.transcript_busy {
+		if self.timeline.transcript_busy {
 			return;
 		}
 
@@ -125,7 +126,7 @@ impl AgentSurface {
 			)
 		});
 
-		self.transcript_busy = true;
+		self.timeline.transcript_busy = true;
 
 		cx.notify();
 
@@ -133,7 +134,7 @@ impl AgentSurface {
 			let path = match destination {
 				Some(destination) => match destination.await {
 					Ok(Ok(Some(path)))=>Some(path),
-					_=>{let _=surface.update(cx,|s,cx|{s.transcript_busy=false;cx.notify();});return;}
+					_=>{let _=surface.update(cx,|s,cx|{s.timeline.transcript_busy=false;cx.notify();});return;}
 				},
 				None=>None,
 			};
@@ -146,7 +147,7 @@ impl AgentSurface {
 			}).await;
 			let valid=surface.update(cx,|s,cx| {
 				if s.native_goal_target()!=Some(target) || s.snapshot.as_ref().and_then(|s|s.runtime_source.as_ref())!=Some(&source) {
-					s.transcript_busy=false;s.feedback="Conversation source changed. Export again from the selected conversation.".into();cx.notify();return false;
+					s.timeline.transcript_busy=false;s.feedback="Conversation source changed. Export again from the selected conversation.".into();cx.notify();return false;
 				}
 
 				true
@@ -155,7 +156,7 @@ impl AgentSurface {
 			if !valid {return;}
 
 			let Ok(text)=result else {
-				let _=surface.update(cx,|s,cx|{s.transcript_busy=false;s.transcript_failed=true;s.feedback="Complete history could not be exported. Retry, or explicitly export the loaded excerpt.".into();cx.notify();});return;
+				let _=surface.update(cx,|s,cx|{s.timeline.transcript_busy=false;s.timeline.transcript_failed=true;s.feedback="Complete history could not be exported. Retry, or explicitly export the loaded excerpt.".into();cx.notify();});return;
 			};
 			let saved = if let Some(path)=path {
 				cx.background_executor().spawn(async move {write_transcript(&path,&text)}).await
@@ -163,9 +164,9 @@ impl AgentSurface {
 				let _=surface.update(cx,|_,cx|cx.write_to_clipboard(ClipboardItem::new_string(text)));Ok(())
 			};
 			let _=surface.update(cx,|s,cx| {
-				s.transcript_busy=false;
+				s.timeline.transcript_busy=false;
 
-				s.transcript_failed=false;
+				s.timeline.transcript_failed=false;
 
 				s.feedback=match saved {Ok(())=>if loaded {"Loaded excerpt exported."} else {"Conversation exported as Markdown."},Err(reason)=>reason}.into();cx.notify();
 			});

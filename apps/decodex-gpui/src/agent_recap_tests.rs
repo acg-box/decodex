@@ -259,11 +259,11 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut Test
 
 	assert!(visual.debug_bounds("recap-toggle").is_none(), "no recap row in the transcript");
 
-	let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["agent"].clone());
+	let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
 	let height = scroll.max_offset();
 
 	surface.update(visual, |s, cx| {
-		s.details_visible = true;
+		s.workspace.details_visible = true;
 
 		s.open_recap("agent", cx);
 

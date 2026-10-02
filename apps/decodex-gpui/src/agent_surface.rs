@@ -147,7 +147,7 @@ pub(crate) struct AgentSurface {
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
 	usage_estimate_epoch: u64,
-	native_history: Timeline,
+	timeline: TimelineView,
 	integrations: Option<(String, Option<AgentIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
 	resource_mutation_task: Option<Task<()>>,
@@ -159,43 +159,9 @@ pub(crate) struct AgentSurface {
 	capabilities_checked: Option<std::time::Instant>,
 	capability_task: Option<Task<()>>,
 	capability_generation: u64,
-	expanded_progress: std::collections::BTreeSet<String>,
-	pages: Vec<String>,
-	closing_pages: HashSet<String>,
-	graph_visible: bool,
-	graph_expanded: bool,
-	page_views: std::collections::BTreeMap<String, PageView>,
-	timeline_visible: bool,
-	graph_scope: Option<String>,
-	graph_selected: Option<String>,
-	graph_zoom: f32,
-	graph_display_zoom: f32,
-	graph_pan: (f32, f32),
-	graph_inset: (f32, f32),
-	graph_drag: Option<Point<Pixels>>,
-	history_marks: std::collections::BTreeMap<HistoryKey, HistoryMark>,
-	history_marks_work: Option<(String, bool)>,
-	history_marks_revision: Option<(u64, u64)>,
-	history_selected: Option<HistoryKey>,
-	latest_follow_work: Option<String>,
-	connection_details_expanded: bool,
-	history_hover: Option<usize>,
-	history_navigation: Option<HistoryNavigation>,
-	wheel_scroll: Option<WheelScroll>,
 	native_agents: NativeAgents,
 	output_stream: OutputStream,
-	history_read_at: Option<std::time::Instant>,
-	agent_tree_visible: bool,
-	agent_tree_collapsed: std::collections::BTreeSet<String>,
-	sidebar_visible: bool,
-	sidebar_width: f32,
-	agent_panel_width: f32,
-	graph_panel_height: f32,
-	focused_panel: Option<workspace_size::Panel>,
-	sidebar_drag: Option<(f32, f32)>,
-	history_cache: std::collections::BTreeMap<String, AgentHistoryResult>,
-	transcript_scroll: std::collections::BTreeMap<String, ScrollHandle>,
-	history_follow_paused: std::collections::BTreeSet<String>,
+	workspace: WorkspaceView,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
 	state: LoadState,
@@ -221,7 +187,6 @@ pub(crate) struct AgentSurface {
 	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
 	context_tip_visible: bool,
-	expanded_records: std::collections::BTreeSet<String>,
 	attachments: Vec<AgentAttachmentDto>,
 	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
@@ -252,11 +217,7 @@ pub(crate) struct AgentSurface {
 	history: Option<(String, AgentHistoryResult)>,
 	history_task: Option<Task<()>>,
 	history_requested_for: Option<String>,
-	older_history: std::collections::BTreeMap<String, (Vec<AgentHistoryEntryDto>, Option<i64>)>,
 	older_task: Option<Task<()>>,
-	loading_older: bool,
-	older_retry_after: Option<std::time::Instant>,
-	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
 	poll_task: Option<Task<()>>,
 	request: Option<AgentRequestResult>,
 	request_reader: RequestReader,
@@ -276,11 +237,7 @@ pub(crate) struct AgentSurface {
 	async_question_threads: std::collections::BTreeMap<String, String>,
 	async_question_choices: std::collections::BTreeMap<(String, String), ChoiceDraft>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
-	details_visible: bool,
-	transcript_busy: bool,
-	transcript_failed: bool,
 	accounts: Vec<(String, String)>,
-	setup_expanded: bool,
 }
 impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
@@ -347,8 +304,6 @@ impl AgentSurface {
 		surface
 	}
 
-	// Keep the initial values for this view's owned state together.
-	#[allow(clippy::too_many_lines)]
 	fn with_inputs(inputs: AgentInputs, cx: &mut Context<Self>) -> Self {
 		let AgentInputs { model, cwd, composer } = inputs;
 
@@ -372,7 +327,7 @@ impl AgentSurface {
 			usage_estimate: None,
 			usage_estimate_task: None,
 			usage_estimate_epoch: 0,
-			native_history: Default::default(),
+			timeline: TimelineView::default(),
 			integrations: None,
 			integrations_task: None,
 			resource_mutation_task: None,
@@ -400,54 +355,15 @@ impl AgentSurface {
 			interrupt_task: None,
 			composer_menu_content: None,
 			context_tip_visible: false,
-			expanded_records: Default::default(),
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
 			draft_profiles: Default::default(),
 			composer_manager: None,
-			pages: vec![],
-			closing_pages: Default::default(),
-			graph_visible: true,
-			graph_expanded: false,
-			page_views: Default::default(),
-			timeline_visible: true,
-			graph_scope: None,
-			graph_selected: None,
-			graph_zoom: 0.85,
-			graph_display_zoom: 0.85,
-			graph_pan: (0.0, 0.0),
-			graph_inset: (0.0, 0.0),
-			graph_drag: None,
-			history_marks: Default::default(),
-			history_marks_work: None,
-			history_marks_revision: None,
-			history_selected: None,
-			latest_follow_work: None,
-			connection_details_expanded: false,
-			history_hover: None,
-			history_navigation: None,
-			wheel_scroll: None,
 			native_agents: Default::default(),
 			output_stream: Default::default(),
-			history_read_at: None,
-			agent_tree_visible: true,
-			agent_tree_collapsed: Default::default(),
-			sidebar_visible: true,
-			sidebar_width: PanelDefaults::configured().sidebar.into(),
-			agent_panel_width: PanelDefaults::configured().sidebar.into(),
-			graph_panel_height: PanelDefaults::configured().dock.into(),
-			focused_panel: None,
-			sidebar_drag: None,
-			history_cache: Default::default(),
-			expanded_progress: Default::default(),
-			transcript_scroll: Default::default(),
-			history_follow_paused: Default::default(),
-			details_visible: false,
-			transcript_busy: false,
-			transcript_failed: false,
+			workspace: WorkspaceView::default(),
 			accounts: vec![],
-			setup_expanded: false,
 			composer,
 			composer_footer_height: 74.,
 			model,
@@ -475,11 +391,7 @@ impl AgentSurface {
 			history: None,
 			history_task: None,
 			history_requested_for: None,
-			older_history: Default::default(),
 			older_task: None,
-			loading_older: false,
-			older_retry_after: None,
-			older_scroll_anchor: None,
 			poll_task: None,
 			request: None,
 			request_reader: Default::default(),
@@ -576,7 +488,7 @@ impl AgentSurface {
 		self.question_notices.begin(question_scope.clone());
 
 		self.history_requested_for = Some(id.clone());
-		self.history_read_at = Some(std::time::Instant::now());
+		self.timeline.read_at = Some(std::time::Instant::now());
 
 		let Ok(work_id) = EntityId::new(id.clone()) else {
 			return;
@@ -614,12 +526,12 @@ impl AgentSurface {
 						|| !surface.history.as_ref().is_some_and(|(current, saved)| {
 							current == &id && matches!(saved, AgentHistoryResult::Available { .. })
 						}) {
-						if let Some(scroll) = surface.transcript_scroll.get(&id)
+						if let Some(scroll) = surface.timeline.scroll.get(&id)
 							&& surface.voice.is_none()
-							&& !surface.history_follow_paused.contains(&id)
+							&& !surface.timeline.follow_paused.contains(&id)
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 						{
-							surface.latest_follow_work = Some(id.clone());
+							surface.timeline.latest_follow_work = Some(id.clone());
 						}
 
 						if surface.feedback == "Message saved · Waiting for agent…" {
@@ -644,7 +556,7 @@ impl AgentSurface {
 
 						surface.reconcile_voice_captions(&id, &history);
 						surface.prepare_async_question_inputs(&id, &history, cx);
-						surface.history_cache.insert(id.clone(), history.clone());
+						surface.timeline.cache.insert(id.clone(), history.clone());
 
 						surface.history = Some((id, history));
 					}
@@ -779,9 +691,9 @@ impl AgentSurface {
 				snapshot.runtime_source == source.runtime_source
 					&& snapshot.pending_events.contains(&source.event)
 			}) {
-			if let Some(scroll) = self.transcript_scroll.get(&source.event.work_item_id)
+			if let Some(scroll) = self.timeline.scroll.get(&source.event.work_item_id)
 				&& self.voice.is_none()
-				&& !self.history_follow_paused.contains(&source.event.work_item_id)
+				&& !self.timeline.follow_paused.contains(&source.event.work_item_id)
 				&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 			{
 				scroll.scroll_to_bottom();
@@ -1314,10 +1226,10 @@ impl AgentSurface {
 
 		self.bind_drafts(profile.as_ref(), cx);
 
-		let epoch = self.native_history.epoch + 1;
+		let epoch = self.timeline.native.epoch + 1;
 
-		self.native_history = Default::default();
-		self.native_history.epoch = epoch;
+		self.timeline.native = Default::default();
+		self.timeline.native.epoch = epoch;
 		self.generation += 1;
 		self.refresh_failures = 0;
 		self.task = None;
@@ -1325,34 +1237,34 @@ impl AgentSurface {
 		self.output_stream = Default::default();
 		self.interrupting = None;
 		self.interrupt_task = None;
-		self.history_read_at = None;
+		self.timeline.read_at = None;
 
 		self.reset_profile_panels(cx);
 
 		self.snapshot = None;
 
-		self.pages.clear();
-		self.closing_pages.clear();
-		self.page_views.clear();
+		self.workspace.pages.clear();
+		self.workspace.closing_pages.clear();
+		self.workspace.page_views.clear();
 
-		self.graph_expanded = false;
+		self.workspace.graph_expanded = false;
 
-		self.history_cache.clear();
-		self.history_marks.clear();
+		self.timeline.cache.clear();
+		self.timeline.marks.clear();
 
-		self.history_marks_work = None;
+		self.timeline.marks_work = None;
 
-		self.older_history.clear();
+		self.timeline.older_history.clear();
 
 		self.older_task = None;
-		self.loading_older = false;
-		self.older_retry_after = None;
+		self.timeline.loading_older = false;
+		self.timeline.older_retry_after = None;
 
-		self.transcript_scroll.clear();
-		self.history_follow_paused.clear();
+		self.timeline.scroll.clear();
+		self.timeline.follow_paused.clear();
 
-		self.graph_scope = None;
-		self.graph_selected = None;
+		self.workspace.graph_scope = None;
+		self.workspace.graph_selected = None;
 		self.history = None;
 		self.history_task = None;
 		self.request = None;
@@ -1487,7 +1399,8 @@ impl AgentSurface {
 				{
 					surface.load_capabilities(cx);
 				}
-				if changed || surface.history_read_at.is_none_or(|at| at.elapsed().as_secs() >= 2) {
+				if changed || surface.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2)
+				{
 					surface.load_history(cx);
 				}
 
@@ -1563,7 +1476,7 @@ impl AgentSurface {
 				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
 					!= snapshot.runtime_source.as_ref()
 				{
-					self.native_history.reset();
+					self.timeline.native.reset();
 				}
 				if !self
 					.selected
@@ -1631,7 +1544,7 @@ impl AgentSurface {
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
 		let histories =
-			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
+			self.history.iter().map(|(_, history)| history).chain(self.timeline.cache.values());
 		let mut notices: Vec<_> =
 			[("Review", &self.guardian.feedback), ("Task resources", &self.resource_feedback)]
 				.into_iter()
@@ -1649,7 +1562,7 @@ impl AgentSurface {
 				}
 			}
 		}
-		for (entries, _) in self.older_history.values() {
+		for (entries, _) in self.timeline.older_history.values() {
 			for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
 				if seen.insert(entry.text.clone()) {
 					notices.push(("Experimental Codex features", entry.text.clone()));
@@ -1767,24 +1680,26 @@ impl AgentSurface {
 					.items_center()
 					.justify_between()
 					.gap(gpui::px(12.))
-					.child(gpui::div().flex_1().min_w_0().child(if self.pages.is_empty() {
-						gpui::div()
-							.text_size(gpui::px(12.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(format!("{} · {status}", self.work_label(work)))
-							.into_any_element()
-					} else {
-						self.workspace_tabs(cx)
-					}))
+					.child(gpui::div().flex_1().min_w_0().child(
+						if self.workspace.pages.is_empty() {
+							gpui::div()
+								.text_size(gpui::px(12.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(format!("{} · {status}", self.work_label(work)))
+								.into_any_element()
+						} else {
+							self.workspace_tabs(cx)
+						},
+					))
 					.child(
 						gpui::div()
 							.child(self.workspace_action(
 								"inspect-work".into(),
 								"Details".into(),
 								|s, cx| {
-									s.details_visible = !s.details_visible;
+									s.workspace.details_visible = !s.workspace.details_visible;
 
-									if s.details_visible
+									if s.workspace.details_visible
 										&& let Some(work) = s.selected.clone()
 										&& s.resources
 											.as_ref()
@@ -1853,11 +1768,12 @@ impl AgentSurface {
 	}
 
 	fn history_prefetch_needed(&self) -> bool {
-		if self.loading_older || self.older_scroll_anchor.is_some() {
+		if self.timeline.loading_older || self.timeline.older_scroll_anchor.is_some() {
 			return false;
 		}
 
-		let Some(id) = self.selected.as_ref().filter(|id| self.history_follow_paused.contains(*id))
+		let Some(id) =
+			self.selected.as_ref().filter(|id| self.timeline.follow_paused.contains(*id))
 		else {
 			return false;
 		};
@@ -1868,12 +1784,17 @@ impl AgentSurface {
 		};
 
 		if owner != id
-			|| self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor).is_none()
+			|| self
+				.timeline
+				.older_history
+				.get(id)
+				.map_or(*next_before, |(_, cursor)| *cursor)
+				.is_none()
 		{
 			return false;
 		}
 
-		self.transcript_scroll.get(id).is_some_and(|scroll| {
+		self.timeline.scroll.get(id).is_some_and(|scroll| {
 			let height = f32::from(scroll.bounds().size.height);
 
 			height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
@@ -1881,8 +1802,8 @@ impl AgentSurface {
 	}
 
 	fn load_older_history(&mut self, cx: &mut Context<Self>) {
-		if self.loading_older
-			|| self.older_retry_after.is_some_and(|at| at > std::time::Instant::now())
+		if self.timeline.loading_older
+			|| self.timeline.older_retry_after.is_some_and(|at| at > std::time::Instant::now())
 		{
 			return;
 		}
@@ -1897,7 +1818,8 @@ impl AgentSurface {
 			return;
 		}
 
-		let before = self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor);
+		let before =
+			self.timeline.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor);
 		let Some(before) = before else {
 			return;
 		};
@@ -1906,7 +1828,7 @@ impl AgentSurface {
 			return;
 		};
 
-		self.loading_older = true;
+		self.timeline.loading_older = true;
 
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -1917,29 +1839,30 @@ impl AgentSurface {
 		self.older_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
-				s.loading_older = false;
+				s.timeline.loading_older = false;
 
 				if let Some(AgentHistoryResult::Available { entries, next_before, .. }) = result
 					&& next_before.is_none_or(|next| next < before)
 				{
-					s.older_retry_after = None;
+					s.timeline.older_retry_after = None;
 
 					if s.selected.as_ref() == Some(&id)
-						&& let Some(scroll) = s.transcript_scroll.get(&id)
+						&& let Some(scroll) = s.timeline.scroll.get(&id)
 					{
-						s.older_scroll_anchor = Some(activity::HistoryScrollAnchor {
+						s.timeline.older_scroll_anchor = Some(activity::HistoryScrollAnchor {
 							work: id.clone(),
 							offset: f32::from(scroll.offset().y),
 							maximum: f32::from(scroll.max_offset().y),
 							message: s
-								.history_marks
+								.timeline
+								.marks
 								.iter()
 								.next()
 								.map(|(id, mark)| (id.clone(), mark.position.get())),
 						});
 					}
 
-					let page = s.older_history.entry(id).or_default();
+					let page = s.timeline.older_history.entry(id).or_default();
 
 					page.0.extend(entries);
 					page.0.sort_by_key(|entry| entry.id);
@@ -1947,7 +1870,8 @@ impl AgentSurface {
 
 					page.1 = next_before;
 				} else {
-					s.older_retry_after = Some(std::time::Instant::now() + Duration::from_secs(3));
+					s.timeline.older_retry_after =
+						Some(std::time::Instant::now() + Duration::from_secs(3));
 				}
 
 				cx.notify();
@@ -1988,7 +1912,7 @@ impl AgentSurface {
 			Some(AgentHistoryResult::Available {
 				entries, has_more, next_before, live, ..
 			}) => {
-				let older = self.older_history.get(&work.id);
+				let older = self.timeline.older_history.get(&work.id);
 
 				if *has_more && next_before.is_none() {
 					panel = panel.child(muted("Some saved message text was shortened."));
@@ -2071,7 +1995,7 @@ impl AgentSurface {
 		if active
 			&& self.native_history_active(work)
 			&& work.active_turn_id.is_some()
-			&& self.native_history.safety_buffering_turn_id == work.active_turn_id
+			&& self.timeline.native.safety_buffering_turn_id == work.active_turn_id
 		{
 			panel = panel.child(
 				gpui::div()
@@ -2200,7 +2124,7 @@ impl AgentSurface {
 					.id("agent-advanced-preferences")
 					.role(Role::Button)
 					.aria_label("New agent defaults")
-					.aria_expanded(self.setup_expanded)
+					.aria_expanded(self.workspace.setup_expanded)
 					.tab_index(0)
 					.h(gpui::px(32.0))
 					.flex()
@@ -2209,13 +2133,13 @@ impl AgentSurface {
 					.rounded(gpui::px(6.0))
 					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
-						s.setup_expanded = !s.setup_expanded;
+						s.workspace.setup_expanded = !s.workspace.setup_expanded;
 
 						cx.notify();
 					}))
 					.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							s.setup_expanded = !s.setup_expanded;
+							s.workspace.setup_expanded = !s.workspace.setup_expanded;
 
 							cx.notify();
 						}
@@ -2243,7 +2167,7 @@ impl AgentSurface {
 			})
 			.child(ui_motion::disclosure(
 				"agent-advanced-motion",
-				self.setup_expanded,
+				self.workspace.setup_expanded,
 				self.render_setup_controls(cx),
 			))
 			.when_some(self.selected.as_ref(), |panel, work| {
@@ -2314,6 +2238,93 @@ impl Render for AgentSurface {
 		self.observe_recap_focus(window, cx);
 
 		self.render_workspace(window, cx)
+	}
+}
+
+struct WorkspaceView {
+	pages: Vec<String>,
+	closing_pages: HashSet<String>,
+	graph_visible: bool,
+	graph_expanded: bool,
+	page_views: std::collections::BTreeMap<String, PageView>,
+	timeline_visible: bool,
+	graph_scope: Option<String>,
+	graph_selected: Option<String>,
+	graph_zoom: f32,
+	graph_display_zoom: f32,
+	graph_pan: (f32, f32),
+	graph_inset: (f32, f32),
+	graph_drag: Option<Point<Pixels>>,
+	agent_tree_visible: bool,
+	agent_tree_collapsed: std::collections::BTreeSet<String>,
+	sidebar_visible: bool,
+	sidebar_width: f32,
+	agent_panel_width: f32,
+	graph_panel_height: f32,
+	focused_panel: Option<workspace_size::Panel>,
+	sidebar_drag: Option<(f32, f32)>,
+	connection_details_expanded: bool,
+	details_visible: bool,
+	setup_expanded: bool,
+}
+impl Default for WorkspaceView {
+	fn default() -> Self {
+		Self {
+			pages: vec![],
+			closing_pages: Default::default(),
+			graph_visible: true,
+			graph_expanded: false,
+			page_views: Default::default(),
+			timeline_visible: true,
+			graph_scope: None,
+			graph_selected: None,
+			graph_zoom: 0.85,
+			graph_display_zoom: 0.85,
+			graph_pan: (0.0, 0.0),
+			graph_inset: (0.0, 0.0),
+			graph_drag: None,
+			agent_tree_visible: true,
+			agent_tree_collapsed: Default::default(),
+			sidebar_visible: true,
+			sidebar_width: PanelDefaults::configured().sidebar.into(),
+			agent_panel_width: PanelDefaults::configured().sidebar.into(),
+			graph_panel_height: PanelDefaults::configured().dock.into(),
+			focused_panel: None,
+			sidebar_drag: None,
+			connection_details_expanded: false,
+			details_visible: false,
+			setup_expanded: false,
+		}
+	}
+}
+
+#[derive(Default)]
+struct TimelineView {
+	native: Timeline,
+	marks: std::collections::BTreeMap<HistoryKey, HistoryMark>,
+	marks_work: Option<(String, bool)>,
+	marks_revision: Option<(u64, u64)>,
+	selected: Option<HistoryKey>,
+	latest_follow_work: Option<String>,
+	hover: Option<usize>,
+	navigation: Option<HistoryNavigation>,
+	wheel_scroll: Option<WheelScroll>,
+	read_at: Option<std::time::Instant>,
+	cache: std::collections::BTreeMap<String, AgentHistoryResult>,
+	scroll: std::collections::BTreeMap<String, ScrollHandle>,
+	follow_paused: std::collections::BTreeSet<String>,
+	expanded_progress: std::collections::BTreeSet<String>,
+	expanded_records: std::collections::BTreeSet<String>,
+	transcript_busy: bool,
+	transcript_failed: bool,
+	older_history: std::collections::BTreeMap<String, (Vec<AgentHistoryEntryDto>, Option<i64>)>,
+	loading_older: bool,
+	older_retry_after: Option<std::time::Instant>,
+	older_scroll_anchor: Option<activity::HistoryScrollAnchor>,
+}
+impl TimelineView {
+	fn scroll_for(&self, selected: Option<&str>) -> ScrollHandle {
+		self.scroll.get(selected.unwrap_or_default()).cloned().unwrap_or_default()
 	}
 }
 
@@ -2676,7 +2687,7 @@ mod tests {
 			assert!(agent_surface::startup_feature_warning(&notice));
 
 			entries.extend([notice.clone(), notice]);
-			s.history_cache.insert("other-agent".into(), history.clone());
+			s.timeline.cache.insert("other-agent".into(), history.clone());
 
 			assert_eq!(
 				s.operation_notices()
@@ -2875,7 +2886,7 @@ mod tests {
 			surface.cycle_account(cx);
 
 			assert!(surface.account.read(cx).content().is_empty());
-			assert!(!surface.details_visible);
+			assert!(!surface.workspace.details_visible);
 		});
 	}
 
@@ -2912,7 +2923,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			if let Some((_, AgentHistoryResult::Available { next_before, .. })) = &mut s.history {
 				*next_before = Some(1);
@@ -2922,24 +2933,24 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear());
 
 		surface.update(visual, |s, _| {
-			s.transcript_scroll["agent"].set_offset(gpui::point(gpui::px(0.), gpui::px(-20.)));
+			s.timeline.scroll["agent"].set_offset(gpui::point(gpui::px(0.), gpui::px(-20.)));
 
 			assert!(
 				!s.history_prefetch_needed(),
 				"startup and bottom-follow must not fetch all history"
 			);
 
-			s.history_follow_paused.insert("agent".into());
+			s.timeline.follow_paused.insert("agent".into());
 
 			assert!(s.history_prefetch_needed(), "prefetch before reaching the edge");
 
-			s.loading_older = true;
+			s.timeline.loading_older = true;
 
 			assert!(!s.history_prefetch_needed(), "only one request may be in flight");
 
-			s.loading_older = false;
+			s.timeline.loading_older = false;
 
-			s.older_history.insert("agent".into(), (vec![], None));
+			s.timeline.older_history.insert("agent".into(), (vec![], None));
 
 			assert!(!s.history_prefetch_needed(), "stop when history is exhausted");
 		});

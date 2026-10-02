@@ -67,8 +67,8 @@ impl AgentSurface {
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
 
-				if !s.native_history.expanded_turns.remove(&turn) {
-					s.native_history.expanded_turns.insert(turn.clone());
+				if !s.timeline.native.expanded_turns.remove(&turn) {
+					s.timeline.native.expanded_turns.insert(turn.clone());
 				}
 
 				cx.notify();
@@ -77,8 +77,8 @@ impl AgentSurface {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
 					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
 
-					if !s.native_history.expanded_turns.remove(&keyboard.2) {
-						s.native_history.expanded_turns.insert(keyboard.2.clone());
+					if !s.timeline.native.expanded_turns.remove(&keyboard.2) {
+						s.timeline.native.expanded_turns.insert(keyboard.2.clone());
 					}
 
 					cx.notify();
@@ -367,7 +367,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -403,7 +403,7 @@ mod tests {
 				}
 			));
 
-			s.native_history = timeline;
+			s.timeline.native = timeline;
 
 			cx.notify();
 		});
@@ -456,7 +456,7 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 
 		assert!(
-			surface.update(visual, |s, _| s.native_history.expanded_turns.contains("turn")),
+			surface.update(visual, |s, _| s.timeline.native.expanded_turns.contains("turn")),
 			"reversal reopens the same native turn"
 		);
 

@@ -114,13 +114,13 @@ impl AgentSurface {
 			});
 		let body = self.activity_detail_body(&ids, &key, result, cx);
 		let metadata_key = format!("tool-reference-{key}");
-		let metadata_open = self.expanded_records.contains(&metadata_key);
+		let metadata_open = self.timeline.expanded_records.contains(&metadata_key);
 		let metadata_toggle = self.workspace_action(
 			metadata_key.clone(),
 			"Technical details".into(),
 			move |s, cx| {
-				if !s.expanded_records.remove(&metadata_key) {
-					s.expanded_records.insert(metadata_key.clone());
+				if !s.timeline.expanded_records.remove(&metadata_key) {
+					s.timeline.expanded_records.insert(metadata_key.clone());
 				}
 
 				cx.notify();
@@ -246,14 +246,15 @@ impl AgentSurface {
 			return;
 		};
 
-		self.latest_follow_work = None;
+		self.timeline.latest_follow_work = None;
 
-		self.history_follow_paused.insert(ids.0.clone());
+		self.timeline.follow_paused.insert(ids.0.clone());
 
-		self.history_navigation = None;
+		self.timeline.navigation = None;
 
 		if let Some(entry) = self
-			.native_history
+			.timeline
+			.native
 			.entries
 			.iter()
 			.find(|entry| {
@@ -361,13 +362,13 @@ mod tests {
 			.find(|w| w.id == "agent")
 			.unwrap()
 			.codex_thread_id = Some("thread".into());
-		s.native_history.binding = Some(native_timeline::Binding {
+		s.timeline.native.binding = Some(native_timeline::Binding {
 			work: "agent".into(),
 			thread: "thread".into(),
 			account: "account".into(),
 		});
 
-		s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+		s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 			position: 0,
 			content: decodex_protocol::AgentTimelineContent::Item {
 				turn_id: "turn".into(),
@@ -396,7 +397,7 @@ mod tests {
 	}
 
 	fn complete_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
-		let mut final_entry = s.native_history.entries[0].clone();
+		let mut final_entry = s.timeline.native.entries[0].clone();
 
 		final_entry.position = 1;
 
@@ -416,8 +417,8 @@ mod tests {
 			*activity = None;
 		}
 
-		s.native_history.entries.push(final_entry);
-		s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+		s.timeline.native.entries.push(final_entry);
+		s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 			position: 2,
 			content: decodex_protocol::AgentTimelineContent::TurnBoundary {
 				turn_id: "turn".into(),
@@ -484,7 +485,7 @@ mod tests {
 		visual.simulate_click(row.center(), Default::default());
 
 		surface.update(visual, |s, cx| {
-			assert!(s.history_follow_paused.contains("agent"));
+			assert!(s.timeline.follow_paused.contains("agent"));
 
 			let key = s.activity_detail_key(&ids).unwrap();
 

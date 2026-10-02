@@ -44,7 +44,7 @@ impl AgentSurface {
 					return;
 				}
 
-				s.details_visible = false;
+				s.workspace.details_visible = false;
 
 				cx.notify();
 			}))
@@ -191,7 +191,7 @@ mod tests {
 			});
 
 			s.selected = Some("improve".into());
-			s.details_visible = true;
+			s.workspace.details_visible = true;
 		});
 
 		visual.update(|window, cx| window.draw(cx).clear());
@@ -230,19 +230,19 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear());
 
 		let before = surface.read_with(visual, |s, _| {
-			(s.transcript_scroll["agent"].bounds(), s.transcript_scroll["agent"].offset())
+			(s.timeline.scroll["agent"].bounds(), s.timeline.scroll["agent"].offset())
 		});
 
 		surface.update(visual, |s, cx| {
-			s.details_visible = true;
+			s.workspace.details_visible = true;
 
 			cx.notify();
 		});
 
 		visual.update(|window, cx| window.draw(cx).clear());
 		surface.read_with(visual, |s, _| {
-			assert_eq!(s.transcript_scroll["agent"].bounds(), before.0);
-			assert_eq!(s.transcript_scroll["agent"].offset(), before.1);
+			assert_eq!(s.timeline.scroll["agent"].bounds(), before.0);
+			assert_eq!(s.timeline.scroll["agent"].offset(), before.1);
 		});
 	}
 }

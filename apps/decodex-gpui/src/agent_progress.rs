@@ -35,8 +35,8 @@ impl AgentSurface {
 	}
 
 	fn toggle_progress(&mut self, key: &str, cx: &mut Context<Self>) {
-		if !self.expanded_progress.remove(key) {
-			self.expanded_progress.insert(key.into());
+		if !self.timeline.expanded_progress.remove(key) {
+			self.timeline.expanded_progress.insert(key.into());
 		}
 
 		cx.notify();
@@ -121,7 +121,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let first = items[0];
 		let key = progress_key(&work.id, &first.turn_id, &first.item_id);
-		let expanded = self.expanded_progress.contains(&key);
+		let expanded = self.timeline.expanded_progress.contains(&key);
 		let running = items.iter().rev().find(|item| {
 			item.status == "running"
 				&& work.active_turn_id.as_deref() == Some(item.turn_id.as_str())
@@ -223,8 +223,8 @@ impl AgentSurface {
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(super) fn visual_progress_fixture(&mut self, expanded: bool, cx: &mut Context<Self>) {
-		self.graph_visible = false;
-		self.timeline_visible = false;
+		self.workspace.graph_visible = false;
+		self.workspace.timeline_visible = false;
 
 		let Some((id, AgentHistoryResult::Available { entries, .. })) = &mut self.history else {
 			return;
@@ -281,7 +281,7 @@ impl AgentSurface {
 		}
 
 		if expanded {
-			self.expanded_progress.insert(progress_key(id, "capture-turn", "capture-0"));
+			self.timeline.expanded_progress.insert(progress_key(id, "capture-turn", "capture-0"));
 		}
 
 		if let Some(work) = self

@@ -27,7 +27,11 @@ pub(super) enum Panel {
 impl AgentSurface {
 	#[cfg(test)]
 	pub(crate) fn panel_dimensions(&self) -> (f32, f32, f32) {
-		(self.sidebar_width, self.agent_panel_width, self.graph_panel_height)
+		(
+			self.workspace.sidebar_width,
+			self.workspace.agent_panel_width,
+			self.workspace.graph_panel_height,
+		)
 	}
 
 	pub(crate) fn resize_panel(
@@ -41,20 +45,22 @@ impl AgentSurface {
 		let defaults = PanelDefaults::configured();
 		let width = f32::from(window.viewport_size().width);
 		let visible = [
-			self.sidebar_visible && width > 1_000.0,
-			self.agent_tree_visible && self.has_work() && !self.graph_expanded,
-			self.graph_visible && self.has_work() && !self.graph_expanded,
+			self.workspace.sidebar_visible && width > 1_000.0,
+			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
+			self.workspace.graph_visible && self.has_work() && !self.workspace.graph_expanded,
 		];
 
 		for (index, panel) in [Panel::Left, Panel::Right, Panel::Bottom].into_iter().enumerate() {
-			if !visible[index] || (!all && self.focused_panel != Some(panel)) {
+			if !visible[index] || (!all && self.workspace.focused_panel != Some(panel)) {
 				continue;
 			}
 
 			let (value, default, min, max) = match panel {
-				Panel::Left => (&mut self.sidebar_width, defaults.sidebar, 160.0, 480.0),
-				Panel::Right => (&mut self.agent_panel_width, defaults.sidebar, 160.0, 480.0),
-				Panel::Bottom => (&mut self.graph_panel_height, defaults.dock, 120.0, 640.0),
+				Panel::Left => (&mut self.workspace.sidebar_width, defaults.sidebar, 160.0, 480.0),
+				Panel::Right =>
+					(&mut self.workspace.agent_panel_width, defaults.sidebar, 160.0, 480.0),
+				Panel::Bottom =>
+					(&mut self.workspace.graph_panel_height, defaults.dock, 120.0, 640.0),
 			};
 
 			*value = if reset { f32::from(default) } else { (*value + delta).clamp(min, max) };
@@ -69,11 +75,11 @@ impl AgentSurface {
 			.nodes
 			.iter()
 			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 160.0), y.max(node.y + 52.0)));
-		let zoom = self.graph_display_zoom;
+		let zoom = self.workspace.graph_display_zoom;
 
-		self.graph_inset = (
+		self.workspace.graph_inset = (
 			((width - (right + 20.0) * zoom) / 2.0).max(0.0),
-			if self.graph_expanded {
+			if self.workspace.graph_expanded {
 				((height - 118.0 - (bottom + 32.0) * zoom) / 2.0).max(0.0)
 			} else {
 				0.0
@@ -85,7 +91,7 @@ impl AgentSurface {
 		let Some(snapshot) = &self.snapshot else {
 			return graph::Layout::default();
 		};
-		let scope = self.graph_scope.clone().or_else(|| self.root_id());
+		let scope = self.workspace.graph_scope.clone().or_else(|| self.root_id());
 		let mut layout = graph::Layout::new(snapshot, scope.as_deref());
 
 		if layout.nodes.is_empty()
@@ -105,13 +111,13 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
-		if !self.graph_visible || !self.reserve_workspace_panels() {
+		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);
 		}
 
 		let viewport = window.viewport_size();
-		let sidebar = if self.sidebar_visible && wide {
-			sidebar_width(self.sidebar_width, viewport.width.into())
+		let sidebar = if self.workspace.sidebar_visible && wide {
+			sidebar_width(self.workspace.sidebar_width, viewport.width.into())
 		} else {
 			0.0
 		};
@@ -120,10 +126,13 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
-		if !self.graph_expanded {
+		if !self.workspace.graph_expanded {
 			return (
 				available.0,
-				self.graph_panel_height.clamp(120.0, 640.0).min((available.1 - 240.0).max(0.0)),
+				self.workspace
+					.graph_panel_height
+					.clamp(120.0, 640.0)
+					.min((available.1 - 240.0).max(0.0)),
 			);
 		}
 
@@ -136,10 +145,11 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let width = sidebar_width(self.sidebar_width, window.viewport_size().width.into());
+		let width =
+			sidebar_width(self.workspace.sidebar_width, window.viewport_size().width.into());
 		let fraction = ui_motion::value(
 			"agent-sidebar-visibility",
-			if self.sidebar_visible && wide { 1.0 } else { 0.0 },
+			if self.workspace.sidebar_visible && wide { 1.0 } else { 0.0 },
 			window,
 			cx,
 		);
@@ -150,7 +160,9 @@ impl AgentSurface {
 			.h_full()
 			.overflow_hidden()
 			.id("left-panel-slot")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Left)))
+			.capture_any_mouse_down(
+				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
+			)
 			.child(gpui::div().w(gpui::px(width)).h_full().child(self.workspace_sidebar(cx)))
 			.into_any_element()
 	}
@@ -171,9 +183,12 @@ impl AgentSurface {
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, window, cx| {
-					s.sidebar_drag = Some((
+					s.workspace.sidebar_drag = Some((
 						event.position.x.into(),
-						sidebar_width(s.sidebar_width, window.viewport_size().width.into()),
+						sidebar_width(
+							s.workspace.sidebar_width,
+							window.viewport_size().width.into(),
+						),
 					));
 
 					cx.stop_propagation();
@@ -181,7 +196,7 @@ impl AgentSurface {
 			)
 			.on_click(cx.listener(|s, event: &ClickEvent, _, cx| {
 				if event.click_count() == 2 {
-					s.sidebar_width = PanelDefaults::configured().sidebar.into();
+					s.workspace.sidebar_width = PanelDefaults::configured().sidebar.into();
 
 					cx.notify();
 				}
@@ -193,8 +208,10 @@ impl AgentSurface {
 					_ => return,
 				};
 
-				s.sidebar_width =
-					sidebar_width(s.sidebar_width + delta, window.viewport_size().width.into());
+				s.workspace.sidebar_width = sidebar_width(
+					s.workspace.sidebar_width + delta,
+					window.viewport_size().width.into(),
+				);
 
 				cx.stop_propagation();
 				cx.notify();
@@ -205,17 +222,17 @@ impl AgentSurface {
 		gpui::div()
 			.id("agent-workspace")
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
-				let Some((start, width)) = s.sidebar_drag else {
+				let Some((start, width)) = s.workspace.sidebar_drag else {
 					return;
 				};
 
 				if event.pressed_button != Some(MouseButton::Left) {
-					s.sidebar_drag = None;
+					s.workspace.sidebar_drag = None;
 
 					return;
 				}
 
-				s.sidebar_width = sidebar_width(
+				s.workspace.sidebar_width = sidebar_width(
 					width + f32::from(event.position.x) - start,
 					window.viewport_size().width.into(),
 				);
@@ -226,13 +243,13 @@ impl AgentSurface {
 			.on_mouse_up(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
-					s.sidebar_drag = None;
+					s.workspace.sidebar_drag = None;
 				}),
 			)
 			.on_mouse_up_out(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
-					s.sidebar_drag = None;
+					s.workspace.sidebar_drag = None;
 				}),
 			)
 	}
@@ -255,7 +272,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.sidebar_width = 192.0;
+			s.workspace.sidebar_width = 192.0;
 		});
 
 		visual.update(|window, cx| {
@@ -267,14 +284,14 @@ mod tests {
 		visual.simulate_mouse_down(point(189.0), MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(point(269.0), MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| {
-			assert_eq!(s.sidebar_width, 272.0);
-			assert_eq!(s.graph_pan, (0.0, 0.0));
+			assert_eq!(s.workspace.sidebar_width, 272.0);
+			assert_eq!(s.workspace.graph_pan, (0.0, 0.0));
 		});
 		visual.simulate_mouse_up(point(269.0), MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(point(400.0), None, Default::default());
 		surface.update(visual, |s, _| {
-			assert_eq!(s.sidebar_width, 272.0);
-			assert!(s.sidebar_drag.is_none());
+			assert_eq!(s.workspace.sidebar_width, 272.0);
+			assert!(s.workspace.sidebar_drag.is_none());
 		});
 	}
 
@@ -288,43 +305,51 @@ mod tests {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 
-				s.sidebar_width = 240.0;
-				s.agent_panel_width = 240.0;
-				s.graph_panel_height = 240.0;
-				s.agent_tree_visible = true;
-				s.graph_visible = true;
-				s.graph_expanded = false;
-				s.focused_panel = Some(Panel::Right);
+				s.workspace.sidebar_width = 240.0;
+				s.workspace.agent_panel_width = 240.0;
+				s.workspace.graph_panel_height = 240.0;
+				s.workspace.agent_tree_visible = true;
+				s.workspace.graph_visible = true;
+				s.workspace.graph_expanded = false;
+				s.workspace.focused_panel = Some(Panel::Right);
 
 				s.resize_panel(24.0, false, false, window, cx);
 
 				assert_eq!(
-					(s.sidebar_width, s.agent_panel_width, s.graph_panel_height),
+					(
+						s.workspace.sidebar_width,
+						s.workspace.agent_panel_width,
+						s.workspace.graph_panel_height
+					),
 					(240.0, 264.0, 240.0)
 				);
 
-				s.sidebar_visible = false;
+				s.workspace.sidebar_visible = false;
 
 				s.resize_panel(-24.0, false, true, window, cx);
 
 				assert_eq!(
-					(s.sidebar_width, s.agent_panel_width, s.graph_panel_height),
+					(
+						s.workspace.sidebar_width,
+						s.workspace.agent_panel_width,
+						s.workspace.graph_panel_height
+					),
 					(240.0, 240.0, 216.0)
 				);
 
 				s.resize_panel(0.0, true, true, window, cx);
 
 				assert_eq!(
-					s.graph_panel_height,
+					s.workspace.graph_panel_height,
 					f32::from(crate::panel_preferences::PanelDefaults::configured().dock)
 				);
 
-				s.focused_panel = None;
+				s.workspace.focused_panel = None;
 
 				s.resize_panel(24.0, false, false, window, cx);
 
 				assert_eq!(
-					s.agent_panel_width,
+					s.workspace.agent_panel_width,
 					f32::from(crate::panel_preferences::PanelDefaults::configured().sidebar)
 				);
 			})
@@ -341,32 +366,32 @@ mod tests {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 
-				s.sidebar_visible = false;
-				s.agent_tree_visible = false;
-				s.graph_visible = true;
-				s.graph_expanded = false;
-				s.graph_panel_height = 275.;
+				s.workspace.sidebar_visible = false;
+				s.workspace.agent_tree_visible = false;
+				s.workspace.graph_visible = true;
+				s.workspace.graph_expanded = false;
+				s.workspace.graph_panel_height = 275.;
 
 				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
 
-				s.graph_zoom = 1.8;
-				s.graph_pan = (800., 600.);
+				s.workspace.graph_zoom = 1.8;
+				s.workspace.graph_pan = (800., 600.);
 
 				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
 
-				s.graph_expanded = true;
+				s.workspace.graph_expanded = true;
 
 				assert_eq!(
 					s.workspace_graph_size(window, true),
 					(1_200., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
 				);
 
-				s.graph_visible = false;
+				s.workspace.graph_visible = false;
 
 				assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
 
-				s.graph_visible = true;
-				s.graph_expanded = false;
+				s.workspace.graph_visible = true;
+				s.workspace.graph_expanded = false;
 			});
 		});
 
@@ -380,7 +405,10 @@ mod tests {
 					height,
 					(300. - super::super::super::WINDOW_CONTROLS_CLEARANCE - 240.).max(0.)
 				);
-				assert_eq!(s.graph_panel_height, 275., "small windows retain the requested height");
+				assert_eq!(
+					s.workspace.graph_panel_height, 275.,
+					"small windows retain the requested height"
+				);
 			});
 		});
 	}

@@ -562,7 +562,7 @@ impl AgentSurface {
 				"Task recap",
 				|s, cx| {
 					s.composer_menu = None;
-					s.details_visible = true;
+					s.workspace.details_visible = true;
 
 					if let Some(work) = s.selected.clone() {
 						s.open_recap(&work, cx);
@@ -603,7 +603,7 @@ impl AgentSurface {
 				"Agent settings…".into(),
 				"Agent settings",
 				|s, cx| {
-					s.setup_expanded = true;
+					s.workspace.setup_expanded = true;
 
 					s.toggle_composer_menu("agent-settings", cx);
 				},
@@ -1512,7 +1512,7 @@ mod tests {
 
 			s.feedback.clear();
 
-			s.details_visible = true;
+			s.workspace.details_visible = true;
 			s.composer_menu = Some("model");
 
 			s.escape_interrupt(cx);
@@ -1523,7 +1523,7 @@ mod tests {
 			s.escape_interrupt(cx);
 
 			assert!(s.escape_stop_armed());
-			assert!(s.details_visible, "inspection must not intercept Escape");
+			assert!(s.workspace.details_visible, "inspection must not intercept Escape");
 			assert!(s.feedback.is_empty(), "first Escape must not dispatch an interrupt");
 
 			s.escape_stop.as_mut().unwrap().2 -= std::time::Duration::from_secs(3);

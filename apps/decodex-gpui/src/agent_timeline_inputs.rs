@@ -24,16 +24,17 @@ pub(super) struct InputReceipts {
 
 impl AgentSurface {
 	pub(super) fn native_input_receipts_loaded(&self, work: &str) -> bool {
-		matches!(&self.native_history.input_receipts.result,Some(AgentInputReceiptsResult::Available {work_id,..}) if work_id.as_str()==work)
+		matches!(&self.timeline.native.input_receipts.result,Some(AgentInputReceiptsResult::Available {work_id,..}) if work_id.as_str()==work)
 	}
 
 	pub(in super::super) fn refresh_native_input_receipts(&mut self, cx: &mut Context<Self>) {
-		if self.native_history.input_receipts.task.is_some() {
+		if self.timeline.native.input_receipts.task.is_some() {
 			return;
 		}
 
 		let Some(binding) = self
-			.native_history
+			.timeline
+			.native
 			.binding
 			.as_ref()
 			.filter(|binding| self.selected.as_ref() == Some(&binding.work))
@@ -46,25 +47,25 @@ impl AgentSurface {
 			return;
 		};
 		let work = binding.work.clone();
-		let epoch = self.native_history.epoch;
-		let after = self.native_history.input_receipts.after;
+		let epoch = self.timeline.native.epoch;
+		let after = self.timeline.native.input_receipts.after;
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).input_receipts(work_id, after)).ok()
 		});
 
-		self.native_history.input_receipts.task = Some(cx.spawn(async move |surface, cx| {
+		self.timeline.native.input_receipts.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
-				if surface.native_history.epoch != epoch
+				if surface.timeline.native.epoch != epoch
 					|| surface.selected.as_deref() != Some(&work)
-					|| surface.native_history.input_receipts.after != after
+					|| surface.timeline.native.input_receipts.after != after
 				{
 					return;
 				}
 
-				let receipts = &mut surface.native_history.input_receipts;
+				let receipts = &mut surface.timeline.native.input_receipts;
 
 				receipts.task = None;
 				receipts.result = Some(result.unwrap_or(AgentInputReceiptsResult::Unavailable));
@@ -76,13 +77,13 @@ impl AgentSurface {
 
 	fn input_receipt_cursor(&mut self, work: &str, after: Option<i64>, cx: &mut Context<Self>) {
 		if self.selected.as_deref() != Some(work)
-			|| self.native_history.input_receipts.task.is_some()
+			|| self.timeline.native.input_receipts.task.is_some()
 		{
 			return;
 		}
 
-		self.native_history.input_receipts.after = after;
-		self.native_history.input_receipts.result = None;
+		self.timeline.native.input_receipts.after = after;
+		self.timeline.native.input_receipts.result = None;
 
 		self.refresh_native_input_receipts(cx);
 		cx.notify();
@@ -93,7 +94,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let state = &self.native_history.input_receipts;
+		let state = &self.timeline.native.input_receipts;
 		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		if state.after.is_some() {
@@ -220,7 +221,7 @@ mod tests {
 		let work = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
 
-			surface.graph_visible = false;
+			surface.workspace.graph_visible = false;
 
 			let work = surface
 				.snapshot
@@ -235,7 +236,7 @@ mod tests {
 
 			let id = work.id.clone();
 
-			assert!(surface.native_history.replace(
+			assert!(surface.timeline.native.replace(
 				Binding { work: id.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
 					thread_id: "thread".into(),
@@ -247,7 +248,7 @@ mod tests {
 				}
 			));
 
-			surface.native_history.input_receipts.result = Some(page(&id, Some(1), Some(1)));
+			surface.timeline.native.input_receipts.result = Some(page(&id, Some(1), Some(1)));
 
 			cx.notify();
 
@@ -265,10 +266,10 @@ mod tests {
 		visual.simulate_click(more.center(), Default::default());
 
 		surface.update(visual, |surface, cx| {
-			assert_eq!(surface.native_history.input_receipts.after, Some(1));
-			assert!(surface.native_history.older_cursor.is_none());
+			assert_eq!(surface.timeline.native.input_receipts.after, Some(1));
+			assert!(surface.timeline.native.older_cursor.is_none());
 
-			surface.native_history.input_receipts.result = Some(page(&work, Some(2), None));
+			surface.timeline.native.input_receipts.result = Some(page(&work, Some(2), None));
 
 			cx.notify();
 		});
@@ -284,9 +285,9 @@ mod tests {
 		visual.simulate_click(first.center(), Default::default());
 
 		surface.update(visual, |surface, cx| {
-			assert_eq!(surface.native_history.input_receipts.after, None);
+			assert_eq!(surface.timeline.native.input_receipts.after, None);
 
-			surface.native_history.input_receipts.result = Some(page(&work, None, None));
+			surface.timeline.native.input_receipts.result = Some(page(&work, None, None));
 
 			assert!(surface.native_input_receipts_loaded(&work));
 

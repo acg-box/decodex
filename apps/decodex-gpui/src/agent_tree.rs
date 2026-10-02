@@ -25,20 +25,27 @@ const INDENT: f32 = 12.;
 
 impl AgentSurface {
 	pub(crate) fn toggle_agent_tree(&mut self, cx: &mut Context<Self>) {
-		self.agent_tree_visible = !self.agent_tree_visible;
+		self.workspace.agent_tree_visible = !self.workspace.agent_tree_visible;
 
 		cx.notify();
 	}
 
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
-		if !self.agent_tree_visible || self.graph_expanded || !self.reserve_workspace_panels() {
+		if !self.workspace.agent_tree_visible
+			|| self.workspace.graph_expanded
+			|| !self.reserve_workspace_panels()
+		{
 			return 0.0;
 		}
 
 		let width = f32::from(window.viewport_size().width);
-		let left = if self.sidebar_visible && width > 1_000.0 { self.sidebar_width } else { 0.0 };
+		let left = if self.workspace.sidebar_visible && width > 1_000.0 {
+			self.workspace.sidebar_width
+		} else {
+			0.0
+		};
 
-		self.agent_panel_width.min((width - left - 440.0).max(0.0))
+		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -53,7 +60,9 @@ impl AgentSurface {
 
 		gpui::div()
 			.id("agent-panel-focus")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Right)))
+			.capture_any_mouse_down(
+				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
+			)
 			.size_full()
 			.text_size(gpui::px(12.0))
 			.min_w_0()
@@ -108,16 +117,16 @@ impl AgentSurface {
 			.cursor_pointer()
 			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
-				if !s.agent_tree_collapsed.remove(&click_id) {
-					s.agent_tree_collapsed.insert(click_id.clone());
+				if !s.workspace.agent_tree_collapsed.remove(&click_id) {
+					s.workspace.agent_tree_collapsed.insert(click_id.clone());
 				}
 
 				cx.notify();
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					if !s.agent_tree_collapsed.remove(&key_id) {
-						s.agent_tree_collapsed.insert(key_id.clone());
+					if !s.workspace.agent_tree_collapsed.remove(&key_id) {
+						s.workspace.agent_tree_collapsed.insert(key_id.clone());
 					}
 
 					cx.stop_propagation();
@@ -143,7 +152,7 @@ impl AgentSurface {
 				.is_some_and(|list| list.iter().any(|a| &a.parent_thread_id == thread))
 		});
 		let descendants = if depth < 24 { children(snapshot, &work.id) } else { Vec::new() };
-		let expanded = !self.agent_tree_collapsed.contains(&work.id);
+		let expanded = !self.workspace.agent_tree_collapsed.contains(&work.id);
 		let selected =
 			self.native_agents.selected.is_none() && self.selected.as_ref() == Some(&work.id);
 		let name = self.work_label(work);
@@ -305,7 +314,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.agent_tree_visible = true;
+			s.workspace.agent_tree_visible = true;
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -359,7 +368,7 @@ mod tests {
 
 		visual.simulate_click(child_arrow.center(), Default::default());
 		surface.update(visual, |s, cx| {
-			assert!(s.agent_tree_collapsed.contains("native:agent:native-child"));
+			assert!(s.workspace.agent_tree_collapsed.contains("native:agent:native-child"));
 			assert_eq!(s.native_branches("agent", "root-native", 1, cx).1, 1);
 		});
 	}
@@ -378,12 +387,12 @@ mod tests {
 			assert_eq!(agent_tree::children(snapshot, "agent").len(), 1);
 			assert_eq!(agent_tree::children(snapshot, "release").len(), 6);
 
-			s.agent_tree_collapsed.insert("release".into());
+			s.workspace.agent_tree_collapsed.insert("release".into());
 			s.open_page("verify", cx);
 
 			assert_eq!(s.selected.as_deref(), Some("verify"));
-			assert!(s.history_cache.contains_key("agent"));
-			assert!(s.agent_tree_collapsed.contains("release"));
+			assert!(s.timeline.cache.contains_key("agent"));
+			assert!(s.workspace.agent_tree_collapsed.contains("release"));
 		});
 	}
 }
