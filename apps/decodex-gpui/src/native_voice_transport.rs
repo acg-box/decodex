@@ -170,6 +170,38 @@ async fn run(
 	}
 }
 
+async fn gather_audio_offer(
+	peer: &Peer,
+	#[cfg(test)] offer_pause: Option<OfferPause>,
+) -> Result<String, RtcError> {
+	let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
+	let offer = peer.0.create_offer(options()).await?;
+
+	#[cfg(test)]
+	if let Some((entered, resume)) = offer_pause {
+		// Hold the native offer before applying it; cancellation must discard this
+		// continuation.
+		let _ = entered.send(());
+		let _ = resume.await;
+	}
+
+	peer.0.set_local_description(offer).await?;
+
+	let until = Instant::now() + Duration::from_secs(3);
+
+	while peer.0.ice_gathering_state() != IceGatheringState::Complete && Instant::now() < until {
+		time::sleep(Duration::from_millis(20)).await;
+	}
+
+	// The binding exposes only current (not pending) SDP. Regenerate through libwebrtc
+	// to include gathered candidates while retaining the same ICE credentials.
+	let offer = peer.0.create_offer(options()).await?;
+
+	peer.0.set_local_description(offer.clone()).await?;
+
+	Ok::<_, RtcError>(offer.to_string())
+}
+
 async fn run_media(
 	factory: &PeerConnectionFactory,
 	peer: &Peer,
@@ -219,35 +251,14 @@ async fn run_media(
 		}
 	})));
 
-	let offer = time::timeout(Duration::from_secs(10), async {
-		let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
-		let offer = peer.0.create_offer(options()).await?;
-
-		#[cfg(test)]
-		if let Some((entered, resume)) = offer_pause {
-			// Hold the native offer before applying it; cancellation must discard this
-			// continuation.
-			let _ = entered.send(());
-			let _ = resume.await;
-		}
-
-		peer.0.set_local_description(offer).await?;
-
-		let until = Instant::now() + Duration::from_secs(3);
-
-		while peer.0.ice_gathering_state() != IceGatheringState::Complete && Instant::now() < until
-		{
-			time::sleep(Duration::from_millis(20)).await;
-		}
-
-		// The binding exposes only current (not pending) SDP. Regenerate through libwebrtc
-		// to include gathered candidates while retaining the same ICE credentials.
-		let offer = peer.0.create_offer(options()).await?;
-
-		peer.0.set_local_description(offer.clone()).await?;
-
-		Ok::<_, RtcError>(offer.to_string())
-	})
+	let offer = time::timeout(
+		Duration::from_secs(10),
+		gather_audio_offer(
+			peer,
+			#[cfg(test)]
+			offer_pause,
+		),
+	)
 	.await
 	.map_err(|_| "The audio offer timed out.")?
 	.map_err(|_| "The audio offer could not be created.")?;
@@ -439,9 +450,57 @@ mod tests {
 		.expect("the replacement call also releases both audio endpoints");
 	}
 
+	async fn connect_fixture_peer(peer: &Peer, transport: &Transport) {
+		let offer = event(transport, "offer").await;
+
+		peer.0
+			.set_remote_description(
+				SessionDescription::parse(offer["sdp"].as_str().unwrap(), SdpType::Offer).unwrap(),
+			)
+			.await
+			.unwrap();
+		peer.0
+			.set_local_description(peer.0.create_answer(AnswerOptions::default()).await.unwrap())
+			.await
+			.unwrap();
+
+		while peer.0.ice_gathering_state() != IceGatheringState::Complete {
+			time::sleep(Duration::from_millis(10)).await;
+		}
+
+		assert!(
+			transport
+				.command(Command::Answer(peer.0.current_local_description().unwrap().to_string()))
+		);
+
+		event(transport, "connected").await;
+	}
+
+	async fn feed_fixture_tone(mut input: rtrb::Producer<f32>, source: NativeAudioSource) {
+		let mut sample_index = 0;
+		let mut frame = AudioFrame::new(48_000, 1, 480);
+
+		loop {
+			for sample in frame.data.to_mut() {
+				let value =
+					((sample_index as f32) * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.2;
+
+				sample_index += 1;
+
+				let _ = input.push(value);
+
+				*sample = (value * 32_767.0) as i16;
+			}
+
+			source.capture_frame(&frame).await.unwrap();
+
+			time::sleep(Duration::from_millis(10)).await;
+		}
+	}
+
 	async fn call_lifecycle(close_remote_channel: bool) {
 		time::timeout(Duration::from_secs(45), async {
-			let (mut input, captured) = rtrb::RingBuffer::new(4_800);
+			let (input, captured) = rtrb::RingBuffer::new(4_800);
 			let (playback, mut output) = rtrb::RingBuffer::new(4_800);
 			let transport = Transport::start(Pcm { captured, playback }).unwrap();
 
@@ -477,33 +536,7 @@ mod tests {
 				let _ = channels.try_send(data);
 			})));
 
-			let offer = event(&transport, "offer").await;
-
-			peer.0
-				.set_remote_description(
-					SessionDescription::parse(offer["sdp"].as_str().unwrap(), SdpType::Offer)
-						.unwrap(),
-				)
-				.await
-				.unwrap();
-			peer.0
-				.set_local_description(
-					peer.0.create_answer(AnswerOptions::default()).await.unwrap(),
-				)
-				.await
-				.unwrap();
-
-			while peer.0.ice_gathering_state() != IceGatheringState::Complete {
-				time::sleep(Duration::from_millis(10)).await;
-			}
-
-			assert!(
-				transport.command(Command::Answer(
-					peer.0.current_local_description().unwrap().to_string()
-				))
-			);
-
-			event(&transport, "connected").await;
+			connect_fixture_peer(&peer, &transport).await;
 
 			let data = channel_events.recv().await.unwrap();
 
@@ -512,29 +545,7 @@ mod tests {
 			assert_eq!(event(&transport, "caption").await["event"]["test"], "caption");
 
 			let mut stream = NativeAudioStream::new(track_events.recv().await.unwrap(), 48_000, 1);
-			let feed = tokio::spawn(async move {
-				let mut sample_index = 0;
-				let mut frame = AudioFrame::new(48_000, 1, 480);
-
-				loop {
-					for sample in frame.data.to_mut() {
-						let value = ((sample_index as f32) * 440.0 * std::f32::consts::TAU
-							/ 48_000.0)
-							.sin()
-							* 0.2;
-
-						sample_index += 1;
-
-						let _ = input.push(value);
-
-						*sample = (value * 32_767.0) as i16;
-					}
-
-					source.capture_frame(&frame).await.unwrap();
-
-					time::sleep(Duration::from_millis(10)).await;
-				}
-			});
+			let feed = tokio::spawn(feed_fixture_tone(input, source));
 			let initially_muted = energy(&mut stream).await;
 
 			while output.pop().is_ok() {}
