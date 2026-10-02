@@ -694,6 +694,26 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(rows.subviews.allSatisfy { $0.layer?.animation(forKey: AccountRowsView.animationKey) == nil })
 	}
 
+	func testReducedMotionFinishesAnUnchangedClosingTarget() throws {
+		let rows = AccountRowsView()
+		let window = NSPanel(contentRect: CGRect(x: 100, y: 100, width: 276, height: 200), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+		window.contentView = rows
+		window.orderFrontRegardless()
+		defer { window.orderOut(nil) }
+		func content(_ height: CGFloat) -> [AccountRowContent] {
+			[AccountRowContent(id: "row", content: AnyView(Color.blue.frame(height: height)), offset: 0, isDragging: false)]
+		}
+		rows.update(rows: content(120), reduced: true)
+		rows.update(rows: content(40), reduced: false)
+		let row = try XCTUnwrap(rows.subviews.first)
+		XCTAssertNotNil(row.layer?.animation(forKey: AccountRowsView.animationKey))
+		rows.update(rows: content(40), reduced: true)
+		XCTAssertNil(row.layer?.animation(forKey: AccountRowsView.animationKey))
+		XCTAssertEqual(rows.canvasHeight, 42)
+		XCTAssertEqual(row.subviews.first?.frame.height, 40)
+		XCTAssertFalse(row.layer?.masksToBounds ?? true)
+	}
+
 	func testAccountReorderUsesCurrentAccountsAfterMembershipOrOrderChanges() async throws {
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: directory) }

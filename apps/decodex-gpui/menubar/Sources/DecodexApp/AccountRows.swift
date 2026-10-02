@@ -74,7 +74,8 @@ final class AccountRowsView: NSView {
 			let base = CGRect(x: 1, y: y, width: AccountPanelLayout.panelWidth - 2, height: height)
 			nextFrames[row.id] = base
 			let placed = base.offsetBy(dx: 0, dy: row.offset)
-			if view.frame != placed { changes.append((view, placed, row.isDragging)) }
+			let stopsAnimation = !animate && view.layer?.animation(forKey: Self.animationKey) != nil
+			if view.frame != placed || stopsAnimation { changes.append((view, placed, row.isDragging)) }
 			if row.isDragging { addSubview(view, positioned: .above, relativeTo: nil) }
 			y += height + PanelSpacing.section
 		}
