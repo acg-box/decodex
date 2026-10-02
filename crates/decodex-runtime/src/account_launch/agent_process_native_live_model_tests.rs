@@ -23,6 +23,28 @@ use crate::{
 use decodex_codex::app_server_client::ServerEvent;
 use decodex_protocol::{AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort};
 
+fn assert_live_model_requests(captured: &[Value], enabled: bool) {
+	assert_eq!(captured.len(), 3);
+
+	for (request, (model, effort)) in captured.iter().zip([
+		("gpt-5.6-sol", "low"),
+		if enabled { ("gpt-5.6-terra", "high") } else { ("gpt-5.6-sol", "low") },
+		("gpt-5.6-sol", "low"),
+	]) {
+		assert_eq!(request["model"], model);
+
+		let metadata: Value = serde_json::from_str(
+			request["client_metadata"]["x-codex-turn-metadata"]
+				.as_str()
+				.expect("native live-model fixture"),
+		)
+		.expect("native live-model fixture");
+
+		assert_eq!(metadata["model"], model);
+		assert_eq!(metadata["reasoning_effort"], effort);
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated live model switching"]
 async fn installed_native_live_model_publication_preserves_future_defaults() {
@@ -127,25 +149,7 @@ async fn qualify_live_model(enabled: bool) {
 
 	let captured = bodies.lock().expect("native live-model fixture");
 
-	assert_eq!(captured.len(), 3);
-
-	for (request, (model, effort)) in captured.iter().zip([
-		("gpt-5.6-sol", "low"),
-		if enabled { ("gpt-5.6-terra", "high") } else { ("gpt-5.6-sol", "low") },
-		("gpt-5.6-sol", "low"),
-	]) {
-		assert_eq!(request["model"], model);
-
-		let metadata: Value = serde_json::from_str(
-			request["client_metadata"]["x-codex-turn-metadata"]
-				.as_str()
-				.expect("native live-model fixture"),
-		)
-		.expect("native live-model fixture");
-
-		assert_eq!(metadata["model"], model);
-		assert_eq!(metadata["reasoning_effort"], effort);
-	}
+	assert_live_model_requests(&captured, enabled);
 
 	assert_eq!(
 		fs::read(home.path().join("config.toml")).expect("native live-model fixture"),

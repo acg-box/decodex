@@ -11,6 +11,37 @@ use crate::account_launch::agent_process::native_tests::{
 	self, Arc, Duration, NativeSession, Ordering, ServerEvent,
 };
 
+fn assert_delayed_call_history(
+	before: &Value,
+	after: &Value,
+	item_ids: &[String],
+	first_turn: &str,
+) {
+	for history in [before, after] {
+		let turns = history["turns"].as_array().expect("history contains turns");
+
+		assert_eq!(turns.len(), 2);
+
+		for item_id in item_ids {
+			let owners = turns
+				.iter()
+				.filter(|turn| {
+					turn["items"]
+						.as_array()
+						.expect("history turn contains items")
+						.iter()
+						.any(|item| item["id"] == *item_id)
+				})
+				.collect::<Vec<_>>();
+
+			assert_eq!(owners.len(), 1);
+			assert_eq!(owners[0]["id"], first_turn);
+		}
+
+		assert!(history["nextCursor"].is_null());
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and its packaged Code Mode helper"]
 async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
@@ -245,25 +276,7 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 	let cold = NativeSession::start(&binary, home.path());
 	let after = cold.client.thread_history_page(&thread, None, 5).await.unwrap();
 
-	for history in [&before, &after] {
-		let turns = history["turns"].as_array().unwrap();
-
-		assert_eq!(turns.len(), 2);
-
-		for item_id in &item_ids {
-			let owners = turns
-				.iter()
-				.filter(|turn| {
-					turn["items"].as_array().unwrap().iter().any(|item| item["id"] == *item_id)
-				})
-				.collect::<Vec<_>>();
-
-			assert_eq!(owners.len(), 1);
-			assert_eq!(owners[0]["id"], first_turn);
-		}
-
-		assert!(history["nextCursor"].is_null());
-	}
+	assert_delayed_call_history(&before, &after, &item_ids, &first_turn);
 
 	assert_eq!(calls.load(Ordering::Acquire), 4);
 

@@ -71,20 +71,7 @@ async fn scenario(mode: &'static str) {
 		.await
 		.expect("complete fixture turn");
 
-	if mode == "explicit-input" {
-		owned
-			.store
-			.enqueue_agent_event(EnqueueAgentEvent {
-				source_event_id: "manual-input".into(),
-				work_item_id: "root".into(),
-				event_kind: "user_message".into(),
-				payload:
-					serde_json::json!({"text":"later","options":{"execution":{"model":"manual"}}})
-						.to_string(),
-			})
-			.await
-			.expect("queue explicit model input");
-	}
+	queue_explicit_model_input(&owned, mode).await;
 
 	let source_reads = AtomicUsize::new(0);
 	let source = || {
@@ -241,5 +228,22 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 		};
 
 		w.write_all(format!("{reply}\n").as_bytes()).await.expect("write native reply");
+	}
+}
+
+async fn queue_explicit_model_input(owned: &OwnedReviewer, mode: &str) {
+	if mode == "explicit-input" {
+		owned
+			.store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "manual-input".into(),
+				work_item_id: "root".into(),
+				event_kind: "user_message".into(),
+				payload:
+					serde_json::json!({"text":"later","options":{"execution":{"model":"manual"}}})
+						.to_string(),
+			})
+			.await
+			.expect("queue explicit model input");
 	}
 }

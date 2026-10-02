@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::{self, Value};
 use tokio::{
-	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
-	sync::oneshot,
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
+	sync::oneshot::{self, Receiver},
 	time,
 };
 
@@ -31,69 +31,7 @@ async fn live_model_publication_checks_capabilities_and_keeps_uncertain_receipts
 			panic!("owned turn");
 		};
 		let (release, released) = oneshot::channel();
-		let server = tokio::spawn(async move {
-			let (r, mut w) = io::split(remote);
-			let mut lines = BufReader::new(r).lines();
-
-			for phase in 0..3 {
-				let request: Value =
-					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-				let result = if phase == 0 {
-					assert_eq!(request["method"], "model/list");
-
-					serde_json::json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":if case=="unsupported" {"low"} else {"high"}}]}],"nextCursor":null})
-				} else {
-					assert_eq!(request["method"], "experimentalFeature/list");
-
-					if phase == 2 {
-						assert_eq!(request["params"]["threadId"], "thread");
-					}
-
-					serde_json::json!({"data":[{"name":"memories","enabled":false},{"name":"step_model_switching","enabled":case!="disabled"}],"nextCursor":null})
-				};
-
-				w.write_all(
-					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
-						.as_bytes(),
-				)
-				.await
-				.unwrap();
-			}
-
-			if matches!(case, "applied" | "lost") {
-				let request: Value =
-					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-
-				assert_eq!(request["method"], "turn/settings/update");
-				assert_eq!(
-					request["params"],
-					serde_json::json!({"threadId":"thread","turnId":"turn","model":"selected","effort":"high"})
-				);
-
-				if case == "lost" {
-					return;
-				}
-
-				w.write_all(
-					format!(
-						"{}\n",
-						serde_json::json!({"id":request["id"],"result":{"status":"applied"}})
-					)
-					.as_bytes(),
-				)
-				.await
-				.unwrap();
-			}
-
-			let _ = released.await;
-
-			assert!(
-				time::timeout(std::time::Duration::from_millis(20), lines.next_line())
-					.await
-					.is_err(),
-				"unexpected publication or retry"
-			);
-		});
+		let server = tokio::spawn(serve_model_publication(remote, case, released));
 		let calls = AtomicUsize::new(0);
 		let outcome = agent_live_settings::write(
 			&owner.store,
@@ -208,4 +146,74 @@ async fn live_model_choices_are_bound_to_the_task_and_discarded_after_source_cha
 
 		server.await.unwrap();
 	}
+}
+
+async fn serve_model_publication(remote: DuplexStream, case: &str, released: Receiver<()>) {
+	let (r, mut w) = io::split(remote);
+	let mut lines = BufReader::new(r).lines();
+
+	for phase in 0..3 {
+		let request: Value = serde_json::from_str(
+			&lines
+				.next_line()
+				.await
+				.expect("read model fixture request")
+				.expect("receive model fixture request"),
+		)
+		.expect("decode model fixture request");
+		let result = if phase == 0 {
+			assert_eq!(request["method"], "model/list");
+
+			serde_json::json!({"data":[{"model":"selected","displayName":"Selected","supportedReasoningEfforts":[{"reasoningEffort":if case=="unsupported" {"low"} else {"high"}}]}],"nextCursor":null})
+		} else {
+			assert_eq!(request["method"], "experimentalFeature/list");
+
+			if phase == 2 {
+				assert_eq!(request["params"]["threadId"], "thread");
+			}
+
+			serde_json::json!({"data":[{"name":"memories","enabled":false},{"name":"step_model_switching","enabled":case!="disabled"}],"nextCursor":null})
+		};
+
+		w.write_all(
+			format!("{}\n", serde_json::json!({"id":request["id"],"result":result})).as_bytes(),
+		)
+		.await
+		.expect("write model capability reply");
+	}
+
+	if matches!(case, "applied" | "lost") {
+		let request: Value = serde_json::from_str(
+			&lines
+				.next_line()
+				.await
+				.expect("read model update request")
+				.expect("receive model update request"),
+		)
+		.expect("decode model update request");
+
+		assert_eq!(request["method"], "turn/settings/update");
+		assert_eq!(
+			request["params"],
+			serde_json::json!({"threadId":"thread","turnId":"turn","model":"selected","effort":"high"})
+		);
+
+		if case == "lost" {
+			return;
+		}
+
+		w.write_all(
+			format!("{}\n", serde_json::json!({"id":request["id"],"result":{"status":"applied"}}))
+				.as_bytes(),
+		)
+		.await
+		.expect("write model update reply");
+	}
+
+	let _ = released.await;
+
+	assert!(
+		time::timeout(std::time::Duration::from_millis(20), lines.next_line()).await.is_err(),
+		"unexpected publication or retry"
+	);
 }
