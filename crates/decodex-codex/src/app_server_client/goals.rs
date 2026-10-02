@@ -235,6 +235,7 @@ mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	use crate::app_server_client::goals::AppServerClient;
+
 	#[tokio::test]
 	async fn native_goal_reads_distinguish_absence_limits_and_malformed_receipts() {
 		let base = serde_json::json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});

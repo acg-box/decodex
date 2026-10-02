@@ -12,6 +12,6 @@ pub(super) fn validate_bundle_value(bundle: &Value) -> Result<()> {
 			errors.insert(0, format!("schema must be {BUNDLE_SCHEMA}"));
 		}
 
-		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "))
+		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "));
 	}
 }

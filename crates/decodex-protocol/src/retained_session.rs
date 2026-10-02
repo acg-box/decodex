@@ -895,7 +895,6 @@ mod tests {
 		pong_write_polled: Arc<AtomicBool>,
 		dropped: Arc<AtomicBool>,
 	}
-
 	impl Stream for StalledPongSocket {
 		type Item = Result<Message, tokio_tungstenite::tungstenite::Error>;
 

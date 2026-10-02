@@ -63,7 +63,7 @@ impl GitHubApi {
 			}
 		}
 
-		eyre::bail!("GitHub API request failed for {url}: exhausted retry loop")
+		eyre::bail!("GitHub API request failed for {url}: exhausted retry loop");
 	}
 
 	pub(super) fn get_paginated(&self, url: &str) -> crate::prelude::Result<Vec<Value>> {

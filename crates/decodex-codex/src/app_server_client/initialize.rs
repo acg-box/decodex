@@ -35,6 +35,7 @@ impl Default for InitializeCapabilities {
 mod tests {
 
 	use crate::app_server_client::initialize::InitializeCapabilities;
+
 	#[test]
 	fn only_agent_advertises_the_supported_form_extension() {
 		let ordinary = serde_json::to_value(InitializeCapabilities::default()).unwrap();

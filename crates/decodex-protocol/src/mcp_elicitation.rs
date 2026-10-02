@@ -387,6 +387,7 @@ mod tests {
 	use serde_json::Value;
 
 	use crate::mcp_elicitation;
+
 	#[test]
 	fn opaque_openai_schemas_never_become_empty_approvals() {
 		for mode in ["form", "openai/form", "openaiForm"] {

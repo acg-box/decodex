@@ -182,6 +182,7 @@ mod tests {
 			server.await.unwrap();
 		}
 	}
+
 	#[tokio::test]
 	async fn closing_retry_is_bounded_and_stops_after_revert() {
 		for reverted in [false, true] {

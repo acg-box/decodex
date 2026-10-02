@@ -133,6 +133,7 @@ mod creation_tests {
 	use serde_json::Value;
 
 	use crate::AgentActionDto;
+
 	#[test]
 	fn creation_keeps_legacy_effort_and_nullable_inheritance_distinct() {
 		for effort in [serde_json::json!("none"), serde_json::json!("high"), Value::Null] {

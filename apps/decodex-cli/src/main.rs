@@ -7,10 +7,6 @@ use std::{
 
 #[cfg(test)] use base64 as _;
 use clap::Parser as _;
-#[cfg(test)] use decodex_core as _;
-#[cfg(test)] use decodex_database as _;
-use decodex_protocol as _;
-use decodex_runtime as _;
 #[cfg(any(target_os = "linux", target_os = "macos"))] use libc as _;
 #[cfg(test)] use rusqlite as _;
 use serde as _;
@@ -18,6 +14,10 @@ use serde_json as _;
 #[cfg(test)] use tempfile as _;
 
 use decodex_cli::{self, Cli};
+#[cfg(test)] use decodex_core as _;
+#[cfg(test)] use decodex_database as _;
+use decodex_protocol as _;
+use decodex_runtime as _;
 
 #[tokio::main]
 async fn main() -> ExitCode {

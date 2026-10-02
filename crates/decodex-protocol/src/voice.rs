@@ -135,6 +135,7 @@ pub struct AgentVoiceStatus {
 #[cfg(test)]
 mod tests {
 	use crate::VoiceSdp;
+
 	#[test]
 	fn signaling_is_bounded_and_redacted() {
 		let sdp = VoiceSdp::new("private-ice-password".into()).unwrap();

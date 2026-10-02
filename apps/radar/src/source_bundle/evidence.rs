@@ -91,7 +91,7 @@ fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<RadarBundleBuildReceipt> {
 				.ok_or_else(|| eyre::eyre!("bundle patch excerpt count exceeds u32")),
 			Some(Value::String(_) | Value::Null) | None => Ok(count),
 			Some(_) => {
-				eyre::bail!("bundle file patch_excerpt must be a string or null when present")
+				eyre::bail!("bundle file patch_excerpt must be a string or null when present");
 			},
 		}
 	})?;

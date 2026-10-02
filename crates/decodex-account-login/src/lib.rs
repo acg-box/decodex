@@ -1354,7 +1354,6 @@ mod tests {
 		stopped: Arc<AtomicBool>,
 		worker: Option<thread::JoinHandle<()>>,
 	}
-
 	impl MockIssuer {
 		fn start(
 			handler: impl Fn(MockHttpRequest) -> (u16, String) + Send + Sync + 'static,

@@ -113,6 +113,7 @@ pub enum ConversationModelReviewResult {
 #[cfg(test)]
 mod tests {
 	use crate::InitialModelCatalogResult;
+
 	#[test]
 	fn old_catalogs_remain_readable_and_default_sources_round_trip() {
 		let mut wire = serde_json::json!({"outcome":"available","account_id":"account","account_revision":1,"working_directory":"/tmp","models":[]});

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::tests::fixtures::{self, compare, release};
+use crate::tests::fixtures::{self};
 
 pub(crate) fn valid_release_delta() -> Value {
 	serde_json::json!({
@@ -8,9 +8,9 @@ pub(crate) fn valid_release_delta() -> Value {
 		"repo": "openai/codex",
 		"tag_prefix": "rust-v",
 		"generated_at": "2026-06-01T00:00:00Z",
-		"stable_release": release("rust-v0.1.0", false),
-		"prerelease": release("rust-v0.2.0-alpha.1", true),
-		"compare": compare(),
+		"stable_release": fixtures::release("rust-v0.1.0", false),
+		"prerelease": fixtures::release("rust-v0.2.0-alpha.1", true),
+		"compare": fixtures::compare(),
 		"tracked_signal_slugs": ["openai-codex-pr-22414"],
 		"release_options": {
 			"stable": [fixtures::release("rust-v0.1.0", false)],
@@ -20,7 +20,7 @@ pub(crate) fn valid_release_delta() -> Value {
 			{
 				"stable_tag_name": "rust-v0.1.0",
 				"prerelease_tag_name": "rust-v0.2.0-alpha.1",
-				"compare": compare(),
+				"compare": fixtures::compare(),
 				"tracked_signal_slugs": ["openai-codex-pr-22414"]
 			}
 		]

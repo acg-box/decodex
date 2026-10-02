@@ -75,6 +75,7 @@ mod tests {
 		ConversationTurnOutcomeResult, ConversationTurnOutcomeState, EntityId, IdempotencyKey,
 		QueryEnvelope, QueryId, QueryPayload,
 	};
+
 	#[test]
 	fn turn_outcome_queries_require_original_canonical_coordinates() {
 		let request = ConversationTurnOutcomeRequest {

@@ -172,6 +172,7 @@ fn optional(value: &Value) -> Result<Option<String>, ClientError> {
 #[cfg(test)]
 mod tests {
 	use crate::app_server_client::search_preferences::{self};
+
 	#[test]
 	fn search_write_permits_only_a_reviewed_default_without_reload_or_other_edits() {
 		let valid = serde_json::json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}]});

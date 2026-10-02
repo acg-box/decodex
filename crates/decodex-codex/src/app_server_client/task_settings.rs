@@ -55,6 +55,7 @@ mod tests {
 	use serde_json;
 
 	use crate::app_server_client::task_settings::{NativeTaskModelSettings, Value};
+
 	#[test]
 	fn complete_model_facts_keep_unknown_values_and_distinguish_missing_from_null() {
 		let good = serde_json::json!({"model":"future-model","modelProvider":"custom","effort":null,"serviceTier":"future-tier",

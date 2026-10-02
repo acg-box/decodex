@@ -4,8 +4,7 @@ use crate::{
 	prelude::Result,
 	release_delta::{
 		self, GitHubApi, Path, RELEASE_DELTA_SCHEMA, RadarRefreshReleaseDeltaReport,
-		RadarRefreshReleaseDeltaRequest, RefreshKind, Value, compact_release, compact_releases,
-		eyre, serde_json, utc_now_iso,
+		RadarRefreshReleaseDeltaRequest, RefreshKind, Value, eyre, serde_json,
 	},
 };
 
@@ -94,13 +93,13 @@ pub(crate) fn build_release_delta(
 		"schema": RELEASE_DELTA_SCHEMA,
 		"repo": request.repo,
 		"tag_prefix": request.tag_prefix,
-		"generated_at": utc_now_iso()?,
-		"stable_release": compact_release(&stable_release)?,
-		"prerelease": compact_release(&prerelease)?,
+		"generated_at": release_delta::utc_now_iso()?,
+		"stable_release": release_delta::compact_release(&stable_release)?,
+		"prerelease": release_delta::compact_release(&prerelease)?,
 		"compare": default_compare_payload,
 		"release_options": {
-			"stable": compact_releases(&stable_options)?,
-			"preview": compact_releases(&preview_options)?,
+			"stable": release_delta::compact_releases(&stable_options)?,
+			"preview": release_delta::compact_releases(&preview_options)?,
 		},
 		"comparisons": comparison_entries,
 		"tracked_signal_slugs": default_tracked_signal_slugs,

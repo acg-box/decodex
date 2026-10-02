@@ -8,7 +8,6 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use decodex_core as _;
 use futures_util as _;
 #[cfg(unix)] use libc as _;
 use percent_encoding as _;
@@ -21,6 +20,7 @@ use tokio::{
 use tokio_tungstenite as _;
 use url as _;
 
+use decodex_core as _;
 use decodex_protocol::{
 	AgentClient, AgentVoicePhase, AgentVoiceRequest, ClientProfile, EntityId, VoiceSdp,
 };

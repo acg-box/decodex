@@ -81,6 +81,7 @@ impl SettingsGuard {
 #[cfg(test)]
 mod tests {
 	use crate::app_server_client::settings_guard::SettingsRevisions;
+
 	#[test]
 	fn revision_identities_do_not_repeat_after_values_return_or_guards_are_dropped() {
 		let revisions = SettingsRevisions::default();

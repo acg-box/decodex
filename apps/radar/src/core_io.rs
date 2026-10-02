@@ -101,7 +101,9 @@ pub(crate) fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Re
 				Some(PrivateEntryKind::Directory) => {
 					files.extend(crate::collect_private_json_files(path)?);
 				},
-				None => eyre::bail!("Bundle validation path does not exist"),
+				None => {
+					eyre::bail!("Bundle validation path does not exist");
+				},
 			}
 
 			continue;
