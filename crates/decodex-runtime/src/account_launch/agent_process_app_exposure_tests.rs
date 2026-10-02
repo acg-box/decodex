@@ -92,6 +92,45 @@ async fn assert_missing_app_unavailable(owner: &OwnedReviewer) {
 	);
 }
 
+async fn assert_stale_review_rejected(
+	owner: &OwnedReviewer,
+	config: &Arc<std::sync::Mutex<Config>>,
+	review_token: &str,
+) {
+	let mut changed = owner.key.clone();
+
+	changed.revision += 1;
+
+	assert!(
+		agent_app_exposure::write(
+			&owner.store,
+			|| async { Some(owner.source(&changed)) },
+			Change {
+				connector: "calendar",
+				review: review_token,
+				omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
+				attempt: "stale"
+			}
+		)
+		.await
+		.is_err()
+	);
+	assert_eq!(config.lock().expect("App exposure fixture").writes, 0);
+}
+
+async fn assert_retained_diagnostics(reopened: &SqliteStore) {
+	let (events, _) = reopened
+		.read_agent_transcript("root".into(), None, 100)
+		.await
+		.expect("diagnostics after reopen");
+
+	assert!(events.iter().any(|e| e.payload.contains("/fixture/config.toml:1:24: unclosed array")));
+	assert!(events.iter().all(|e| !e.payload.contains("do-not-retain")));
+	assert!(
+		reopened.list_agent_wake_events("root".into(), 100).await.expect("wake events").is_empty()
+	);
+}
+
 #[tokio::test]
 async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	let home = tempfile::tempdir().expect("App exposure fixture");
@@ -118,25 +157,8 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	else {
 		panic!("owned inventory")
 	};
-	let mut changed = owner.key.clone();
 
-	changed.revision += 1;
-
-	assert!(
-		agent_app_exposure::write(
-			&owner.store,
-			|| async { Some(owner.source(&changed)) },
-			Change {
-				connector: "calendar",
-				review: review_token.as_str(),
-				omit: Some(vec![decodex_protocol::AgentToolExposureSurface::Direct]),
-				attempt: "stale"
-			}
-		)
-		.await
-		.is_err()
-	);
-	assert_eq!(config.lock().expect("App exposure fixture").writes, 0);
+	assert_stale_review_rejected(&owner, &config, review_token.as_str()).await;
 
 	agent_app_exposure::write(
 		&owner.store,
@@ -223,16 +245,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 	);
 	assert_eq!(config.lock().expect("App exposure fixture").writes, 2);
 
-	let (events, _) = reopened
-		.read_agent_transcript("root".into(), None, 100)
-		.await
-		.expect("diagnostics after reopen");
-
-	assert!(events.iter().any(|e| e.payload.contains("/fixture/config.toml:1:24: unclosed array")));
-	assert!(events.iter().all(|e| !e.payload.contains("do-not-retain")));
-	assert!(
-		reopened.list_agent_wake_events("root".into(), 100).await.expect("wake events").is_empty()
-	);
+	assert_retained_diagnostics(&reopened).await;
 
 	backend.abort();
 }

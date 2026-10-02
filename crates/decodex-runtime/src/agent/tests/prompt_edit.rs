@@ -241,6 +241,66 @@ async fn prompt_edit_revalidates_content_before_reservation_or_native_mutation()
 	let _ = server.await;
 }
 
+async fn assert_prompt_send_identity(
+	agent: &AgentCoordinator,
+	queued_id: i64,
+	reference: Value,
+	execution: Value,
+) {
+	assert_eq!(
+		agent
+			.store
+			.agent_prompt_send_event(
+				"agent".into(),
+				"canonical-send".into(),
+				reference.clone(),
+				execution.clone()
+			)
+			.await
+			.unwrap(),
+		Some(queued_id)
+	);
+	assert_eq!(
+		agent
+			.store
+			.agent_prompt_send_event(
+				"agent".into(),
+				"unknown-send".into(),
+				reference.clone(),
+				execution.clone()
+			)
+			.await
+			.unwrap(),
+		None
+	);
+	assert_eq!(
+		agent
+			.store
+			.agent_prompt_send_event(
+				"agent".into(),
+				"canonical-send".into(),
+				reference.clone(),
+				serde_json::json!({"reasoning_effort":"low"})
+			)
+			.await
+			.unwrap(),
+		None
+	);
+
+	let mut crossed = reference;
+
+	crossed["threadId"] = serde_json::json!("different-thread");
+
+	assert_eq!(
+		agent
+			.store
+			.agent_prompt_send_event("agent".into(), "canonical-send".into(), crossed, execution)
+			.await
+			.unwrap(),
+		None
+	);
+}
+
 #[tokio::test]
 async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_preview() {
 	let (mut agent, _old_reads, _directory) = tests::fixture().await;
@@ -302,58 +362,8 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 	let reference = payload["options"]["canonicalInput"].clone();
 	let execution = payload["options"]["execution"].clone();
 
-	assert_eq!(
-		agent
-			.store
-			.agent_prompt_send_event(
-				"agent".into(),
-				"canonical-send".into(),
-				reference.clone(),
-				execution.clone()
-			)
-			.await
-			.unwrap(),
-		Some(queued.id)
-	);
-	assert_eq!(
-		agent
-			.store
-			.agent_prompt_send_event(
-				"agent".into(),
-				"unknown-send".into(),
-				reference.clone(),
-				execution.clone()
-			)
-			.await
-			.unwrap(),
-		None
-	);
-	assert_eq!(
-		agent
-			.store
-			.agent_prompt_send_event(
-				"agent".into(),
-				"canonical-send".into(),
-				reference.clone(),
-				serde_json::json!({"reasoning_effort":"low"})
-			)
-			.await
-			.unwrap(),
-		None
-	);
+	assert_prompt_send_identity(&agent, queued.id, reference, execution).await;
 
-	let mut crossed = reference;
-
-	crossed["threadId"] = serde_json::json!("different-thread");
-
-	assert_eq!(
-		agent
-			.store
-			.agent_prompt_send_event("agent".into(), "canonical-send".into(), crossed, execution)
-			.await
-			.unwrap(),
-		None
-	);
 	assert_eq!(agent.store.enqueue_agent_event(event.clone()).await.unwrap().id, queued.id);
 
 	let item = agent.store.get_agent_work_item("agent".into()).await.unwrap();
