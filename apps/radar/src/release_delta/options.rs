@@ -3,8 +3,7 @@
 use crate::{
 	prelude::Result,
 	release_delta::{
-		BTreeSet, RadarRefreshReleaseDeltaReport, RefreshWriteReport, Value, eyre,
-		optional_value_string, required_value_string, serde_json,
+		self, BTreeSet, RadarRefreshReleaseDeltaReport, RefreshWriteReport, Value, eyre, serde_json,
 	},
 };
 
@@ -46,10 +45,10 @@ pub(super) fn compact_release(release: &Value) -> Result<Value> {
 
 	Ok(serde_json::json!({
 		"tag_name": tag_name,
-		"name": optional_value_string(release, "name").unwrap_or_else(|| tag_name.to_owned()),
+		"name": release_delta::optional_value_string(release, "name").unwrap_or_else(|| tag_name.to_owned()),
 		"prerelease": release.get("prerelease").and_then(Value::as_bool).unwrap_or(false),
-		"published_at": required_value_string(release, "published_at")?,
-		"url": required_value_string(release, "html_url")?,
+		"published_at": release_delta::required_value_string(release, "published_at")?,
+		"url": release_delta::required_value_string(release, "html_url")?,
 	}))
 }
 

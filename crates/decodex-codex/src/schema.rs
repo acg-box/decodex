@@ -820,6 +820,7 @@ fn references(value: &Value, name: &str) -> bool {
 #[cfg(test)]
 mod tool_input_tests {
 	use serde_json;
+
 	#[test]
 	fn tool_input_requires_a_structural_named_text_output() {
 		let valid = serde_json::json!({"properties":{"toolOutput":{"anyOf":[{"$ref":"#/definitions/TurnToolOutput"},{"type":"null"}]}},"definitions":{

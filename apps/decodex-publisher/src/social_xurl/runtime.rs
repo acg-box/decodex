@@ -1275,7 +1275,6 @@ mod tests {
 	use crate::social_xurl::runtime::{self, MAX_XURL_OUTPUT_BYTES, TrustedXurlBinary};
 
 	struct SlowReader;
-
 	impl io::Read for SlowReader {
 		fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
 			thread::sleep(Duration::from_millis(200));

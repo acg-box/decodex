@@ -170,6 +170,7 @@ mod tests {
 			.unwrap()
 			.unwrap()
 	}
+
 	async fn receipt(store: &SqliteStore) -> AgentPluginReceipt {
 		store.agent_plugin_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
 	}

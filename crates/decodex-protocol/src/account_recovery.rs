@@ -473,6 +473,7 @@ mod preparation_tests {
 		AccountRecoveryDestination, AccountRecoveryPreparation, AccountRecoveryResult,
 		AccountRecoveryState, EntityId, EntityRevision, WireText,
 	};
+
 	#[test]
 	fn preparation_rejects_changed_source_action_and_effect_kind() {
 		let source = AccountRecoveryResult {

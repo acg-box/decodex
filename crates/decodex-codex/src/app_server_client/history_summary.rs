@@ -108,6 +108,7 @@ mod tests {
 			server.await.expect("fixture");
 		}
 	}
+
 	#[tokio::test]
 	async fn summary_is_chronological_display_content_without_writer_or_full_cursor() {
 		let (local, remote) = io::duplex(65_536);

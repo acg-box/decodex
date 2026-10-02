@@ -20,6 +20,7 @@ impl GithubClient {
 #[cfg(test)]
 mod tests {
 	use crate::{github_bundle_client::GithubClient, tests::automation::github_api};
+
 	#[test]
 	fn commit_request_collects_paginated_files_for_bundle_construction() {
 		let server = github_api::spawn_server_with(4, |url, page| {

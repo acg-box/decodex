@@ -134,6 +134,7 @@ impl AgentGuardianDetailResult {
 #[cfg(test)]
 mod tests {
 	use crate::AgentGuardianDetailResult;
+
 	#[test]
 	fn detail_pages_bind_identity_and_exact_continuation() {
 		let page = AgentGuardianDetailResult::Available {

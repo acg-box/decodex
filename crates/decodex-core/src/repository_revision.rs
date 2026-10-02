@@ -46,6 +46,7 @@ impl Error for RepositoryRevisionError {}
 #[cfg(test)]
 mod tests {
 	use crate::repository_revision::RepositoryContentRevision;
+
 	#[test]
 	fn revision_preserves_exact_bytes_and_rejects_ambiguous_or_unbounded_values() {
 		for value in ["", " leading", "trailing ", "line\nbreak", "nul\0byte"] {

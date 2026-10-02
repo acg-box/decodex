@@ -181,7 +181,9 @@ pub(crate) fn build_bundle_payload(request: &RadarBundleBuildRequest) -> Result<
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},
-		(None, None) => eyre::bail!("one of --pr or --commit is required"),
+		(None, None) => {
+			eyre::bail!("one of --pr or --commit is required");
+		},
 	};
 
 	Ok(bundle)

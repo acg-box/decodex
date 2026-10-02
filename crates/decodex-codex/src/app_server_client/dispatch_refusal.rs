@@ -28,6 +28,7 @@ pub fn classify_dispatch_refusal(code: i64, message: &str) -> Option<NativeDispa
 #[cfg(test)]
 mod tests {
 	use crate::app_server_client::dispatch_refusal::{self, NativeDispatchRefusal};
+
 	#[test]
 	fn native_refusals_require_exact_code_and_message() {
 		for (message, expected) in [

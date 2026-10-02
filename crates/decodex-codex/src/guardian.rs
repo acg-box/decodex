@@ -135,6 +135,7 @@ mod tests {
 	use serde_json;
 
 	use crate::guardian::{self, MAX_REVIEW_BYTES, Value};
+
 	const COMPLETED: &str = "item/autoApprovalReview/completed";
 	const STARTED: &str = "item/autoApprovalReview/started";
 

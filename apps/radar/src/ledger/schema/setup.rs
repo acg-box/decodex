@@ -241,7 +241,9 @@ pub(crate) fn initialize_ledger_with_failure(
 		"after_objects" => InitFailureBoundary::AfterObjects,
 		"after_version" => InitFailureBoundary::AfterVersion,
 		"before_commit" => InitFailureBoundary::BeforeCommit,
-		_ => eyre::bail!("unknown Radar ledger initialization failure boundary"),
+		_ => {
+			eyre::bail!("unknown Radar ledger initialization failure boundary");
+		},
 	};
 
 	configure_ledger_storage(connection)?;

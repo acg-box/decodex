@@ -126,6 +126,7 @@ pub enum AgentSavedAppSettingsResult {
 #[cfg(test)]
 mod tests {
 	use crate::AgentAppSettingEdit;
+
 	#[test]
 	fn setting_edits_preserve_inheritance_and_reject_unoffered_fields_and_values() {
 		for wire in [

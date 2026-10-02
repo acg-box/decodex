@@ -3187,6 +3187,7 @@ mod optional_quota_tests {
 			Ok(())
 		}).await.expect("current readback");
 	}
+
 	async fn seed_quota_account(store: &SqliteStore, account: &AccountId) {
 		let id = account.clone();
 

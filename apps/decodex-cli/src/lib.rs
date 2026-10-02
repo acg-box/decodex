@@ -13,8 +13,6 @@ use std::{
 
 #[cfg(test)] use base64 as _;
 use clap::{Parser, Subcommand, ValueEnum};
-#[cfg(test)] use decodex_core as _;
-#[cfg(test)] use decodex_database as _;
 #[cfg(test)] use rusqlite as _;
 use serde::Serialize;
 use tokio as _;
@@ -23,6 +21,8 @@ use crate::{
 	account::AccountCommand, agent::AgentCommand, fast_mode::FastModeCommand,
 	reset_card::ResetCardCommand,
 };
+#[cfg(test)] use decodex_core as _;
+#[cfg(test)] use decodex_database as _;
 use decodex_protocol::{
 	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
 	DoctorReport, DoctorStatus, ProfileKind, ServerId,

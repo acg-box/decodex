@@ -4,7 +4,7 @@ pub(crate) fn require_member(value: &str, allowed: &[&str], label: &str) -> Resu
 	if allowed.contains(&value) {
 		Ok(())
 	} else {
-		eyre::bail!("{label} must be one of {}", choices(allowed))
+		eyre::bail!("{label} must be one of {}", choices(allowed));
 	}
 }
 

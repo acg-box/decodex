@@ -1042,6 +1042,7 @@ mod native_effort_tests {
 #[cfg(test)]
 mod inherited_execution_tests {
 	use crate::ConversationExecutionSettings;
+
 	#[test]
 	fn execution_accepts_absent_effort_without_changing_literal_none() {
 		for effort in [

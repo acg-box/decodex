@@ -61,7 +61,6 @@ mod platform {
 		file: File,
 		identity: LockIdentity,
 	}
-
 	impl NamespaceLock {
 		fn acquire(directory: &DirectoryBinding) -> Result<Self, LocalTransportRefusal> {
 			directory.verify()?;
@@ -110,7 +109,6 @@ mod platform {
 		stage_path: PathBuf,
 		published: bool,
 	}
-
 	impl PendingPublication<'_> {
 		fn publish(mut self) -> Result<LocalTransportListener, LocalTransportRefusal> {
 			let directory =
@@ -185,7 +183,6 @@ mod platform {
 		identity: FileIdentity,
 		expected_uid: u32,
 	}
-
 	impl DirectoryBinding {
 		fn open(endpoint_path: &Path, expected_uid: u32) -> Result<Self, LocalTransportRefusal> {
 			let path = endpoint_path.parent().ok_or(LocalTransportRefusal::UnsafeDirectory)?;
@@ -388,7 +385,6 @@ mod platform {
 		device: u64,
 		inode: u64,
 	}
-
 	impl FileIdentity {
 		fn from_metadata(metadata: &Metadata) -> Self {
 			Self { device: metadata.dev(), inode: metadata.ino() }
@@ -410,7 +406,6 @@ mod platform {
 		mode: u32,
 		links: u64,
 	}
-
 	impl LockIdentity {
 		fn from_metadata(metadata: &Metadata) -> Self {
 			Self {
