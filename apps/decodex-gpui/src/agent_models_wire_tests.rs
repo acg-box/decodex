@@ -33,7 +33,7 @@ struct ModelView {
 impl Render for ModelView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| {
-			models::div()
+			gpui::div()
 				.flex()
 				.flex_col()
 				.child(s.model_settings_panel(&work(), cx))
@@ -146,7 +146,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 		});
 
 		visual.update(|w, cx| {
-			w.resize(gpui::size(models::px(900.), models::px(700.)));
+			w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
 			w.draw(cx).clear();
 		});
 
@@ -340,7 +340,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(models::px(900.), models::px(700.)));
+		w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
 		w.draw(cx).clear();
 	});
 
@@ -435,7 +435,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(models::px(900.), models::px(700.)));
+		w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
 		w.draw(cx).clear();
 	});
 

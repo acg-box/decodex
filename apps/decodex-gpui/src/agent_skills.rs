@@ -7,8 +7,7 @@ use tokio::runtime::Builder;
 use crate::shell::agent_surface::{
 	self, AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory, Entity,
 	EntityId, InteractiveElement, IntoElement, LoadState, ParentElement,
-	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, div, px,
-	ui_theme::TEXT_MUTED,
+	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, ui_theme::TEXT_MUTED,
 };
 use decodex_protocol::{
 	AgentAttachmentDto, AgentSkillDto, AgentSkillsResult, AgentSkillsTarget, AgentWorkKindDto,
@@ -193,7 +192,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn skill_options(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut panel = div().flex().flex_col().gap_2().on_action(cx.listener(
+		let mut panel = gpui::div().flex().flex_col().gap_2().on_action(cx.listener(
 			|s, _: &SubmitComposer, _, cx| {
 				s.load_skills(cx);
 				cx.stop_propagation();
@@ -201,7 +200,7 @@ impl AgentSurface {
 		));
 
 		if let Some(search) = &self.skills.search {
-			panel = panel.child(div().h(px(36.)).child(search.clone()));
+			panel = panel.child(gpui::div().h(gpui::px(36.)).child(search.clone()));
 		}
 
 		panel = panel.child(self.workspace_action(
@@ -234,15 +233,20 @@ impl AgentSurface {
 				.child(agent_surface::muted("Skills are unavailable. Find skills to try again."))
 				.into_any_element();
 		};
-		let mut list =
-			div().id("skill-results").max_h(px(280.)).overflow_y_scroll().flex().flex_col().gap_1();
+		let mut list = gpui::div()
+			.id("skill-results")
+			.max_h(gpui::px(280.))
+			.overflow_y_scroll()
+			.flex()
+			.flex_col()
+			.gap_1();
 
 		for (index, skill) in page.skills.iter().enumerate() {
 			let source = source.clone();
 			let selected = skill.clone();
 
 			list = list.child(
-				div()
+				gpui::div()
 					.flex()
 					.flex_col()
 					.child(self.workspace_action(
@@ -252,17 +256,17 @@ impl AgentSurface {
 						cx,
 					))
 					.child(
-						div()
+						gpui::div()
 							.px_2()
-							.text_size(px(10.))
-							.text_color(agent_surface::rgb(TEXT_MUTED))
+							.text_size(gpui::px(10.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child(skill.description.as_str().to_owned()),
 					)
 					.child(
-						div()
+						gpui::div()
 							.px_2()
-							.text_size(px(9.))
-							.text_color(agent_surface::rgb(TEXT_MUTED))
+							.text_size(gpui::px(9.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child(skill.path.as_str().to_owned()),
 					),
 			);
@@ -293,7 +297,7 @@ mod tests {
 	use gpui::{AppContext as _, Focusable as _, InteractiveElement, ParentElement};
 
 	use crate::shell::agent_surface::skills::{
-		self, AgentSkillDto, AgentSkillsResult, AgentSurface, ComposerInput, Context,
+		AgentSkillDto, AgentSkillsResult, AgentSurface, ComposerInput, Context,
 		ConversationWorkingDirectory, Entity, EntityId, IntoElement, SubmitComposer, WireText,
 	};
 	#[cfg(test)] use crate::shell::agent_surface::skills::{Render, Window};
@@ -302,7 +306,7 @@ mod tests {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			let panel = self.0.update(cx, |s, cx| s.skill_options(cx));
 
-			skills::div().child(panel).on_action(|_: &SubmitComposer, _, _| {
+			gpui::div().child(panel).on_action(|_: &SubmitComposer, _, _| {
 				panic!("skill search must not submit the main composer")
 			})
 		}
@@ -346,7 +350,7 @@ mod tests {
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 
 		visual.update(|w, cx| {
-			w.resize(gpui::size(skills::px(380.), skills::px(500.)));
+			w.resize(gpui::size(gpui::px(380.), gpui::px(500.)));
 			w.draw(cx).clear();
 		});
 

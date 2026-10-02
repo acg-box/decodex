@@ -1,16 +1,20 @@
 //! Connector-level visibility preferences, separate from account approval settings.
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkItemDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement, ParentElement, Styled,
 	Task, WireText, mcp_forms,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
-	ClientProfile, Entity, Render, Window, px,
 };
 use decodex_protocol::{AgentAppExposureResult as State, AgentToolExposureSurface as Surface};
 
@@ -160,14 +164,14 @@ impl AgentSurface {
 
 	pub(super) fn app_exposure_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, connector)) = &self.app_exposure.owner else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
 		if owner != work {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = agent_surface::div()
+		let mut panel = gpui::div()
 			.id("app-exposure-panel")
 			.flex()
 			.flex_col()

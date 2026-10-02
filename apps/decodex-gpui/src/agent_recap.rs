@@ -2,20 +2,19 @@
 #[path = "agent_recap_automatic.rs"] mod automatic;
 #[path = "agent_recap_request.rs"] mod request;
 
-pub(super) use automatic::Automatic;
-
 use gpui::AnyElement;
 use tokio::sync::watch::{self, Sender};
 
 use crate::shell::agent_surface::{
 	AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto, AgentSnapshotDto,
 	AgentSurface, ClientProfile, Context, EntityId, IdempotencyKey, IntoElement, ParentElement,
-	Styled, Task, Window, WireText, div, markdown, mcp_forms, px, unique_command,
+	Styled, Task, Window, WireText, markdown, mcp_forms, unique_command,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkItemDto, Entity, LoadState, Render,
 };
+pub(super) use automatic::Automatic;
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
 
 #[derive(Default)]
@@ -210,15 +209,15 @@ impl AgentSurface {
 
 	pub(super) fn recap_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			return div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let owner = work.to_owned();
 		let opened = self.recap.work.as_deref() == Some(work);
-		let mut panel = div()
+		let mut panel = gpui::div()
 			.w_full()
-			.text_size(px(12.))
-			.line_height(px(18.))
+			.text_size(gpui::px(12.))
+			.line_height(gpui::px(18.))
 			.flex()
 			.flex_col()
 			.items_start()
@@ -272,7 +271,7 @@ impl AgentSurface {
 				},
 			));
 		} else {
-			let mut actions = div().flex().gap_2();
+			let mut actions = gpui::div().flex().gap_2();
 
 			for (id, label, generate) in [
 				("recap-refresh", "Refresh recap", false),

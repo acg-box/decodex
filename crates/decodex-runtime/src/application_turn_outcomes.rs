@@ -1,5 +1,6 @@
 //! Observe existing provider-attempt authority without creating an execution journal.
-use crate::{application::ProductStore, conversation::ordinary_provider_attempt_id};
+
+use crate::{application::ProductStore, conversation};
 use decodex_core::{ConversationId, ProviderAttemptConsumer, ProviderAttemptState, TurnId};
 use decodex_protocol::{
 	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationTurnOutcomeState,
@@ -18,7 +19,8 @@ pub(super) async fn query_turn_outcome(
 	) else {
 		return ConversationTurnOutcomeResult::Conflict;
 	};
-	let Ok(attempt_id) = ordinary_provider_attempt_id(request.idempotency_key.as_str(), &turn)
+	let Ok(attempt_id) =
+		conversation::ordinary_provider_attempt_id(request.idempotency_key.as_str(), &turn)
 	else {
 		return ConversationTurnOutcomeResult::Conflict;
 	};
@@ -72,16 +74,20 @@ fn project_state(
 
 #[cfg(test)]
 mod tests {
-	use crate::application::turn_outcomes::{
-		self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
-		ConversationTurnOutcomeState, ProductStore, ProviderAttemptState, TurnId,
+	use crate::{
+		application::turn_outcomes::{
+			self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
+			ConversationTurnOutcomeState, ProductStore, ProviderAttemptState, TurnId,
+		},
+		conversation,
 	};
+
 	#[test]
 	fn outcome_lookup_preserves_the_existing_attempt_identity() {
 		let turn = TurnId::new("50000000-0000-4000-8000-000000000001").unwrap();
 
 		assert_eq!(
-			turn_outcomes::ordinary_provider_attempt_id("original-submission", &turn)
+			conversation::ordinary_provider_attempt_id("original-submission", &turn)
 				.unwrap()
 				.as_str(),
 			"7dc84ac4-d679-42cd-8f43-235a20459b8d"
@@ -116,6 +122,7 @@ mod tests {
 			Some(ConversationTurnOutcomeState::NotSubmitted)
 		);
 	}
+
 	#[tokio::test]
 	async fn missing_attempt_is_not_reported_as_not_submitted() {
 		let temp = tempfile::tempdir().unwrap();

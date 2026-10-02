@@ -14,7 +14,7 @@ use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::recap::{
-	self, AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, Phase,
+	AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, Phase,
 	TaskRecapStatus, Window, WireText, request, watch,
 };
 #[cfg(test)] use crate::shell::agent_surface::recap::{Entity, Render};
@@ -145,7 +145,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestApp
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(recap::px(600.), recap::px(500.)));
+		w.resize(gpui::size(gpui::px(600.), gpui::px(500.)));
 		w.draw(cx).clear();
 	});
 
@@ -238,7 +238,7 @@ fn active_voice_rejection_is_shown_without_retrying_generation() {
 fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-	visual.simulate_resize(gpui::size(recap::px(1_400.), recap::px(900.)));
+	visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 	surface.update(visual, |s, cx| {
 		s.visual_workspace_fixture(cx);
 		cx.notify();

@@ -7,9 +7,12 @@ use std::{
 
 use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
-use crate::shell::agent_surface::prompt_edit::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
-	DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft,
+use crate::shell::{
+	agent_surface,
+	agent_surface::prompt_edit::{
+		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+		DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft,
+	},
 };
 use decodex_protocol::{AgentExecutionOverrides, ClientFailure, PromptForkIntent};
 
@@ -51,7 +54,7 @@ impl AgentSurface {
 			expected.clone()
 		} else {
 			let Ok(mut pending) = expected.begin_confirmation(
-				IdempotencyKey::new(prompt_edit::unique_command())
+				IdempotencyKey::new(agent_surface::unique_command())
 					.expect("bounded command identity"),
 			) else {
 				return;
@@ -59,7 +62,7 @@ impl AgentSurface {
 
 			if let Some(boundary) = boundary {
 				pending.fork = Some(PromptForkIntent {
-					target_work_id: EntityId::new(prompt_edit::unique_command())
+					target_work_id: EntityId::new(agent_surface::unique_command())
 						.expect("bounded branch identity"),
 					boundary,
 				});

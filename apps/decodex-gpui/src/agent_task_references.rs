@@ -1,4 +1,5 @@
 //! Explicit task selection and per-manager composer drafts.
+#[cfg(test)] use gpui::px;
 use gpui::{AnyElement, AppContext as _, KeyDownEvent};
 
 #[cfg(test)] use crate::shell::agent_surface::composer::{AgentActionDto, HistoryText};
@@ -8,7 +9,7 @@ use crate::{
 		composer::{
 			AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement,
 			IntoElement, ParentElement, Role, SharedString, SmoothControl,
-			StatefulInteractiveElement, Styled, px, ui_theme::TEXT_MUTED,
+			StatefulInteractiveElement, Styled, ui_theme::TEXT_MUTED,
 		},
 	},
 	ui_theme::HOVER_FILL,
@@ -82,9 +83,9 @@ impl AgentSurface {
 
 	pub(super) fn task_reference_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let query = self.task_reference_search.read(cx).content().trim().to_lowercase();
-		let mut list = composer::div()
+		let mut list = gpui::div()
 			.id("task-reference-results")
-			.max_h(px(280.))
+			.max_h(gpui::px(280.))
 			.overflow_y_scroll()
 			.flex()
 			.flex_col()
@@ -114,7 +115,7 @@ impl AgentSurface {
 				let clicked = reference.clone();
 
 				list = list.child(
-					composer::div()
+					gpui::div()
 						.id(SharedString::from(format!("reference-task-{}", work.id)))
 						.debug_selector({
 							let id = format!("reference-task-{}", work.id);
@@ -126,19 +127,19 @@ impl AgentSurface {
 						.aria_label(format!("Reference {}", work.title))
 						.px_2()
 						.py_1()
-						.rounded(px(6.))
+						.rounded(gpui::px(6.))
 						.cursor_pointer()
 						.hover(|d| d.bg(composer::rgba(HOVER_FILL)))
 						.child(
-							composer::div()
-								.text_size(px(12.))
+							gpui::div()
+								.text_size(gpui::px(12.))
 								.overflow_hidden()
 								.text_ellipsis()
 								.child(work.title.clone()),
 						)
 						.child(
-							composer::div()
-								.text_size(px(10.))
+							gpui::div()
+								.text_size(gpui::px(10.))
 								.text_color(composer::rgb(TEXT_MUTED))
 								.child(work.id.clone()),
 						)
@@ -159,18 +160,22 @@ impl AgentSurface {
 
 		if count == 0 {
 			list = list.child(
-				composer::div().text_size(px(11.)).child("No matching tasks with a conversation."),
+				gpui::div()
+					.text_size(gpui::px(11.))
+					.child("No matching tasks with a conversation."),
 			);
 		}
 
-		composer::div()
+		gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(composer::div().h(px(36.)).flex_none().child(self.task_reference_search.clone()))
 			.child(
-				composer::div()
-					.text_size(px(10.))
+				gpui::div().h(gpui::px(36.)).flex_none().child(self.task_reference_search.clone()),
+			)
+			.child(
+				gpui::div()
+					.text_size(gpui::px(10.))
 					.text_color(composer::rgb(TEXT_MUTED))
 					.child("Sending grants read access to the selected task history."),
 			)
@@ -183,14 +188,14 @@ impl AgentSurface {
 			return None;
 		}
 
-		let mut row = composer::div().flex().flex_wrap().gap_1().px_1();
+		let mut row = gpui::div().flex().flex_wrap().gap_1().px_1();
 
 		for reference in &self.task_references {
 			let remove = reference.clone();
 			let clicked = remove.clone();
 
 			row = row.child(
-				composer::div()
+				gpui::div()
 					.id(SharedString::from(format!(
 						"selected-task-{}-{}",
 						reference.work_id.as_str(),
@@ -208,15 +213,15 @@ impl AgentSurface {
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Remove task reference {}", reference.title.as_str()))
-					.max_w(px(220.))
+					.max_w(gpui::px(220.))
 					.px_2()
 					.py_1()
-					.rounded(px(6.))
+					.rounded(gpui::px(6.))
 					.bg(composer::rgba(0xffffff0a))
-					.text_size(px(11.))
+					.text_size(gpui::px(11.))
 					.cursor_pointer()
 					.child(
-						composer::div()
+						gpui::div()
 							.overflow_hidden()
 							.text_ellipsis()
 							.child(format!("@{} ×", reference.title.as_str())),

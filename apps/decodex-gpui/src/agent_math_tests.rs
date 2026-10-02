@@ -92,14 +92,14 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 	let mut previous_size = None;
 
 	for width in [600., 120.] {
-		visual.simulate_resize(gpui::size(markdown::px(width), markdown::px(300.)));
+		visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let bounds = visual.debug_bounds("math-math-preview-0-formula-0").expect("formula");
 
-		assert!(bounds.size.width <= markdown::px(width));
+		assert!(bounds.size.width <= gpui::px(width));
 
 		let text = visual.debug_bounds("math-text-math-preview-0-formula-0").expect("formula text");
 
@@ -112,7 +112,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 		if width == 120. {
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(markdown::px(-60.), markdown::px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {
@@ -129,7 +129,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(markdown::px(60.), markdown::px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(gpui::px(60.), gpui::px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {

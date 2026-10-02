@@ -11,9 +11,12 @@ use tokio::{
 };
 
 use crate::{
-	agent::tests::{
-		AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, fixture,
-		native_task_references,
+	agent::{
+		tests,
+		tests::{
+			AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, fixture,
+			native_task_references,
+		},
 	},
 	native_agents,
 };
@@ -59,7 +62,7 @@ async fn native_child_approval_round_trip() {
 
 	fs::write(home.join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nservice_tier = \"priority\"\napprovals_reviewer = \"user\"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n[model_providers.fixture]\nname = \"Isolated child approval fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
 
-	let (mut agent, _sent, _store_home) = fixture().await;
+	let (mut agent, _sent, _store_home) = tests::fixture().await;
 	let mut command = Command::new(binary);
 
 	command

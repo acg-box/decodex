@@ -11,18 +11,18 @@ use gpui::{AnyElement, ClipboardItem};
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
-	self, AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, IntoElement,
-	ParentElement, Styled,
+	AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, IntoElement, ParentElement,
+	Styled,
 };
 use decodex_protocol::AgentTimelineContent;
 
 impl AgentSurface {
 	pub(super) fn transcript_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_goal_target().is_none() {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().child("Conversation export");
+		let mut panel = gpui::div().flex().flex_col().gap_2().child("Conversation export");
 
 		if self.transcript_busy {
 			return panel.child("Reading conversation…").into_any_element();

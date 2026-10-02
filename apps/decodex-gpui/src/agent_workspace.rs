@@ -15,17 +15,17 @@ use ui_theme::{
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 use crate::{
 	shell::{
-		WINDOW_CONTROLS_CLEARANCE, agent_surface,
+		WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentRequestResult, AgentSnapshotDto,
 			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, Context,
 			ConversationReasoningEffort, FluentBuilder, FontWeight, InteractiveElement,
 			IntoElement, LoadState, ParentElement, Render, Role, SharedString,
 			StatefulInteractiveElement, Styled, SubmitComposer, Window,
-			activity::HistoryScrollAnchor, creation_setup, graph, prompts, px, ui_theme,
+			activity::HistoryScrollAnchor, creation_setup, graph, prompts, ui_theme,
 			workspace_size::Panel,
 		},
-		workspace_symbols::{self},
+		workspace_symbols,
 	},
 	ui_loading,
 	ui_motion::{self, SmoothControl, TabReveal},
@@ -48,13 +48,13 @@ pub(super) struct PageView {
 struct PanelTip(String);
 impl Render for PanelTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		agent_surface::div()
+		gpui::div()
 			.px_2()
 			.py_1()
-			.rounded(px(5.0))
-			.bg(agent_surface::rgb(CANVAS))
-			.text_color(agent_surface::rgb(TEXT))
-			.text_size(px(11.0))
+			.rounded(gpui::px(5.0))
+			.bg(gpui::rgb(CANVAS))
+			.text_color(gpui::rgb(TEXT))
+			.text_size(gpui::px(11.0))
 			.child(self.0.clone())
 	}
 }
@@ -321,12 +321,12 @@ impl AgentSurface {
 		let keyboard = action.clone();
 		let debug_id = id.clone();
 
-		agent_surface::div()
+		gpui::div()
 			.debug_selector(move || debug_id)
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active && !is_tab, |row| row.bg(agent_surface::rgba(0xffffff0d)))
+			.when(active && !is_tab, |row| row.bg(gpui::rgba(0xffffff0d)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
@@ -336,15 +336,17 @@ impl AgentSurface {
 			.py_1()
 			.flex()
 			.items_center()
-			.when(icon_only, |button| button.size(px(CHROME_CONTROL_SIZE)).p_0().justify_center())
-			.rounded(px(5.0))
+			.when(icon_only, |button| {
+				button.size(gpui::px(CHROME_CONTROL_SIZE)).p_0().justify_center()
+			})
+			.rounded(gpui::px(5.0))
 			.cursor_pointer()
 			.when(!is_tree && !is_tab, |button| {
 				button.hover(move |s| {
-					s.bg(agent_surface::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+					s.bg(gpui::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 				})
 			})
-			.when(is_tree, |button| button.hover(|s| s.text_color(agent_surface::rgb(TEXT))))
+			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -353,23 +355,25 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.when(is_tree, |button| button.px_0().py_0().h(px(TREE_ROW_HEIGHT)).w_full().min_w_0())
+			.when(is_tree, |button| {
+				button.px_0().py_0().h(gpui::px(TREE_ROW_HEIGHT)).w_full().min_w_0()
+			})
 			.when(is_tab, |button| {
 				button
-					.h(px(26.))
+					.h(gpui::px(26.))
 					.py_0()
-					.px(px(10.))
-					.max_w(px(160.))
-					.text_size(px(12.))
-					.line_height(px(18.))
-					.text_color(agent_surface::rgb(if active { TEXT } else { TEXT_MUTED }))
-					.hover(|style| style.text_color(agent_surface::rgb(TEXT)))
+					.px(gpui::px(10.))
+					.max_w(gpui::px(160.))
+					.text_size(gpui::px(12.))
+					.line_height(gpui::px(18.))
+					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
+					.hover(|style| style.text_color(gpui::rgb(TEXT)))
 			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
 			} else {
-				agent_surface::div()
+				gpui::div()
 					.min_w_0()
 					.when(is_prompt, |text| text.flex_1())
 					.when(!is_event && !is_prompt, |text| text.whitespace_nowrap().text_ellipsis())
@@ -381,7 +385,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut panel = agent_surface::div()
+		let mut panel = gpui::div()
 			.id("agent-sidebar")
 			.w_full()
 			.min_w_0()
@@ -389,11 +393,11 @@ impl AgentSurface {
 			.h_full()
 			.flex()
 			.flex_col()
-			.p(px(CONTROL_MARGIN))
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+			.p(gpui::px(CONTROL_MARGIN))
+			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
-			.bg(agent_surface::rgba(AGENT_SIDEBAR_MATERIAL))
-			.pr(px(4.));
+			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+			.pr(gpui::px(4.));
 
 		panel = panel.child(self.workspace_action(
 			"agent-home".into(),
@@ -406,11 +410,11 @@ impl AgentSurface {
 			cx,
 		));
 		panel = panel.child(
-			agent_surface::div()
+			gpui::div()
 				.mt_5()
 				.px_2()
-				.text_size(px(11.0))
-				.text_color(agent_surface::rgb(TEXT_MUTED))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(TEXT_MUTED))
 				.flex()
 				.items_center()
 				.justify_between()
@@ -437,8 +441,7 @@ impl AgentSurface {
 				)),
 		);
 
-		let mut list =
-			agent_surface::div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
+		let mut list = gpui::div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
 
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot.work_items.iter().filter(|w| {
@@ -470,8 +473,8 @@ impl AgentSurface {
 								}))
 					})
 					.count();
-				let mut row = agent_surface::div().flex().items_center().child(
-					agent_surface::div().flex_1().min_w_0().child(self.workspace_action(
+				let mut row = gpui::div().flex().items_center().child(
+					gpui::div().flex_1().min_w_0().child(self.workspace_action(
 						format!("sidebar-{id}"),
 						label,
 						move |s, cx| s.open_page(&id, cx),
@@ -506,12 +509,12 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut row = agent_surface::div()
+		let mut row = gpui::div()
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
-			.h(px(28.0))
-			.min_h(px(28.0))
+			.h(gpui::px(28.0))
+			.min_h(gpui::px(28.0))
 			.min_w_0()
 			.overflow_x_scroll()
 			.flex()
@@ -534,17 +537,17 @@ impl AgentSurface {
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
 			let select = id.clone();
 			let group = SharedString::from(format!("conversation-tab-{id}"));
-			let mut tab = agent_surface::div()
+			let mut tab = gpui::div()
 				.id(group.clone())
 				.group(group.clone())
 				.flex_none()
 				.flex()
 				.items_center()
-				.h(px(26.))
-				.rounded(px(7.))
-				.when(active, |tab| tab.bg(agent_surface::rgba(0xffffff0b)))
+				.h(gpui::px(26.))
+				.rounded(gpui::px(7.))
+				.when(active, |tab| tab.bg(gpui::rgba(0xffffff0b)))
 				.hover(move |style| {
-					style.bg(agent_surface::rgba(if active { 0xffffff10 } else { 0xffffff06 }))
+					style.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff06 }))
 				})
 				.child(self.workspace_action(
 					format!("page-{id}"),
@@ -558,14 +561,14 @@ impl AgentSurface {
 				let keyboard = close.clone();
 
 				tab = tab.child(
-					agent_surface::div()
+					gpui::div()
 						.id(SharedString::from(format!("close-{id}")))
 						.role(Role::Button)
 						.tab_index(0)
 						.aria_label(format!("Close {label}"))
-						.size(px(20.))
-						.mr(px(3.))
-						.rounded(px(5.))
+						.size(gpui::px(20.))
+						.mr(gpui::px(3.))
+						.rounded(gpui::px(5.))
 						.flex()
 						.items_center()
 						.justify_center()
@@ -573,7 +576,7 @@ impl AgentSurface {
 						.opacity(if active { 0.65 } else { 0.0 })
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
-						.hover(|style| style.bg(agent_surface::rgba(0xffffff10)))
+						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
 						.child(workspace_symbols::icon(
 							super::super::workspace_symbols::Symbol::Close,
 						))
@@ -606,7 +609,7 @@ impl AgentSurface {
 					}),
 				});
 			} else {
-				row = row.child(tab.mr(px(4.)));
+				row = row.child(tab.mr(gpui::px(4.)));
 			}
 		}
 
@@ -681,21 +684,21 @@ impl AgentSurface {
 
 	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
-			return agent_surface::div()
+			return gpui::div()
 				.id("conversation-unavailable")
 				.role(Role::Status)
 				.aria_label(THREAD_LOCKED_MESSAGE)
 				.mx_4()
 				.my_3()
-				.h(px(40.))
-				.rounded(px(14.))
-				.bg(agent_surface::rgb(0x26262b))
+				.h(gpui::px(40.))
+				.rounded(gpui::px(14.))
+				.bg(gpui::rgb(0x26262b))
 				.flex()
 				.items_center()
 				.justify_center()
-				.gap(px(8.))
-				.text_size(px(12.))
-				.text_color(agent_surface::rgb(TEXT_MUTED))
+				.gap(gpui::px(8.))
+				.text_size(gpui::px(12.))
+				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(workspace_symbols::icon(super::super::workspace_symbols::Symbol::Lock))
 				.child(THREAD_LOCKED_MESSAGE)
 				.into_any_element();
@@ -718,36 +721,36 @@ impl AgentSurface {
 			_ => ("Can't continue this conversation", reason),
 		};
 
-		agent_surface::div()
+		gpui::div()
 			.id("conversation-unavailable")
 			.role(Role::Status)
 			.aria_label(format!("{title}. {description}"))
 			.m_4()
-			.p(px(16.))
-			.rounded(px(12.))
-			.bg(agent_surface::rgb(0x26262b))
-			.text_color(agent_surface::rgb(TEXT))
+			.p(gpui::px(16.))
+			.rounded(gpui::px(12.))
+			.bg(gpui::rgb(0x26262b))
+			.text_color(gpui::rgb(TEXT))
 			.flex()
 			.flex_col()
 			.child(
-				agent_surface::div()
-					.mb(px(8.))
-					.text_size(px(12.))
-					.line_height(px(17.))
+				gpui::div()
+					.mb(gpui::px(8.))
+					.text_size(gpui::px(12.))
+					.line_height(gpui::px(17.))
 					.font_weight(FontWeight::MEDIUM)
 					.child(title),
 			)
 			.child(
-				agent_surface::div()
-					.text_size(px(11.))
-					.line_height(px(17.))
-					.text_color(agent_surface::rgb(TEXT_MUTED))
+				gpui::div()
+					.text_size(gpui::px(11.))
+					.line_height(gpui::px(17.))
+					.text_color(gpui::rgb(TEXT_MUTED))
 					.child(description),
 			)
 			.when(detail.is_some(), |d| {
 				d.child(
-					agent_surface::div().mt(px(8.)).flex().justify_end().items_center().child(
-						agent_surface::div()
+					gpui::div().mt(gpui::px(8.)).flex().justify_end().items_center().child(
+						gpui::div()
 							.id("connection-details")
 							.role(Role::Button)
 							.aria_label("Technical details")
@@ -756,11 +759,11 @@ impl AgentSurface {
 							.cursor_pointer()
 							.flex()
 							.items_center()
-							.gap(px(5.))
-							.h(px(20.))
-							.text_size(px(11.))
-							.text_color(agent_surface::rgb(TEXT_MUTED))
-							.hover(|s| s.text_color(agent_surface::rgb(TEXT)))
+							.gap(gpui::px(5.))
+							.h(gpui::px(20.))
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.hover(|s| s.text_color(gpui::rgb(TEXT)))
 							.child("Details")
 							.child(workspace_symbols::disclosure_chevron(
 								"connection-details-chevron",
@@ -782,11 +785,11 @@ impl AgentSurface {
 			.child(ui_motion::disclosure(
 				"connection-diagnostic",
 				self.connection_details_expanded && detail.is_some(),
-				agent_surface::div()
-					.pt(px(8.))
-					.text_size(px(11.))
-					.line_height(px(17.))
-					.text_color(agent_surface::rgb(TEXT_MUTED))
+				gpui::div()
+					.pt(gpui::px(8.))
+					.text_size(gpui::px(11.))
+					.line_height(gpui::px(17.))
+					.text_color(gpui::rgb(TEXT_MUTED))
 					.child(detail.unwrap_or_default().to_owned()),
 			))
 			.into_any_element()
@@ -796,7 +799,7 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		// Only the capsule occludes history; the measured footer reserves scroll space.
-		agent_surface::div()
+		gpui::div()
 			.absolute()
 			.bottom_0()
 			.w_full()
@@ -813,7 +816,7 @@ impl AgentSurface {
 				}
 			})
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.w_full()
 					.flex()
 					.flex_col()
@@ -852,7 +855,7 @@ impl AgentSurface {
 			.entry(self.selected.clone().unwrap_or_default())
 			.or_default()
 			.clone();
-		let mut transcript = agent_surface::div()
+		let mut transcript = gpui::div()
 			.debug_selector(|| "workspace-transcript".into())
 			.id(SharedString::from(format!(
 				"transcript-{}",
@@ -868,12 +871,12 @@ impl AgentSurface {
 		if let Some(work) = selected {
 			if let Some(snapshot) = &self.snapshot {
 				let content = if is_agent {
-					agent_surface::div()
+					gpui::div()
 						.p_4()
-						.pb(px(self.composer_footer_height + 16.))
+						.pb(gpui::px(self.composer_footer_height + 16.))
 						.w_full()
 						.mx_auto()
-						.line_height(px(BODY_LINE_HEIGHT))
+						.line_height(gpui::px(BODY_LINE_HEIGHT))
 						.child(self.history_panel(work, cx))
 						.when(
 							snapshot.pending_events.iter().any(|e| {
@@ -893,16 +896,15 @@ impl AgentSurface {
 				transcript = transcript.child(content);
 			}
 		} else if self.snapshot.is_none() {
-			transcript =
-				transcript.child(agent_surface::div().size_full().flex().items_center().child(
-					ui_loading::conversation(
-						if matches!(self.state, LoadState::Unavailable | LoadState::Stale) {
-							"Connecting to workspace"
-						} else {
-							"Loading workspace"
-						},
-					),
-				));
+			transcript = transcript.child(gpui::div().size_full().flex().items_center().child(
+				ui_loading::conversation(
+					if matches!(self.state, LoadState::Unavailable | LoadState::Stale) {
+						"Connecting to workspace"
+					} else {
+						"Loading workspace"
+					},
+				),
+			));
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -926,7 +928,7 @@ impl AgentSurface {
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == self.selected.as_ref()))
 			.cloned();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
-		let mut chat = agent_surface::div()
+		let mut chat = gpui::div()
 			.id("conversation-panel-focus")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = None))
 			.relative()
@@ -936,8 +938,8 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.rounded(px(10.))
-			.bg(agent_surface::rgba(AGENT_CHAT_OVERLAY));
+			.rounded(gpui::px(10.))
+			.bg(gpui::rgba(AGENT_CHAT_OVERLAY));
 
 		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
@@ -945,13 +947,13 @@ impl AgentSurface {
 		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
 			chat = chat.child(self.work_context(snapshot, work, cx));
 		} else {
-			chat = chat.child(agent_surface::div().h(px(36.)).flex_none());
+			chat = chat.child(gpui::div().h(gpui::px(36.)).flex_none());
 		}
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
 
 		chat = chat.child(
-			agent_surface::div()
+			gpui::div()
 				.flex_1()
 				.min_h_0()
 				.flex()
@@ -986,11 +988,11 @@ impl AgentSurface {
 		{
 			chat = chat.child(
 				gpui::deferred(
-					agent_surface::div()
+					gpui::div()
 						.absolute()
-						.top(px(38. + (1. - presence) * 5.))
-						.right(px(12.))
-						.w(px(320.))
+						.top(gpui::px(38. + (1. - presence) * 5.))
+						.right(gpui::px(12.))
+						.w(gpui::px(320.))
 						.max_w_full()
 						.opacity(presence)
 						.child(self.inspection_card(snapshot, work, cx)),
@@ -1008,42 +1010,35 @@ impl AgentSurface {
 
 		self.update_graph_inset(graph_width, graph_height);
 
-		let center =
-			agent_surface::div().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(
-				ui_motion::reveal(
-					"agent-graph-dock",
-					graph_height,
-					false,
-					self.workspace_graph(cx),
-				),
-			);
-		let body =
-			agent_surface::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
-				ui_motion::reveal(
-					"agent-tree-panel",
-					self.agent_tree_width(window),
-					true,
-					self.agent_tree(cx),
-				),
-			);
+		let center = gpui::div().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(
+			ui_motion::reveal("agent-graph-dock", graph_height, false, self.workspace_graph(cx)),
+		);
+		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
+			ui_motion::reveal(
+				"agent-tree-panel",
+				self.agent_tree_width(window),
+				true,
+				self.agent_tree(cx),
+			),
+		);
 		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
-		let main = agent_surface::div()
+		let main = gpui::div()
 			.flex_1()
 			.min_w_0()
 			.h_full()
-			.pt(px(WINDOW_CONTROLS_CLEARANCE))
+			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.relative()
 			.flex()
 			.flex_col()
-			.bg(agent_surface::rgba(AGENT_SIDEBAR_MATERIAL))
+			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.child(body);
 
 		self.workspace_resize_root(cx)
 			.size_full()
 			.flex()
-			.text_size(px(BODY_SIZE))
+			.text_size(gpui::px(BODY_SIZE))
 			.font_family(FONT_FAMILY)
-			.text_color(agent_surface::rgb(TEXT))
+			.text_color(gpui::rgb(TEXT))
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
@@ -1071,13 +1066,16 @@ impl AgentSurface {
 			let target = -f32::from(scroll.max_offset().y);
 
 			if (target - current).abs() > 0.5 {
-				scroll.set_offset(gpui::point(px(0.), px(current + (target - current) * 0.22)));
+				scroll.set_offset(gpui::point(
+					gpui::px(0.),
+					gpui::px(current + (target - current) * 0.22),
+				));
 
 				ui_motion::request_frame(window, cx);
 
 				cx.notify();
 			} else {
-				scroll.set_offset(gpui::point(px(0.), px(target)));
+				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(target)));
 			}
 		}
 	}
@@ -1116,7 +1114,7 @@ impl AgentSurface {
 					if (f32::from(scroll.offset().y) - target).abs() < 0.5 {
 						s.older_scroll_anchor = None;
 					} else {
-						scroll.set_offset(gpui::point(scroll.offset().x, px(target)));
+						scroll.set_offset(gpui::point(scroll.offset().x, gpui::px(target)));
 					}
 
 					cx.notify();
@@ -1126,28 +1124,25 @@ impl AgentSurface {
 	}
 
 	fn workspace_welcome(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-		agent_surface::div()
+		gpui::div()
 			.debug_selector(|| "workspace-welcome".into())
 			.size_full()
 			.flex()
 			.flex_col()
 			.justify_center()
 			.items_center()
-			.pb(px(90.0))
+			.pb(gpui::px(90.0))
 			.child(self.conversation_activity(cx))
 			.child(self.recovered_draft_panel(cx))
 			.child(
-				agent_surface::div()
-					.w_full()
-					.max_w(px(672.0))
-					.child(self.render_composer(window, cx)),
+				gpui::div().w_full().max_w(gpui::px(672.0)).child(self.render_composer(window, cx)),
 			)
 			.into_any_element()
 	}
 
 	fn workspace_followup(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> AnyElement {
 		let title = work.title.clone();
-		let footer = agent_surface::div().p_3().child(self.workspace_action(
+		let footer = gpui::div().p_3().child(self.workspace_action(
 			"discuss-with-agent".into(),
 			"Discuss this work with Agent →".into(),
 			move |s, cx| {
@@ -1245,30 +1240,30 @@ impl AgentSurface {
 
 		if !layout.edges.is_empty() {
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.px_2()
-					.text_size(px(10.0))
-					.text_color(agent_surface::rgb(TEXT_MUTED))
+					.text_size(gpui::px(10.0))
+					.text_color(gpui::rgb(TEXT_MUTED))
 					.child("Blue: reporting · arrows: prerequisites"),
 			);
 		}
 		if layout.cyclic {
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.px_2()
-					.text_size(px(11.0))
-					.text_color(agent_surface::rgb(AMBER))
+					.text_size(gpui::px(11.0))
+					.text_color(gpui::rgb(AMBER))
 					.child("Dependency cycle · review work relations"),
 			);
 		}
 
 		panel
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.flex()
 					.justify_start()
 					.gap_1()
-					.p(px(CONTROL_MARGIN))
+					.p(gpui::px(CONTROL_MARGIN))
 					.child(self.workspace_action(
 						"zoom-out".into(),
 						"−".into(),
@@ -1305,13 +1300,12 @@ impl AgentSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> Div {
-		let mut panel =
-			agent_surface::div().w_full().min_w_0().h_full().flex().flex_col().pt(px(8.));
+		let mut panel = gpui::div().w_full().min_w_0().h_full().flex().flex_col().pt(gpui::px(8.));
 
 		panel = panel.child(
-			agent_surface::div()
-				.h(px(PANEL_HEADER_HEIGHT))
-				.min_h(px(PANEL_HEADER_HEIGHT))
+			gpui::div()
+				.h(gpui::px(PANEL_HEADER_HEIGHT))
+				.min_h(gpui::px(PANEL_HEADER_HEIGHT))
 				.flex()
 				.items_center()
 				.px_2()
@@ -1335,7 +1329,7 @@ impl AgentSurface {
 					cx,
 				))
 				.child(
-					agent_surface::div()
+					gpui::div()
 						.flex_1()
 						.overflow_hidden()
 						.whitespace_nowrap()
@@ -1387,7 +1381,7 @@ impl AgentSurface {
 			})
 			.collect();
 
-		agent_surface::div()
+		gpui::div()
 			.id("work-graph-canvas")
 			.tab_index(0)
 			.role(Role::Group)
@@ -1412,7 +1406,7 @@ impl AgentSurface {
 			.relative()
 			.overflow_hidden()
 			.on_scroll_wheel(cx.listener(|s, event: &ScrollWheelEvent, _, cx| {
-				let delta = event.delta.pixel_delta(px(20.0));
+				let delta = event.delta.pixel_delta(gpui::px(20.0));
 
 				if event.modifiers.control || event.modifiers.platform {
 					s.graph_zoom = (s.graph_zoom + f32::from(delta.y) * 0.002).clamp(0.35, 1.8);
@@ -1455,10 +1449,16 @@ impl AgentSurface {
 					move |bounds, _, window, _| {
 						for (a, b, report) in edges {
 							let start = bounds.origin
-								+ gpui::point(px(a.0 * zoom + pan.0), px(a.1 * zoom + pan.1));
+								+ gpui::point(
+									gpui::px(a.0 * zoom + pan.0),
+									gpui::px(a.1 * zoom + pan.1),
+								);
 							let end = bounds.origin
-								+ gpui::point(px(b.0 * zoom + pan.0), px(b.1 * zoom + pan.1));
-							let mut path = PathBuilder::stroke(px(1.0));
+								+ gpui::point(
+									gpui::px(b.0 * zoom + pan.0),
+									gpui::px(b.1 * zoom + pan.1),
+								);
+							let mut path = PathBuilder::stroke(gpui::px(1.0));
 
 							path.move_to(start);
 							path.cubic_bezier_to(
@@ -1468,15 +1468,15 @@ impl AgentSurface {
 							);
 
 							if !report {
-								path.move_to(end + gpui::point(px(-5.0), px(-3.0)));
+								path.move_to(end + gpui::point(gpui::px(-5.0), gpui::px(-3.0)));
 								path.line_to(end);
-								path.line_to(end + gpui::point(px(-5.0), px(3.0)));
+								path.line_to(end + gpui::point(gpui::px(-5.0), gpui::px(3.0)));
 							}
 
 							if let Ok(path) = path.build() {
 								window.paint_path(
 									path,
-									agent_surface::rgb(if report { BLUE } else { TEXT_MUTED }),
+									gpui::rgb(if report { BLUE } else { TEXT_MUTED }),
 								);
 							}
 						}
@@ -1516,29 +1516,29 @@ impl AgentSurface {
 		} else {
 			format!("Waiting for: {}", blocked_by.join(", "))
 		};
-		let element = agent_surface::div()
+		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!("{}: {status}. Open conversation.", self.work_label(work)))
 			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
 			.absolute()
-			.left(px(node.x * zoom + pan.0))
-			.top(px(node.y * zoom + pan.1))
-			.w(px(160.0 * zoom))
-			.h(px(52.0 * zoom))
+			.left(gpui::px(node.x * zoom + pan.0))
+			.top(gpui::px(node.y * zoom + pan.1))
+			.w(gpui::px(160.0 * zoom))
+			.h(gpui::px(52.0 * zoom))
 			.px_2()
 			.py_1()
-			.rounded(px(9.0))
+			.rounded(gpui::px(9.0))
 			.bg(if self.graph_selected.as_ref() == Some(&id) {
-				agent_surface::rgba(0x35353ce8)
+				gpui::rgba(0x35353ce8)
 			} else {
-				agent_surface::rgba(0x242427db)
+				gpui::rgba(0x242427db)
 			})
-			.hover(|style| style.bg(agent_surface::rgba(0x3a3a40eb)))
+			.hover(|style| style.bg(gpui::rgba(0x3a3a40eb)))
 			.cursor_pointer()
 			.overflow_hidden()
-			.text_size(px((12.0 * zoom).max(10.0)))
+			.text_size(gpui::px((12.0 * zoom).max(10.0)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.open_page(&id, cx);
 
@@ -1552,17 +1552,9 @@ impl AgentSurface {
 					s.open_page(&key, cx);
 				}
 			}))
+			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
 			.child(
-				agent_surface::div()
-					.whitespace_nowrap()
-					.text_ellipsis()
-					.child(self.work_label(work)),
-			)
-			.child(
-				agent_surface::div()
-					.text_size(px(10.0))
-					.text_color(agent_surface::rgb(color))
-					.child(status),
+				gpui::div().text_size(gpui::px(10.0)).text_color(gpui::rgb(color)).child(status),
 			);
 
 		element.into_any_element()
@@ -1830,7 +1822,7 @@ impl AgentSurface {
 		copy: DesktopRecoveredDraft,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut row = agent_surface::div().flex().flex_wrap().gap_2();
+		let mut row = gpui::div().flex().flex_wrap().gap_2();
 		let export = copy.clone();
 
 		row = row.child(self.workspace_action(
@@ -1885,10 +1877,10 @@ impl AgentSurface {
 		let count = self.recovered_draft_count();
 
 		if count == 0 {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = agent_surface::div().w_full().flex().flex_col().gap_2().px_4().py_2();
+		let mut panel = gpui::div().w_full().flex().flex_col().gap_2().px_4().py_2();
 
 		panel = panel.child(self.workspace_action(
 			"draft-copies-toggle".into(),
@@ -1899,9 +1891,9 @@ impl AgentSurface {
 
 		if self.show_recovered_drafts() {
 			let copies = self.recovered_drafts();
-			let mut list = agent_surface::div()
+			let mut list = gpui::div()
 				.id("draft-copy-list")
-				.max_h(px(220.0))
+				.max_h(gpui::px(220.0))
 				.overflow_y_scroll()
 				.flex()
 				.flex_col()
@@ -1926,7 +1918,7 @@ impl AgentSurface {
 				);
 
 				list = list.child(
-					agent_surface::div()
+					gpui::div()
 						.flex()
 						.flex_col()
 						.gap_1()
@@ -1947,7 +1939,7 @@ impl AgentSurface {
 	}
 
 	fn keep_both_draft_button(&self, cx: &mut Context<Self>) -> AnyElement {
-		agent_surface::div()
+		gpui::div()
 			.id("draft-keep-both")
 			.debug_selector(|| "draft-keep-both".into())
 			.role(Role::Button)
@@ -1986,7 +1978,7 @@ impl AgentSurface {
 		let compacting = selected.is_some_and(|work| self.has_active_compaction(work));
 
 		if self.sending && !compacting {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let label = if self.uncertain {
@@ -2017,10 +2009,10 @@ impl AgentSurface {
 		.or_else(|| notice.as_ref().map(|(_, detail, _)| detail.as_str()))
 		.or_else(|| (!self.archive.feedback.is_empty()).then_some(self.archive.feedback.as_str()));
 		let Some(label) = label else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
-		agent_surface::div()
+		gpui::div()
 			.id("conversation-activity-status")
 			.debug_selector(|| "conversation-activity-status".into())
 			.role(Role::Status)
@@ -2032,8 +2024,8 @@ impl AgentSurface {
 			.items_center()
 			.justify_center()
 			.gap_3()
-			.text_size(px(11.0))
-			.text_color(agent_surface::rgb(TEXT_MUTED))
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(label.to_owned())
 			.when(self.can_keep_both_drafts(), |row| row.child(self.keep_both_draft_button(cx)))
 			.into_any_element()
@@ -2170,7 +2162,7 @@ mod tests {
 	use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::workspace::{
-		self, AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
+		AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
 		LoadState, Render, Window, graph,
 	};
 
@@ -2380,7 +2372,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(workspace::px(1_180.), workspace::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.draw(cx).clear();
 		});
 
@@ -2431,7 +2423,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(workspace::px(1_180.), workspace::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear();
 		});

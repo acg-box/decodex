@@ -56,19 +56,19 @@ impl AgentSurface {
 
 	pub(super) fn goal_edit_controls(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_goal.task.is_some() {
-			return native_goal::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let Some(Result::Available { review_token: Some(_), goal, .. }) = &self.native_goal.result
 		else {
-			return native_goal::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
 		if self.native_goal.target != self.native_goal_target() {
-			return native_goal::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = native_goal::div().flex().flex_col().gap_2();
+		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		if let Some(editor) = &self.native_goal.editor {
 			panel = panel

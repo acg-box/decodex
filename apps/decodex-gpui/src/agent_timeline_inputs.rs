@@ -94,21 +94,20 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let state = &self.native_history.input_receipts;
-		let mut panel = native_timeline::div().flex().flex_col().gap_2();
+		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		if state.after.is_some() {
 			let owner = work.id.clone();
 
-			panel = panel.child(
-				native_timeline::div().debug_selector(|| "input-receipts-first".into()).child(
+			panel =
+				panel.child(gpui::div().debug_selector(|| "input-receipts-first".into()).child(
 					self.workspace_action(
 						"first-input-receipts".into(),
 						"First unconfirmed inputs".into(),
 						move |surface, cx| surface.input_receipt_cursor(&owner, None, cx),
 						cx,
 					),
-				),
-			);
+				));
 		}
 
 		match &state.result {
@@ -124,7 +123,7 @@ impl AgentSurface {
 					}
 
 					panel = panel.child(
-						native_timeline::div()
+						gpui::div()
 							.debug_selector(|| "unconfirmed-native-input".into())
 							.child(native_timeline::muted("Local input · Delivery not confirmed"))
 							.child(markdown::render(
@@ -143,16 +142,16 @@ impl AgentSurface {
 					let (owner, after) = (work.id.clone(), *after);
 
 					panel = panel.child(
-						native_timeline::div()
-							.debug_selector(|| "input-receipts-next".into())
-							.child(self.workspace_action(
+						gpui::div().debug_selector(|| "input-receipts-next".into()).child(
+							self.workspace_action(
 								"next-input-receipts".into(),
 								"More unconfirmed inputs".into(),
 								move |surface, cx| {
 									surface.input_receipt_cursor(&owner, Some(after), cx)
 								},
 								cx,
-							)),
+							),
+						),
 					);
 				}
 

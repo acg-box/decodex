@@ -4,10 +4,8 @@ use std::{collections::BTreeSet, path::Path};
 use gpui::{AnyElement, AppContext as _, IntoElement, ParentElement, Styled};
 
 use crate::shell::agent_surface::{
-	mcp_forms,
-	prompt_edit::{
-		self, AgentSurface, ComposerInput, Context, DesktopPromptEditDraft, PromptDraft,
-	},
+	self, mcp_forms,
+	prompt_edit::{AgentSurface, ComposerInput, Context, DesktopPromptEditDraft, PromptDraft},
 };
 
 pub(super) struct Removal {
@@ -32,7 +30,7 @@ impl AgentSurface {
 		}
 
 		self.prompt_edit.removal = Some(Removal {
-			key: prompt_edit::unique_command(),
+			key: agent_surface::unique_command(),
 			before: expected.clone(),
 			part,
 			markers: BTreeSet::new(),
@@ -107,9 +105,9 @@ impl AgentSurface {
 
 	pub(in super::super) fn prompt_removal_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(removal) = &self.prompt_edit.removal else {
-			return prompt_edit::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
-		let mut panel = prompt_edit::div()
+		let mut panel = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex_none()

@@ -1,16 +1,19 @@
 //! Shared hook consent and readback. Effective trust is distinct from durable write outcomes.
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
 	WireText, mcp_forms,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render,
-	Window, px,
 };
 use decodex_protocol::{AgentHookChange as Change, AgentHookDto, AgentHookSettingsState as State};
 
@@ -218,11 +221,11 @@ impl AgentSurface {
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
 		{
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let owner = work.id.clone();
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().child("Shared hooks").child(
+		let mut panel = gpui::div().flex().flex_col().gap_2().child("Shared hooks").child(
 			mcp_forms::mcp_button(
 				"hook-settings-read".into(),
 				"Review / refresh shared hooks".into(),

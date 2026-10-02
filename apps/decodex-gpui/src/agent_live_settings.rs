@@ -6,7 +6,7 @@ use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 	AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId, IdempotencyKey,
 	InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task,
-	WireText, mcp_forms, model_settings, px,
+	WireText, mcp_forms, model_settings,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -227,7 +227,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.native_agents.selected.is_some() || !self.command_connection_ready() {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let Some(turn) = work
@@ -235,19 +235,18 @@ impl AgentSurface {
 			.as_ref()
 			.filter(|_| work.dispatch_state == AgentDispatchStateDto::Running)
 		else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 		let (owner, target) = (work.id.clone(), turn.clone());
-		let mut panel =
-			agent_surface::div().flex().flex_col().gap_2().child("Current-turn settings").child(
-				mcp_forms::mcp_button(
-					"live-reviewer-read".into(),
-					"Review current-turn settings".into(),
-					false,
-					cx,
-					move |s, cx| s.update_live_settings(owner.clone(), target.clone(), None, cx),
-				),
-			);
+		let mut panel = gpui::div().flex().flex_col().gap_2().child("Current-turn settings").child(
+			mcp_forms::mcp_button(
+				"live-reviewer-read".into(),
+				"Review current-turn settings".into(),
+				false,
+				cx,
+				move |s, cx| s.update_live_settings(owner.clone(), target.clone(), None, cx),
+			),
+		);
 
 		if self.live_reviewer.work.as_ref() == Some(&work.id) {
 			panel = panel.child(self.live_reviewer.feedback.clone());
@@ -323,29 +322,28 @@ impl AgentSurface {
 		models: &[AgentModelDto],
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut panel =
-			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
-				"live-model-open".into(),
-				"Change model and effort…".into(),
-				false,
-				cx,
-				|s, cx| {
-					s.live_reviewer.choosing_model = !s.live_reviewer.choosing_model;
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+			"live-model-open".into(),
+			"Change model and effort…".into(),
+			false,
+			cx,
+			|s, cx| {
+				s.live_reviewer.choosing_model = !s.live_reviewer.choosing_model;
 
-					cx.notify();
-				},
-			));
+				cx.notify();
+			},
+		));
 
 		if !self.live_reviewer.choosing_model {
 			return panel.into_any_element();
 		}
 
-		let mut choices = agent_surface::div()
+		let mut choices = gpui::div()
 			.id("live-model-choices")
 			.flex()
 			.flex_col()
 			.gap_1()
-			.max_h(px(180.))
+			.max_h(gpui::px(180.))
 			.overflow_y_scroll();
 
 		for (index, model) in models.iter().enumerate() {
@@ -377,7 +375,7 @@ impl AgentSurface {
 		{
 			panel = panel.child(format!("{} / {}", model.name, selection.effort.as_str()));
 
-			let mut efforts = agent_surface::div().flex().flex_wrap().gap_1();
+			let mut efforts = gpui::div().flex().flex_wrap().gap_1();
 
 			for (index, effort) in model.efforts.iter().enumerate() {
 				let effort = effort.clone();

@@ -280,32 +280,30 @@ impl AgentSurface {
 		};
 
 		Some(
-			agent_surface::div()
+			gpui::div()
 				.flex_none()
 				.flex()
 				.items_center()
-				.gap(agent_surface::px(8.))
-				.text_size(agent_surface::px(11.))
-				.text_color(agent_surface::rgb(TEXT_MUTED))
+				.gap(gpui::px(8.))
+				.text_size(gpui::px(11.))
+				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(
-					agent_surface::div()
-						.h(agent_surface::px(12.))
-						.w(agent_surface::px(26.))
+					gpui::div()
+						.h(gpui::px(12.))
+						.w(gpui::px(26.))
 						.flex()
 						.items_center()
-						.gap(agent_surface::px(2.))
+						.gap(gpui::px(2.))
 						.children((0..5).map(|i| {
-							agent_surface::div()
-								.w(agent_surface::px(2.))
-								.h(agent_surface::px(
-									3. + d.level * 9. * (1. - (i as f32 - 2.).abs() / 4.),
-								))
+							gpui::div()
+								.w(gpui::px(2.))
+								.h(gpui::px(3. + d.level * 9. * (1. - (i as f32 - 2.).abs() / 4.)))
 								.rounded_full()
-								.bg(agent_surface::rgb(BLUE))
+								.bg(gpui::rgb(BLUE))
 						})),
 				)
 				.child(
-					agent_surface::div()
+					gpui::div()
 						.id("dictation-status")
 						.role(Role::Status)
 						.aria_label(label.clone())

@@ -52,19 +52,17 @@ impl Element for ComposerTextElement {
 			window.request_measured_layout(style, move |known, available, window, cx| {
 				let width = known.width.unwrap_or_else(|| match available.width {
 					AvailableSpace::Definite(width) => width,
-					_ => composer_input::px(500.0),
+					_ => gpui::px(500.0),
 				});
 				let input = input.read(cx);
 				let lines = shape(input, width, window);
 				let limit =
 					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
 
-				composer_input::size(
+				gpui::size(
 					width,
-					height(&lines).clamp(
-						composer_input::px(BODY_LINE_HEIGHT),
-						composer_input::px(BODY_LINE_HEIGHT * limit),
-					),
+					height(&lines)
+						.clamp(gpui::px(BODY_LINE_HEIGHT), gpui::px(BODY_LINE_HEIGHT * limit)),
 				)
 			}),
 			(),
@@ -83,15 +81,15 @@ impl Element for ComposerTextElement {
 		let input = self.input.read(cx);
 		let lines = shape(input, bounds.size.width, window);
 		let caret = position_at(&lines, input.cursor_offset()).y;
-		let max = (height(&lines) - bounds.size.height).max(composer_input::px(0.0));
+		let max = (height(&lines) - bounds.size.height).max(gpui::px(0.0));
 		let offset = if input.scroll_manually {
-			input.text_offset.clamp(composer_input::px(0.0), max)
+			input.text_offset.clamp(gpui::px(0.0), max)
 		} else {
 			input
 				.text_offset
-				.max(caret + composer_input::px(BODY_LINE_HEIGHT) - bounds.size.height)
+				.max(caret + gpui::px(BODY_LINE_HEIGHT) - bounds.size.height)
 				.min(caret)
-				.clamp(composer_input::px(0.0), max)
+				.clamp(gpui::px(0.0), max)
 		};
 
 		TextPaint { lines, offset }
@@ -118,29 +116,26 @@ impl Element for ComposerTextElement {
 			);
 		let cursor_shape = Preference::configured().shape;
 		let next = composer_input::next_boundary(&input.content, input.cursor_offset());
-		let gutter = composer_input::px(0.);
-		let origin = bounds.origin + composer_input::point(gutter, -state.offset);
+		let gutter = gpui::px(0.);
+		let origin = bounds.origin + gpui::point(gutter, -state.offset);
 
 		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
 
-		let mut y = composer_input::px(0.0);
+		let mut y = gpui::px(0.0);
 		let mut start = 0;
 
 		for line in &state.lines {
-			let line_height = composer_input::px(BODY_LINE_HEIGHT);
+			let line_height = gpui::px(BODY_LINE_HEIGHT);
 			let rows = line.wrap_boundaries().len() + 1;
 
 			for row in 0..rows {
 				let top = line_height * row;
 				let first = line
-					.closest_index_for_position(
-						composer_input::point(composer_input::px(0.0), top),
-						line_height,
-					)
+					.closest_index_for_position(gpui::point(gpui::px(0.0), top), line_height)
 					.unwrap_or_else(|i| i);
 				let last = line
 					.closest_index_for_position(
-						composer_input::point(bounds.size.width - gutter, top),
+						gpui::point(bounds.size.width - gutter, top),
 						line_height,
 					)
 					.unwrap_or_else(|i| i);
@@ -162,20 +157,17 @@ impl Element for ComposerTextElement {
 
 						window.paint_quad(composer_input::fill(
 							Bounds::new(
-								origin + composer_input::point(x, y + top),
-								composer_input::size(
-									(end - x).max(composer_input::px(1.0)),
-									line_height,
-								),
+								origin + gpui::point(x, y + top),
+								gpui::size((end - x).max(gpui::px(1.0)), line_height),
 							),
-							composer_input::rgba(0x60a5fa40),
+							gpui::rgba(0x60a5fa40),
 						));
 					}
 				}
 			}
 
 			let _ = line.paint(
-				origin + composer_input::point(composer_input::px(0.0), y),
+				origin + gpui::point(gpui::px(0.0), y),
 				line_height,
 				TextAlign::Left,
 				None,
@@ -193,29 +185,23 @@ impl Element for ComposerTextElement {
 			let width = if next.y == caret.y && next.x > caret.x {
 				next.x - caret.x
 			} else {
-				composer_input::px(BODY_SIZE * 0.6)
+				gpui::px(BODY_SIZE * 0.6)
 			};
 			let (offset, extent, color) = match cursor_shape {
 				Shape::Bar => (
-					composer_input::point(composer_input::px(0.), composer_input::px(0.)),
-					composer_input::size(
-						composer_input::px(1.5),
-						composer_input::px(BODY_LINE_HEIGHT),
-					),
-					composer_input::rgba(0xe5e7ebff),
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(gpui::px(1.5), gpui::px(BODY_LINE_HEIGHT)),
+					gpui::rgba(0xe5e7ebff),
 				),
 				Shape::Block => (
-					composer_input::point(composer_input::px(0.), composer_input::px(0.)),
-					composer_input::size(width, composer_input::px(BODY_LINE_HEIGHT)),
-					composer_input::rgba(0xe5e7eb55),
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(width, gpui::px(BODY_LINE_HEIGHT)),
+					gpui::rgba(0xe5e7eb55),
 				),
 				Shape::Underline => (
-					composer_input::point(
-						composer_input::px(0.),
-						composer_input::px(BODY_LINE_HEIGHT - 2.),
-					),
-					composer_input::size(width, composer_input::px(2.)),
-					composer_input::rgba(0xe5e7ebff),
+					gpui::point(gpui::px(0.), gpui::px(BODY_LINE_HEIGHT - 2.)),
+					gpui::size(width, gpui::px(2.)),
+					gpui::rgba(0xe5e7ebff),
 				),
 			};
 
@@ -228,8 +214,8 @@ impl Element for ComposerTextElement {
 		self.input.update(cx, |input, _| {
 			input.last_layout = Some(mem::take(&mut state.lines));
 			input.last_bounds = Some(Bounds::new(
-				bounds.origin + composer_input::point(gutter, composer_input::px(0.0)),
-				composer_input::size(bounds.size.width - gutter, bounds.size.height),
+				bounds.origin + gpui::point(gutter, gpui::px(0.0)),
+				gpui::size(bounds.size.width - gutter, bounds.size.height),
 			));
 			input.text_offset = state.offset;
 		});
@@ -243,39 +229,36 @@ pub(super) struct TextPaint {
 
 pub(super) fn position_at(lines: &[WrappedLine], index: usize) -> Point<Pixels> {
 	let mut start = 0;
-	let mut y = composer_input::px(0.0);
+	let mut y = gpui::px(0.0);
 
 	for line in lines {
 		if index <= start + line.len() {
 			return line
-				.position_for_index(index - start, composer_input::px(BODY_LINE_HEIGHT))
+				.position_for_index(index - start, gpui::px(BODY_LINE_HEIGHT))
 				.unwrap_or_default()
-				+ composer_input::point(composer_input::px(0.0), y);
+				+ gpui::point(gpui::px(0.0), y);
 		}
 
 		start += line.len() + 1;
-		y += line.size(composer_input::px(BODY_LINE_HEIGHT)).height;
+		y += line.size(gpui::px(BODY_LINE_HEIGHT)).height;
 	}
 
-	composer_input::point(composer_input::px(0.0), y)
+	gpui::point(gpui::px(0.0), y)
 }
 
 pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize {
 	let mut start = 0;
-	let mut y = composer_input::px(0.0);
+	let mut y = gpui::px(0.0);
 
 	for line in lines {
-		let next = y + line.size(composer_input::px(BODY_LINE_HEIGHT)).height;
+		let next = y + line.size(gpui::px(BODY_LINE_HEIGHT)).height;
 
 		if position.y < next {
 			return start
 				+ line
 					.closest_index_for_position(
-						composer_input::point(
-							position.x,
-							(position.y - y).max(composer_input::px(0.0)),
-						),
-						composer_input::px(BODY_LINE_HEIGHT),
+						gpui::point(position.x, (position.y - y).max(gpui::px(0.0))),
+						gpui::px(BODY_LINE_HEIGHT),
 					)
 					.unwrap_or_else(|index| index);
 		}
@@ -288,7 +271,7 @@ pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize 
 }
 
 fn height(lines: &[WrappedLine]) -> Pixels {
-	lines.iter().map(|line| line.size(composer_input::px(BODY_LINE_HEIGHT)).height).sum()
+	lines.iter().map(|line| line.size(gpui::px(BODY_LINE_HEIGHT)).height).sum()
 }
 
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
@@ -304,7 +287,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 	let run = TextRun {
 		len: text.len(),
 		font: style.font(),
-		color: if empty { composer_input::rgb(0x89909c).into() } else { style.color },
+		color: if empty { gpui::rgb(0x89909c).into() } else { style.color },
 		background_color: None,
 		underline: None,
 		strikethrough: None,
@@ -316,7 +299,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 				len: mark.len(),
 				underline: Some(UnderlineStyle {
 					color: Some(run.color),
-					thickness: composer_input::px(1.0),
+					thickness: gpui::px(1.0),
 					wavy: false,
 				}),
 				..run.clone()
@@ -333,7 +316,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 			text,
 			style.font_size.to_pixels(window.rem_size()),
 			&runs,
-			if empty { None } else { Some(width.max(composer_input::px(1.0))) },
+			if empty { None } else { Some(width.max(gpui::px(1.0))) },
 			None,
 		)
 		.unwrap_or_default()

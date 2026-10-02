@@ -4,18 +4,21 @@
 use std::time::Instant;
 
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkItemDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
-	Task, WireText, div, unique_command,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
-	ClientProfile, Render, Window, px,
+	Task, WireText, unique_command,
 };
 use decodex_protocol::{AgentNativeGoalResult as Result, AgentNativeGoalStatus as S};
 use editor::Editor;
@@ -137,10 +140,10 @@ impl AgentSurface {
 
 	pub(super) fn native_goal_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		if !self.command_connection_ready() || self.native_goal_target().is_none() {
-			return div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = div().flex().flex_col().gap_2().child(self.workspace_action(
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(self.workspace_action(
 			"native-goal-read".into(),
 			"Read native goal".into(),
 			|s, cx| s.load_native_goal(cx),

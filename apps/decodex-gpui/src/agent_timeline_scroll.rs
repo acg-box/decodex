@@ -7,9 +7,7 @@ use std::{
 	time::Duration,
 };
 
-use gpui::{
-	self, AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, Window, point, px,
-};
+use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, Window};
 
 use crate::shell::agent_surface::{
 	activity::HistoryKey,
@@ -296,7 +294,7 @@ impl AgentSurface {
 			.w_full()
 			.flex_none()
 			.debug_selector(|| "native-history-spacer".into())
-			.child(gpui::div().h(px(height)))
+			.child(gpui::div().h(gpui::px(height)))
 			.on_children_prepainted(move |bounds, _, _| {
 				let Some(bounds) = bounds.first() else { return };
 				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
@@ -365,7 +363,7 @@ impl AgentSurface {
 							geometry.borrow_mut().finish(revision, scroll.max_offset().y.into())
 							&& (f32::from(scroll.offset().y) - offset).abs() > 0.1
 						{
-							scroll.set_offset(point(scroll.offset().x, px(offset)));
+							scroll.set_offset(gpui::point(scroll.offset().x, gpui::px(offset)));
 							cx.notify();
 						}
 					});
@@ -496,7 +494,7 @@ mod tests {
 		] {
 			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-			visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
+			visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(500.)));
 
 			let binding = surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
@@ -559,10 +557,7 @@ mod tests {
 			if cancel {
 				visual.simulate_event(gpui::ScrollWheelEvent {
 					position: scroll.bounds().center(),
-					delta: gpui::ScrollDelta::Pixels(scroll::point(
-						scroll::px(0.),
-						scroll::px(-40.),
-					)),
+					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-40.))),
 					..Default::default()
 				});
 			}
@@ -599,14 +594,14 @@ mod tests {
 			let scroll =
 				surface.read_with(visual, |s, _| s.transcript_scroll[&binding.work].clone());
 
-			assert!(scroll.max_offset().y > scroll::px(1_000.));
+			assert!(scroll.max_offset().y > gpui::px(1_000.));
 
 			let distance = (scroll.offset().y + scroll.max_offset().y).abs();
 
 			if cancel {
-				assert!(distance > scroll::px(100.));
+				assert!(distance > gpui::px(100.));
 			} else {
-				assert!(distance < scroll::px(1.), "summary={summary} cold={cold}: {distance:?}");
+				assert!(distance < gpui::px(1.), "summary={summary} cold={cold}: {distance:?}");
 			}
 		}
 	}
@@ -615,7 +610,7 @@ mod tests {
 	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(700.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(700.)));
 
 		let work = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -668,7 +663,7 @@ mod tests {
 
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
 
-		scroll.set_offset(scroll::point(scroll::px(0.), scroll::px(-300.)));
+		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -741,7 +736,7 @@ mod tests {
 		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(500.)));
 
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -792,7 +787,7 @@ mod tests {
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
 
 			s.transcript_scroll[&binding.work]
-				.set_offset(scroll::point(scroll::px(0.), scroll::px(40. - top)));
+				.set_offset(gpui::point(gpui::px(0.), gpui::px(40. - top)));
 			cx.notify();
 		});
 
@@ -848,7 +843,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(500.)));
 
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -901,7 +896,7 @@ mod tests {
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
 
 			s.transcript_scroll[&binding.work]
-				.set_offset(scroll::point(scroll::px(0.), scroll::px(40. - top)));
+				.set_offset(gpui::point(gpui::px(0.), gpui::px(40. - top)));
 			cx.notify();
 		});
 

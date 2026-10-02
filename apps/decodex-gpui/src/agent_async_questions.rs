@@ -6,7 +6,7 @@ use gpui::{AnyElement, AppContext as _, Bounds, Focusable, KeyDownEvent, Point};
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ComposerInput,
 	Context, Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-	StatefulInteractiveElement, Styled, SubmitComposer, Window, px,
+	StatefulInteractiveElement, Styled, SubmitComposer, Window,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -264,7 +264,7 @@ impl AgentSurface {
 		let key_owner = key.clone();
 		let selector = format!("async-option-{}-{index}", key.1);
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
 			.relative()
@@ -274,8 +274,8 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label(label.clone())
 			.p_2()
-			.rounded(px(6.0))
-			.bg(agent_surface::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+			.rounded(gpui::px(6.0))
+			.bg(gpui::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 			.cursor_pointer()
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.select_async_choice(&owner, option.as_deref(), window, cx)
@@ -299,8 +299,8 @@ impl AgentSurface {
 							.intersect(&Bounds::new(Point::default(), window.viewport_size()));
 
 						visible.set(
-							bounds.size.width > px(0.0)
-								&& bounds.size.height > px(0.0)
+							bounds.size.width > gpui::px(0.0)
+								&& bounds.size.height > gpui::px(0.0)
 								&& mask.intersect(&bounds) == bounds,
 						);
 					},
@@ -377,18 +377,18 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let Some(thread) = &work.codex_thread_id else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 		let (Ok(work_id), Ok(thread_id), Ok(question_id)) =
 			(EntityId::new(&work.id), WireText::new(thread), WireText::new(question))
 		else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 		let action = AgentActionDto::SkipQuestion { work_id, thread_id, question_id };
 		let key_action = action.clone();
 		let selector = format!("async-skip-{question}");
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
 			.role(Role::Button)
@@ -438,7 +438,7 @@ impl AgentSurface {
 		let owner = work.to_owned();
 		let key_owner = owner.clone();
 
-		agent_surface::div()
+		gpui::div()
 			.id("async-question-toggle")
 			.debug_selector(|| "async-question-toggle".into())
 			.role(Role::Button)
@@ -480,17 +480,17 @@ impl AgentSurface {
 			},
 		)) = &self.history
 		else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
 		if id != &work.id {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel = agent_surface::div().flex().flex_col().gap_3();
+		let mut panel = gpui::div().flex().flex_col().gap_3();
 
 		if *questions_recovering || questions.is_empty() {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		panel = panel.child(self.async_question_toggle(&work.id, questions.len(), cx));
@@ -504,11 +504,11 @@ impl AgentSurface {
 			let Some(input) = self.async_question_inputs.get(&key) else {
 				continue;
 			};
-			let mut card = agent_surface::div()
+			let mut card = gpui::div()
 				.p_3()
-				.rounded(px(8.0))
+				.rounded(gpui::px(8.0))
 				.border_1()
-				.border_color(agent_surface::rgba(0xffffff18))
+				.border_color(gpui::rgba(0xffffff18))
 				.flex()
 				.flex_col()
 				.gap_2()
@@ -567,9 +567,9 @@ impl AgentSurface {
 					s.answer_async_question(&enter_owner, &enter_question, cx);
 					cx.stop_propagation();
 				}))
-				.child(agent_surface::div().h(px(40.0)).child(input.clone()))
+				.child(gpui::div().h(gpui::px(40.0)).child(input.clone()))
 				.child(
-					agent_surface::div()
+					gpui::div()
 						.id(SharedString::from(format!("async-send-{question_id}")))
 						.debug_selector(move || send_selector)
 						.role(Role::Button)
@@ -599,12 +599,12 @@ impl AgentSurface {
 mod tests {
 	use gpui::Focusable;
 
-	use crate::shell::agent_surface::async_questions::{
-		self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
-	};
 	#[cfg(test)]
 	use crate::shell::agent_surface::async_questions::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::async_questions::{
+		AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
 	};
 
 	#[gpui::test]
@@ -760,7 +760,7 @@ mod tests {
 
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 		surface.read_with(visual, |s, cx| {
@@ -877,7 +877,7 @@ mod tests {
 				.update(cx, |input, cx| input.set_content("Answer draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -932,7 +932,7 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("Keep main draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -958,7 +958,7 @@ mod tests {
 
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -1017,7 +1017,7 @@ mod tests {
 		surface.update(visual, install_question_fixture);
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(async_questions::px(1_180.0), async_questions::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 
 			let focus = surface.read_with(cx, |s, cx| {
 				s.async_question_inputs[&("root".into(), "q1".into())].focus_handle(cx)
@@ -1081,16 +1081,10 @@ mod tests {
 			(380.0, 1_200.0, false, true),
 			(1_180.0, 1_200.0, false, true),
 		] {
-			visual.simulate_resize(gpui::size(
-				async_questions::px(width),
-				async_questions::px(height),
-			));
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(height)));
 
 			visual.update(|window, cx| {
-				assert_eq!(
-					window.viewport_size(),
-					gpui::size(async_questions::px(width), async_questions::px(height))
-				);
+				assert_eq!(window.viewport_size(), gpui::size(gpui::px(width), gpui::px(height)));
 
 				window.draw(cx).clear();
 
@@ -1101,10 +1095,7 @@ mod tests {
 					if bottom {
 						scroll.scroll_to_bottom();
 					} else {
-						scroll.set_offset(gpui::point(
-							async_questions::px(0.0),
-							async_questions::px(0.0),
-						));
+						scroll.set_offset(gpui::point(gpui::px(0.0), gpui::px(0.0)));
 					}
 
 					s.feedback.clear();

@@ -9,9 +9,9 @@ use gpui::{AnyElement, AppContext as _, Div, Subscription};
 use tokio::sync::oneshot;
 
 use crate::shell::agent_surface::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentHistoryResult, AgentSnapshotDto,
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentHistoryResult, AgentSnapshotDto,
 	AgentSnapshotResult, AgentSurface, ClientProfile, ComposerInput, Context, Entity, EntityId,
-	IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText, div, unique_command,
+	IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
 };
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase, PromptForkBoundary};
 use removal::Removal;
@@ -252,7 +252,7 @@ impl AgentSurface {
 									work_id: original.work_id.clone(),
 									thread_id: original.thread_id.clone(),
 								},
-								IdempotencyKey::new(unique_command())
+								IdempotencyKey::new(agent_surface::unique_command())
 									.map_err(|_| "Invalid recovery identity")?,
 							)
 							.await;
@@ -340,7 +340,7 @@ impl AgentSurface {
 		let pending = draft.handback_pending || draft.receipt_id.is_some();
 
 		self.prompt_edit = Panel {
-			key: unique_command(),
+			key: agent_surface::unique_command(),
 			profile: self.profile.clone(),
 			work: work.into(),
 			thread: draft.thread_id.as_str().into(),
@@ -407,7 +407,7 @@ impl AgentSurface {
 		else {
 			return;
 		};
-		let key = unique_command();
+		let key = agent_surface::unique_command();
 
 		self.reset_prompt_edit();
 
@@ -562,7 +562,7 @@ impl AgentSurface {
 
 		self.prompt_edit.task = None;
 		self.prompt_edit.confirmation = None;
-		self.prompt_edit.key = unique_command();
+		self.prompt_edit.key = agent_surface::unique_command();
 		self.prompt_edit.draft = Some(draft);
 
 		self.prompt_edit.subscriptions.clear();
@@ -611,7 +611,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		let mut saved = div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
+		let mut saved = gpui::div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
 
 		for draft in self.saved_prompt_editors(work) {
 			let review = draft.review_token.as_str().to_owned();

@@ -3,7 +3,7 @@ use gpui::{AnyElement, KeyDownEvent};
 
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
-	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, px,
+	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -43,14 +43,14 @@ impl AgentSurface {
 		let Some((owner, AgentHistoryResult::Available { misalignment: Some(review), .. })) =
 			&self.history
 		else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
 		if owner != &work.id {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
-		let mut panel=agent_surface::div().p_3().rounded(px(8.0)).border_1().border_color(agent_surface::rgba(0xffffff30)).flex().flex_col().gap_3()
+		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(gpui::rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
             .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
 		let identity = (work.id.clone(), review.review_id.clone());
@@ -60,7 +60,7 @@ impl AgentSurface {
 
 			return panel
 				.child(
-					agent_surface::div()
+					gpui::div()
 						.id("misalignment-review")
 						.debug_selector(|| "misalignment-review".into())
 						.role(Role::Button)
@@ -101,7 +101,7 @@ impl AgentSurface {
 			let keyboard_digest = digest.clone();
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.id("misalignment-continue")
 					.debug_selector(|| "misalignment-continue".into())
 					.role(Role::Button)
@@ -128,12 +128,13 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::misalignment::{
-		self, AgentHistoryResult, AgentSurface, AgentWorkItemDto,
-	};
+
 	#[cfg(test)]
 	use crate::shell::agent_surface::misalignment::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::misalignment::{
+		AgentHistoryResult, AgentSurface, AgentWorkItemDto,
 	};
 
 	#[gpui::test]
@@ -186,7 +187,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(misalignment::px(1_180.0), misalignment::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 

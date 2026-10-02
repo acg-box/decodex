@@ -1,13 +1,17 @@
 //! Choose native search defaults without changing loaded conversations.
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
 	mcp_forms,
 };
-#[cfg(test)] use crate::shell::agent_surface::{ClientProfile, Entity, Render, Window, px};
 use decodex_protocol::{AgentSearchSettingsResult as State, ClientFailure};
 
 #[derive(Default)]
@@ -129,26 +133,25 @@ impl AgentSurface {
 
 	pub(super) fn search_settings_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let owner = work.to_owned();
 		let opened = self.search_settings.work.as_deref() == Some(work);
-		let mut panel =
-			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
-				"search-settings-toggle".into(),
-				"Search defaults".into(),
-				opened,
-				cx,
-				move |s, cx| {
-					if s.search_settings.work.as_deref() == Some(&owner) {
-						s.reset_search_settings();
-						cx.notify();
-					} else {
-						s.update_search_settings(&owner, None, cx);
-					}
-				},
-			));
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+			"search-settings-toggle".into(),
+			"Search defaults".into(),
+			opened,
+			cx,
+			move |s, cx| {
+				if s.search_settings.work.as_deref() == Some(&owner) {
+					s.reset_search_settings();
+					cx.notify();
+				} else {
+					s.update_search_settings(&owner, None, cx);
+				}
+			},
+		));
 
 		if !opened {
 			return panel.into_any_element();

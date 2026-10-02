@@ -1,10 +1,13 @@
 //! Compact, expandable native execution receipts in the continuous conversation.
 use gpui::{AnyElement, KeyDownEvent};
 
-use crate::shell::agent_surface::{
-	self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
-	FluentBuilder, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-	SmoothControl, StatefulInteractiveElement, Styled, ui_theme::TEXT_MUTED,
+use crate::{
+	shell::agent_surface::{
+		self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
+		SmoothControl, StatefulInteractiveElement, Styled, ui_theme::TEXT_MUTED,
+	},
+	ui_motion,
 };
 use decodex_protocol::{AgentActivityDto, AgentHistoryEntryDto};
 
@@ -80,13 +83,13 @@ impl AgentSurface {
 				}
 				if entry.kind == "capacity_retry_pending" {
 					result.push(
-						agent_surface::div()
+						gpui::div()
 							.flex()
 							.flex_col()
 							.gap_1()
 							.child(self.anchored_history_entry(entry, &work.id, cx))
 							.child(
-								agent_surface::div()
+								gpui::div()
 									.debug_selector(|| "capacity-retry-cancel".into())
 									.child(self.capacity_retry_control(
 										work.id.clone(),
@@ -134,14 +137,14 @@ impl AgentSurface {
 		};
 		let toggle_key = key.clone();
 		let keyboard_key = key.clone();
-		let mut rows = agent_surface::div()
+		let mut rows = gpui::div()
 			.flex()
 			.flex_col()
-			.gap(agent_surface::px(4.))
-			.pl(agent_surface::px(12.))
-			.mt(agent_surface::px(6.))
+			.gap(gpui::px(4.))
+			.pl(gpui::px(12.))
+			.mt(gpui::px(6.))
 			.border_l_1()
-			.border_color(agent_surface::rgba(0xffffff18));
+			.border_color(gpui::rgba(0xffffff18));
 
 		for item in items {
 			let status = if item.status == "running"
@@ -165,30 +168,30 @@ impl AgentSurface {
 				self.detail_row(
 					work,
 					item,
-					agent_surface::div()
+					gpui::div()
 						.flex()
 						.items_center()
-						.gap(agent_surface::px(8.))
-						.min_h(agent_surface::px(22.))
+						.gap(gpui::px(8.))
+						.min_h(gpui::px(22.))
 						.child(item.label.clone())
 						.when(!item.detail.is_empty(), |row| {
 							row.child(agent_surface::muted(item.detail.clone()))
 						})
-						.child(agent_surface::div().flex_1())
+						.child(gpui::div().flex_1())
 						.child(agent_surface::muted(format!("{status}{duration}"))),
 					cx,
 				),
 			);
 		}
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(key))
 			.w_full()
-			.max_w(agent_surface::px(560.))
-			.text_size(agent_surface::px(11.))
-			.text_color(agent_surface::rgb(TEXT_MUTED))
+			.max_w(gpui::px(560.))
+			.text_size(gpui::px(11.))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.id("progress-toggle")
 					.role(Role::Button)
 					.tab_index(0)
@@ -196,8 +199,8 @@ impl AgentSurface {
 					.cursor_pointer()
 					.flex()
 					.items_center()
-					.gap(agent_surface::px(8.))
-					.min_h(agent_surface::px(24.))
+					.gap(gpui::px(8.))
+					.min_h(gpui::px(24.))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.toggle_progress(&toggle_key, cx);
 					}))
@@ -212,7 +215,7 @@ impl AgentSurface {
 					.child(label)
 					.smooth(),
 			)
-			.child(agent_surface::disclosure("progress-details", expanded, rows))
+			.child(ui_motion::disclosure("progress-details", expanded, rows))
 			.into_any_element()
 	}
 }

@@ -25,7 +25,7 @@ impl AgentSurface {
 				return ui_loading::loading("Loading earlier records").into_any_element();
 			}
 
-			native_timeline::div()
+			gpui::div()
 				.id("native-earlier-local-records")
 				.debug_selector(|| "native-earlier-local-records".into())
 				.cursor_pointer()
@@ -41,7 +41,7 @@ impl AgentSurface {
 		diagnostics: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut panel = native_timeline::div().flex().flex_col().gap_2();
+		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		if !diagnostics {
 			panel = panel.child(self.native_input_receipts_panel(work, cx));
@@ -129,7 +129,7 @@ impl AgentSurface {
 				continue;
 			}
 
-			let mut row = native_timeline::div()
+			let mut row = gpui::div()
 				.debug_selector({
 					let id = entry.id;
 					let kind = match entry.kind.as_str() {
@@ -155,7 +155,7 @@ impl AgentSurface {
 			}
 			if entry.kind == "capacity_retry_pending" {
 				row = row.child(
-					native_timeline::div()
+					gpui::div()
 						.debug_selector(|| "capacity-retry-cancel".into())
 						.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
 				);
@@ -177,7 +177,7 @@ impl AgentSurface {
 		expanded: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		native_timeline::div()
+		gpui::div()
 			.id("local-records-toggle")
 			.cursor_pointer()
 			.text_size(gpui::px(11.))
@@ -211,7 +211,7 @@ impl AgentSurface {
 			}
 
 			rows.push(
-				native_timeline::div()
+				gpui::div()
 					.debug_selector({
 						let selector = match message.kind {
 							AgentLiveMessageKind::ReasoningSummary =>

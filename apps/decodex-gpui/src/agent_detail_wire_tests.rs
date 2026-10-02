@@ -18,7 +18,7 @@ use crate::shell::agent_surface::detail::{
 };
 use crate::shell::agent_surface::{
 	detail::{
-		self, AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentSurface,
+		AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentSurface,
 		AgentWorkItemDto, Context, EntityId, IntoElement, WireText,
 	},
 	wire_test_support::{self, SERVER},
@@ -49,7 +49,7 @@ impl Render for DetailView {
 					native_timestamp_ms: None,
 					duration_ms: None,
 				},
-				detail::div().child("Patch"),
+				gpui::div().child("Patch"),
 				cx,
 			)
 		})
@@ -113,7 +113,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 
 		visual.run_until_parked();
 		visual.update(|w, cx| {
-			w.resize(gpui::size(detail::px(800.), detail::px(600.)));
+			w.resize(gpui::size(gpui::px(800.), gpui::px(600.)));
 			w.draw(cx).clear();
 		});
 		// Disclosure uses wall-clock animation: measure, begin expansion, then settle.
@@ -132,7 +132,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 		let button =
 			visual.debug_bounds("detail-next-action").expect("manager can continue its full patch");
 
-		assert!(button.size.height > detail::px(0.), "{button:?}");
+		assert!(button.size.height > gpui::px(0.), "{button:?}");
 
 		visual.simulate_click(button.center(), Default::default());
 		view.read_with(visual, |v, cx| {

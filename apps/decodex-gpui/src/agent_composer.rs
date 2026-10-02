@@ -14,7 +14,7 @@ use std::{
 use gpui::{
 	AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, FontWeight, Image,
 	ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions,
-	Stateful,
+	Stateful, rgb, rgba,
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED};
@@ -29,8 +29,8 @@ use crate::{
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, compact_tokens, div, model_settings, px, rgb, rgba,
-			ui_theme, unique_command,
+			Styled, SubmitComposer, Window, compact_tokens, model_settings, ui_theme,
+			unique_command,
 		},
 		workspace_symbols,
 		workspace_symbols::{Symbol, icon},
@@ -43,13 +43,13 @@ use decodex_protocol::AgentAttachmentDto;
 struct ComposerTip(String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
+		gpui::div()
 			.px_3()
 			.py_2()
-			.rounded(px(7.0))
-			.bg(rgb(0x242429))
-			.text_size(px(11.0))
-			.text_color(rgb(TEXT))
+			.rounded(gpui::px(7.0))
+			.bg(gpui::rgb(0x242429))
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(TEXT))
 			.child(self.0.clone())
 	}
 }
@@ -305,26 +305,26 @@ impl AgentSurface {
 	}
 
 	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
-		div()
+		gpui::div()
 			.mx_4()
 			.mb_3()
 			.p_3()
-			.rounded(px(14.))
-			.bg(rgb(0x27272b))
+			.rounded(gpui::px(14.))
+			.bg(gpui::rgb(0x27272b))
 			.flex()
 			.flex_col()
 			.gap_2()
 			.children(self.attachment_row(cx))
 			.children(self.task_reference_row(cx))
 			.child(
-				div()
+				gpui::div()
 					.flex()
 					.items_center()
 					.justify_between()
 					.child(
-						div()
-							.text_size(px(11.))
-							.text_color(rgb(TEXT_MUTED))
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child("Draft only · Sending paused"),
 					)
 					.child(self.composer_control(
@@ -340,7 +340,7 @@ impl AgentSurface {
 					)),
 			)
 			.child(
-				div()
+				gpui::div()
 					.id("recovery-draft-editor")
 					.debug_selector(|| "recovery-draft-editor".into())
 					.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
@@ -361,11 +361,11 @@ impl AgentSurface {
 			return self.render_native_composer_anchor(cx);
 		}
 
-		div()
+		gpui::div()
 			.w_full()
 			.px_4()
-			.pt(px(12.))
-			.pb(px(20.))
+			.pt(gpui::px(12.))
+			.pb(gpui::px(20.))
 			.flex()
 			.justify_center()
 			.child(
@@ -381,7 +381,7 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		let editor = div()
+		let editor = gpui::div()
 			.id("composer-editor-area")
 			.flex()
 			.flex_col()
@@ -404,29 +404,29 @@ impl AgentSurface {
 			.children(self.voice_controls(window, cx))
 			.child(self.composer.clone());
 
-		div()
+		gpui::div()
 			.id("agent-composer")
 			.occlude()
 			.relative()
 			.w_full()
-			.max_w(px(820.))
+			.max_w(gpui::px(820.))
 			.min_w_0()
-			.px(px(10.))
-			.py(px(7.))
-			.rounded(px(24.))
-			.when(!native, |d| d.bg(rgb(0x27272b)))
+			.px(gpui::px(10.))
+			.py(gpui::px(7.))
+			.rounded(gpui::px(24.))
+			.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
 			.when(!native, |d| {
 				d.shadow(vec![gpui::BoxShadow {
 					inset: false,
-					color: rgba(0x0000001a).into(),
-					offset: gpui::point(px(0.), px(4.)),
-					blur_radius: px(16.),
-					spread_radius: px(-5.),
+					color: gpui::rgba(0x0000001a).into(),
+					offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+					blur_radius: gpui::px(16.),
+					spread_radius: gpui::px(-5.),
 				}])
 			})
 			.flex()
 			.flex_col()
-			.gap(px(4.))
+			.gap(gpui::px(4.))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
 					if !e.is_held {
@@ -442,11 +442,11 @@ impl AgentSurface {
 			.children(self.attachment_row(cx))
 			.children(self.task_reference_row(cx))
 			.child(
-				div()
+				gpui::div()
 					.w_full()
 					.flex()
 					.items_center()
-					.gap(px(4.))
+					.gap(gpui::px(4.))
 					.child(self.composer_control(
 						"attach",
 						"+".into(),
@@ -466,19 +466,19 @@ impl AgentSurface {
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
 		);
 
-		div()
+		gpui::div()
 			.absolute()
 			.inset_0()
 			.child(
 				gpui::deferred(
-					div()
+					gpui::div()
 						.absolute()
 						.bottom(gpui::relative(1.))
-						.mb(px(if left { 8. } else { 10. }))
-						.when(left, |d| d.left(px(0.)))
+						.mb(gpui::px(if left { 8. } else { 10. }))
+						.when(left, |d| d.left(gpui::px(0.)))
 						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-						.when(!left, |d| d.right(px(70.)))
-						.w(px(if matches!(menu, Some("agent-settings" | "skills")) {
+						.when(!left, |d| d.right(gpui::px(70.)))
+						.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
 							380.
 						} else if left {
 							280.
@@ -489,7 +489,7 @@ impl AgentSurface {
 							ui_motion::popover(
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
-									.unwrap_or_else(|| div().into_any_element()),
+									.unwrap_or_else(|| gpui::div().into_any_element()),
 							)
 							.unframed(menu == Some("model")),
 						),
@@ -512,18 +512,18 @@ impl AgentSurface {
 
 				d.children(detail.map(|text| {
 					gpui::deferred(
-						div()
+						gpui::div()
 							.absolute()
 							.bottom(gpui::relative(1.))
-							.mb(px(10.))
-							.right(px(160.))
-							.w(px(220.))
+							.mb(gpui::px(10.))
+							.right(gpui::px(160.))
+							.w(gpui::px(220.))
 							.debug_selector(|| "composer-context-detail".into())
-							.p(px(12.))
-							.rounded(px(12.))
-							.bg(rgb(0x29292d))
-							.text_size(px(12.))
-							.text_color(rgb(TEXT))
+							.p(gpui::px(12.))
+							.rounded(gpui::px(12.))
+							.bg(gpui::rgb(0x29292d))
+							.text_size(gpui::px(12.))
+							.text_color(gpui::rgb(TEXT))
 							.child(text),
 					)
 					.priority(3)
@@ -535,10 +535,10 @@ impl AgentSurface {
 		let device =
 			if self.audio_input.is_empty() { "System default" } else { self.audio_input.as_str() };
 
-		div()
+		gpui::div()
 			.flex()
 			.flex_col()
-			.gap(px(3.))
+			.gap(gpui::px(3.))
 			.child(self.composer_control(
 				"attachment-item",
 				"Add attachments…".into(),
@@ -583,7 +583,7 @@ impl AgentSurface {
 				cx,
 			))
 			.child(
-				div()
+				gpui::div()
 					.flex()
 					.flex_col()
 					.child(self.composer_control_with_window(
@@ -596,7 +596,7 @@ impl AgentSurface {
 					.child(ui_motion::disclosure(
 						"microphone-devices-disclosure",
 						self.composer_menu == Some("microphone"),
-						div().pl(px(26.)).child(self.audio_palette(cx)),
+						gpui::div().pl(gpui::px(26.)).child(self.audio_palette(cx)),
 					)),
 			)
 			.child(self.composer_control(
@@ -638,11 +638,11 @@ impl AgentSurface {
 	fn text_composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
 		let model = self.composer_model_label(cx);
 
-		div()
+		gpui::div()
 			.flex_none()
 			.flex()
 			.items_center()
-			.gap(px(1.0))
+			.gap(gpui::px(1.0))
 			.children(self.usage_line(cx))
 			.child(self.composer_control(
 				"model",
@@ -719,16 +719,16 @@ impl AgentSurface {
 		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 
-		div()
+		gpui::div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.debug_selector(move || format!("composer-{id}"))
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(tooltip.clone())
-			.h(px(CONTROL_SIZE))
-			.px(px(6.0))
+			.h(gpui::px(CONTROL_SIZE))
+			.px(gpui::px(6.0))
 			.flex_none()
-			.rounded(px(if send { 8.0 } else { 7.0 }))
+			.rounded(gpui::px(if send { 8.0 } else { 7.0 }))
 			.when(
 				![
 					"model",
@@ -743,29 +743,35 @@ impl AgentSurface {
 					"audio-item",
 				]
 				.contains(&id),
-				|d| d.w(px(CONTROL_SIZE)).px_0(),
+				|d| d.w(gpui::px(CONTROL_SIZE)).px_0(),
 			)
 			.flex()
 			.items_center()
 			.justify_center()
-			.text_size(px(12.0))
-			.line_height(px(16.0))
-			.text_color(rgb(if send { TEXT } else { TEXT_MUTED }))
+			.text_size(gpui::px(12.0))
+			.line_height(gpui::px(16.0))
+			.text_color(gpui::rgb(if send { TEXT } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
-				d.px(px(4.)).text_size(px(11.)).font_weight(FontWeight::NORMAL)
+				d.px(gpui::px(4.)).text_size(gpui::px(11.)).font_weight(FontWeight::NORMAL)
 			})
 			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
-				d.w_full().h(px(32.)).justify_start().text_size(px(12.))
+				d.w_full().h(gpui::px(32.)).justify_start().text_size(gpui::px(12.))
 			})
-			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
-			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(2.)).bg(rgb(0x515155)))
+			.when(self.composer_menu == Some(id), |d| d.bg(gpui::rgba(0xffffff12)))
+			.when(send, |d| {
+				d.w(gpui::px(28.))
+					.h(gpui::px(28.))
+					.rounded_full()
+					.ml(gpui::px(2.))
+					.bg(gpui::rgb(0x515155))
+			})
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
 			.hover(move |d| {
 				d.bg(if send {
-					rgb(0x606064)
+					gpui::rgb(0x606064)
 				} else {
-					rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
+					gpui::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
 				})
 			})
 			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
@@ -817,23 +823,27 @@ impl AgentSurface {
 			}
 			.into_any_element(),
 			"attach" => icon(Symbol::Plus),
-			"attachment-item" => div()
+			"attachment-item" => gpui::div()
 				.flex()
 				.items_center()
-				.gap(px(10.))
+				.gap(gpui::px(10.))
 				.child(icon(Symbol::Plus))
 				.child("Add attachments…")
 				.into_any_element(),
-			"audio-item" => div()
+			"audio-item" => gpui::div()
 				.w_full()
 				.flex()
 				.items_center()
-				.gap(px(10.))
+				.gap(gpui::px(10.))
 				.child(icon(Symbol::Microphone))
 				.child("Microphone")
-				.child(div().flex_1())
+				.child(gpui::div().flex_1())
 				.child(
-					div().max_w(px(110.)).text_ellipsis().text_color(rgb(TEXT_MUTED)).child(label),
+					gpui::div()
+						.max_w(gpui::px(110.))
+						.text_ellipsis()
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child(label),
 				)
 				.child(workspace_symbols::disclosure_chevron(
 					"microphone-chevron",
@@ -841,29 +851,31 @@ impl AgentSurface {
 				))
 				.into_any_element(),
 			"dictation" => icon(Symbol::Microphone),
-			"delivery" => div()
+			"delivery" => gpui::div()
 				.w_full()
 				.flex()
 				.items_center()
-				.gap(px(10.))
-				.child(div().w(px(16.)).flex_none())
+				.gap(gpui::px(10.))
+				.child(gpui::div().w(gpui::px(16.)).flex_none())
 				.child("Send mode")
-				.child(div().flex_1())
-				.child(div().text_color(rgb(TEXT)).child(label))
-				.child(div().w(px(12.)).flex_none())
+				.child(gpui::div().flex_1())
+				.child(gpui::div().text_color(gpui::rgb(TEXT)).child(label))
+				.child(gpui::div().w(gpui::px(12.)).flex_none())
 				.into_any_element(),
-			"model" => div()
+			"model" => gpui::div()
 				.flex()
 				.items_center()
-				.gap(px(2.))
+				.gap(gpui::px(2.))
 				.whitespace_nowrap()
-				.text_color(rgb(TEXT))
-				.when(self.fast, |d| d.child(div().text_color(rgb(BLUE)).child(icon(Symbol::Fast))))
-				.child(div().max_w(px(180.)).text_ellipsis().child(label))
-				.child(div().text_color(rgb(TEXT_MUTED)).child("·"))
+				.text_color(gpui::rgb(TEXT))
+				.when(self.fast, |d| {
+					d.child(gpui::div().text_color(gpui::rgb(BLUE)).child(icon(Symbol::Fast)))
+				})
+				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
+				.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
 				.child(controls::effort_indicator(&self.composer_effort_value()))
 				.into_any_element(),
-			_ => div().child(label).into_any_element(),
+			_ => gpui::div().child(label).into_any_element(),
 		}
 	}
 
@@ -898,7 +910,7 @@ impl AgentSurface {
 			anchor.map_or(320., |bounds| (f32::from(bounds.origin.y) - 32.).clamp(1., 480.));
 
 		Some(
-			div()
+			gpui::div()
 				.id("composer-menu-popover")
 				.occlude()
 				.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
@@ -934,47 +946,51 @@ impl AgentSurface {
 
 					cx.notify();
 				}))
-				.p(px(if menu == "model" { 0. } else { 8. }))
+				.p(gpui::px(if menu == "model" { 0. } else { 8. }))
 				.w_full()
 				.flex()
 				.flex_col()
-				.gap(px(10.))
+				.gap(gpui::px(10.))
 				.child(if menu == "tasks" {
 					self.task_reference_options(cx)
 				} else if menu == "skills" {
 					self.skill_options(cx)
 				} else if menu == "agent-settings" {
-					div()
+					gpui::div()
 						.id("agent-settings-scroll")
-						.max_h(px(settings_height))
+						.max_h(gpui::px(settings_height))
 						.overflow_y_scroll()
 						.child(self.render_preferences(cx))
 						.into_any_element()
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
-					div()
+					gpui::div()
 						.flex()
 						.flex_col()
-						.gap(px(6.))
+						.gap(gpui::px(6.))
 						.child(
-							div()
-								.p(px(8.))
-								.rounded(px(14.))
-								.bg(rgb(0x29292d))
+							gpui::div()
+								.p(gpui::px(8.))
+								.rounded(gpui::px(14.))
+								.bg(gpui::rgb(0x29292d))
 								.child(self.model_palette(cx))
-								.child(div().mt(px(6.)).child(self.service_tier_picker(cx))),
+								.child(
+									gpui::div()
+										.mt(gpui::px(6.))
+										.child(self.service_tier_picker(cx)),
+								),
 						)
 						.child(
-							div()
-								.px(px(8.))
-								.py(px(3.))
+							gpui::div()
+								.px(gpui::px(8.))
+								.py(gpui::px(3.))
 								.rounded_full()
-								.bg(rgb(0x29292d))
+								.bg(gpui::rgb(0x29292d))
 								.flex()
 								.items_center()
 								.child(self.creation_effort_toggle(cx))
-								.child(div().flex_1().min_w_0().child(self.effort_scale(cx))),
+								.child(gpui::div().flex_1().min_w_0().child(self.effort_scale(cx))),
 						)
 						.into_any_element()
 				})
@@ -1020,14 +1036,14 @@ impl AgentSurface {
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
 
 		Some(
-			div()
+			gpui::div()
 				.id("composer-context")
-				.size(px(CONTROL_SIZE))
+				.size(gpui::px(CONTROL_SIZE))
 				.flex_none()
 				.flex()
 				.items_center()
-				.text_size(px(10.5))
-				.text_color(rgb(TEXT_MUTED))
+				.text_size(gpui::px(10.5))
+				.text_color(gpui::rgb(TEXT_MUTED))
 				.aria_label(format!("Context {percent:.0}%"))
 				.on_hover(cx.listener(|s, hovered, _, cx| {
 					s.context_tip_visible = *hovered;
@@ -1045,7 +1061,7 @@ impl AgentSurface {
 			return None;
 		}
 
-		let mut row = div().flex().flex_wrap().gap_1().px_1();
+		let mut row = gpui::div().flex().flex_wrap().gap_1().px_1();
 
 		for file in &self.attachments {
 			let path = std::path::PathBuf::from(file.path.as_str());
@@ -1059,7 +1075,7 @@ impl AgentSurface {
 			let remove = file.clone();
 
 			row = row.child(
-				div()
+				gpui::div()
 					.id(SharedString::from(
 						serde_json::json!([
 							"attachment",
@@ -1073,18 +1089,20 @@ impl AgentSurface {
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Remove attachment {label}"))
-					.h(px(30.0))
-					.max_w(px(220.0))
+					.h(gpui::px(30.0))
+					.max_w(gpui::px(220.0))
 					.px_2()
 					.flex()
 					.items_center()
 					.gap_2()
-					.rounded(px(6.0))
-					.bg(rgba(0xffffff0a))
-					.text_size(px(11.0))
+					.rounded(gpui::px(6.0))
+					.bg(gpui::rgba(0xffffff0a))
+					.text_size(gpui::px(11.0))
 					.cursor_pointer()
-					.when(file.image, |d| d.child(gpui::img(path).size(px(24.0)).rounded(px(3.0))))
-					.child(div().min_w_0().overflow_hidden().text_ellipsis().child(label))
+					.when(file.image, |d| {
+						d.child(gpui::img(path).size(gpui::px(24.0)).rounded(gpui::px(3.0)))
+					})
+					.child(gpui::div().min_w_0().overflow_hidden().text_ellipsis().child(label))
 					.child("×")
 					.on_click(cx.listener({
 						let remove = remove.clone();
@@ -1208,18 +1226,20 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
-			for (portion, color) in [(1.0, rgba(0xffffff24)), (fraction, rgba(0xc2becbe0))] {
+			for (portion, color) in
+				[(1.0, gpui::rgba(0xffffff24)), (fraction, gpui::rgba(0xc2becbe0))]
+			{
 				if portion <= 0.0 {
 					continue;
 				}
 
-				let mut path = PathBuilder::stroke(px(1.6));
+				let mut path = PathBuilder::stroke(gpui::px(1.6));
 				let steps = (portion * 64.0).ceil() as usize;
 
 				for step in 0..=steps {
 					let angle = -FRAC_PI_2 + TAU * portion * step as f32 / steps as f32;
-					let point =
-						bounds.center() + gpui::point(px(angle.cos() * 5.7), px(angle.sin() * 5.7));
+					let point = bounds.center()
+						+ gpui::point(gpui::px(angle.cos() * 5.7), gpui::px(angle.sin() * 5.7));
 
 					if step == 0 {
 						path.move_to(point);
@@ -1234,7 +1254,7 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 			}
 		},
 	)
-	.size(px(16.0))
+	.size(gpui::px(16.0))
 }
 
 #[cfg(test)]

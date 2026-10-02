@@ -56,7 +56,7 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 		conversation_id: ConversationId::new(request.conversation_id.as_str()).unwrap(),
 		message: request.message.as_str().into(),
 		working_directory: request.working_directory.as_str().into(),
-		execution: super::runtime_execution_settings(&request.execution),
+		execution: application::runtime_execution_settings(&request.execution),
 	};
 	let store = SqliteStore::open(&root.paths()).unwrap();
 

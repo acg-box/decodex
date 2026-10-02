@@ -86,7 +86,7 @@ impl Shell {
 		let enabled = self.navigation_neighbor(forward, cx).is_some();
 		let label = if forward { "Forward · Command-]" } else { "Back · Command-[" };
 
-		div()
+		gpui::div()
 			.id(if forward { "navigate-forward" } else { "navigate-back" })
 			.role(Role::Button)
 			.aria_label(label)
@@ -95,15 +95,15 @@ impl Shell {
 			})
 			.when(enabled, |el| el.tab_index(0))
 			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
-			.size(px(CHROME_CONTROL_SIZE))
+			.size(gpui::px(CHROME_CONTROL_SIZE))
 			.flex_none()
 			.flex()
 			.items_center()
 			.justify_center()
-			.rounded(px(5.0))
+			.rounded(gpui::px(5.0))
 			.occlude()
 			.when(!enabled, |el| el.opacity(0.25))
-			.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(rgba(HOVER_FILL))))
+			.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(gpui::rgba(HOVER_FILL))))
 			.on_mouse_down(MouseButton::Left, |_, window, cx| {
 				window.prevent_default();
 				cx.stop_propagation();
