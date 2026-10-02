@@ -50,8 +50,10 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 
 	fs::write(home.path().join("config.toml"), format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
 
-	let mut session = NativeSession::start(&binary, home.path());
-	let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("decodex")).unwrap();
+	let (mut session, root) = (
+		NativeSession::start(&binary, home.path()),
+		DecodexRoot::new(home.path().canonicalize().unwrap().join("decodex")).unwrap(),
+	);
 
 	root.paths().ensure_layout().unwrap();
 

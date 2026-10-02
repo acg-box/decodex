@@ -254,9 +254,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let boot =
 		tokio::time::timeout(Duration::from_secs(120), ServiceComposition::bootstrap(root.clone()))
 			.await?;
-	let mut service =
-		tokio::time::timeout(Duration::from_secs(10), boot.bind(ServerConfig::default())).await??;
-	let resumed=async {
+	let (mut service, resumed) = (tokio::time::timeout(Duration::from_secs(10), boot.bind(ServerConfig::default())).await??,
+async {
 		if Some(agent_thread(&root).await?) != original_thread {return Err::<(),Box<dyn Error>>("Agent thread identity changed after restart".into());}
 
 		let client=AgentClient::new(ClientProfile::load(root.as_path(),None)?);
@@ -289,7 +288,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		reliability::long_result(&client, &root).await?;
 
 		Ok(())
-	}.await;
+	}.await,);
 
 	if resumed.is_ok() {
 		capture_after_restart(&root).await;

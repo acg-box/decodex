@@ -221,10 +221,8 @@ fn read_catalog_with_default(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
 ) -> Option<(Vec<AgentModelDto>, Option<decodex_protocol::ConversationModel>)> {
-	let mut pages = ModelCatalogPages::default();
-	let mut cursor = None;
-	let mut default_model = None;
-	let deadline = Instant::now() + Duration::from_secs(8);
+	let (mut pages, mut cursor, mut default_model, deadline) =
+		(ModelCatalogPages::default(), None, None, Instant::now() + Duration::from_secs(8));
 
 	for _ in 0..8 {
 		if cancelled() || Instant::now() >= deadline {

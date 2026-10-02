@@ -357,8 +357,9 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
 		let (conversations, server, original) = tests::recorded_routing_fixture(kind);
-		let mut draft = conversations.ordinary_draft(text).unwrap();
+		let draft = conversations.ordinary_draft(text).unwrap();
 		let unrelated = tests::recorded_routing_fixture((kind + 1) % 3).2;
+		let mut draft = draft;
 
 		draft.unconfirmed.push(unrelated.clone());
 

@@ -68,11 +68,11 @@ impl AgentCoordinator {
 			let revision = self.client.question_revision();
 			let lifecycle = self.client.thread_settings_guard(&thread);
 			let deadline = Instant::now() + Duration::from_secs(30);
-			let mut projection = Projection::default();
-			let mut saw_required = required_item.is_none();
-			let Ok(Ok(turns)) =
-				time::timeout_at(deadline, self.client.thread_turns_since(&thread, None)).await
-			else {
+			let (mut projection, mut saw_required, Ok(Ok(turns))) = (
+				Projection::default(),
+				required_item.is_none(),
+				time::timeout_at(deadline, self.client.thread_turns_since(&thread, None)).await,
+			) else {
 				continue;
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);

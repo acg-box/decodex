@@ -1578,15 +1578,17 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 #[tokio::test]
 async fn malformed_and_abandoned_pre_registration_sessions_are_session_local() {
 	let (_temp, transport) = local_transport();
-	let mut bound = server(
-		"pre-registration-peer-failures",
-		FixtureApplication::default(),
-		ServerConfig::default(),
-	)
-	.bind(transport.clone())
-	.await
-	.expect("bind pre-registration peer-failure server");
-	let stream = transport.connect().await.expect("connect abandoned local stream");
+	let (mut bound, stream) = (
+		server(
+			"pre-registration-peer-failures",
+			FixtureApplication::default(),
+			ServerConfig::default(),
+		)
+		.bind(transport.clone())
+		.await
+		.expect("bind pre-registration peer-failure server"),
+		transport.connect().await.expect("connect abandoned local stream"),
+	);
 	let (abandoned, _) =
 		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
 			.await
