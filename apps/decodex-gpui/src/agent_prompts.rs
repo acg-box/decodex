@@ -40,8 +40,10 @@ struct Cache {
 
 pub(super) fn next() -> String {
 	let entropy = RandomState::new().hash_one(super::unique_command()) as usize;
-	let mut last = LAST_TEXT.lock().unwrap_or_else(|error| error.into_inner());
-	let quotes = QUOTES.lock().unwrap_or_else(|error| error.into_inner());
+	let (mut last, quotes) = (
+		LAST_TEXT.lock().unwrap_or_else(|error| error.into_inner()),
+		QUOTES.lock().unwrap_or_else(|error| error.into_inner()),
+	);
 	let mut choices: Vec<String> =
 		quotes.iter().map(Quote::display).filter(|text| text != &*last).collect();
 

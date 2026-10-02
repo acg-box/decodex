@@ -200,29 +200,38 @@ impl ApiResetCardRuntime {
 		}
 
 		let session = self.session_for_operation(&operation).await;
-		let mut session = match session {
-			Ok(session) => session,
-			Err(error) => {
-				let failure = match error {
-					ResetCardServiceError::AccountChanged
-					| ResetCardServiceError::AccountNotFound
-					| ResetCardServiceError::AccountStateRejected => "account_changed",
-					ResetCardServiceError::InventoryChanged
-					| ResetCardServiceError::InventoryIncomplete => "inventory_changed",
-					_ => "provider_unavailable",
-				};
-				let _ =
-					self.0.store.fail_reset_card_before_send(operation.key, failure.into()).await;
+		let (mut session, (key, credit)) = (
+			match session {
+				Ok(session) => session,
+				Err(error) => {
+					let failure = match error {
+						ResetCardServiceError::AccountChanged
+						| ResetCardServiceError::AccountNotFound
+						| ResetCardServiceError::AccountStateRejected => "account_changed",
+						ResetCardServiceError::InventoryChanged
+						| ResetCardServiceError::InventoryIncomplete => "inventory_changed",
+						_ => "provider_unavailable",
+					};
+					let _ = self
+						.0
+						.store
+						.fail_reset_card_before_send(operation.key, failure.into())
+						.await;
 
-				return;
+					return;
+				},
 			},
-		};
-		let (Ok(key), Some(Ok(credit))) = (
-			ResetCardIdempotencyKey::new(operation.key.clone()),
-			operation.exact_credit_id.map(ExactResetCreditId::new),
-		) else {
-			return;
-		};
+			{
+				let (Ok(key), Some(Ok(credit))) = (
+					ResetCardIdempotencyKey::new(operation.key.clone()),
+					operation.exact_credit_id.map(ExactResetCreditId::new),
+				) else {
+					return;
+				};
+
+				(key, credit)
+			},
+		);
 
 		// Commit the no-retry barrier BEFORE the request can leave this process.
 		if !matches!(self.0.store.begin_reset_card_send(operation.key.clone()).await, Ok(true)) {

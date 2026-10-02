@@ -50,8 +50,10 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 
 	let config =
 		AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home_path.display().to_string());
-	let mut session = NativeSession::start(&binary, &home_path);
-	let store = SqliteStore::open(&root.paths()).expect("product store");
+	let (mut session, store) = (
+		NativeSession::start(&binary, &home_path),
+		SqliteStore::open(&root.paths()).expect("product store"),
+	);
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config.clone())
 		.expect("coordinator");
 
@@ -216,8 +218,8 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 
 	let config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
-	let mut session = NativeSession::start(&binary, &path);
-	let store = SqliteStore::open(&root.paths()).expect("store");
+	let (mut session, store) =
+		(NativeSession::start(&binary, &path), SqliteStore::open(&root.paths()).expect("store"));
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config).expect("coordinator");
 

@@ -907,8 +907,10 @@ fn open_pinned_sandbox_codex_directory(
 		return Err(CodexAuthProjectionError::UnsafePath);
 	}
 
-	let mut current = open_exact_sandbox_root(root)?;
-	let relative = home.strip_prefix(root).map_err(|_| CodexAuthProjectionError::UnsafePath)?;
+	let (mut current, relative) = (
+		open_exact_sandbox_root(root)?,
+		home.strip_prefix(root).map_err(|_| CodexAuthProjectionError::UnsafePath)?,
+	);
 
 	for component in relative.components() {
 		let Component::Normal(name) = component else {

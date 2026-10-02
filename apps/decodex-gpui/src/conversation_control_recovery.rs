@@ -359,8 +359,8 @@ mod tests {
 
 		controller.session_ended(1);
 
-		let mut draft = controller.ordinary_draft("Later unsent text").expect("draft");
-		let (control, _) = fixture();
+		let (mut draft, (control, _)) =
+			(controller.ordinary_draft("Later unsent text").expect("draft"), fixture());
 
 		draft.unconfirmed.push(control.clone());
 

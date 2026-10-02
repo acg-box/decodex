@@ -216,11 +216,13 @@ max_entry_bytes = 65536
 	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
 	fn process_recovery_never_terminates_independently_managed_daemon() {
 		let fixture = ProcessFixture::new();
-		let mut independent = fixture.launch_independent();
-		let runtime = tokio::runtime::Builder::new_current_thread()
-			.enable_all()
-			.build()
-			.expect("build isolated client runtime");
+		let (mut independent, runtime) = (
+			fixture.launch_independent(),
+			tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.expect("build isolated client runtime"),
+		);
 
 		wait_for_client(&runtime, &fixture.root);
 

@@ -88,8 +88,7 @@ mod tests {
 		}
 
 		let uncached = start.elapsed();
-		let mut cache = Cache::default();
-		let start = Instant::now();
+		let (mut cache, start) = (Cache::default(), Instant::now());
 
 		for _ in 0..60 {
 			for text in &messages {

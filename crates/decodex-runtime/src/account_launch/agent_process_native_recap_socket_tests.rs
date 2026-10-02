@@ -222,30 +222,32 @@ async fn qualify(home: &Path) {
 
 	let client = AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"));
 	let app = submit::application(&runtime, &store, home);
-	let mut server = ProtocolServer::new(server_id, app, ServerConfig::default())
-		.bind(authority())
-		.await
-		.expect("public local server");
-	let outcome = AssertUnwindSafe(time::timeout(
-		Duration::from_secs(interaction_seconds(interactive)),
-		async {
-			if interactive {
-				desktop::check(&client, home, &account, &requests).await;
-			} else if env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
-				media::check(&client, &runtime, home, &account, &requests).await;
-			} else {
-				check(&client, &runtime, &store, home, &account, &requests).await;
-			}
-			if env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
-				qualify_account_rotation(
-					&client, &runtime, &store, &accounts, home, &account, &requests,
-				)
-				.await;
-			}
-		},
-	))
-	.catch_unwind()
-	.await;
+	let (mut server, outcome) = (
+		ProtocolServer::new(server_id, app, ServerConfig::default())
+			.bind(authority())
+			.await
+			.expect("public local server"),
+		AssertUnwindSafe(time::timeout(
+			Duration::from_secs(interaction_seconds(interactive)),
+			async {
+				if interactive {
+					desktop::check(&client, home, &account, &requests).await;
+				} else if env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
+					media::check(&client, &runtime, home, &account, &requests).await;
+				} else {
+					check(&client, &runtime, &store, home, &account, &requests).await;
+				}
+				if env::var("DECODEX_TEST_ACCOUNT_ROTATION").as_deref() == Ok("1") {
+					qualify_account_rotation(
+						&client, &runtime, &store, &accounts, home, &account, &requests,
+					)
+					.await;
+				}
+			},
+		))
+		.catch_unwind()
+		.await,
+	);
 
 	assert!(server.shutdown().await.expect("service shutdown").is_success());
 
