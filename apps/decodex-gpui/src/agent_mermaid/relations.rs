@@ -6,10 +6,6 @@ use crate::shell::agent_surface::markdown::mermaid::{
 	Direction, Edge, Graph, MAX_EDGES, Node, RenderError, state,
 };
 
-#[expect(
-	clippy::too_many_lines,
-	reason = "retain the reviewed upstream bounded parser and layout for source comparison"
-)]
 pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 	if matches!(header, "stateDiagram" | "stateDiagram-v2") {
 		return state::parse(body);
@@ -97,113 +93,7 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 			continue;
 		}
 
-		let source_card = if er { String::new() } else { cardinality(&mut rest)? };
-
-		rest = rest.trim_start();
-
-		let split = rest
-			.find("--")
-			.into_iter()
-			.chain(rest.find(".."))
-			.min()
-			.ok_or(RenderError::Unsupported)?;
-
-		if split > 2 {
-			return Err(RenderError::Unsupported);
-		}
-
-		let left = &rest[..split];
-		let dashed = &rest[split..split + 2] == "..";
-
-		rest = &rest[split + 2..];
-
-		let (source_tip, target_tip, source_card, target_card) = if er {
-			let source_card = match left {
-				"||" => "1",
-				"|o" => "0..1",
-				"}|" => "1..many",
-				"}o" => "0..many",
-				_ => return Err(RenderError::Unsupported),
-			}
-			.to_owned();
-			let right = rest.get(..2).ok_or(RenderError::Unsupported)?;
-			let target_card = match right {
-				"||" => "1",
-				"o|" => "0..1",
-				"|{" => "1..many",
-				"o{" => "0..many",
-				_ => return Err(RenderError::Unsupported),
-			}
-			.to_owned();
-
-			rest = &rest[2..];
-
-			('─', '─', source_card, target_card)
-		} else {
-			let source_tip = match left {
-				"" => '─',
-				"<" => '◄',
-				"<|" => '◁',
-				"*" => '◆',
-				"o" => '◇',
-				_ => return Err(RenderError::Unsupported),
-			};
-			let mut target_tip = '─';
-
-			for (token, tip) in [("|>", '◁'), (">", '◄'), ("*", '◆'), ("o", '◇')] {
-				if let Some(after) = rest.strip_prefix(token) {
-					target_tip = tip;
-					rest = after;
-
-					break;
-				}
-			}
-
-			let target_card = cardinality(&mut rest)?;
-
-			(source_tip, target_tip, source_card, target_card)
-		};
-		let to = graph
-			.node(crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?)?;
-
-		rest = rest.trim();
-
-		let label =
-			if let Some(label) = rest.strip_prefix(':').filter(|text| !text.starts_with("::")) {
-				let label = label.trim();
-
-				crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
-
-				label.to_owned()
-			} else if !rest.is_empty() || er {
-				return Err(RenderError::Unsupported);
-			} else {
-				String::new()
-			};
-
-		if graph.edges.len() == MAX_EDGES {
-			return Err(RenderError::Limit);
-		}
-
-		let label = match (source_card.is_empty(), label.is_empty()) {
-			(true, _) => label,
-			(false, true) => format!("({source_card})"),
-			(false, false) => format!("({source_card}) {label}"),
-		};
-
-		graph.edges.push(Edge {
-			from,
-			to,
-			label,
-			source_tip,
-			target_tip,
-			dashed,
-			target_label: if target_card.is_empty() {
-				target_card
-			} else {
-				format!("({target_card})")
-			},
-		});
+		parse_relationship(&mut graph, from, rest, er)?;
 	}
 
 	if block.is_some() || graph.nodes.is_empty() {
@@ -211,6 +101,114 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 	}
 
 	Ok(graph)
+}
+
+fn parse_relationship(
+	graph: &mut Graph,
+	from: usize,
+	mut rest: &str,
+	er: bool,
+) -> Result<(), RenderError> {
+	let source_card = if er { String::new() } else { cardinality(&mut rest)? };
+
+	rest = rest.trim_start();
+
+	let split =
+		rest.find("--").into_iter().chain(rest.find("..")).min().ok_or(RenderError::Unsupported)?;
+
+	if split > 2 {
+		return Err(RenderError::Unsupported);
+	}
+
+	let left = &rest[..split];
+	let dashed = &rest[split..split + 2] == "..";
+
+	rest = &rest[split + 2..];
+
+	let (source_tip, target_tip, source_card, target_card) = if er {
+		let source_card = match left {
+			"||" => "1",
+			"|o" => "0..1",
+			"}|" => "1..many",
+			"}o" => "0..many",
+			_ => return Err(RenderError::Unsupported),
+		}
+		.to_owned();
+		let right = rest.get(..2).ok_or(RenderError::Unsupported)?;
+		let target_card = match right {
+			"||" => "1",
+			"o|" => "0..1",
+			"|{" => "1..many",
+			"o{" => "0..many",
+			_ => return Err(RenderError::Unsupported),
+		}
+		.to_owned();
+
+		rest = &rest[2..];
+
+		('─', '─', source_card, target_card)
+	} else {
+		let source_tip = match left {
+			"" => '─',
+			"<" => '◄',
+			"<|" => '◁',
+			"*" => '◆',
+			"o" => '◇',
+			_ => return Err(RenderError::Unsupported),
+		};
+		let mut target_tip = '─';
+
+		for (token, tip) in [("|>", '◁'), (">", '◄'), ("*", '◆'), ("o", '◇')] {
+			if let Some(after) = rest.strip_prefix(token) {
+				target_tip = tip;
+				rest = after;
+
+				break;
+			}
+		}
+
+		let target_card = cardinality(&mut rest)?;
+
+		(source_tip, target_tip, source_card, target_card)
+	};
+	let to = graph
+		.node(crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?)?;
+
+	rest = rest.trim();
+
+	let label = if let Some(label) = rest.strip_prefix(':').filter(|text| !text.starts_with("::")) {
+		let label = label.trim();
+
+		crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
+
+		label.to_owned()
+	} else if !rest.is_empty() || er {
+		return Err(RenderError::Unsupported);
+	} else {
+		String::new()
+	};
+
+	if graph.edges.len() == MAX_EDGES {
+		return Err(RenderError::Limit);
+	}
+
+	let label = match (source_card.is_empty(), label.is_empty()) {
+		(true, _) => label,
+		(false, true) => format!("({source_card})"),
+		(false, false) => format!("({source_card}) {label}"),
+	};
+
+	graph.edges.push(Edge {
+		from,
+		to,
+		label,
+		source_tip,
+		target_tip,
+		dashed,
+		target_label: if target_card.is_empty() { target_card } else { format!("({target_card})") },
+	});
+
+	Ok(())
 }
 
 fn cardinality(rest: &mut &str) -> Result<String, RenderError> {

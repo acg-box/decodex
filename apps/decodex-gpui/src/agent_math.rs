@@ -7,9 +7,9 @@
 //! links, and HTML stay under the ordinary Markdown renderer. Standalone display tracking outlives
 //! the conversion budget; rejected prose-prefixed openers have bounded pairing lookahead.
 
-#[path = "render.rs"] mod render;
+#[path = "agent_math/render.rs"] mod render;
 
-use std::{borrow::Cow, ops::Range};
+use std::{borrow::Cow, iter::Peekable, ops::Range, slice::Iter, vec::IntoIter};
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
 
@@ -37,62 +37,24 @@ impl<'a> MathMarkdown<'a> {
 		let (protected, containers) = protected_ranges(input, options);
 		let mut protected = protected.iter().peekable();
 		let mut containers = containers.into_iter().peekable();
-		let mut offset = 0;
-		let mut scanned = 0;
-		let mut line_start = 0;
-		let mut line_has_text = false;
+		let mut cursor = MathCursor::default();
 
-		while offset < input.len() {
-			if let Some(index) = input[scanned..offset].rfind('\n') {
-				line_start = scanned + index + 1;
-				line_has_text = false;
-			}
-
-			line_has_text |= !input[scanned.max(line_start)..offset].trim().is_empty();
-			scanned = offset;
-
-			while protected.next_if(|range| range.end <= offset).is_some() {}
-			while containers.next_if(|range| range.end <= offset).is_some() {}
-
-			if let Some(range) = protected.peek()
-				&& range.contains(&offset)
-			{
-				offset = range.end;
-
-				continue;
-			}
-
-			let rest = &input[offset..];
-			let Some((open, close, display)) = delimiters(rest) else {
-				offset += rest.chars().next().expect("nonempty remainder").len_utf8();
-
-				continue;
+		while cursor.offset < input.len() {
+			let Some((start, open, close, display)) =
+				cursor.next_opener(input, &mut protected, &mut containers)
+			else {
+				break;
 			};
-			let start = offset;
-
-			offset += open.len();
-
-			if escaped(input, start) {
-				continue;
-			}
-
-			let body = &input[offset..];
-
-			if open == "$"
-				&& (body.starts_with(char::is_whitespace) || body.starts_with(['(', '{']))
-			{
-				continue;
-			}
-
+			let body = &input[cursor.offset..];
 			let limit = conversion_limit(body);
-			let rejected_display = display && line_has_text;
+			let rejected_display = display && cursor.line_has_text;
 			// Only standalone displays can retain an arbitrarily distant closer.
 			let search = if display && !rejected_display { body } else { &body[..limit] };
 			let (end, rejected_close) = find_close(
 				input,
 				search,
 				close,
-				offset,
+				cursor.offset,
 				display,
 				rejected_display,
 				protected.clone(),
@@ -105,12 +67,12 @@ impl<'a> MathMarkdown<'a> {
 			// cannot keep the entire streamed response mutable in the rendering cache.
 			if rejected_display || rejected_close {
 				let Some(next) =
-					next_after_rejected(input, offset, end, open, close, rejected_display)
+					next_after_rejected(input, cursor.offset, end, open, close, rejected_display)
 				else {
 					break;
 				};
 
-				offset = next;
+				cursor.offset = next;
 
 				continue;
 			}
@@ -118,7 +80,7 @@ impl<'a> MathMarkdown<'a> {
 			let Some(end) = end else {
 				if display {
 					if body.len() < MAX_MATH_BYTES {
-						result.pending_start.get_or_insert(line_start);
+						result.pending_start.get_or_insert(cursor.line_start);
 					}
 
 					let span = start..input.len();
@@ -132,11 +94,11 @@ impl<'a> MathMarkdown<'a> {
 				continue;
 			};
 			let span = start..end + close.len();
-			let formula = &input[offset..end];
+			let formula = &input[cursor.offset..end];
 
 			// Every matched display owns its closer, including rejected expressions.
 			if display {
-				offset = span.end;
+				cursor.offset = span.end;
 			}
 			if protected.peek().is_some_and(|range| range.start < span.end) {
 				continue;
@@ -152,7 +114,7 @@ impl<'a> MathMarkdown<'a> {
 					continue;
 				}
 				if currency_or_environment(formula) {
-					offset = span.end;
+					cursor.offset = span.end;
 
 					continue;
 				}
@@ -170,7 +132,7 @@ impl<'a> MathMarkdown<'a> {
 			// Dollars are ordinary text in the Markdown parser and cannot form an HTML tag.
 			result.markdown.to_mut().replace_range(span.clone(), &"$".repeat(span.len()));
 
-			offset = span.end;
+			cursor.offset = span.end;
 
 			result.replacements.push((span, rendered));
 		}
@@ -228,6 +190,70 @@ impl<'a> MathMarkdown<'a> {
 
 			output.into_iter()
 		})
+	}
+}
+
+#[derive(Default)]
+struct MathCursor {
+	offset: usize,
+	scanned: usize,
+	line_start: usize,
+	line_has_text: bool,
+}
+impl MathCursor {
+	fn next_opener(
+		&mut self,
+		input: &str,
+		protected: &mut Peekable<Iter<'_, Range<usize>>>,
+		containers: &mut Peekable<IntoIter<Range<usize>>>,
+	) -> Option<(usize, &'static str, &'static str, bool)> {
+		while self.offset < input.len() {
+			if let Some(index) = input[self.scanned..self.offset].rfind('\n') {
+				self.line_start = self.scanned + index + 1;
+				self.line_has_text = false;
+			}
+
+			self.line_has_text |=
+				!input[self.scanned.max(self.line_start)..self.offset].trim().is_empty();
+			self.scanned = self.offset;
+
+			while protected.next_if(|range| range.end <= self.offset).is_some() {}
+			while containers.next_if(|range| range.end <= self.offset).is_some() {}
+
+			if let Some(range) = protected.peek()
+				&& range.contains(&self.offset)
+			{
+				self.offset = range.end;
+
+				continue;
+			}
+
+			let rest = &input[self.offset..];
+			let Some((open, close, display)) = delimiters(rest) else {
+				self.offset += rest.chars().next().expect("nonempty remainder").len_utf8();
+
+				continue;
+			};
+			let start = self.offset;
+
+			self.offset += open.len();
+
+			if escaped(input, start) {
+				continue;
+			}
+
+			let body = &input[self.offset..];
+
+			if open == "$"
+				&& (body.starts_with(char::is_whitespace) || body.starts_with(['(', '{']))
+			{
+				continue;
+			}
+
+			return Some((start, open, close, display));
+		}
+
+		None
 	}
 }
 
