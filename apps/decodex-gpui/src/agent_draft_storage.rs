@@ -1984,8 +1984,6 @@ mod ordinary_owner_tests {
 	}
 
 	fn exercise_ordinary_competing_writer(cx: &mut gpui::TestAppContext, cancel: bool) {
-		use crate::{client_lifecycle::ConnectionView, shell::Shell};
-
 		let (_service, profile, _) = super::super::tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
@@ -2108,8 +2106,6 @@ mod ordinary_owner_tests {
 
 	#[gpui::test]
 	fn ordinary_live_restore_keeps_both_and_saves_later_input(cx: &mut gpui::TestAppContext) {
-		use crate::{client_lifecycle::ConnectionView, shell::Shell};
-
 		let (_service, profile, _) = super::super::tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =

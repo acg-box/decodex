@@ -25,7 +25,7 @@ use crate::{
 	},
 	ui_motion, ui_scroll,
 };
-use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineEntry};
+use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry};
 
 const HISTORY_ANCHOR_INSET: f32 = 56.0;
 
@@ -154,8 +154,6 @@ impl AgentSurface {
 	}
 
 	fn prepare_native_history_marks(&mut self) {
-		use decodex_protocol::AgentTimelineContent as Content;
-
 		let Some(binding) = &self.native_history.binding else {
 			return;
 		};
@@ -174,10 +172,11 @@ impl AgentSurface {
 
 		for entry in &self.native_history.entries {
 			let (user, text, label) = match &entry.content {
-				Content::Item { kind, text, .. }
+				AgentTimelineContent::Item { kind, text, .. }
 					if kind == "userMessage" || kind == "agentMessage" =>
 					(kind == "userMessage", text, "Conversation message"),
-				Content::Speech { role, text, .. } => (role == "user", text, "Voice message"),
+				AgentTimelineContent::Speech { role, text, .. } =>
+					(role == "user", text, "Voice message"),
 				_ => continue,
 			};
 
@@ -834,6 +833,8 @@ mod tests {
 		self, AgentHistoryResult, AgentSurface, BTreeMap, HistoryKey, HistoryScrollAnchor,
 		WheelScroll,
 	};
+	#[cfg(test)] use decodex_protocol::AgentTimelineEntry;
+	#[cfg(test)] use decodex_protocol::AgentTimelinePage;
 
 	#[gpui::test]
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
@@ -944,13 +945,9 @@ mod tests {
 	fn native_jump_finishes_against_layout_after_an_older_page_arrives(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{
-			AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage,
-		};
-
 		let row = |position, user| AgentTimelineEntry {
 			position,
-			content: Content::Item {
+			content: decodex_protocol::AgentTimelineContent::Item {
 				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
@@ -1070,10 +1067,6 @@ mod tests {
 	fn native_rail_keeps_same_position_speech_and_text_distinct_and_retires_evicted_targets(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{
-			AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage,
-		};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(400.)));
@@ -1098,7 +1091,7 @@ mod tests {
 			let entries = vec![
 				AgentTimelineEntry {
 					position: 5,
-					content: Content::Item {
+					content: decodex_protocol::AgentTimelineContent::Item {
 						phase: None,
 						app_ui: false,
 						turn_id: "turn".into(),
@@ -1112,7 +1105,7 @@ mod tests {
 				},
 				AgentTimelineEntry {
 					position: 5,
-					content: Content::Speech {
+					content: decodex_protocol::AgentTimelineContent::Speech {
 						item_id: "same-id".into(),
 						session_id: "voice".into(),
 						role: "user".into(),
@@ -1193,8 +1186,6 @@ mod tests {
 	#[gpui::test]
 	#[ignore = "Manual CPU draw benchmark; use --release, not a GPU FPS measurement"]
 	fn long_history_scroll_draw_benchmark(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(900.)));
@@ -1210,10 +1201,10 @@ mod tests {
 
 			let entries = (0..300).map(|i| AgentTimelineEntry {
 				position: i,
-				content: if i % 3 == 2 { Content::TurnBoundary {
+				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
 					duration_ms: Some(3_200), usage: None, usage_summary: None, error: None,
-				} } else { Content::Item { phase: None,
+				} } else { decodex_protocol::AgentTimelineContent::Item { phase: None,
 					app_ui: false,
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
 					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),

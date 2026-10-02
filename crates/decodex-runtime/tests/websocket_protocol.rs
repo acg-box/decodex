@@ -28,13 +28,13 @@ use decodex_protocol::{
 	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
 	CommandError, CommandPayload, ConversationExecutionSettings, ConversationModel,
 	ConversationReasoningEffort, ConversationRecoveryAction, ConversationState,
-	ConversationSummary, ConversationWorkingDirectory, CorrelationId, Cursor, DoctorCheck,
-	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
-	EventPayload, HistoryText, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResetCardDescriptorDto,
-	ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
-	ServerMessage, SnapshotItem, WireText,
+	ConversationSummary, ConversationTitle, ConversationWorkingDirectory, CorrelationId, Cursor,
+	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
+	EntityRevision, EventPayload, HistoryText, IdempotencyKey, LocalTransportAuthority,
+	LocalTransportRefusal, LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+	ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, SnapshotItem, WireText,
 };
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
@@ -418,9 +418,12 @@ fn conversation_fixture(
 	state: ConversationState,
 	recovery: Option<ConversationRecoveryAction>,
 ) -> ConversationSummary {
-	use decodex_protocol::{ConversationState as State, ConversationSummary, ConversationTitle};
-
-	let has_session = matches!(state, State::Ready | State::Running | State::Establishing);
+	let has_session = matches!(
+		state,
+		decodex_protocol::ConversationState::Ready
+			| decodex_protocol::ConversationState::Running
+			| decodex_protocol::ConversationState::Establishing
+	);
 
 	ConversationSummary::new(
 		EntityId::new("40000000-0000-4000-8000-000000000001")
@@ -436,7 +439,7 @@ fn conversation_fixture(
 		}),
 		has_session.then_some(EntityRevision(1)),
 		state,
-		(state == State::Running).then(|| {
+		(state == ConversationState::Running).then(|| {
 			EntityId::new("42000000-0000-4000-8000-000000000001")
 				.expect("conversation observer fixture")
 		}),
@@ -802,18 +805,41 @@ async fn v2_reset_card_events_reach_each_exact_current_subscriber() {
 
 #[tokio::test]
 async fn settled_conversation_results_reach_observers_without_runtime_events() {
-	use decodex_protocol::{ConversationRecoveryAction as Recovery, ConversationState as State};
-
 	for (state, recovery, interrupt, publishes) in [
-		(State::ModelSettingsReviewRequired, Some(Recovery::ReviewModelSettings), false, true),
-		(State::RoutingPending, Some(Recovery::ResumeRouting), false, true),
-		(State::EstablishmentPending, Some(Recovery::ResumeEstablishment), false, true),
-		(State::QuotaExhausted, Some(Recovery::CreateRoutingSuccessor), false, true),
-		(State::NoRoute, Some(Recovery::CreateRoutingSuccessor), false, true),
-		(State::Ready, None, false, true),
-		(State::Running, None, false, false),
-		(State::Establishing, None, false, false),
-		(State::Running, None, true, false),
+		(
+			ConversationState::ModelSettingsReviewRequired,
+			Some(ConversationRecoveryAction::ReviewModelSettings),
+			false,
+			true,
+		),
+		(
+			ConversationState::RoutingPending,
+			Some(ConversationRecoveryAction::ResumeRouting),
+			false,
+			true,
+		),
+		(
+			ConversationState::EstablishmentPending,
+			Some(ConversationRecoveryAction::ResumeEstablishment),
+			false,
+			true,
+		),
+		(
+			ConversationState::QuotaExhausted,
+			Some(ConversationRecoveryAction::CreateRoutingSuccessor),
+			false,
+			true,
+		),
+		(
+			ConversationState::NoRoute,
+			Some(ConversationRecoveryAction::CreateRoutingSuccessor),
+			false,
+			true,
+		),
+		(ConversationState::Ready, None, false, true),
+		(ConversationState::Running, None, false, false),
+		(ConversationState::Establishing, None, false, false),
+		(ConversationState::Running, None, true, false),
 	] {
 		let conversation = conversation_fixture(state, recovery);
 		let application = FixtureApplication {

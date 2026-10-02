@@ -13,8 +13,8 @@ use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render, Window,
 };
 use decodex_protocol::{
-	AgentLiveReviewerOutcome, AgentLiveReviewerState as State, AgentModelDto,
-	AgentReviewer as Reviewer,
+	AgentLiveReviewerOutcome, AgentLiveReviewerOutcome as O, AgentLiveReviewerState as State,
+	AgentModelDto, AgentReviewer as Reviewer,
 };
 
 #[derive(Default)]
@@ -424,8 +424,6 @@ impl AgentSurface {
 }
 
 fn outcome_label(outcome: AgentLiveReviewerOutcome) -> &'static str {
-	use decodex_protocol::AgentLiveReviewerOutcome as O;
-
 	match outcome {
 		O::Reserved => "awaiting confirmation",
 		O::Applied => "published",

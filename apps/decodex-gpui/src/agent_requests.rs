@@ -628,6 +628,13 @@ mod timing_tests {
 		time::{Duration, Instant},
 	};
 
+	#[cfg(test)]
+	#[cfg(not(test))]
+	use gpui::AppContext as _;
+
+	#[cfg(test)]
+	#[cfg(not(test))]
+	use crate::shell::agent_surface::requests::px;
 	use crate::shell::agent_surface::requests::{
 		self, AgentRequestResult, AgentSurface, QuestionTimer,
 	};
@@ -671,13 +678,6 @@ mod timing_tests {
 	}
 	#[gpui::test]
 	fn large_request_reader_navigates_and_rejects_stale_sections(cx: &mut gpui::TestAppContext) {
-		#[cfg(not(test))] use gpui::AppContext as _;
-
-		#[cfg(not(test))]
-		use crate::shell::agent_surface::requests::{AgentPendingEventDto, Duration, px};
-
-		use crate::shell::agent_surface::requests::{AgentRequestResult, AgentSurface};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
@@ -761,8 +761,6 @@ mod timing_tests {
 	fn large_permission_grant_reaches_dispatch_without_copying_reply(
 		cx: &mut gpui::TestAppContext,
 	) {
-		#[cfg(not(test))] use gpui::AppContext as _;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
@@ -847,38 +845,28 @@ mod timing_tests {
 
 	#[gpui::test]
 	fn question_option_interaction_snoozes_only_its_request(cx: &mut gpui::TestAppContext) {
-		#[cfg(not(test))] use gpui::AppContext as _;
-
-		use crate::shell::agent_surface::requests::{
-			AgentDispatchStateDto, AgentPendingEventDto, AgentRequestResult, AgentSnapshotDto,
-			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkKindDto,
-			AgentWorkStatusDto, Duration, QuestionTimer,
-		};
-
-		#[cfg(not(test))] use crate::shell::agent_surface::requests::px;
-
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		let (surface, visual) = cx.add_window_view(|_, cx| requests::AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
-            s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+            s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
                 runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
-                work_items: vec![AgentWorkItemDto {
-                    id:"root".into(), parent_goal_id:None, kind:AgentWorkKindDto::Goal,
+                work_items: vec![requests::AgentWorkItemDto {
+                    id:"root".into(), parent_goal_id:None, kind:requests::AgentWorkKindDto::Goal,
                     title:"Agent".into(),codex_thread_id:Some("thread".into()),active_turn_id:Some("turn".into()),
-                    dispatch_state:AgentDispatchStateDto::Running,status:AgentWorkStatusDto::Open,
+                    dispatch_state:requests::AgentDispatchStateDto::Running,status:requests::AgentWorkStatusDto::Open,
                     next_check_at_micros:None,created_at_micros:1,updated_at_micros:1
                 }],
-                pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
+                pending_events:vec![requests::AgentPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
+            let request=requests::AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
 
             s.prepare_question_inputs(&request,cx);
 
-            s.question_timers.get_mut(&7).unwrap().started = Instant::now() - Duration::from_secs(61);
+            s.question_timers.get_mut(&7).unwrap().started = Instant::now() - requests::Duration::from_secs(61);
 
-            s.question_timers.insert(8, QuestionTimer::new(&serde_json::json!({"isBlocking":false}),Instant::now()));
+            s.question_timers.insert(8, requests::QuestionTimer::new(&serde_json::json!({"isBlocking":false}),Instant::now()));
 
             s.request=Some(request);
         });
@@ -927,8 +915,6 @@ mod timing_tests {
 	}
 	#[gpui::test]
 	fn approval_panels_show_only_the_native_executor(cx: &mut gpui::TestAppContext) {
-		#[cfg(not(test))] use gpui::AppContext as _;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		for method in ["item/permissions/requestApproval", "item/commandExecution/requestApproval"]
@@ -981,8 +967,6 @@ mod timing_tests {
 	fn terminal_input_approval_is_distinct_from_new_and_legacy_commands(
 		cx: &mut gpui::TestAppContext,
 	) {
-		#[cfg(not(test))] use gpui::AppContext as _;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		for kind in [Some("writeStdin"), Some("command"), None] {

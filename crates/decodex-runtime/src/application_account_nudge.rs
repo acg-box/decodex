@@ -7,9 +7,9 @@ use crate::application::{self, ApplicationPublication, ProductStore, ServiceAppl
 use decodex_core::AccountId;
 use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
 use decodex_protocol::{
-	AccountRecoveryAction, AccountRecoveryNudgeOperation, AccountRecoveryNudgeStatus,
-	AccountRecoveryResult, Channel, CommandEnvelope, CommandError, EntityId, EntityRevision,
-	EventPayload, QueryResultPayload, ResultPayload,
+	AccountRecoveryAction, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
+	AccountRecoveryNudgeStatus, AccountRecoveryResult, Channel, CommandEnvelope, CommandError,
+	EntityId, EntityRevision, EventPayload, QueryResultPayload, ResultPayload,
 };
 
 impl ServiceApplication {
@@ -106,8 +106,6 @@ impl ServiceApplication {
 		action: AccountRecoveryAction,
 		key: Option<&decodex_protocol::IdempotencyKey>,
 	) -> QueryResultPayload {
-		use decodex_protocol::{AccountRecoveryNudgeResult, QueryResultPayload};
-
 		let result = async {
 			let ProductStore::Available(store) = &self.store else {
 				return AccountRecoveryNudgeResult::Unavailable;

@@ -688,6 +688,7 @@ mod tests {
 		},
 		wire_test_support,
 	};
+	#[cfg(test)] use decodex_protocol::CommandPayload;
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ServerId, ServerMessage,
@@ -916,8 +917,6 @@ mod tests {
 
 	#[gpui::test]
 	fn native_send_lost_reply_is_not_repeated_after_refresh(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{ClientMessage, CommandPayload};
-
 		let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
 			let mut socket = wire_test_support::accept(&listener).await;
 			let request: ClientMessage =

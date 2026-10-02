@@ -1,5 +1,7 @@
 //! Rich response copies reuse the displayed Markdown tree and keep source text intact.
 use gpui::{App, ClipboardItem};
+#[cfg(target_os = "macos")] use objc2::rc::Retained;
+#[cfg(target_os = "macos")] use objc2_foundation::NSString;
 use reqwest::Url;
 
 use crate::shell::agent_surface::markdown::{self, Kind, Node};
@@ -95,17 +97,11 @@ fn render(node: &Node, output: &mut String) {
 #[cfg(target_os = "macos")]
 #[cfg_attr(test, allow(dead_code))]
 fn append_native_html(text: &str, html: &str) {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	// SAFETY: AppKit's general pasteboard and NSString arguments live through each
 	// synchronous call. This runs on GPUI's UI thread after its plain-text write.
 	unsafe {
-		let Some(class) = AnyClass::get(c"NSPasteboard") else { return };
-		let board: Retained<AnyObject> = msg_send![class, generalPasteboard];
+		let Some(class) = objc2::runtime::AnyClass::get(c"NSPasteboard") else { return };
+		let board: Retained<objc2::runtime::AnyObject> = objc2::msg_send![class, generalPasteboard];
 
 		append_html_to_board(&board, text, html);
 	}
@@ -113,42 +109,42 @@ fn append_native_html(text: &str, html: &str) {
 
 #[cfg(target_os = "macos")]
 fn append_html_to_board(board: &objc2::runtime::AnyObject, text: &str, html: &str) {
-	use objc2::{msg_send, rc::Retained};
-
-	use objc2_foundation::NSString;
-
 	let plain_type = NSString::from_str("public.utf8-plain-text");
 	let html_type = NSString::from_str("public.html");
 
 	// SAFETY: The caller supplies an NSPasteboard; all strings are retained for
 	// the duration of the calls. Preserve a clipboard replaced since the copy.
 	unsafe {
-		let current: Option<Retained<NSString>> = msg_send![board, stringForType: &*plain_type];
+		let current: Option<Retained<NSString>> =
+			objc2::msg_send![board, stringForType: &*plain_type];
 
 		if current.as_ref().is_some_and(|value| value.to_string() == text) {
 			let markup = NSString::from_str(html);
-			let _: bool = msg_send![board, setString: &*markup, forType: &*html_type];
+			let _: bool = objc2::msg_send![board, setString: &*markup, forType: &*html_type];
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	#[cfg(target_os = "macos")]
+	#[cfg(test)]
+	use objc2::{
+		rc::Retained,
+		runtime::{AnyClass, AnyObject},
+	};
+	#[cfg(target_os = "macos")]
+	#[cfg(test)]
+	use objc2_foundation::NSString;
+
 	use crate::shell::agent_surface::markdown::clipboard::{self};
+
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn native_pasteboard_keeps_both_formats_and_preserves_replaced_content() {
-		use objc2::{
-			msg_send,
-			rc::Retained,
-			runtime::{AnyClass, AnyObject},
-		};
-
-		use objc2_foundation::NSString;
-
 		// SAFETY: Use an isolated named pasteboard, never the user's clipboard.
 		unsafe {
-			let board: Retained<AnyObject> = msg_send![
+			let board: Retained<AnyObject> = objc2::msg_send![
 				AnyClass::get(c"NSPasteboard").expect("AppKit"),
 				pasteboardWithUniqueName
 			];
@@ -156,8 +152,8 @@ mod tests {
 			let html_type = NSString::from_str("public.html");
 			let original = "**中文**\n";
 			let text = NSString::from_str(original);
-			let _: isize = msg_send![&*board, clearContents];
-			let set: bool = msg_send![&*board, setString: &*text, forType: &*plain_type];
+			let _: isize = objc2::msg_send![&*board, clearContents];
+			let set: bool = objc2::msg_send![&*board, setString: &*text, forType: &*plain_type];
 
 			assert!(set);
 
@@ -165,25 +161,29 @@ mod tests {
 
 			clipboard::append_html_to_board(&board, original, &markup);
 
-			let plain: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*plain_type];
-			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
+			let plain: Option<Retained<NSString>> =
+				objc2::msg_send![&*board, stringForType: &*plain_type];
+			let rich: Option<Retained<NSString>> =
+				objc2::msg_send![&*board, stringForType: &*html_type];
 
 			assert_eq!(plain.map(|v| v.to_string()).as_deref(), Some(original));
 			assert_eq!(rich.map(|v| v.to_string()), Some(markup));
 
-			let _: isize = msg_send![&*board, clearContents];
+			let _: isize = objc2::msg_send![&*board, clearContents];
 			let other = NSString::from_str("replacement");
-			let _: bool = msg_send![&*board, setString: &*other, forType: &*plain_type];
+			let _: bool = objc2::msg_send![&*board, setString: &*other, forType: &*plain_type];
 
 			clipboard::append_html_to_board(&board, original, "<p>stale</p>");
 
-			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
+			let rich: Option<Retained<NSString>> =
+				objc2::msg_send![&*board, stringForType: &*html_type];
 
 			assert!(rich.is_none());
 
-			let _: () = msg_send![&*board, releaseGlobally];
+			let _: () = objc2::msg_send![&*board, releaseGlobally];
 		}
 	}
+
 	#[test]
 	fn response_html_keeps_formatting_and_inert_content() {
 		let rendered = clipboard::html(

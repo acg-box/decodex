@@ -5,6 +5,7 @@ mod macos {
 
 	use std::{
 		ffi::{CStr, CString, c_char, c_void},
+		os::unix::ffi::OsStrExt as _,
 		sync::OnceLock,
 	};
 
@@ -83,8 +84,6 @@ mod macos {
 		if !std::fs::symlink_metadata(&path).map_err(|_| ())?.file_type().is_file() {
 			return Err(());
 		}
-
-		use std::os::unix::ffi::OsStrExt as _;
 
 		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
 

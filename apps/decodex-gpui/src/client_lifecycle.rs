@@ -2,6 +2,7 @@
 
 #[path = "account_observation_wait.rs"] mod account_observation;
 
+#[cfg(target_os = "macos")] use std::os::unix::fs::MetadataExt as _;
 use std::{
 	collections::{HashMap, HashSet},
 	env,
@@ -1283,8 +1284,6 @@ fn normalize_macos_var_prefix(
 
 #[cfg(target_os = "macos")]
 fn validate_macos_var_mapping() -> Result<(), CacheError> {
-	use std::os::unix::fs::MetadataExt as _;
-
 	let alias_metadata = std::fs::symlink_metadata("/var")?;
 
 	if alias_metadata.uid() != 0

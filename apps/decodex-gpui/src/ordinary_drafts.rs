@@ -1,9 +1,14 @@
 //! Ordinary UI uses the existing shared writer and never restores a send queue.
-use gpui::AnyElement;
+use gpui::{
+	AnyElement, InteractiveElement as _, IntoElement as _, ParentElement as _,
+	StatefulInteractiveElement as _, Styled as _,
+};
 
 use crate::shell::{Context, Shell};
 use decodex_protocol::{
-	CommandEnvelope, CommandPayload, ConversationCreationReceiptRequest, DesktopOrdinaryDraft,
+	CommandEnvelope, CommandPayload, ConversationCreationReceiptRequest,
+	ConversationCreationReceiptResult, ConversationTurnOutcomeResult, ConversationTurnOutcomeState,
+	DesktopOrdinaryDraft,
 };
 
 impl Shell {
@@ -160,34 +165,30 @@ impl Shell {
 
 /// Inspect original creation requests without replaying input or clearing delivery records.
 pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	use decodex_protocol::{CommandPayload, ConversationCreationReceiptResult as Receipt};
-
-	use gpui::{
-		InteractiveElement as _, IntoElement as _, ParentElement as _,
-		StatefulInteractiveElement as _, Styled as _, div,
-	};
-
-	let mut rows = div().flex().flex_col();
+	let mut rows = gpui::div().flex().flex_col();
 
 	for (index, (command, result)) in
 		shell.conversations.ordinary_creation_receipts().into_iter().enumerate()
 	{
 		let CommandPayload::CreateConversation { message, .. } = &command.payload else { continue };
 		let original: String = message.as_str().chars().take(160).collect();
-		let recorded = matches!(&result, Some(Receipt::Recorded { .. }));
+		let recorded = matches!(&result, Some(ConversationCreationReceiptResult::Recorded { .. }));
 		let status = match result {
-			Some(Receipt::Recorded { .. }) =>
+			Some(ConversationCreationReceiptResult::Recorded { .. }) =>
 				"Conversation created locally; model outcome not confirmed.",
-			Some(Receipt::NotRecorded) => "No creation record found. Original input is retained.",
-			Some(Receipt::Conflict) => "Saved request does not match the service record.",
-			Some(Receipt::Unavailable) => "Creation record is unavailable. Try again.",
+			Some(ConversationCreationReceiptResult::NotRecorded) =>
+				"No creation record found. Original input is retained.",
+			Some(ConversationCreationReceiptResult::Conflict) =>
+				"Saved request does not match the service record.",
+			Some(ConversationCreationReceiptResult::Unavailable) =>
+				"Creation record is unavailable. Try again.",
 			None => "Creation outcome has not been checked.",
 		};
 		let check_command = command.clone();
 
 		rows = rows.child(
-			div().child(original).child(div().child(status)).child(
-				div()
+			gpui::div().child(original).child(gpui::div().child(status)).child(
+				gpui::div()
 					.id(format!("ordinary-creation-check-{index}"))
 					.debug_selector(move || format!("ordinary-creation-check-{index}"))
 					.cursor_pointer()
@@ -207,7 +208,7 @@ pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) 
 
 		if recorded {
 			rows = rows.child(
-				div()
+				gpui::div()
 					.id(format!("ordinary-creation-open-{index}"))
 					.debug_selector(move || format!("ordinary-creation-open-{index}"))
 					.cursor_pointer()
@@ -227,17 +228,7 @@ pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) 
 
 /// Query and acknowledge terminal provider evidence without resubmission.
 fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	use decodex_protocol::{
-		CommandPayload, ConversationTurnOutcomeResult as Result,
-		ConversationTurnOutcomeState as Outcome,
-	};
-
-	use gpui::{
-		InteractiveElement as _, IntoElement as _, ParentElement as _,
-		StatefulInteractiveElement as _, Styled as _, div,
-	};
-
-	let mut rows = div().flex().flex_col();
+	let mut rows = gpui::div().flex().flex_col();
 
 	for (index, (command, result)) in
 		shell.conversations.ordinary_turn_outcomes().into_iter().enumerate()
@@ -248,33 +239,47 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		let original: String = message.as_str().chars().take(160).collect();
 		let terminal = matches!(
 			&result,
-			Some(Result::Observed {
-				outcome: Outcome::Completed | Outcome::Failed | Outcome::NotSubmitted,
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: decodex_protocol::ConversationTurnOutcomeState::Completed
+					| decodex_protocol::ConversationTurnOutcomeState::Failed
+					| decodex_protocol::ConversationTurnOutcomeState::NotSubmitted,
 				..
 			})
 		);
 		let status = match result {
-			Some(Result::Observed { outcome: Outcome::Completed, .. }) =>
-				"Provider confirmed completion.",
-			Some(Result::Observed { outcome: Outcome::Failed, .. }) =>
-				"Provider confirmed failure. Input is retained.",
-			Some(Result::Observed { outcome: Outcome::NotSubmitted, .. }) =>
-				"Message was not submitted. Input is retained.",
-			Some(Result::Observed { outcome: Outcome::Pending, .. }) =>
-				"Message has no terminal outcome yet.",
-			Some(Result::Observed { outcome: Outcome::Unknown, .. }) =>
-				"Provider outcome remains unknown. Do not resend yet.",
-			Some(Result::NotRecorded) =>
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: ConversationTurnOutcomeState::Completed,
+				..
+			}) => "Provider confirmed completion.",
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: ConversationTurnOutcomeState::Failed,
+				..
+			}) => "Provider confirmed failure. Input is retained.",
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: ConversationTurnOutcomeState::NotSubmitted,
+				..
+			}) => "Message was not submitted. Input is retained.",
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: ConversationTurnOutcomeState::Pending,
+				..
+			}) => "Message has no terminal outcome yet.",
+			Some(ConversationTurnOutcomeResult::Observed {
+				outcome: ConversationTurnOutcomeState::Unknown,
+				..
+			}) => "Provider outcome remains unknown. Do not resend yet.",
+			Some(ConversationTurnOutcomeResult::NotRecorded) =>
 				"No provider record found. This does not confirm non-submission.",
-			Some(Result::Conflict) => "Saved message does not match the service record.",
-			Some(Result::Unavailable) => "Provider evidence is unavailable. Try again.",
+			Some(ConversationTurnOutcomeResult::Conflict) =>
+				"Saved message does not match the service record.",
+			Some(ConversationTurnOutcomeResult::Unavailable) =>
+				"Provider evidence is unavailable. Try again.",
 			None => "Saved message outcome has not been checked.",
 		};
 		let check = command.clone();
 
 		rows = rows.child(
-			div().child(original).child(status).child(
-				div()
+			gpui::div().child(original).child(status).child(
+				gpui::div()
 					.id(format!("ordinary-turn-check-{index}"))
 					.cursor_pointer()
 					.child("Check message outcome")
@@ -293,7 +298,7 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 		if terminal {
 			rows = rows.child(
-				div()
+				gpui::div()
 					.id(format!("ordinary-turn-acknowledge-{index}"))
 					.debug_selector(move || format!("ordinary-turn-acknowledge-{index}"))
 					.cursor_pointer()
@@ -307,7 +312,7 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								message,
 								..
 							} = &command.payload
-								&& outcome == Outcome::Completed
+								&& outcome == ConversationTurnOutcomeState::Completed
 								&& shell.conversations.ordinary_editor_owner().as_ref()
 									== Some(conversation_id)
 								&& shell.composer.read(cx).content() == message.as_str()
@@ -334,12 +339,7 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 /// Acknowledge observed control state without claiming delivery or replaying the command.
 fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	use gpui::{
-		InteractiveElement as _, IntoElement as _, ParentElement as _,
-		StatefulInteractiveElement as _, Styled as _, div,
-	};
-
-	let mut rows = div().flex().flex_col();
+	let mut rows = gpui::div().flex().flex_col();
 
 	for (index, (command, observation)) in
 		shell.conversations.ordinary_control_states().into_iter().enumerate()
@@ -368,8 +368,8 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		let check = command.clone();
 
 		rows = rows.child(
-			div().child(format!("{label}: {title}")).child(status).child(
-				div()
+			gpui::div().child(format!("{label}: {title}")).child(status).child(
+				gpui::div()
 					.id(format!("ordinary-control-check-{index}"))
 					.debug_selector(move || format!("ordinary-control-check-{index}"))
 					.cursor_pointer()
@@ -389,7 +389,7 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 
 		if observation.is_some_and(|value| value.can_acknowledge()) {
 			rows = rows.child(
-				div()
+				gpui::div()
 					.id(format!("ordinary-control-acknowledge-{index}"))
 					.debug_selector(move || format!("ordinary-control-acknowledge-{index}"))
 					.cursor_pointer()

@@ -39,7 +39,8 @@ use decodex_database::{
 	CodexAccountCapabilityAttestation, SqliteStore,
 };
 use decodex_protocol::{
-	AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentModelSettingsResult, AgentReviewer,
+	AgentHookChange, AgentHookSettingsState, AgentLiveReviewerOutcome, AgentLiveReviewerState,
+	AgentModelSelectionState, AgentModelSettingsResult, AgentPermissionState, AgentReviewer,
 };
 
 const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -296,10 +297,8 @@ impl OwnedReviewer {
 
 impl OwnedReviewer {
 	pub(super) async fn select_permission(&self) {
-		use decodex_protocol::{AgentPermissionOutcome as Outcome, AgentPermissionState as State};
-
 		let source = || async { Some(self.source(&self.key)) };
-		let State::Available { review_token, .. } =
+		let AgentPermissionState::Available { review_token, .. } =
 			agent_permissions::read(&self.store, source).await
 		else {
 			panic!("native permission review")
@@ -319,7 +318,12 @@ impl OwnedReviewer {
 			loop {
 				if matches!(
 					agent_permissions::read(&self.store, source).await,
-					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
+					AgentPermissionState::Available {
+						last_outcome: Some(
+							decodex_protocol::AgentPermissionOutcome::TargetObserved
+						),
+						..
+					}
 				) {
 					break;
 				}
@@ -359,10 +363,9 @@ impl OwnedReviewer {
 
 impl OwnedReviewer {
 	pub(super) async fn select_task_model(&self, model: &str, effort: Option<&str>) {
-		use decodex_protocol::{AgentModelOutcome as Outcome, AgentModelSelectionState as State};
-
 		let source = || async { Some(self.source(&self.key)) };
-		let State::Available { review_token, .. } = agent_models::read(&self.store, source).await
+		let AgentModelSelectionState::Available { review_token, .. } =
+			agent_models::read(&self.store, source).await
 		else {
 			panic!("native model review")
 		};
@@ -384,7 +387,10 @@ impl OwnedReviewer {
 			loop {
 				if matches!(
 					agent_models::read(&self.store, source).await,
-					State::Available { last_outcome: Some(Outcome::TargetObserved), .. }
+					AgentModelSelectionState::Available {
+						last_outcome: Some(decodex_protocol::AgentModelOutcome::TargetObserved),
+						..
+					}
 				) {
 					break;
 				}
@@ -415,8 +421,6 @@ impl OwnedReviewer {
 
 impl OwnedReviewer {
 	pub(super) async fn trust_hook(&self) {
-		use decodex_protocol::{AgentHookChange, AgentHookSettingsState as State};
-
 		let source = || async {
 			let mut key = self.key.clone();
 
@@ -424,7 +428,7 @@ impl OwnedReviewer {
 
 			Some(self.source(&key))
 		};
-		let State::Available { review_token, hooks, config_file, .. } =
+		let AgentHookSettingsState::Available { review_token, hooks, config_file, .. } =
 			agent_hooks::read(&self.store, source).await
 		else {
 			panic!("hook service review")
@@ -450,7 +454,7 @@ impl OwnedReviewer {
 		.await
 		.expect("production hook trust");
 
-		let State::Available { last_edit: Some(edit), hooks, .. } =
+		let AgentHookSettingsState::Available { last_edit: Some(edit), hooks, .. } =
 			agent_hooks::read(&self.store, source).await
 		else {
 			panic!("native hook readback")
@@ -466,7 +470,7 @@ impl OwnedReviewer {
 					thread: &self.key.thread,
 					review: review_token.as_str(),
 					hook: hook.key.as_str(),
-					change: AgentHookChange::Trust,
+					change: decodex_protocol::AgentHookChange::Trust,
 					attempt_id: "replay-hook"
 				}
 			)

@@ -3452,8 +3452,6 @@ pub(crate) mod tests {
 
 	#[test]
 	fn ordinary_creation_receipt_requires_exact_source_and_never_replays() {
-		use decodex_protocol::ConversationCreationReceiptResult as Receipt;
-
 		let (source, server, _) = connected_conversations();
 
 		source.create("Original creation input").expect("queue creation");
@@ -3470,23 +3468,23 @@ pub(crate) mod tests {
 		for (wrong_server, receipt, accepted) in [
 			(
 				false,
-				Receipt::Recorded {
+				decodex_protocol::ConversationCreationReceiptResult::Recorded {
 					conversation_id: conversation_id.clone(),
 					creation_revision: EntityRevision(1),
 				},
 				true,
 			),
-			(true, Receipt::NotRecorded, false),
+			(true, decodex_protocol::ConversationCreationReceiptResult::NotRecorded, false),
 			(
 				false,
-				Receipt::Recorded {
+				decodex_protocol::ConversationCreationReceiptResult::Recorded {
 					conversation_id: EntityId::new("30000000-0000-4000-8000-000000000099")
 						.expect("ID"),
 					creation_revision: EntityRevision(1),
 				},
 				false,
 			),
-			(false, Receipt::NotRecorded, true),
+			(false, decodex_protocol::ConversationCreationReceiptResult::NotRecorded, true),
 		] {
 			let (restored, server, _) = connected_conversations();
 
@@ -3541,10 +3539,6 @@ pub(crate) mod tests {
 
 	#[test]
 	fn ordinary_turn_readback_requires_exact_source_and_terminal_evidence() {
-		use decodex_protocol::{
-			ConversationTurnOutcomeResult as Result, ConversationTurnOutcomeState as Outcome,
-		};
-
 		let (source, server, _) = connected_conversations();
 
 		source.submit("Original message").expect("queue submission");
@@ -3561,13 +3555,13 @@ pub(crate) mod tests {
 		};
 
 		for (wrong_server, wrong_turn, outcome) in [
-			(false, false, Outcome::Unknown),
-			(false, false, Outcome::Pending),
-			(false, false, Outcome::Completed),
-			(false, false, Outcome::Failed),
-			(false, false, Outcome::NotSubmitted),
-			(true, false, Outcome::Completed),
-			(false, true, Outcome::Completed),
+			(false, false, decodex_protocol::ConversationTurnOutcomeState::Unknown),
+			(false, false, decodex_protocol::ConversationTurnOutcomeState::Pending),
+			(false, false, decodex_protocol::ConversationTurnOutcomeState::Completed),
+			(false, false, decodex_protocol::ConversationTurnOutcomeState::Failed),
+			(false, false, decodex_protocol::ConversationTurnOutcomeState::NotSubmitted),
+			(true, false, decodex_protocol::ConversationTurnOutcomeState::Completed),
+			(false, true, decodex_protocol::ConversationTurnOutcomeState::Completed),
 		] {
 			let (restored, server, _) = connected_conversations();
 
@@ -3596,15 +3590,17 @@ pub(crate) mod tests {
 				} else {
 					server.clone()
 				},
-				payload: QueryResultPayload::ConversationTurnOutcome(Result::Observed {
-					conversation_id: conversation_id.clone(),
-					turn_id: if wrong_turn {
-						EntityId::new("50000000-0000-4000-8000-000000000099").expect("ID")
-					} else {
-						turn_id.clone()
+				payload: QueryResultPayload::ConversationTurnOutcome(
+					decodex_protocol::ConversationTurnOutcomeResult::Observed {
+						conversation_id: conversation_id.clone(),
+						turn_id: if wrong_turn {
+							EntityId::new("50000000-0000-4000-8000-000000000099").expect("ID")
+						} else {
+							turn_id.clone()
+						},
+						outcome,
 					},
-					outcome,
-				}),
+				),
 			};
 			let valid = !wrong_server && !wrong_turn;
 
@@ -3620,7 +3616,12 @@ pub(crate) mod tests {
 			assert!(take_ready_command(&restored, &server).is_none());
 
 			let terminal = valid
-				&& matches!(outcome, Outcome::Completed | Outcome::Failed | Outcome::NotSubmitted);
+				&& matches!(
+					outcome,
+					decodex_protocol::ConversationTurnOutcomeState::Completed
+						| decodex_protocol::ConversationTurnOutcomeState::Failed
+						| decodex_protocol::ConversationTurnOutcomeState::NotSubmitted
+				);
 
 			assert_eq!(restored.acknowledge_ordinary_turn(&original), terminal.then_some(outcome));
 

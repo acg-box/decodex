@@ -255,9 +255,6 @@ impl ApiResetCardRuntime {
 			.map_err(|_| ResetCardServiceError::AccountChanged)?;
 		let mut session = self.0.provider.session(&account, operation.account_revision).await?;
 		let inventory = session.inventory().await?;
-
-		use decodex_core::ResetCardTimestamp;
-
 		let descriptor = ResetCardTimestamp::from_unix_seconds(operation.granted_at)
 			.and_then(|grant| {
 				operation

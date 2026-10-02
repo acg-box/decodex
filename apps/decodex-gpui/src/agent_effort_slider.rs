@@ -270,11 +270,10 @@ mod tests {
 		self, AgentSurface, MouseButton,
 	};
 	use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
+	#[cfg(test)] use decodex_protocol::{ConversationModel, ConversationReasoningEffort};
 
 	#[gpui::test]
 	fn real_slider_drag_and_outside_dismiss(cx: &mut gpui::TestAppContext) {
-		use crate::shell::agent_surface::ConversationReasoningEffort as Effort;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(effort_slider::px(1_400.), effort_slider::px(900.)));
@@ -288,8 +287,15 @@ mod tests {
 					model: decodex_protocol::ConversationModel::new(s.model.read(cx).content())
 						.unwrap(),
 					name: "Test model".into(),
-					efforts: vec![Effort::Low, Effort::High, Effort::Ultra, Effort::Persistent],
-					default_effort: Some(Effort::High),
+					efforts: vec![
+						crate::shell::agent_surface::ConversationReasoningEffort::Low,
+						crate::shell::agent_surface::ConversationReasoningEffort::High,
+						crate::shell::agent_surface::ConversationReasoningEffort::Ultra,
+						crate::shell::agent_surface::ConversationReasoningEffort::Persistent,
+					],
+					default_effort: Some(
+						crate::shell::agent_surface::ConversationReasoningEffort::High,
+					),
 					supports_fast: true,
 					service_tiers: vec![],
 					default_service_tier: None,
@@ -329,7 +335,7 @@ mod tests {
 		);
 		surface.update(visual, |s, _| {
 			assert!((s.effort_pointer.unwrap() - 0.4).abs() < 0.01);
-			assert_eq!(s.effort, Effort::High);
+			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::High);
 		});
 		visual.simulate_mouse_move(
 			gpui::point(bounds.right() + effort_slider::px(30.), start.y),
@@ -337,7 +343,10 @@ mod tests {
 			Default::default(),
 		);
 		surface.update(visual, |s, _| {
-			assert_eq!(s.effort, Effort::Persistent);
+			assert_eq!(
+				s.effort,
+				crate::shell::agent_surface::ConversationReasoningEffort::Persistent
+			);
 			assert_eq!(effort_slider::level_label(s.effort.as_str()), "Persistent");
 		});
 		visual.simulate_mouse_move(
@@ -345,14 +354,18 @@ mod tests {
 			MouseButton::Left,
 			Default::default(),
 		);
-		surface.update(visual, |s, _| assert_eq!(s.effort, Effort::Low));
+		surface.update(visual, |s, _| {
+			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::Low)
+		});
 		visual.simulate_mouse_up(start, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| {
 			assert!(s.effort_drag.is_none());
 			assert!(s.effort_pointer.is_none());
 		});
 		visual.simulate_keystrokes("right");
-		surface.update(visual, |s, _| assert_eq!(s.effort, Effort::High));
+		surface.update(visual, |s, _| {
+			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::High)
+		});
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
@@ -381,10 +394,6 @@ mod tests {
 
 	#[gpui::test]
 	fn slider_keeps_custom_catalog_effort_and_its_label(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{
-			AgentCapabilitiesResult, AgentModelDto, ConversationModel, ConversationReasoningEffort,
-		};
-
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {

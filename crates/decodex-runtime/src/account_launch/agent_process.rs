@@ -451,6 +451,10 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(test)] use std::io::Read as _;
+	#[cfg(unix)]
+	#[cfg(test)]
+	use std::io::{BufRead as _, BufReader};
 	use std::{io, mem, thread};
 
 	use tokio::{sync::oneshot, time};
@@ -773,8 +777,6 @@ mod tests {
 
 	#[test]
 	fn blocked_terminal_delivery_does_not_keep_child_stdin_open() {
-		use std::io::Read as _;
-
 		let (writer, mut child_stdin) = std::os::unix::net::UnixStream::pair().unwrap();
 
 		child_stdin.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
@@ -1099,8 +1101,6 @@ mod tests {
 	#[cfg(unix)]
 	#[tokio::test]
 	async fn native_timeline_read_crosses_retained_bridge_and_keeps_peer_available() {
-		use std::io::{BufRead, BufReader};
-
 		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
 
 		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -1177,8 +1177,6 @@ mod tests {
 	#[cfg(unix)]
 	#[tokio::test]
 	async fn existing_usage_resources_and_integrations_use_retained_bridge() {
-		use std::io::{BufRead, BufReader};
-
 		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
 
 		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();

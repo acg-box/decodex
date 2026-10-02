@@ -22,6 +22,7 @@ use tokio::{
 	time::{self, Instant},
 };
 
+#[cfg(test)] use crate::conversations::ConversationRefreshState;
 use crate::{
 	client_lifecycle::{
 		self, AppOwnedDaemonRecovery, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION,
@@ -2417,8 +2418,6 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and reconciles local projections with Codex"]
 async fn live_daemon_reconciles_archived_conversations() {
-	use crate::conversations::{ConversationRefreshState, ConversationsLoadState};
-
 	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
 	let config =
 		profile.retained_session_config().expect("the live retained session is configured");
@@ -2500,8 +2499,6 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 	first_conversation: EntityId,
 	first_history_items: usize,
 ) {
-	use crate::conversations::ConversationCommandState;
-
 	assert!(conversations.select(first_conversation.clone()));
 
 	let baseline_session_revision = conversations

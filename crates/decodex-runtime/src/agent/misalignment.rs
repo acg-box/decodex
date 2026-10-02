@@ -1,6 +1,8 @@
 //! Explicit continuation of an exact reviewed provider precaution.
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest as _, Sha256};
+
 use crate::agent::{self, AgentCoordinator, AgentError, ClientError, Value};
 use decodex_codex::app_server_client::HistoryGuard;
 use decodex_database::{AgentDispatchState, AgentMisalignment};
@@ -137,8 +139,6 @@ impl AgentCoordinator {
 }
 
 pub(crate) fn review_token(review: &AgentMisalignment, guard: &HistoryGuard) -> Option<String> {
-	use sha2::{Digest as _, Sha256};
-
 	let identity = guard.live_review_identity()?;
 
 	Some(

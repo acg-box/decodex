@@ -3,7 +3,10 @@
 //! model-provider/src/models_endpoint.rs and app-server model_list tests.
 use std::{env, fs, path::Path, sync::Mutex};
 
-use tokio::{io::BufReader, time};
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	time,
+};
 
 use crate::{
 	account_launch::agent_process::native_tests::{
@@ -144,8 +147,6 @@ async fn qualify_inference(
 }
 
 async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>, explicit: bool) {
-	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
-
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = BufReader::new(socket);
 		let mut line = String::new();

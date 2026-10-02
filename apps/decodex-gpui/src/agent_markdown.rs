@@ -29,7 +29,7 @@ use crate::{
 		SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 		selectable_text, ui_theme,
 	},
-	ui_motion,
+	ui_motion::{self, SmoothControl as _},
 	ui_theme::HOVER_FILL,
 };
 use math::MathMarkdown;
@@ -78,8 +78,6 @@ struct CopyButton {
 }
 impl RenderOnce for CopyButton {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		use crate::ui_motion::SmoothControl as _;
-
 		let state = window.use_keyed_state(
 			SharedString::from(format!("copy-state-{}", self.key)),
 			cx,

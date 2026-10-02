@@ -2,6 +2,7 @@
 use std::{ops::Range, path::Path};
 
 use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText};
+use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::shell::agent_surface::{
 	self, ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
@@ -63,16 +64,13 @@ impl RenderOnce for SelectableText {
 					if event.click_count >= 3 {
 						s.anchor = 0;
 						s.head = down_text.len();
-					} else if event.click_count == 2 {
-						use unicode_segmentation::UnicodeSegmentation as _;
-
-						if let Some((start, word)) = down_text
+					} else if event.click_count == 2
+						&& let Some((start, word)) = down_text
 							.split_word_bound_indices()
 							.find(|(start, word)| *start <= ix && ix < start + word.len())
-						{
-							s.anchor = start;
-							s.head = start + word.len();
-						}
+					{
+						s.anchor = start;
+						s.head = start + word.len();
 					}
 
 					cx.notify();

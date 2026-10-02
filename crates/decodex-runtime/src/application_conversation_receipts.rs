@@ -13,20 +13,18 @@ pub(super) async fn query_creation_receipt(
 	store: &ProductStore,
 	request: &ConversationCreationReceiptRequest,
 ) -> ConversationCreationReceiptResult {
-	use ConversationCreationReceiptResult as Receipt;
-
 	let ProductStore::Available(store) = store else {
-		return Receipt::Unavailable;
+		return ConversationCreationReceiptResult::Unavailable;
 	};
 	let Ok(conversation_id) = ConversationId::new(request.conversation_id.as_str()) else {
-		return Receipt::Conflict;
+		return ConversationCreationReceiptResult::Conflict;
 	};
 	let command = CreateConversation {
 		initial_model_source: match super::runtime_initial_model_source(
 			request.initial_model_source.as_deref(),
 		) {
 			Ok(source) => source,
-			Err(()) => return Receipt::Conflict,
+			Err(()) => return ConversationCreationReceiptResult::Conflict,
 		},
 		operation_key: request.idempotency_key.as_str().into(),
 		correlation_id: String::new(),
@@ -37,21 +35,22 @@ pub(super) async fn query_creation_receipt(
 		execution: runtime_execution_settings(&request.execution),
 	};
 	let Ok(identity) = command.creation_identity() else {
-		return Receipt::Conflict;
+		return ConversationCreationReceiptResult::Conflict;
 	};
 
 	match store.read_conversation_creation_receipt(&identity, &conversation_id).await {
 		Ok(Some(record)) =>
 			match (EntityId::new(record.conversation_id.as_str()), u64::try_from(record.revision)) {
-				(Ok(id), Ok(revision)) if id == request.conversation_id => Receipt::Recorded {
-					conversation_id: id,
-					creation_revision: EntityRevision(revision),
-				},
-				_ => Receipt::Unavailable,
+				(Ok(id), Ok(revision)) if id == request.conversation_id =>
+					ConversationCreationReceiptResult::Recorded {
+						conversation_id: id,
+						creation_revision: EntityRevision(revision),
+					},
+				_ => ConversationCreationReceiptResult::Unavailable,
 			},
-		Ok(None) => Receipt::NotRecorded,
-		Err(StoreError::IdempotencyConflict) => Receipt::Conflict,
-		Err(_) => Receipt::Unavailable,
+		Ok(None) => ConversationCreationReceiptResult::NotRecorded,
+		Err(StoreError::IdempotencyConflict) => ConversationCreationReceiptResult::Conflict,
+		Err(_) => ConversationCreationReceiptResult::Unavailable,
 	}
 }
 

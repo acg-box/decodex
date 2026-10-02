@@ -1,5 +1,6 @@
 use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 
+#[cfg(test)] use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
 use tokio::{io::BufReader, net::TcpListener, time};
 
 use crate::{
@@ -40,8 +41,6 @@ async fn installed_native_model_access_metadata_refreshes_after_cold_restart() {
 	let fetches = Arc::new(AtomicUsize::new(0));
 	let observed = fetches.clone();
 	let server = tokio::spawn(async move {
-		use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
-
 		while let Ok((stream, _)) = listener.accept().await {
 			let mut stream = BufReader::new(stream);
 			let mut line = String::new();

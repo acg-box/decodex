@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use tokio::{
-	io::{self, DuplexStream},
+	io::{self, AsyncReadExt as _, DuplexStream},
 	sync::mpsc::Receiver,
 	time,
 };
@@ -83,8 +83,6 @@ impl Wire {
 	}
 
 	async fn assert_no_requests(&mut self) {
-		use tokio::io::AsyncReadExt as _;
-
 		let mut byte = [0];
 
 		assert!(

@@ -1,6 +1,12 @@
 //! Cached host-local presentation preferences.
 use std::sync::atomic::{AtomicU8, Ordering};
 
+#[cfg(all(target_os = "macos", not(test)))]
+use objc2::{
+	rc::Retained,
+	runtime::{AnyClass, AnyObject},
+};
+
 pub(crate) fn boolean(key: &str, cache: &AtomicU8, value: Option<bool>, default: bool) -> bool {
 	if let Some(value) = value {
 		stored_boolean(key, Some(value), default);
@@ -26,28 +32,24 @@ pub(crate) fn boolean(key: &str, cache: &AtomicU8, value: Option<bool>, default:
 // Host-local presentation settings never change service state.
 #[cfg(all(target_os = "macos", not(test)))]
 fn stored_boolean(key: &str, value: Option<bool>, default: bool) -> bool {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
 		let key = objc2_foundation::NSString::from_str(key);
 
 		if let Some(value) = value {
-			let _: () = msg_send![&*defaults, setBool: value, forKey: &*key];
+			let _: () = objc2::msg_send![&*defaults, setBool: value, forKey: &*key];
 		}
 
-		let stored: Option<Retained<AnyObject>> = msg_send![&*defaults, objectForKey: &*key];
+		let stored: Option<Retained<AnyObject>> = objc2::msg_send![&*defaults, objectForKey: &*key];
 
 		if stored.is_none() {
 			return default;
 		}
 
-		msg_send![&*defaults, boolForKey: &*key]
+		objc2::msg_send![&*defaults, boolForKey: &*key]
 	}
 }
 #[cfg(not(all(target_os = "macos", not(test))))]

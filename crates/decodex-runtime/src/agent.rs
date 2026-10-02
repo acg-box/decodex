@@ -2423,12 +2423,13 @@ pub(super) fn apply_message_options(params: &mut Value, payload: &str) -> Result
 }
 
 fn unsent_request_refusal(error: &AgentError) -> Option<decodex_database::AgentDispatchRefusal> {
-	use decodex_database::AgentDispatchRefusal as Refusal;
-
 	match error {
-		AgentError::Transport(ClientError::StaleHistory) => Some(Refusal::SettingsChanged),
-		AgentError::Transport(ClientError::RequestTooLarge) => Some(Refusal::RequestTooLarge),
-		AgentError::Transport(ClientError::RequestQueueFull) => Some(Refusal::RequestQueueFull),
+		AgentError::Transport(ClientError::StaleHistory) =>
+			Some(decodex_database::AgentDispatchRefusal::SettingsChanged),
+		AgentError::Transport(ClientError::RequestTooLarge) =>
+			Some(decodex_database::AgentDispatchRefusal::RequestTooLarge),
+		AgentError::Transport(ClientError::RequestQueueFull) =>
+			Some(decodex_database::AgentDispatchRefusal::RequestQueueFull),
 		_ => None,
 	}
 }

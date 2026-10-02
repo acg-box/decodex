@@ -244,8 +244,10 @@ async fn send_activation(request: RequestBuilder) -> ActivationOutcome {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(test)] use std::io::{Read as _, Write as _};
 	use std::{thread, time::Duration};
 
+	#[cfg(test)] use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 	use tokio::time;
 
 	use crate::account_api::activation::{
@@ -357,8 +359,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn production_client_never_redirects_or_replays_activation() {
-		use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-
 		for status in ["307 Temporary Redirect", "503 Service Unavailable"] {
 			let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
 			let address = listener.local_addr().expect("address");
@@ -390,8 +390,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn http_request_has_no_storage_or_tools_and_requires_positive_completion() {
-		use std::io::{Read as _, Write as _};
-
 		for (status, body, expected) in [
 			(
 				"200 OK",

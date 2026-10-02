@@ -35,7 +35,9 @@ use crate::{
 	mcp_login::{self, McpLoginGateway},
 	native_agents, native_config_warning, native_diagnostics,
 };
-use decodex_codex::app_server_client::{AppServerClient, ClientError, ServerEvent};
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, ServerEvent, ThreadArchiveState,
+};
 use decodex_core::AccountId;
 use decodex_database::{
 	AgentDispatchState, AgentMisalignment, AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
@@ -284,18 +286,14 @@ impl AgentHost {
 	}
 
 	pub(crate) async fn archive_state(&self, work: &str) -> AgentArchiveResult {
-		use decodex_codex::app_server_client::ThreadArchiveState as State;
-
-		use decodex_protocol::AgentArchiveResult as Result;
-
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
-			return Result::Unavailable;
+			return AgentArchiveResult::Unavailable;
 		};
 		let Ok(owner) = self.store.get_agent_work_item(work.into()).await else {
-			return Result::Unavailable;
+			return AgentArchiveResult::Unavailable;
 		};
 		let Some(thread) = owner.codex_thread_id else {
-			return Result::Unbound;
+			return AgentArchiveResult::Unbound;
 		};
 		// Archive membership is a read-only observation of the shared native catalog.
 		// A subordinate manager need not run in the root's process to be inspected.
@@ -312,16 +310,17 @@ impl AgentHost {
 				.agent_catalog_client()
 				.is_some_and(|(current, _)| current == generation)
 		{
-			return Result::Unavailable;
+			return AgentArchiveResult::Unavailable;
 		}
 
 		match observed {
-			Ok(State::Active) => Result::Active { thread_id: thread },
-			Ok(State::Archived) => Result::Archived { thread_id: thread },
-			Ok(State::NotFound | State::Changed) => Result::Unconfirmed,
-			Err(ClientError::Remote(e)) if e.code == -32_601 => Result::Unsupported,
-			Err(ClientError::CapacityExceeded) => Result::CapacityExceeded,
-			Err(_) => Result::Unavailable,
+			Ok(ThreadArchiveState::Active) => AgentArchiveResult::Active { thread_id: thread },
+			Ok(ThreadArchiveState::Archived) => AgentArchiveResult::Archived { thread_id: thread },
+			Ok(ThreadArchiveState::NotFound | ThreadArchiveState::Changed) =>
+				AgentArchiveResult::Unconfirmed,
+			Err(ClientError::Remote(e)) if e.code == -32_601 => AgentArchiveResult::Unsupported,
+			Err(ClientError::CapacityExceeded) => AgentArchiveResult::CapacityExceeded,
+			Err(_) => AgentArchiveResult::Unavailable,
 		}
 	}
 
@@ -1341,49 +1340,48 @@ impl AgentHost {
 		action: AgentActionDto,
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
-		use decodex_protocol::AgentActionDto as Action;
-
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ Action::SendPromptInput { .. } =>
+			action @ AgentActionDto::SendPromptInput { .. } =>
 				self.send_prompt_input(&key, action, active).await,
-			action @ (Action::UploadPromptInput { .. }
-			| Action::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
-			action @ (Action::PreparePromptEdit { .. }
-			| Action::ConfirmPromptEdit { .. }
-			| Action::ForkPromptEdit { .. }
-			| Action::RecoverPromptFork { .. }
-			| Action::RecoverPromptEdit { .. }
-			| Action::AcknowledgePromptEditDraft { .. }) =>
+			action @ (AgentActionDto::UploadPromptInput { .. }
+			| AgentActionDto::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
+			action @ (AgentActionDto::PreparePromptEdit { .. }
+			| AgentActionDto::ConfirmPromptEdit { .. }
+			| AgentActionDto::ForkPromptEdit { .. }
+			| AgentActionDto::RecoverPromptFork { .. }
+			| AgentActionDto::RecoverPromptEdit { .. }
+			| AgentActionDto::AcknowledgePromptEditDraft { .. }) =>
 				self.handle_prompt_edit(&key, action, active.as_mut().map(|(_, agent, _)| agent))
 					.await,
-			action @ (Action::GenerateRecap { .. } | Action::CancelRecap { .. }) =>
+			action
+			@ (AgentActionDto::GenerateRecap { .. } | AgentActionDto::CancelRecap { .. }) =>
 				self.handle_recap(&key, action).await,
-			action @ (Action::EditNativeGoal { .. }
-			| Action::SetVoicePreference { .. }
-			| Action::SetSearchPreference { .. }
-			| Action::SetAppToolExposure { .. }
-			| Action::ConfirmAppUiTool { .. }
-			| Action::AcknowledgeAppUiCall { .. }
-			| Action::SetSavedAppSetting { .. }
-			| Action::SetAppSetting { .. }
-			| Action::SetHookSetting { .. }
-			| Action::SetTaskPlugin { .. }
-			| Action::SetTaskModel { .. }
-			| Action::SelectPermissions { .. }
-			| Action::SetLiveReviewer { .. }
-			| Action::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
-			Action::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
+			action @ (AgentActionDto::EditNativeGoal { .. }
+			| AgentActionDto::SetVoicePreference { .. }
+			| AgentActionDto::SetSearchPreference { .. }
+			| AgentActionDto::SetAppToolExposure { .. }
+			| AgentActionDto::ConfirmAppUiTool { .. }
+			| AgentActionDto::AcknowledgeAppUiCall { .. }
+			| AgentActionDto::SetSavedAppSetting { .. }
+			| AgentActionDto::SetAppSetting { .. }
+			| AgentActionDto::SetHookSetting { .. }
+			| AgentActionDto::SetTaskPlugin { .. }
+			| AgentActionDto::SetTaskModel { .. }
+			| AgentActionDto::SelectPermissions { .. }
+			| AgentActionDto::SetLiveReviewer { .. }
+			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
+			AgentActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
 					text.as_str(),
 					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
 				.await,
-			Action::InstallSuggestedPlugin { .. } =>
+			AgentActionDto::InstallSuggestedPlugin { .. } =>
 				Err(AgentHostError::Rejected("Install plugins in Codex for this account.")),
-			Action::RestoreArchivedThread { work_id, thread_id } => {
+			AgentActionDto::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
 				agent.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
@@ -1393,18 +1391,18 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::RefreshIntegrations { .. } =>
+			AgentActionDto::RefreshIntegrations { .. } =>
 				Err(AgentHostError::Rejected("Update plugins and connections in Codex.")),
-			action @ (Action::AddResourceLink { .. } | Action::RemoveResource { .. }) =>
-				Self::handle_resource_change(action, active).await,
+			action @ (AgentActionDto::AddResourceLink { .. }
+			| AgentActionDto::RemoveResource { .. }) => Self::handle_resource_change(action, active).await,
 
-			Action::StartConfigured { .. } | Action::SendConfigured { .. } =>
+			AgentActionDto::StartConfigured { .. } | AgentActionDto::SendConfigured { .. } =>
 				unreachable!("normalized input"),
-			action @ Action::Steer { .. } => Self::steer_action(action, &key, active).await,
-			Action::ContinueMisalignment { work_id, review_id } =>
+			action @ AgentActionDto::Steer { .. } => Self::steer_action(action, &key, active).await,
+			AgentActionDto::ContinueMisalignment { work_id, review_id } =>
 				self.continue_reviewed_misalignment(work_id, review_id, &key, active).await,
 
-			Action::ApproveGuardianDenial { work_id, review_row, review_digest } => {
+			AgentActionDto::ApproveGuardianDenial { work_id, review_row, review_digest } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
 				agent.approve_guardian_denial(work_id.as_str(),review_row,review_digest.as_str(),&key).await
@@ -1415,7 +1413,7 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::AnswerQuestion { work_id, question_id, answer } => {
+			AgentActionDto::AnswerQuestion { work_id, question_id, answer } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
 				agent
@@ -1430,18 +1428,19 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::SkipQuestion { work_id, thread_id, question_id } =>
+			AgentActionDto::SkipQuestion { work_id, thread_id, question_id } =>
 				Self::skip_question((&work_id, &thread_id, &question_id), active).await,
-			Action::CancelCapacityRetry { work_id, event_id } =>
+			AgentActionDto::CancelCapacityRetry { work_id, event_id } =>
 				self.cancel_capacity_retry(work_id, event_id).await,
-			Action::Respond { work_id, event_id, response_json } =>
+			AgentActionDto::Respond { work_id, event_id, response_json } =>
 				self.respond(work_id.as_str(), event_id, response_json.as_str(), active).await,
-			Action::RespondWithRequestedDecision { work_id, event_id, decision } =>
+			AgentActionDto::RespondWithRequestedDecision { work_id, event_id, decision } =>
 				self.respond_requested(work_id.as_str(), event_id, &decision, active).await,
-			Action::Start(draft) => self.start(draft, &key, input_options.as_ref(), active).await,
-			Action::Send { root_id, text } =>
+			AgentActionDto::Start(draft) =>
+				self.start(draft, &key, input_options.as_ref(), active).await,
+			AgentActionDto::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
-			Action::Interrupt { work_id, turn_id } => {
+			AgentActionDto::Interrupt { work_id, turn_id } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
 				agent.interrupt_work(work_id.as_str(), turn_id.as_str()).await.map_err(|_| {
@@ -1452,7 +1451,7 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::AutomationResult { work_id, source_event_id, payload } =>
+			AgentActionDto::AutomationResult { work_id, source_event_id, payload } =>
 				self.accept_automation_result(work_id, source_event_id, payload, active).await,
 		}
 	}
@@ -1461,10 +1460,8 @@ impl AgentHost {
 		action: AgentActionDto,
 		active: &Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
-		use decodex_protocol::AgentActionDto as Action;
-
 		match action {
-			Action::AddResourceLink { work_id, title, url } => {
+			AgentActionDto::AddResourceLink { work_id, title, url } => {
 				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
 
 				agent
@@ -1474,7 +1471,7 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			Action::RemoveResource { work_id, attachment_type, identity_key } => {
+			AgentActionDto::RemoveResource { work_id, attachment_type, identity_key } => {
 				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
 
 				agent
