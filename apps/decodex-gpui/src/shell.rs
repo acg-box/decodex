@@ -3970,7 +3970,10 @@ fn account_power_control(
 		}
 	}))
 	.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-		if interactive && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+		if interactive
+			&& !event.is_held
+			&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+		{
 			cx.stop_propagation();
 			s.set_account_enabled(&key_id, !enabled, cx);
 		}
@@ -6645,6 +6648,13 @@ mod tests {
 		}
 	}
 
+	struct AccountPowerView(Entity<Shell>, AccountDto);
+	impl Render for AccountPowerView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |_, cx| shell::account_power_control(&self.1, 0, true, false, cx))
+		}
+	}
+
 	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
 
@@ -7706,6 +7716,48 @@ mod tests {
 			assert!(
 				shell.read_with(visual, |s, _| s.left_sidebar_visible),
 				"fresh key reopens sidebar"
+			);
+		}
+	}
+
+	#[gpui::test]
+	fn held_account_power_key_does_not_dispatch_another_command(cx: &mut TestAppContext) {
+		let (view, visual) = cx.add_window_view(|window, cx| {
+			let shell = cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped));
+			let account = shell.update(cx, |s, _| {
+				s.visual_accounts_and_health();
+
+				s.accounts.accounts[0].clone()
+			});
+
+			AccountPowerView(shell, account)
+		});
+		let shell = view.read_with(visual, |view, _| view.0.clone());
+
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+			window.focus_next(cx);
+		});
+
+		for key in ["enter", "space"] {
+			visual.simulate_keystrokes(key);
+
+			assert!(
+				shell.read_with(visual, |s, _| s.account_status.is_some()),
+				"a fresh key must reach the offline account controller"
+			);
+
+			shell.update(visual, |s, _| s.account_status = None);
+
+			visual.simulate_event(gpui::KeyDownEvent {
+				keystroke: gpui::Keystroke::parse(key).unwrap(),
+				is_held: true,
+				prefer_character_input: false,
+			});
+
+			assert!(
+				shell.read_with(visual, |s, _| s.account_status.is_none()),
+				"a held key must not dispatch another account command"
 			);
 		}
 	}
