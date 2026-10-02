@@ -9,9 +9,9 @@ use crate::shell::agent_surface::native_timeline::{
 	AgentSnapshotResult, AgentTimelineContent, AgentTimelineEntry,
 };
 use crate::{
-	shell::agent_surface::{
-		native_timeline,
-		native_timeline::{
+	shell::{
+		agent_surface,
+		agent_surface::native_timeline::{
 			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Binding,
 			ClientProfile, Context, EntityId, InteractiveElement, IntoElement, ParentElement,
 			Styled, StyledImage, Task, render,
@@ -88,7 +88,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let caption = render::attachment_caption(attachment);
 		let Some(request) = media_request(work, turn, item, attachment.index) else {
-			return native_timeline::muted(caption).into_any_element();
+			return agent_surface::muted(caption).into_any_element();
 		};
 		let preview = &self.native_history.preview;
 		let selected = preview.request.as_ref() == Some(&request);
@@ -107,7 +107,7 @@ impl AgentSurface {
 				cx,
 			));
 		} else {
-			row = row.child(native_timeline::muted(caption));
+			row = row.child(agent_surface::muted(caption));
 		}
 		if selected {
 			if let Some(image) = &preview.image {
@@ -123,7 +123,7 @@ impl AgentSurface {
 			if preview.task.is_some() {
 				row = row.child(ui_loading::loading("Loading image"));
 			} else if let Some(notice) = preview.notice {
-				row = row.child(native_timeline::muted(notice));
+				row = row.child(agent_surface::muted(notice));
 			}
 		}
 

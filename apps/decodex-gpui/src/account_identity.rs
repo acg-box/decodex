@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use gpui::Task;
 use tokio::runtime::Builder;
 
-use crate::shell::*;
+use crate::shell::{AccountDto, AccountProfileResult, Context, EntityId, Shell};
 use decodex_protocol::{AccountClient, AccountProfileEmailDto, EntityRevision};
 
 #[derive(Default)]
@@ -98,7 +98,7 @@ impl Shell {
 }
 #[cfg(test)]
 mod tests {
-	use crate::shell::account_identity::*;
+	use crate::shell::account_identity::{Emails, EntityId, EntityRevision};
 
 	#[test]
 	fn hide_discards_revealed_addresses_and_invalidates_pending_reads() {

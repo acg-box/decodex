@@ -4,7 +4,6 @@
 #[path = "shell_account_activity.rs"] mod account_activity;
 #[path = "account_feedback.rs"] mod account_feedback;
 #[path = "account_identity.rs"] mod account_identity;
-
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
@@ -14,10 +13,6 @@ mod native_status;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
-
-pub(crate) use status::{
-	count_preference as notification_count_preference, question_notice_preference,
-};
 
 use std::{
 	array,
@@ -47,6 +42,10 @@ use gpui::{
 	},
 };
 use tokio::{runtime::Builder, time};
+
+pub(crate) use status::{
+	count_preference as notification_count_preference, question_notice_preference,
+};
 
 #[cfg(feature = "visual-capture")] use crate::history_pager::HistoryCursorObservation;
 use crate::{
@@ -6604,18 +6603,29 @@ fn transcript_history_status(
 
 #[cfg(test)]
 mod tests {
-	use gpui::{self, TestAppContext, VisualTestContext};
+	use gpui::{self, AppContext as _, TestAppContext, VisualTestContext};
 
 	use crate::{
 		client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery},
 		conversations::{creation_defaults_tests, tests},
-		shell::*,
+		shell::{
+			self, AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto,
+			AccountLoginInstallMode, AccountLoginMethod, AccountObservedStateDto,
+			AccountQuotaStateDto, AccountQuotaWindowDto, AccountsLoadState, ClientFailure,
+			ConnectionView, Context, ConversationCommandState, ConversationRecoveryAction,
+			ConversationRefreshState, ConversationState, ConversationSummary,
+			ConversationsLoadState, ConversationsSnapshot, Destination, DoctorComponent,
+			DoctorIssue, DoctorStatus, Duration, Entity, EntityId, HealthLoadState, HealthSnapshot,
+			HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryLoadState,
+			HistoryPageSource, HistorySnapshot, InspectorTab, IntoElement,
+			PendingComposerSubmission, Render, Shell, TranscriptRow, Window, bind_keys, ui_theme,
+		},
 	};
 
 	struct PanelControlView(Entity<Shell>);
 	impl Render for PanelControlView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |shell, cx| agent_panel_control(shell, 0, cx))
+			self.0.update(cx, |shell, cx| shell::agent_panel_control(shell, 0, cx))
 		}
 	}
 
@@ -6655,11 +6665,11 @@ mod tests {
 
 	#[test]
 	fn conversation_arrow_selection_is_bounded_and_stable() {
-		assert_eq!(adjacent_conversation_index(None, 0, 1), None);
-		assert_eq!(adjacent_conversation_index(None, 3, 1), Some(1));
-		assert_eq!(adjacent_conversation_index(Some(0), 3, -1), Some(0));
-		assert_eq!(adjacent_conversation_index(Some(1), 3, 1), Some(2));
-		assert_eq!(adjacent_conversation_index(Some(2), 3, 1), Some(2));
+		assert_eq!(shell::adjacent_conversation_index(None, 0, 1), None);
+		assert_eq!(shell::adjacent_conversation_index(None, 3, 1), Some(1));
+		assert_eq!(shell::adjacent_conversation_index(Some(0), 3, -1), Some(0));
+		assert_eq!(shell::adjacent_conversation_index(Some(1), 3, 1), Some(2));
+		assert_eq!(shell::adjacent_conversation_index(Some(2), 3, 1), Some(2));
 	}
 
 	#[gpui::test]
@@ -6724,7 +6734,7 @@ mod tests {
 
 	#[test]
 	fn account_login_presentations_create_only_daemon_install_requests() {
-		let enrollment = account_login_start(AccountLoginMethod::BrowserRedirect, None)
+		let enrollment = shell::account_login_start(AccountLoginMethod::BrowserRedirect, None)
 			.expect("browser enrollment request");
 
 		assert!(enrollment.validate().is_ok());
@@ -6737,7 +6747,7 @@ mod tests {
 			EntityId::new("10000000-0000-4000-8000-000000000001").expect("account identity");
 		let recovery_operation_id =
 			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
-		let reauthentication = account_login_start(
+		let reauthentication = shell::account_login_start(
 			AccountLoginMethod::DeviceCode,
 			Some((
 				account_id.clone(),
@@ -6791,23 +6801,26 @@ mod tests {
 			),
 		});
 
-		assert_eq!(account_login_recovery_operation_id(&rejected), Some(recovery_operation_id));
-		assert_eq!(account_readiness_status(&rejected), "Refresh rejected · re-login");
+		assert_eq!(
+			shell::account_login_recovery_operation_id(&rejected),
+			Some(recovery_operation_id)
+		);
+		assert_eq!(shell::account_readiness_status(&rejected), "Refresh rejected · re-login");
 
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("provider_access_rejected_after_refresh")
 				.expect("access rejection code"),
 		);
 
-		assert!(account_login_recovery_operation_id(&rejected).is_some());
-		assert_eq!(account_readiness_status(&rejected), "New login required · re-login");
+		assert!(shell::account_login_recovery_operation_id(&rejected).is_some());
+		assert_eq!(shell::account_readiness_status(&rejected), "New login required · re-login");
 
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("credential_rotate_failed")
 				.expect("other recovery code"),
 		);
 
-		assert_eq!(account_login_recovery_operation_id(&rejected), None);
+		assert_eq!(shell::account_login_recovery_operation_id(&rejected), None);
 	}
 
 	#[test]
@@ -6826,22 +6839,22 @@ mod tests {
 		};
 
 		assert_eq!(
-			pending_submission_clear_decision(&pending, 7, false, &pending.content),
+			shell::pending_submission_clear_decision(&pending, 7, false, &pending.content),
 			None,
 			"queueing or waiting for a result must retain the composer"
 		);
 		assert_eq!(
-			pending_submission_clear_decision(&pending, 8, false, &pending.content),
+			shell::pending_submission_clear_decision(&pending, 8, false, &pending.content),
 			Some(false),
 			"an archived-thread rejection must retain the composer"
 		);
 		assert_eq!(
-			pending_submission_clear_decision(&pending, 8, true, "A newer user edit"),
+			shell::pending_submission_clear_decision(&pending, 8, true, "A newer user edit"),
 			Some(false),
 			"a later accepted result must not erase newer typing"
 		);
 		assert_eq!(
-			pending_submission_clear_decision(&pending, 8, true, &pending.content),
+			shell::pending_submission_clear_decision(&pending, 8, true, &pending.content),
 			Some(true),
 			"only exact accepted content is safe to clear"
 		);
@@ -6939,7 +6952,7 @@ mod tests {
 		};
 
 		assert_eq!(
-			conversation_transcript_rows(&snapshot, None, Some(&pending)),
+			shell::conversation_transcript_rows(&snapshot, None, Some(&pending)),
 			vec![TranscriptRow::Prompt {
 				turn_id: Some(turn_id),
 				text: "Show this immediately.".to_owned(),
@@ -6971,8 +6984,10 @@ mod tests {
 			Some(HistoryPageSource::FreshServer),
 		);
 
-		assert!(matches!(conversation_transcript_rows(&snapshot, Some(&history), None).as_slice(),
-			[TranscriptRow::Activity { text: actual, status: HistoryItemStatusDto::Failed, .. }] if actual == text));
+		assert!(
+			matches!(shell::conversation_transcript_rows(&snapshot, Some(&history), None).as_slice(),
+			[TranscriptRow::Activity { text: actual, status: HistoryItemStatusDto::Failed, .. }] if actual == text)
+		);
 	}
 
 	#[test]
@@ -7015,7 +7030,7 @@ mod tests {
 		);
 
 		assert_eq!(
-			conversation_transcript_rows(&snapshot, Some(&history), None),
+			shell::conversation_transcript_rows(&snapshot, Some(&history), None),
 			vec![
 				TranscriptRow::Response {
 					turn_id: EntityId::new("20000000-0000-4000-8000-000000000082")
@@ -7051,17 +7066,17 @@ mod tests {
 			Some(HistoryPageSource::FreshServer),
 		);
 
-		assert!(!deferred_provider_refresh_ready(
+		assert!(!shell::deferred_provider_refresh_ready(
 			Some(&conversation_id),
 			Some(&conversation_id),
 			Some(&loading)
 		));
-		assert!(!deferred_provider_refresh_ready(
+		assert!(!shell::deferred_provider_refresh_ready(
 			Some(&conversation_id),
 			Some(&conversation_id),
 			Some(&cached)
 		));
-		assert!(deferred_provider_refresh_ready(
+		assert!(shell::deferred_provider_refresh_ready(
 			Some(&conversation_id),
 			Some(&conversation_id),
 			Some(&fresh)
@@ -7090,8 +7105,8 @@ mod tests {
 		)
 		.expect("outcome-unknown projection is valid");
 
-		assert_eq!(conversation_recovery_presentation(Some(&task)), (true, "Retry sync"));
-		assert_eq!(conversation_recovery_presentation(None), (false, "Recover"));
+		assert_eq!(shell::conversation_recovery_presentation(Some(&task)), (true, "Retry sync"));
+		assert_eq!(shell::conversation_recovery_presentation(None), (false, "Recover"));
 	}
 
 	#[test]
@@ -7108,7 +7123,7 @@ mod tests {
 			ConnectionView::ShuttingDown,
 			ConnectionView::Stopped,
 		];
-		let labels = states.map(|state| connection_presentation(state).label);
+		let labels = states.map(|state| shell::connection_presentation(state).label);
 
 		assert_eq!(
 			labels,
@@ -7135,10 +7150,13 @@ mod tests {
 		];
 
 		for (failure, detail) in cases {
-			assert_eq!(startup_failure(failure), detail);
+			assert_eq!(shell::startup_failure(failure), detail);
 		}
 
-		assert_eq!(startup_failure(ClientFailure::ServiceVersionMismatch), "Restart Decodex.");
+		assert_eq!(
+			shell::startup_failure(ClientFailure::ServiceVersionMismatch),
+			"Restart Decodex."
+		);
 	}
 
 	#[test]
@@ -7157,41 +7175,46 @@ mod tests {
 				recovery: QuarantineRecovery::OperatorRequired,
 			};
 
-			assert_eq!(connection_presentation(view).label, "Restart Decodex");
+			assert_eq!(shell::connection_presentation(view).label, "Restart Decodex");
 		}
 	}
 
 	#[test]
 	fn route_rejections_preserve_the_quit_and_login_actions() {
 		assert_eq!(
-			account_rejection_label(AccountCommandRejectionDto::CodexIsRunning),
+			shell::account_rejection_label(AccountCommandRejectionDto::CodexIsRunning),
 			"Quit ChatGPT or Codex, then try switching again."
 		);
 		assert_eq!(
-			account_rejection_label(AccountCommandRejectionDto::CredentialNeedsLogin),
+			shell::account_rejection_label(AccountCommandRejectionDto::CredentialNeedsLogin),
 			"This account needs you to sign in again."
 		);
 	}
 
 	#[test]
 	fn native_health_keeps_missing_memory_distinct_from_zero() {
-		let text =
-			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Available {
+		let text = shell::native_process_summary(Some(
+			&decodex_protocol::NativeProcessDiagnostics::Available {
 				process_id: 42,
 				resident_memory_bytes: None,
 				physical_footprint_bytes: Some(0),
-			}));
+			},
+		));
 
 		assert!(text.contains("PID 42"));
 		assert!(text.contains("Resident: Not reported"));
 		assert!(text.contains("Physical footprint: 0.0 MiB"));
 		assert!(
-			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Inactive))
-				.contains("does not start")
+			shell::native_process_summary(Some(
+				&decodex_protocol::NativeProcessDiagnostics::Inactive
+			))
+			.contains("does not start")
 		);
 		assert!(
-			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Unsupported))
-				.contains("does not provide")
+			shell::native_process_summary(Some(
+				&decodex_protocol::NativeProcessDiagnostics::Unsupported
+			))
+			.contains("does not provide")
 		);
 	}
 
@@ -7224,17 +7247,19 @@ mod tests {
 			can_refresh: true,
 		};
 
-		assert_eq!(health_presentation(&snapshot).label, "Core ready");
+		assert_eq!(shell::health_presentation(&snapshot).label, "Core ready");
 		assert_eq!(
-			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::NotProbed))).label,
+			shell::component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)))
+				.label,
 			"Not checked"
 		);
 		assert_eq!(
-			component_presentation(Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))).label,
+			shell::component_presentation(Some(DoctorStatus::Unavailable(DoctorIssue::Disabled)))
+				.label,
 			"Disabled"
 		);
 		assert_eq!(
-			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
+			shell::component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
 			"Not configured"
 		);
 	}

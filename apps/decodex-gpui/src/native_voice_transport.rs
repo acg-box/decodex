@@ -25,7 +25,7 @@ use libwebrtc::{
 };
 use serde_json::{self, Value};
 use tokio::{
-	sync::{mpsc as channel, oneshot},
+	sync::{self, oneshot},
 	time::{self, Duration, Instant, MissedTickBehavior},
 };
 
@@ -40,7 +40,7 @@ pub(super) enum Command {
 }
 
 pub(super) struct Transport {
-	commands: channel::Sender<Command>,
+	commands: sync::mpsc::Sender<Command>,
 	events: mpsc::Receiver<Value>,
 	overflow: Arc<AtomicBool>,
 	stop: Option<oneshot::Sender<()>>,
@@ -55,7 +55,7 @@ impl Transport {
 	}
 
 	fn start_inner(pcm: Pcm, #[cfg(test)] offer_pause: Option<OfferPause>) -> Result<Self, ()> {
-		let (commands, requests) = channel::channel(8);
+		let (commands, requests) = sync::mpsc::channel(8);
 		let (sender, events) = mpsc::sync_channel(128);
 		let overflow = Arc::new(AtomicBool::new(false));
 		let output = Events { sender, overflow: overflow.clone() };
@@ -127,7 +127,7 @@ impl Drop for Peer {
 
 async fn run(
 	pcm: Pcm,
-	commands: channel::Receiver<Command>,
+	commands: sync::mpsc::Receiver<Command>,
 	events: Events,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) {
@@ -174,7 +174,7 @@ async fn run_media(
 	factory: &PeerConnectionFactory,
 	peer: &Peer,
 	pcm: &mut Pcm,
-	mut commands: channel::Receiver<Command>,
+	mut commands: sync::mpsc::Receiver<Command>,
 	events: Events,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) -> Result<(), &'static str> {
@@ -185,7 +185,7 @@ async fn run_media(
 		.add_track(track.clone().into(), &["microphone"])
 		.map_err(|_| "The microphone track could not start.")?;
 
-	let (tracks, mut incoming) = channel::channel(1);
+	let (tracks, mut incoming) = sync::mpsc::channel(1);
 
 	peer.0.on_track(Some(Box::new(move |event| {
 		if let MediaStreamTrack::Audio(track) = event.track {
@@ -320,13 +320,13 @@ mod tests {
 		peer_connection::AnswerOptions,
 		peer_connection_factory::native::PeerConnectionFactoryExt as _,
 	};
-	use tokio::time;
+	use tokio::{sync::mpsc, time};
 
 	use crate::shell::agent_surface::voice::transport::{
 		AudioFrame, AudioSourceOptions, Command, ContinualGatheringPolicy, Duration,
 		IceGatheringState, MediaStreamTrack, NativeAudioSource, NativeAudioStream, Pcm, Peer,
 		PeerConnectionFactory, RtcConfiguration, SdpType, SessionDescription, Transport, Value,
-		channel, oneshot,
+		oneshot,
 	};
 
 	async fn event(transport: &Transport, kind: &str) -> Value {
@@ -463,7 +463,7 @@ mod tests {
 				.add_track(factory.create_audio_track("remote", source.clone()).into(), &["remote"])
 				.unwrap();
 
-			let (tracks, mut track_events) = channel::channel(1);
+			let (tracks, mut track_events) = mpsc::channel(1);
 
 			peer.0.on_track(Some(Box::new(move |event| {
 				if let MediaStreamTrack::Audio(track) = event.track {
@@ -471,7 +471,7 @@ mod tests {
 				}
 			})));
 
-			let (channels, mut channel_events) = channel::channel(1);
+			let (channels, mut channel_events) = mpsc::channel(1);
 
 			peer.0.on_data_channel(Some(Box::new(move |data| {
 				let _ = channels.try_send(data);

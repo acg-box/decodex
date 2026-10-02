@@ -24,7 +24,13 @@ use crate::shell::agent_surface::drafts::{
 	},
 	tests,
 };
-use decodex_protocol::*;
+use decodex_protocol::{
+	AgentModelSettingsResult, CURRENT_VERSION, ClientMessage, CommandError, CommandOutcome,
+	CommandPayload, CommandReceipt, CommandResultEnvelope, Cursor, EntityRevision,
+	PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary, PromptForkIntent,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
+	ResultPayload, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+};
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct View {

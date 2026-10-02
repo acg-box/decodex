@@ -15,9 +15,9 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::wire_test_support;
 use crate::{
 	shell::agent_surface::{
-		AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile, Context,
-		EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement, SharedString,
-		Styled, StyledImage, Task, WireText, auth_recovery_entry, markdown, muted,
+		self, AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
+		Context, EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
+		SharedString, Styled, StyledImage, Task, WireText, auth_recovery_entry, markdown,
 		text_reveal::StreamingText,
 	},
 	ui_loading, ui_motion,
@@ -214,7 +214,9 @@ impl AgentSurface {
 		}) && let Some(message) = self.native_history.notice
 		{
 			panel = panel.child(
-				gpui::div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
+				gpui::div()
+					.debug_selector(|| "native-history-notice".into())
+					.child(agent_surface::muted(message)),
 			);
 		}
 		if self
@@ -248,7 +250,7 @@ impl AgentSurface {
 
 			if self.native_history.show_saved {
 				return panel
-					.child(muted(
+					.child(agent_surface::muted(
 						"Saved local records can include earlier thread bindings and delivery receipts.",
 					))
 					.into_any_element();
@@ -257,7 +259,7 @@ impl AgentSurface {
 			let binding = self.native_history.binding.as_ref().expect("matching binding").clone();
 
 			if self.native_history.browsing_window {
-				panel = panel.child(muted("Showing an earlier history window. Select Latest native history to return to recent messages."));
+				panel = panel.child(agent_surface::muted("Showing an earlier history window. Select Latest native history to return to recent messages."));
 			}
 			if self.native_history.older_cursor.is_some() {
 				panel = panel.child(self.workspace_action(
@@ -268,7 +270,9 @@ impl AgentSurface {
 				));
 			}
 			if self.native_history.opening_session.is_some() {
-				panel = panel.child(muted("Voice conversation continued from an earlier page."));
+				panel = panel.child(agent_surface::muted(
+					"Voice conversation continued from an earlier page.",
+				));
 			}
 
 			for item in &self.native_history.summary {

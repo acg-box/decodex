@@ -105,7 +105,7 @@ fn main() {
 }
 #[cfg(test)]
 mod tests {
-	use crate::*;
+	use crate::WeatherForecast;
 
 	#[::core::prelude::v1::test]
 	fn saved_weather_is_parsed_and_copied_without_control_markers() {

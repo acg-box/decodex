@@ -4,12 +4,15 @@ use std::collections::BTreeMap;
 use gpui::{AnyElement, InteractiveElement, StatefulInteractiveElement};
 
 use crate::{
-	shell::agent_surface::{
-		native_timeline::{
-			self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
-			Context, IntoElement, ParentElement, Styled, markdown,
+	shell::{
+		agent_surface,
+		agent_surface::{
+			native_timeline::{
+				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
+				Context, IntoElement, ParentElement, Styled, markdown,
+			},
+			progress,
 		},
-		progress,
 	},
 	ui_loading,
 };
@@ -51,7 +54,7 @@ impl AgentSurface {
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return panel
-				.child(native_timeline::muted("Local delivery records are unavailable. Retrying…"))
+				.child(agent_surface::muted("Local delivery records are unavailable. Retrying…"))
 				.into_any_element();
 		};
 		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
@@ -143,7 +146,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_1()
-				.child(native_timeline::muted(label))
+				.child(agent_surface::muted(label))
 				.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
 
 			if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
@@ -181,7 +184,7 @@ impl AgentSurface {
 			.id("local-records-toggle")
 			.cursor_pointer()
 			.text_size(gpui::px(11.))
-			.child(native_timeline::muted(if expanded {
+			.child(agent_surface::muted(if expanded {
 				"Diagnostics ⌄"
 			} else {
 				"Diagnostics ›"
@@ -222,7 +225,7 @@ impl AgentSurface {
 
 						move || selector.into()
 					})
-					.child(native_timeline::muted(match message.kind {
+					.child(agent_surface::muted(match message.kind {
 						AgentLiveMessageKind::ReasoningSummary => "Reasoning summary",
 						AgentLiveMessageKind::AgentMessage => "Assistant · In progress",
 						AgentLiveMessageKind::Plan => "Proposed plan · In progress",
@@ -232,9 +235,7 @@ impl AgentSurface {
 						&format!("live-{}-{}", message.turn_id, message.item_id),
 					))
 					.children(message.truncated.then(|| {
-						native_timeline::muted(
-							"Partial output shortened; waiting for saved result.",
-						)
+						agent_surface::muted("Partial output shortened; waiting for saved result.")
 					}))
 					.into_any_element(),
 			);

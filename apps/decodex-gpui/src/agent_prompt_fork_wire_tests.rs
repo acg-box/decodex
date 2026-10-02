@@ -22,7 +22,12 @@ use crate::shell::agent_surface::{
 		WireText,
 	},
 };
-use decodex_protocol::*;
+use decodex_protocol::{
+	AgentSnapshotDto, CURRENT_VERSION, ClientMessage, ClientProfile, CommandPayload, Cursor,
+	PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkIntent, PromptForkStatus,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode, ServerId, ServerMessage,
+	ServerWelcome, SnapshotEnvelope,
+};
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 

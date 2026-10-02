@@ -863,7 +863,11 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 
 #[cfg(test)]
 mod multiline_tests {
-	use crate::composer_input::*;
+	use gpui::{EntityInputHandler as _, Focusable as _};
+
+	use crate::composer_input::{
+		self, ClipboardItem, ComposerInput, Paste, Redo, Undo, bind_keys, text, ui_theme,
+	};
 
 	#[gpui::test]
 	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {
@@ -893,7 +897,7 @@ mod multiline_tests {
 			});
 		});
 
-		assert_eq!(bounded_input("界\t\u{0}\u{1b}文", 5), "界\t");
+		assert_eq!(composer_input::bounded_input("界\t\u{0}\u{1b}文", 5), "界\t");
 	}
 
 	#[gpui::test]

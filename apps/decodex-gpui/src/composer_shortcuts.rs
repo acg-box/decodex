@@ -1,10 +1,13 @@
 //! Standard text navigation and deletion; no editor modes or extra UI.
-use gpui::{Div, Stateful};
-use ui_theme::BODY_LINE_HEIGHT;
+use gpui::{Div, EntityInputHandler as _, InteractiveElement as _, Stateful};
+use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::composer_input::*;
+use crate::composer_input::{
+	self, App, ComposerInput, Context, End, Home, KeyBinding, Window, text,
+	ui_theme::BODY_LINE_HEIGHT,
+};
 
-actions!(
+composer_input::actions!(
 	decodex_composer_input,
 	[
 		WordLeft,
@@ -189,7 +192,9 @@ pub(super) fn bind_actions(input: Stateful<Div>, cx: &mut Context<ComposerInput>
 
 #[cfg(test)]
 mod tests {
-	use crate::composer_input::shortcuts::*;
+	use gpui::Focusable as _;
+
+	use crate::composer_input::{self, shortcuts::ComposerInput};
 
 	#[gpui::test]
 	fn editing_keys_preserve_other_lines_and_support_undo(cx: &mut gpui::TestAppContext) {
@@ -223,8 +228,8 @@ mod tests {
 	fn character_navigation_keeps_composed_graphemes_intact() {
 		let text = "你e\u{301}👩‍💻";
 
-		assert_eq!(previous_boundary(text, text.len()), "你e\u{301}".len());
-		assert_eq!(next_boundary(text, "你".len()), "你e\u{301}".len());
-		assert_eq!(previous_boundary(text, "你e\u{301}".len()), "你".len());
+		assert_eq!(composer_input::previous_boundary(text, text.len()), "你e\u{301}".len());
+		assert_eq!(composer_input::next_boundary(text, "你".len()), "你e\u{301}".len());
+		assert_eq!(composer_input::previous_boundary(text, "你e\u{301}".len()), "你".len());
 	}
 }
