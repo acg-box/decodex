@@ -188,19 +188,7 @@ fn main() -> Result<()> {
 		.into()
 	};
 
-	cx.run_until_parked();
-	cx.update_window(window, |_, window, _| window.refresh())?;
-	cx.run_until_parked();
-	// GPUI element animations use the monotonic wall clock, while async timers
-	// use the visual-test dispatcher clock. Render once to start the element
-	// animation, then wait on the same clock that drives it.
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
-
-	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
-
-	cx.advance_clock(Duration::from_millis(16));
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
-	cx.run_until_parked();
+	settle_capture_layout(&mut cx, window)?;
 
 	if let Some(panel_motion) = panel_motion {
 		animate_panel_motion(&mut cx, window, &panel_motion)?;
@@ -217,6 +205,24 @@ fn main() -> Result<()> {
 	screenshot.save(&output)?;
 
 	println!("{}", output.display());
+
+	Ok(())
+}
+
+fn settle_capture_layout(cx: &mut VisualTestAppContext, window: AnyWindowHandle) -> Result<()> {
+	cx.run_until_parked();
+	cx.update_window(window, |_, window, _| window.refresh())?;
+	cx.run_until_parked();
+	// GPUI element animations use the monotonic wall clock, while async timers
+	// use the visual-test dispatcher clock. Render once to start the element
+	// animation, then wait on the same clock that drives it.
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+
+	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
+
+	cx.advance_clock(Duration::from_millis(16));
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.run_until_parked();
 
 	Ok(())
 }
