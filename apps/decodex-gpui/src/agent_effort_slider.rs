@@ -50,6 +50,28 @@ impl AgentSurface {
 		self.explicit_effort_scale(cx)
 	}
 
+	fn handle_effort_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) {
+		let levels = self.model_efforts(cx);
+		let current = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
+		let next = match e.keystroke.key.as_str() {
+			"left" | "down" => current.saturating_sub(1),
+			"right" | "up" => (current + 1).min(levels.len().saturating_sub(1)),
+			"home" => 0,
+			"end" => levels.len().saturating_sub(1),
+			_ => return,
+		};
+
+		if let Some(level) = levels.get(next) {
+			self.effort = level.clone();
+
+			self.mark_effort_intent(cx);
+			self.save_draft_document(cx);
+		}
+
+		cx.stop_propagation();
+		cx.notify();
+	}
+
 	fn explicit_effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
@@ -112,25 +134,7 @@ impl AgentSurface {
 						}),
 					)
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-						let levels = s.model_efforts(cx);
-						let current = levels.iter().position(|v| *v == s.effort).unwrap_or(0);
-						let next = match e.keystroke.key.as_str() {
-							"left" | "down" => current.saturating_sub(1),
-							"right" | "up" => (current + 1).min(levels.len().saturating_sub(1)),
-							"home" => 0,
-							"end" => levels.len().saturating_sub(1),
-							_ => return,
-						};
-
-						if let Some(level) = levels.get(next) {
-							s.effort = level.clone();
-
-							s.mark_effort_intent(cx);
-							s.save_draft_document(cx);
-						}
-
-						cx.stop_propagation();
-						cx.notify();
+						s.handle_effort_key(e, cx);
 					}))
 					.child(
 						gpui::canvas(
