@@ -261,38 +261,7 @@ impl AgentCoordinator {
 			self.store.reconcile_agent_dispatch(item.id.clone(), turn.clone()).await?;
 		}
 
-		let mut evidence = match history {
-			Ok(value) => {
-				let exact_turn = (value.pointer("/thread/id").and_then(Value::as_str)
-					== Some(thread.as_str()))
-				.then(|| value.pointer("/thread/turns").and_then(Value::as_array))
-				.flatten()
-				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(&turn)));
-
-				for entry in
-					exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
-				{
-					self.observe_terminal_item(&thread, &turn, entry).await?;
-				}
-
-				let (messages, truncated) = result_messages::collect(exact_turn);
-				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
-					== Some(thread.as_str())
-					&& exact_turn.is_some_and(|entry| {
-						entry["status"] == "failed"
-							&& entry.pointer("/error/codexErrorInfo").and_then(Value::as_str)
-								== Some("serverOverloaded")
-					});
-
-				serde_json::json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some(),"capacityRetryEligible":retry_eligible})
-			},
-			Err(error) => {
-				let detail = error.to_string();
-				let bounded: String = detail.chars().take(512).collect();
-
-				serde_json::json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
-			},
-		};
+		let mut evidence = self.terminal_readback_evidence(&thread, &turn, history).await?;
 
 		if evidence["exactTurnReadback"] != true {
 			// A completion summary can repair a dropped final item, but cannot prove
@@ -364,6 +333,48 @@ impl AgentCoordinator {
 		self.recover_async_questions().await?;
 
 		Ok(())
+	}
+
+	async fn terminal_readback_evidence(
+		&mut self,
+		thread: &str,
+		turn: &str,
+		history: Result<Value, ClientError>,
+	) -> Result<Value, AgentError> {
+		let evidence = match history {
+			Ok(value) => {
+				let exact_turn = (value.pointer("/thread/id").and_then(Value::as_str)
+					== Some(thread))
+				.then(|| value.pointer("/thread/turns").and_then(Value::as_array))
+				.flatten()
+				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(turn)));
+
+				for entry in
+					exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
+				{
+					self.observe_terminal_item(thread, turn, entry).await?;
+				}
+
+				let (messages, truncated) = result_messages::collect(exact_turn);
+				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
+					== Some(thread)
+					&& exact_turn.is_some_and(|entry| {
+						entry["status"] == "failed"
+							&& entry.pointer("/error/codexErrorInfo").and_then(Value::as_str)
+								== Some("serverOverloaded")
+					});
+
+				serde_json::json!({"threadId":thread,"turnId":turn,"assistantMessages":messages,"truncated":truncated,"exactTurnReadback":exact_turn.is_some(),"capacityRetryEligible":retry_eligible})
+			},
+			Err(error) => {
+				let detail = error.to_string();
+				let bounded: String = detail.chars().take(512).collect();
+
+				serde_json::json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
+			},
+		};
+
+		Ok(evidence)
 	}
 
 	async fn observe_terminal_item(
@@ -952,46 +963,7 @@ impl AgentCoordinator {
 		retry: Option<(i64, i64)>,
 		history_guard: Option<HistoryGuard>,
 	) -> Result<String, AgentError> {
-		if self.store.agent_misalignment(item.id.clone()).await?.is_some() {
-			return Err(AgentError::Invalid(
-				"This conversation is paused. Review the provider findings before continuing."
-					.into(),
-			));
-		}
-		if item.kind == AgentWorkKind::Goal && !self.is_manager(&item.id).await? {
-			return Err(AgentError::Invalid(
-				"a goal does not own a manager thread; create a worker for this goal".into(),
-			));
-		}
-		if item.dispatch_state == AgentDispatchState::Unknown {
-			return Err(AgentError::UnknownDispatch);
-		}
-		if item.dispatch_state != AgentDispatchState::Idle {
-			return Err(AgentError::Busy);
-		}
-
-		let mut unresolved = Vec::new();
-
-		for dependency in self
-			.store
-			.list_agent_dependencies()
-			.await?
-			.into_iter()
-			.filter(|dependency| dependency.work_item_id == item.id)
-		{
-			let prerequisite =
-				self.store.get_agent_work_item(dependency.depends_on_id.clone()).await?;
-
-			if prerequisite.status != AgentWorkStatus::Resolved
-				|| prerequisite.dispatch_state != AgentDispatchState::Idle
-			{
-				unresolved.push(dependency.depends_on_id);
-			}
-		}
-
-		if !unresolved.is_empty() {
-			return Err(AgentError::DependenciesPending(unresolved));
-		}
+		self.validate_dispatch_prerequisites(item).await?;
 
 		let mut exact_question_target = false;
 		let mut exact_prompt_target = false;
@@ -1095,6 +1067,54 @@ impl AgentCoordinator {
 			retry.map(|(event, _)| event),
 		)
 		.await
+	}
+
+	async fn validate_dispatch_prerequisites(
+		&self,
+		item: &AgentWorkItem,
+	) -> Result<(), AgentError> {
+		if self.store.agent_misalignment(item.id.clone()).await?.is_some() {
+			return Err(AgentError::Invalid(
+				"This conversation is paused. Review the provider findings before continuing."
+					.into(),
+			));
+		}
+		if item.kind == AgentWorkKind::Goal && !self.is_manager(&item.id).await? {
+			return Err(AgentError::Invalid(
+				"a goal does not own a manager thread; create a worker for this goal".into(),
+			));
+		}
+		if item.dispatch_state == AgentDispatchState::Unknown {
+			return Err(AgentError::UnknownDispatch);
+		}
+		if item.dispatch_state != AgentDispatchState::Idle {
+			return Err(AgentError::Busy);
+		}
+
+		let mut unresolved = Vec::new();
+
+		for dependency in self
+			.store
+			.list_agent_dependencies()
+			.await?
+			.into_iter()
+			.filter(|dependency| dependency.work_item_id == item.id)
+		{
+			let prerequisite =
+				self.store.get_agent_work_item(dependency.depends_on_id.clone()).await?;
+
+			if prerequisite.status != AgentWorkStatus::Resolved
+				|| prerequisite.dispatch_state != AgentDispatchState::Idle
+			{
+				unresolved.push(dependency.depends_on_id);
+			}
+		}
+
+		if !unresolved.is_empty() {
+			return Err(AgentError::DependenciesPending(unresolved));
+		}
+
+		Ok(())
 	}
 
 	async fn finish_dispatch_attempt(
@@ -1652,29 +1672,7 @@ impl AgentCoordinator {
 				self.observe_native_turn(&params).await?;
 			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
-				let (Some(thread), Some(raw_id)) =
-					(params["threadId"].as_str(), params.get("requestId"))
-				else {
-					return Ok(());
-				};
-				let Ok(request_id) = serde_json::from_value::<RequestId>(raw_id.clone()) else {
-					return Ok(());
-				};
-				let Some(event_id) = self.pending_requests.get(&request_id).copied() else {
-					return Ok(());
-				};
-				let event = self.store.get_agent_inbox_event(event_id).await?;
-				let payload: Value = serde_json::from_str(&event.payload).map_err(|_| {
-					AgentError::Invalid("invalid persisted provider request".into())
-				})?;
-
-				if payload["params"]["threadId"].as_str() == Some(thread) {
-					self.pending_requests.remove(&request_id);
-
-					if event.disposition.is_none() {
-						self.store.resolve_agent_request_event(event_id).await?;
-					}
-				}
+				self.resolve_provider_request(&params).await?;
 			},
 			ServerEvent::Notification { method, params }
 				if ["thread/closed", "thread/archived", "thread/deleted"]
@@ -1740,6 +1738,32 @@ impl AgentCoordinator {
 				return Err(error.into());
 			},
 			_ => {},
+		}
+
+		Ok(())
+	}
+
+	async fn resolve_provider_request(&mut self, params: &Value) -> Result<(), AgentError> {
+		let (Some(thread), Some(raw_id)) = (params["threadId"].as_str(), params.get("requestId"))
+		else {
+			return Ok(());
+		};
+		let Ok(request_id) = serde_json::from_value::<RequestId>(raw_id.clone()) else {
+			return Ok(());
+		};
+		let Some(event_id) = self.pending_requests.get(&request_id).copied() else {
+			return Ok(());
+		};
+		let event = self.store.get_agent_inbox_event(event_id).await?;
+		let payload: Value = serde_json::from_str(&event.payload)
+			.map_err(|_| AgentError::Invalid("invalid persisted provider request".into()))?;
+
+		if payload["params"]["threadId"].as_str() == Some(thread) {
+			self.pending_requests.remove(&request_id);
+
+			if event.disposition.is_none() {
+				self.store.resolve_agent_request_event(event_id).await?;
+			}
 		}
 
 		Ok(())
