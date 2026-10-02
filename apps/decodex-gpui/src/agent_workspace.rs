@@ -31,7 +31,13 @@ use crate::{
 	ui_motion::{self, SmoothControl, TabReveal},
 	ui_scroll::SmoothScrollArea,
 };
-use decodex_protocol::DesktopRecoveredDraft;
+#[cfg(any(test, feature = "visual-capture"))]
+use decodex_protocol::{
+	AgentDependencyDto,
+	AgentDispatchStateDto::{Idle, Running},
+	AgentWorkStatusDto::{Open, Resolved, UserDecision},
+};
+use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 
@@ -156,8 +162,7 @@ impl AgentSurface {
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| {
 				work.id == id
-					&& (work.parent_goal_id.is_none()
-						|| work.kind == decodex_protocol::AgentWorkKindDto::Manager)
+					&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
 			})
 		});
 
@@ -222,7 +227,7 @@ impl AgentSurface {
 					.as_ref()
 					.and_then(|snap| snap.work_items.iter().find(|w| w.id == id))
 					.and_then(|w| {
-						if w.kind == decodex_protocol::AgentWorkKindDto::Manager {
+						if w.kind == AgentWorkKindDto::Manager {
 							Some(w.id.clone())
 						} else {
 							w.parent_goal_id.clone()
@@ -446,8 +451,7 @@ impl AgentSurface {
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot.work_items.iter().filter(|w| {
 				snapshot.workspaces.iter().any(|p| p.agent_id == w.id)
-					|| (w.parent_goal_id == self.root_id()
-						&& w.kind == decodex_protocol::AgentWorkKindDto::Manager)
+					|| (w.parent_goal_id == self.root_id() && w.kind == AgentWorkKindDto::Manager)
 			}) {
 				let id = work.id.clone();
 				let label = snapshot
@@ -838,7 +842,7 @@ impl AgentSurface {
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
 				snapshot.work_items.iter().any(|work| {
 					Some(&work.id) == self.selected.as_ref()
-						&& work.kind == decodex_protocol::AgentWorkKindDto::Manager
+						&& work.kind == AgentWorkKindDto::Manager
 				})
 			})
 	}
@@ -1194,7 +1198,7 @@ impl AgentSurface {
 				return project.name.clone();
 			}
 
-			if work.title == work.id && work.kind == decodex_protocol::AgentWorkKindDto::Task {
+			if work.title == work.id && work.kind == AgentWorkKindDto::Task {
 				let position = snapshot
 					.work_items
 					.iter()
@@ -1706,16 +1710,14 @@ impl AgentSurface {
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
 		self.sidebar_visible = true;
 
-		use decodex_protocol::AgentDependencyDto;
-
 		let make =
 			|id: &str, parent: Option<&str>, title: &str, status, dispatch| AgentWorkItemDto {
 				id: id.into(),
 				parent_goal_id: parent.map(str::to_owned),
 				kind: if id == "agent" || id == "release" {
-					decodex_protocol::AgentWorkKindDto::Goal
+					AgentWorkKindDto::Goal
 				} else {
-					decodex_protocol::AgentWorkKindDto::Task
+					AgentWorkKindDto::Task
 				},
 				title: title.into(),
 				codex_thread_id: None,
@@ -1726,10 +1728,6 @@ impl AgentSurface {
 				created_at_micros: 1_789_480_440_000_000,
 				updated_at_micros: 1_789_481_040_000_000,
 			};
-
-		use AgentDispatchStateDto::{Idle, Running};
-
-		use AgentWorkStatusDto::{Open, Resolved, UserDecision};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			runtime_source: None,
@@ -2044,7 +2042,7 @@ impl AgentSurface {
 			let project =
 				snapshot.work_items.iter_mut().find(|work| work.id == "release").expect("fixture");
 
-			project.kind = decodex_protocol::AgentWorkKindDto::Manager;
+			project.kind = AgentWorkKindDto::Manager;
 
 			snapshot.workspaces.push(decodex_protocol::AgentWorkspaceDto {
 				agent_id: "release".into(),
@@ -2159,12 +2157,13 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 mod tests {
 	use std::thread;
 
-	use gpui::AppContext as _;
+	use gpui::{AppContext as _, Focusable as _};
 
 	use crate::shell::agent_surface::workspace::{
 		AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
 		LoadState, Render, Window, graph,
 	};
+	use decodex_protocol::AgentWorkKindDto;
 
 	struct ActionView(gpui::Entity<AgentSurface>);
 	impl Render for ActionView {
@@ -2400,8 +2399,6 @@ mod tests {
 	fn unavailable_draft_remains_visible_editable_and_never_dispatches(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use gpui::Focusable as _;
-
 		cx.update(crate::composer_input::bind_keys);
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -2563,7 +2560,7 @@ mod tests {
 				.iter_mut()
 				.find(|work| work.id == "release")
 				.unwrap()
-				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+				.kind = AgentWorkKindDto::Manager;
 
 			s.composer.update(cx, |input, cx| input.set_content("Main Agent draft", cx));
 			s.open_page("release", cx);

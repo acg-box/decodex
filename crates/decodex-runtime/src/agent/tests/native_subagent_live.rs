@@ -14,8 +14,7 @@ use crate::{
 	agent::{
 		tests,
 		tests::{
-			AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, fixture,
-			native_task_references,
+			AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, native_task_references,
 		},
 	},
 	native_agents,

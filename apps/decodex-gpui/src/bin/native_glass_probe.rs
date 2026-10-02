@@ -7,8 +7,6 @@ mod native_quit;
 #[path = "../ui_theme.rs"] mod ui_theme;
 #[cfg(target_os = "macos")]
 mod probe {
-	use crate::composer_input::{self, ComposerInput, SubmitComposer};
-
 	use gpui::{
 		App, AppContext as _, Bounds, Context, Entity, IntoElement, Render, Window,
 		WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
@@ -16,15 +14,13 @@ mod probe {
 		prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
 		px, rgb, rgba, size,
 	};
-
 	use objc2::{msg_send, rc::Retained, runtime::AnyClass};
-
 	use objc2_app_kit::{NSView, NSWindow};
-
 	use objc2_foundation::{NSPoint, NSRect, NSSize};
-
-	#[cfg(not(test))] use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+	use crate::composer_input::{self, ComposerInput, SubmitComposer};
+	#[cfg(not(test))] use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
 
 	struct Backdrop {
 		child: Option<WindowHandle<Composer>>,
@@ -440,7 +436,6 @@ mod probe {
 }
 
 // This probe shares the application's package dependency set.
-use decodex_protocol as _;
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
 use libc as _;
 use pulldown_cmark as _;
@@ -457,6 +452,8 @@ use {
 	objc2_core_audio_types as _, rtrb as _,
 };
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
+
+use decodex_protocol as _;
 
 #[cfg(not(target_os = "macos"))]
 fn main() {

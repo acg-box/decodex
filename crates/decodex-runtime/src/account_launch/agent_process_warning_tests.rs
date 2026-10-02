@@ -12,9 +12,12 @@ use std::{
 use tokio::{net::TcpListener, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::reviewer::{
-		NativeSession,
-		store::{GENERATION, OwnedReviewer, ProcessGenerationId, SqliteStore},
+	account_launch::agent_process::{
+		native_tests,
+		native_tests::reviewer::{
+			NativeSession,
+			store::{GENERATION, OwnedReviewer, ProcessGenerationId, SqliteStore},
+		},
 	},
 	application, native_config_warning,
 };
@@ -45,7 +48,7 @@ async fn installed_native_warning_crosses_bridge_owner_history_and_reopen() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(super::super::serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

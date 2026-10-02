@@ -1,16 +1,12 @@
 //! Explicit task selection and per-manager composer drafts.
-#[cfg(test)] use gpui::px;
 use gpui::{AnyElement, AppContext as _, KeyDownEvent};
 
 #[cfg(test)] use crate::shell::agent_surface::composer::{AgentActionDto, HistoryText};
 use crate::{
-	shell::agent_surface::{
-		composer,
-		composer::{
-			AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement,
-			IntoElement, ParentElement, Role, SharedString, SmoothControl,
-			StatefulInteractiveElement, Styled, ui_theme::TEXT_MUTED,
-		},
+	shell::agent_surface::composer::{
+		AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement, IntoElement,
+		ParentElement, Role, SharedString, SmoothControl, StatefulInteractiveElement, Styled,
+		ui_theme::TEXT_MUTED,
 	},
 	ui_theme::HOVER_FILL,
 };
@@ -129,7 +125,7 @@ impl AgentSurface {
 						.py_1()
 						.rounded(gpui::px(6.))
 						.cursor_pointer()
-						.hover(|d| d.bg(composer::rgba(HOVER_FILL)))
+						.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 						.child(
 							gpui::div()
 								.text_size(gpui::px(12.))
@@ -140,7 +136,7 @@ impl AgentSurface {
 						.child(
 							gpui::div()
 								.text_size(gpui::px(10.))
-								.text_color(composer::rgb(TEXT_MUTED))
+								.text_color(gpui::rgb(TEXT_MUTED))
 								.child(work.id.clone()),
 						)
 						.on_click(cx.listener(move |s, _, _, cx| {
@@ -176,7 +172,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.text_size(gpui::px(10.))
-					.text_color(composer::rgb(TEXT_MUTED))
+					.text_color(gpui::rgb(TEXT_MUTED))
 					.child("Sending grants read access to the selected task history."),
 			)
 			.child(list)
@@ -217,7 +213,7 @@ impl AgentSurface {
 					.px_2()
 					.py_1()
 					.rounded(gpui::px(6.))
-					.bg(composer::rgba(0xffffff0a))
+					.bg(gpui::rgba(0xffffff0a))
 					.text_size(gpui::px(11.))
 					.cursor_pointer()
 					.child(
@@ -252,11 +248,11 @@ mod tests {
 	use gpui::AppContext as _;
 	#[cfg(test)] use gpui::Focusable as _;
 
-	use crate::shell::agent_surface::composer::task_references::{
-		self, AgentSurface, AgentTaskReferenceDto, EntityId, WireText,
-	};
 	#[cfg(test)]
 	use crate::shell::agent_surface::composer::task_references::{AgentActionDto, HistoryText};
+	use crate::shell::agent_surface::composer::task_references::{
+		AgentSurface, AgentTaskReferenceDto, EntityId, WireText,
+	};
 
 	fn reference(id: &str) -> AgentTaskReferenceDto {
 		AgentTaskReferenceDto {
@@ -331,8 +327,7 @@ mod tests {
 	fn real_picker_search_select_remove_and_manager_drafts(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual
-			.simulate_resize(gpui::size(task_references::px(1_400.), task_references::px(1_000.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 
 		let search = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

@@ -15,11 +15,10 @@ use tokio::{net::TcpListener, time};
 
 use crate::{
 	account_launch::agent_process::native_tests::{
-		NativeSession,
+		self, NativeSession,
 		reviewer::store::{OwnedReviewer, SqliteStore},
-		serve_fixture,
 	},
-	agent_live_settings::{LiveEdit, read_options, write},
+	agent_live_settings::{self, LiveEdit},
 };
 use decodex_codex::app_server_client::ServerEvent;
 use decodex_protocol::{AgentLiveReviewerState, ConversationModel, ConversationReasoningEffort};
@@ -43,7 +42,7 @@ async fn qualify_live_model(enabled: bool) {
 	let address = listener.local_addr().expect("native live-model fixture");
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,
@@ -73,19 +72,19 @@ async fn qualify_live_model(enabled: bool) {
 
         let guard=session.client.server_request_guard(&id,&method,&params).expect("native live-model fixture");
         let owned=OwnedReviewer::new(home.path(),&session.client,&thread,turn).await;
-        let state=read_options(&owned.store,true,|| async {Some(owned.source(&owned.key))}).await;
+        let state=agent_live_settings::read_options(&owned.store,true,|| async {Some(owned.source(&owned.key))}).await;
         let AgentLiveReviewerState::Available {review_token,model_choices,..}=state else {panic!("native live choices unavailable: {state:?}");};
 
         assert_eq!(model_choices.is_some(),enabled);
 
         if let Some(choices)=model_choices {assert!(choices.iter().any(|m|m.model.as_str()=="gpt-5.6-terra" && m.efforts.contains(&ConversationReasoningEffort::High)));}
 
-        let unsupported=write(&owned.store,|| async {Some(owned.source(&owned.key))},turn,review_token.as_str(),LiveEdit::Model {model:ConversationModel::new("absent-from-native-catalog").expect("native live-model fixture"),effort:ConversationReasoningEffort::High},"unsupported-model-edit").await;
+        let unsupported=agent_live_settings::write(&owned.store,|| async {Some(owned.source(&owned.key))},turn,review_token.as_str(),LiveEdit::Model {model:ConversationModel::new("absent-from-native-catalog").expect("native live-model fixture"),effort:ConversationReasoningEffort::High},"unsupported-model-edit").await;
 
         assert!(matches!(unsupported,Err(crate::agent_host::AgentHostError::Rejected(_))));
         assert!(owned.store.agent_live_settings_receipt("root".into(),thread.clone(),turn.into()).await.expect("native live-model fixture").is_none());
 
-        let published=write(&owned.store,|| async {Some(owned.source(&owned.key))},turn,review_token.as_str(),LiveEdit::Model {model:ConversationModel::new("gpt-5.6-terra").expect("native live-model fixture"),effort:ConversationReasoningEffort::High},"native-model-edit").await;
+        let published=agent_live_settings::write(&owned.store,|| async {Some(owned.source(&owned.key))},turn,review_token.as_str(),LiveEdit::Model {model:ConversationModel::new("gpt-5.6-terra").expect("native live-model fixture"),effort:ConversationReasoningEffort::High},"native-model-edit").await;
 
         if enabled {published.expect("native live-model fixture");} else {assert!(matches!(published,Err(crate::agent_host::AgentHostError::Rejected(_))));}
 

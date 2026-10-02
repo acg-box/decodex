@@ -3,8 +3,9 @@ use std::{env, fs, sync::Mutex};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::reviewer::{
-	self, Arc, AtomicUsize, Duration, NativeSession, Ordering, ServerEvent,
+use crate::account_launch::agent_process::{
+	native_tests,
+	native_tests::reviewer::{Arc, AtomicUsize, Duration, NativeSession, Ordering, ServerEvent},
 };
 use decodex_codex::guardian::{self, ReviewStatus};
 
@@ -17,7 +18,7 @@ async fn installed_guardian_preserves_native_image_profile_after_restart() {
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(reviewer::serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,

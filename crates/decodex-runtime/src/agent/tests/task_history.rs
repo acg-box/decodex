@@ -2,7 +2,10 @@ use std::iter;
 
 use rusqlite::Connection;
 
-use crate::agent::tests::{self, AgentError, AgentInputExtras, SqliteStore, Value};
+use crate::{
+	agent,
+	agent::tests::{self, AgentError, AgentInputExtras, SqliteStore, Value},
+};
 use decodex_core::DecodexRoot;
 use decodex_protocol::WireText;
 
@@ -11,7 +14,7 @@ fn saved_task_references_are_rendered_on_queued_native_turn_input() {
 	let mut params = serde_json::json!({"input":[{"type":"text","text":"Compare it"}]});
 	let payload=serde_json::json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
 
-	tests::apply_message_options(&mut params, &payload).unwrap();
+	agent::apply_message_options(&mut params, &payload).unwrap();
 
 	assert_eq!(params["input"].as_array().unwrap().len(), 2);
 	assert!(params["input"][1]["text"].as_str().unwrap().contains("native-thread"));

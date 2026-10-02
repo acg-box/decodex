@@ -17,7 +17,7 @@ use std::{
 
 use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
-	StrikethroughStyle, rgb, rgba,
+	StrikethroughStyle,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};

@@ -17,7 +17,7 @@ use std::{
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
-		mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
+		mpsc::{self, Receiver, SyncSender, TryRecvError},
 	},
 	thread::{self, JoinHandle},
 	time::{Duration, Instant},
@@ -386,7 +386,7 @@ where
 		Some(stderr) => stderr,
 		None => return Err(missing_capture(&mut child, "stderr")),
 	};
-	let (capture_sender, capture_receiver) = sync_channel(16);
+	let (capture_sender, capture_receiver) = mpsc::sync_channel(16);
 	let _stdout_reader = spawn_capture(stdout, CaptureStream::Stdout, capture_sender.clone());
 	let _stderr_reader = spawn_capture(stderr, CaptureStream::Stderr, capture_sender);
 	let mut capture =

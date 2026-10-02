@@ -41,7 +41,7 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 			.w_full()
 			.p_3()
 			.rounded_md()
-			.bg(markdown::rgba(0x00000045))
+			.bg(gpui::rgba(0x00000045))
 			.font_family("Menlo")
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(19.))
@@ -88,8 +88,8 @@ fn diagram(source: &str) -> Option<Inline> {
 			out.text.push_str(&span.text);
 
 			let color = match span.role {
-				Role::Node => Some(markdown::rgb(BLUE).into()),
-				Role::Edge => Some(markdown::rgb(TEXT_MUTED).into()),
+				Role::Node => Some(gpui::rgb(BLUE).into()),
+				Role::Edge => Some(gpui::rgb(TEXT_MUTED).into()),
 				Role::Text => None,
 			};
 

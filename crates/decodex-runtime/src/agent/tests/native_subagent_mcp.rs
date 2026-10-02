@@ -4,8 +4,9 @@ use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
 use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, sync::mpsc, time};
 
-use crate::agent::tests::native_subagent_live::{
-	self, AgentConfig, AppServerClient, ServerEvent, Value,
+use crate::agent::{
+	tests,
+	tests::native_subagent_live::{self, AgentConfig, AppServerClient, ServerEvent, Value},
 };
 
 fn mcp_response(body: &Value, serial: usize) -> Value {
@@ -66,7 +67,7 @@ async fn qualify(marker: Value, interactive: bool) {
 
 	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()))).expect("config");
 
-	let (mut agent, _, _store_home) = native_subagent_live::fixture().await;
+	let (mut agent, _, _store_home) = tests::fixture().await;
 	let mut command = Command::new(binary);
 
 	command
