@@ -5457,7 +5457,7 @@ fn agent_command_publication(
 	work_id: decodex_protocol::EntityId,
 ) -> Result<ApplicationPublication, CommandError> {
 	let previous = revision
-		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+		.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
 		.map_err(|_| CommandError::AcceptanceUnknown)?;
 
 	Ok(ApplicationPublication {

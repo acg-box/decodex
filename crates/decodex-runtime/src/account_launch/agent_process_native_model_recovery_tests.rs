@@ -35,6 +35,22 @@ fn assert_resumed_settings(resumed: &Value, mode: &str) {
 	assert_eq!(resumed["sandbox"]["type"], "readOnly");
 }
 
+fn assert_recorded_continuation(requests: &Mutex<Vec<Value>>) {
+	let bodies = requests.lock().expect("captured inference requests");
+
+	assert_eq!(bodies.len(), 2);
+	assert_eq!(bodies[1]["model"], "gpt-5.6-terra");
+	assert_eq!(bodies[1]["reasoning"]["effort"], "medium");
+	assert!(
+		serde_json::to_string(&bodies[1])
+			.expect("continuation request")
+			.contains("Keep this exact mode instruction."),
+		"the next explicit input must retain the restored mode instructions"
+	);
+
+	drop(bodies);
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native model recovery with loopback inference"]
 async fn installed_model_recovery_preserves_task_policy_and_does_not_replay_turns() {
@@ -156,6 +172,17 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 
 	// A new user request with no model overrides must use the recovered task
 	// settings rather than the process-level defaults from config.toml.
+	continue_recovered_task(&mut reopened, &thread).await;
+
+	assert_eq!(count.load(Ordering::Acquire), 2);
+
+	assert_recorded_continuation(&requests);
+	drop(reopened);
+
+	backend.abort();
+}
+
+async fn continue_recovered_task(reopened: &mut NativeSession, thread: &str) {
 	time::timeout(Duration::from_secs(20), async {
 		reopened
 			.client
@@ -176,23 +203,4 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 	})
 	.await
 	.expect("continuation deadline");
-
-	assert_eq!(count.load(Ordering::Acquire), 2);
-
-	let bodies = requests.lock().expect("captured inference requests");
-
-	assert_eq!(bodies.len(), 2);
-	assert_eq!(bodies[1]["model"], "gpt-5.6-terra");
-	assert_eq!(bodies[1]["reasoning"]["effort"], "medium");
-	assert!(
-		serde_json::to_string(&bodies[1])
-			.expect("continuation request")
-			.contains("Keep this exact mode instruction."),
-		"the next explicit input must retain the restored mode instructions"
-	);
-
-	drop(bodies);
-	drop(reopened);
-
-	backend.abort();
 }

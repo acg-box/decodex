@@ -22,7 +22,7 @@ where
 
 	fn invalidate_hydration(&self) {
 		let _ =
-			self.1.fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| Some(v.saturating_add(1)));
+			self.1.try_update(Ordering::AcqRel, Ordering::Acquire, |v| Some(v.saturating_add(1)));
 	}
 
 	pub(super) fn record(&self, thread: &str, settings: Option<T>, guard: Option<SettingsGuard>) {
