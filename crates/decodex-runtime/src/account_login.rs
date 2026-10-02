@@ -3,7 +3,7 @@
 use std::{
 	path::Path,
 	sync::{
-		Arc, Mutex, MutexGuard, PoisonError,
+		Arc, MutexGuard, PoisonError,
 		atomic::{AtomicBool, Ordering},
 	},
 	thread::{Builder, JoinHandle},
@@ -37,7 +37,7 @@ const LOGIN_INSTALL_IDENTITY_SCHEMA: &str = "decodex/account-login-install/1";
 /// One daemon-lifetime owner that enforces a single global login session.
 pub(crate) struct AccountLoginManager {
 	operation: tokio::sync::Mutex<()>,
-	session: Mutex<Option<Session>>,
+	session: std::sync::Mutex<Option<Session>>,
 	closed: AtomicBool,
 	authority: Option<AccountLoginInstallAuthority>,
 	provider: Option<Config>,
@@ -56,7 +56,7 @@ impl AccountLoginManager {
 
 		Self {
 			operation: tokio::sync::Mutex::new(()),
-			session: Mutex::new(None),
+			session: std::sync::Mutex::new(None),
 			closed: AtomicBool::new(false),
 			authority: Some(AccountLoginInstallAuthority { store, accounts, observations }),
 			provider,
@@ -233,7 +233,7 @@ impl AccountLoginManager {
 	fn unavailable_for_test() -> Self {
 		Self {
 			operation: tokio::sync::Mutex::new(()),
-			session: Mutex::new(None),
+			session: std::sync::Mutex::new(None),
 			closed: AtomicBool::new(false),
 			authority: None,
 			provider: None,
@@ -263,7 +263,7 @@ impl Drop for AccountLoginManager {
 }
 
 struct Shared {
-	status: Mutex<AccountLoginStatus>,
+	status: std::sync::Mutex<AccountLoginStatus>,
 	cancellation: Cancellation,
 }
 impl Shared {
@@ -274,7 +274,7 @@ impl Shared {
 		};
 
 		Self {
-			status: Mutex::new(status(session_id, state, None, None, None, None)),
+			status: std::sync::Mutex::new(status(session_id, state, None, None, None, None)),
 			cancellation: Cancellation::default(),
 		}
 	}

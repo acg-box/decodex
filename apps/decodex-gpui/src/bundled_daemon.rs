@@ -18,7 +18,6 @@ mod tests {
 		self, BundledDaemonFailure, BundledDaemonSupervisor, ClientProfile, Command, Path, PathBuf,
 		Stdio,
 	};
-
 	use decodex_protocol::DoctorClient;
 
 	struct ProcessFixture {
@@ -309,14 +308,13 @@ use std::{
 use std::{
 	future::Future,
 	pin::Pin,
-	sync::{Arc, Mutex, PoisonError},
+	sync::{Arc, Mutex},
 };
-
-use decodex_protocol::{ClientProfile, ProfileKind};
 
 use gpui::{App, AppContext as _, Context, Entity, Global, Subscription};
 
 use crate::client_lifecycle::AppOwnedDaemonRecovery;
+use decodex_protocol::{ClientProfile, ProfileKind};
 
 const MAX_RECOVERY_RESTARTS: u8 = 2;
 
@@ -372,7 +370,7 @@ impl BundledDaemonSupervisor {
 	/// Restart only the child represented by the retained private lifetime channel.
 	/// Return whether this supervisor retains authority for a later bounded attempt.
 	pub(crate) fn recover_transport(&self) -> bool {
-		let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 
 		if state.restarts >= MAX_RECOVERY_RESTARTS {
 			return false;
@@ -440,7 +438,7 @@ impl BundledDaemonSupervisor {
 	}
 
 	fn shutdown(&self) {
-		self.state.lock().unwrap_or_else(PoisonError::into_inner).guard.take();
+		self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).guard.take();
 	}
 }
 

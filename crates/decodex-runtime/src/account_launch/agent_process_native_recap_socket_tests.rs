@@ -26,7 +26,7 @@ use crate::{
 			cold_settings,
 			cold_settings::{
 				AccountId, AccountService, Arc, ConversationRuntime, DecodexRoot, Duration,
-				NoRefresh, Ordering, SqliteCredentialStore, SqliteStore, Value, effort, submit,
+				NoRefresh, Ordering, SqliteCredentialStore, SqliteStore, effort, submit,
 			},
 		},
 	},
@@ -54,7 +54,10 @@ fn interaction_seconds(interactive: bool) -> u64 {
 	}
 }
 
-fn assert_preserved_native_settings(before: &Value, after: &Value) {
+fn assert_preserved_native_settings(
+	before: &crate::account_launch::agent_process::native_tests::cold_settings::Value,
+	after: &crate::account_launch::agent_process::native_tests::cold_settings::Value,
+) {
 	assert_eq!(before["model"], "cold-native-model");
 	assert_eq!(after["thread"]["id"], before["thread"]["id"]);
 

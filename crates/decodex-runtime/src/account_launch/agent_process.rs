@@ -12,7 +12,7 @@ use std::{
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
-		mpsc::{Receiver, RecvTimeoutError},
+		mpsc::RecvTimeoutError,
 	},
 	thread::{Builder, JoinHandle},
 	time::Duration,
@@ -41,7 +41,7 @@ pub(super) struct AgentProcessBridge {
 impl AgentProcessBridge {
 	pub(super) fn start(
 		stdin: Box<dyn Write + Send>,
-		stdout: Receiver<InboundFrame>,
+		stdout: std::sync::mpsc::Receiver<InboundFrame>,
 		binding: AccountBinding,
 		protocol_limit_exceeded: Arc<AtomicBool>,
 		next_request_id: i64,
@@ -167,7 +167,7 @@ fn finish_bridge(
 #[allow(clippy::too_many_arguments)] // Keep bridge I/O, revocation and credential callback explicit.
 fn pump(
 	writer: &mut Box<dyn Write + Send>,
-	stdout: Receiver<InboundFrame>,
+	stdout: std::sync::mpsc::Receiver<InboundFrame>,
 	mut commands: mpsc::Receiver<Value>,
 	events: Sender<Result<Value, ClientError>>,
 	cancelled: &AtomicBool,

@@ -1,16 +1,18 @@
 //! Single daemon-owned coordinator for stable shared Codex auth observation and cutover.
 #![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
+#[cfg(target_os = "macos")] use std::collections::HashMap;
+#[cfg(target_os = "macos")] use std::collections::HashSet;
+#[cfg(target_os = "macos")] use std::ffi::OsStr;
+#[cfg(target_os = "macos")] use std::ffi::OsString;
+#[cfg(target_os = "macos")] use std::ffi::c_void;
+#[cfg(target_os = "macos")] use std::fs;
+#[cfg(target_os = "macos")] use std::mem;
+#[cfg(target_os = "macos")] use std::mem::MaybeUninit;
+#[cfg(target_os = "macos")] use std::os::unix::ffi::OsStrExt as _;
+#[cfg(target_os = "macos")] use std::os::unix::ffi::OsStringExt as _;
+#[cfg(target_os = "macos")] use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-#[cfg(target_os = "macos")]
-use std::{
-	collections::{HashMap, HashSet},
-	ffi::{OsStr, OsString, c_void},
-	fs,
-	mem::{self, MaybeUninit},
-	os::unix::ffi::{OsStrExt as _, OsStringExt as _},
-	path::{Path, PathBuf},
-};
 
 #[cfg(target_os = "macos")] use zeroize::Zeroizing;
 
@@ -503,7 +505,7 @@ fn observe_macos_parent_pid(pid: libc::pid_t) -> MacosProcessField<libc::pid_t> 
 #[cfg(target_os = "macos")]
 fn observe_macos_codex_home(
 	pid: libc::pid_t,
-	shared_codex_home: &Path,
+	shared_codex_home: &std::path::Path,
 ) -> MacosProcessField<MacosCodexHomeRelation> {
 	let environment = match read_macos_process_auth_environment(pid) {
 		MacosProcessField::Value(environment) => environment,
@@ -527,8 +529,8 @@ fn observe_macos_codex_home(
 
 #[cfg(target_os = "macos")]
 fn classify_macos_codex_home(
-	process_codex_home: &Path,
-	shared_codex_home: &Path,
+	process_codex_home: &std::path::Path,
+	shared_codex_home: &std::path::Path,
 ) -> MacosProcessField<MacosCodexHomeRelation> {
 	if !process_codex_home.is_absolute()
 		|| !shared_codex_home.is_absolute()
@@ -695,7 +697,7 @@ fn skip_nul_padding(mut bytes: &[u8]) -> &[u8] {
 #[cfg(target_os = "macos")]
 fn enrich_macos_codex_home_evidence(
 	own_pid: libc::pid_t,
-	shared_codex_home: &Path,
+	shared_codex_home: &std::path::Path,
 	observations: &mut [MacosProcessObservation],
 ) {
 	let parents = observations
@@ -846,7 +848,7 @@ fn process_name_looks_like_codex(name: &OsStr) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn path_looks_like_codex(path: &Path) -> bool {
+fn path_looks_like_codex(path: &std::path::Path) -> bool {
 	let executable = path.file_name();
 
 	path_is_official_shared_codex(path)
@@ -856,7 +858,7 @@ fn path_looks_like_codex(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn path_is_official_shared_codex(path: &Path) -> bool {
+fn path_is_official_shared_codex(path: &std::path::Path) -> bool {
 	path.ends_with("ChatGPT.app/Contents/MacOS/ChatGPT")
 		|| path.ends_with("ChatGPT.app/Contents/Resources/codex")
 		|| path.ends_with("Codex.app/Contents/MacOS/Codex")
@@ -865,12 +867,20 @@ fn path_is_official_shared_codex(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(target_os = "macos")]
-	use crate::shared_auth_coordinator::{
-		self, CodexAuthHomeEvidence, CodexAuthOwnerBlocker, CodexAuthOwnerKind, CodexLiveness,
-		CodexLivenessObservation, MacosCodexHomeRelation, MacosProcessField,
-		MacosProcessObservation, OsStr, OsString, Path, PathBuf, fs,
-	};
+	#[cfg(target_os = "macos")] use std::path::PathBuf;
+
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::CodexAuthHomeEvidence;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::CodexAuthOwnerBlocker;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::CodexAuthOwnerKind;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::CodexLiveness;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::CodexLivenessObservation;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::MacosCodexHomeRelation;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::MacosProcessField;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::MacosProcessObservation;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::OsStr;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::OsString;
+	#[cfg(target_os = "macos")] use crate::shared_auth_coordinator::fs;
 
 	#[cfg(target_os = "macos")]
 	#[test]
@@ -878,19 +888,19 @@ mod tests {
 		assert!(shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("ChatGPT")));
 		assert!(shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("codex")));
 		assert!(!shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("launchd")));
-		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(std::path::Path::new(
 			"/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
 		)));
-		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(std::path::Path::new(
 			"/Applications/ChatGPT.app/Contents/Resources/codex",
 		)));
-		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(std::path::Path::new(
 			"/Applications/Codex.app/Contents/MacOS/Codex",
 		)));
-		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(std::path::Path::new(
 			"/Applications/Codex.app/Contents/Resources/codex",
 		)));
-		assert!(!shared_auth_coordinator::path_looks_like_codex(Path::new(
+		assert!(!shared_auth_coordinator::path_looks_like_codex(std::path::Path::new(
 			"/Applications/ChatGPT.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper",
 		)));
 	}

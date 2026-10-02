@@ -1,3 +1,4 @@
+//! Native bounded text input for the Conversation composer.
 #[path = "composer_cursor.rs"] pub(crate) mod cursor;
 
 #[path = "composer_edit.rs"] mod edit;
@@ -5,33 +6,29 @@
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 #[path = "composer_text.rs"] mod text;
 
-use unicode_segmentation::UnicodeSegmentation as _;
-// Native bounded text input for the Conversation composer.
-
 use std::ops::Range;
 
 use gpui::{
 	AccessibleAction, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId,
 	ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
 	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
-	MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, SharedString, Style,
-	TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine, actions, div, fill, point,
+	MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, Role,
+	ScrollWheelEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window,
+	WrappedLine, actions, div, fill, point,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
 	px, relative, rgb, rgba, size,
 };
+#[cfg(target_os = "macos")] use objc2_app_kit::NSView;
+#[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL};
-
-use gpui::{NoAction, ScrollWheelEvent};
-
 use cursor::Cursor;
 use decodex_protocol::PromptDraft;
 use edit::Snapshot;
 use native::MAX_NATIVE_EDITOR_BYTES;
-#[cfg(target_os = "macos")] use objc2_app_kit::NSView;
-#[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use text::ComposerTextElement;
 
 actions!(

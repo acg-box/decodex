@@ -29,8 +29,8 @@ use crate::{
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, WireText, compact_tokens, div, model_settings, px, rgb,
-			rgba, ui_theme, unique_command,
+			Styled, SubmitComposer, Window, compact_tokens, div, model_settings, px, rgb, rgba,
+			ui_theme, unique_command,
 		},
 		workspace_symbols,
 		workspace_symbols::{Symbol, icon},
@@ -55,7 +55,7 @@ impl Render for ComposerTip {
 }
 
 impl AgentSurface {
-	pub(super) fn running_turn(&self) -> Option<(EntityId, WireText)> {
+	pub(super) fn running_turn(&self) -> Option<(EntityId, crate::shell::agent_surface::WireText)> {
 		let snapshot = self.snapshot.as_ref()?;
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
@@ -66,7 +66,7 @@ impl AgentSurface {
 
 		Some((
 			EntityId::new(work.id.clone()).ok()?,
-			WireText::new(work.active_turn_id.clone()?).ok()?,
+			crate::shell::agent_surface::WireText::new(work.active_turn_id.clone()?).ok()?,
 		))
 	}
 
@@ -1064,7 +1064,9 @@ impl AgentSurface {
 						serde_json::json!([
 							"attachment",
 							file.path.as_str(),
-							file.skill_name.as_ref().map(WireText::as_str)
+							file.skill_name
+								.as_ref()
+								.map(crate::shell::agent_surface::WireText::as_str)
 						])
 						.to_string(),
 					))

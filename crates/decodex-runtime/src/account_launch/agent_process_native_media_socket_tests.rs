@@ -6,12 +6,13 @@ use std::{
 	sync::atomic::AtomicUsize,
 };
 
+use serde_json::Value;
 use tokio::{process::Command, time};
 
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
 	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
 	ConversationModel, ConversationReasoningEffort, ConversationRuntime,
-	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering, Value, WireText,
+	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering, WireText,
 };
 use decodex_protocol::{AgentMediaRequest, AgentMediaResult, AgentResourcesResult};
 
