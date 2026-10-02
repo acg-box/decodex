@@ -333,6 +333,31 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	fn prepare_voice_ui(
+		&mut self,
+		options: AgentVoiceOptions,
+		media: Media,
+		session: &EntityId,
+		work: EntityId,
+	) {
+		self.voice = Some(VoiceUi {
+			options,
+			media,
+			session: session.clone(),
+			work,
+			request: None,
+			answered: false,
+			signaling: false,
+			connected: false,
+			connection_status: "Preparing audio…".into(),
+			muted: false,
+			captions: Vec::new(),
+			matched_receipts: Default::default(),
+			levels: std::collections::VecDeque::from(vec![0.; 40]),
+			follow: true,
+		});
+	}
+
 	pub(super) fn start_voice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
 			return;
@@ -386,22 +411,8 @@ impl AgentSurface {
 		let session =
 			EntityId::new(agent_surface::unique_command()).expect("bounded voice identity");
 
-		self.voice = Some(VoiceUi {
-			options,
-			media,
-			session: session.clone(),
-			work,
-			request: None,
-			answered: false,
-			signaling: false,
-			connected: false,
-			connection_status: "Preparing audio…".into(),
-			muted: false,
-			captions: Vec::new(),
-			matched_receipts: Default::default(),
-			levels: std::collections::VecDeque::from(vec![0.; 40]),
-			follow: true,
-		});
+		self.prepare_voice_ui(options, media, &session, work);
+
 		self.voice_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				let request = surface.update(cx, |s, cx| s.poll_voice_media(cx)).ok().flatten();
@@ -929,6 +940,27 @@ fn drain_caption_events(captions: &mut Vec<Caption>, mut poll: impl FnMut() -> O
 	}
 }
 
+fn append_caption_delta(event: &Value, captions: &mut Vec<Caption>, role: &'static str) {
+	let Some(delta) = event.pointer("/item/text").and_then(Value::as_str) else { return };
+
+	if delta.is_empty() {
+		return;
+	}
+	if !captions.iter().any(|c| c.role == role && !c.complete) {
+		captions.push(Caption { complete: false, turn: String::new(), role, text: String::new() });
+	}
+
+	let caption = captions
+		.iter_mut()
+		.rev()
+		.find(|c| c.role == role && !c.complete)
+		.expect("unfinished caption exists after insertion");
+
+	caption.text.push_str(delta);
+
+	bound_caption(caption);
+}
+
 /// Keep each turn until history can replace it, including interleaved final updates.
 fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 	let kind = event["type"].as_str().unwrap_or_default();
@@ -939,29 +971,7 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 	};
 
 	if let Some(role) = added_role {
-		let Some(delta) = event.pointer("/item/text").and_then(Value::as_str) else { return };
-
-		if delta.is_empty() {
-			return;
-		}
-		if !captions.iter().any(|c| c.role == role && !c.complete) {
-			captions.push(Caption {
-				complete: false,
-				turn: String::new(),
-				role,
-				text: String::new(),
-			});
-		}
-
-		let caption = captions
-			.iter_mut()
-			.rev()
-			.find(|c| c.role == role && !c.complete)
-			.expect("unfinished caption exists after insertion");
-
-		caption.text.push_str(delta);
-
-		bound_caption(caption);
+		append_caption_delta(event, captions, role);
 
 		return;
 	}
@@ -1425,6 +1435,37 @@ mod tests {
 		surface.read_with(visual, |s, _| assert!(s.voice.is_some()));
 	}
 
+	fn saved_voice_history(session: Option<&str>) -> AgentHistoryResult {
+		AgentHistoryResult::Available {
+			questions: vec![],
+			questions_truncated: false,
+			questions_recovering: false,
+			misalignment: None,
+			usage: None,
+			has_more: false,
+			next_before: None,
+			live: vec![],
+			entries: vec![decodex_protocol::AgentHistoryEntryDto {
+				native_source: None,
+				turn_id: None,
+				weather: Vec::new(),
+				receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+					voice_session_id: Some(session.into()),
+					event_kind: "voice_user".into(),
+					delivered_turn_id: None,
+					disposed: true,
+				}),
+				activity: None,
+				usage: None,
+				duration_ms: None,
+				id: 1,
+				kind: "user".into(),
+				text: "Hello".into(),
+				created_at_micros: 100,
+			}],
+		}
+	}
+
 	#[gpui::test]
 	fn saved_voice_caption_and_disconnect_remain_bound_to_the_current_call(
 		cx: &mut gpui::TestAppContext,
@@ -1454,46 +1495,17 @@ mod tests {
 				follow: true,
 			});
 
-			let history = |session: Option<&str>| AgentHistoryResult::Available {
-				questions: vec![],
-				questions_truncated: false,
-				questions_recovering: false,
-				misalignment: None,
-				usage: None,
-				has_more: false,
-				next_before: None,
-				live: vec![],
-				entries: vec![decodex_protocol::AgentHistoryEntryDto {
-					native_source: None,
-					turn_id: None,
-					weather: Vec::new(),
-					receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
-						voice_session_id: Some(session.into()),
-						event_kind: "voice_user".into(),
-						delivered_turn_id: None,
-						disposed: true,
-					}),
-					activity: None,
-					usage: None,
-					duration_ms: None,
-					id: 1,
-					kind: "user".into(),
-					text: "Hello".into(),
-					created_at_micros: 100,
-				}],
-			};
-
-			for sample in [history(None), history(Some("other-call"))] {
+			for sample in [saved_voice_history(None), saved_voice_history(Some("other-call"))] {
 				s.reconcile_voice_captions("agent", &sample);
 
 				assert!(s.live_chat_caption("agent").is_some());
 			}
 
-			s.reconcile_voice_captions("other-work", &history(Some("call")));
+			s.reconcile_voice_captions("other-work", &saved_voice_history(Some("call")));
 
 			assert!(s.live_chat_caption("agent").is_some());
 
-			s.reconcile_voice_captions("agent", &history(Some("call")));
+			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(s.live_chat_caption("agent").is_none());
 
@@ -1503,7 +1515,7 @@ mod tests {
 				role: "user",
 				text: "Hello".into(),
 			});
-			s.reconcile_voice_captions("agent", &history(Some("call")));
+			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(
 				s.live_chat_caption("agent").is_some(),
@@ -1528,7 +1540,7 @@ mod tests {
 			);
 			assert!(s.live_chat_caption("other-work").is_none());
 
-			let mut saved = history(Some("call"));
+			let mut saved = saved_voice_history(Some("call"));
 
 			if let AgentHistoryResult::Available { entries, .. } = &mut saved {
 				entries[0].id = 2;
