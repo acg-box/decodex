@@ -1,12 +1,57 @@
 //! Installed Code Mode observations must reach compaction and cold continuation.
 use std::{env, fs, sync::Mutex};
 
+use serde_json::Value;
 use tokio::{net::TcpListener, time};
 
 use crate::account_launch::agent_process::{
 	native_tests,
 	native_tests::compaction::{self, Arc, AtomicUsize, Duration, NativeSession, SUMMARY},
 };
+
+fn assert_compaction_metadata(requests: &[Value], code: &str) {
+	assert_eq!(requests.len(), 4);
+
+	let find = |index: usize| {
+		requests[index]["input"]
+			.as_array()
+			.expect("captured request input is an array")
+			.iter()
+			.find(|i| i["type"] == "custom_tool_call_output" && i["call_id"] == "code-cell")
+			.expect("captured request contains Code Mode output")
+	};
+	let sampled = find(1);
+
+	if code.starts_with("throw") {
+		assert!(sampled["output"].to_string().contains("empty-cell-error"));
+	} else if code.contains("ALL_TOOLS") {
+		assert!(sampled["output"].to_string().contains("mcp__fixture__hold"));
+	}
+
+	let compacted = find(2);
+	let metadata = &sampled["internal_chat_message_metadata_passthrough"];
+
+	assert_eq!(metadata["tool_calls_complete"], true);
+
+	let calls =
+		metadata["executed_tool_calls"].as_array().expect("completed tool inventory is an array");
+
+	if code.starts_with("text(await") {
+		assert_eq!(calls.len(), 1);
+		assert!(calls[0]["name"].as_str().expect("executed tool has a name").contains("hold"));
+	} else {
+		assert!(calls.is_empty(), "completed discovery/error has an explicit empty inventory");
+	}
+
+	assert_eq!(compacted["internal_chat_message_metadata_passthrough"], *metadata);
+	assert!(
+		requests[3]["input"]
+			.as_array()
+			.expect("post-compaction input is an array")
+			.iter()
+			.any(|i| i["type"] == "compaction" && i["encrypted_content"] == SUMMARY)
+	);
+}
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and packaged Code Mode helper"]
@@ -76,51 +121,7 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 			{
 				let requests = bodies.lock().unwrap();
 
-				assert_eq!(requests.len(), 4);
-
-				let find = |index: usize| {
-					requests[index]["input"]
-						.as_array()
-						.unwrap()
-						.iter()
-						.find(|i| {
-							i["type"] == "custom_tool_call_output" && i["call_id"] == "code-cell"
-						})
-						.unwrap()
-				};
-				let sampled = find(1);
-
-				if code.starts_with("throw") {
-					assert!(sampled["output"].to_string().contains("empty-cell-error"));
-				} else if code.contains("ALL_TOOLS") {
-					assert!(sampled["output"].to_string().contains("mcp__fixture__hold"));
-				}
-
-				let compacted = find(2);
-				let metadata = &sampled["internal_chat_message_metadata_passthrough"];
-
-				assert_eq!(metadata["tool_calls_complete"], true);
-
-				let calls = metadata["executed_tool_calls"].as_array().unwrap();
-
-				if code.starts_with("text(await") {
-					assert_eq!(calls.len(), 1);
-					assert!(calls[0]["name"].as_str().unwrap().contains("hold"));
-				} else {
-					assert!(
-						calls.is_empty(),
-						"completed discovery/error has an explicit empty inventory"
-					);
-				}
-
-				assert_eq!(compacted["internal_chat_message_metadata_passthrough"], *metadata);
-				assert!(
-					requests[3]["input"]
-						.as_array()
-						.unwrap()
-						.iter()
-						.any(|i| i["type"] == "compaction" && i["encrypted_content"] == SUMMARY)
-				);
+				assert_compaction_metadata(&requests, code);
 			}
 
 			drop(session);

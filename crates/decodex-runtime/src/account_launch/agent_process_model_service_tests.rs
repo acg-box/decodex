@@ -66,31 +66,9 @@ async fn scenario(outcome: &'static str) {
 
 	assert!(models.iter().any(|m| m.model.as_str() == "scoped" && m.efforts.is_empty()));
 	assert!(models.iter().all(|model| model.model.as_str() != "gpt-reserve"));
-	assert!(
-		write(&owned.store, source, "foreign", review_token.as_str(), "scoped", "foreign")
-			.await
-			.is_err()
-	);
-	assert!(
-		write(&owned.store, source, "thread", review_token.as_str(), "forbidden", "forbidden")
-			.await
-			.is_err()
-	);
-	assert!(
-		agent_models::write(
-			&owned.store,
-			source,
-			crate::agent_models::Change {
-				thread: "thread",
-				review: review_token.as_str(),
-				model: "scoped",
-				effort: Some("not-advertised"),
-				attempt_id: "bad-effort",
-			}
-		)
-		.await
-		.is_err()
-	);
+
+	reject_invalid_model_requests(&owned, &review_token).await;
+
 	assert_eq!(writes.load(Ordering::Acquire), 0);
 
 	let result =
@@ -438,4 +416,34 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 	assert_eq!(writes.load(Ordering::Acquire), 0, "history reads never replay the old request");
 
 	backend.abort();
+}
+
+async fn reject_invalid_model_requests(owned: &OwnedReviewer, review_token: &WireText) {
+	let source = || async { Some(owned.source(&owned.key)) };
+
+	assert!(
+		write(&owned.store, source, "foreign", review_token.as_str(), "scoped", "foreign")
+			.await
+			.is_err()
+	);
+	assert!(
+		write(&owned.store, source, "thread", review_token.as_str(), "forbidden", "forbidden")
+			.await
+			.is_err()
+	);
+	assert!(
+		agent_models::write(
+			&owned.store,
+			source,
+			crate::agent_models::Change {
+				thread: "thread",
+				review: review_token.as_str(),
+				model: "scoped",
+				effort: Some("not-advertised"),
+				attempt_id: "bad-effort",
+			}
+		)
+		.await
+		.is_err()
+	);
 }
