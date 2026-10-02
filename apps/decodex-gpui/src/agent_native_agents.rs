@@ -122,7 +122,7 @@ impl AgentSurface {
 			return;
 		};
 
-		if self.agent_tree_visible
+		if self.workspace.agent_tree_visible
 			&& self.native_agents.task.is_none()
 			&& self.native_agents.next.is_none_or(|t| t <= Instant::now())
 		{
@@ -324,7 +324,7 @@ impl AgentSurface {
 			let thread = agent.thread_id.clone();
 			let label = agent.title.clone();
 			let key = format!("native:{owner}:{}", agent.thread_id);
-			let expanded = !self.agent_tree_collapsed.contains(&key);
+			let expanded = !self.workspace.agent_tree_collapsed.contains(&key);
 			let has_children = self.native_agents.lists.get(owner).is_some_and(|list| {
 				list.iter().any(|child| child.parent_thread_id == agent.thread_id)
 			});
@@ -480,7 +480,7 @@ impl AgentSurface {
 						},
 						cx,
 					))
-					.when(!self.pages.is_empty(), |row| {
+					.when(!self.workspace.pages.is_empty(), |row| {
 						row.child(
 							gpui::div()
 								.max_w(gpui::px(360.))

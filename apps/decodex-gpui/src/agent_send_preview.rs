@@ -50,11 +50,12 @@ impl AgentSurface {
 			})
 			.unwrap_or(0);
 		let native_after = self
-			.native_history
+			.timeline
+			.native
 			.binding
 			.as_ref()
 			.filter(|b| &b.work == owner)
-			.and_then(|_| self.native_history.entries.last().map(|e| e.position));
+			.and_then(|_| self.timeline.native.entries.last().map(|e| e.position));
 		let matching = |p: &&Preview| p.owner == *owner && p.text == *text;
 		let local_ordinal = 1 + self
 			.submission
@@ -102,8 +103,8 @@ impl AgentSurface {
 			.and_then(|s| s.work_items.iter().find(|w| w.id == preview.owner))
 			.is_some_and(|w| self.native_history_active(w));
 
-		if native && !self.native_history.summary_only() {
-			return self.native_history.entries.iter().filter(|e| preview.native_after.is_none_or(|position| e.position > position) && matches!(&e.content,
+		if native && !self.timeline.native.summary_only() {
+			return self.timeline.native.entries.iter().filter(|e| preview.native_after.is_none_or(|position| e.position > position) && matches!(&e.content,
                 AgentTimelineContent::Item{ kind, text, .. } if kind == "userMessage" && text == &preview.text)).count() >= preview.native_ordinal;
 		}
 
@@ -112,7 +113,7 @@ impl AgentSurface {
 			.as_ref()
 			.filter(|(id, _)| id == &preview.owner)
 			.map(|(_, h)| h)
-			.or_else(|| self.history_cache.get(&preview.owner));
+			.or_else(|| self.timeline.cache.get(&preview.owner));
 
 		matches!(history, Some(AgentHistoryResult::Available { entries, .. }) if entries.iter().filter(|e| e.id > preview.local_after && matches!(e.kind.as_str(), "user" | "instruction") && e.text == preview.text).count() >= preview.local_ordinal)
 	}
@@ -203,7 +204,7 @@ mod tests {
 				.find(|w| w.id == "agent")
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
-			s.native_history.binding = Some(native_timeline::Binding {
+			s.timeline.native.binding = Some(native_timeline::Binding {
 				work: "agent".into(),
 				thread: "thread".into(),
 				account: "account".into(),
@@ -232,7 +233,7 @@ mod tests {
 		let preview = visual.debug_bounds("sending-message-preview").unwrap();
 
 		surface.update(visual, |s, cx| {
-			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
 				content: decodex_protocol::AgentTimelineContent::Item {
 					turn_id: "turn".into(),
@@ -261,17 +262,17 @@ mod tests {
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.latest_follow_work = None;
+			s.timeline.latest_follow_work = None;
 
-			s.history_follow_paused.insert("agent".into());
+			s.timeline.follow_paused.insert("agent".into());
 			s.apply_command_result(
 				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("agent").unwrap() }),
 				Some("sent text"),
 				cx,
 			);
 
-			assert!(s.latest_follow_work.is_none());
-			assert!(s.history_follow_paused.contains("agent"));
+			assert!(s.timeline.latest_follow_work.is_none());
+			assert!(s.timeline.follow_paused.contains("agent"));
 		});
 	}
 
@@ -351,7 +352,7 @@ mod tests {
 				.find(|w| w.id == "agent")
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
-			s.native_history.binding = Some(native_timeline::Binding {
+			s.timeline.native.binding = Some(native_timeline::Binding {
 				work: "agent".into(),
 				thread: "thread".into(),
 				account: "account".into(),
@@ -366,7 +367,7 @@ mod tests {
 
 			assert_eq!(s.send_previews("agent").len(), 1);
 
-			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
 				content: decodex_protocol::AgentTimelineContent::Item {
 					turn_id: "new-turn".into(),

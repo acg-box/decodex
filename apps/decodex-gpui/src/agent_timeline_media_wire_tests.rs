@@ -32,7 +32,7 @@ fn prepare(
 ) -> String {
 	surface.visual_workspace_fixture(cx);
 
-	surface.graph_visible = false;
+	surface.workspace.graph_visible = false;
 	surface.profile = Some(profile);
 
 	let work = surface
@@ -48,7 +48,7 @@ fn prepare(
 
 	let work_id = work.id.clone();
 
-	assert!(surface.native_history.replace(
+	assert!(surface.timeline.native.replace(
 		Binding {
 			work: work_id.clone(),
 			thread: "native-thread".into(),
@@ -114,9 +114,9 @@ fn preview_click_reads_real_local_chunks_and_rejects_changed_account(cx: &mut Te
 		assert!(requests.iter().all(|request| request.work_id.as_str() == work));
 
 		surface.read_with(visual, |surface, _| {
-			assert!(surface.native_history.preview.task.is_none());
-			assert_eq!(surface.native_history.preview.image.is_some(), mode == "complete");
-			assert_eq!(surface.native_history.preview.notice.is_some(), mode != "complete");
+			assert!(surface.timeline.native.preview.task.is_none());
+			assert_eq!(surface.timeline.native.preview.image.is_some(), mode == "complete");
+			assert_eq!(surface.timeline.native.preview.notice.is_some(), mode != "complete");
 		});
 
 		assert_eq!(visual.debug_bounds("native-media-preview").is_some(), mode == "complete");

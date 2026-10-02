@@ -868,7 +868,9 @@ impl AgentSurface {
 
 	pub(super) fn follow_voice_scroll(&self, window: &mut Window, cx: &mut Context<Self>) {
 		let Some(v) = self.voice.as_ref().filter(|v| v.follow) else { return };
-		let Some(scroll) = self.transcript_scroll.get(v.work.as_str()) else { return };
+		let Some(scroll) = self.timeline.scroll.get(v.work.as_str()) else {
+			return;
+		};
 		let current = f32::from(scroll.offset().y);
 		let target = -f32::from(scroll.max_offset().y);
 

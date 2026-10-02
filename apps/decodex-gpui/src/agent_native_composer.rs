@@ -80,7 +80,7 @@ impl Render for ComposerPanel {
 			})
 			.id("native-composer-focus-panel")
 			.capture_any_mouse_down(move |_, _, cx| {
-				focus_owner.update(cx, |s, _| s.focused_panel = None);
+				focus_owner.update(cx, |s, _| s.workspace.focused_panel = None);
 			})
 			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
@@ -119,7 +119,7 @@ impl AgentSurface {
 			&& self.resources.is_none()
 			&& self.integrations.is_none()
 			&& self.usage_estimate.is_none()
-			&& !self.graph_expanded;
+			&& !self.workspace.graph_expanded;
 		let now = std::time::Instant::now();
 
 		if !requested {

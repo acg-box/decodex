@@ -1102,7 +1102,7 @@ mod tests {
 
 				surface.update(cx, |s, cx| {
 					let scroll =
-						s.transcript_scroll.get("root").expect("rendered conversation scroll");
+						s.timeline.scroll.get("root").expect("rendered conversation scroll");
 
 					if bottom {
 						scroll.scroll_to_bottom();

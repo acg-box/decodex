@@ -164,18 +164,18 @@ impl AgentSurface {
 		let width = self
 			.selected
 			.as_ref()
-			.and_then(|work| self.transcript_scroll.get(work))
+			.and_then(|work| self.timeline.scroll.get(work))
 			.map_or(0., |scroll| f32::from(scroll.bounds().size.width));
 
-		self.native_history.viewport.prepare_layout(Layout {
+		self.timeline.native.viewport.prepare_layout(Layout {
 			window_width: f32::from(window.viewport_size().width),
-			left_width: self.sidebar_width,
-			right_width: self.agent_panel_width,
+			left_width: self.workspace.sidebar_width,
+			right_width: self.workspace.agent_panel_width,
 			transcript_width: width,
-			left_visible: self.sidebar_visible,
-			right_visible: self.agent_tree_visible,
-			rail_visible: self.timeline_visible,
-			graph_expanded: self.graph_expanded,
+			left_visible: self.workspace.sidebar_visible,
+			right_visible: self.workspace.agent_tree_visible,
+			rail_visible: self.workspace.timeline_visible,
+			graph_expanded: self.workspace.graph_expanded,
 		});
 	}
 
@@ -184,19 +184,19 @@ impl AgentSurface {
 		work: &str,
 		entry: &AgentTimelineEntry,
 	) {
-		self.latest_follow_work = None;
+		self.timeline.latest_follow_work = None;
 
-		self.history_follow_paused.insert(work.into());
+		self.timeline.follow_paused.insert(work.into());
 
-		self.history_navigation = None;
+		self.timeline.navigation = None;
 
 		let key = row_key(entry);
-		let mut state = self.native_history.viewport.0.borrow_mut();
+		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
 		state.process_motion_until = Some(std::time::Instant::now() + Duration::from_millis(240));
 
 		if let (Some((top, _)), Some(scroll)) =
-			(state.rows.get(&key), self.transcript_scroll.get(work))
+			(state.rows.get(&key), self.timeline.scroll.get(work))
 		{
 			let viewport_top = *top + f32::from(scroll.offset().y);
 
@@ -207,12 +207,12 @@ impl AgentSurface {
 
 		state.rows.clear();
 
-		self.wheel_scroll = None;
+		self.timeline.wheel_scroll = None;
 	}
 
 	pub(super) fn prepare_process_folds(&self, _work: &AgentWorkItemDto, hidden: &BTreeSet<usize>) {
-		let folded = hidden.iter().map(|i| row_key(&self.native_history.entries[*i])).collect();
-		let mut state = self.native_history.viewport.0.borrow_mut();
+		let folded = hidden.iter().map(|i| row_key(&self.timeline.native.entries[*i])).collect();
+		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
 		if state.folded != folded {
 			state.folded = folded;
@@ -222,7 +222,7 @@ impl AgentSurface {
 	}
 
 	pub(in super::super) fn cancel_native_scroll_anchor(&self) {
-		let mut state = self.native_history.viewport.0.borrow_mut();
+		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
 		state.pending = None;
 		state.process_motion_until = None;
@@ -235,23 +235,24 @@ impl AgentSurface {
 		cursor: &str,
 		page: AgentTimelinePage,
 	) -> bool {
-		if self.native_history.binding.as_ref() == Some(binding)
-			&& !self.native_history.show_saved
-			&& self.history_navigation.is_none()
-			&& let Some(scroll) = self.transcript_scroll.get(&binding.work)
+		if self.timeline.native.binding.as_ref() == Some(binding)
+			&& !self.timeline.native.show_saved
+			&& self.timeline.navigation.is_none()
+			&& let Some(scroll) = self.timeline.scroll.get(&binding.work)
 		{
-			self.native_history
+			self.timeline
+				.native
 				.viewport
 				.capture(scroll.offset().y.into(), scroll.bounds().size.height.into());
 		} else {
 			self.cancel_native_scroll_anchor();
 		}
 
-		let accepted = self.native_history.prepend(binding, cursor, page);
+		let accepted = self.timeline.native.prepend(binding, cursor, page);
 
 		if accepted {
 			// The saved viewport anchor now owns the offset in the new layout.
-			self.wheel_scroll = None;
+			self.timeline.wheel_scroll = None;
 		}
 		if !accepted {
 			self.cancel_native_scroll_anchor();
@@ -266,8 +267,8 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		rows: Vec<(&AgentTimelineEntry, f32)>,
 	) -> AnyElement {
-		let scroll = self.transcript_scroll[&work.id].clone();
-		let geometry = self.native_history.viewport.0.clone();
+		let scroll = self.timeline.scroll[&work.id].clone();
+		let geometry = self.timeline.native.viewport.0.clone();
 		let mut height = 0.;
 		let rows: Vec<_> = rows
 			.into_iter()
@@ -277,7 +278,8 @@ impl AgentSurface {
 				height += row_height + ROW_GAP;
 
 				let mark = self
-					.history_marks
+					.timeline
+					.marks
 					.get(&HistoryKey::native(
 						work.codex_thread_id.as_deref().unwrap_or_default(),
 						entry,
@@ -318,11 +320,11 @@ impl AgentSurface {
 		row: AnyElement,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Some(scroll) = self.transcript_scroll.get(&work.id).cloned() else {
+		let Some(scroll) = self.timeline.scroll.get(&work.id).cloned() else {
 			return row;
 		};
 		let key = row_key(entry);
-		let geometry = self.native_history.viewport.0.clone();
+		let geometry = self.timeline.native.viewport.0.clone();
 		let surface = cx.entity().downgrade();
 		let owner = work.id.clone();
 		let selection = geometry.clone();
@@ -352,9 +354,9 @@ impl AgentSurface {
 
 				cx.defer(move |cx| {
 					let _ = surface.update(cx, |s, cx| {
-						if !Rc::ptr_eq(&geometry, &s.native_history.viewport.0)
+						if !Rc::ptr_eq(&geometry, &s.timeline.native.viewport.0)
 							|| s.selected.as_ref() != Some(&owner)
-							|| s.native_history.show_saved
+							|| s.timeline.native.show_saved
 						{
 							return;
 						}
@@ -486,7 +488,7 @@ mod tests {
 	) -> Binding {
 		s.visual_workspace_fixture(cx);
 
-		s.graph_visible = false;
+		s.workspace.graph_visible = false;
 
 		let work = s
 			.snapshot
@@ -502,7 +504,7 @@ mod tests {
 		let binding =
 			Binding { work: work.id.clone(), thread: "thread".into(), account: "account".into() };
 
-		assert!(s.native_history.replace(
+		assert!(s.timeline.native.replace(
 			binding.clone(),
 			AgentTimelinePage {
 				thread_id: "thread".into(),
@@ -547,13 +549,13 @@ mod tests {
 
 			let scroll = surface.read_with(visual, |s, _| {
 				assert_eq!(
-					s.native_history.entries,
+					s.timeline.native.entries,
 					vec![row(10)],
 					"keep the visible page while the read is pending"
 				);
-				assert!(s.native_history.viewport.0.borrow().latest_requested);
+				assert!(s.timeline.native.viewport.0.borrow().latest_requested);
 
-				s.transcript_scroll[&binding.work].clone()
+				s.timeline.scroll[&binding.work].clone()
 			});
 
 			if cancel {
@@ -566,7 +568,7 @@ mod tests {
 
 			surface.update(visual, |s, cx| {
 				if cold {
-					s.transcript_scroll.remove(&binding.work);
+					s.timeline.scroll.remove(&binding.work);
 				}
 				if summary {
 					s.refresh_native_summary(
@@ -593,8 +595,7 @@ mod tests {
 				window.draw(cx).clear();
 			});
 
-			let scroll =
-				surface.read_with(visual, |s, _| s.transcript_scroll[&binding.work].clone());
+			let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&binding.work].clone());
 
 			assert!(scroll.max_offset().y > gpui::px(1_000.));
 
@@ -617,7 +618,7 @@ mod tests {
 		let work = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s.selected.clone().unwrap();
 
@@ -629,9 +630,9 @@ mod tests {
 				.find(|item| item.id == work)
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
-			s.native_history.requested = Some((work.clone(), "thread".into()));
+			s.timeline.native.requested = Some((work.clone(), "thread".into()));
 
-			assert!(s.native_history.replace(
+			assert!(s.timeline.native.replace(
 				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
 					thread_id: "thread".into(),
@@ -643,9 +644,9 @@ mod tests {
 				}
 			));
 
-			s.latest_follow_work = None;
+			s.timeline.latest_follow_work = None;
 
-			s.history_follow_paused.insert(work.clone());
+			s.timeline.follow_paused.insert(work.clone());
 			cx.notify();
 
 			work
@@ -663,7 +664,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
+		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&work].clone());
 
 		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
@@ -675,7 +676,7 @@ mod tests {
 
 		for pending in [true, false, true, false] {
 			surface.update(visual, |s, cx| {
-				s.native_history.task =
+				s.timeline.native.task =
 					pending.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
 
 				cx.notify();
@@ -743,7 +744,7 @@ mod tests {
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -762,7 +763,7 @@ mod tests {
 				account: "account".into(),
 			};
 
-			assert!(s.native_history.replace(
+			assert!(s.timeline.native.replace(
 				binding.clone(),
 				AgentTimelinePage {
 					thread_id: "thread".into(),
@@ -786,9 +787,9 @@ mod tests {
 		let key = scroll::row_key(&row(11));
 
 		surface.update(visual, |s, cx| {
-			let top = s.native_history.viewport.0.borrow().rows[&key].0;
+			let top = s.timeline.native.viewport.0.borrow().rows[&key].0;
 
-			s.transcript_scroll[&binding.work]
+			s.timeline.scroll[&binding.work]
 				.set_offset(gpui::point(gpui::px(0.), gpui::px(40. - top)));
 			cx.notify();
 		});
@@ -798,8 +799,8 @@ mod tests {
 		});
 
 		let before = surface.update(visual, |s, cx| {
-			let before = s.native_history.viewport.0.borrow().rows[&key].0
-				+ f32::from(s.transcript_scroll[&binding.work].offset().y);
+			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
+				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			assert!(s.prepend_native_history(
 				&binding,
@@ -813,7 +814,7 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
-			assert!(s.native_history.browsing_window);
+			assert!(s.timeline.native.browsing_window);
 
 			cx.notify();
 
@@ -828,12 +829,12 @@ mod tests {
 		}
 
 		surface.read_with(visual, |s, _| {
-			let geometry = s.native_history.viewport.0.borrow();
+			let geometry = s.timeline.native.viewport.0.borrow();
 			let after =
-				geometry.rows[&key].0 + f32::from(s.transcript_scroll[&binding.work].offset().y);
+				geometry.rows[&key].0 + f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			assert!((after - before).abs() < 1., "trim moved row from {before} to {after}");
-			assert_eq!(s.native_history.entries.len(), 1_000);
+			assert_eq!(s.timeline.native.entries.len(), 1_000);
 			assert_eq!(geometry.rows.len(), 1_000);
 			assert!(!geometry.rows.contains_key(&scroll::row_key(&row(1_009))));
 		});
@@ -850,7 +851,7 @@ mod tests {
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s
 				.snapshot
@@ -869,7 +870,7 @@ mod tests {
 				account: "account".into(),
 			};
 
-			assert!(s.native_history.replace(
+			assert!(s.timeline.native.replace(
 				binding.clone(),
 				AgentTimelinePage {
 					thread_id: "thread".into(),
@@ -893,11 +894,11 @@ mod tests {
 		let key = scroll::row_key(&row(11));
 
 		surface.update(visual, |s, cx| {
-			assert!(s.history_marks.is_empty());
+			assert!(s.timeline.marks.is_empty());
 
-			let top = s.native_history.viewport.0.borrow().rows[&key].0;
+			let top = s.timeline.native.viewport.0.borrow().rows[&key].0;
 
-			s.transcript_scroll[&binding.work]
+			s.timeline.scroll[&binding.work]
 				.set_offset(gpui::point(gpui::px(0.), gpui::px(40. - top)));
 			cx.notify();
 		});
@@ -907,8 +908,8 @@ mod tests {
 		});
 
 		let before = surface.update(visual, |s, cx| {
-			let before = s.native_history.viewport.0.borrow().rows[&key].0
-				+ f32::from(s.transcript_scroll[&binding.work].offset().y);
+			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
+				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			assert!(s.prepend_native_history(
 				&binding,
@@ -936,15 +937,15 @@ mod tests {
 		}
 
 		surface.read_with(visual, |s, _| {
-			let geometry = s.native_history.viewport.0.borrow();
+			let geometry = s.timeline.native.viewport.0.borrow();
 			let after =
-				geometry.rows[&key].0 + f32::from(s.transcript_scroll[&binding.work].offset().y);
+				geometry.rows[&key].0 + f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			assert!(
 				(after - before).abs() < 1.,
 				"row moved from {before} to {after}; offset={:?}, max={:?}, pending={:?}",
-				s.transcript_scroll[&binding.work].offset(),
-				s.transcript_scroll[&binding.work].max_offset(),
+				s.timeline.scroll[&binding.work].offset(),
+				s.timeline.scroll[&binding.work].max_offset(),
 				geometry.pending.as_ref().map(|a| (&a.key, a.viewport_top, a.scheduled))
 			);
 			assert!(geometry.pending.is_none());

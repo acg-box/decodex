@@ -60,7 +60,7 @@ impl AgentSurface {
 		self.bind_profile(Some(profile.clone()), cx);
 		self.visual_workspace_fixture(cx);
 
-		self.graph_visible = false;
+		self.workspace.graph_visible = false;
 		self.poll_task = None;
 
 		let work = self.selected.clone().expect("fixture selection");

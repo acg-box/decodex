@@ -24,7 +24,7 @@ use decodex_protocol::{
 impl AgentSurface {
 	fn earlier_local_records(&self, available: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
 		available.then(|| {
-			if self.loading_older {
+			if self.timeline.loading_older {
 				return ui_loading::loading("Loading earlier records").into_any_element();
 			}
 
@@ -57,9 +57,10 @@ impl AgentSurface {
 				.child(agent_surface::muted("Local delivery records are unavailable. Retrying…"))
 				.into_any_element();
 		};
-		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
+		let cursor =
+			self.timeline.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
 		let records_key = format!("local-records-{}", work.id);
-		let expanded = diagnostics && self.expanded_records.contains(&records_key);
+		let expanded = diagnostics && self.timeline.expanded_records.contains(&records_key);
 		let has_records = cursor.is_some()
 			|| entries.iter().any(|entry| {
 				entry.kind == "auth_recovery"
@@ -75,7 +76,7 @@ impl AgentSurface {
 
 		let mut saved = BTreeMap::new();
 
-		if let Some((older, _)) = self.older_history.get(&work.id) {
+		if let Some((older, _)) = self.timeline.older_history.get(&work.id) {
 			for entry in older {
 				saved.insert(entry.id, entry);
 			}
@@ -108,8 +109,12 @@ impl AgentSurface {
 				&& entry.native_source.as_ref().is_some_and(|source| {
 					partial_replaced(
 						source,
-						self.native_history.binding.as_ref().map(|binding| binding.thread.as_str()),
-						&self.native_history.entries,
+						self.timeline
+							.native
+							.binding
+							.as_ref()
+							.map(|binding| binding.thread.as_str()),
+						&self.timeline.native.entries,
 						if entry.kind == "partial_plan" { "plan" } else { "agentMessage" },
 					)
 				}) {
@@ -202,8 +207,8 @@ impl AgentSurface {
 				"Diagnostics ›"
 			}))
 			.on_click(cx.listener(move |s, _, _, cx| {
-				if !s.expanded_records.remove(&records_key) {
-					s.expanded_records.insert(records_key.clone());
+				if !s.timeline.expanded_records.remove(&records_key) {
+					s.timeline.expanded_records.insert(records_key.clone());
 				}
 
 				cx.notify();
@@ -215,7 +220,7 @@ impl AgentSurface {
 		let mut rows = Vec::new();
 
 		for message in live {
-			if self.native_history.entries.iter().any(|entry| match &entry.content {
+			if self.timeline.native.entries.iter().any(|entry| match &entry.content {
 				AgentTimelineContent::Item { turn_id, item_id, .. } =>
 					turn_id == &message.turn_id && item_id == &message.item_id,
 				AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
@@ -325,7 +330,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
@@ -379,7 +384,7 @@ mod tests {
 				.unwrap();
 
 			work.codex_thread_id = Some("native-thread".into());
-			s.native_history.binding = Some(super::super::Binding {
+			s.timeline.native.binding = Some(super::super::Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),
 				account: "account".into(),
@@ -414,7 +419,7 @@ mod tests {
 		surface.update(visual, |s,cx| {
             s.visual_workspace_fixture(cx);
 
-            s.graph_visible=false;
+            s.workspace.graph_visible=false;
 
             let Some((_,AgentHistoryResult::Available {entries,..}))=&mut s.history else {panic!("fixture history")};
 
@@ -425,7 +430,7 @@ mod tests {
 
             let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
 
-            s.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
+            s.timeline.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
             cx.notify();
         });
 
@@ -447,7 +452,7 @@ mod tests {
 				.unwrap();
 
 			work.codex_thread_id = Some("native-thread".into());
-			s.native_history.binding = Some(super::super::Binding {
+			s.timeline.native.binding = Some(super::super::Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),
 				account: "account".into(),
@@ -473,7 +478,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 
-			s.graph_visible = false;
+			s.workspace.graph_visible = false;
 
 			let work = s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| Some(&w.id) == s.selected.as_ref()).unwrap();
 
@@ -499,7 +504,7 @@ mod tests {
 		assert!(bounds.size.height > gpui::px(0.));
 
 		surface.update(visual, |s, cx| {
-			s.native_history.binding = Some(super::super::Binding {
+			s.timeline.native.binding = Some(super::super::Binding {
 				work: s.selected.clone().unwrap(),
 				thread: "native-thread".into(),
 				account: "account".into(),

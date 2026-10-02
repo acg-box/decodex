@@ -73,7 +73,7 @@ impl AgentSurface {
 		reason = "Used by the separate workbench capture binary; this module is also compiled into the main binary"
 	)]
 	pub(crate) fn visual_media_evidence(&self) -> serde_json::Value {
-		let preview = &self.native_history.preview;
+		let preview = &self.timeline.native.preview;
 
 		serde_json::json!({"imageLoaded":preview.image.is_some(),"notice":preview.notice,"request":preview.request})
 	}
@@ -90,7 +90,7 @@ impl AgentSurface {
 		let Some(request) = media_request(work, turn, item, attachment.index) else {
 			return agent_surface::muted(caption).into_any_element();
 		};
-		let preview = &self.native_history.preview;
+		let preview = &self.timeline.native.preview;
 		let selected = preview.request.as_ref() == Some(&request);
 		let can_preview = attachment.source != AgentTimelineAttachmentSource::Unknown
 			&& matches!(
@@ -131,14 +131,14 @@ impl AgentSurface {
 	}
 
 	fn load_native_media(&mut self, request: AgentMediaRequest, cx: &mut Context<Self>) {
-		if self.native_history.preview.task.is_some() {
+		if self.timeline.native.preview.task.is_some() {
 			return;
 		}
 
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
-		let Some(binding) = self.native_history.binding.clone().filter(|binding| {
+		let Some(binding) = self.timeline.native.binding.clone().filter(|binding| {
 			binding.work == request.work_id.as_str() && binding.thread == request.thread_id.as_str()
 		}) else {
 			return;
@@ -148,16 +148,16 @@ impl AgentSurface {
 			return;
 		}
 
-		let serial = self.native_history.preview.serial.wrapping_add(1);
+		let serial = self.timeline.native.preview.serial.wrapping_add(1);
 
-		self.native_history.preview = Preview {
+		self.timeline.native.preview = Preview {
 			request: Some(request.clone()),
 			notice: Some("Loading image…"),
 			serial,
 			..Default::default()
 		};
 
-		let epoch = self.native_history.epoch;
+		let epoch = self.timeline.native.epoch;
 		let account = binding.account.clone();
 		let read = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread()
@@ -175,7 +175,7 @@ impl AgentSurface {
 			})
 		});
 
-		self.native_history.preview.task = Some(cx.spawn(async move |surface, cx| {
+		self.timeline.native.preview.task = Some(cx.spawn(async move |surface, cx| {
 			let result = read.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.finish_native_media(epoch, serial, &binding, result, cx);
@@ -193,15 +193,15 @@ impl AgentSurface {
 		result: Result<Arc<gpui::Image>, &'static str>,
 		cx: &mut Context<Self>,
 	) {
-		if self.native_history.epoch != epoch
-			|| self.native_history.preview.serial != serial
-			|| self.native_history.binding.as_ref() != Some(binding)
+		if self.timeline.native.epoch != epoch
+			|| self.timeline.native.preview.serial != serial
+			|| self.timeline.native.binding.as_ref() != Some(binding)
 			|| self.selected.as_deref() != Some(&binding.work)
 		{
 			return;
 		}
 
-		let preview = &mut self.native_history.preview;
+		let preview = &mut self.timeline.native.preview;
 
 		preview.task = None;
 
@@ -331,42 +331,42 @@ mod tests {
 				active_realtime_session_at_page_start: None,
 			};
 
-			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+			assert!(surface.timeline.native.replace(binding.clone(), page.clone()));
 
 			let image = Arc::new(gpui::Image::from_bytes(
 				gpui::ImageFormat::Png,
 				include_bytes!("../../../assets/workspace-symbols/plus.png").to_vec(),
 			));
 
-			surface.native_history.preview.image = Some(image.clone());
+			surface.timeline.native.preview.image = Some(image.clone());
 
-			let epoch = surface.native_history.epoch;
-			let serial = surface.native_history.preview.serial;
+			let epoch = surface.timeline.native.epoch;
+			let serial = surface.timeline.native.preview.serial;
 
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
 
-			assert_eq!(surface.native_history.epoch, epoch);
-			assert!(surface.native_history.preview.image.is_some());
+			assert_eq!(surface.timeline.native.epoch, epoch);
+			assert!(surface.timeline.native.preview.image.is_some());
 
 			snapshot.runtime_source = Some(EntityId::new("second-process").unwrap());
 
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
 
-			assert!(surface.native_history.binding.is_none());
-			assert!(surface.native_history.preview.image.is_none());
-			assert_ne!(surface.native_history.epoch, epoch);
+			assert!(surface.timeline.native.binding.is_none());
+			assert!(surface.timeline.native.preview.image.is_none());
+			assert_ne!(surface.timeline.native.epoch, epoch);
 			// Reusing the same task, thread and account must not restore an old callback.
-			assert!(surface.native_history.replace(binding.clone(), page));
+			assert!(surface.timeline.native.replace(binding.clone(), page));
 
 			surface.finish_native_media(epoch, serial, &binding, Ok(image), cx);
 
-			assert!(surface.native_history.preview.image.is_none());
+			assert!(surface.timeline.native.preview.image.is_none());
 
 			snapshot.runtime_source = None;
 
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
 
-			assert!(surface.native_history.binding.is_none());
+			assert!(surface.timeline.native.binding.is_none());
 		});
 	}
 
@@ -379,7 +379,7 @@ mod tests {
 		let (binding, page, serial) = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
 
-			surface.graph_visible = false;
+			surface.workspace.graph_visible = false;
 
 			let work = surface
 				.snapshot
@@ -425,9 +425,9 @@ mod tests {
 				active_realtime_session_at_page_start: None,
 			};
 
-			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+			assert!(surface.timeline.native.replace(binding.clone(), page.clone()));
 
-			surface.native_history.preview = Preview {
+			surface.timeline.native.preview = Preview {
 				request: Some(request),
 				image: Some(Arc::new(gpui::Image::from_bytes(
 					gpui::ImageFormat::Png,
@@ -453,12 +453,12 @@ mod tests {
 
 			other.account = "second-account".into();
 
-			assert!(surface.native_history.replace(other, page.clone()));
-			assert!(surface.native_history.preview.image.is_none());
-			assert_ne!(surface.native_history.preview.serial, serial);
+			assert!(surface.timeline.native.replace(other, page.clone()));
+			assert!(surface.timeline.native.preview.image.is_none());
+			assert_ne!(surface.timeline.native.preview.serial, serial);
 			// Returning to the original account must not revive an earlier callback token.
-			assert!(surface.native_history.replace(binding, page));
-			assert_ne!(surface.native_history.preview.serial, serial);
+			assert!(surface.timeline.native.replace(binding, page));
+			assert_ne!(surface.timeline.native.preview.serial, serial);
 
 			cx.notify();
 		});
@@ -501,10 +501,10 @@ mod tests {
 				active_realtime_session_at_page_start: None,
 			};
 
-			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+			assert!(surface.timeline.native.replace(binding.clone(), page.clone()));
 
-			let epoch = surface.native_history.epoch;
-			let serial = surface.native_history.preview.serial;
+			let epoch = surface.timeline.native.epoch;
+			let serial = surface.timeline.native.preview.serial;
 			let captured = binding.clone();
 			let task = cx.spawn(async move |surface, cx| {
 				let result = receive.await.unwrap();
@@ -525,9 +525,9 @@ mod tests {
 			surface.open_page(&other, cx);
 			surface.open_page(&original, cx);
 
-			assert!(surface.native_history.replace(binding, page));
+			assert!(surface.timeline.native.replace(binding, page));
 
-			surface.native_history.preview.notice = Some("New preview pending");
+			surface.timeline.native.preview.notice = Some("New preview pending");
 		});
 
 		send.send(Ok(Arc::new(gpui::Image::from_bytes(
@@ -537,8 +537,8 @@ mod tests {
 		.unwrap();
 		visual.run_until_parked();
 		surface.read_with(visual, |surface, _| {
-			assert!(surface.native_history.preview.image.is_none());
-			assert_eq!(surface.native_history.preview.notice, Some("New preview pending"));
+			assert!(surface.timeline.native.preview.image.is_none());
+			assert_eq!(surface.timeline.native.preview.notice, Some("New preview pending"));
 		});
 
 		drop(task);

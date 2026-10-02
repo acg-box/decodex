@@ -92,31 +92,31 @@ impl AgentSurface {
 
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 4] {
 		[
-			(self.sidebar_visible, true),
-			(self.graph_visible && self.reserve_workspace_panels(), self.has_work()),
+			(self.workspace.sidebar_visible, true),
+			(self.workspace.graph_visible && self.reserve_workspace_panels(), self.has_work()),
 			(
-				self.timeline_visible && selected_history_available(self),
+				self.workspace.timeline_visible && selected_history_available(self),
 				selected_history_available(self),
 			),
-			(self.agent_tree_visible, self.has_work()),
+			(self.workspace.agent_tree_visible, self.has_work()),
 		]
 	}
 
 	pub(crate) fn toggle_workspace_timeline(&mut self, cx: &mut Context<Self>) {
-		self.timeline_visible = !self.timeline_visible;
+		self.workspace.timeline_visible = !self.workspace.timeline_visible;
 
 		cx.notify();
 	}
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
-		self.sidebar_visible = !self.sidebar_visible;
+		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
 
 		cx.notify();
 	}
 
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
-		self.graph_visible = !self.graph_visible;
-		self.graph_expanded = false;
+		self.workspace.graph_visible = !self.workspace.graph_visible;
+		self.workspace.graph_expanded = false;
 
 		cx.notify();
 	}
@@ -142,7 +142,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.closing_pages.remove(id);
+		self.workspace.closing_pages.remove(id);
 		self.close_native_agent(cx);
 
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
@@ -162,28 +162,28 @@ impl AgentSurface {
 		self.restore_manager_composer(id, cx);
 
 		if let Some((old, history)) = &self.history {
-			self.history_cache.insert(old.clone(), history.clone());
+			self.timeline.cache.insert(old.clone(), history.clone());
 		}
 
-		if self.root_id().as_deref() != Some(id) && !self.pages.iter().any(|p| p == id) {
-			self.pages.push(id.to_owned());
+		if self.root_id().as_deref() != Some(id) && !self.workspace.pages.iter().any(|p| p == id) {
+			self.workspace.pages.push(id.to_owned());
 		}
 		if self.selected.as_deref() != Some(id) {
 			if let Some(old) = &self.selected {
-				self.page_views.insert(
+				self.workspace.page_views.insert(
 					old.clone(),
 					PageView {
-						scope: self.graph_scope.clone(),
-						selected: self.graph_selected.clone(),
-						pan: self.graph_pan,
-						zoom: self.graph_zoom,
-						graph_visible: self.graph_visible,
-						timeline_visible: self.timeline_visible,
+						scope: self.workspace.graph_scope.clone(),
+						selected: self.workspace.graph_selected.clone(),
+						pan: self.workspace.graph_pan,
+						zoom: self.workspace.graph_zoom,
+						graph_visible: self.workspace.graph_visible,
+						timeline_visible: self.workspace.timeline_visible,
 					},
 				);
 			}
 
-			let saved = self.page_views.get(id).cloned().unwrap_or_else(|| PageView {
+			let saved = self.workspace.page_views.get(id).cloned().unwrap_or_else(|| PageView {
 				scope: self
 					.snapshot
 					.as_ref()
@@ -198,17 +198,17 @@ impl AgentSurface {
 				selected: Some(id.to_owned()),
 				pan: (0.0, 0.0),
 				zoom: 0.85,
-				graph_visible: self.graph_visible,
-				timeline_visible: self.timeline_visible,
+				graph_visible: self.workspace.graph_visible,
+				timeline_visible: self.workspace.timeline_visible,
 			});
 
-			self.graph_scope = saved.scope;
-			self.graph_selected = saved.selected;
-			self.graph_pan = saved.pan;
-			self.graph_zoom = saved.zoom;
-			self.graph_visible = saved.graph_visible;
-			self.timeline_visible = saved.timeline_visible;
-			self.graph_expanded = false;
+			self.workspace.graph_scope = saved.scope;
+			self.workspace.graph_selected = saved.selected;
+			self.workspace.graph_pan = saved.pan;
+			self.workspace.graph_zoom = saved.zoom;
+			self.workspace.graph_visible = saved.graph_visible;
+			self.workspace.timeline_visible = saved.timeline_visible;
+			self.workspace.graph_expanded = false;
 		}
 
 		self.reset_model_settings();
@@ -222,9 +222,9 @@ impl AgentSurface {
 		self.reset_prompt_edit();
 
 		self.selected = Some(id.to_owned());
-		self.connection_details_expanded = false;
-		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
-		self.details_visible = false;
+		self.workspace.connection_details_expanded = false;
+		self.history = self.timeline.cache.get(id).cloned().map(|h| (id.to_owned(), h));
+		self.workspace.details_visible = false;
 		self.request = None;
 		self.request_task = None;
 
@@ -276,7 +276,7 @@ impl AgentSurface {
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.closing_pages.insert(id.to_owned());
+		self.workspace.closing_pages.insert(id.to_owned());
 
 		if self.selected.as_deref() == Some(id)
 			&& let Some(root) = self.root_id()
@@ -469,7 +469,7 @@ impl AgentSurface {
 						move |s, cx| {
 							s.open_page(&target, cx);
 
-							if let Some(scroll) = s.transcript_scroll.get(&target) {
+							if let Some(scroll) = s.timeline.scroll.get(&target) {
 								scroll.scroll_to_bottom();
 							}
 						},
@@ -535,7 +535,7 @@ impl AgentSurface {
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 
 		if let Some(snapshot) = &self.snapshot {
-			pages.extend(self.pages.iter().filter_map(|id| {
+			pages.extend(self.workspace.pages.iter().filter_map(|id| {
 				snapshot
 					.work_items
 					.iter()
@@ -604,7 +604,7 @@ impl AgentSurface {
 				);
 			}
 			if closable {
-				let visible = !self.closing_pages.contains(&id);
+				let visible = !self.workspace.closing_pages.contains(&id);
 				let surface = cx.entity().downgrade();
 
 				row = row.child(TabReveal {
@@ -613,8 +613,8 @@ impl AgentSurface {
 					child: tab.into_any_element(),
 					closed: Box::new(move |cx| {
 						let _ = surface.update(cx, |s, cx| {
-							if s.closing_pages.remove(&id) {
-								s.pages.retain(|p| p != &id);
+							if s.workspace.closing_pages.remove(&id) {
+								s.workspace.pages.retain(|p| p != &id);
 								cx.notify();
 							}
 						});
@@ -766,7 +766,7 @@ impl AgentSurface {
 							.id("connection-details")
 							.role(Role::Button)
 							.aria_label("Technical details")
-							.aria_expanded(self.connection_details_expanded)
+							.aria_expanded(self.workspace.connection_details_expanded)
 							.tab_index(0)
 							.cursor_pointer()
 							.flex()
@@ -779,7 +779,7 @@ impl AgentSurface {
 							.child("Details")
 							.child(workspace_symbols::disclosure_chevron(
 								"connection-details-chevron",
-								self.connection_details_expanded,
+								self.workspace.connection_details_expanded,
 							))
 							.on_click(cx.listener(|s, _, _, cx| {
 								s.toggle_connection_details(cx);
@@ -796,7 +796,7 @@ impl AgentSurface {
 			})
 			.child(ui_motion::disclosure(
 				"connection-diagnostic",
-				self.connection_details_expanded && detail.is_some(),
+				self.workspace.connection_details_expanded && detail.is_some(),
 				gpui::div()
 					.pt(gpui::px(8.))
 					.text_size(gpui::px(11.))
@@ -863,7 +863,8 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let scroll = self
-			.transcript_scroll
+			.timeline
+			.scroll
 			.entry(self.selected.clone().unwrap_or_default())
 			.or_default()
 			.clone();
@@ -942,7 +943,7 @@ impl AgentSurface {
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
 		let mut chat = gpui::div()
 			.id("conversation-panel-focus")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = None))
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
 			.relative()
 			.flex_1()
 			.min_w_0()
@@ -1042,7 +1043,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		let presence = ui_motion::value(
 			"work-details-presence",
-			if self.details_visible { 1. } else { 0. },
+			if self.workspace.details_visible { 1. } else { 0. },
 			window,
 			cx,
 		);
@@ -1069,9 +1070,10 @@ impl AgentSurface {
 	}
 
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		self.graph_display_zoom = ui_motion::value("agent-graph-zoom", self.graph_zoom, window, cx);
+		self.workspace.graph_display_zoom =
+			ui_motion::value("agent-graph-zoom", self.workspace.graph_zoom, window, cx);
 
-		if self.older_scroll_anchor.is_none() {
+		if self.timeline.older_scroll_anchor.is_none() {
 			self.prefetch_older_history(cx);
 		}
 
@@ -1081,9 +1083,9 @@ impl AgentSurface {
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
 
-		if self.latest_follow_work == self.selected
+		if self.timeline.latest_follow_work == self.selected
 			&& let Some(scroll) =
-				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
+				self.selected.as_ref().and_then(|work| self.timeline.scroll.get(work))
 		{
 			let current = f32::from(scroll.offset().y);
 			let target = -f32::from(scroll.max_offset().y);
@@ -1105,20 +1107,20 @@ impl AgentSurface {
 
 	fn restore_history_anchor(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
 		let Some(HistoryScrollAnchor { work: id, offset, maximum, message: anchor }) =
-			self.older_scroll_anchor.clone()
+			self.timeline.older_scroll_anchor.clone()
 		else {
 			return;
 		};
 
 		if self.selected.as_ref() != Some(&id) {
-			self.older_scroll_anchor = None;
+			self.timeline.older_scroll_anchor = None;
 
 			return;
 		}
 
-		self.wheel_scroll = None;
+		self.timeline.wheel_scroll = None;
 
-		if let Some(scroll) = self.transcript_scroll.get(&id).cloned() {
+		if let Some(scroll) = self.timeline.scroll.get(&id).cloned() {
 			let entity = cx.entity();
 
 			cx.defer(move |cx| {
@@ -1129,13 +1131,13 @@ impl AgentSurface {
 
 					let delta = anchor
 						.and_then(|(id, position)| {
-							s.history_marks.get(&id).map(|mark| mark.position.get() - position)
+							s.timeline.marks.get(&id).map(|mark| mark.position.get() - position)
 						})
 						.unwrap_or_else(|| f32::from(scroll.max_offset().y) - maximum);
 					let target = (offset - delta).clamp(-f32::from(scroll.max_offset().y), 0.);
 
 					if (f32::from(scroll.offset().y) - target).abs() < 0.5 {
-						s.older_scroll_anchor = None;
+						s.timeline.older_scroll_anchor = None;
 					} else {
 						scroll.set_offset(gpui::point(scroll.offset().x, gpui::px(target)));
 					}
@@ -1234,7 +1236,7 @@ impl AgentSurface {
 	}
 
 	fn workspace_graph(&self, cx: &mut Context<Self>) -> AnyElement {
-		let scope = self.graph_scope.clone().or_else(|| self.root_id());
+		let scope = self.workspace.graph_scope.clone().or_else(|| self.root_id());
 		let title = self
 			.snapshot
 			.as_ref()
@@ -1242,13 +1244,13 @@ impl AgentSurface {
 			.map(|w| self.work_label(w))
 			.unwrap_or_else(|| "Work".into());
 		let mut panel = self.graph_frame(title, cx).id("graph-panel-focus").capture_any_mouse_down(
-			cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Bottom)),
+			cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Bottom)),
 		);
 		let Some(snapshot) = &self.snapshot else {
 			return panel.into_any_element();
 		};
 		let layout = self.workspace_graph_layout();
-		let zoom = self.graph_zoom;
+		let zoom = self.workspace.graph_zoom;
 		let mut area = self.graph_canvas(&layout, cx);
 
 		for node in &layout.nodes {
@@ -1291,7 +1293,7 @@ impl AgentSurface {
 						"zoom-out".into(),
 						"−".into(),
 						|s, cx| {
-							s.graph_zoom = (s.graph_zoom / 1.2).max(0.35);
+							s.workspace.graph_zoom = (s.workspace.graph_zoom / 1.2).max(0.35);
 
 							cx.notify();
 						},
@@ -1301,8 +1303,8 @@ impl AgentSurface {
 						"zoom-reset".into(),
 						format!("{}%", (zoom * 100.0).round()),
 						|s, cx| {
-							s.graph_zoom = 0.85;
-							s.graph_pan = (0.0, 0.0);
+							s.workspace.graph_zoom = 0.85;
+							s.workspace.graph_pan = (0.0, 0.0);
 
 							cx.notify();
 						},
@@ -1312,7 +1314,7 @@ impl AgentSurface {
 						"zoom-in".into(),
 						"+".into(),
 						|s, cx| {
-							s.graph_zoom = (s.graph_zoom * 1.2).min(1.8);
+							s.workspace.graph_zoom = (s.workspace.graph_zoom * 1.2).min(1.8);
 
 							cx.notify();
 						},
@@ -1336,16 +1338,16 @@ impl AgentSurface {
 					"graph-up".into(),
 					"←".into(),
 					|s, cx| {
-						s.graph_scope = s
+						s.workspace.graph_scope = s
 							.snapshot
 							.as_ref()
 							.and_then(|snap| {
 								snap.work_items
 									.iter()
-									.find(|w| Some(&w.id) == s.graph_scope.as_ref())
+									.find(|w| Some(&w.id) == s.workspace.graph_scope.as_ref())
 							})
 							.and_then(|w| w.parent_goal_id.clone());
-						s.graph_pan = (0.0, 0.0);
+						s.workspace.graph_pan = (0.0, 0.0);
 
 						cx.notify();
 					},
@@ -1362,10 +1364,14 @@ impl AgentSurface {
 				.child(
 					self.workspace_action(
 						"graph-expand".into(),
-						if self.graph_expanded { "Restore conversation" } else { "Expand graph" }
-							.into(),
+						if self.workspace.graph_expanded {
+							"Restore conversation"
+						} else {
+							"Expand graph"
+						}
+						.into(),
 						|s, cx| {
-							s.graph_expanded = !s.graph_expanded;
+							s.workspace.graph_expanded = !s.workspace.graph_expanded;
 
 							cx.notify();
 						},
@@ -1376,8 +1382,8 @@ impl AgentSurface {
 					"graph-close".into(),
 					"×".into(),
 					|s, cx| {
-						s.graph_visible = false;
-						s.graph_expanded = false;
+						s.workspace.graph_visible = false;
+						s.workspace.graph_expanded = false;
 
 						cx.notify();
 					},
@@ -1389,8 +1395,11 @@ impl AgentSurface {
 	}
 
 	fn graph_canvas(&self, layout: &Layout, cx: &mut Context<Self>) -> Stateful<Div> {
-		let zoom = self.graph_display_zoom;
-		let pan = (self.graph_pan.0 + self.graph_inset.0, self.graph_pan.1 + self.graph_inset.1);
+		let zoom = self.workspace.graph_display_zoom;
+		let pan = (
+			self.workspace.graph_pan.0 + self.workspace.graph_inset.0,
+			self.workspace.graph_pan.1 + self.workspace.graph_inset.1,
+		);
 		let edges: Vec<_> = layout
 			.edges
 			.iter()
@@ -1420,10 +1429,11 @@ impl AgentSurface {
 				let delta = event.delta.pixel_delta(gpui::px(20.0));
 
 				if event.modifiers.control || event.modifiers.platform {
-					s.graph_zoom = (s.graph_zoom + f32::from(delta.y) * 0.002).clamp(0.35, 1.8);
+					s.workspace.graph_zoom =
+						(s.workspace.graph_zoom + f32::from(delta.y) * 0.002).clamp(0.35, 1.8);
 				} else {
-					s.graph_pan.0 += f32::from(delta.x);
-					s.graph_pan.1 += f32::from(delta.y);
+					s.workspace.graph_pan.0 += f32::from(delta.x);
+					s.workspace.graph_pan.1 += f32::from(delta.y);
 				}
 
 				cx.stop_propagation();
@@ -1432,26 +1442,28 @@ impl AgentSurface {
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, _, _| {
-					s.graph_drag = Some(event.position);
+					s.workspace.graph_drag = Some(event.position);
 				}),
 			)
 			.on_mouse_up(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
-					s.graph_drag = None;
+					s.workspace.graph_drag = None;
 				}),
 			)
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
-				if event.pressed_button == Some(MouseButton::Left) && s.sidebar_drag.is_none() {
-					if let Some(previous) = s.graph_drag {
-						s.graph_pan.0 += f32::from(event.position.x - previous.x);
-						s.graph_pan.1 += f32::from(event.position.y - previous.y);
-						s.graph_drag = Some(event.position);
+				if event.pressed_button == Some(MouseButton::Left)
+					&& s.workspace.sidebar_drag.is_none()
+				{
+					if let Some(previous) = s.workspace.graph_drag {
+						s.workspace.graph_pan.0 += f32::from(event.position.x - previous.x);
+						s.workspace.graph_pan.1 += f32::from(event.position.y - previous.y);
+						s.workspace.graph_drag = Some(event.position);
 
 						cx.notify();
 					}
 				} else {
-					s.graph_drag = None;
+					s.workspace.graph_drag = None;
 				}
 			}))
 			.child(
@@ -1500,13 +1512,13 @@ impl AgentSurface {
 
 	fn handle_graph_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
 		match event.keystroke.key.as_str() {
-			"left" => self.graph_pan.0 += 32.0,
-			"right" => self.graph_pan.0 -= 32.0,
-			"up" => self.graph_pan.1 += 32.0,
-			"down" => self.graph_pan.1 -= 32.0,
-			"+" | "=" => self.graph_zoom = (self.graph_zoom * 1.2).min(1.8),
-			"-" => self.graph_zoom = (self.graph_zoom / 1.2).max(0.35),
-			"escape" => self.graph_expanded = false,
+			"left" => self.workspace.graph_pan.0 += 32.0,
+			"right" => self.workspace.graph_pan.0 -= 32.0,
+			"up" => self.workspace.graph_pan.1 += 32.0,
+			"down" => self.workspace.graph_pan.1 -= 32.0,
+			"+" | "=" => self.workspace.graph_zoom = (self.workspace.graph_zoom * 1.2).min(1.8),
+			"-" => self.workspace.graph_zoom = (self.workspace.graph_zoom / 1.2).max(0.35),
+			"escape" => self.workspace.graph_expanded = false,
 			_ => return,
 		};
 
@@ -1520,8 +1532,11 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let zoom = self.graph_display_zoom;
-		let pan = (self.graph_pan.0 + self.graph_inset.0, self.graph_pan.1 + self.graph_inset.1);
+		let zoom = self.workspace.graph_display_zoom;
+		let pan = (
+			self.workspace.graph_pan.0 + self.workspace.graph_inset.0,
+			self.workspace.graph_pan.1 + self.workspace.graph_inset.1,
+		);
 		let id = work.id.clone();
 		let key = id.clone();
 		let (status, color) = self
@@ -1557,7 +1572,7 @@ impl AgentSurface {
 			.px_2()
 			.py_1()
 			.rounded(gpui::px(9.0))
-			.bg(if self.graph_selected.as_ref() == Some(&id) {
+			.bg(if self.workspace.graph_selected.as_ref() == Some(&id) {
 				gpui::rgba(0x35353ce8)
 			} else {
 				gpui::rgba(0x242427db)
@@ -1569,8 +1584,8 @@ impl AgentSurface {
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.open_page(&id, cx);
 
-				s.graph_visible = true;
-				s.graph_selected = Some(id.clone());
+				s.workspace.graph_visible = true;
+				s.workspace.graph_selected = Some(id.clone());
 
 				cx.notify();
 			}))
@@ -1623,7 +1638,7 @@ impl AgentSurface {
 			"recap" => self.visual_recap(),
 			"worker" => self.open_page("verify", cx),
 			"empty" | "empty-draft" => {
-				self.sidebar_visible = false;
+				self.workspace.sidebar_visible = false;
 
 				if page == "empty-draft" {
 					self.composer.update(cx, |input, cx| {
@@ -1641,13 +1656,13 @@ impl AgentSurface {
 				self.selected = None;
 				self.history = None;
 
-				self.pages.clear();
-				self.closing_pages.clear();
+				self.workspace.pages.clear();
+				self.workspace.closing_pages.clear();
 			},
-			"expanded" => self.graph_expanded = true,
+			"expanded" => self.workspace.graph_expanded = true,
 			"in-use" => {
-				self.graph_visible = false;
-				self.timeline_visible = false;
+				self.workspace.graph_visible = false;
+				self.workspace.timeline_visible = false;
 
 				self.snapshot.as_mut().expect("fixture").pending_events.push(
 					decodex_protocol::AgentPendingEventDto {
@@ -1661,13 +1676,13 @@ impl AgentSurface {
 				);
 			},
 			"compact-graph" => {
-				self.graph_scope = Some("agent".into());
-				self.sidebar_width = 280.0;
-				self.timeline_visible = false;
+				self.workspace.graph_scope = Some("agent".into());
+				self.workspace.sidebar_width = 280.0;
+				self.workspace.timeline_visible = false;
 			},
 			"markdown" => {
-				self.graph_visible = false;
-				self.timeline_visible = false;
+				self.workspace.graph_visible = false;
+				self.workspace.timeline_visible = false;
 
 				if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) =
 					&mut self.history
@@ -1688,8 +1703,8 @@ impl AgentSurface {
 			},
 			"task-references" => self.visual_task_references(),
 			"conversation" => {
-				self.graph_visible = false;
-				self.timeline_visible = false;
+				self.workspace.graph_visible = false;
+				self.workspace.timeline_visible = false;
 			},
 			_ => {},
 		}
@@ -1735,7 +1750,7 @@ impl AgentSurface {
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
-		self.sidebar_visible = true;
+		self.workspace.sidebar_visible = true;
 
 		let make =
 			|id: &str, parent: Option<&str>, title: &str, status, dispatch| AgentWorkItemDto {
@@ -1826,16 +1841,16 @@ impl AgentSurface {
 			live: vec![],
 		};
 
-		self.history_cache.insert("agent".into(), history.clone());
+		self.timeline.cache.insert("agent".into(), history.clone());
 
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
-		self.pages = vec!["verify".into()];
-		self.graph_scope = Some("release".into());
-		self.graph_selected = Some("verify".into());
-		self.timeline_visible = true;
+		self.workspace.pages = vec!["verify".into()];
+		self.workspace.graph_scope = Some("release".into());
+		self.workspace.graph_selected = Some("verify".into());
+		self.workspace.timeline_visible = true;
 
-		self.history_cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }
@@ -2060,9 +2075,9 @@ impl AgentSurface {
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	fn visual_functional_page(&mut self, page: &str, cx: &mut Context<Self>) {
-		self.graph_visible = false;
-		self.timeline_visible = false;
-		self.sidebar_visible = page == "hierarchy";
+		self.workspace.graph_visible = false;
+		self.workspace.timeline_visible = false;
+		self.workspace.sidebar_visible = page == "hierarchy";
 
 		if page == "hierarchy" {
 			let snapshot = self.snapshot.as_mut().expect("fixture");
@@ -2123,7 +2138,7 @@ impl AgentSurface {
 
 		self.request = Some(request);
 
-		self.transcript_scroll.entry("agent".into()).or_default().scroll_to_bottom();
+		self.timeline.scroll.entry("agent".into()).or_default().scroll_to_bottom();
 	}
 }
 
@@ -2338,7 +2353,7 @@ mod tests {
 		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
 
 		surface.update(visual, |s, cx| {
-			s.pages.push("release".into());
+			s.workspace.pages.push("release".into());
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
@@ -2512,23 +2527,23 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
 
-			s.graph_pan = (15.0, 25.0);
-			s.graph_zoom = 1.2;
+			s.workspace.graph_pan = (15.0, 25.0);
+			s.workspace.graph_zoom = 1.2;
 
 			s.open_page("verify", cx);
 			s.open_page("verify", cx);
 
-			assert_eq!(s.pages, vec!["verify"]);
+			assert_eq!(s.workspace.pages, vec!["verify"]);
 			assert_eq!(s.selected.as_deref(), Some("verify"));
 			assert!(s.history.as_ref().is_some_and(|(id, _)| id == "verify"));
 
 			s.close_page("verify", cx);
 
 			assert_eq!(s.selected.as_deref(), Some("agent"));
-			assert!(s.closing_pages.contains("verify"));
-			assert_eq!(s.graph_pan, (15.0, 25.0));
-			assert_eq!(s.graph_zoom, 1.2);
-			assert_eq!(s.graph_scope.as_deref(), Some("release"));
+			assert!(s.workspace.closing_pages.contains("verify"));
+			assert_eq!(s.workspace.graph_pan, (15.0, 25.0));
+			assert_eq!(s.workspace.graph_zoom, 1.2);
+			assert_eq!(s.workspace.graph_scope.as_deref(), Some("release"));
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
 
 			s.open_page("missing", cx);
@@ -2555,9 +2570,9 @@ mod tests {
 		surface.update(visual, |s, cx| s.open_page("verify", cx));
 		visual.update(|w, cx| w.draw(cx).clear());
 		surface.update(visual, |s, _| {
-			assert_eq!(s.pages, vec!["verify"]);
+			assert_eq!(s.workspace.pages, vec!["verify"]);
 			assert_eq!(s.selected.as_deref(), Some("verify"));
-			assert!(s.closing_pages.is_empty());
+			assert!(s.workspace.closing_pages.is_empty());
 		});
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
 		visual.update(|w, cx| w.draw(cx).clear());
@@ -2568,7 +2583,7 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 		visual.run_until_parked();
 		surface.update(visual, |s, _| {
-			assert!(s.pages.is_empty());
+			assert!(s.workspace.pages.is_empty());
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 		});
 	}

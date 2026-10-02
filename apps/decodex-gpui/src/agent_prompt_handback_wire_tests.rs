@@ -95,10 +95,10 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut TestAppCo
 			surface.read_with(visual, |s, _| {
 				let work = s.selected.as_ref().unwrap();
 
-				assert!(!s.older_history.contains_key(work));
-				assert!(s.history_cache.contains_key(work));
-				assert_eq!(s.native_history.binding.as_ref().unwrap().thread, "thread");
-				assert!(s.native_history.entries.is_empty());
+				assert!(!s.timeline.older_history.contains_key(work));
+				assert!(s.timeline.cache.contains_key(work));
+				assert_eq!(s.timeline.native.binding.as_ref().unwrap().thread, "thread");
+				assert!(s.timeline.native.entries.is_empty());
 			});
 			checked_presentation = true;
 
@@ -195,7 +195,7 @@ fn handback_view(
 			cx,
 		)
 		.unwrap();
-		s.older_history.insert(work.clone(), (vec![], Some(99)));
+		s.timeline.older_history.insert(work.clone(), (vec![], Some(99)));
 
 		work
 	});

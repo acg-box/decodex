@@ -47,7 +47,7 @@ impl AgentSurface {
 		self.visual_workspace_fixture(cx);
 
 		self.profile = None;
-		self.graph_visible = false;
+		self.workspace.graph_visible = false;
 		self.composer_menu = Some("agent-settings");
 		self.composer_menu_content = Some("agent-settings");
 
