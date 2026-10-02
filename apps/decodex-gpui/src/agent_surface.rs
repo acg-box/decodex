@@ -854,6 +854,62 @@ impl AgentSurface {
 		);
 	}
 
+	fn build_submission(&self, text: &str, cx: &Context<Self>) -> Result<AgentActionDto, String> {
+		let prompt = HistoryText::new(if text.trim().is_empty() {
+			"Please use the selected skills and inspect the selected tasks and files.".into()
+		} else {
+			text.to_owned()
+		})
+		.map_err(|_| "Message is too long")?;
+
+		if !self.draft_owner_available() {
+			return Err(
+				"This draft's conversation is unavailable. Select a conversation before sending."
+					.into(),
+			);
+		}
+
+		if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
+			snapshot
+				.work_items
+				.iter()
+				.find(|work| {
+					Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
+						&& work.kind == AgentWorkKindDto::Manager
+				})
+				.or_else(|| snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none()))
+		}) {
+			return Ok(AgentActionDto::Send {
+				root_id: EntityId::new(root.id.clone()).map_err(|_| "Invalid Agent identity")?,
+				text: prompt,
+			});
+		}
+
+		if self.state != LoadState::Ready {
+			return Err("Refresh to confirm whether a Agent already exists.".into());
+		}
+
+		Ok(AgentActionDto::Start(AgentStartDto {
+			root_id: EntityId::new(format!("agent-{}", unique_command()))
+				.map_err(|_| "Invalid Agent identity")?,
+			prompt,
+			model: ConversationModel::new(self.model.read(cx).content().trim())
+				.map_err(|_| "Enter an exact model ID.")?,
+			cwd: ConversationWorkingDirectory::new(self.cwd.read(cx).content().trim())
+				.map_err(|_| "Enter an absolute working directory.")?,
+			account_id: if self.account.read(cx).content().trim().is_empty() {
+				None
+			} else {
+				Some(
+					EntityId::new(self.account.read(cx).content().trim())
+						.map_err(|_| "Invalid account ID")?,
+				)
+			},
+			effort: self.creation_effort(),
+			sandbox: self.sandbox,
+		}))
+	}
+
 	fn submit(&mut self, cx: &mut Context<Self>) {
 		if self.composer_unavailable_reason().is_some() {
 			cx.notify();
@@ -891,63 +947,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let build = || -> Result<AgentActionDto, String> {
-			let prompt = HistoryText::new(if text.trim().is_empty() {
-				"Please use the selected skills and inspect the selected tasks and files.".into()
-			} else {
-				text.clone()
-			})
-			.map_err(|_| "Message is too long")?;
-
-			if !self.draft_owner_available() {
-				return Err("This draft's conversation is unavailable. Select a conversation before sending.".into());
-			}
-
-			if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
-				snapshot
-					.work_items
-					.iter()
-					.find(|work| {
-						Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
-							&& work.kind == AgentWorkKindDto::Manager
-					})
-					.or_else(|| {
-						snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none())
-					})
-			}) {
-				return Ok(AgentActionDto::Send {
-					root_id: EntityId::new(root.id.clone())
-						.map_err(|_| "Invalid Agent identity")?,
-					text: prompt,
-				});
-			}
-
-			if self.state != LoadState::Ready {
-				return Err("Refresh to confirm whether a Agent already exists.".into());
-			}
-
-			Ok(AgentActionDto::Start(AgentStartDto {
-				root_id: EntityId::new(format!("agent-{}", unique_command()))
-					.map_err(|_| "Invalid Agent identity")?,
-				prompt,
-				model: ConversationModel::new(self.model.read(cx).content().trim())
-					.map_err(|_| "Enter an exact model ID.")?,
-				cwd: ConversationWorkingDirectory::new(self.cwd.read(cx).content().trim())
-					.map_err(|_| "Enter an absolute working directory.")?,
-				account_id: if self.account.read(cx).content().trim().is_empty() {
-					None
-				} else {
-					Some(
-						EntityId::new(self.account.read(cx).content().trim())
-							.map_err(|_| "Invalid account ID")?,
-					)
-				},
-				effort: self.creation_effort(),
-				sandbox: self.sandbox,
-			}))
-		};
-
-		match build() {
+		match self.build_submission(&text, cx) {
 			Ok(action) => {
 				let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else {
 					return;
@@ -1265,6 +1265,35 @@ impl AgentSurface {
 		}
 	}
 
+	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.clear_activity_detail();
+		self.reset_resources();
+		self.clear_usage_estimate();
+		self.reset_integrations();
+		self.resource_feedback.clear();
+		self.resource_title.update(cx, |input, cx| input.clear(cx));
+		self.resource_url.update(cx, |input, cx| input.clear(cx));
+		self.reset_capabilities();
+
+		if self.composer_manager.is_some() {
+			self.fast = false;
+			self.service_tier = None;
+		}
+
+		self.reset_model_settings();
+		self.reset_live_reviewer();
+		self.reset_permission_profiles();
+		self.reset_task_models();
+		self.reset_hook_settings();
+		self.reset_app_exposure();
+		self.reset_voice_settings();
+		self.reset_search_settings();
+		self.reset_skill_picker();
+		self.reset_recap();
+		self.reset_prompt_edit();
+		self.reset_native_goal();
+	}
+
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
 		self.reset_automatic_recap();
 		self.close_native_agent(cx);
@@ -1298,32 +1327,7 @@ impl AgentSurface {
 		self.interrupt_task = None;
 		self.history_read_at = None;
 
-		self.clear_activity_detail();
-		self.reset_resources();
-		self.clear_usage_estimate();
-		self.reset_integrations();
-		self.resource_feedback.clear();
-		self.resource_title.update(cx, |input, cx| input.clear(cx));
-		self.resource_url.update(cx, |input, cx| input.clear(cx));
-		self.reset_capabilities();
-
-		if self.composer_manager.is_some() {
-			self.fast = false;
-			self.service_tier = None;
-		}
-
-		self.reset_model_settings();
-		self.reset_live_reviewer();
-		self.reset_permission_profiles();
-		self.reset_task_models();
-		self.reset_hook_settings();
-		self.reset_app_exposure();
-		self.reset_voice_settings();
-		self.reset_search_settings();
-		self.reset_skill_picker();
-		self.reset_recap();
-		self.reset_prompt_edit();
-		self.reset_native_goal();
+		self.reset_profile_panels(cx);
 
 		self.snapshot = None;
 
