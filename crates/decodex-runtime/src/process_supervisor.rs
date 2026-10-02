@@ -177,7 +177,6 @@ impl ProcessGenerationControl {
 	/// Terminate only a process whose original unreaped `Child` remains owned by this supervisor.
 	///
 	/// Restored same-boot processes return `NotOwned`; this method never adopts or signals them.
-	#[allow(clippy::too_many_lines)] // Keep one exact fenced termination sequence together.
 	pub async fn terminate_exact(
 		&self,
 		generation_id: &ProcessGenerationId,
@@ -223,81 +222,42 @@ impl ProcessGenerationControl {
 
 			return Ok(ProcessGenerationTermination::NotOwned);
 		};
+		let outcome = self.terminate_owned(&generation, &mut owned_process, &identity, wait).await;
 
+		if !matches!(outcome, Ok(ProcessGenerationTermination::PositiveDeathRecorded)) {
+			self.restore_owned(key, owned_process, &mut supervision)?;
+		}
+
+		outcome
+	}
+
+	async fn terminate_owned(
+		&self,
+		generation: &ProcessGeneration,
+		owned_process: &mut OwnedGeneration,
+		identity: &ProcessIdentity,
+		wait: Duration,
+	) -> Result<ProcessGenerationTermination, ProcessSupervisorError> {
 		owned_process.revision = generation.revision;
 
-		if let Err(error) = refresh_owned_exit(&mut owned_process) {
-			self.restore_owned(key, owned_process, &mut supervision)?;
-
-			return Err(error);
-		}
+		refresh_owned_exit(owned_process)?;
 
 		let stopping = self
 			.inner
 			.store
-			.mark_process_generation_stopping(generation_id, expected_revision)
+			.mark_process_generation_stopping(&generation.generation_id, generation.revision)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState);
-		let stopping = match stopping.and_then(accepted_mutation) {
-			Ok(stopping) => stopping,
-			Err(error) => {
-				self.restore_owned(key, owned_process, &mut supervision)?;
-
-				return Err(error);
-			},
-		};
+		let stopping = stopping.and_then(accepted_mutation)?;
 
 		owned_process.revision = stopping.revision;
 
-		// Give the original child a bounded EOF shutdown before signaling its group.
-		// This lets Codex dispose thread-owned tools instead of orphaning their helpers.
-		let started = Instant::now();
-		let deadline = started + wait;
-		let hard_signal_at = started + wait * 3 / 4;
-
-		owned_process.child.close_private_lifetime_channels();
-
-		let graceful_deadline = started + (wait / 2).min(Duration::from_secs(2));
-
-		while !owned_process.leader_exited && Instant::now() < graceful_deadline {
-			if let Err(error) = refresh_owned_exit(&mut owned_process) {
-				self.restore_owned(key, owned_process, &mut supervision)?;
-
-				return Err(error);
-			}
-
-			if !owned_process.leader_exited {
-				time::sleep(Duration::from_millis(10)).await;
-			}
-		}
-
-		if !owned_process.leader_exited {
-			if !owned_process.child.may_signal_process_group() {
-				self.restore_owned(key, owned_process, &mut supervision)?;
-
-				return Err(ProcessSupervisorError::Platform);
-			}
-			if process_platform::signal_owned_process_group(&identity, SIGTERM).is_err() {
-				if let Err(error) = refresh_owned_exit(&mut owned_process) {
-					self.restore_owned(key, owned_process, &mut supervision)?;
-
-					return Err(error);
-				}
-
-				if !owned_process.leader_exited {
-					self.restore_owned(key, owned_process, &mut supervision)?;
-
-					return Err(ProcessSupervisorError::Platform);
-				}
-			}
-		}
-
+		let (deadline, hard_signal_at) =
+			Self::begin_owned_shutdown(owned_process, identity, wait).await?;
 		let mut hard_signal_sent = false;
 
 		while Instant::now() < deadline {
-			if refresh_owned_exit(&mut owned_process).is_err() {
-				self.restore_owned(key, owned_process, &mut supervision)?;
-
+			if refresh_owned_exit(owned_process).is_err() {
 				return Err(ProcessSupervisorError::Platform);
 			}
 
@@ -307,8 +267,6 @@ impl ProcessGenerationControl {
 				) {
 					Ok(value) => value,
 					Err(_) => {
-						self.restore_owned(key, owned_process, &mut supervision)?;
-
 						return Err(ProcessSupervisorError::Platform);
 					},
 				}
@@ -325,33 +283,21 @@ impl ProcessGenerationControl {
 					..generation.clone()
 				};
 
-				if let Err(error) = self
-					.record_positive_death(
-						&generation_for_death,
-						ProcessDeathEvidenceKind::ExactTerminationExit,
-						Some(identity.clone()),
-					)
-					.await
-				{
-					self.restore_owned(key, owned_process, &mut supervision)?;
-
-					return Err(error);
-				}
+				self.record_positive_death(
+					&generation_for_death,
+					ProcessDeathEvidenceKind::ExactTerminationExit,
+					Some(identity.clone()),
+				)
+				.await?;
 
 				return Ok(ProcessGenerationTermination::PositiveDeathRecorded);
 			}
 			if !hard_signal_sent && !owned_process.leader_exited && Instant::now() >= hard_signal_at
 			{
-				if process_platform::signal_owned_process_group(&identity, SIGKILL).is_err() {
-					if let Err(error) = refresh_owned_exit(&mut owned_process) {
-						self.restore_owned(key, owned_process, &mut supervision)?;
-
-						return Err(error);
-					}
+				if process_platform::signal_owned_process_group(identity, SIGKILL).is_err() {
+					refresh_owned_exit(owned_process)?;
 
 					if !owned_process.leader_exited {
-						self.restore_owned(key, owned_process, &mut supervision)?;
-
 						return Err(ProcessSupervisorError::Platform);
 					}
 				}
@@ -366,27 +312,57 @@ impl ProcessGenerationControl {
 			.inner
 			.store
 			.mark_process_generation_death_unknown(
-				generation_id,
+				&generation.generation_id,
 				owned_process.revision,
 				ProcessAuthorityLossReason::TerminationUnproved,
 			)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)
 			.and_then(accepted_mutation);
-		let unknown = match unknown {
-			Ok(unknown) => unknown,
-			Err(error) => {
-				self.restore_owned(key, owned_process, &mut supervision)?;
-
-				return Err(error);
-			},
-		};
+		let unknown = unknown?;
 
 		owned_process.revision = unknown.revision;
 
-		self.restore_owned(key, owned_process, &mut supervision)?;
-
 		Ok(ProcessGenerationTermination::DeathUnproved)
+	}
+
+	async fn begin_owned_shutdown(
+		owned_process: &mut OwnedGeneration,
+		identity: &ProcessIdentity,
+		wait: Duration,
+	) -> Result<(Instant, Instant), ProcessSupervisorError> {
+		// Give the original child a bounded EOF shutdown before signaling its group.
+		// This lets Codex dispose thread-owned tools instead of orphaning their helpers.
+		let started = Instant::now();
+		let deadline = started + wait;
+		let hard_signal_at = started + wait * 3 / 4;
+
+		owned_process.child.close_private_lifetime_channels();
+
+		let graceful_deadline = started + (wait / 2).min(Duration::from_secs(2));
+
+		while !owned_process.leader_exited && Instant::now() < graceful_deadline {
+			refresh_owned_exit(owned_process)?;
+
+			if !owned_process.leader_exited {
+				time::sleep(Duration::from_millis(10)).await;
+			}
+		}
+
+		if !owned_process.leader_exited {
+			if !owned_process.child.may_signal_process_group() {
+				return Err(ProcessSupervisorError::Platform);
+			}
+			if process_platform::signal_owned_process_group(identity, SIGTERM).is_err() {
+				refresh_owned_exit(owned_process)?;
+
+				if !owned_process.leader_exited {
+					return Err(ProcessSupervisorError::Platform);
+				}
+			}
+		}
+
+		Ok((deadline, hard_signal_at))
 	}
 
 	/// Spawn only after the durable ProcessGeneration insert re-locks Conversation Turn authority.
@@ -682,7 +658,6 @@ impl ProcessGenerationControl {
 		Ok(())
 	}
 
-	#[allow(clippy::too_many_lines)] // Keep one exact projection reconciliation sequence together.
 	async fn reconcile_projection(
 		&self,
 		mut generation: ProcessGeneration,
@@ -747,6 +722,13 @@ impl ProcessGenerationControl {
 			});
 		}
 
+		self.reconcile_restored_observer(&generation).await
+	}
+
+	async fn reconcile_restored_observer(
+		&self,
+		generation: &ProcessGeneration,
+	) -> Result<ProcessGenerationReconciliation, ProcessSupervisorError> {
 		let Some(identity) = generation.process_identity.as_ref() else {
 			return Ok(ProcessGenerationReconciliation::Quarantined {
 				state: generation.state,
@@ -759,7 +741,7 @@ impl ProcessGenerationControl {
 			.map_err(|_| ProcessSupervisorError::Platform)?
 		{
 			self.record_positive_death(
-				&generation,
+				generation,
 				ProcessDeathEvidenceKind::MacosKernelConfirmedGone,
 				Some(identity.clone()),
 			)
@@ -824,7 +806,7 @@ impl ProcessGenerationControl {
 				.map_err(|_| ProcessSupervisorError::Platform)?;
 
 			if process_group_quiescent {
-				self.record_positive_death(&generation, kind, Some(identity.clone())).await?;
+				self.record_positive_death(generation, kind, Some(identity.clone())).await?;
 				self.remove_observer(&generation.generation_id)?;
 
 				return Ok(ProcessGenerationReconciliation::PositiveDeathRecorded);
@@ -1838,9 +1820,14 @@ mod tests {
 		task::{Context, Poll, Waker},
 	};
 
+	use rusqlite::Connection;
+
 	use crate::{
 		account_launch::process::tests,
-		process_supervisor::{OwnedGenerationRegistry, ProcessGenerationControl, process_platform},
+		process_supervisor::{
+			OwnedGeneration, OwnedGenerationRegistry, ProcessGenerationControl,
+			ProcessGenerationReconciliation, ProcessGenerationTermination, process_platform,
+		},
 	};
 	use decodex_core::{
 		AccountId, DecodexRoot, ProcessControlKind, ProcessExecutionAuthorization,
@@ -2148,13 +2135,14 @@ mod tests {
 
 		for bound in [false, true] {
 			let intent = failed_identity_intent(&control);
-			let mut supervision = control.reserve_supervision(&intent.generation_id).unwrap();
+			let supervision = control.reserve_supervision(&intent.generation_id).unwrap();
 			let child = tests::supervisor_child_fixture(directory.path());
 			let process_id = child.process_id();
 			let identity =
 				process_platform::inspect_process_identity(process_id, &control.inner.boot_id)
 					.unwrap()
 					.unwrap();
+			let mut supervision = supervision;
 			// No generation was inserted: both database mutations must reject the request.
 			let result = if bound {
 				control
@@ -2173,6 +2161,81 @@ mod tests {
 			assert!(control.supervises(&intent.generation_id).unwrap());
 
 			control.clear_local_generation(&intent.generation_id).unwrap();
+		}
+	}
+	#[tokio::test]
+	async fn termination_store_failures_preserve_ownership_until_positive_death() {
+		for blocked_state in ["stopping", "dead"] {
+			let directory = tempfile::tempdir().unwrap();
+			let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+			let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+			let control = ProcessGenerationControl::start(store).await.unwrap();
+			let child = tests::supervisor_child_fixture(directory.path());
+			let identity = process_platform::inspect_process_identity(
+				child.process_id(),
+				&control.inner.boot_id,
+			)
+			.unwrap()
+			.unwrap();
+			let generation =
+				ProcessGenerationId::new("42000000-0000-4000-8000-000000000001").unwrap();
+			let connection = Connection::open(root.paths().product_database_file()).unwrap();
+
+			connection
+				.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
+				.unwrap();
+			connection.execute(
+			"UPDATE process_generations SET intended_boot_id=?1, bound_boot_id=?1, process_id=?2, process_start_id=?3, process_group_id=?4, session_id=?5, runner_identity=?7 WHERE generation_id=?6",
+			rusqlite::params![identity.boot_id.as_str(), identity.process_id, identity.process_start_id.as_str(), identity.process_group_id, identity.session_id, generation.as_str(), format!("sha256:{}", "a".repeat(64))],
+		).unwrap();
+			connection.execute_batch(&format!("CREATE TRIGGER reject_termination BEFORE UPDATE OF state ON process_generations WHEN NEW.state='{blocked_state}' BEGIN SELECT RAISE(ABORT, 'fixture rejection'); END;")).unwrap();
+
+			let mut supervision = control.reserve_supervision(&generation).unwrap();
+
+			control
+				.replace_owned(
+					generation.as_str().into(),
+					OwnedGeneration {
+						process_group_id: identity.process_group_id,
+						child,
+						identity: Some(identity),
+						revision: 3,
+						leader_exited: false,
+					},
+				)
+				.unwrap();
+			supervision.retain();
+
+			drop(supervision);
+
+			assert!(control.terminate_exact(&generation, 3, Duration::from_secs(2)).await.is_err());
+			assert!(control.owns(&generation).unwrap());
+			assert!(control.supervises(&generation).unwrap());
+			assert_eq!(
+				control.find_generation(&generation).await.unwrap().unwrap().revision,
+				if blocked_state == "stopping" { 3 } else { 4 }
+			);
+
+			connection.execute_batch("DROP TRIGGER reject_termination;").unwrap();
+
+			if blocked_state == "stopping" {
+				assert_eq!(
+					control.terminate_exact(&generation, 3, Duration::from_secs(2)).await.unwrap(),
+					ProcessGenerationTermination::PositiveDeathRecorded
+				);
+			} else {
+				assert_eq!(
+					control.reconcile_exact(&generation).await.unwrap(),
+					ProcessGenerationReconciliation::PositiveDeathRecorded
+				);
+			}
+
+			assert!(!control.owns(&generation).unwrap());
+			assert!(!control.supervises(&generation).unwrap());
+			assert_eq!(
+				control.terminate_exact(&generation, 3, Duration::from_secs(2)).await.unwrap(),
+				ProcessGenerationTermination::AlreadyDead
+			);
 		}
 	}
 }
