@@ -609,13 +609,16 @@ impl ClientLifecycle {
 		}
 	}
 
-	fn apply_delivery<I: LifecycleIo>(
+	fn apply_delivery<I>(
 		&mut self,
 		io: &mut I,
 		generation: u64,
 		mut requires_snapshot: bool,
 		delivery: Result<Delivery<I::Confirmation>, RetainedSessionFailure>,
-	) -> Result<bool, RetainedSessionFailure> {
+	) -> Result<bool, RetainedSessionFailure>
+	where
+		I: LifecycleIo,
+	{
 		match delivery {
 			Ok(Delivery::Snapshot { snapshot, confirmation }) => {
 				let cursor = snapshot.cursor;

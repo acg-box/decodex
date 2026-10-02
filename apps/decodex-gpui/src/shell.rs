@@ -82,7 +82,6 @@ use account_identity::Emails;
 use agent_surface::AgentSurface;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AccountRoutingControlDto;
 #[cfg(feature = "visual-capture")] use decodex_protocol::ConversationHistoryPage;
-#[cfg(test)] use decodex_protocol::Cursor;
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
@@ -1869,13 +1868,16 @@ pub(crate) struct LifecycleOwner {
 	_subscriptions: Vec<Subscription>,
 }
 impl LifecycleOwner {
-	fn new<R: 'static>(
+	fn new<R>(
 		cancellation: LifecycleCancellation,
 		views: Receiver<ConnectionView>,
 		background: Task<R>,
 		shell: WeakEntity<Shell>,
 		cx: &mut Context<Self>,
-	) -> Self {
+	) -> Self
+	where
+		R: 'static,
+	{
 		let task = cx.spawn(async move |owner, cx| {
 			let background = background;
 
@@ -1995,7 +1997,10 @@ impl Render for RefreshTooltip {
 }
 
 struct ControlTooltip<T>(T);
-impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
+impl<T> Render for ControlTooltip<T>
+where
+	T: Clone + Into<SharedString> + 'static,
+{
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		tooltip_surface(self.0.clone().into(), WB_TEXT)
 	}
@@ -2212,13 +2217,16 @@ pub(crate) fn retain_lifecycle(
 	retain_lifecycle_task(shell, cancellation, views, background, cx);
 }
 
-pub(crate) fn retain_lifecycle_task<R: 'static>(
+pub(crate) fn retain_lifecycle_task<R>(
 	shell: WeakEntity<Shell>,
 	cancellation: LifecycleCancellation,
 	views: Receiver<ConnectionView>,
 	background: Task<R>,
 	cx: &mut App,
-) -> Entity<LifecycleOwner> {
+) -> Entity<LifecycleOwner>
+where
+	R: 'static,
+{
 	debug_assert!(
 		!cx.has_global::<LifecycleOwnerGlobal>(),
 		"the application retains exactly one lifecycle owner"
@@ -2494,8 +2502,10 @@ fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) 
 
 #[test]
 fn online_cursor_progress_does_not_invalidate_the_conversation() {
-	let online =
-		|generation, cursor| ConnectionView::Online { generation, applied: Some(Cursor(cursor)) };
+	let online = |generation, cursor| ConnectionView::Online {
+		generation,
+		applied: Some(decodex_protocol::Cursor(cursor)),
+	};
 
 	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
 	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));

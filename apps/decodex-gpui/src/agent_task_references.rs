@@ -8,12 +8,12 @@ use crate::{
 		composer::{
 			AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement,
 			IntoElement, ParentElement, Role, SharedString, SmoothControl,
-			StatefulInteractiveElement, Styled, WireText, px, ui_theme::TEXT_MUTED,
+			StatefulInteractiveElement, Styled, px, ui_theme::TEXT_MUTED,
 		},
 	},
 	ui_theme::HOVER_FILL,
 };
-use decodex_protocol::AgentTaskReferenceDto;
+use decodex_protocol::{AgentTaskReferenceDto, WireText};
 
 impl AgentSurface {
 	pub(crate) fn visual_task_references(&mut self) {

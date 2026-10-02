@@ -2492,13 +2492,15 @@ async fn live_daemon_reconciles_archived_conversations() {
 	assert_eq!(result, RunResult::Stopped);
 }
 
-async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
+async fn verify_live_rehydration<F>(
 	conversations: &Conversations,
 	history: &HistoryPager,
 	mut run: Pin<&mut F>,
 	first_conversation: EntityId,
 	first_history_items: usize,
-) {
+) where
+	F: std::future::Future<Output = RunResult>,
+{
 	assert!(conversations.select(first_conversation.clone()));
 
 	let baseline_session_revision = conversations

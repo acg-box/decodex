@@ -1,10 +1,12 @@
 //! Opt-in live qualification on a disposable product database.
+//! Run with: cargo run -p decodex-runtime --example agent_smoke -- MODEL ABSOLUTE_CWD
+//! This submits small model turns. It does not open the installed product database.
+//! Keep-alive imports retain dependencies owned by the runtime library.
 
-// These dependencies belong to the runtime library, not this auxiliary target.
+use std::{collections::HashSet, env, error::Error, path::Path, time::Duration};
+
 use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
-use decodex_account_login as _;
-use decodex_protocol as _;
 use futures_util as _;
 use libc as _;
 use reqwest as _;
@@ -13,20 +15,16 @@ use rusqlite as _;
 use serde as _;
 use sha2 as _;
 use time as _;
+use tokio::process::Command;
 use tokio_tungstenite as _;
 use zeroize as _;
-// Run with: cargo run -p decodex-runtime --example agent_smoke -- MODEL ABSOLUTE_CWD
-// This submits small model turns. It does not open the installed product database.
 
-use std::{error::Error, time::Duration};
-
+use decodex_account_login as _;
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentDispatchState, AgentDisposition, AgentWorkStatus, SqliteStore};
+use decodex_protocol as _;
 use decodex_runtime::{AgentConfig, AgentCoordinator};
-use tokio::process::Command;
-
-use std::{collections::HashSet, env, path::Path};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

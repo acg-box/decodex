@@ -6,25 +6,24 @@ use std::{
 	ffi::{CStr, CString},
 	fs::{self, File},
 	io::{self, Error},
+	mem::MaybeUninit,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, RawFd},
 		unix::ffi::OsStrExt as _,
 	},
 	path::{Component, Path},
+	str,
 };
-
-use decodex_protocol::{ConversationHistoryPage, EntityId, HistoryCursorToken, ServerId};
-
-use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
-
-use std::{mem::MaybeUninit, str};
 
 use libc::{
 	AT_FDCWD, EAGAIN, EEXIST, EINTR, ENOENT, EWOULDBLOCK, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
 	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDWR, S_IFDIR, S_IFMT, S_IFREG,
 	S_ISVTX, c_int, c_uint, mode_t, off_t, stat, uid_t,
 };
+use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
+
+use decodex_protocol::{ConversationHistoryPage, EntityId, HistoryCursorToken, ServerId};
 
 const CACHE_DIRECTORY_NAME: &CStr = c"history-page-cache-v1";
 const LOCK_NAME: &CStr = c"lock";

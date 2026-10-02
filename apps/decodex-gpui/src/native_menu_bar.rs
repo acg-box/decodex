@@ -354,10 +354,13 @@ pub(crate) fn bundled_library_path(executable: &Path) -> Result<PathBuf, NativeM
 }
 
 #[cfg(all(target_os = "macos", not(test)))]
-pub(crate) unsafe fn symbol<T: Copy>(
+pub(crate) unsafe fn symbol<T>(
 	image: *mut c_void,
 	name: &std::ffi::CStr,
-) -> Result<T, NativeMenuBarFailure> {
+) -> Result<T, NativeMenuBarFailure>
+where
+	T: Copy,
+{
 	// SAFETY: `image` comes from `dlopen`, and `name` is a static nul-terminated symbol name.
 	let address = unsafe { libc::dlsym(image, name.as_ptr()) };
 

@@ -1,9 +1,8 @@
-// Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
-// Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
-use crate::shell::agent_surface::markdown::mermaid::{self, RenderError};
 use unicode_width::UnicodeWidthStr;
 
-use crate::shell::agent_surface::markdown::mermaid::Role;
+// Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
+// Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
+use crate::shell::agent_surface::markdown::mermaid::{self, RenderError, Role};
 
 #[test]
 fn branches_merges_and_retry_loop() {

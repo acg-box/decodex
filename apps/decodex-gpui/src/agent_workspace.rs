@@ -31,7 +31,7 @@ use crate::{
 	ui_motion::{self, SmoothControl, TabReveal},
 	ui_scroll::SmoothScrollArea,
 };
-use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
+use decodex_protocol::DesktopRecoveredDraft;
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 
@@ -156,7 +156,8 @@ impl AgentSurface {
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| {
 				work.id == id
-					&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
+					&& (work.parent_goal_id.is_none()
+						|| work.kind == decodex_protocol::AgentWorkKindDto::Manager)
 			})
 		});
 
@@ -221,7 +222,7 @@ impl AgentSurface {
 					.as_ref()
 					.and_then(|snap| snap.work_items.iter().find(|w| w.id == id))
 					.and_then(|w| {
-						if w.kind == AgentWorkKindDto::Manager {
+						if w.kind == decodex_protocol::AgentWorkKindDto::Manager {
 							Some(w.id.clone())
 						} else {
 							w.parent_goal_id.clone()
@@ -442,7 +443,8 @@ impl AgentSurface {
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot.work_items.iter().filter(|w| {
 				snapshot.workspaces.iter().any(|p| p.agent_id == w.id)
-					|| (w.parent_goal_id == self.root_id() && w.kind == AgentWorkKindDto::Manager)
+					|| (w.parent_goal_id == self.root_id()
+						&& w.kind == decodex_protocol::AgentWorkKindDto::Manager)
 			}) {
 				let id = work.id.clone();
 				let label = snapshot
@@ -833,7 +835,7 @@ impl AgentSurface {
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
 				snapshot.work_items.iter().any(|work| {
 					Some(&work.id) == self.selected.as_ref()
-						&& work.kind == AgentWorkKindDto::Manager
+						&& work.kind == decodex_protocol::AgentWorkKindDto::Manager
 				})
 			})
 	}
@@ -1197,7 +1199,7 @@ impl AgentSurface {
 				return project.name.clone();
 			}
 
-			if work.title == work.id && work.kind == AgentWorkKindDto::Task {
+			if work.title == work.id && work.kind == decodex_protocol::AgentWorkKindDto::Task {
 				let position = snapshot
 					.work_items
 					.iter()

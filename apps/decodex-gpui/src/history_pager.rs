@@ -4,6 +4,7 @@
 
 use std::{
 	collections::VecDeque,
+	mem,
 	path::{Path, PathBuf},
 	sync::{Arc, Mutex, MutexGuard, TryLockError},
 	time::{SystemTime, UNIX_EPOCH},
@@ -17,13 +18,9 @@ use self::page_cache::{
 };
 use decodex_protocol::{
 	CURRENT_VERSION, ConversationHistoryPage, ConversationHistoryResult, EntityId,
-	HistoryCursorToken, HistoryQueryError, MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+	HistoryCursorToken, HistoryItemDto, HistoryQueryError, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
+	QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
 };
-
-use std::mem;
-
-use decodex_protocol::HistoryItemDto;
 
 const MAX_CANCELLED_REQUESTS: usize = 8;
 const MAX_INVALIDATED_CONVERSATIONS: usize = 64;

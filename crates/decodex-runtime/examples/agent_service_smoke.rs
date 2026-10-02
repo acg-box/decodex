@@ -1,52 +1,48 @@
 //! Explicit live smoke through the production service and same-UID client.
+//! Keep-alive imports retain dependencies owned by the runtime library.
+//! Uses a disposable database and enrolls the current Codex login through AccountClient.
+//! Does not route accounts or replace the installed Decodex service.
 
-// These dependencies belong to the runtime library, not this auxiliary target.
+#[path = "agent_service_smoke/evidence.rs"] mod evidence;
+#[path = "agent_service_smoke/reliability.rs"] mod reliability;
+
+use std::{
+	collections::HashSet,
+	env,
+	env::VarError,
+	error::Error,
+	fs::OpenOptions,
+	io::Write,
+	os::unix::fs::OpenOptionsExt,
+	path::Path,
+	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+
 use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
-use decodex_account_login as _;
-use decodex_codex as _;
-use decodex_database as _;
 use futures_util as _;
 use reqwest as _;
 use rusqlite as _;
 #[cfg(target_os = "macos")] use security_framework as _;
 use serde as _;
 use sha2 as _;
+use tempfile::{Builder, TempDir};
 use time as _;
 use tokio_tungstenite as _;
 use zeroize as _;
 
-use std::env;
-
-use std::{
-	collections::HashSet,
-	env::VarError,
-	path::Path,
-	time::{Instant, SystemTime, UNIX_EPOCH},
-};
-
-use tempfile::{Builder, TempDir};
-
-use decodex_protocol::{
-	AccountInspectResult, AccountProfileResult, AccountQuotaStateDto, AgentCapabilitiesResult,
-	AgentDispatchStateDto, AgentHistoryEntryDto, AgentSnapshotDto, AgentWorkStatusDto,
-	ResetCardClient, ResetCardInventoryResult, WireText,
-};
-
-// Uses a disposable database, enrolling the current Codex login through AccountClient.
-// Does not route accounts or replace the installed Decodex service.
-
-#[path = "agent_service_smoke/evidence.rs"] mod evidence;
-#[path = "agent_service_smoke/reliability.rs"] mod reliability;
-
-use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
-
+use decodex_account_login as _;
+use decodex_codex as _;
 use decodex_core::{DecodexRoot, ProcessExecutionAuthorization, ServerIdentity};
+use decodex_database as _;
 use decodex_protocol::{
-	AccountClient, AccountCommandResponse, AgentActionDto, AgentClient, AgentCommandResponse,
-	AgentHistoryResult, AgentSandboxDto, AgentSnapshotResult, AgentStartDto, ClientProfile,
-	CommandPayload, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
-	EntityId, HistoryText, IdempotencyKey,
+	AccountClient, AccountCommandResponse, AccountInspectResult, AccountProfileResult,
+	AccountQuotaStateDto, AgentActionDto, AgentCapabilitiesResult, AgentClient,
+	AgentCommandResponse, AgentDispatchStateDto, AgentHistoryEntryDto, AgentHistoryResult,
+	AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto, AgentWorkStatusDto,
+	ClientProfile, CommandPayload, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, EntityId, HistoryText, IdempotencyKey, ResetCardClient,
+	ResetCardInventoryResult, WireText,
 };
 use decodex_runtime::{ServerConfig, ServiceComposition};
 

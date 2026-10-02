@@ -1,11 +1,5 @@
 //! Architecture-level validation-supervision acceptance coverage.
-
-// These dependencies belong to the runtime library, not this auxiliary target.
-use decodex_account_login as _;
-use rusqlite as _;
-
-use base64 as _;
-use reqwest as _;
+//! Keep-alive imports retain dependencies owned by the runtime library.
 
 use std::{
 	ffi::OsString,
@@ -16,27 +10,31 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
-use decodex_codex as _;
-use decodex_database as _;
-use decodex_protocol as _;
 use futures_util as _;
+use reqwest as _;
+use rusqlite as _;
 #[cfg(target_os = "macos")] use security_framework as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use tempfile::TempDir;
 use time as _;
 use tokio as _;
 use tokio_tungstenite as _;
 use zeroize as _;
 
+use decodex_account_login as _;
+use decodex_codex as _;
 use decodex_core::RepositoryContentRevision;
+use decodex_database as _;
+use decodex_protocol as _;
 use decodex_runtime::{
 	self, ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
 	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
 	ValidationSupervisionError, ValidationTermination,
 };
-use tempfile::TempDir;
 
 const REVISION: &str = "1111111111111111111111111111111111111111";
 
