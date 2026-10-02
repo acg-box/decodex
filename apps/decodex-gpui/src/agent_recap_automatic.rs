@@ -375,6 +375,40 @@ impl AgentSurface {
 	}
 }
 
+#[cfg(feature = "visual-capture")]
+#[allow(dead_code, reason = "shared with the opt-in isolated native capture binary")]
+impl AgentSurface {
+	/// Exercise the real driver with an elapsed fixture clock, only in the capture binary.
+	pub(crate) fn visual_begin_automatic_recap(
+		&mut self,
+		profile: ClientProfile,
+		cx: &mut Context<Self>,
+	) {
+		self.profile = Some(profile);
+
+		self.feedback.clear();
+		self.poll_automatic_recap(true, cx);
+		self.recap_focus(false);
+
+		let elapsed = Instant::now() - DELAY;
+
+		self.automatic_recap.away = Some(elapsed);
+		self.automatic_recap.quiet = Some(elapsed);
+
+		self.poll_automatic_recap(true, cx);
+	}
+
+	/// Return public recap evidence after a normal desktop poll.
+	pub(crate) fn visual_automatic_recap_evidence(
+		&mut self,
+		cx: &mut Context<Self>,
+	) -> serde_json::Value {
+		self.poll_automatic_recap(true, cx);
+
+		serde_json::json!({"automatic":self.recap.automatic,"state":self.recap.state,"completed_turns":self.automatic_recap.last_recapped})
+	}
+}
+
 fn has_new_progress(current: &[String], previous: &[String]) -> bool {
 	current.len() >= 3
 		&& (previous.is_empty() || current.iter().filter(|id| !previous.contains(id)).count() >= 2)
@@ -767,37 +801,3 @@ mod tests {
 #[cfg(test)]
 #[path = "agent_recap_progress_tests.rs"]
 mod progress_tests;
-
-#[cfg(feature = "visual-capture")]
-#[allow(dead_code, reason = "shared with the opt-in isolated native capture binary")]
-impl AgentSurface {
-	/// Exercise the real driver with an elapsed fixture clock, only in the capture binary.
-	pub(crate) fn visual_begin_automatic_recap(
-		&mut self,
-		profile: ClientProfile,
-		cx: &mut Context<Self>,
-	) {
-		self.profile = Some(profile);
-
-		self.feedback.clear();
-		self.poll_automatic_recap(true, cx);
-		self.recap_focus(false);
-
-		let elapsed = Instant::now() - DELAY;
-
-		self.automatic_recap.away = Some(elapsed);
-		self.automatic_recap.quiet = Some(elapsed);
-
-		self.poll_automatic_recap(true, cx);
-	}
-
-	/// Return public recap evidence after a normal desktop poll.
-	pub(crate) fn visual_automatic_recap_evidence(
-		&mut self,
-		cx: &mut Context<Self>,
-	) -> serde_json::Value {
-		self.poll_automatic_recap(true, cx);
-
-		serde_json::json!({"automatic":self.recap.automatic,"state":self.recap.state,"completed_turns":self.automatic_recap.last_recapped})
-	}
-}

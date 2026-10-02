@@ -1,9 +1,16 @@
 //! Disposable ownership fixture. This does not qualify kernel admission or credential enrollment.
-use std::path::Path;
+use std::{
+	path::Path,
+	sync::atomic::{AtomicUsize, Ordering},
+};
 
 use rusqlite::Connection;
 use serde_json::Value;
-use tokio::{sync::oneshot, time};
+use tokio::{
+	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	sync::oneshot,
+	time,
+};
 
 use crate::{
 	agent_model_settings,
@@ -172,10 +179,6 @@ fn seed_account(root: &DecodexRoot) {
 }
 
 // Model observations must retain exact ownership across the native read.
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 #[tokio::test]
 async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {

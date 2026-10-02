@@ -4,6 +4,7 @@
 #[path = "shell_account_activity.rs"] mod account_activity;
 #[path = "account_feedback.rs"] mod account_feedback;
 #[path = "account_identity.rs"] mod account_identity;
+
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
@@ -13,6 +14,10 @@ mod native_status;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
+
+pub(crate) use status::{
+	count_preference as notification_count_preference, question_notice_preference,
+};
 
 use std::{
 	array,
@@ -90,9 +95,6 @@ use decodex_protocol::{
 };
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
-pub(crate) use status::{
-	count_preference as notification_count_preference, question_notice_preference,
-};
 
 gpui::actions!(
 	decodex_shell,

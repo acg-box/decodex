@@ -180,13 +180,6 @@ pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, Re
 }
 
 #[cfg(test)]
-#[path = "families_tests.rs"]
-mod families_tests;
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
-
-#[cfg(test)]
 fn assert_snapshot(name: &str, actual: &str) {
 	let snapshot = match name {
 		"branches_merges_and_retry_loop" =>
@@ -202,3 +195,10 @@ fn assert_snapshot(name: &str, actual: &str) {
 
 	assert_eq!(actual, expected.trim_end_matches('\n'), "{name}");
 }
+
+#[cfg(test)]
+#[path = "families_tests.rs"]
+mod families_tests;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

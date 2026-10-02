@@ -104,10 +104,6 @@ where
 	}
 }
 
-#[cfg(test)]
-#[path = "agent_native_goal_tests.rs"]
-mod tests;
-
 pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
 	source: F,
@@ -217,3 +213,7 @@ fn review_token(source: &Source, thread: &str, goal: Option<&NativeThreadGoal>) 
 
 	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
+
+#[cfg(test)]
+#[path = "agent_native_goal_tests.rs"]
+mod tests;
