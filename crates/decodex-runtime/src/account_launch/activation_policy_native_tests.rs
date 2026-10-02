@@ -208,8 +208,8 @@ async fn installed_attested_model_defaults_preserve_selected_directory_and_sourc
 	.expect("project defaults");
 
 	task::spawn_blocking(move || {
-		let mut child = control_child(&binary, &directory);
 		let id = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
+		let mut child = control_child(&binary, &directory);
 
 		child.initialize_ordinary_turns(&SyntheticVault(id)).expect("initialize");
 

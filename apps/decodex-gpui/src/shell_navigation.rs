@@ -142,8 +142,8 @@ mod tests {
 
 	#[test]
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {
-		let mut history = NavigationHistory::new();
 		let worker = Location { destination: Destination::Agent, work: Some("worker".into()) };
+		let mut history = NavigationHistory::new();
 
 		history.record(worker.clone());
 		history.record(worker);

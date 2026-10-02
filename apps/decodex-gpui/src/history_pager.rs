@@ -403,8 +403,8 @@ impl HistoryPager {
 	/// Bind future dispatch to one retained-session generation and stable server.
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
 		let _commit_gate = self.lock_cache_publication_commit_gate();
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+		let mut state = self.lock();
 
 		if state.session.as_ref() != Some(&binding) {
 			state.cancel_in_flight(HistoryStaleReason::SessionReplaced);
@@ -466,9 +466,9 @@ impl HistoryPager {
 		server_id: &ServerId,
 	) -> Option<HistoryDispatch> {
 		let _commit_gate = self.lock_cache_publication_commit_gate();
-		let mut state = self.lock();
 		let expected =
 			SessionBinding { generation: session_generation, server_id: server_id.clone() };
+		let mut state = self.lock();
 
 		if state.session.as_ref() != Some(&expected) {
 			return None;

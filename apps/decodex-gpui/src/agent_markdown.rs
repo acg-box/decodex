@@ -131,10 +131,10 @@ impl RenderOnce for CopyButton {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						let mut path = PathBuilder::stroke(gpui::px(1.1));
 						let point = |x: f32, y: f32| {
 							bounds.origin + gpui::point(gpui::px(x * 0.75), gpui::px(y * 0.75))
 						};
+						let mut path = PathBuilder::stroke(gpui::px(1.1));
 
 						if copied {
 							path.move_to(point(2., 8.));
@@ -338,11 +338,11 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 }
 
 fn parse(text: &str) -> Vec<Node> {
-	let mut stack = vec![(Kind::Group, Vec::new())];
-	let mut flattened = 0;
 	let options =
 		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
 	let math = MathMarkdown::new(text, options, None);
+	let mut stack = vec![(Kind::Group, Vec::new())];
+	let mut flattened = 0;
 
 	for (event, range) in math.events(Parser::new_ext(&math.markdown, options).into_offset_iter()) {
 		match event {

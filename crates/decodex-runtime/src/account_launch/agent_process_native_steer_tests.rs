@@ -307,11 +307,11 @@ async fn qualify_query(
 	let authority =
 		LocalTransportAuthority::new(root.paths(), LocalTrustPolicy::SameUid, Some(uid))
 			.expect("fixture transport authority");
+	let config = root.as_path().join("config.toml");
 	let mut server = ProtocolServer::new(server_id, app, ServerConfig::default())
 		.bind(authority)
 		.await
 		.expect("real service query transport");
-	let config = root.as_path().join("config.toml");
 
 	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("fixture client configuration");
 	fs::set_permissions(config, Permissions::from_mode(0o600))

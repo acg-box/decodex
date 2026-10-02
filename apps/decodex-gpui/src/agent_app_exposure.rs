@@ -171,6 +171,7 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
+		let (owner, app) = (owner.clone(), connector.clone());
 		let mut panel = gpui::div()
 			.id("app-exposure-panel")
 			.flex()
@@ -178,7 +179,6 @@ impl AgentSurface {
 			.gap_2()
 			.child(format!("Tool visibility · {connector}"))
 			.child(self.app_exposure.feedback.clone());
-		let (owner, app) = (owner.clone(), connector.clone());
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"app-exposure-refresh".into(),

@@ -181,9 +181,9 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 	steps
 		.into_iter()
 		.flat_map(|(turn, indices)| {
-			let mut segments: Vec<Group> = Vec::new();
 			let first_index = indices[0];
 			let count = indices.len();
+			let mut segments: Vec<Group> = Vec::new();
 
 			for index in indices {
 				if let Some(last) = segments.last_mut()

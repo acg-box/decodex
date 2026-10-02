@@ -29,7 +29,6 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
-		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
 		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
 		let tiers = [
 			(ServiceTier::standard(), "Standard", true),
@@ -44,6 +43,7 @@ impl AgentSurface {
 		let selected = selected.unwrap_or_else(|| {
 			self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast))
 		});
+		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
 
 		for (id, label, available) in tiers {
 			let chosen = selected == id;

@@ -241,11 +241,11 @@ fn fixture_thread_read(
 	started_turns: u64,
 ) -> Value {
 	let id = request["params"]["threadId"].as_str().unwrap();
-	let mut result = history.get(id).cloned().unwrap_or_else(
-		|| serde_json::json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
-	);
 	let configured = settings.get(id).cloned().unwrap_or_else(
 		|| serde_json::json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
+	);
+	let mut result = history.get(id).cloned().unwrap_or_else(
+		|| serde_json::json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 	);
 
 	for field in ["model", "reasoningEffort", "modelProvider"] {
@@ -274,10 +274,10 @@ fn fixture_thread_read(
 #[test]
 fn partial_message_settings_preserve_existing_values_and_explicit_standard_clears_tier() {
 	let baseline = serde_json::json!({"input":[],"model":"native-model","effort":"high","serviceTier":"priority"});
-	let mut params = baseline.clone();
 	let message = |execution: Value| {
 		serde_json::json!({"options":{"execution":execution,"attachments":[]}}).to_string()
 	};
+	let mut params = baseline.clone();
 
 	agent::apply_message_options(&mut params, &message(serde_json::json!({}))).unwrap();
 

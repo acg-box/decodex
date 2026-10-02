@@ -317,8 +317,8 @@ impl AgentSurface {
 
 		self.prepare_process_folds(work, &collapsed);
 
-		let mut hidden = Vec::new();
 		let empty_reasoning = groups::empty_completed_reasoning(&self.native_history.entries);
+		let mut hidden = Vec::new();
 
 		for (index, entry) in self.native_history.entries.iter().enumerate() {
 			if empty_reasoning.contains(&index) {

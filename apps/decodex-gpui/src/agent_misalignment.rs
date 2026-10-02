@@ -50,10 +50,10 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
+		let identity = (work.id.clone(), review.review_id.clone());
 		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(gpui::rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
             .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
-		let identity = (work.id.clone(), review.review_id.clone());
 
 		if self.misalignment_reviewed.as_ref() != Some(&identity) {
 			let keyboard_identity = identity.clone();

@@ -1236,8 +1236,8 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 					continue;
 				}
 
-				let mut path = PathBuilder::stroke(gpui::px(1.6));
 				let steps = (portion * 64.0).ceil() as usize;
+				let mut path = PathBuilder::stroke(gpui::px(1.6));
 
 				for step in 0..=steps {
 					let angle = -FRAC_PI_2 + TAU * portion * step as f32 / steps as f32;

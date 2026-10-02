@@ -130,8 +130,8 @@ impl KernelExitWitness {
 		}
 		#[cfg(target_os = "macos")]
 		{
-			let mut event = MaybeUninit::<libc::kevent>::uninit();
 			let timeout = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+			let mut event = MaybeUninit::<libc::kevent>::uninit();
 			// SAFETY: the kqueue descriptor is owned, the output has capacity one, and the
 			// zero timeout makes this a nonblocking observation.
 			let result = unsafe {
@@ -282,9 +282,9 @@ pub(crate) fn inspect_process_identity(
 	{
 		let pid = i32::try_from(process_id)
 			.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))?;
-		let mut info = MaybeUninit::<libc::proc_bsdinfo>::zeroed();
 		let size = i32::try_from(mem::size_of::<libc::proc_bsdinfo>())
 			.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))?;
+		let mut info = MaybeUninit::<libc::proc_bsdinfo>::zeroed();
 		// SAFETY: the flavor and fixed output size match `proc_bsdinfo`.
 		let result = unsafe {
 			libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast(), size)

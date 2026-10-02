@@ -1013,9 +1013,9 @@ async fn fake_session_await_cancellation_survives_a_dropped_receive() {
 async fn retry_progression_is_capped_and_uses_only_fake_time() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
 	let failures =
 		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(root, failures);
 
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
@@ -1927,7 +1927,6 @@ async fn cache_and_state_application_precede_checkpoint_confirmation() {
 async fn event_publication_retains_the_complete_authoritative_state_before_confirmation() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
 	let snapshot = SnapshotEnvelope {
 		version: CURRENT_VERSION,
 		server_id: server(SERVER),
@@ -1945,6 +1944,7 @@ async fn event_publication_retains_the_complete_authoritative_state_before_confi
 			},
 		],
 	};
+	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(
 		root,
 		vec![connected(
@@ -2145,10 +2145,10 @@ async fn snapshot_fallback_rejects_events_until_verified_rebuild_completes() {
 async fn material_failure_exhaustion_preserves_quarantine_authority_state() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
 	let failures = (0..5)
 		.map(|_| ConnectAction::Fail(RetainedSessionFailure::CheckpointIdentityMismatch))
 		.collect();
+	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(root, failures);
 
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Quarantined);

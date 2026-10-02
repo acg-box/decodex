@@ -513,6 +513,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+		let root = self.root_id();
 		let mut row = gpui::div()
 			.id("agent-pages")
 			.role(Role::TabList)
@@ -523,7 +524,6 @@ impl AgentSurface {
 			.overflow_x_scroll()
 			.flex()
 			.items_center();
-		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 
 		if let Some(snapshot) = &self.snapshot {
@@ -1820,8 +1820,8 @@ impl AgentSurface {
 		copy: DesktopRecoveredDraft,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut row = gpui::div().flex().flex_wrap().gap_2();
 		let export = copy.clone();
+		let mut row = gpui::div().flex().flex_wrap().gap_2();
 
 		row = row.child(self.workspace_action(
 			format!("draft-copy-export-{index}"),

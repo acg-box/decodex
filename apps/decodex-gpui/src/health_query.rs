@@ -90,8 +90,8 @@ impl HealthQuery {
 
 	/// Bind future Health dispatch to one exact retained-session generation and server.
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+		let mut state = self.lock();
 
 		if state.session.as_ref() == Some(&binding) {
 			return;
@@ -162,9 +162,9 @@ impl HealthQuery {
 		session_generation: u64,
 		server_id: &ServerId,
 	) -> Option<HealthDispatch> {
-		let mut state = self.lock();
 		let expected =
 			SessionBinding { generation: session_generation, server_id: server_id.clone() };
+		let mut state = self.lock();
 
 		if state.session.as_ref() != Some(&expected) || state.in_flight.is_some() {
 			return None;

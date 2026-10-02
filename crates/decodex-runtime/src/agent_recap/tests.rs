@@ -119,11 +119,11 @@ async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_so
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
-	let mut routed = recaps.register("temporary").expect("route");
 	let event = |thread: &str, method: &str| ServerEvent::Notification {
 		method: method.into(),
 		params: serde_json::json!({"threadId":thread,"item":{"type":"userMessage"}}),
 	};
+	let mut routed = recaps.register("temporary").expect("route");
 
 	assert!(recaps.route(event("temporary", "turn/completed")).is_none());
 	assert!(routed.recv().await.is_some());

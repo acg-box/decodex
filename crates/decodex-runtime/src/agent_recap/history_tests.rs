@@ -88,11 +88,11 @@ fn media_is_described_without_payloads_and_internal_voice_handoff_is_not_summari
 
 #[test]
 fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor() {
-	let mut recent = Recent { voice: true, ..Default::default() };
 	let items = serde_json::json!([
 	 {"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
 	 {"type":"agentMessage","text":"The task was tested, not installed."}
 	]);
+	let mut recent = Recent { voice: true, ..Default::default() };
 
 	recent.push(&serde_json::json!({"id":"native-output","status":"completed"}), &items).unwrap();
 
@@ -111,8 +111,6 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let server = tokio::spawn(async move {
-		let (read, mut write) = io::split(remote);
-		let mut lines = BufReader::new(read).lines();
 		let replies = [
 			(
 				"thread/read",
@@ -132,6 +130,8 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"answer","type":"agentMessage","text":"Tested; not deployed"}}],"nextCursor":null}),
 			),
 		];
+		let (read, mut write) = io::split(remote);
+		let mut lines = BufReader::new(read).lines();
 
 		for (index, (method, result)) in replies.into_iter().enumerate() {
 			let request: Value =

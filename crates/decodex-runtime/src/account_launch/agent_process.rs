@@ -58,11 +58,11 @@ impl AgentProcessBridge {
 		let worker = Builder::new()
 			.name("decodex-agent-account-bridge".into())
 			.spawn(move || {
+				let terminal = incoming.clone();
 				let mut writer: Box<dyn Write + Send> = Box::new(RevocableWriter {
 					inner: stdin,
 					cancelled: Arc::clone(&worker_cancelled),
 				});
-				let terminal = incoming.clone();
 
 				for warning in config_warnings {
 					if incoming.blocking_send(Ok(warning)).is_err() {
@@ -526,9 +526,9 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn live_model_bridge_preserves_exact_turn_and_separate_edit_scope() {
-		let mut requests = HashSet::new();
 		let frame = serde_json::json!({"id":42,"method":"turn/settings/update","params":{
             "threadId":"thread","turnId":"turn","model":"selected-model","effort":"high"}});
+		let mut requests = HashSet::new();
 
 		assert!(agent_process::validate_outbound(&frame, &mut requests).is_ok());
 
@@ -932,8 +932,8 @@ mod tests {
 
 	#[test]
 	fn hook_config_writes_do_not_admit_other_config_or_file_targets() {
-		let mut requests = HashSet::new();
 		let params = serde_json::json!({"edits":[{"keyPath":"hooks.state.\"plugin.key\".enabled","value":false,"mergeStrategy":"replace"}],"expectedVersion":"reviewed-version","reloadUserConfig":true});
+		let mut requests = HashSet::new();
 		let mut request = serde_json::json!({"id":45,"method":"config/batchWrite","params":params});
 
 		assert!(agent_process::validate_outbound(&request, &mut requests).is_ok());
@@ -965,10 +965,10 @@ mod tests {
 
 	#[test]
 	fn connector_exposure_bridge_preserves_the_single_connector_boundary() {
-		let mut requests = HashSet::new();
 		let frame = serde_json::json!({"id":48,"method":"config/batchWrite","params":{
 			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
 			"edits":[{"keyPath":"apps.\"connector.with.dot\".omit_tools_from","value":["deferred"],"mergeStrategy":"replace"}]}});
+		let mut requests = HashSet::new();
 
 		assert!(agent_process::validate_outbound(&frame, &mut requests).is_ok());
 
