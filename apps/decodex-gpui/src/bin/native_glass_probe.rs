@@ -257,34 +257,7 @@ mod probe {
 			}
 		});
 		app.run(|cx: &mut App| {
-			cx.set_menus(vec![gpui::Menu {
-				name: "Native Glass Probe".into(),
-				items: vec![],
-				disabled: false,
-			}]);
-
-			eprintln!("probe: application ready");
-
-			composer_input::bind_keys(cx);
-
-			let parent = cx
-				.open_window(
-					WindowOptions {
-						window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-							None,
-							size(px(940.), px(640.)),
-							cx,
-						))),
-						window_min_size: Some(size(px(440.), px(300.))),
-						titlebar: Some(gpui::TitlebarOptions {
-							title: Some("Native Glass Probe".into()),
-							..Default::default()
-						}),
-						..Default::default()
-					},
-					|_, cx| cx.new(|_| Backdrop { child: None, submitted: String::new() }),
-				)
-				.expect("open probe window");
+			let parent = initialize_probe_window(cx);
 
 			if std::env::var_os("DECODEX_PROBE_BASELINE").is_some() {
 				cx.activate(true);
@@ -377,6 +350,36 @@ mod probe {
 
 			cx.activate(true);
 		});
+	}
+
+	fn initialize_probe_window(cx: &mut App) -> WindowHandle<Backdrop> {
+		cx.set_menus(vec![gpui::Menu {
+			name: "Native Glass Probe".into(),
+			items: vec![],
+			disabled: false,
+		}]);
+
+		eprintln!("probe: application ready");
+
+		composer_input::bind_keys(cx);
+
+		cx.open_window(
+			WindowOptions {
+				window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+					None,
+					size(px(940.), px(640.)),
+					cx,
+				))),
+				window_min_size: Some(size(px(440.), px(300.))),
+				titlebar: Some(gpui::TitlebarOptions {
+					title: Some("Native Glass Probe".into()),
+					..Default::default()
+				}),
+				..Default::default()
+			},
+			|_, cx| cx.new(|_| Backdrop { child: None, submitted: String::new() }),
+		)
+		.expect("open probe window")
 	}
 
 	fn native_view(window: &Window) -> Retained<NSView> {
