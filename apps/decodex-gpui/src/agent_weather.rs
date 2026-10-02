@@ -254,8 +254,6 @@ mod tests {
 		prelude::{InteractiveElement as _, ParentElement as _, Styled as _},
 	};
 
-	use crate::shell::agent_surface::weather;
-
 	struct Parent {
 		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
 	}
@@ -271,7 +269,7 @@ mod tests {
 				.id("parent")
 				.size_full()
 				.on_scroll_wheel(move |_, _, _| count.set(count.get() + 1))
-				.child(weather::render(&forecast, "test"))
+				.child(super::render(&forecast, "test"))
 		}
 	}
 
@@ -285,7 +283,7 @@ mod tests {
 			("12:00 PM", "12 PM"),
 			("23:45", "23:45"),
 		] {
-			assert_eq!(weather::hour_label(source), expected, "{source}");
+			assert_eq!(super::hour_label(source), expected, "{source}");
 		}
 	}
 

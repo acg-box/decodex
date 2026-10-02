@@ -5,14 +5,14 @@ status                = "ACTIVE"
 version               = 1
 
 [[automations]]
+execution_environment = "worktree"
 id                    = "codex-upstream-maintainer"
 model                 = "gpt-6-astra"
 name                  = "Codex Upstream Maintainer"
 prompt_file           = "automations/upstream/prompts/maintainer.md"
 reasoning_effort      = "medium"
-execution_environment = "worktree"
-status                = "ACTIVE"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
+status                = "ACTIVE"
 
 [[automations]]
 id               = "decodex-content-manager"
