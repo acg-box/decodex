@@ -140,20 +140,7 @@ pub(super) async fn qualify(
 		if matches!(&*result, ResultPayload::AccountRecoveryNudge { status:AccountRecoveryNudgeStatus::Sent, operation_key, .. } if operation_key == &key))
 	);
 
-	let SessionDelivery::Event { event, confirmation } =
-		time::timeout(Duration::from_secs(5), peer.next())
-			.await
-			.expect("peer event deadline")
-			.expect("peer event")
-	else {
-		panic!("account notification publication")
-	};
-
-	assert!(
-		matches!(event.payload, EventPayload::AccountRecoveryNudge { status:AccountRecoveryNudgeStatus::Sent, operation_key, .. } if operation_key == key)
-	);
-
-	peer.confirm_applied(confirmation).expect("peer applied event");
+	confirm_nudge_publication(&mut peer, &key).await;
 
 	let outcome = client
 		.recovery_nudge_status(
@@ -179,4 +166,21 @@ pub(super) async fn qualify(
 	peer.close().await.expect("peer close");
 
 	assert!(server.shutdown().await.expect("server shutdown").is_success());
+}
+
+async fn confirm_nudge_publication(peer: &mut RetainedSession, key: &IdempotencyKey) {
+	let SessionDelivery::Event { event, confirmation } =
+		time::timeout(Duration::from_secs(5), peer.next())
+			.await
+			.expect("peer event deadline")
+			.expect("peer event")
+	else {
+		panic!("account notification publication")
+	};
+
+	assert!(
+		matches!(event.payload, EventPayload::AccountRecoveryNudge { status:AccountRecoveryNudgeStatus::Sent, operation_key, .. } if operation_key == *key)
+	);
+
+	peer.confirm_applied(confirmation).expect("peer applied event");
 }

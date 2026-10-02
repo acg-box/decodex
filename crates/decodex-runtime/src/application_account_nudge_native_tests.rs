@@ -248,12 +248,20 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 	socket::qualify(app, &root, &source, &observations, &listener).await;
 
 	drop(store);
+	assert_durable_nudge_replay(&root, &command, &source, &listener).await;
+}
 
+async fn assert_durable_nudge_replay(
+	root: &DecodexRoot,
+	command: &CommandEnvelope,
+	source: &AccountRecoveryResult,
+	listener: &tokio::net::TcpListener,
+) {
 	let reopened = tests::application(
 		decodex_database::SqliteStore::open(&root.paths()).expect("reopen store"),
 	);
 	let replay = reopened
-		.execute_recovery_nudge(&command, &source, AccountRecoveryAction::NotifyOwner)
+		.execute_recovery_nudge(command, source, AccountRecoveryAction::NotifyOwner)
 		.await
 		.expect("durable replay");
 

@@ -2109,27 +2109,49 @@ impl ServiceApplication {
 		&self,
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
+		self.prepare_conversation_execution(command).await
+	}
+}
+
+impl ServiceApplication {
+	// Select the operation before polling it so inactive command futures do not
+	// reserve stack space throughout native startup and dispatch.
+	fn prepare_conversation_execution<'a>(
+		&'a self,
+		command: &'a CommandEnvelope,
+	) -> Pin<Box<dyn Future<Output = Result<ApplicationPublication, CommandError>> + Send + 'a>>
+	{
 		if matches!(&command.payload, CommandPayload::CreateConversationRoutingSuccessor { .. }) {
-			return self.execute_conversation_routing_successor(command).await;
+			return Box::pin(self.execute_conversation_routing_successor(command));
 		}
 
 		let runtime = match &self.conversations {
 			ConversationCapability::Ready(runtime) => runtime,
 			ConversationCapability::Unavailable(reason) => {
-				return Err(CommandError::ConversationUnavailable { unavailable_reason: *reason });
+				return Box::pin(future::ready(Err(CommandError::ConversationUnavailable {
+					unavailable_reason: *reason,
+				})));
 			},
 		};
 
 		if matches!(&command.payload, CommandPayload::ReviewConversationModelSettings { .. }) {
-			return self.execute_model_settings_review(runtime, command).await;
+			return Box::pin(self.execute_model_settings_review(runtime, command));
 		}
 		if matches!(
 			&command.payload,
 			CommandPayload::RefreshConversation { .. } | CommandPayload::ArchiveConversation { .. }
 		) {
-			return self.execute_control_conversation(runtime, command).await;
+			return Box::pin(self.execute_control_conversation(runtime, command));
 		}
 
+		Box::pin(self.execute_projected_conversation(runtime, command))
+	}
+
+	async fn execute_projected_conversation(
+		&self,
+		runtime: &ConversationRuntime,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
 		let outcome = match &command.payload {
 			CommandPayload::CreateConversation { .. } =>
 				self.execute_create_conversation(runtime, command).await?,

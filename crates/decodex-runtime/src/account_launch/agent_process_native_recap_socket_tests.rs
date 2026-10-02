@@ -45,12 +45,14 @@ use decodex_protocol::{
 };
 use reply_proxy::Proxy;
 
-fn write_service_profile(root: &DecodexRoot) {
+fn prepare_service_client(root: &DecodexRoot) -> AgentClient {
 	let uid = unsafe { libc::geteuid() };
 	let config = root.as_path().join("config.toml");
 
 	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
 	fs::set_permissions(config, Permissions::from_mode(0o600)).expect("private profile");
+
+	AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"))
 }
 
 fn write_native_configuration(native_home: &Path, address: SocketAddr) {
@@ -228,10 +230,7 @@ async fn qualify(home: &Path) {
 		)
 		.expect("same-UID authority")
 	};
-
-	write_service_profile(&root);
-
-	let client = AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"));
+	let client = prepare_service_client(&root);
 	let app = submit::application(&runtime, &store, home);
 	let (mut server, outcome) = (
 		ProtocolServer::new(server_id, app, ServerConfig::default())
