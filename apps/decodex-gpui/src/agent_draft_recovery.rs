@@ -293,6 +293,27 @@ mod tests {
 		tests,
 	};
 
+	fn recovered_editor_copy(scope: String) -> DesktopRecoveredDraft {
+		DesktopRecoveredDraft {
+			scope: Some(scope),
+			draft: DesktopProfileDraft {
+				composer: DesktopComposerDraft {
+					text: "Recovered earlier text".into(),
+					work_id: Some(
+						decodex_protocol::EntityId::new("original-work")
+							.expect("recovered draft identity"),
+					),
+					thread_id: Some(
+						decodex_protocol::WireText::new("original-thread")
+							.expect("recovered draft identity"),
+					),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		}
+	}
+
 	#[gpui::test]
 	fn full_copy_capacity_requires_confirmed_removal_and_retains_current_input(
 		cx: &mut gpui::TestAppContext,
@@ -422,18 +443,7 @@ mod tests {
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
-		let copy = DesktopRecoveredDraft {
-			scope: Some(profile.draft_scope_key()),
-			draft: DesktopProfileDraft {
-				composer: DesktopComposerDraft {
-					text: "Recovered earlier text".into(),
-					work_id: Some(decodex_protocol::EntityId::new("original-work").unwrap()),
-					thread_id: Some(decodex_protocol::WireText::new("original-thread").unwrap()),
-					..Default::default()
-				},
-				..Default::default()
-			},
-		};
+		let copy = recovered_editor_copy(profile.draft_scope_key());
 		let mut doc = DesktopDraftDocument::default();
 
 		doc.recovered.push(copy.clone());

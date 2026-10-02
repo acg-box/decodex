@@ -1,7 +1,7 @@
 //! Keep local delivery evidence separate from canonical conversation rows.
 use std::collections::BTreeMap;
 
-use gpui::{AnyElement, InteractiveElement, StatefulInteractiveElement};
+use gpui::{AnyElement, Div, InteractiveElement, StatefulInteractiveElement};
 
 use crate::{
 	shell::{
@@ -132,37 +132,7 @@ impl AgentSurface {
 				continue;
 			}
 
-			let mut row = gpui::div()
-				.debug_selector({
-					let id = entry.id;
-					let kind = match entry.kind.as_str() {
-						"checklist" => "checklist",
-						"partial_answer" | "partial_plan" => "partial",
-						_ => "local",
-					};
-
-					move || format!("{kind}-receipt-{id}")
-				})
-				.flex()
-				.flex_col()
-				.gap_1()
-				.child(agent_surface::muted(label))
-				.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
-
-			if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
-				row = row.child(markdown::response_copy_button(
-					&format!("copy-partial-{}", entry.id),
-					"Copy unfinished output",
-					entry.text.clone(),
-				));
-			}
-			if entry.kind == "capacity_retry_pending" {
-				row = row.child(
-					gpui::div()
-						.debug_selector(|| "capacity-retry-cancel".into())
-						.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
-				);
-			}
+			let row = self.local_receipt_row(entry, label, work, cx);
 
 			panel = panel.child(row);
 		}
@@ -172,6 +142,48 @@ impl AgentSurface {
 		}
 
 		panel.children(self.native_live_receipts(live)).into_any_element()
+	}
+
+	fn local_receipt_row(
+		&self,
+		entry: &AgentHistoryEntryDto,
+		label: &'static str,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let mut row = gpui::div()
+			.debug_selector({
+				let id = entry.id;
+				let kind = match entry.kind.as_str() {
+					"checklist" => "checklist",
+					"partial_answer" | "partial_plan" => "partial",
+					_ => "local",
+				};
+
+				move || format!("{kind}-receipt-{id}")
+			})
+			.flex()
+			.flex_col()
+			.gap_1()
+			.child(agent_surface::muted(label))
+			.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
+
+		if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
+			row = row.child(markdown::response_copy_button(
+				&format!("copy-partial-{}", entry.id),
+				"Copy unfinished output",
+				entry.text.clone(),
+			));
+		}
+		if entry.kind == "capacity_retry_pending" {
+			row = row.child(
+				gpui::div()
+					.debug_selector(|| "capacity-retry-cancel".into())
+					.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
+			);
+		}
+
+		row
 	}
 
 	fn local_records_toggle(
