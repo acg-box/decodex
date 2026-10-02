@@ -559,32 +559,8 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.child(copy_button(&format!("copy-code-{key}"), "Copy code", code_text(children)))
 			.child(inline(children, key))
 			.into_any_element(),
-		Kind::List(start) => gpui::div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.children(children.iter().enumerate().map(|(index, child)| {
-				gpui::div()
-					.flex()
-					.gap_2()
-					.child(
-						gpui::div()
-							.w(gpui::px(24.0))
-							.flex_shrink_0()
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(start.map_or_else(
-								|| "•".into(),
-								|start| format!("{}.", start + index as u64),
-							)),
-					)
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.child(render_node(child, &format!("{key}-{index}"))),
-					)
-			}))
-			.into_any_element(),
+		Kind::List(start) => render_list(start, children, key),
+
 		Kind::Row(header) => gpui::div()
 			.flex()
 			.items_stretch()
@@ -616,6 +592,35 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			)
 			.into_any_element(),
 	}
+}
+
+fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement {
+	gpui::div()
+		.flex()
+		.flex_col()
+		.gap_2()
+		.children(children.iter().enumerate().map(|(index, child)| {
+			gpui::div()
+				.flex()
+				.gap_2()
+				.child(
+					gpui::div()
+						.w(gpui::px(24.0))
+						.flex_shrink_0()
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child(start.map_or_else(
+							|| "•".into(),
+							|start| format!("{}.", start + index as u64),
+						)),
+				)
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.child(render_node(child, &format!("{key}-{index}"))),
+				)
+		}))
+		.into_any_element()
 }
 
 fn code_text(children: &[Node]) -> String {

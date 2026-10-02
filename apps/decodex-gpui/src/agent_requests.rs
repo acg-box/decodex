@@ -281,6 +281,28 @@ impl AgentSurface {
 		}
 	}
 
+	fn file_approval_details(&self, mut panel: Div, value: &Value) -> Div {
+		let details = value["changeDetails"]
+			.as_str()
+			.unwrap_or("File paths and patch details are unavailable.");
+
+		panel = panel.child(
+			gpui::div()
+				.id("file-approval-details")
+				.max_h(gpui::px(280.0))
+				.overflow_y_scroll()
+				.text_size(gpui::px(12.0))
+				.font_family("Menlo")
+				.child(self.request_summary(details.to_owned())),
+		);
+
+		if value["changeDetailsTruncated"] == true {
+			panel = panel.child(agent_surface::muted("File change details shortened"));
+		}
+
+		panel
+	}
+
 	fn approval_request_panel(
 		&self,
 		mut panel: Div,
@@ -313,23 +335,7 @@ impl AgentSurface {
 		}
 
 		if method == "item/fileChange/requestApproval" {
-			let details = value["changeDetails"]
-				.as_str()
-				.unwrap_or("File paths and patch details are unavailable.");
-
-			panel = panel.child(
-				gpui::div()
-					.id("file-approval-details")
-					.max_h(gpui::px(280.0))
-					.overflow_y_scroll()
-					.text_size(gpui::px(12.0))
-					.font_family("Menlo")
-					.child(self.request_summary(details.to_owned())),
-			);
-
-			if value["changeDetailsTruncated"] == true {
-				panel = panel.child(agent_surface::muted("File change details shortened"));
-			}
+			panel = self.file_approval_details(panel, value);
 		}
 		if matches!(
 			method,
