@@ -45,43 +45,8 @@ impl Device {
 		let level = Arc::new(AtomicU32::new(0));
 		let captured_level = level.clone();
 		let receive = RcBlock::new(
-			move |_: NonNull<AudioTimeStamp>, count: u32, buffers: NonNull<AudioBufferList>| {
-				// The graph supplies one non-interleaved Float32 mono buffer at 48 kHz.
-				let buffers = unsafe { buffers.as_ref() };
-
-				if buffers.mNumberBuffers != 1 {
-					return -50;
-				}
-
-				let buffer = &buffers.mBuffers[0];
-
-				if buffer.mData.is_null()
-					|| (buffer.mDataByteSize as usize) < count as usize * size_of::<f32>()
-				{
-					return -50;
-				}
-
-				let samples =
-					unsafe { slice::from_raw_parts(buffer.mData.cast::<f32>(), count as usize) };
-
-				if let Ok(mut capture) = capture.try_lock() {
-					let mut energy = 0.0;
-
-					for &sample in samples {
-						let sample = if sample.is_finite() { sample.clamp(-1.0, 1.0) } else { 0.0 };
-
-						energy += sample * sample;
-
-						let _ = capture.push(sample);
-					}
-
-					captured_level.store(
-						(energy / count.max(1) as f32).sqrt().min(1.0).to_bits(),
-						Ordering::Relaxed,
-					);
-				}
-
-				0
+			move |_: NonNull<AudioTimeStamp>, count: u32, buffers: NonNull<AudioBufferList>| unsafe {
+				capture_audio(count, buffers, &capture, &captured_level)
 			},
 		);
 		let render = RcBlock::new(
@@ -203,6 +168,48 @@ impl Drop for Device {
 			self.engine.detachNode(&self.source);
 		}
 	}
+}
+
+/// # Safety
+/// The audio graph must supply a valid buffer list and Float32 sample storage for this call.
+unsafe fn capture_audio(
+	count: u32,
+	buffers: NonNull<AudioBufferList>,
+	capture: &Mutex<Producer<f32>>,
+	captured_level: &AtomicU32,
+) -> i32 {
+	// The graph supplies one non-interleaved Float32 mono buffer at 48 kHz.
+	let buffers = unsafe { buffers.as_ref() };
+
+	if buffers.mNumberBuffers != 1 {
+		return -50;
+	}
+
+	let buffer = &buffers.mBuffers[0];
+
+	if buffer.mData.is_null() || (buffer.mDataByteSize as usize) < count as usize * size_of::<f32>()
+	{
+		return -50;
+	}
+
+	let samples = unsafe { slice::from_raw_parts(buffer.mData.cast::<f32>(), count as usize) };
+
+	if let Ok(mut capture) = capture.try_lock() {
+		let mut energy = 0.0;
+
+		for &sample in samples {
+			let sample = if sample.is_finite() { sample.clamp(-1.0, 1.0) } else { 0.0 };
+
+			energy += sample * sample;
+
+			let _ = capture.push(sample);
+		}
+
+		captured_level
+			.store((energy / count.max(1) as f32).sqrt().min(1.0).to_bits(), Ordering::Relaxed);
+	}
+
+	0
 }
 
 #[cfg(test)]
