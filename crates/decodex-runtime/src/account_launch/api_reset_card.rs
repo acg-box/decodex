@@ -1,7 +1,6 @@
 //! Durable, explicitly confirmed reset-card use. Unknown sends are never replayed.
 
 mod provider;
-#[cfg(test)] mod tests;
 
 use std::{
 	sync::{
@@ -282,6 +281,7 @@ struct Inner {
 	wakeup: Notify,
 	observation: Arc<Notify>,
 }
+
 fn select_credit(
 	inventory: &AccountApiInventory,
 	revision: i64,
@@ -317,6 +317,7 @@ fn select_credit(
 
 	Ok(credit.exact_id().clone())
 }
+
 fn map_store(error: StoreError) -> ResetCardServiceError {
 	match error {
 		StoreError::IdempotencyConflict => ResetCardServiceError::IdempotencyConflict,
@@ -325,6 +326,7 @@ fn map_store(error: StoreError) -> ResetCardServiceError {
 		_ => ResetCardServiceError::ProductStateUnavailable,
 	}
 }
+
 fn outcome_text(outcome: ResetCardConsumeOutcome) -> &'static str {
 	match outcome {
 		ResetCardConsumeOutcome::Reset => "reset",
@@ -333,6 +335,7 @@ fn outcome_text(outcome: ResetCardConsumeOutcome) -> &'static str {
 		ResetCardConsumeOutcome::AlreadyRedeemed => "already_redeemed",
 	}
 }
+
 fn parse_outcome(outcome: Option<&str>) -> Result<ResetCardConsumeOutcome, ResetCardServiceError> {
 	match outcome {
 		Some("reset") => Ok(ResetCardConsumeOutcome::Reset),
@@ -342,3 +345,5 @@ fn parse_outcome(outcome: Option<&str>) -> Result<ResetCardConsumeOutcome, Reset
 		_ => Err(ResetCardServiceError::ProductStateUnavailable),
 	}
 }
+
+#[cfg(test)] mod tests;

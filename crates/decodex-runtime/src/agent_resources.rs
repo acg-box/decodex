@@ -16,6 +16,44 @@ pub(crate) async fn read(client: &AppServerClient, thread: &str) -> AgentResourc
 	}
 }
 
+pub(crate) async fn add_link(
+	client: &AppServerClient,
+	thread: &str,
+	title: &str,
+	url: &str,
+) -> Result<(), AgentError> {
+	let url = Url::parse(url).map_err(|_| AgentError::Rejected("Invalid resource URL".into()))?;
+
+	if !matches!(url.scheme(), "https" | "http")
+		|| url.host_str().is_none()
+		|| !url.username().is_empty()
+		|| url.password().is_some()
+		|| title.trim().is_empty()
+	{
+		return Err(AgentError::Rejected(
+			"Use a title and an HTTP or HTTPS link without embedded credentials".into(),
+		));
+	}
+
+	let url = url.to_string();
+	// This is a Decodex convention, not an upstream-reserved type. Native add keeps
+	// the first title for an existing normalized URL rather than silently replacing it.
+	let digest =
+		Sha256::digest(url.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+	let key = format!("sha256:{digest}");
+
+	client
+		.add_thread_attachment(
+			thread,
+			"decodex.link",
+			&key,
+			serde_json::json!({"title":title,"url":url}),
+		)
+		.await?;
+
+	Ok(())
+}
+
 fn project(resources: Vec<ThreadAttachment>) -> AgentResourcesResult {
 	if resources.len() > 128 {
 		return AgentResourcesResult::CapacityExceeded;
@@ -95,45 +133,6 @@ mod tests {
 		);
 	}
 }
-
-pub(crate) async fn add_link(
-	client: &AppServerClient,
-	thread: &str,
-	title: &str,
-	url: &str,
-) -> Result<(), AgentError> {
-	let url = Url::parse(url).map_err(|_| AgentError::Rejected("Invalid resource URL".into()))?;
-
-	if !matches!(url.scheme(), "https" | "http")
-		|| url.host_str().is_none()
-		|| !url.username().is_empty()
-		|| url.password().is_some()
-		|| title.trim().is_empty()
-	{
-		return Err(AgentError::Rejected(
-			"Use a title and an HTTP or HTTPS link without embedded credentials".into(),
-		));
-	}
-
-	let url = url.to_string();
-	// This is a Decodex convention, not an upstream-reserved type. Native add keeps
-	// the first title for an existing normalized URL rather than silently replacing it.
-	let digest =
-		Sha256::digest(url.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-	let key = format!("sha256:{digest}");
-
-	client
-		.add_thread_attachment(
-			thread,
-			"decodex.link",
-			&key,
-			serde_json::json!({"title":title,"url":url}),
-		)
-		.await?;
-
-	Ok(())
-}
-
 #[cfg(test)]
 mod link_tests {
 	use serde_json::{self, Value};

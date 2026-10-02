@@ -100,6 +100,38 @@ fn choice_receipts(entries: &[AgentHistoryEntryDto]) -> usize {
 		.count()
 }
 
+fn disposable_profile() -> SmokeResult<(TempDir, DecodexRoot)> {
+	// Short canonical path is required for the platform Unix socket limit.
+	let temporary = Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
+	let root = DecodexRoot::new(temporary.path().join("p"))?;
+	let paths = root.paths();
+
+	paths.ensure_layout()?;
+
+	let mut file =
+		OpenOptions::new().write(true).create_new(true).mode(0o600).open(paths.config_file())?;
+
+	// SAFETY: geteuid reads the current user's numeric identity.
+	write!(
+		file,
+		"version = 1\nactive_profile = \"local\"\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {}\n[cache]\nmax_entries = 128\nmax_bytes = 1048576\nmax_entry_bytes = 65536\n",
+		unsafe { libc::geteuid() }
+	)?;
+
+	file.sync_all()?;
+
+	ProcessExecutionAuthorization::load_or_create(&paths)?;
+
+	Ok((temporary, root))
+}
+
+fn hierarchy_prompt(directory: &Path) -> String {
+	format!(
+		"Read-only integration qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with agent_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Agent coordination tools, create exactly one subordinate Agent with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
+		directory.display()
+	)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	let model = env::args().nth(1).ok_or("explicit MODEL required")?;
@@ -521,69 +553,6 @@ async fn closed_loop_before_restart(
 	Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-	#[test]
-	fn automation_receipt_uses_public_kind_and_source_payload() {
-		let entry = |id, kind: &str, text: &str| decodex_protocol::AgentHistoryEntryDto {
-			native_source: None,
-			turn_id: None,
-			weather: Vec::new(),
-			receipt: None,
-			activity: None,
-			usage: None,
-			duration_ms: None,
-			id,
-			kind: kind.into(),
-			text: text.into(),
-			created_at_micros: 1,
-		};
-		let entries = vec![
-			entry(1, "assistant", "automation_result"),
-			entry(
-				2,
-				"automation",
-				r#"{"observation":"Choose summary format A concise or B detailed; user selection is required."}"#,
-			),
-			entry(3, "automation", "unrelated observation"),
-		];
-
-		assert_eq!(super::choice_receipts(&entries), 1);
-	}
-}
-
-fn disposable_profile() -> SmokeResult<(TempDir, DecodexRoot)> {
-	// Short canonical path is required for the platform Unix socket limit.
-	let temporary = Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
-	let root = DecodexRoot::new(temporary.path().join("p"))?;
-	let paths = root.paths();
-
-	paths.ensure_layout()?;
-
-	let mut file =
-		OpenOptions::new().write(true).create_new(true).mode(0o600).open(paths.config_file())?;
-
-	// SAFETY: geteuid reads the current user's numeric identity.
-	write!(
-		file,
-		"version = 1\nactive_profile = \"local\"\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {}\n[cache]\nmax_entries = 128\nmax_bytes = 1048576\nmax_entry_bytes = 65536\n",
-		unsafe { libc::geteuid() }
-	)?;
-
-	file.sync_all()?;
-
-	ProcessExecutionAuthorization::load_or_create(&paths)?;
-
-	Ok((temporary, root))
-}
-
-fn hierarchy_prompt(directory: &Path) -> String {
-	format!(
-		"Read-only integration qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with agent_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Agent coordination tools, create exactly one subordinate Agent with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
-		directory.display()
-	)
-}
-
 async fn closed_loop_after_restart(
 	client: &AgentClient,
 	original: &AgentSnapshotDto,
@@ -833,4 +802,35 @@ async fn verify_capabilities(client: &AgentClient) -> SmokeResult<()> {
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn automation_receipt_uses_public_kind_and_source_payload() {
+		let entry = |id, kind: &str, text: &str| decodex_protocol::AgentHistoryEntryDto {
+			native_source: None,
+			turn_id: None,
+			weather: Vec::new(),
+			receipt: None,
+			activity: None,
+			usage: None,
+			duration_ms: None,
+			id,
+			kind: kind.into(),
+			text: text.into(),
+			created_at_micros: 1,
+		};
+		let entries = vec![
+			entry(1, "assistant", "automation_result"),
+			entry(
+				2,
+				"automation",
+				r#"{"observation":"Choose summary format A concise or B detailed; user selection is required."}"#,
+			),
+			entry(3, "automation", "unrelated observation"),
+		];
+
+		assert_eq!(super::choice_receipts(&entries), 1);
+	}
 }

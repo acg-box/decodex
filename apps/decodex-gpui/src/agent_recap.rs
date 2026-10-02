@@ -2,6 +2,8 @@
 #[path = "agent_recap_automatic.rs"] mod automatic;
 #[path = "agent_recap_request.rs"] mod request;
 
+pub(super) use automatic::Automatic;
+
 use gpui::AnyElement;
 use tokio::sync::watch::{self, Sender};
 
@@ -14,7 +16,6 @@ use crate::shell::agent_surface::{
 use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkItemDto, Entity, LoadState, Render,
 };
-pub(super) use automatic::Automatic;
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
 
 #[derive(Default)]
@@ -299,10 +300,6 @@ impl AgentSurface {
 	}
 }
 
-#[cfg(test)]
-#[path = "agent_recap_tests.rs"]
-mod tests;
-
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(super) fn visual_recap(&mut self) {
@@ -328,3 +325,7 @@ impl AgentSurface {
   });
 	}
 }
+
+#[cfg(test)]
+#[path = "agent_recap_tests.rs"]
+mod tests;

@@ -3,6 +3,7 @@
 #[path = "agent_prompt_edit_host.rs"] mod prompt_edit;
 #[path = "agent_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "agent_recap/host.rs"] mod recap;
+#[path = "agent_weather.rs"] mod weather;
 
 use std::{
 	fmt::{Display, Formatter},
@@ -2580,4 +2581,3 @@ mod tests {
 		time::timeout(Duration::from_secs(1), agent_host::stopped(&mut receiver)).await.unwrap();
 	}
 }
-#[path = "agent_weather.rs"] mod weather;

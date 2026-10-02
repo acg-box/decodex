@@ -138,82 +138,6 @@ impl AgentSurface {
 	}
 }
 
-pub(super) fn effort_indicator(level: &str) -> AnyElement {
-	gpui::div()
-		.flex()
-		.items_center()
-		.gap(gpui::px(7.))
-		.child(gpui::div().text_size(gpui::px(11.)).child(level_label(level)))
-		.into_any_element()
-}
-
-pub(super) fn live_mark() -> AnyElement {
-	gpui::div()
-		.size(gpui::px(16.))
-		.flex()
-		.items_center()
-		.justify_center()
-		.gap(gpui::px(1.5))
-		.children([5., 10., 15., 10., 5.].map(|height| {
-			gpui::div().w(gpui::px(2.)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
-		}))
-		.into_any_element()
-}
-
-pub(super) fn launch_mark() -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(gpui::px(1.5));
-			let origin = bounds.origin;
-
-			path.move_to(origin + gpui::point(gpui::px(8.), gpui::px(13.)));
-			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
-			path.move_to(origin + gpui::point(gpui::px(3.), gpui::px(8.)));
-			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
-			path.line_to(origin + gpui::point(gpui::px(13.), gpui::px(8.)));
-
-			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgb(TEXT));
-			}
-		},
-	)
-	.size(gpui::px(16.))
-}
-
-fn level_label(level: &str) -> String {
-	LEVELS.iter().find(|(value, _)| *value == level).map_or(level, |(_, label)| *label).to_owned()
-}
-
-/// Group GPT releases newest first while retaining catalog order within a release.
-fn model_version(model: &str) -> Vec<u32> {
-	model
-		.strip_prefix("gpt-")
-		.unwrap_or("")
-		.split('-')
-		.next()
-		.unwrap_or("")
-		.split('.')
-		.map_while(|part| part.parse().ok())
-		.collect()
-}
-
-#[cfg(test)]
-mod ordering_tests {
-	#[test]
-	fn versions_descend_without_reordering_same_release_variants() {
-		let mut models =
-			["gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-5.5", "gpt-5.10", "custom"];
-
-		models.sort_by_key(|model| std::cmp::Reverse(super::model_version(model)));
-
-		assert_eq!(
-			models,
-			["gpt-6-astra", "gpt-5.10", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "custom"]
-		);
-	}
-}
-
 /// A stable stop glyph with a soft confirmation halo; its footprint never changes.
 #[derive(gpui::IntoElement)]
 pub(super) struct StopMark {
@@ -300,5 +224,81 @@ impl RenderOnce for PrimaryMark {
 		}
 
 		row
+	}
+}
+
+pub(super) fn effort_indicator(level: &str) -> AnyElement {
+	gpui::div()
+		.flex()
+		.items_center()
+		.gap(gpui::px(7.))
+		.child(gpui::div().text_size(gpui::px(11.)).child(level_label(level)))
+		.into_any_element()
+}
+
+pub(super) fn live_mark() -> AnyElement {
+	gpui::div()
+		.size(gpui::px(16.))
+		.flex()
+		.items_center()
+		.justify_center()
+		.gap(gpui::px(1.5))
+		.children([5., 10., 15., 10., 5.].map(|height| {
+			gpui::div().w(gpui::px(2.)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
+		}))
+		.into_any_element()
+}
+
+pub(super) fn launch_mark() -> impl IntoElement {
+	gpui::canvas(
+		|_, _, _| (),
+		|bounds, _, window, _| {
+			let mut path = PathBuilder::stroke(gpui::px(1.5));
+			let origin = bounds.origin;
+
+			path.move_to(origin + gpui::point(gpui::px(8.), gpui::px(13.)));
+			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
+			path.move_to(origin + gpui::point(gpui::px(3.), gpui::px(8.)));
+			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
+			path.line_to(origin + gpui::point(gpui::px(13.), gpui::px(8.)));
+
+			if let Ok(path) = path.build() {
+				window.paint_path(path, gpui::rgb(TEXT));
+			}
+		},
+	)
+	.size(gpui::px(16.))
+}
+
+fn level_label(level: &str) -> String {
+	LEVELS.iter().find(|(value, _)| *value == level).map_or(level, |(_, label)| *label).to_owned()
+}
+
+/// Group GPT releases newest first while retaining catalog order within a release.
+fn model_version(model: &str) -> Vec<u32> {
+	model
+		.strip_prefix("gpt-")
+		.unwrap_or("")
+		.split('-')
+		.next()
+		.unwrap_or("")
+		.split('.')
+		.map_while(|part| part.parse().ok())
+		.collect()
+}
+
+#[cfg(test)]
+mod ordering_tests {
+	#[test]
+	fn versions_descend_without_reordering_same_release_variants() {
+		let mut models =
+			["gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-5.5", "gpt-5.10", "custom"];
+
+		models.sort_by_key(|model| std::cmp::Reverse(super::model_version(model)));
+
+		assert_eq!(
+			models,
+			["gpt-6-astra", "gpt-5.10", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "custom"]
+		);
 	}
 }
