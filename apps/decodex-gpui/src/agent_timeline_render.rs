@@ -3,9 +3,10 @@ use gpui::{AnyElement, Div, KeyDownEvent, PathBuilder, Role, StatefulInteractive
 
 use crate::{
 	shell::{
+		agent_surface,
 		agent_surface::{
 			native_timeline::{
-				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
+				AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
 				AgentWorkItemDto, Context, FluentBuilder, InteractiveElement, IntoElement,
 				ParentElement, SharedString, Styled, key, markdown,
 			},
@@ -42,7 +43,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap_1()
 			.debug_selector(|| "native-summary-message".into())
-			.child(native_timeline::muted(if kind == "userMessage" { "You" } else { "Assistant" }))
+			.child(agent_surface::muted(if kind == "userMessage" { "You" } else { "Assistant" }))
 			.child(markdown::render(text, &identity));
 
 		for attachment in attachments {
@@ -50,9 +51,8 @@ impl AgentSurface {
 		}
 
 		if *truncated {
-			row = row.child(native_timeline::muted(
-				"Some content was omitted from this history preview.",
-			));
+			row = row
+				.child(agent_surface::muted("Some content was omitted from this history preview."));
 		}
 		if kind == "agentMessage" && !text.is_empty() {
 			row = row.child(markdown::response_copy_button(
@@ -232,18 +232,16 @@ impl AgentSurface {
 			content @ AgentTimelineContent::Item { .. } =>
 				self.native_item_content(work, content, identity, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
-				.child(native_timeline::muted(if role == "user" {
+				.child(agent_surface::muted(if role == "user" {
 					"You · Voice"
 				} else {
 					"Assistant · Voice"
 				}))
 				.child(text.clone())
-				.when(*truncated, |r| {
-					r.child(native_timeline::muted("Voice transcript shortened."))
-				})
+				.when(*truncated, |r| r.child(agent_surface::muted("Voice transcript shortened.")))
 				.into_any_element(),
 			AgentTimelineContent::VoiceBoundary { kind, outcome, .. } => row
-				.child(native_timeline::muted(if kind == "realtimeSessionStarted" {
+				.child(agent_surface::muted(if kind == "realtimeSessionStarted" {
 					"Voice conversation started"
 				} else if outcome.as_deref() == Some("failed") {
 					"Voice conversation failed"
@@ -260,7 +258,7 @@ impl AgentSurface {
 				.when(
 					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
 					|row| {
-						row.child(native_timeline::muted(
+						row.child(agent_surface::muted(
 							if status.as_deref() == Some("interrupted") {
 								"Stopped"
 							} else {
@@ -382,7 +380,7 @@ impl AgentSurface {
 				body = body.child(action);
 			}
 			if truncated {
-				body = body.child(native_timeline::muted(
+				body = body.child(agent_surface::muted(
 					"Some content was omitted from this history preview.",
 				));
 			}
@@ -422,7 +420,7 @@ impl AgentSurface {
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
-		let mut row = row.when(kind != "reasoning", |row| row.child(native_timeline::muted(label)));
+		let mut row = row.when(kind != "reasoning", |row| row.child(agent_surface::muted(label)));
 
 		for attachment in attachments {
 			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
@@ -444,9 +442,8 @@ impl AgentSurface {
 			));
 		}
 		if truncated {
-			row = row.child(native_timeline::muted(
-				"Some content was omitted from this history preview.",
-			));
+			row = row
+				.child(agent_surface::muted("Some content was omitted from this history preview."));
 		}
 		if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
 			row = row.child(markdown::response_copy_button(
@@ -678,7 +675,7 @@ impl AgentSurface {
 
 				matches.next().is_none().then_some(first)
 			});
-		let mut row = row.child(native_timeline::muted("Shared during voice conversation"));
+		let mut row = row.child(agent_surface::muted("Shared during voice conversation"));
 
 		match target {
 			Some((text, truncated, activity, attachments)) => {
@@ -693,7 +690,7 @@ impl AgentSurface {
 				}
 
 				if presentation == "inlineVisualization" {
-					row = row.child(native_timeline::muted(&format!(
+					row = row.child(agent_surface::muted(&format!(
 						"Visualization {} is in the referenced message.",
 						u64::from(index.unwrap_or_default()) + 1
 					)));
@@ -705,7 +702,7 @@ impl AgentSurface {
 					);
 				}
 				if truncated {
-					row = row.child(native_timeline::muted("Shared content preview shortened."));
+					row = row.child(agent_surface::muted("Shared content preview shortened."));
 				}
 
 				if let Some(activity) = activity {
@@ -715,7 +712,7 @@ impl AgentSurface {
 			_ =>
 				row = row.child(
 					gpui::div().debug_selector(|| "native-promotion-unavailable".into()).child(
-						native_timeline::muted(
+						agent_surface::muted(
 							"Referenced result is temporarily unavailable. History refresh will retry.",
 						),
 					),

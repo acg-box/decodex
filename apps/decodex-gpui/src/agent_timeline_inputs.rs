@@ -4,9 +4,9 @@ use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::native_timeline::Binding;
 use crate::{
-	shell::agent_surface::{
-		native_timeline,
-		native_timeline::{
+	shell::{
+		agent_surface,
+		agent_surface::native_timeline::{
 			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
 			IntoElement, ParentElement, Styled, Task, markdown,
 		},
@@ -125,7 +125,7 @@ impl AgentSurface {
 					panel = panel.child(
 						gpui::div()
 							.debug_selector(|| "unconfirmed-native-input".into())
-							.child(native_timeline::muted("Local input · Delivery not confirmed"))
+							.child(agent_surface::muted("Local input · Delivery not confirmed"))
 							.child(markdown::render(
 								&entry.text,
 								&format!("input-receipt-{}", entry.id),
@@ -135,7 +135,7 @@ impl AgentSurface {
 
 				if *shortened {
 					panel =
-						panel.child(native_timeline::muted("Some local input text is shortened."));
+						panel.child(agent_surface::muted("Some local input text is shortened."));
 				}
 
 				if let Some(after) = next_after {
@@ -156,14 +156,14 @@ impl AgentSurface {
 				}
 
 				if entries.is_empty() && state.after.is_some() {
-					panel = panel.child(native_timeline::muted(
+					panel = panel.child(agent_surface::muted(
 						"No remaining unconfirmed inputs on this page.",
 					));
 				}
 			},
 			None => panel = panel.child(ui_loading::loading("Loading delivery records")),
 			_ =>
-				panel = panel.child(native_timeline::muted(
+				panel = panel.child(agent_surface::muted(
 					"Local delivery records could not be read. Retrying…",
 				)),
 		}

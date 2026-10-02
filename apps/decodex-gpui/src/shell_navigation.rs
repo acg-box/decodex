@@ -1,9 +1,17 @@
 //! Local navigation history. Traversal restores a view; it never replays a command.
-use gpui::KeyDownEvent;
-use ui_theme::CHROME_CONTROL_SIZE;
-use workspace_symbols::Symbol;
+use gpui::{
+	AppContext as _, InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _,
+	StatefulInteractiveElement as _, Styled as _, prelude::FluentBuilder as _,
+};
 
-use crate::{shell::*, ui_theme::HOVER_FILL};
+use crate::{
+	shell::{
+		AnyElement, Context, ControlTooltip, Destination, MouseButton, Role, Shell,
+		ui_theme::CHROME_CONTROL_SIZE, workspace_symbols, workspace_symbols::Symbol,
+	},
+	ui_motion::SmoothControl as _,
+	ui_theme::HOVER_FILL,
+};
 
 pub(super) struct NavigationHistory {
 	entries: Vec<Location>,
@@ -130,7 +138,7 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::navigation::*;
+	use crate::shell::navigation::{Destination, Location, NavigationHistory};
 
 	#[test]
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {

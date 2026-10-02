@@ -67,7 +67,10 @@ pub(super) fn document(text: &str) -> Rc<Document> {
 mod tests {
 	use std::{hint, time::Instant};
 
-	use crate::shell::agent_surface::{markdown, markdown::cache::*};
+	use crate::shell::agent_surface::{
+		markdown,
+		markdown::cache::{Cache, MAX_DOCUMENTS, MAX_SOURCE_BYTES, Rc},
+	};
 
 	#[test]
 	#[ignore = "Manual parsing benchmark; not a display FPS measurement"]
