@@ -167,26 +167,7 @@ impl AgentSurface {
 
 				if surface
 					.update(cx, |s, cx| {
-						if s.recap.epoch != epoch {
-							return;
-						}
-
-						if let Some((state, feedback)) = result {
-							if state.is_some()
-								&& s.recap.cancel.as_ref().is_some_and(|cancel| *cancel.borrow())
-							{
-								return;
-							}
-
-							if let Some(state) = &state {
-								s.record_recap_result(state);
-							}
-
-							s.recap.state = state;
-							s.recap.feedback = feedback;
-
-							cx.notify();
-						}
+						s.apply_recap_update(epoch, result, cx);
 					})
 					.is_err()
 				{
@@ -322,6 +303,35 @@ impl AgentSurface {
     next_action: Some(WireText::new("Review the fresh-install result before publishing.").expect("fixture next action")),
    }),
   });
+	}
+}
+
+impl AgentSurface {
+	fn apply_recap_update(
+		&mut self,
+		epoch: u64,
+		result: Option<(Option<TaskRecapStatus>, String)>,
+		cx: &mut Context<Self>,
+	) {
+		if self.recap.epoch != epoch {
+			return;
+		}
+
+		if let Some((state, feedback)) = result {
+			if state.is_some() && self.recap.cancel.as_ref().is_some_and(|cancel| *cancel.borrow())
+			{
+				return;
+			}
+
+			if let Some(state) = &state {
+				self.record_recap_result(state);
+			}
+
+			self.recap.state = state;
+			self.recap.feedback = feedback;
+
+			cx.notify();
+		}
 	}
 }
 

@@ -549,19 +549,7 @@ impl AgentSurface {
 			card = card
 				.key_context("AsyncQuestion")
 				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-					let modifiers = event.keystroke.modifiers;
-
-					if event.keystroke.key == "enter"
-						&& !modifiers.shift
-						&& !modifiers.control
-						&& !modifiers.alt
-					{
-						if !event.is_held {
-							s.answer_async_question(&key_owner, &key_question, cx);
-						}
-
-						cx.stop_propagation();
-					}
+					s.handle_async_question_key(event, &key_owner, &key_question, cx);
 				}))
 				.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
 					s.answer_async_question(&enter_owner, &enter_question, cx);
@@ -592,6 +580,30 @@ impl AgentSurface {
 		}
 
 		panel.into_any_element()
+	}
+}
+
+impl AgentSurface {
+	fn handle_async_question_key(
+		&mut self,
+		event: &KeyDownEvent,
+		owner: &str,
+		question: &str,
+		cx: &mut Context<Self>,
+	) {
+		let modifiers = event.keystroke.modifiers;
+
+		if event.keystroke.key == "enter"
+			&& !modifiers.shift
+			&& !modifiers.control
+			&& !modifiers.alt
+		{
+			if !event.is_held {
+				self.answer_async_question(owner, question, cx);
+			}
+
+			cx.stop_propagation();
+		}
 	}
 }
 
