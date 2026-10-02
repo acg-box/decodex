@@ -8,7 +8,7 @@ use tokio::{task::JoinHandle, time};
 use crate::account_launch::agent_process::native_tests::{
 	self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value, effort, reviewer,
 };
-use decodex_codex::app_server_client::ThreadModelSelection;
+use decodex_codex::app_server_client::{NativeTaskModelSettings, ThreadModelSelection};
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 
@@ -214,44 +214,8 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	session
-		.client
-		.thread_resume(serde_json::json!({"threadId":thread}))
-		.await
-		.expect("native model fixture operation");
-
-	assert_eq!(session.client.observed_task_models(&thread).expect("resume hydration").0, selected);
-
-	run_turn(&mut session, &thread).await;
-
-	// Native omission preserves effort instead of selecting a local default.
-	let (_, guard) =
-		session.client.observed_task_models(&thread).expect("native model fixture operation");
-
-	session
-		.client
-		.queue_thread_model_selection(
-			&ThreadModelSelection::new(&thread, "fixture-a", None)
-				.expect("native model fixture operation"),
-			guard,
-		)
-		.await
-		.expect("native model fixture operation");
-
-	wait_selection(&mut session, &thread, "fixture-a").await;
-
-	assert_eq!(
-		session
-			.client
-			.observed_task_models(&thread)
-			.expect("native model fixture operation")
-			.0
-			.effort
-			.as_deref(),
-		selected_effort.or(explicit_effort.then_some(EFFORT))
-	);
-
-	run_turn(&mut session, &thread).await;
+	verify_cold_model_selection(&mut session, &thread, &selected, selected_effort, explicit_effort)
+		.await;
 
 	assert_eq!(requests.load(Ordering::Acquire), 5);
 
@@ -312,6 +276,53 @@ async fn qualify_independent_task(session: &mut NativeSession, home: &Path) {
 	assert_eq!(
 		session.client.configured_task_models(thread).expect("creation default").0.model,
 		"fixture-a"
+	);
+
+	run_turn(session, thread).await;
+}
+
+async fn verify_cold_model_selection(
+	session: &mut NativeSession,
+	thread: &str,
+	selected: &NativeTaskModelSettings,
+	selected_effort: Option<&str>,
+	explicit_effort: bool,
+) {
+	session
+		.client
+		.thread_resume(serde_json::json!({"threadId":thread}))
+		.await
+		.expect("native model fixture operation");
+
+	assert_eq!(session.client.observed_task_models(thread).expect("resume hydration").0, *selected);
+
+	run_turn(session, thread).await;
+
+	// Native omission preserves effort instead of selecting a local default.
+	let (_, guard) =
+		session.client.observed_task_models(thread).expect("native model fixture operation");
+
+	session
+		.client
+		.queue_thread_model_selection(
+			&ThreadModelSelection::new(thread, "fixture-a", None)
+				.expect("native model fixture operation"),
+			guard,
+		)
+		.await
+		.expect("native model fixture operation");
+
+	wait_selection(session, thread, "fixture-a").await;
+
+	assert_eq!(
+		session
+			.client
+			.observed_task_models(thread)
+			.expect("native model fixture operation")
+			.0
+			.effort
+			.as_deref(),
+		selected_effort.or(explicit_effort.then_some(EFFORT))
 	);
 
 	run_turn(session, thread).await;

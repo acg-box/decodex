@@ -69,29 +69,7 @@ async fn qualify(running: bool) {
 		initial
 	);
 
-	start_turn(&mut session, &thread).await;
-
-	if !running {
-		wait_turn(&mut session, &thread, "turn/completed").await;
-
-		assert_eq!(
-			session
-				.client
-				.observed_task_permissions(&thread)
-				.expect("idle after exact completion")
-				.0,
-			initial
-		);
-		assert_eq!(calls.load(Ordering::Acquire), 1);
-	} else {
-		wait_turn(&mut session, &thread, "turn/started").await;
-
-		assert!(session.client.observed_task_permissions(&thread).is_none());
-		assert_eq!(
-			session.client.configured_task_permissions(&thread).expect("running facts").0,
-			initial
-		);
-	}
+	observe_initial_permission_turn(&mut session, &thread, &initial, &calls, running).await;
 
 	let guard = session.client.thread_settings_guard(&thread).expect("settings guard");
 
@@ -108,21 +86,7 @@ async fn qualify(running: bool) {
 			.expect("queue selection");
 	}
 
-	let observed = loop {
-		let event = session.events.recv().await.expect("native notification");
-
-		if let ServerEvent::Notification { method, params } = event
-			&& method == "thread/settings/updated"
-			&& params["threadId"] == thread
-		{
-			let facts = NativeTaskPermissions::from_notification(&params["threadSettings"])
-				.expect("native permission publication");
-
-			if facts.profile_id.as_deref() == Some("scoped") {
-				break facts;
-			}
-		}
-	};
+	let observed = observe_scoped_permissions(&mut session, &thread).await;
 
 	assert_eq!(
 		session.client.configured_task_permissions(&thread).expect("wire observation").0,
@@ -214,4 +178,57 @@ async fn verify_restart(
 	);
 
 	drop(reopened);
+}
+
+async fn observe_initial_permission_turn(
+	session: &mut NativeSession,
+	thread: &str,
+	initial: &NativeTaskPermissions,
+	calls: &AtomicUsize,
+	running: bool,
+) {
+	start_turn(session, thread).await;
+
+	if !running {
+		wait_turn(session, thread, "turn/completed").await;
+
+		assert_eq!(
+			session
+				.client
+				.observed_task_permissions(thread)
+				.expect("idle after exact completion")
+				.0,
+			*initial
+		);
+		assert_eq!(calls.load(Ordering::Acquire), 1);
+	} else {
+		wait_turn(session, thread, "turn/started").await;
+
+		assert!(session.client.observed_task_permissions(thread).is_none());
+		assert_eq!(
+			session.client.configured_task_permissions(thread).expect("running facts").0,
+			*initial
+		);
+	}
+}
+
+async fn observe_scoped_permissions(
+	session: &mut NativeSession,
+	thread: &str,
+) -> NativeTaskPermissions {
+	loop {
+		let event = session.events.recv().await.expect("native notification");
+
+		if let ServerEvent::Notification { method, params } = event
+			&& method == "thread/settings/updated"
+			&& params["threadId"] == thread
+		{
+			let facts = NativeTaskPermissions::from_notification(&params["threadSettings"])
+				.expect("native permission publication");
+
+			if facts.profile_id.as_deref() == Some("scoped") {
+				break facts;
+			}
+		}
+	}
 }

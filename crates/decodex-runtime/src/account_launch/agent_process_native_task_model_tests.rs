@@ -1,6 +1,7 @@
 //! Qualify runtime model publication against the installed native owner.
 use std::{
 	env, fs,
+	path::Path,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
@@ -20,6 +21,43 @@ use crate::{
 };
 use decodex_codex::app_server_client::{NativeTaskModelSettings, ServerEvent};
 use decodex_protocol::{AgentModelSelectionState, ConversationReasoningEffort};
+
+fn assert_task_model_requests(captured: &[Value], plan: bool) {
+	assert_eq!(captured.len(), 4);
+
+	for (request, (model, effort)) in captured.iter().zip([
+		("gpt-5.6-sol", "low"),
+		("gpt-5.6-sol", "low"),
+		("gpt-5.6-terra", "high"),
+		("gpt-5.6-sol", "low"),
+	]) {
+		assert_eq!(request["model"], model);
+
+		let metadata: Value = serde_json::from_str(
+			request["client_metadata"]["x-codex-turn-metadata"]
+				.as_str()
+				.expect("native task model fixture"),
+		)
+		.expect("native task model fixture");
+
+		assert_eq!(metadata["model"], model);
+		assert_eq!(metadata["reasoning_effort"], effort);
+	}
+
+	if plan {
+		for index in [0, 1, 2] {
+			assert!(
+				captured[index].to_string().contains("# Plan Mode (Conversational)"),
+				"Plan mode lost on request {index}"
+			);
+		}
+
+		assert!(
+			!captured[3].to_string().contains("# Plan Mode (Conversational)"),
+			"Plan mode leaked into a new task"
+		);
+	}
+}
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated task model selection"]
@@ -121,58 +159,16 @@ async fn qualify(plan: bool) {
 
 	let mut cold = NativeSession::start(&binary, home.path());
 
-	time::timeout(Duration::from_secs(30),async {
-        let resumed=cold.client.thread_resume(serde_json::json!({"threadId":thread})).await.expect("native task model fixture");
-
-        if plan {assert_eq!(resumed["collaborationMode"]["mode"],"plan");}
-
-        cold.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native task model fixture");
-
-        super::super::finish(&mut cold.events).await;
-
-        let other=cold.client.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"})).await.expect("native task model fixture");
-
-        cold.client.turn_start(serde_json::json!({"threadId":other["thread"]["id"],"input":[{"type":"text","text":"Use independent defaults."}]})).await.expect("native task model fixture");
-
-        super::super::finish(&mut cold.events).await;
-    }).await.expect("cold native model deadline");
+	time::timeout(
+		Duration::from_secs(30),
+		verify_cold_task_model(&mut cold, &thread, home.path(), plan),
+	)
+	.await
+	.expect("cold native model deadline");
 
 	let captured = bodies.lock().expect("native task model fixture");
 
-	assert_eq!(captured.len(), 4);
-
-	for (request, (model, effort)) in captured.iter().zip([
-		("gpt-5.6-sol", "low"),
-		("gpt-5.6-sol", "low"),
-		("gpt-5.6-terra", "high"),
-		("gpt-5.6-sol", "low"),
-	]) {
-		assert_eq!(request["model"], model);
-
-		let metadata: Value = serde_json::from_str(
-			request["client_metadata"]["x-codex-turn-metadata"]
-				.as_str()
-				.expect("native task model fixture"),
-		)
-		.expect("native task model fixture");
-
-		assert_eq!(metadata["model"], model);
-		assert_eq!(metadata["reasoning_effort"], effort);
-	}
-
-	if plan {
-		for index in [0, 1, 2] {
-			assert!(
-				captured[index].to_string().contains("# Plan Mode (Conversational)"),
-				"Plan mode lost on request {index}"
-			);
-		}
-
-		assert!(
-			!captured[3].to_string().contains("# Plan Mode (Conversational)"),
-			"Plan mode leaked into a new task"
-		);
-	}
+	assert_task_model_requests(&captured, plan);
 
 	assert_eq!(
 		fs::read(home.path().join("config.toml")).expect("native task model fixture"),
@@ -183,4 +179,32 @@ async fn qualify(plan: bool) {
 	drop(cold);
 
 	backend.abort();
+}
+
+async fn verify_cold_task_model(cold: &mut NativeSession, thread: &str, home: &Path, plan: bool) {
+	let resumed = cold
+		.client
+		.thread_resume(serde_json::json!({"threadId":thread}))
+		.await
+		.expect("native task model fixture");
+
+	if plan {
+		assert_eq!(resumed["collaborationMode"]["mode"], "plan");
+	}
+
+	cold.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native task model fixture");
+
+	super::super::finish(&mut cold.events).await;
+
+	let other = cold
+		.client
+		.thread_start(
+			serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
+		)
+		.await
+		.expect("native task model fixture");
+
+	cold.client.turn_start(serde_json::json!({"threadId":other["thread"]["id"],"input":[{"type":"text","text":"Use independent defaults."}]})).await.expect("native task model fixture");
+
+	super::super::finish(&mut cold.events).await;
 }
