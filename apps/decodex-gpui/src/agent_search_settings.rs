@@ -12,12 +12,12 @@ use crate::shell::agent_surface::{
 	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
 	mcp_forms,
 };
-use decodex_protocol::{AgentSearchSettingsResult as State, ClientFailure};
+use decodex_protocol::{AgentSearchSettingsResult, ClientFailure};
 
 #[derive(Default)]
 pub(super) struct Panel {
 	work: Option<String>,
-	state: Option<State>,
+	state: Option<AgentSearchSettingsResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
@@ -64,7 +64,7 @@ impl AgentSurface {
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
 		let action = if let Some(mode) = mode.clone() {
-			let Some(State::Available { work_id, review_token, modes, .. }) =
+			let Some(AgentSearchSettingsResult::Available { work_id, review_token, modes, .. }) =
 				&self.search_settings.state
 			else {
 				return;
@@ -100,8 +100,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.search_settings(query_owner)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.search_settings(query_owner))
+				.unwrap_or(AgentSearchSettingsResult::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -118,7 +119,8 @@ impl AgentSurface {
 
 				s.search_settings.task = None;
 
-				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+				let (outcome, state) =
+					result.unwrap_or((None, AgentSearchSettingsResult::Unavailable));
 
 				s.search_settings.feedback =
 					feedback(mode.as_ref(), outcome.as_ref(), &state).into();
@@ -175,7 +177,7 @@ impl AgentSurface {
 			move |s, cx| s.update_search_settings(&owner, None, cx),
 		));
 
-		if let Some(State::Available { modes, effective, preference, .. }) =
+		if let Some(AgentSearchSettingsResult::Available { modes, effective, preference, .. }) =
 			&self.search_settings.state
 		{
 			panel = panel.child(format!(
@@ -229,13 +231,13 @@ impl AgentSurface {
 fn feedback(
 	mode: Option<&WireText>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
-	state: &State,
+	state: &AgentSearchSettingsResult,
 ) -> &'static str {
 	match (mode, outcome, state) {
 		(
 			Some(mode),
 			Some(Ok(AgentCommandResponse::Accepted { .. })),
-			State::Available { effective, preference, .. },
+			AgentSearchSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(mode) =>
 			if effective.as_ref() == Some(mode) {
 				"Search default saved for new conversations."

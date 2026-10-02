@@ -15,11 +15,11 @@ use crate::shell::agent_surface::{
 	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
 	WireText, mcp_forms,
 };
-use decodex_protocol::{AgentPermissionOutcome as Outcome, AgentPermissionState as State};
+use decodex_protocol::{AgentPermissionOutcome, AgentPermissionState};
 
 #[derive(Default)]
 pub(super) struct Panel {
-	state: Option<State>,
+	state: Option<AgentPermissionState>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
@@ -53,7 +53,7 @@ impl AgentSurface {
 		thread: &str,
 		profile_id: WireText,
 	) -> Option<AgentActionDto> {
-		let State::Available {
+		let AgentPermissionState::Available {
 			work_id: reviewed_work,
 			thread_id,
 			review_token,
@@ -147,8 +147,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.permission_profiles(work_id)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.permission_profiles(work_id))
+				.unwrap_or(AgentPermissionState::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -179,7 +180,7 @@ impl AgentSurface {
 					return;
 				}
 
-				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+				let (outcome, state) = result.unwrap_or((None, AgentPermissionState::Unavailable));
 
 				s.permission_profiles.reviewed = !saving;
 				s.permission_profiles.feedback = match outcome {
@@ -193,9 +194,9 @@ impl AgentSurface {
 				}
 				.into();
 				s.permission_profiles.state = Some(match state {
-					State::Available { ref work_id, ref thread_id, .. }
+					AgentPermissionState::Available { ref work_id, ref thread_id, .. }
 						if work_id.as_str() != work || thread_id.as_str() != thread =>
-						State::Unavailable,
+						AgentPermissionState::Unavailable,
 					other => other,
 				});
 
@@ -236,8 +237,13 @@ impl AgentSurface {
 		panel = panel.child(self.permission_profiles.feedback.clone());
 
 		match &self.permission_profiles.state {
-			Some(State::Available {
-				cwd, profile_id, profiles, can_update, last_outcome, ..
+			Some(AgentPermissionState::Available {
+				cwd,
+				profile_id,
+				profiles,
+				can_update,
+				last_outcome,
+				..
 			}) => {
 				panel = panel
 					.child(format!(
@@ -291,15 +297,15 @@ impl AgentSurface {
 					}
 				}
 			},
-			Some(State::Pending { profile_id, state }) => {
+			Some(AgentPermissionState::Pending { profile_id, state }) => {
 				panel = panel
 					.child(format!("{}: {}", profile_id.as_str(), label(*state)))
 					.child("Refresh to check the native state. The selection will not be resent.");
 			},
-			Some(State::Unsupported) => {
+			Some(AgentPermissionState::Unsupported) => {
 				panel = panel.child("This Codex version does not provide permission profiles.");
 			},
-			Some(State::Unavailable) => {
+			Some(AgentPermissionState::Unavailable) => {
 				panel = panel.child(
 					"Current native permissions are unavailable. Refresh after the task reconnects.",
 				);
@@ -310,14 +316,14 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 }
-fn label(state: Outcome) -> &'static str {
+fn label(state: AgentPermissionOutcome) -> &'static str {
 	match state {
-		Outcome::Reserved => "Awaiting confirmation",
-		Outcome::Queued => "Queued; awaiting native state",
-		Outcome::Unknown => "Unconfirmed",
-		Outcome::Rejected => "Rejected",
-		Outcome::TargetObserved => "Target profile observed",
-		Outcome::Superseded => "Replaced by current native permissions",
+		AgentPermissionOutcome::Reserved => "Awaiting confirmation",
+		AgentPermissionOutcome::Queued => "Queued; awaiting native state",
+		AgentPermissionOutcome::Unknown => "Unconfirmed",
+		AgentPermissionOutcome::Rejected => "Rejected",
+		AgentPermissionOutcome::TargetObserved => "Target profile observed",
+		AgentPermissionOutcome::Superseded => "Replaced by current native permissions",
 	}
 }
 

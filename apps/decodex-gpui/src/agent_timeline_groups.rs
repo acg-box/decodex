@@ -12,7 +12,7 @@ use gpui::{
 use crate::{
 	shell::{
 		agent_surface::native_timeline::{
-			AgentSurface, AgentTimelineEntry, AgentWorkItemDto, Content,
+			AgentSurface, AgentTimelineContent, AgentTimelineEntry, AgentWorkItemDto,
 		},
 		workspace_symbols,
 	},
@@ -96,7 +96,8 @@ pub(super) fn empty_completed_reasoning(entries: &[AgentTimelineEntry]) -> BTree
 	let completed: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
-			Content::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id.as_str()),
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
+				Some(turn_id.as_str()),
 			_ => None,
 		})
 		.collect();
@@ -105,11 +106,17 @@ pub(super) fn empty_completed_reasoning(entries: &[AgentTimelineEntry]) -> BTree
 		.iter()
 		.enumerate()
 		.filter_map(|(index, entry)| match &entry.content {
-			Content::Item { turn_id, kind, text, truncated: false, attachments, .. }
-				if kind == "reasoning"
-					&& text.trim().is_empty()
-					&& attachments.is_empty()
-					&& completed.contains(turn_id.as_str()) =>
+			AgentTimelineContent::Item {
+				turn_id,
+				kind,
+				text,
+				truncated: false,
+				attachments,
+				..
+			} if kind == "reasoning"
+				&& text.trim().is_empty()
+				&& attachments.is_empty()
+				&& completed.contains(turn_id.as_str()) =>
 				Some(index),
 			_ => None,
 		})
@@ -121,16 +128,20 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 	let finished: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|e| match &e.content {
-			Content::TurnBoundary { turn_id, completed: true, status, error: None, .. }
-				if status.as_deref() == Some("completed") =>
-				Some(turn_id.as_str()),
+			AgentTimelineContent::TurnBoundary {
+				turn_id,
+				completed: true,
+				status,
+				error: None,
+				..
+			} if status.as_deref() == Some("completed") => Some(turn_id.as_str()),
 			_ => None,
 		})
 		.collect();
 	let finals: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|e| match &e.content {
-			Content::Item { turn_id, kind, phase, text, .. }
+			AgentTimelineContent::Item { turn_id, kind, phase, text, .. }
 				if kind == "agentMessage"
 					&& phase.as_deref() == Some("final_answer")
 					&& !text.trim().is_empty() =>
@@ -145,8 +156,15 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			continue;
 		}
 
-		if let Content::Item { turn_id, kind, phase, app_ui: false, attachments, activity, .. } =
-			&entry.content
+		if let AgentTimelineContent::Item {
+			turn_id,
+			kind,
+			phase,
+			app_ui: false,
+			attachments,
+			activity,
+			..
+		} = &entry.content
 			&& finished.contains(turn_id.as_str())
 			&& finals.contains(turn_id.as_str())
 			&& attachments.is_empty()
@@ -198,13 +216,13 @@ mod tests {
 
 	use crate::shell::agent_surface::native_timeline::{
 		Binding, Timeline,
-		groups::{self, AgentSurface, AgentTimelineEntry, BTreeSet, Content},
+		groups::{self, AgentSurface, AgentTimelineContent, AgentTimelineEntry, BTreeSet},
 	};
 
 	fn message(index: u64, kind: &str, phase: Option<&str>) -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position: index,
-			content: Content::Item {
+			content: AgentTimelineContent::Item {
 				turn_id: "turn".into(),
 				item_id: index.to_string(),
 				kind: kind.into(),
@@ -220,7 +238,7 @@ mod tests {
 	fn completed(status: &str) -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position: 4,
-			content: Content::TurnBoundary {
+			content: AgentTimelineContent::TurnBoundary {
 				turn_id: "turn".into(),
 				completed: true,
 				status: Some(status.into()),
@@ -236,7 +254,7 @@ mod tests {
 		let mut entries =
 			vec![message(1, "reasoning", None), message(2, "agentMessage", Some("final_answer"))];
 
-		if let Content::Item { text, .. } = &mut entries[0].content {
+		if let AgentTimelineContent::Item { text, .. } = &mut entries[0].content {
 			*text = " \n\t".into();
 		}
 
@@ -247,13 +265,13 @@ mod tests {
 		assert_eq!(groups::empty_completed_reasoning(&entries), BTreeSet::from([0]));
 		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 
-		if let Content::Item { truncated, .. } = &mut entries[0].content {
+		if let AgentTimelineContent::Item { truncated, .. } = &mut entries[0].content {
 			*truncated = true;
 		}
 
 		assert!(groups::empty_completed_reasoning(&entries).is_empty());
 
-		if let Content::Item { text, truncated, .. } = &mut entries[0].content {
+		if let AgentTimelineContent::Item { text, truncated, .. } = &mut entries[0].content {
 			*text = "Retained summary".into();
 			*truncated = false;
 		}
@@ -307,7 +325,7 @@ mod tests {
 
 		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
 
-		if let Content::Item { app_ui, .. } = &mut entries[1].content {
+		if let AgentTimelineContent::Item { app_ui, .. } = &mut entries[1].content {
 			*app_ui = true;
 		}
 

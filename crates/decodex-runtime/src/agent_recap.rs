@@ -17,8 +17,7 @@ use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::{HistoryGuard, ServerEvent};
 use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
 use decodex_protocol::{
-	AgentActionDto, AgentActionDto as Action, EntityId, TaskRecap, TaskRecapPhase as Phase,
-	TaskRecapStatus, WireText,
+	AgentActionDto, EntityId, TaskRecap, TaskRecapPhase, TaskRecapStatus, WireText,
 };
 
 #[derive(Clone, Default)]
@@ -26,13 +25,13 @@ pub(crate) struct Recaps(Arc<Mutex<State>>);
 impl Recaps {
 	pub(crate) fn note_input(&self, action: &AgentActionDto) {
 		match action {
-			Action::Send { root_id, .. } | Action::SendConfigured { root_id, .. } =>
-				self.cancel_work(root_id.as_str()),
-			Action::SendPromptInput { work_id, .. }
-			| Action::Steer { work_id, .. }
-			| Action::NativeAgentInput { work_id, .. }
-			| Action::AnswerQuestion { work_id, .. }
-			| Action::SkipQuestion { work_id, .. } => self.cancel_work(work_id.as_str()),
+			AgentActionDto::Send { root_id, .. }
+			| AgentActionDto::SendConfigured { root_id, .. } => self.cancel_work(root_id.as_str()),
+			AgentActionDto::SendPromptInput { work_id, .. }
+			| AgentActionDto::Steer { work_id, .. }
+			| AgentActionDto::NativeAgentInput { work_id, .. }
+			| AgentActionDto::AnswerQuestion { work_id, .. }
+			| AgentActionDto::SkipQuestion { work_id, .. } => self.cancel_work(work_id.as_str()),
 			_ => {},
 		}
 	}
@@ -63,14 +62,20 @@ impl Recaps {
 	) -> Result<watch::Receiver<bool>, &'static str> {
 		let mut state = self.0.lock().map_err(|_| "Recap service unavailable")?;
 
-		if state.requests.values().any(|r| matches!(r.phase, Phase::Pending | Phase::Cancelling)) {
+		if state
+			.requests
+			.values()
+			.any(|r| matches!(r.phase, TaskRecapPhase::Pending | TaskRecapPhase::Cancelling))
+		{
 			return Err("A recap is already running or being cancelled");
 		}
 		if state.requests.len() >= 32 && !state.requests.contains_key(&source.key.work) {
 			let oldest = state
 				.requests
 				.iter()
-				.find(|(_, r)| !matches!(r.phase, Phase::Pending | Phase::Cancelling))
+				.find(|(_, r)| {
+					!matches!(r.phase, TaskRecapPhase::Pending | TaskRecapPhase::Cancelling)
+				})
 				.map(|(key, _)| key.clone())
 				.ok_or("Recap capacity is full")?;
 
@@ -88,7 +93,7 @@ impl Recaps {
 				guard,
 				key: key.into(),
 				cancel: send,
-				phase: Phase::Pending,
+				phase: TaskRecapPhase::Pending,
 				recap: None,
 			},
 		);
@@ -120,7 +125,7 @@ impl Recaps {
 			work_id: work.clone(),
 			thread_id: None,
 			request_id: None,
-			phase: Phase::Idle,
+			phase: TaskRecapPhase::Idle,
 			recap: None,
 		};
 
@@ -132,7 +137,7 @@ impl Recaps {
 
 			result.thread_id = WireText::new(record.source.key.thread.clone()).ok();
 			result.request_id = WireText::new(record.key.clone()).ok();
-			result.phase = if current { record.phase } else { Phase::Cancelled };
+			result.phase = if current { record.phase } else { TaskRecapPhase::Cancelled };
 			result.recap = if current { record.recap.clone() } else { None };
 		}
 
@@ -220,10 +225,14 @@ impl Recaps {
 				&& record.key == key
 			{
 				if *record.cancel.borrow() {
-					record.phase = Phase::Cancelled;
+					record.phase = TaskRecapPhase::Cancelled;
 					record.recap = None;
 				} else {
-					record.phase = if result.is_some() { Phase::Ready } else { Phase::Failed };
+					record.phase = if result.is_some() {
+						TaskRecapPhase::Ready
+					} else {
+						TaskRecapPhase::Failed
+					};
 					record.recap = result;
 				}
 			}
@@ -250,7 +259,7 @@ struct Record {
 	guard: Option<HistoryGuard>,
 	key: String,
 	cancel: watch::Sender<bool>,
-	phase: Phase,
+	phase: TaskRecapPhase,
 	recap: Option<TaskRecap>,
 }
 
@@ -307,10 +316,10 @@ fn cancel(record: &mut Record) {
 	let _ = record.cancel.send(true);
 
 	record.recap = None;
-	record.phase = if matches!(record.phase, Phase::Pending | Phase::Cancelling) {
-		Phase::Cancelling
+	record.phase = if matches!(record.phase, TaskRecapPhase::Pending | TaskRecapPhase::Cancelling) {
+		TaskRecapPhase::Cancelling
 	} else {
-		Phase::Cancelled
+		TaskRecapPhase::Cancelled
 	};
 }
 

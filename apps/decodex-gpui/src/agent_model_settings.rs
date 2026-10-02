@@ -19,11 +19,11 @@ use crate::shell::agent_surface::{
 	self, AgentClient, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId,
 	InteractiveElement, IntoElement, ParentElement, Styled, Task, mcp_forms,
 };
-use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult as State};
+use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult};
 
 #[derive(Default)]
 pub(super) struct Panel {
-	observations: BTreeMap<String, State>,
+	observations: BTreeMap<String, AgentModelSettingsResult>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	read_at: Option<std::time::Instant>,
@@ -65,7 +65,7 @@ impl AgentSurface {
 		if let Some(model) = self.draft_profiles.execution.choice(&owner).model {
 			return Some(model.as_str().into());
 		}
-		if let Some(State::Available { model: Some(model), .. }) =
+		if let Some(AgentModelSettingsResult::Available { model: Some(model), .. }) =
 			self.model_settings.observations.get(&owner)
 		{
 			return Some(model.as_str().into());
@@ -87,8 +87,9 @@ impl AgentSurface {
 			return effort.as_str().into();
 		}
 
-		if let Some(State::Available { reasoning_effort: Some(effort), .. }) =
-			self.model_settings.observations.get(&owner)
+		if let Some(AgentModelSettingsResult::Available {
+			reasoning_effort: Some(effort), ..
+		}) = self.model_settings.observations.get(&owner)
 		{
 			return effort.as_str().into();
 		}
@@ -98,7 +99,7 @@ impl AgentSurface {
 	fn adopt_composer_observation(
 		&mut self,
 		work: &str,
-		state: &State,
+		state: &AgentModelSettingsResult,
 		revision: u64,
 		input_at_read: &str,
 		cx: &mut Context<Self>,
@@ -110,7 +111,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let State::Available { reasoning_effort, .. } = state else { return };
+		let AgentModelSettingsResult::Available { reasoning_effort, .. } = state else { return };
 		let choice = self.draft_profiles.execution.choice(work);
 
 		if choice.reasoning_effort.is_none()
@@ -212,7 +213,9 @@ impl AgentSurface {
 		let (Some(profile), Some((source, thread)), Ok(work_id)) =
 			(self.profile.clone(), binding, EntityId::new(work.to_owned()))
 		else {
-			self.model_settings.observations.insert(work.into(), State::Unavailable);
+			self.model_settings
+				.observations
+				.insert(work.into(), AgentModelSettingsResult::Unavailable);
 
 			return;
 		};
@@ -234,7 +237,7 @@ impl AgentSurface {
 		});
 
 		self.model_settings.task = Some(cx.spawn(async move |surface, cx| {
-			let state = future.await.unwrap_or(State::Unavailable);
+			let state = future.await.unwrap_or(AgentModelSettingsResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.model_settings.epoch != epoch { return; }
 				if s.selected != selection
@@ -258,7 +261,7 @@ impl AgentSurface {
 					return;
 				}
 
-				let state = if matches!(&state,State::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {State::Unavailable} else {state};
+				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
 
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
 				s.model_settings.observations.insert(work, state);
@@ -282,17 +285,25 @@ pub(super) fn model_choice_label(model: &AgentModelDto) -> String {
 	}
 }
 
-fn settings_text(state: &State) -> String {
+fn settings_text(state: &AgentModelSettingsResult) -> String {
 	match state {
-		State::Available { account_id, model, reasoning_effort, model_provider, .. } => format!(
+		AgentModelSettingsResult::Available {
+			account_id,
+			model,
+			reasoning_effort,
+			model_provider,
+			..
+		} => format!(
 			"Account: {}\nModel provider: {}\nTask model: {}\nReasoning effort: {}",
 			account_id.as_str(),
 			model_provider.as_ref().map_or("Not reported", |v| v.as_str()),
 			model.as_ref().map_or("Not reported", |v| v.as_str()),
 			reasoning_effort.as_ref().map_or("Unset or not reported", |v| v.as_str())
 		),
-		State::NotReported => "This native server does not report thread model settings.".into(),
-		State::Unavailable => "Task settings are unavailable. Refresh to try again.".into(),
+		AgentModelSettingsResult::NotReported =>
+			"This native server does not report thread model settings.".into(),
+		AgentModelSettingsResult::Unavailable =>
+			"Task settings are unavailable. Refresh to try again.".into(),
 	}
 }
 

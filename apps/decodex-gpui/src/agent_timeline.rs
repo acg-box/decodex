@@ -23,8 +23,7 @@ use crate::{
 	ui_loading, ui_motion,
 };
 use decodex_protocol::{
-	AgentTimelineContent as Content, AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage,
-	WeatherForecast,
+	AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage, WeatherForecast,
 };
 use inputs::InputReceipts;
 use media::Preview;
@@ -428,7 +427,7 @@ impl AgentSurface {
 		self.load_native_timeline(work, thread, false, cx);
 	}
 
-	fn refresh_native_summary(&mut self, binding: Binding, items: Vec<Content>) {
+	fn refresh_native_summary(&mut self, binding: Binding, items: Vec<AgentTimelineContent>) {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
 
@@ -447,10 +446,12 @@ impl AgentSurface {
 		// Do not fold a running process out from under a reader browsing history.
 		if self.history_follow_paused.contains(&work) && !self.native_history.entries.is_empty() {
 			for entry in &page.entries {
-				if let Content::TurnBoundary { turn_id, completed: true, .. } = &entry.content {
+				if let AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =
+					&entry.content
+				{
 					let already_finished = self.native_history.entries.iter().any(|old| {
 						matches!(&old.content,
-						Content::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
+						AgentTimelineContent::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
 					});
 
 					if !already_finished {
@@ -617,7 +618,7 @@ pub(super) struct Timeline {
 	pub entries: Vec<AgentTimelineEntry>,
 	pub safety_buffering_turn_id: Option<String>,
 	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
-	summary: Vec<Content>,
+	summary: Vec<AgentTimelineContent>,
 	pub older_cursor: Option<String>,
 	pub opening_session: Option<String>,
 	requested: Option<(String, String)>,
@@ -633,7 +634,7 @@ pub(super) struct Timeline {
 	seen_cursors: BTreeSet<String>,
 }
 impl Timeline {
-	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &Content> {
+	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &AgentTimelineContent> {
 		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
 	}
 
@@ -691,7 +692,7 @@ impl Timeline {
 		});
 	}
 
-	fn accept_summary(&mut self, binding: Binding, items: Vec<Content>) {
+	fn accept_summary(&mut self, binding: Binding, items: Vec<AgentTimelineContent>) {
 		self.clear_page();
 
 		self.binding = Some(binding);
@@ -858,12 +859,12 @@ impl Timeline {
 
 pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
 	let (kind, id) = match &entry.content {
-		Content::TurnBoundary { turn_id, completed: false, .. } => (0, turn_id),
-		Content::Item { item_id, .. } => (1, item_id),
-		Content::Speech { item_id, .. }
-		| Content::VoiceBoundary { item_id, .. }
-		| Content::Promotion { item_id, .. } => (2, item_id),
-		Content::TurnBoundary { turn_id, completed: true, .. } => (3, turn_id),
+		AgentTimelineContent::TurnBoundary { turn_id, completed: false, .. } => (0, turn_id),
+		AgentTimelineContent::Item { item_id, .. } => (1, item_id),
+		AgentTimelineContent::Speech { item_id, .. }
+		| AgentTimelineContent::VoiceBoundary { item_id, .. }
+		| AgentTimelineContent::Promotion { item_id, .. } => (2, item_id),
+		AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } => (3, turn_id),
 	};
 
 	(entry.position, kind, id)
@@ -901,8 +902,8 @@ mod tests {
 	use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::native_timeline::{
-		AgentHistoryResult, AgentSurface, AgentTimelineEntry, AgentTimelinePage, Binding, Content,
-		EntityId, Timeline,
+		AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
+		AgentTimelinePage, Binding, EntityId, Timeline,
 	};
 
 	#[gpui::test]
@@ -1006,7 +1007,7 @@ mod tests {
 
 			s.native_history.accept_summary(
 				binding,
-				vec![Content::Item {
+				vec![AgentTimelineContent::Item {
 					phase: None,
 					turn_id: "turn".into(),
 					item_id: "answer".into(),
@@ -1053,7 +1054,7 @@ mod tests {
 	fn summary_recovery_never_reuses_timeline_positions_or_cursors() {
 		let binding =
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
-		let item = Content::Item {
+		let item = AgentTimelineContent::Item {
 			phase: None,
 			turn_id: "turn".into(),
 			item_id: "answer".into(),
@@ -1200,7 +1201,7 @@ mod tests {
 	fn boundary(position: u64, completed: bool) -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position,
-			content: Content::TurnBoundary {
+			content: AgentTimelineContent::TurnBoundary {
 				turn_id: "turn".into(),
 				completed,
 				status: None,

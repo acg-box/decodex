@@ -19,7 +19,7 @@ use tokio::{runtime::Builder, time};
 #[cfg(test)] use crate::shell::agent_surface::recap::watch;
 use crate::shell::agent_surface::recap::{
 	AgentClient, AgentDispatchStateDto, AgentSnapshotDto, AgentSurface, ClientProfile, Context,
-	EntityId, Phase, Task, TaskRecapStatus, Window, WireText,
+	EntityId, Task, TaskRecapPhase, TaskRecapStatus, Window, WireText,
 };
 use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
 
@@ -187,7 +187,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn record_recap_result(&mut self, state: &TaskRecapStatus) {
-		if state.phase != Phase::Ready {
+		if state.phase != TaskRecapPhase::Ready {
 			return;
 		}
 
@@ -288,7 +288,7 @@ impl AgentSurface {
 
 		if self.recap.automatic
 			&& let Some(state) = &self.recap.state
-			&& state.phase == Phase::Failed
+			&& state.phase == TaskRecapPhase::Failed
 			&& let Some(id) = &state.request_id
 			&& self.automatic_recap.result.as_deref() != Some(id.as_str())
 		{
@@ -492,7 +492,7 @@ mod tests {
 		drafts::tests,
 		recap::automatic::{
 			AgentDispatchStateDto, AgentSnapshotResult, AgentSurface, Automatic, DELAY, Duration,
-			EntityId, Instant, LoadState, Phase, RETRY, TaskRecapStatus, WireText, watch,
+			EntityId, Instant, LoadState, RETRY, TaskRecapPhase, TaskRecapStatus, WireText, watch,
 		},
 	};
 
@@ -577,7 +577,7 @@ mod tests {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: Some(WireText::new("thread").unwrap()),
 				request_id: Some(WireText::new("manual").unwrap()),
-				phase: Phase::Ready,
+				phase: TaskRecapPhase::Ready,
 				recap: Some(decodex_protocol::TaskRecap {
 					summary: WireText::new("Done").unwrap(),
 					next_action: None,

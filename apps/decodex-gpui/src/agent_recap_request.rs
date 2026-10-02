@@ -6,7 +6,7 @@ use tokio::{
 
 use crate::shell::agent_surface::recap::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, ClientProfile, EntityId,
-	IdempotencyKey, Phase, TaskRecapStatus, WireText,
+	IdempotencyKey, TaskRecapPhase, TaskRecapStatus, WireText,
 };
 use decodex_protocol::CommandError;
 
@@ -106,16 +106,19 @@ pub(super) async fn run(
 		};
 
 		request = state.request_id.clone();
-		cancellable = matches!(state.phase, Phase::Pending | Phase::Cancelling);
+		cancellable = matches!(state.phase, TaskRecapPhase::Pending | TaskRecapPhase::Cancelling);
 
-		let active = matches!(state.phase, Phase::Pending | Phase::Cancelling | Phase::Ready);
+		let active = matches!(
+			state.phase,
+			TaskRecapPhase::Pending | TaskRecapPhase::Cancelling | TaskRecapPhase::Ready
+		);
 		let message = match state.phase {
-			Phase::Idle => "Generate a short recap of this conversation.",
-			Phase::Pending => "Generating recap…",
-			Phase::Cancelling => "Cancelling recap…",
-			Phase::Ready => "Task recap",
-			Phase::Failed => "Could not generate a recap. You can try again.",
-			Phase::Cancelled => "This recap was cancelled or is no longer current.",
+			TaskRecapPhase::Idle => "Generate a short recap of this conversation.",
+			TaskRecapPhase::Pending => "Generating recap…",
+			TaskRecapPhase::Cancelling => "Cancelling recap…",
+			TaskRecapPhase::Ready => "Task recap",
+			TaskRecapPhase::Failed => "Could not generate a recap. You can try again.",
+			TaskRecapPhase::Cancelled => "This recap was cancelled or is no longer current.",
 		};
 		let _ = updates.send(Some((Some(state), message.into())));
 

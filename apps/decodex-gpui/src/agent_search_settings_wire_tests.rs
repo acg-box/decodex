@@ -12,7 +12,8 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::shell::agent_surface::search_settings::{self, ClientProfile, Entity, Render, Window};
 use crate::shell::agent_surface::{
 	search_settings::{
-		AgentActionDto, AgentSurface, Context, EntityId, IntoElement, State, WireText,
+		AgentActionDto, AgentSearchSettingsResult, AgentSurface, Context, EntityId, IntoElement,
+		WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -73,7 +74,7 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
 	surface.read_with(visual,|s,_| {
         assert!(s.search_settings.task.is_none());
         assert!(s.search_settings.feedback.contains("could not be confirmed"));
-        assert!(matches!(&s.search_settings.state,Some(State::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="live"&&p.as_str()=="indexed"));
+        assert!(matches!(&s.search_settings.state,Some(AgentSearchSettingsResult::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="live"&&p.as_str()=="indexed"));
 
     });
 }
@@ -114,7 +115,7 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 
 		assert_eq!(work_id.as_str(), "root");
 
-		let state = State::Available {
+		let state = AgentSearchSettingsResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 			modes: vec![WireText::new("indexed").unwrap(), WireText::new("live").unwrap()],

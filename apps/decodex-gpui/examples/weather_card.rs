@@ -29,10 +29,10 @@ use {
 	objc2_core_audio_types as _, rtrb as _,
 };
 
-use decodex_protocol::WeatherForecast as Forecast;
+use decodex_protocol::WeatherForecast;
 
 struct Preview {
-	forecast: Forecast,
+	forecast: WeatherForecast,
 	copied: bool,
 }
 impl Render for Preview {
@@ -91,8 +91,10 @@ fn main() {
 			},
 			|_, cx| {
 				cx.new(|_| Preview {
-					forecast: Forecast::parse(include_str!("fixtures/singapore-weather.txt"))
-						.expect("captured weather format"),
+					forecast: WeatherForecast::parse(include_str!(
+						"fixtures/singapore-weather.txt"
+					))
+					.expect("captured weather format"),
 					copied: false,
 				})
 			},
@@ -107,7 +109,8 @@ mod tests {
 
 	#[::core::prelude::v1::test]
 	fn saved_weather_is_parsed_and_copied_without_control_markers() {
-		let forecast = Forecast::parse(include_str!("fixtures/singapore-weather.txt")).unwrap();
+		let forecast =
+			WeatherForecast::parse(include_str!("fixtures/singapore-weather.txt")).unwrap();
 
 		assert_eq!(forecast.reference, "turn0forecast0");
 		assert_eq!(forecast.celsius, 32);
@@ -115,6 +118,6 @@ mod tests {
 		assert_eq!(forecast.hours.last().unwrap(), &("02:00 AM".into(), "Showers".into(), 28));
 		assert!(!forecast.markdown().contains('\u{e200}'));
 		assert!(forecast.markdown().contains("| 02:00 AM | Showers | 28 |"));
-		assert!(Forecast::parse("Weather unavailable").is_none());
+		assert!(WeatherForecast::parse("Weather unavailable").is_none());
 	}
 }

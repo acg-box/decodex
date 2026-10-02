@@ -6,7 +6,7 @@ use tokio::{runtime::Builder, time};
 
 #[cfg(test)]
 use crate::shell::agent_surface::native_timeline::{
-	AgentSnapshotResult, AgentTimelineEntry, Content,
+	AgentSnapshotResult, AgentTimelineContent, AgentTimelineEntry,
 };
 use crate::{
 	shell::agent_surface::{
@@ -295,8 +295,8 @@ mod tests {
 	use tokio::sync::oneshot;
 
 	use crate::shell::agent_surface::native_timeline::media::{
-		self, AgentSnapshotResult, AgentSurface, AgentTimelineEntry, Arc, Binding, Content,
-		EntityId, Preview,
+		self, AgentSnapshotResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry, Arc,
+		Binding, EntityId, Preview,
 	};
 	use decodex_protocol::{
 		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelinePage,
@@ -402,7 +402,7 @@ mod tests {
 				thread_id: "native-thread".into(),
 				entries: vec![AgentTimelineEntry {
 					position: 1,
-					content: Content::Item {
+					content: AgentTimelineContent::Item {
 						phase: None,
 						app_ui: false,
 						turn_id: "turn".into(),

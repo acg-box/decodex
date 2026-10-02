@@ -12,7 +12,8 @@ use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::native_goal::{
-	self, AgentSnapshotDto, AgentSurface, Context, Entity, EntityId, IntoElement, Result,
+	self, AgentNativeGoalResult, AgentSnapshotDto, AgentSurface, Context, Entity, EntityId,
+	IntoElement,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::native_goal::{
@@ -142,7 +143,10 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 	visual.run_until_parked();
 
 	surface.update(visual, |s, cx| {
-		assert!(matches!(s.native_goal.result, Some(Result::Available { goal: None, .. })));
+		assert!(matches!(
+			s.native_goal.result,
+			Some(AgentNativeGoalResult::Available { goal: None, .. })
+		));
 
 		let profile = s.profile.take();
 
@@ -158,12 +162,14 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 
 	visual.run_until_parked();
 	surface.update(visual,|s,cx| {
-  assert!(matches!(&s.native_goal.result,Some(Result::Available{thread_id,..}) if thread_id.as_str()=="child"));
+  assert!(matches!(&s.native_goal.result,Some(AgentNativeGoalResult::Available{thread_id,..}) if thread_id.as_str()=="child"));
 
   s.load_native_goal(cx);
  });
 	visual.run_until_parked();
-	surface.read_with(visual, |s, _| assert_eq!(s.native_goal.result, Some(Result::Unavailable)));
+	surface.read_with(visual, |s, _| {
+		assert_eq!(s.native_goal.result, Some(AgentNativeGoalResult::Unavailable))
+	});
 	server.join().unwrap();
 }
 
@@ -179,7 +185,7 @@ fn native_goal_observation_does_not_return_after_source_or_thread_restoration(
 
 			s.selected = Some("root".into());
 			s.native_goal.target = Some(("root".into(), "thread".into()));
-			s.native_goal.result = Some(Result::Disabled);
+			s.native_goal.result = Some(AgentNativeGoalResult::Disabled);
 
 			let mut next = snapshot();
 
@@ -262,7 +268,7 @@ async fn serve(listener: tokio::net::UnixListener) {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).expect("server"),
 			query_id: query.query_id,
-			payload: QueryResultPayload::AgentNativeGoal(Result::Available {
+			payload: QueryResultPayload::AgentNativeGoal(AgentNativeGoalResult::Available {
 				work_id,
 				thread_id: EntityId::new(target).expect("thread"),
 				observed_at_micros: 1_000_000,

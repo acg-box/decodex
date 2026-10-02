@@ -13,14 +13,13 @@ use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotResult, ClientProfile, Entity, Render, Window, WireText,
 };
 use decodex_protocol::{
-	AgentModelDto, AgentModelOutcome as Outcome, AgentModelResponse as Response,
-	AgentModelSelectionReceipt, AgentModelSelectionState as State, ClientFailure,
-	ConversationModel, ConversationReasoningEffort,
+	AgentModelDto, AgentModelOutcome, AgentModelResponse, AgentModelSelectionReceipt,
+	AgentModelSelectionState, ClientFailure, ConversationModel, ConversationReasoningEffort,
 };
 
 #[derive(Default)]
 pub(super) struct Panel {
-	state: Option<State>,
+	state: Option<AgentModelSelectionState>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
@@ -56,7 +55,7 @@ impl AgentSurface {
 		model: ConversationModel,
 		effort: Option<ConversationReasoningEffort>,
 	) -> Option<AgentActionDto> {
-		let State::Available {
+		let AgentModelSelectionState::Available {
 			work_id,
 			thread_id,
 			review_token,
@@ -95,7 +94,7 @@ impl AgentSurface {
 		if !self.task_models.reviewed || self.task_models.task.is_some() {
 			return;
 		}
-		if matches!(&self.task_models.state, Some(State::Available { models, can_update:true, .. }) if models.iter().any(|m|m.model==model))
+		if matches!(&self.task_models.state, Some(AgentModelSelectionState::Available { models, can_update:true, .. }) if models.iter().any(|m|m.model==model))
 		{
 			self.task_models.selected_model = Some(model);
 
@@ -166,8 +165,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.model_selection(work_id)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.model_selection(work_id))
+				.unwrap_or(AgentModelSelectionState::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -187,7 +187,10 @@ impl AgentSurface {
 		epoch: u64,
 		binding: (&str, &str, &EntityId),
 		saving: bool,
-		result: Option<(Option<Result<AgentCommandResponse, ClientFailure>>, State)>,
+		result: Option<(
+			Option<Result<AgentCommandResponse, ClientFailure>>,
+			AgentModelSelectionState,
+		)>,
 		cx: &mut Context<Self>,
 	) {
 		let (work, thread, source) = binding;
@@ -216,7 +219,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+		let (outcome, state) = result.unwrap_or((None, AgentModelSelectionState::Unavailable));
 
 		if saving {
 			self.reset_model_settings();
@@ -234,9 +237,9 @@ impl AgentSurface {
 		}
 		.into();
 		self.task_models.state = Some(match state {
-			State::Available { ref work_id, ref thread_id, .. }
+			AgentModelSelectionState::Available { ref work_id, ref thread_id, .. }
 				if work_id.as_str() != work || thread_id.as_str() != thread =>
-				State::Unavailable,
+				AgentModelSelectionState::Unavailable,
 			other => other,
 		});
 
@@ -272,7 +275,7 @@ impl AgentSurface {
 		panel = panel.child(self.task_models.feedback.clone());
 
 		match &self.task_models.state {
-			Some(State::Available {
+			Some(AgentModelSelectionState::Available {
 				model,
 				model_provider,
 				effort: current_effort,
@@ -314,7 +317,7 @@ impl AgentSurface {
 					));
 				}
 			},
-			Some(State::Pending { model, state, last_receipt, .. }) => {
+			Some(AgentModelSelectionState::Pending { model, state, last_receipt, .. }) => {
 				panel = panel
 					.child(format!("{} · {}", model.as_str(), label(*state)))
 					.child("Refresh to check confirmation. The change will not be resent.");
@@ -328,7 +331,7 @@ impl AgentSurface {
 					);
 				}
 			},
-			Some(State::Unavailable) => {
+			Some(AgentModelSelectionState::Unavailable) => {
 				panel = panel
 					.child("Model settings are unavailable. Refresh when the task is connected.");
 			},
@@ -421,23 +424,23 @@ impl AgentSurface {
 	}
 }
 
-fn label(state: Outcome) -> &'static str {
+fn label(state: AgentModelOutcome) -> &'static str {
 	match state {
-		Outcome::Reserved => "Awaiting confirmation",
-		Outcome::Queued => "Waiting for confirmation",
-		Outcome::Unknown => "Unconfirmed",
-		Outcome::Rejected => "Rejected",
-		Outcome::TargetObserved => "Saved for subsequent turns",
-		Outcome::Superseded => "Replaced by current settings",
+		AgentModelOutcome::Reserved => "Awaiting confirmation",
+		AgentModelOutcome::Queued => "Waiting for confirmation",
+		AgentModelOutcome::Unknown => "Unconfirmed",
+		AgentModelOutcome::Rejected => "Rejected",
+		AgentModelOutcome::TargetObserved => "Saved for subsequent turns",
+		AgentModelOutcome::Superseded => "Replaced by current settings",
 	}
 }
 
 fn history_label(receipt: &AgentModelSelectionReceipt) -> String {
 	let response = match receipt.response {
-		Response::Reserved => "awaiting response",
-		Response::Queued => "queued",
-		Response::Rejected => "rejected",
-		Response::Unknown => "delivery unconfirmed",
+		AgentModelResponse::Reserved => "awaiting response",
+		AgentModelResponse::Queued => "queued",
+		AgentModelResponse::Rejected => "rejected",
+		AgentModelResponse::Unknown => "delivery unconfirmed",
 	};
 	let observation = if receipt.reconciled {
 		"; current settings reviewed after restart, earlier delivery unconfirmed"

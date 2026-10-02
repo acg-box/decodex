@@ -6,18 +6,22 @@ use tokio::{runtime::Handle, sync::oneshot, task, time};
 use crate::conversation::{
 	self, AccountRefreshCallback, ConversationId, ConversationRefreshCallback, ConversationRuntime,
 	ProcessGenerationId,
-	model_settings::{self, ResultDto},
+	model_settings::{self, ConversationModelSettingsResult},
 };
 
 impl ConversationRuntime {
-	pub(super) async fn cold_model_settings(&self, key: &str, conversation: &str) -> ResultDto {
+	pub(super) async fn cold_model_settings(
+		&self,
+		key: &str,
+		conversation: &str,
+	) -> ConversationModelSettingsResult {
 		let Ok(permit) = self.inner.initial_catalog.clone().try_lock_owned() else {
-			return ResultDto::Unavailable;
+			return ConversationModelSettingsResult::Unavailable;
 		};
 		let mut workers = self.inner.workers.lock().await;
 
 		if self.is_shutting_down() {
-			return ResultDto::Unavailable;
+			return ConversationModelSettingsResult::Unavailable;
 		}
 
 		while workers.try_join_next().is_some() {}
@@ -30,7 +34,7 @@ impl ConversationRuntime {
 		workers.spawn(async move {
 			let _permit = permit;
 			let observed = runtime.read_cold_model_settings(&key, &conversation).await;
-			let _ = reply.send(observed.unwrap_or(ResultDto::Unavailable));
+			let _ = reply.send(observed.unwrap_or(ConversationModelSettingsResult::Unavailable));
 		});
 
 		drop(workers);
@@ -39,10 +43,14 @@ impl ConversationRuntime {
 			.await
 			.ok()
 			.and_then(Result::ok)
-			.unwrap_or(ResultDto::Unavailable)
+			.unwrap_or(ConversationModelSettingsResult::Unavailable)
 	}
 
-	async fn read_cold_model_settings(&self, key: &str, conversation: &str) -> Option<ResultDto> {
+	async fn read_cold_model_settings(
+		&self,
+		key: &str,
+		conversation: &str,
+	) -> Option<ConversationModelSettingsResult> {
 		let id = ConversationId::new(conversation).ok()?;
 
 		if self.local().contains_key(conversation) {

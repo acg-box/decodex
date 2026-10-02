@@ -9,8 +9,8 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::native_timeline::{
 	media::{
-		AgentMediaRequest, AgentMediaResult, AgentSurface, AgentTimelineEntry, Binding,
-		ClientProfile, Content, Context, EntityId,
+		AgentMediaRequest, AgentMediaResult, AgentSurface, AgentTimelineContent,
+		AgentTimelineEntry, Binding, ClientProfile, Context, EntityId,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -58,7 +58,7 @@ fn prepare(
 			thread_id: "native-thread".into(),
 			entries: vec![AgentTimelineEntry {
 				position: 1,
-				content: Content::Item {
+				content: AgentTimelineContent::Item {
 					phase: None,
 					app_ui: false,
 					turn_id: "turn".into(),

@@ -19,15 +19,14 @@ use crate::{
 	ui_loading,
 };
 use decodex_protocol::{
-	AgentGuardianDetailResult as Detail, AgentGuardianReviewDto,
-	AgentGuardianReviewsResult as Reviews, AgentGuardianStatus as Status,
-	AgentGuardianSubmission as Submission,
+	AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
+	AgentGuardianStatus, AgentGuardianSubmission,
 };
 
 #[derive(Default)]
 pub(super) struct Panel {
 	owner: Option<String>,
-	result: Option<Reviews>,
+	result: Option<AgentGuardianReviewsResult>,
 	before: Option<i64>,
 	epoch: u64,
 	expanded: bool,
@@ -74,8 +73,8 @@ impl Panel {
 		true
 	}
 
-	fn observe(&mut self, result: Reviews) {
-		if let Reviews::Available { reviews, .. } = &result {
+	fn observe(&mut self, result: AgentGuardianReviewsResult) {
+		if let AgentGuardianReviewsResult::Available { reviews, .. } = &result {
 			if self.detail.as_ref().is_some_and(|detail| {
 				!reviews.iter().any(|review| {
 					review.row_id == detail.row
@@ -112,17 +111,17 @@ impl Panel {
 struct DetailReader {
 	row: i64,
 	digest: String,
-	page: Option<Detail>,
+	page: Option<AgentGuardianDetailResult>,
 	starts: Vec<usize>,
 	visited_end: usize,
 	complete: bool,
 }
 impl DetailReader {
-	fn observe(&mut self, result: Detail) {
-		if let Detail::Available { offset, text, total_bytes, .. } = &result {
-			if matches!(&self.page, Some(Detail::Available { total_bytes: previous, .. }) if previous != total_bytes)
+	fn observe(&mut self, result: AgentGuardianDetailResult) {
+		if let AgentGuardianDetailResult::Available { offset, text, total_bytes, .. } = &result {
+			if matches!(&self.page, Some(AgentGuardianDetailResult::Available { total_bytes: previous, .. }) if previous != total_bytes)
 			{
-				self.observe(Detail::Unavailable);
+				self.observe(AgentGuardianDetailResult::Unavailable);
 
 				return;
 			}
@@ -149,11 +148,11 @@ impl DetailReader {
 impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code, reason = "the main binary shares this module with the capture binary")]
-	pub(crate) fn visual_guardian_reviews(&mut self, result: Option<Reviews>) {
+	pub(crate) fn visual_guardian_reviews(&mut self, result: Option<AgentGuardianReviewsResult>) {
 		self.guardian.owner = self.selected.clone();
 		self.guardian.expanded = true;
 		self.guardian.reviewed = match &result {
-			Some(Reviews::Available { reviews, .. }) =>
+			Some(AgentGuardianReviewsResult::Available { reviews, .. }) =>
 				reviews.first().map(|r| (r.row_id, r.digest.clone())),
 			_ => None,
 		};
@@ -189,7 +188,7 @@ impl AgentSurface {
 		});
 
 		self.guardian.request = Some(cx.spawn(async move |surface, cx| {
-			let result = request.await.unwrap_or(Reviews::Unavailable);
+			let result = request.await.unwrap_or(AgentGuardianReviewsResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.selected.as_ref() != Some(&work) || s.guardian.epoch != epoch {
 					return;
@@ -208,7 +207,7 @@ impl AgentSurface {
 			&& (self.guardian.expanded
 				|| self.guardian.stale
 				|| !self.guardian.pending.is_empty()
-				|| matches!(&self.guardian.result,Some(Reviews::Available {reviews,..}) if reviews.iter().any(|r|r.status==Status::InProgress || r.submission==Some(Submission::Pending))))
+				|| matches!(&self.guardian.result,Some(AgentGuardianReviewsResult::Available {reviews,..}) if reviews.iter().any(|r|r.status==AgentGuardianStatus::InProgress || r.submission==Some(AgentGuardianSubmission::Pending))))
 	}
 
 	pub(super) fn invalidate_guardian(&mut self, next: &AgentSnapshotDto) {
@@ -259,7 +258,8 @@ impl AgentSurface {
 			return;
 		}
 
-		let Some(Reviews::Available { reviews, .. }) = &self.guardian.result else {
+		let Some(AgentGuardianReviewsResult::Available { reviews, .. }) = &self.guardian.result
+		else {
 			return;
 		};
 
@@ -365,7 +365,8 @@ impl AgentSurface {
 			return;
 		}
 
-		let Some(Reviews::Available { reviews, .. }) = &self.guardian.result else {
+		let Some(AgentGuardianReviewsResult::Available { reviews, .. }) = &self.guardian.result
+		else {
 			return;
 		};
 
@@ -408,7 +409,7 @@ impl AgentSurface {
 		});
 
 		self.guardian.detail_request = Some(cx.spawn(async move |surface, cx| {
-			let result = request.await.unwrap_or(Detail::Unavailable);
+			let result = request.await.unwrap_or(AgentGuardianDetailResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.selected.as_ref() != Some(&work)
 					|| s.guardian.epoch != epoch
@@ -445,7 +446,7 @@ impl AgentSurface {
 		let Some(result) = &self.guardian.result else {
 			return gpui::div().into_any_element();
 		};
-		let Reviews::Available { reviews, next_before } = result else {
+		let AgentGuardianReviewsResult::Available { reviews, next_before } = result else {
 			return gpui::div()
 				.child("Saved action reviews are unavailable.")
 				.child(button("guardian-refresh".into(), "Refresh reviews".into(), cx, |s, cx| {
@@ -460,7 +461,10 @@ impl AgentSurface {
 
 		let denied = reviews
 			.iter()
-			.filter(|r| r.status == Status::Denied && r.submission != Some(Submission::Submitted))
+			.filter(|r| {
+				r.status == AgentGuardianStatus::Denied
+					&& r.submission != Some(AgentGuardianSubmission::Submitted)
+			})
 			.count();
 		let title = if denied > 0 {
 			format!("Action reviews · {denied} denied on this page")
@@ -532,7 +536,7 @@ impl AgentSurface {
 		let reader = self.guardian.detail.as_ref().filter(|d| d.row == row && d.digest == digest);
 		let mut panel = gpui::div().flex().flex_col().gap_2().min_w_0();
 
-		if let Some(Detail::Available { offset, text, next_offset, .. }) =
+		if let Some(AgentGuardianDetailResult::Available { offset, text, next_offset, .. }) =
 			reader.and_then(|d| d.page.as_ref())
 		{
 			let position =
@@ -584,7 +588,10 @@ impl AgentSurface {
 				),
 			);
 
-			if matches!(reader.and_then(|d| d.page.as_ref()), Some(Detail::Unavailable)) {
+			if matches!(
+				reader.and_then(|d| d.page.as_ref()),
+				Some(AgentGuardianDetailResult::Unavailable)
+			) {
 				panel = panel.child("Details are unavailable or changed. Refresh the review list.");
 			}
 		}
@@ -603,11 +610,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let state = match review.status {
-			Status::InProgress => "No final review result received",
-			Status::Approved => "Allowed by Codex review",
-			Status::Denied => "Denied by Codex review",
-			Status::TimedOut => "Review timed out",
-			Status::Aborted => "Review stopped",
+			AgentGuardianStatus::InProgress => "No final review result received",
+			AgentGuardianStatus::Approved => "Allowed by Codex review",
+			AgentGuardianStatus::Denied => "Denied by Codex review",
+			AgentGuardianStatus::TimedOut => "Review timed out",
+			AgentGuardianStatus::Aborted => "Review stopped",
 		};
 		let mut card = gpui::div()
 			.flex()
@@ -617,7 +624,7 @@ impl AgentSurface {
 			.py_2()
 			.child(format!("{} · {state}", review.action_label));
 
-		if review.status == Status::InProgress && !review.current_process {
+		if review.status == AgentGuardianStatus::InProgress && !review.current_process {
 			card = card.child(agent_surface::muted(
 				"Saved from an earlier or disconnected process; the result is unknown.",
 			));
@@ -631,10 +638,11 @@ impl AgentSurface {
 		}
 		if let Some(submission) = review.submission {
 			card = card.child(match submission {
-				Submission::Pending => "Approval submission unconfirmed. No automatic retry.",
-				Submission::Submitted =>
+				AgentGuardianSubmission::Pending =>
+					"Approval submission unconfirmed. No automatic retry.",
+				AgentGuardianSubmission::Submitted =>
 					"User approval submitted. Action execution is not confirmed by this receipt.",
-				Submission::Rejected => "The approval submission was rejected.",
+				AgentGuardianSubmission::Rejected => "The approval submission was rejected.",
 			});
 		}
 
@@ -740,8 +748,9 @@ mod tests {
 	};
 	use crate::shell::agent_surface::{
 		guardian::{
-			AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
-			Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
+			AgentActionDto, AgentCommandResponse, AgentGuardianDetailResult,
+			AgentGuardianReviewsResult, AgentGuardianStatus, AgentGuardianSubmission,
+			AgentSnapshotDto, AgentSurface, AgentWorkItemDto, DetailReader, EntityId, Panel,
 		},
 		wire_test_support,
 	};
@@ -755,7 +764,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		let page = |offset: usize, text: &str, next_offset| Detail::Available {
+		let page = |offset: usize, text: &str, next_offset| AgentGuardianDetailResult::Available {
 			row_id: 1,
 			digest: "original".into(),
 			offset,
@@ -767,7 +776,9 @@ mod tests {
 		surface.update(visual, |s, _| {
 			seed(s);
 
-			if let Some(Reviews::Available { reviews, .. }) = &mut s.guardian.result {
+			if let Some(AgentGuardianReviewsResult::Available { reviews, .. }) =
+				&mut s.guardian.result
+			{
 				reviews[0].details_paged = true;
 				reviews[0].action_json = None;
 			}
@@ -820,7 +831,10 @@ mod tests {
 			changed.details_paged = true;
 			changed.digest = "changed".into();
 
-			s.guardian.observe(Reviews::Available { reviews: vec![changed], next_before: None });
+			s.guardian.observe(AgentGuardianReviewsResult::Available {
+				reviews: vec![changed],
+				next_before: None,
+			});
 
 			assert!(s.guardian.detail.is_none());
 
@@ -842,7 +856,7 @@ mod tests {
 			row_id: 1,
 			digest: "original".into(),
 			action_label: "Shell command".into(),
-			status: Status::Denied,
+			status: AgentGuardianStatus::Denied,
 			risk_level: Some("high".into()),
 			user_authorization: Some("low".into()),
 			rationale: Some("This command was not requested.".into()),
@@ -856,8 +870,8 @@ mod tests {
 			approval_unavailable: None,
 		}
 	}
-	fn page(review: decodex_protocol::AgentGuardianReviewDto) -> Reviews {
-		Reviews::Available { reviews: vec![review], next_before: None }
+	fn page(review: decodex_protocol::AgentGuardianReviewDto) -> AgentGuardianReviewsResult {
+		AgentGuardianReviewsResult::Available { reviews: vec![review], next_before: None }
 	}
 	fn seed(s: &mut AgentSurface) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
@@ -895,7 +909,7 @@ mod tests {
 
 		let mut old = review();
 
-		old.submission = Some(Submission::Rejected);
+		old.submission = Some(AgentGuardianSubmission::Rejected);
 		old.submission_key = Some("old-command".into());
 
 		panel.observe(page(old.clone()));
@@ -909,7 +923,7 @@ mod tests {
 
 		assert!(panel.pending.contains_key(&1));
 
-		old.submission = Some(Submission::Pending);
+		old.submission = Some(AgentGuardianSubmission::Pending);
 		old.can_approve = false;
 
 		panel.observe(page(old));
@@ -918,7 +932,7 @@ mod tests {
 
 		let retained = panel.result.clone();
 
-		panel.observe(Reviews::Unavailable);
+		panel.observe(AgentGuardianReviewsResult::Unavailable);
 
 		assert!(panel.stale);
 		assert_eq!(panel.result, retained);
@@ -988,7 +1002,9 @@ mod tests {
 
 			s.guardian.feedback.clear();
 
-			if let Some(Reviews::Available { reviews, .. }) = &mut s.guardian.result {
+			if let Some(AgentGuardianReviewsResult::Available { reviews, .. }) =
+				&mut s.guardian.result
+			{
 				reviews[0].digest = "changed".into();
 			}
 
@@ -1047,7 +1063,7 @@ mod tests {
 						matches!(&query.payload, QueryPayload::GetAgentGuardianDetail { work_id, review_row: 1, review_digest, offset: 0 } if work_id.as_str() == "root" && review_digest.as_str() == "original")
 					);
 
-					QueryResultPayload::AgentGuardianDetail(Detail::Available {
+					QueryResultPayload::AgentGuardianDetail(AgentGuardianDetailResult::Available {
 						row_id: 1,
 						digest: "original".into(),
 						offset: 0,
@@ -1065,7 +1081,7 @@ mod tests {
 					saved.details_paged = true;
 
 					if index == 3 {
-						saved.submission = Some(Submission::Pending);
+						saved.submission = Some(AgentGuardianSubmission::Pending);
 						saved.can_approve = false;
 					}
 
@@ -1202,14 +1218,16 @@ mod tests {
 
 						details += 1;
 
-						QueryResultPayload::AgentGuardianDetail(Detail::Available {
-							row_id: 1,
-							digest: "original".into(),
-							offset: 0,
-							text: "whole".into(),
-							total_bytes: 5,
-							next_offset: None,
-						})
+						QueryResultPayload::AgentGuardianDetail(
+							AgentGuardianDetailResult::Available {
+								row_id: 1,
+								digest: "original".into(),
+								offset: 0,
+								text: "whole".into(),
+								total_bytes: 5,
+								next_offset: None,
+							},
+						)
 					},
 					QueryPayload::GetAgentGuardianReviews { work_id, before: None } => {
 						assert_eq!(work_id.as_str(), "root");
@@ -1219,7 +1237,7 @@ mod tests {
 						let mut saved = review();
 
 						saved.details_paged = true;
-						saved.submission = Some(Submission::Pending);
+						saved.submission = Some(AgentGuardianSubmission::Pending);
 						saved.can_approve = false;
 
 						QueryResultPayload::AgentGuardianReviews(page(saved))
@@ -1246,7 +1264,9 @@ mod tests {
 		surface.update(cx, |s, cx| {
 			seed(s);
 
-			if let Some(Reviews::Available { reviews, .. }) = &mut s.guardian.result {
+			if let Some(AgentGuardianReviewsResult::Available { reviews, .. }) =
+				&mut s.guardian.result
+			{
 				reviews[0].details_paged = true;
 			}
 
@@ -1275,7 +1295,7 @@ mod tests {
 		surface.read_with(cx, |s, _| {
 			assert!(s.guardian.detail_request.is_none(), "submission readback stranded concurrent details");
 			assert!(s.guardian.detail.as_ref().unwrap().complete);
-			assert!(matches!(s.guardian.detail.as_ref().and_then(|d| d.page.as_ref()), Some(Detail::Available { text, .. }) if text == "whole"));
+			assert!(matches!(s.guardian.detail.as_ref().and_then(|d| d.page.as_ref()), Some(AgentGuardianDetailResult::Available { text, .. }) if text == "whole"));
 			assert!(s.guardian.pending.contains_key(&1));
 			assert!(s.guardian.feedback.contains("unconfirmed"));
 		});

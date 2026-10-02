@@ -14,9 +14,9 @@ use crate::shell::agent_surface::models::{
 };
 use crate::shell::agent_surface::{
 	models::{
-		self, AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
-		Context, ConversationModel, ConversationReasoningEffort, EntityId, IntoElement, Outcome,
-		State,
+		self, AgentActionDto, AgentModelOutcome, AgentModelSelectionState, AgentSnapshotDto,
+		AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, Context, ConversationModel,
+		ConversationReasoningEffort, EntityId, IntoElement,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -65,8 +65,8 @@ fn receipt(preserve: bool, confirmed: bool) -> decodex_protocol::AgentModelSelec
 	}
 }
 
-fn available() -> State {
-	State::Available {
+fn available() -> AgentModelSelectionState {
+	AgentModelSelectionState::Available {
 		work_id: EntityId::new("root").unwrap(),
 		thread_id: EntityId::new("thread").unwrap(),
 		review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -213,12 +213,18 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 			if confirmed {
 				assert!(matches!(
 					s.task_models.state,
-					Some(State::Available { last_outcome: Some(Outcome::TargetObserved), .. })
+					Some(AgentModelSelectionState::Available {
+						last_outcome: Some(AgentModelOutcome::TargetObserved),
+						..
+					})
 				));
 			} else {
 				assert!(matches!(
 					s.task_models.state,
-					Some(State::Pending { state: Outcome::Unknown, .. })
+					Some(AgentModelSelectionState::Pending {
+						state: AgentModelOutcome::Unknown,
+						..
+					})
 				));
 			}
 		});
@@ -349,7 +355,9 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 
 	surface.update(visual, |s, cx| {
-		if let Some(State::Available { can_update, .. }) = &mut s.task_models.state {
+		if let Some(AgentModelSelectionState::Available { can_update, .. }) =
+			&mut s.task_models.state
+		{
 			*can_update = false;
 		}
 
@@ -424,7 +432,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 			assert!(text.contains("current settings reviewed after restart"));
 			assert!(!text.contains("matching native settings observed"));
 
-			if let State::Available { last_receipt, .. } = &mut state {
+			if let AgentModelSelectionState::Available { last_receipt, .. } = &mut state {
 				*last_receipt = Some(historical);
 			}
 
@@ -503,19 +511,25 @@ fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut TestApp
 					if confirmed {
 						assert!(matches!(
 							s.task_models.state,
-							Some(State::Available {
-								last_outcome: Some(Outcome::TargetObserved),
+							Some(AgentModelSelectionState::Available {
+								last_outcome: Some(AgentModelOutcome::TargetObserved),
 								..
 							})
 						));
 					} else {
 						assert!(matches!(
 							s.task_models.state,
-							Some(State::Pending { state: Outcome::Unknown, .. })
+							Some(AgentModelSelectionState::Pending {
+								state: AgentModelOutcome::Unknown,
+								..
+							})
 						));
 					}
 				} else {
-					assert!(matches!(s.task_models.state, Some(State::Available { .. })));
+					assert!(matches!(
+						s.task_models.state,
+						Some(AgentModelSelectionState::Available { .. })
+					));
 				}
 			});
 		}
@@ -632,7 +646,14 @@ async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<A
 		} else if confirmed {
 			let mut state = available();
 
-			if let State::Available { model, effort, last_outcome, last_receipt, .. } = &mut state {
+			if let AgentModelSelectionState::Available {
+				model,
+				effort,
+				last_outcome,
+				last_receipt,
+				..
+			} = &mut state
+			{
 				*model =
 					ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
 						.unwrap();
@@ -641,13 +662,13 @@ async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<A
 				} else {
 					Some(ConversationReasoningEffort::new(EFFORT).unwrap())
 				};
-				*last_outcome = Some(Outcome::TargetObserved);
+				*last_outcome = Some(AgentModelOutcome::TargetObserved);
 				*last_receipt = Some(receipt(preserve, true));
 			}
 
 			state
 		} else {
-			State::Pending {
+			AgentModelSelectionState::Pending {
 				model: ConversationModel::new(if preserve {
 					"plain-model"
 				} else {
@@ -655,7 +676,7 @@ async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<A
 				})
 				.unwrap(),
 				effort: None,
-				state: Outcome::Unknown,
+				state: AgentModelOutcome::Unknown,
 				last_receipt: Some(receipt(preserve, false)),
 			}
 		};

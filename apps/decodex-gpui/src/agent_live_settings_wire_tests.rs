@@ -9,9 +9,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	live_settings::{
-		AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentSurface,
-		AgentWorkItemDto, AgentWorkStatusDto, ClientProfile, Context, Edit, Entity, EntityId,
-		IntoElement, Render, Reviewer, State, Window, WireText,
+		AgentActionDto, AgentDispatchStateDto, AgentLiveReviewerState, AgentReviewer,
+		AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
+		ClientProfile, Context, Edit, Entity, EntityId, IntoElement, Render, Window, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -34,13 +34,13 @@ fn fixture(model: bool) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDt
 	wire_test_support::fixture(move |listener| serve(listener, model))
 }
 
-fn live_state(index: usize, model: bool) -> State {
-	State::Available {
+fn live_state(index: usize, model: bool) -> AgentLiveReviewerState {
+	AgentLiveReviewerState::Available {
 		thread_id: EntityId::new("thread").unwrap(),
 		turn_id: EntityId::new("turn").unwrap(),
 		review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 		can_update: true,
-		last_reviewer: (index != 0 && !model).then_some(Reviewer::User),
+		last_reviewer: (index != 0 && !model).then_some(AgentReviewer::User),
 		last_model: (model && index != 0).then(|| AgentLiveModelSelection {
 			model: ConversationModel::new("selected").unwrap(),
 			effort: ConversationReasoningEffort::High,
@@ -103,7 +103,7 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 			s.apply_result(Ok(AgentSnapshotResult::Available(original.clone())));
 
 			s.live_reviewer.work = Some("root".into());
-			s.live_reviewer.state = Some(State::Available {
+			s.live_reviewer.state = Some(AgentLiveReviewerState::Available {
 				thread_id: EntityId::new("thread").unwrap(),
 				turn_id: EntityId::new("turn").unwrap(),
 				review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -211,14 +211,14 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 		if model {
 			assert!(matches!(
 				&s.live_reviewer.state,
-				Some(State::Available { last_model: Some(selection), .. })
+				Some(AgentLiveReviewerState::Available { last_model: Some(selection), .. })
 					if selection.model.as_str() == "selected" && selection.effort.as_str() == "high"
 			));
 		}
 
 		assert!(matches!(
 			s.live_reviewer.state,
-			Some(State::Available {
+			Some(AgentLiveReviewerState::Available {
 				last_outcome: Some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
 				..
 			})
@@ -236,7 +236,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 					effort: ConversationReasoningEffort::High,
 				})
 			} else {
-				Edit::Reviewer(Reviewer::User)
+				Edit::AgentReviewer(AgentReviewer::User)
 			}),
 			cx,
 		);
@@ -341,7 +341,7 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut Te
 				effort: ConversationReasoningEffort::High,
 			})
 		} else {
-			Edit::Reviewer(Reviewer::User)
+			Edit::AgentReviewer(AgentReviewer::User)
 		};
 
 		for selection in [None, Some(edit)] {
@@ -364,14 +364,17 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut Te
 					s.live_reviewer.task.is_none(),
 					"refresh must not strand a completed operation"
 				);
-				assert!(matches!(s.live_reviewer.state, Some(State::Available { .. })));
+				assert!(matches!(
+					s.live_reviewer.state,
+					Some(AgentLiveReviewerState::Available { .. })
+				));
 				assert_eq!(s.live_reviewer.reviewed, !saving);
 
 				if saving {
 					assert!(s.live_reviewer.feedback.contains("could not be confirmed"));
 					assert!(matches!(
 						s.live_reviewer.state,
-						Some(State::Available {
+						Some(AgentLiveReviewerState::Available {
 							last_outcome: Some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
 							..
 						})
@@ -425,7 +428,7 @@ async fn serve(listener: UnixListener, model: bool) -> Vec<AgentActionDto> {
 				AgentActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer }
 					if !model =>
 				{
-					assert_eq!(*reviewer, Reviewer::User);
+					assert_eq!(*reviewer, AgentReviewer::User);
 
 					(work_id, turn_id, review_token)
 				},

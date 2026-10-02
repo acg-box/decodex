@@ -5,9 +5,9 @@ use crate::{
 	shell::{
 		agent_surface::{
 			native_timeline::{
-				self, AgentHistoryResult, AgentSurface, AgentTimelineEntry, AgentWorkItemDto,
-				Content, Context, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
-				SharedString, Styled, key, markdown,
+				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
+				AgentWorkItemDto, Context, FluentBuilder, InteractiveElement, IntoElement,
+				ParentElement, SharedString, Styled, key, markdown,
 			},
 			response_metrics::ResponseMetrics,
 			text_reveal::StreamingText,
@@ -23,10 +23,12 @@ impl AgentSurface {
 	pub(super) fn native_summary_row(
 		&self,
 		work: &AgentWorkItemDto,
-		item: &Content,
+		item: &AgentTimelineContent,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::Item { turn_id, item_id, kind, text, truncated, attachments, .. } = item
+		let AgentTimelineContent::Item {
+			turn_id, item_id, kind, text, truncated, attachments, ..
+		} = item
 		else {
 			return gpui::div().into_any_element();
 		};
@@ -77,7 +79,7 @@ impl AgentSurface {
 		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
 		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, cx);
-		let process = matches!(&entry.content, Content::Item { kind, phase, activity, attachments, app_ui: false, .. }
+		let process = matches!(&entry.content, AgentTimelineContent::Item { kind, phase, activity, attachments, app_ui: false, .. }
             if attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
                 || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
 		let content = if process { process_indent(content) } else { content };
@@ -99,16 +101,23 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 	) -> Option<f32> {
 		let can_window = match &entry.content {
-			Content::Item { turn_id, item_id, attachments, app_ui, text, activity, .. }
-				if attachments.is_empty()
-					&& (activity.is_none() || self.activity_detail.value.is_none())
-					&& !app_ui
-					&& !text.contains("![")
-					&& work.active_turn_id.as_deref() != Some(turn_id)
-					&& !self.native_history.weather.contains_key(turn_id)
-					&& self.native_live_message(work, turn_id, item_id).is_none() =>
+			AgentTimelineContent::Item {
+				turn_id,
+				item_id,
+				attachments,
+				app_ui,
+				text,
+				activity,
+				..
+			} if attachments.is_empty()
+				&& (activity.is_none() || self.activity_detail.value.is_none())
+				&& !app_ui
+				&& !text.contains("![")
+				&& work.active_turn_id.as_deref() != Some(turn_id)
+				&& !self.native_history.weather.contains_key(turn_id)
+				&& self.native_live_message(work, turn_id, item_id).is_none() =>
 				true,
-			Content::TurnBoundary { completed: true, turn_id, .. }
+			AgentTimelineContent::TurnBoundary { completed: true, turn_id, .. }
 				if work.active_turn_id.as_deref() != Some(turn_id) =>
 				true,
 			_ => false,
@@ -148,7 +157,7 @@ impl AgentSurface {
 		// for every such row on every scroll frame.
 		if self.native_history.entries.iter().any(|entry| {
 			matches!(&entry.content,
-			Content::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn)
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn)
 		}) {
 			return None;
 		}
@@ -220,8 +229,9 @@ impl AgentSurface {
 		let row = gpui::div().w_full().min_w_0().flex().flex_col().gap_1();
 
 		match &entry.content {
-			content @ Content::Item { .. } => self.native_item_content(work, content, identity, cx),
-			Content::Speech { role, text, truncated, .. } => row
+			content @ AgentTimelineContent::Item { .. } =>
+				self.native_item_content(work, content, identity, cx),
+			AgentTimelineContent::Speech { role, text, truncated, .. } => row
 				.child(native_timeline::muted(if role == "user" {
 					"You · Voice"
 				} else {
@@ -232,7 +242,7 @@ impl AgentSurface {
 					r.child(native_timeline::muted("Voice transcript shortened."))
 				})
 				.into_any_element(),
-			Content::VoiceBoundary { kind, outcome, .. } => row
+			AgentTimelineContent::VoiceBoundary { kind, outcome, .. } => row
 				.child(native_timeline::muted(if kind == "realtimeSessionStarted" {
 					"Voice conversation started"
 				} else if outcome.as_deref() == Some("failed") {
@@ -241,8 +251,8 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			Content::TurnBoundary { completed, turn_id, status, error, .. } => {
-				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
+			AgentTimelineContent::TurnBoundary { completed, turn_id, status, error, .. } => {
+				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, AgentTimelineContent::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
 
 				row.when(*completed && !has_reply, |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
@@ -262,18 +272,18 @@ impl AgentSurface {
 				.children(error.as_ref().map(|error| gpui::div().child(error.message.clone())))
 				.into_any_element()
 			},
-			content @ Content::Promotion { .. } =>
+			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		}
 	}
 
 	fn native_turn_metrics(
 		&self,
-		boundary: &Content,
+		boundary: &AgentTimelineContent,
 		identity: &str,
 		_cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
+		let AgentTimelineContent::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
 			return gpui::div().into_any_element();
 		};
 
@@ -289,11 +299,11 @@ impl AgentSurface {
 	fn native_item_content(
 		&self,
 		work: &AgentWorkItemDto,
-		content: &Content,
+		content: &AgentTimelineContent,
 		identity: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::Item {
+		let AgentTimelineContent::Item {
 			app_ui,
 			text,
 			kind,
@@ -350,13 +360,13 @@ impl AgentSurface {
 			} else {
 				let last_reply = self.native_history.entries.iter().rev().find_map(|entry| {
 					match &entry.content {
-						Content::Item { turn_id: turn, item_id, kind, .. }
+						AgentTimelineContent::Item { turn_id: turn, item_id, kind, .. }
 							if turn == turn_id && kind == "agentMessage" =>
 							Some(item_id),
 						_ => None,
 					}
 				});
-				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.native_history.entries.iter().find(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
+				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.native_history.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
 
 				body.child(super::super::history_entry_with_metrics(&message, identity, metrics))
 			};
@@ -392,13 +402,15 @@ impl AgentSurface {
 	fn native_item_text(
 		&self,
 		work: &AgentWorkItemDto,
-		content: &Content,
+		content: &AgentTimelineContent,
 		identity: &str,
 		text: &str,
 		truncated: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::Item { kind, turn_id, item_id, attachments, activity, .. } = content else {
+		let AgentTimelineContent::Item { kind, turn_id, item_id, attachments, activity, .. } =
+			content
+		else {
 			unreachable!("item text renderer")
 		};
 		let row = gpui::div().w_full().min_w_0().flex().flex_col().gap_1();
@@ -459,12 +471,12 @@ impl AgentSurface {
 	fn native_prompt_row(
 		&self,
 		work: &AgentWorkItemDto,
-		content: &Content,
+		content: &AgentTimelineContent,
 		identity: &str,
 		body: Div,
 		cx: &mut Context<Self>,
 	) -> Div {
-		let Content::Item { turn_id, item_id, .. } = content else {
+		let AgentTimelineContent::Item { turn_id, item_id, .. } = content else {
 			unreachable!("prompt renderer")
 		};
 		let Some(thread) = &work.codex_thread_id else { return body };
@@ -528,11 +540,13 @@ impl AgentSurface {
 	fn native_activity_content(
 		&self,
 		work: &AgentWorkItemDto,
-		content: &Content,
+		content: &AgentTimelineContent,
 		identity: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::Item { activity: Some(activity), kind, turn_id, item_id, .. } = content else {
+		let AgentTimelineContent::Item { activity: Some(activity), kind, turn_id, item_id, .. } =
+			content
+		else {
 			unreachable!("activity renderer")
 		};
 		let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
@@ -615,12 +629,18 @@ impl AgentSurface {
 	fn native_promotion(
 		&self,
 		work: &AgentWorkItemDto,
-		content: &Content,
+		content: &AgentTimelineContent,
 		identity: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let Content::Promotion { turn_id, agent_item_id, presentation, index, resolved, .. } =
-			content
+		let AgentTimelineContent::Promotion {
+			turn_id,
+			agent_item_id,
+			presentation,
+			index,
+			resolved,
+			..
+		} = content
 		else {
 			unreachable!("promotion renderer")
 		};
@@ -638,7 +658,7 @@ impl AgentSurface {
 			.or_else(|| {
 				let mut matches =
 					self.native_history.entries.iter().filter_map(|entry| match &entry.content {
-						Content::Item {
+						AgentTimelineContent::Item {
 							turn_id: turn,
 							item_id,
 							text,
@@ -745,7 +765,7 @@ mod tests {
 
 	use crate::shell::agent_surface::native_timeline::{
 		Binding, Timeline,
-		render::{AgentSurface, AgentTimelineEntry, Content, Context},
+		render::{AgentSurface, AgentTimelineContent, AgentTimelineEntry, Context},
 	};
 	use decodex_protocol::AgentTimelinePage;
 
@@ -886,7 +906,7 @@ mod tests {
 			let work = work.clone();
 			let mut entry = rendered_entries()[1].clone();
 
-			if let Content::Item { text, .. } = &mut entry.content {
+			if let AgentTimelineContent::Item { text, .. } = &mut entry.content {
 				*text = original.into();
 			}
 
@@ -964,7 +984,7 @@ mod tests {
 	fn plan_entry() -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position: 6,
-			content: Content::Item {
+			content: AgentTimelineContent::Item {
 				phase: None,
 				app_ui: false,
 				turn_id: "plan-turn".into(),
@@ -982,7 +1002,7 @@ mod tests {
 		vec![
 			AgentTimelineEntry {
 				position: 0,
-				content: Content::Item { phase: None, app_ui: false,
+				content: AgentTimelineContent::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -999,7 +1019,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 1,
-				content: Content::Item { phase: None, app_ui: false,
+				content: AgentTimelineContent::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -1011,7 +1031,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 2,
-				content: Content::Speech {
+				content: AgentTimelineContent::Speech {
 					item_id: "speech".into(),
 					session_id: "voice".into(),
 					role: "user".into(),
@@ -1021,7 +1041,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 3,
-				content: Content::Promotion {
+				content: AgentTimelineContent::Promotion {
 					item_id: "promotion".into(),
 					session_id: "voice".into(),
 					turn_id: "turn".into(),
@@ -1033,7 +1053,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 4,
-				content: Content::Promotion {
+				content: AgentTimelineContent::Promotion {
 					item_id: "off-page-promotion".into(),
 					session_id: "voice".into(),
 					turn_id: "older-turn".into(),
@@ -1050,7 +1070,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 5,
-				content: Content::TurnBoundary {
+				content: AgentTimelineContent::TurnBoundary {
 					turn_id: "turn".into(),
 					completed: true,
 					status: Some("failed".into()),
@@ -1157,7 +1177,7 @@ mod tests {
 
 			entry.position += 1;
 
-			if let Content::Item { turn_id, kind, text, .. } = &mut entry.content {
+			if let AgentTimelineContent::Item { turn_id, kind, text, .. } = &mut entry.content {
 				*turn_id = "reasoning-turn".into();
 				*kind = "reasoning".into();
 				*text = "Final public summary".into();
@@ -1198,7 +1218,7 @@ mod tests {
 
 		entries.push(AgentTimelineEntry {
 			position: 100,
-			content: Content::Item {
+			content: AgentTimelineContent::Item {
 				phase: None,
 				app_ui: false,
 				turn_id: "summary-turn".into(),
@@ -1437,7 +1457,7 @@ mod tests {
 			surface.update(visual, |s, cx| {
 				let mut entry = plan_entry();
 
-				if let Content::Item { truncated: value, .. } = &mut entry.content {
+				if let AgentTimelineContent::Item { truncated: value, .. } = &mut entry.content {
 					*value = truncated;
 				}
 

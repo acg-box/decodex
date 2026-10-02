@@ -8,13 +8,13 @@ use crate::shell::agent_surface::{
 	Task, WireText, mcp_forms,
 };
 #[cfg(test)] use crate::shell::agent_surface::{ClientProfile, Render, Window};
-use decodex_protocol::{AgentVoiceSettingsResult as State, ClientFailure, HistoryText};
+use decodex_protocol::{AgentVoiceSettingsResult, ClientFailure, HistoryText};
 
 #[derive(Default)]
 pub(super) struct Panel {
 	next: Option<NextCall>,
 	work: Option<String>,
-	state: Option<State>,
+	state: Option<AgentVoiceSettingsResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
@@ -177,7 +177,7 @@ impl AgentSurface {
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
 		let action = if let Some(voice) = voice.clone() {
-			let Some(State::Available { work_id, review_token, voices, .. }) =
+			let Some(AgentVoiceSettingsResult::Available { work_id, review_token, voices, .. }) =
 				&self.voice_settings.state
 			else {
 				return;
@@ -213,8 +213,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.voice_settings(query_owner)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.voice_settings(query_owner))
+				.unwrap_or(AgentVoiceSettingsResult::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -231,7 +232,8 @@ impl AgentSurface {
 
 				s.voice_settings.task = None;
 
-				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+				let (outcome, state) =
+					result.unwrap_or((None, AgentVoiceSettingsResult::Unavailable));
 
 				s.voice_settings.feedback =
 					feedback(voice.as_ref(), outcome.as_ref(), &state).into();
@@ -293,7 +295,7 @@ impl AgentSurface {
 			move |s, cx| s.update_voice_settings(&owner, None, cx),
 		));
 
-		if let Some(State::Available { voices, effective, preference, .. }) =
+		if let Some(AgentVoiceSettingsResult::Available { voices, effective, preference, .. }) =
 			&self.voice_settings.state
 		{
 			if preference != effective {
@@ -335,13 +337,13 @@ impl AgentSurface {
 fn feedback(
 	voice: Option<&WireText>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
-	state: &State,
+	state: &AgentVoiceSettingsResult,
 ) -> &'static str {
 	match (voice, outcome, state) {
 		(
 			Some(voice),
 			Some(Ok(AgentCommandResponse::Accepted { .. })),
-			State::Available { effective, preference, .. },
+			AgentVoiceSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(voice) =>
 			if effective.as_ref() == Some(voice) {
 				"Voice saved for your next conversation."
