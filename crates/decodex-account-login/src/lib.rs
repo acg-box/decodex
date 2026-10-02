@@ -1405,6 +1405,7 @@ mod tests {
 	}
 
 	fn read_mock_request(stream: &mut TcpStream) -> MockHttpRequest {
+		stream.set_nonblocking(false).expect("blocking mock issuer connection");
 		stream.set_read_timeout(Some(Duration::from_secs(2))).expect("mock issuer read timeout");
 
 		let mut bytes = [0_u8; MAX_CALLBACK_REQUEST_BYTES];
@@ -1778,6 +1779,42 @@ mod tests {
 			assert!(home_path.join("auth.json").is_file());
 			assert!(!home_path.join(".decodex-auth.json.tmp").exists());
 		}
+	}
+
+	#[test]
+	fn mock_issuer_waits_for_request_bytes_on_an_accepted_nonblocking_socket() {
+		let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+		let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+		let mut stream = listener.accept().unwrap().0;
+
+		stream.set_nonblocking(true).unwrap();
+
+		let (ready, started) = mpsc::channel();
+		let (finished, completion) = mpsc::channel();
+		let worker = thread::spawn(move || {
+			ready.send(()).unwrap();
+
+			let request = read_mock_request(&mut stream);
+			let _ = finished.send(());
+
+			request
+		});
+
+		started.recv_timeout(Duration::from_secs(1)).unwrap();
+
+		let waited = matches!(
+			completion.recv_timeout(Duration::from_millis(50)),
+			Err(mpsc::RecvTimeoutError::Timeout)
+		);
+		let sent = client.write_all(b"POST /fixture HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc");
+		let request = worker.join().expect("mock reader must wait instead of returning WouldBlock");
+
+		sent.unwrap();
+
+		assert!(waited, "the reader must wait until request bytes arrive");
+		assert_eq!(request.method, "POST");
+		assert_eq!(request.target, "/fixture");
+		assert_eq!(request.body, b"abc");
 	}
 
 	#[test]
