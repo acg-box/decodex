@@ -257,6 +257,7 @@ mod tests {
 	#[test]
 	fn ordinary_denial_blocks_activation_even_after_the_displayed_reset() {
 		let usage = decodex_codex::decode_account_api_usage(br#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":604800,"reset_at":1800000000}}}"#).unwrap();
+		let after_reset = 1_800_000_001_000_000;
 		let mut inventory = super::AccountApiInventory {
 			banner: Default::default(),
 			recovery_context: None,
@@ -268,7 +269,6 @@ mod tests {
 			details_complete: false,
 			credits: Vec::new(),
 		};
-		let after_reset = 1_800_000_001_000_000;
 
 		assert!(!super::can_activate(&inventory, after_reset));
 

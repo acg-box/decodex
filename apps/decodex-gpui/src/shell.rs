@@ -390,11 +390,6 @@ impl Shell {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code)]
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
-		let mut shell = Self::new(
-			window,
-			cx,
-			ConnectionView::Online { generation: 7, applied: Some(Cursor(42)) },
-		);
 		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000001")
 			.expect("visual conversation identity is bounded");
 		let second_conversation_id = EntityId::new("10000000-0000-4000-8000-000000000002")
@@ -429,6 +424,11 @@ impl Shell {
 			)
 			.expect("visual Conversation projection is valid")
 		};
+		let mut shell = Self::new(
+			window,
+			cx,
+			ConnectionView::Online { generation: 7, applied: Some(Cursor(42)) },
+		);
 
 		shell.quick = ConversationsSnapshot {
 			model_review_message: None,
@@ -6775,6 +6775,8 @@ mod tests {
 			observed_at_unix_micros: None,
 			result: AccountQuotaStateDto::Unknown,
 		};
+		let recovery_operation_id =
+			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
 		let mut rejected = AccountDto {
 			account_id: EntityId::new("10000000-0000-4000-8000-000000000001")
 				.expect("account identity"),
@@ -6788,8 +6790,6 @@ mod tests {
 			five_hour_quota: quota(300),
 			seven_day_quota: quota(10_080),
 		};
-		let recovery_operation_id =
-			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
 
 		rejected.unsettled_operation = Some(decodex_protocol::AccountUnsettledOperationDto {
 			operation_id: recovery_operation_id.clone(),

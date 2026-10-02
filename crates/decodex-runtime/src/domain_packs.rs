@@ -737,9 +737,9 @@ mod tests {
 
 	#[test]
 	fn development_projection_uses_only_the_authoritative_provider_thread_url() {
-		let mut development = program(DEVELOPMENT_DOMAIN_PACK_ID);
 		let conversation_id = ConversationId::new("36000000-0000-4000-8000-000000000001")
 			.expect("fixture Conversation identity");
+		let mut development = program(DEVELOPMENT_DOMAIN_PACK_ID);
 
 		development.work_items[0].conversation_id = Some(conversation_id.clone());
 

@@ -298,8 +298,8 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 		let result = agent_native_goal::write(
 			&store,
 			|| {
-				let mut key = key.clone();
 				let client = client.clone();
+				let mut key = key.clone();
 
 				if calls.fetch_add(1, Ordering::SeqCst) > 0 && case == "account" {
 					key.account = AccountId::new("40000000-0000-4000-8000-000000000004").unwrap();

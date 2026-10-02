@@ -11,8 +11,8 @@ use decodex_protocol::WireText;
 
 #[test]
 fn saved_task_references_are_rendered_on_queued_native_turn_input() {
-	let mut params = serde_json::json!({"input":[{"type":"text","text":"Compare it"}]});
 	let payload=serde_json::json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
+	let mut params = serde_json::json!({"input":[{"type":"text","text":"Compare it"}]});
 
 	agent::apply_message_options(&mut params, &payload).unwrap();
 

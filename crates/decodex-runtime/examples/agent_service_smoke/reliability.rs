@@ -236,8 +236,8 @@ fn disconnect_owned_child(root: &DecodexRoot, expected: &Generation) -> SmokeRes
 		return Err("generation changed before fault injection".into());
 	}
 
-	let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
 	let size = i32::try_from(std::mem::size_of::<libc::proc_bsdinfo>())?;
+	let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
 	// SAFETY: fixed output structure and flavor agree; no process state is changed.
 	let read = unsafe {
 		libc::proc_pidinfo(expected.pid, libc::PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast(), size)

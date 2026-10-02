@@ -624,7 +624,6 @@ impl AgentSurface {
 				references,
 			})
 		};
-		let mut parked = BTreeMap::new();
 		let owners: BTreeSet<_> = self
 			.draft_profiles
 			.texts
@@ -632,6 +631,7 @@ impl AgentSurface {
 			.chain(self.draft_profiles.files.keys())
 			.chain(self.draft_profiles.tasks.keys())
 			.collect();
+		let mut parked = BTreeMap::new();
 
 		for owner in owners {
 			parked.insert(

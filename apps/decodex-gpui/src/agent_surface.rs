@@ -1626,6 +1626,8 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
+		let histories =
+			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
 		let mut notices: Vec<_> =
 			[("Review", &self.guardian.feedback), ("Task resources", &self.resource_feedback)]
 				.into_iter()
@@ -1633,8 +1635,6 @@ impl AgentSurface {
 				.map(|(title, detail)| (title, detail.clone()))
 				.collect();
 		let mut seen = std::collections::BTreeSet::new();
-		let histories =
-			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
 
 		for history in histories {
 			if let AgentHistoryResult::Available { entries, .. } = history {

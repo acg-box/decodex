@@ -95,7 +95,6 @@ async fn qualify(
 
 	fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(model_name),serde_json::json!(catalog))).expect("native ordinary effort fixture");
 
-	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
 		"stale-display-model",
 		home.path().to_str().expect("fixture path"),
@@ -104,6 +103,7 @@ async fn qualify(
 	.expect("typed native defaults")
 	.inherit_model()
 	.inherit_service_tier();
+	let mut session = NativeSession::start(&binary, home.path());
 	let mut wire = serde_json::to_value(start).expect("native start wire");
 
 	wire["approvalPolicy"] = serde_json::json!("never");

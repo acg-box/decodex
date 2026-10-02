@@ -562,10 +562,10 @@ impl AgentCoordinator {
 	}
 
 	fn thread_params(&self, agent: bool) -> Value {
+		let effort = if agent { &self.config.agent_effort } else { &self.config.worker_effort };
 		let mut params = serde_json::json!({"model":self.config.model,"cwd":self.config.cwd,
             "approvalPolicy":self.config.approval_policy,"sandbox":self.config.sandbox,
             "config":{}});
-		let effort = if agent { &self.config.agent_effort } else { &self.config.worker_effort };
 
 		if let Some(effort) = effort {
 			params["config"]["model_reasoning_effort"] = serde_json::json!(effort);

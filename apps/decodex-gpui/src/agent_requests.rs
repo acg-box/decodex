@@ -225,6 +225,8 @@ impl AgentSurface {
 		let revision = self.request_reader.revision;
 		let section =
 			self.request_reader.starts.iter().position(|start| *start == offset).unwrap_or(0) + 1;
+		let previous =
+			self.request_reader.starts.iter().copied().filter(|start| *start < offset).max();
 		let mut panel = gpui::div()
 			.flex()
 			.flex_col()
@@ -239,8 +241,6 @@ impl AgentSurface {
 					.text_size(gpui::px(12.0))
 					.child(text[offset..end].to_owned()),
 			);
-		let previous =
-			self.request_reader.starts.iter().copied().filter(|start| *start < offset).max();
 
 		for (id, label, target) in [
 			("large-request-previous", "Previous section", previous),

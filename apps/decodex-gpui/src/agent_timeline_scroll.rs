@@ -190,8 +190,8 @@ impl AgentSurface {
 
 		self.history_navigation = None;
 
-		let mut state = self.native_history.viewport.0.borrow_mut();
 		let key = row_key(entry);
+		let mut state = self.native_history.viewport.0.borrow_mut();
 
 		state.process_motion_until = Some(std::time::Instant::now() + Duration::from_millis(240));
 

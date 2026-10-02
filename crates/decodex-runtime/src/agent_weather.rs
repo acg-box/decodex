@@ -255,9 +255,9 @@ mod tests {
 
 	#[test]
 	fn weather_history_is_bound_to_the_exact_thread_and_turn() {
-		let mut file = tempfile::NamedTempFile::new().unwrap();
 		let fixture =
 			include_str!("../../../apps/decodex-gpui/examples/fixtures/singapore-weather.txt");
+		let mut file = tempfile::NamedTempFile::new().unwrap();
 
 		for record in [
 			serde_json::json!({"type":"session_meta","payload":{"id":"thread-a"}}),

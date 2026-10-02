@@ -253,8 +253,8 @@ pub(super) fn launch_mark() -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(gpui::px(1.5));
 			let origin = bounds.origin;
+			let mut path = PathBuilder::stroke(gpui::px(1.5));
 
 			path.move_to(origin + gpui::point(gpui::px(8.), gpui::px(13.)));
 			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));

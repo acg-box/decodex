@@ -161,8 +161,8 @@ impl DesktopSettingsController {
 	}
 
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+		let mut state = self.lock();
 
 		if state.session.as_ref() == Some(&binding) {
 			return;
@@ -227,8 +227,8 @@ impl DesktopSettingsController {
 		generation: u64,
 		server_id: &ServerId,
 	) -> Option<DesktopSettingsDispatch> {
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id: server_id.clone() };
+		let mut state = self.lock();
 
 		if state.session.as_ref() != Some(&binding) {
 			return None;

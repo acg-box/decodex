@@ -146,9 +146,9 @@ mod tests {
 
 	#[test]
 	fn evidence_is_bound_to_connection_and_released_after_commit_or_lifecycle_end() {
-		let mut state = PendingFileChanges::default();
 		let started = serde_json::json!({"threadId":"child","turnId":"turn","item":{"id":"patch","type":"fileChange","changes":[]}});
 		let request = serde_json::json!({"threadId":"child","turnId":"turn","itemId":"patch"});
+		let mut state = PendingFileChanges::default();
 
 		for (method, params) in [
 			("item/completed", started.clone()),

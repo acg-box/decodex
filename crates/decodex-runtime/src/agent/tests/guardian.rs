@@ -742,8 +742,8 @@ async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
 
 	while sent.try_recv().is_ok() {}
 
-	let mut event = review("failed-review", "denied");
 	let rationale = "Automatic approval review failed: temporary review error";
+	let mut event = review("failed-review", "denied");
 
 	event["review"]["rationale"] = serde_json::json!(rationale);
 
