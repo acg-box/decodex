@@ -1,6 +1,8 @@
 //! Ordinary typed turns preserve native reasoning and exact recovery identity.
 use std::{
 	env, fs,
+	net::SocketAddr,
+	path::Path,
 	sync::{Mutex, atomic::AtomicUsize},
 };
 
@@ -17,6 +19,39 @@ use decodex_codex::{
 	self, ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnInput,
 	ConversationTurnStartRequest, ExactThreadId,
 };
+
+fn configure_fixture(
+	home: &Path,
+	model_name: &str,
+	configured: Option<&str>,
+	tier_override: bool,
+	address: SocketAddr,
+) {
+	let mut model = effort::fixture_model(model_name, "provider-effort");
+
+	model["default_reasoning_level"] = Value::Null;
+
+	if tier_override {
+		model["service_tiers"] = serde_json::json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
+	}
+
+	let catalog = home.join("models.json");
+
+	fs::write(
+		&catalog,
+		serde_json::to_vec(&serde_json::json!({"models":[model]}))
+			.expect("native ordinary effort fixture"),
+	)
+	.expect("native ordinary effort fixture");
+
+	// Use a different thread tier so an ignored per-turn override fails the wire assertion.
+	let configured_tier = if tier_override { "default" } else { "flex" };
+	let reasoning = configured
+		.map(|value| format!("model_reasoning_effort={}\n", serde_json::json!(value)))
+		.unwrap_or_default();
+
+	fs::write(home.join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(model_name),serde_json::json!(catalog))).expect("native ordinary effort fixture");
+}
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated ordinary effort qualification"]
@@ -70,30 +105,8 @@ async fn qualify(
 		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native ordinary answer"}]}),
 	));
 	let model_name = if inherit { "fixture-selected" } else { "gpt-5.6-sol" };
-	let mut model = effort::fixture_model(model_name, "provider-effort");
 
-	model["default_reasoning_level"] = Value::Null;
-
-	if tier_override {
-		model["service_tiers"] = serde_json::json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
-	}
-
-	let catalog = home.path().join("models.json");
-
-	fs::write(
-		&catalog,
-		serde_json::to_vec(&serde_json::json!({"models":[model]}))
-			.expect("native ordinary effort fixture"),
-	)
-	.expect("native ordinary effort fixture");
-
-	// Use a different thread tier so an ignored per-turn override fails the wire assertion.
-	let configured_tier = if tier_override { "default" } else { "flex" };
-	let reasoning = configured
-		.map(|value| format!("model_reasoning_effort={}\n", serde_json::json!(value)))
-		.unwrap_or_default();
-
-	fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(model_name),serde_json::json!(catalog))).expect("native ordinary effort fixture");
+	configure_fixture(home.path(), model_name, configured, tier_override, address);
 
 	let start = ConversationThreadStartRequest::new(
 		"stale-display-model",
