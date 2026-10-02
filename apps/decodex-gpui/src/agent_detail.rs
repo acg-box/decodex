@@ -395,6 +395,65 @@ mod tests {
 		cx.notify();
 	}
 
+	fn complete_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
+		let mut final_entry = s.native_history.entries[0].clone();
+
+		final_entry.position = 1;
+
+		if let decodex_protocol::AgentTimelineContent::Item {
+			kind,
+			item_id,
+			text,
+			phase,
+			activity,
+			..
+		} = &mut final_entry.content
+		{
+			*kind = "agentMessage".into();
+			*item_id = "final".into();
+			*text = "Done".into();
+			*phase = Some("final_answer".into());
+			*activity = None;
+		}
+
+		s.native_history.entries.push(final_entry);
+		s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+			position: 2,
+			content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+				turn_id: "turn".into(),
+				completed: true,
+				status: Some("completed".into()),
+				duration_ms: Some(500),
+				usage_summary: None,
+				usage: None,
+				error: None,
+			},
+		});
+		cx.notify();
+	}
+
+	fn activity_detail_snapshot() -> AgentSnapshotDto {
+		AgentSnapshotDto {
+			runtime_source: Some(EntityId::new("source").expect("valid activity detail source")),
+			workspaces: vec![],
+			dependencies: vec![],
+			pending_events: vec![],
+			work_items: vec![AgentWorkItemDto {
+				id: "work".into(),
+				parent_goal_id: None,
+				kind: decodex_protocol::AgentWorkKindDto::Goal,
+				title: "Agent".into(),
+				codex_thread_id: Some("thread".into()),
+				active_turn_id: None,
+				dispatch_state: AgentDispatchStateDto::Idle,
+				status: AgentWorkStatusDto::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			}],
+		}
+	}
+
 	#[gpui::test]
 	fn expanded_tool_stays_inside_transcript_and_survives_background_refresh(
 		cx: &mut gpui::TestAppContext,
@@ -466,43 +525,7 @@ mod tests {
 		}
 
 		// Completed turns use the folded-history path, not the standalone tool row.
-		surface.update(visual, |s, cx| {
-			let mut final_entry = s.native_history.entries[0].clone();
-
-			final_entry.position = 1;
-
-			if let decodex_protocol::AgentTimelineContent::Item {
-				kind,
-				item_id,
-				text,
-				phase,
-				activity,
-				..
-			} = &mut final_entry.content
-			{
-				*kind = "agentMessage".into();
-				*item_id = "final".into();
-				*text = "Done".into();
-				*phase = Some("final_answer".into());
-				*activity = None;
-			}
-
-			s.native_history.entries.push(final_entry);
-			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
-				position: 2,
-				content: decodex_protocol::AgentTimelineContent::TurnBoundary {
-					turn_id: "turn".into(),
-					completed: true,
-					status: Some("completed".into()),
-					duration_ms: Some(500),
-					usage_summary: None,
-					usage: None,
-					error: None,
-				},
-			});
-			cx.notify();
-		});
-
+		surface.update(visual, complete_tool_history);
 		visual.update(|w, cx| w.draw(cx).clear());
 
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
@@ -529,25 +552,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
-			let snapshot = AgentSnapshotDto {
-				runtime_source: Some(EntityId::new("source").unwrap()),
-				workspaces: vec![],
-				dependencies: vec![],
-				pending_events: vec![],
-				work_items: vec![AgentWorkItemDto {
-					id: "work".into(),
-					parent_goal_id: None,
-					kind: decodex_protocol::AgentWorkKindDto::Goal,
-					title: "Agent".into(),
-					codex_thread_id: Some("thread".into()),
-					active_turn_id: None,
-					dispatch_state: AgentDispatchStateDto::Idle,
-					status: AgentWorkStatusDto::Open,
-					next_check_at_micros: None,
-					created_at_micros: 1,
-					updated_at_micros: 1,
-				}],
-			};
+			let snapshot = activity_detail_snapshot();
 			let ids = ("work".into(), "turn".into(), "item".into());
 			let result = || AgentActivityDetailResult::Available {
 				text: "Passed".into(),

@@ -175,15 +175,7 @@ impl AgentSurface {
 
 				s.hook_settings.task = None;
 
-				let current = s.command_connection_ready()
-					&& s.native_agents.selected.is_none()
-					&& s.selected.as_ref() == Some(&work)
-					&& s.snapshot.as_ref().is_some_and(|snapshot| {
-						snapshot.runtime_source.as_ref() == Some(&source)
-							&& snapshot.work_items.iter().any(|w| {
-								w.id == work && w.codex_thread_id.as_deref() == Some(&thread)
-							})
-					});
+				let current = s.hook_source_current(&work, &thread, &source);
 
 				if !current {
 					s.reset_hook_settings();
@@ -219,6 +211,19 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	fn hook_source_current(&self, work: &str, thread: &str, source: &EntityId) -> bool {
+		self.command_connection_ready()
+			&& self.native_agents.selected.is_none()
+			&& self.selected.as_deref() == Some(work)
+			&& self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.runtime_source.as_ref() == Some(source)
+					&& snapshot
+						.work_items
+						.iter()
+						.any(|w| w.id == work && w.codex_thread_id.as_deref() == Some(thread))
+			})
 	}
 
 	pub(super) fn hook_settings_panel(
@@ -304,22 +309,8 @@ impl AgentSurface {
 						&& self.hook_settings.task.is_none()
 						&& editable(hook)
 					{
-						let mut changes = vec![];
+						let changes = hook_changes(hook);
 
-						if matches!(hook.trust_status.as_str(), "untrusted" | "modified")
-							&& hook.saved_hash.as_deref() != Some(hook.current_hash.as_str())
-						{
-							changes.push((AgentHookChange::Trust, "Trust this reviewed content"));
-						}
-
-						for enabled in [true, false] {
-							if hook.saved_enabled != Some(enabled) {
-								changes.push((
-									AgentHookChange::Enabled(enabled),
-									if enabled { "Save enabled" } else { "Save disabled" },
-								));
-							}
-						}
 						for (action_index, (change, label)) in changes.into_iter().enumerate() {
 							let owner = work.id.clone();
 							let key = hook.key.clone();
@@ -355,6 +346,27 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 }
+fn hook_changes(hook: &AgentHookDto) -> Vec<(AgentHookChange, &'static str)> {
+	let mut changes = vec![];
+
+	if matches!(hook.trust_status.as_str(), "untrusted" | "modified")
+		&& hook.saved_hash.as_deref() != Some(hook.current_hash.as_str())
+	{
+		changes.push((AgentHookChange::Trust, "Trust this reviewed content"));
+	}
+
+	for enabled in [true, false] {
+		if hook.saved_enabled != Some(enabled) {
+			changes.push((
+				AgentHookChange::Enabled(enabled),
+				if enabled { "Save enabled" } else { "Save disabled" },
+			));
+		}
+	}
+
+	changes
+}
+
 fn editable(hook: &AgentHookDto) -> bool {
 	!hook.managed && matches!(hook.trust_status.as_str(), "trusted" | "modified" | "untrusted")
 }

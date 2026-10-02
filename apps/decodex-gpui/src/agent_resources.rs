@@ -139,25 +139,7 @@ impl AgentSurface {
 							format!("resource-remove-{}", resource.id),
 							"Remove association".into(),
 							cx,
-							move |s, cx| {
-								let (Ok(work_id), Ok(attachment_type), Ok(identity_key)) = (
-									EntityId::new(owner.clone()),
-									WireText::new(kind.clone()),
-									WireText::new(key.clone()),
-								) else {
-									return;
-								};
-
-								s.change_resource(
-									&owner,
-									AgentActionDto::RemoveResource {
-										work_id,
-										attachment_type,
-										identity_key,
-									},
-									cx,
-								);
-							},
+							move |s, cx| s.remove_resource_association(&owner, &kind, &key, cx),
 						));
 					}
 
@@ -183,6 +165,28 @@ impl AgentSurface {
 				s.add_resource_link(&work, cx);
 			}))
 			.into_any_element()
+	}
+
+	fn remove_resource_association(
+		&mut self,
+		owner: &str,
+		kind: &str,
+		key: &str,
+		cx: &mut Context<Self>,
+	) {
+		let (Ok(work_id), Ok(attachment_type), Ok(identity_key)) = (
+			EntityId::new(owner.to_owned()),
+			WireText::new(kind.to_owned()),
+			WireText::new(key.to_owned()),
+		) else {
+			return;
+		};
+
+		self.change_resource(
+			owner,
+			AgentActionDto::RemoveResource { work_id, attachment_type, identity_key },
+			cx,
+		);
 	}
 
 	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> Div {

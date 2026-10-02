@@ -327,7 +327,7 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use std::future;
+	use std::{future, thread, time::Duration};
 
 	use crate::shell::agent_surface::archive::{
 		self, AgentArchiveResult, AgentSurface, AgentWorkItemDto, Panel,
@@ -456,14 +456,34 @@ mod tests {
 			};
 		});
 
+		visual.simulate_resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
+			assert_eq!(window.viewport_size(), gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
+
 			window.draw(cx).clear();
 		});
 
+		// Read hit-test bounds after the workspace panels finish their 200 ms transition.
+		thread::sleep(Duration::from_millis(240));
+
+		visual.update(|window, cx| window.draw(cx).clear());
+
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
 
-		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.simulate_mouse_down(
+			bounds.center(),
+			gpui::MouseButton::Left,
+			gpui::Modifiers::default(),
+		);
+		visual.update(|window, cx| window.draw(cx).clear());
+
+		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
+
+		visual.simulate_mouse_up(
+			bounds.center(),
+			gpui::MouseButton::Left,
+			gpui::Modifiers::default(),
+		);
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.archive.feedback, "No service profile is configured.");
 
