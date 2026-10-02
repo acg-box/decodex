@@ -61,6 +61,35 @@ fn creation_action(requested: Option<&str>, home: &Path) -> decodex_protocol::Ag
 	}
 }
 
+fn write_effort_catalog(catalog: &Path, catalog_default: Option<&str>) {
+	let mut model = fixture_model("gpt-5.6-sol", EFFORT);
+
+	model["default_reasoning_level"] = serde_json::json!(catalog_default);
+
+	if catalog_default.is_none() {
+		model["supported_reasoning_levels"] = serde_json::json!([]);
+	}
+
+	fs::write(
+		catalog,
+		serde_json::to_vec(&serde_json::json!({"models":[model]})).expect("catalog JSON"),
+	)
+	.expect("write catalog");
+}
+
+fn configure_effort(home: &Path, configured: Option<&str>) {
+	if let Some(configured) = configured {
+		let path = home.join("config.toml");
+		let original = fs::read_to_string(&path).expect("config");
+
+		fs::write(
+			path,
+			format!("model_reasoning_effort={}\n{original}", serde_json::json!(configured)),
+		)
+		.expect("native effort config");
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native custom-effort qualification"]
 async fn installed_custom_effort_survives_catalog_and_coordinator_dispatch() {
@@ -94,19 +123,8 @@ async fn qualify(
 
 	let home = tempfile::tempdir_in("/tmp").expect("fixture home");
 	let catalog = home.path().join("models.json");
-	let mut model = fixture_model("gpt-5.6-sol", EFFORT);
 
-	model["default_reasoning_level"] = serde_json::json!(catalog_default);
-
-	if catalog_default.is_none() {
-		model["supported_reasoning_levels"] = serde_json::json!([]);
-	}
-
-	fs::write(
-		&catalog,
-		serde_json::to_vec(&serde_json::json!({"models":[model]})).expect("catalog JSON"),
-	)
-	.expect("write catalog");
+	write_effort_catalog(&catalog, catalog_default);
 
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
 	let address = listener.local_addr().expect("fixture address");
@@ -123,16 +141,7 @@ async fn qualify(
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
 
-	if let Some(configured) = configured {
-		let path = home.path().join("config.toml");
-		let original = fs::read_to_string(&path).expect("config");
-
-		fs::write(
-			path,
-			format!("model_reasoning_effort={}\n{original}", serde_json::json!(configured)),
-		)
-		.expect("native effort config");
-	}
+	configure_effort(home.path(), configured);
 
 	let root = DecodexRoot::new(home.path().canonicalize().expect("fixture path").join("product"))
 		.expect("product root");
@@ -160,16 +169,8 @@ async fn qualify(
 
 	let first = store.get_agent_work_item("agent".into()).await.expect("started Agent");
 
-	loop {
-		let event = session.events.recv().await.expect("native event");
-		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
-
-		agent.handle_event(event).await.expect("native observation");
-
-		if terminal {
-			break;
-		}
-	}
+	handle_completed_effort_turn(&mut session, &mut agent, "native event", "native observation")
+		.await;
 
 	let thread = store
 		.get_agent_work_item("agent".into())
@@ -204,29 +205,23 @@ async fn qualify(
 	let second =
 		agent.continue_worker("agent", "Continue the saved task").await.expect("cold continuation");
 
-	loop {
-		let event = session.events.recv().await.expect("native event after restart");
-		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
-
-		agent.handle_event(event).await.expect("resumed native observation");
-
-		if terminal {
-			break;
-		}
-	}
+	handle_completed_effort_turn(
+		&mut session,
+		&mut agent,
+		"native event after restart",
+		"resumed native observation",
+	)
+	.await;
 
 	assert_eq!(requests.load(Ordering::Acquire), 2, "one continuation, no replay");
 
-	for turn in [first.active_turn_id.expect("initial turn"), second] {
-		let recorded = store
-			.agent_turn_execution("agent".into(), thread.clone(), turn)
-			.await
-			.expect("execution lookup")
-			.expect("atomic native ACK selection");
-
-		assert_eq!(recorded.model, "gpt-5.6-sol");
-		assert_eq!(recorded.effort.as_deref(), selected);
-	}
+	assert_recorded_effort(
+		&store,
+		&thread,
+		[first.active_turn_id.expect("initial turn"), second],
+		selected,
+	)
+	.await;
 
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 
@@ -235,4 +230,40 @@ async fn qualify(
 	}
 
 	backend.abort();
+}
+
+async fn handle_completed_effort_turn(
+	session: &mut NativeSession,
+	agent: &mut AgentCoordinator,
+	receive_context: &str,
+	observation_context: &str,
+) {
+	loop {
+		let event = session.events.recv().await.expect(receive_context);
+		let terminal = matches!(&event, ServerEvent::Notification { method, params } if method == "turn/completed" && params["turn"]["status"] == "completed");
+
+		agent.handle_event(event).await.expect(observation_context);
+
+		if terminal {
+			break;
+		}
+	}
+}
+
+async fn assert_recorded_effort(
+	store: &SqliteStore,
+	thread: &str,
+	turns: [String; 2],
+	selected: Option<&str>,
+) {
+	for turn in turns {
+		let recorded = store
+			.agent_turn_execution("agent".into(), thread.to_owned(), turn)
+			.await
+			.expect("execution lookup")
+			.expect("atomic native ACK selection");
+
+		assert_eq!(recorded.model, "gpt-5.6-sol");
+		assert_eq!(recorded.effort.as_deref(), selected);
+	}
 }
