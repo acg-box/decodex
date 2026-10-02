@@ -1990,6 +1990,19 @@ mod tests {
 		));
 	}
 
+	fn assert_dormant_page_cache(pager: &HistoryPager, cache_parent: &std::path::Path) {
+		assert!(matches!(
+			&*pager
+				.inner
+				.page_cache
+				.lock()
+				.unwrap_or_else(PoisonError::into_inner),
+			PageCacheOwner::Dormant { parent, cache_schema_generation }
+				if parent == cache_parent
+					&& *cache_schema_generation == TEST_CACHE_SCHEMA_GENERATION
+		));
+	}
+
 	#[test]
 	fn cached_head_requires_sent_lookup_and_fresh_response_for_topology() {
 		let temporary = TempDir::new_in(env::temp_dir())
@@ -2006,16 +2019,7 @@ mod tests {
 
 		let pager = HistoryPager::production(&cache_parent, TEST_CACHE_SCHEMA_GENERATION);
 
-		assert!(matches!(
-			&*pager
-				.inner
-				.page_cache
-				.lock()
-				.unwrap_or_else(PoisonError::into_inner),
-			PageCacheOwner::Dormant { parent, cache_schema_generation }
-				if parent == &cache_parent
-					&& *cache_schema_generation == TEST_CACHE_SCHEMA_GENERATION
-		));
+		assert_dormant_page_cache(&pager, &cache_parent);
 
 		pager.bind_session(SESSION_GENERATION, server_id.clone());
 		pager.open(conversation_a.clone()).expect("cached conversation view opens");

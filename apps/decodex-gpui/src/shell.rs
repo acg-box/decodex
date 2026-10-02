@@ -5186,14 +5186,11 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
-fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	let mut row = gpui::div()
-		.id("conversation-service-tiers")
-		.flex()
-		.flex_wrap()
-		.gap_2()
-		.text_size(gpui::px(11.));
-
+fn ordinary_draft_recovery_notice(
+	mut row: Stateful<Div>,
+	shell: &Shell,
+	cx: &mut Context<Shell>,
+) -> Stateful<Div> {
 	if let Some(notice) = shell.agent.read(cx).ordinary_draft_notice() {
 		row = row
 			.child(gpui::div().id("ordinary-draft-storage-notice").child(notice.to_owned()))
@@ -5211,6 +5208,19 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					})),
 			);
 	}
+
+	row
+}
+
+fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let mut row = gpui::div()
+		.id("conversation-service-tiers")
+		.flex()
+		.flex_wrap()
+		.gap_2()
+		.text_size(gpui::px(11.));
+
+	row = ordinary_draft_recovery_notice(row, shell, cx);
 
 	if shell.conversations.can_cancel_unsent_ordinary() {
 		row = row.child(
@@ -5311,7 +5321,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	row.into_any_element()
 }
 
-fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+fn conversation_header_state(shell: &Shell) -> (&'static str, u32, String) {
 	let selected_task = shell.quick.selected_task();
 	let feedback_conversation = shell
 		.quick
@@ -5348,6 +5358,12 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.map(str::to_owned)
 		})
 		.unwrap_or_else(|| conversation_load_status(shell.quick.load).to_owned());
+
+	(state_label, state_color, detail)
+}
+
+fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let (state_label, state_color, detail) = conversation_header_state(shell);
 
 	gpui::div()
 		.flex_1()
