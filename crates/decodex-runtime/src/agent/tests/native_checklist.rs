@@ -10,7 +10,7 @@ use std::{
 };
 
 use futures_util::FutureExt as _;
-use tokio::{process::Command, time};
+use tokio::{process::Command, sync::mpsc::Receiver, time};
 
 use crate::{
 	agent::{
@@ -105,28 +105,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
                 assert!(agent.store.list_agent_wake_events("agent".into(),32).await.unwrap().is_empty());
             }
 
-            let mut cursor = None;
-            let mut texts = Vec::new();
-
-            loop {
-                let page = agent.client.thread_timeline_page(&thread,cursor.as_deref(),1).await.unwrap();
-                let projected = timeline::project(&thread,&page).unwrap();
-
-                texts.push(serde_json::to_string(&page).unwrap());
-
-                cursor = projected.next_cursor;
-
-                if cursor.is_none() { break; }
-            }
-
-            let history = texts.join("\n");
-
-            assert!(history.contains("Checklist fixture done"));
-            assert!(!history.contains("PRIVATE_CHECKLIST_STEP"),"checklist steps unexpectedly gained native history support: {history}");
-
-            while let Ok(event) = events.try_recv() {
-                assert!(!matches!(event,ServerEvent::Notification {method,..} if method == "turn/plan/updated"));
-            }
+            assert_native_checklist_history(&agent.client, &thread, &mut events).await;
         })).catch_unwind().await;
 
 		process.shutdown().await.unwrap();
@@ -161,6 +140,42 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 	assert_eq!(calls.load(Ordering::Acquire), 3);
 
 	backend.abort();
+}
+
+async fn assert_native_checklist_history(
+	client: &AppServerClient,
+	thread: &str,
+	events: &mut Receiver<ServerEvent>,
+) {
+	let mut cursor = None;
+	let mut texts = Vec::new();
+
+	loop {
+		let page = client.thread_timeline_page(thread, cursor.as_deref(), 1).await.unwrap();
+		let projected = timeline::project(thread, &page).unwrap();
+
+		texts.push(serde_json::to_string(&page).unwrap());
+
+		cursor = projected.next_cursor;
+
+		if cursor.is_none() {
+			break;
+		}
+	}
+
+	let history = texts.join("\n");
+
+	assert!(history.contains("Checklist fixture done"));
+	assert!(
+		!history.contains("PRIVATE_CHECKLIST_STEP"),
+		"checklist steps unexpectedly gained native history support: {history}"
+	);
+
+	while let Ok(event) = events.try_recv() {
+		assert!(
+			!matches!(event,ServerEvent::Notification {method,..} if method == "turn/plan/updated")
+		);
+	}
 }
 
 async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {

@@ -47,6 +47,30 @@ fn assert_record(path: &Path, action: &str) {
 	);
 }
 
+fn native_form_request(event: &ServerEvent, opaque: bool, verification: bool) -> Option<RequestId> {
+	match event {
+		ServerEvent::Request { id, method, params }
+			if method == "mcpServer/elicitation/request" =>
+		{
+			assert!(!verification, "undeclared verification must not become a Agent form");
+			assert_eq!(params["mode"], "openai/form");
+			assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
+
+			if opaque {
+				assert_eq!(params["requestedSchema"], true);
+			} else {
+				assert_eq!(
+					params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"],
+					"wire-value"
+				);
+			}
+
+			Some(id.clone())
+		},
+		_ => None,
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native MCP form qualification"]
 async fn native_openai_form_negotiates_and_round_trips_through_agent() {
@@ -103,30 +127,7 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 
 			loop {
 				let event = events.recv().await.expect("native form events");
-				let request = match &event {
-					ServerEvent::Request { id, method, params }
-						if method == "mcpServer/elicitation/request" =>
-					{
-						assert!(
-							!verification,
-							"undeclared verification must not become a Agent form"
-						);
-						assert_eq!(params["mode"], "openai/form");
-						assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
-
-						if opaque {
-							assert_eq!(params["requestedSchema"], true);
-						} else {
-							assert_eq!(
-								params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"],
-								"wire-value"
-							);
-						}
-
-						Some(id.clone())
-					},
-					_ => None,
-				};
+				let request = native_form_request(&event, opaque, verification);
 				let done = matches!(&event,ServerEvent::Notification {method,..} if method == "turn/completed");
 
 				if let ServerEvent::Notification { method, params } = &event

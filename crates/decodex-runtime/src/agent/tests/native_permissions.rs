@@ -117,28 +117,8 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 			assert_eq!(actual["approvalsReviewer"], "auto_review", "cold={cold}");
 			assert_eq!(actual["cwd"], serde_json::json!(workspace), "cold={cold}");
 
-			let (wire_permissions, wire_guard) = agent
-				.client
-				.observed_task_permissions(item.codex_thread_id.as_deref().unwrap())
-				.expect("native resume must supply current permission facts");
-
-			assert!(wire_guard.is_live(), "cold={cold}");
-			assert_eq!(wire_permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
-			assert_eq!(wire_permissions.approvals_reviewer, "auto_review", "cold={cold}");
-
-			let persisted = agent
-				.store
-				.agent_task_permissions("agent".into(), item.codex_thread_id.clone().unwrap(), None)
-				.await
-				.unwrap()
-				.unwrap();
-			let permissions: NativeTaskPermissions =
-				serde_json::from_str(persisted.settings_json.as_ref().unwrap()).unwrap();
-
-			assert_eq!(permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
-			assert_eq!(permissions.approvals_reviewer, "auto_review", "cold={cold}");
-			assert_eq!(permissions.cwd, workspace.to_str().unwrap(), "cold={cold}");
-			assert_eq!(calls.load(Ordering::Acquire), if cold { 3 } else { 2 });
+			assert_permission_projections(&agent, &item.codex_thread_id, &workspace, cold, &calls)
+				.await;
 		}))
 		.catch_unwind()
 		.await;
@@ -155,6 +135,37 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 	}
 
 	backend.abort();
+}
+
+async fn assert_permission_projections(
+	agent: &AgentCoordinator,
+	thread_id: &Option<String>,
+	workspace: &Path,
+	cold: bool,
+	calls: &AtomicUsize,
+) {
+	let (wire_permissions, wire_guard) = agent
+		.client
+		.observed_task_permissions(thread_id.as_deref().unwrap())
+		.expect("native resume must supply current permission facts");
+
+	assert!(wire_guard.is_live(), "cold={cold}");
+	assert_eq!(wire_permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
+	assert_eq!(wire_permissions.approvals_reviewer, "auto_review", "cold={cold}");
+
+	let persisted = agent
+		.store
+		.agent_task_permissions("agent".into(), thread_id.clone().unwrap(), None)
+		.await
+		.unwrap()
+		.unwrap();
+	let permissions: NativeTaskPermissions =
+		serde_json::from_str(persisted.settings_json.as_ref().unwrap()).unwrap();
+
+	assert_eq!(permissions.profile_id.as_deref(), Some("scoped"), "cold={cold}");
+	assert_eq!(permissions.approvals_reviewer, "auto_review", "cold={cold}");
+	assert_eq!(permissions.cwd, workspace.to_str().unwrap(), "cold={cold}");
+	assert_eq!(calls.load(Ordering::Acquire), if cold { 3 } else { 2 });
 }
 
 async fn select_native_permissions(

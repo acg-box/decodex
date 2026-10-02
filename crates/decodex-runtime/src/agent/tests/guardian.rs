@@ -117,40 +117,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 
 	let peer = SqliteStore::open(&root.paths()).unwrap();
 	let app = detail_service(peer.clone());
-	let mut offset = 0;
-	let mut complete = String::new();
-
-	loop {
-		let query = QueryEnvelope {
-			version: CURRENT_VERSION,
-			query_id: QueryId::new("guardian-page").unwrap(),
-			payload: QueryPayload::GetAgentGuardianDetail {
-				work_id: EntityId::new("agent").unwrap(),
-				review_row: row.id,
-				review_digest: WireText::new(&digest).unwrap(),
-				offset,
-			},
-		};
-		let QueryResultPayload::AgentGuardianDetail(page) = Application::query(&app, &query).await
-		else {
-			panic!("detail result");
-		};
-
-		assert!(page.matches_request(row.id, &digest, offset));
-		assert!(serde_json::to_vec(&page).unwrap().len() < 60 * 1_024);
-
-		let AgentGuardianDetailResult::Available { text, next_offset, .. } = page else {
-			panic!("missing detail page");
-		};
-
-		complete.push_str(&text);
-
-		let Some(next) = next_offset else {
-			break;
-		};
-
-		offset = next;
-	}
+	let complete = read_guardian_pages(&app, row.id, &digest).await;
 
 	assert_eq!(
 		complete,
@@ -192,6 +159,49 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 		agent_guardian::detail(&peer, "agent", saved.id, &digest, 0).await,
 		decodex_protocol::AgentGuardianDetailResult::Unavailable
 	);
+}
+
+async fn read_guardian_pages(
+	app: &crate::application::ServiceApplication,
+	row_id: i64,
+	digest: &str,
+) -> String {
+	let mut offset = 0;
+	let mut complete = String::new();
+
+	loop {
+		let query = QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("guardian-page").unwrap(),
+			payload: QueryPayload::GetAgentGuardianDetail {
+				work_id: EntityId::new("agent").unwrap(),
+				review_row: row_id,
+				review_digest: WireText::new(digest).unwrap(),
+				offset,
+			},
+		};
+		let QueryResultPayload::AgentGuardianDetail(page) = Application::query(app, &query).await
+		else {
+			panic!("detail result");
+		};
+
+		assert!(page.matches_request(row_id, digest, offset));
+		assert!(serde_json::to_vec(&page).unwrap().len() < 60 * 1_024);
+
+		let AgentGuardianDetailResult::Available { text, next_offset, .. } = page else {
+			panic!("missing detail page");
+		};
+
+		complete.push_str(&text);
+
+		let Some(next) = next_offset else {
+			break;
+		};
+
+		offset = next;
+	}
+
+	complete
 }
 
 async fn deliver(agent: &mut AgentCoordinator, value: Value) {
