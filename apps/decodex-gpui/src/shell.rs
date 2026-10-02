@@ -14,6 +14,10 @@ mod native_status;
 #[path = "shell_status.rs"] mod status;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
+pub(crate) use status::{
+	count_preference as notification_count_preference, question_notice_preference,
+};
+
 use std::{
 	array,
 	cell::RefCell,
@@ -42,10 +46,6 @@ use gpui::{
 	},
 };
 use tokio::{runtime::Builder, time};
-
-pub(crate) use status::{
-	count_preference as notification_count_preference, question_notice_preference,
-};
 
 #[cfg(feature = "visual-capture")] use crate::history_pager::HistoryCursorObservation;
 use crate::{
@@ -81,6 +81,7 @@ use account_identity::Emails;
 use agent_surface::AgentSurface;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AccountRoutingControlDto;
 #[cfg(feature = "visual-capture")] use decodex_protocol::ConversationHistoryPage;
+#[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::Cursor;
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
@@ -392,7 +393,7 @@ impl Shell {
 		let mut shell = Self::new(
 			window,
 			cx,
-			ConnectionView::Online { generation: 7, applied: Some(decodex_protocol::Cursor(42)) },
+			ConnectionView::Online { generation: 7, applied: Some(Cursor(42)) },
 		);
 		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000001")
 			.expect("visual conversation identity is bounded");
@@ -2501,10 +2502,8 @@ fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) 
 
 #[test]
 fn online_cursor_progress_does_not_invalidate_the_conversation() {
-	let online = |generation, cursor| ConnectionView::Online {
-		generation,
-		applied: Some(decodex_protocol::Cursor(cursor)),
-	};
+	let online =
+		|generation, cursor| ConnectionView::Online { generation, applied: Some(Cursor(cursor)) };
 
 	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
 	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));
@@ -6621,6 +6620,7 @@ mod tests {
 			PendingComposerSubmission, Render, Shell, TranscriptRow, Window, bind_keys, ui_theme,
 		},
 	};
+	use decodex_protocol::Cursor;
 
 	struct PanelControlView(Entity<Shell>);
 	impl Render for PanelControlView {
@@ -7113,7 +7113,7 @@ mod tests {
 	fn every_connection_state_has_a_bounded_deterministic_presentation() {
 		let states = [
 			ConnectionView::Connecting { attempt: 2 },
-			ConnectionView::Online { generation: 4, applied: Some(decodex_protocol::Cursor(9)) },
+			ConnectionView::Online { generation: 4, applied: Some(Cursor(9)) },
 			ConnectionView::OfflineRetrying { next_attempt: 3, delay: Duration::from_millis(250) },
 			ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor),
 			ConnectionView::Quarantined {

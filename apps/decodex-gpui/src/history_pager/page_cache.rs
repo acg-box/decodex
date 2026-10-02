@@ -17,8 +17,8 @@ use std::{
 
 use libc::{
 	AT_FDCWD, EAGAIN, EEXIST, EINTR, ENOENT, EWOULDBLOCK, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
-	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDWR, S_IFDIR, S_IFMT, S_IFREG,
-	S_ISVTX, c_int, c_uint, mode_t, off_t, stat, uid_t,
+	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY, O_RDWR, S_IFDIR, S_IFMT,
+	S_IFREG, S_ISVTX, c_int, c_uint, mode_t, off_t, stat, uid_t,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -38,7 +38,7 @@ const PRIVATE_FILE_MODE: mode_t = 0o600;
 #[cfg(target_vendor = "apple")]
 const ANCESTOR_DIRECTORY_ACCESS: c_int = libc::O_SEARCH;
 #[cfg(not(target_vendor = "apple"))]
-const ANCESTOR_DIRECTORY_ACCESS: c_int = libc::O_RDONLY;
+const ANCESTOR_DIRECTORY_ACCESS: c_int = O_RDONLY;
 const MAX_PAGE_ITEMS: usize = 8;
 const MAX_PAGE_BYTES: usize = 256 * 1_024;
 const MAX_CONVERSATION_PAGES: usize = 4;
@@ -953,7 +953,7 @@ fn validated_file_length(
 	name: &CStr,
 	maximum: usize,
 ) -> Result<usize, CacheFailure> {
-	let file = open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY).map_err(|_| io_failure())?;
+	let file = open_file_at(parent.as_raw_fd(), name, O_RDONLY).map_err(|_| io_failure())?;
 
 	validate_regular_file(&file, Some(maximum))?;
 
@@ -971,7 +971,7 @@ fn read_validated_page(
 	}
 
 	let name = CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
-	let file = open_file_at(pages.as_raw_fd(), &name, libc::O_RDONLY).map_err(|_| io_failure())?;
+	let file = open_file_at(pages.as_raw_fd(), &name, O_RDONLY).map_err(|_| io_failure())?;
 
 	validate_regular_file(&file, Some(MAX_PAGE_BYTES))?;
 
@@ -1570,7 +1570,7 @@ fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailu
 }
 
 fn open_optional_file_at(parent: &File, name: &CStr) -> Result<Option<File>, CacheFailure> {
-	match open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY) {
+	match open_file_at(parent.as_raw_fd(), name, O_RDONLY) {
 		Ok(file) => Ok(Some(file)),
 		Err(error) if error.raw_os_error() == Some(ENOENT) => Ok(None),
 		Err(_) => Err(io_failure()),
@@ -1578,7 +1578,7 @@ fn open_optional_file_at(parent: &File, name: &CStr) -> Result<Option<File>, Cac
 }
 
 fn open_directory_at(parent: RawFd, name: &CStr) -> io::Result<File> {
-	open_directory_with_access_at(parent, name, libc::O_RDONLY)
+	open_directory_with_access_at(parent, name, O_RDONLY)
 }
 
 fn open_search_directory_at(parent: RawFd, name: &CStr) -> io::Result<File> {
@@ -1950,11 +1950,7 @@ fn io_failure() -> CacheFailure {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		env, fs,
-		os::unix::fs::{PermissionsExt as _, symlink},
-		path::PathBuf,
-	};
+	use std::{env, fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
 
 	use tempfile::TempDir;
 
@@ -2204,8 +2200,8 @@ mod tests {
 					fs::create_dir(&target).expect("directory link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
 						.expect("directory link target is owner-private");
-
-					symlink(&target, &parent).expect("final parent leaf link is created");
+					std::os::unix::fs::symlink(&target, &parent)
+						.expect("final parent leaf link is created");
 
 					parent.clone()
 				},
@@ -2216,8 +2212,7 @@ mod tests {
 					fs::create_dir(&target).expect("directory link target is created");
 					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
 						.expect("directory link target is owner-private");
-
-					symlink(&target, &root).expect("cache root link is created");
+					std::os::unix::fs::symlink(&target, &root).expect("cache root link is created");
 
 					root.clone()
 				},
@@ -2234,8 +2229,8 @@ mod tests {
 					let pages = root.join("pages");
 
 					fs::remove_dir(&pages).expect("baseline pages directory is empty");
-
-					symlink(&target, &pages).expect("pages directory link is created");
+					std::os::unix::fs::symlink(&target, &pages)
+						.expect("pages directory link is created");
 
 					pages
 				},
@@ -2252,8 +2247,7 @@ mod tests {
 					let lock = root.join("lock");
 
 					fs::remove_file(&lock).expect("baseline lock file is removed");
-
-					symlink(&target, &lock).expect("lock file link is created");
+					std::os::unix::fs::symlink(&target, &lock).expect("lock file link is created");
 
 					lock
 				},
