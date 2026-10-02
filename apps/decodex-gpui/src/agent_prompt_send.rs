@@ -6,7 +6,7 @@ use tokio::sync::oneshot::{self, Receiver, Sender};
 use crate::shell::{
 	agent_surface,
 	agent_surface::prompt_edit::{
-		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ClientProfile, Context,
 		DesktopPromptEditDraft, IdempotencyKey, confirmation,
 	},
 };
@@ -84,44 +84,14 @@ impl AgentSurface {
 						return None;
 					}
 
-					let result = result.and_then(|pending| {
-						if s.prompt_edit.draft.as_ref() != Some(&expected)
-							|| (!checking
-								&& s.draft_profiles.execution.choice(expected.work_id.as_str())
-									!= expected_execution)
-						{
-							return Err("Draft or settings changed. Nothing was submitted.");
-						}
-
-						s.stage_prompt_editor(pending.clone(), cx)?;
-
-						s.prompt_edit.draft = Some(pending.clone());
-
-						if !checking {
-							s.prompt_edit.prepared_send =
-								Some((source_profile.clone(), pending.clone()));
-						}
-
-						Ok(pending)
-					});
-
-					match result {
-						Ok(pending) => {
-							s.prompt_edit.feedback = "Saving the exact send record…".into();
-
-							cx.notify();
-
-							Some(pending)
-						},
-						Err(message) => {
-							s.prompt_edit.task = None;
-							s.prompt_edit.feedback = message.into();
-
-							cx.notify();
-
-							None
-						},
-					}
+					s.stage_prompt_send(
+						&expected,
+						&expected_execution,
+						&source_profile,
+						checking,
+						result,
+						cx,
+					)
 				})
 				.ok()
 				.flatten();
@@ -171,6 +141,54 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	fn stage_prompt_send(
+		&mut self,
+		expected: &DesktopPromptEditDraft,
+		expected_execution: &AgentExecutionOverrides,
+		source_profile: &ClientProfile,
+		checking: bool,
+		result: Result<DesktopPromptEditDraft, &'static str>,
+		cx: &mut Context<Self>,
+	) -> Option<DesktopPromptEditDraft> {
+		let result = result.and_then(|pending| {
+			if self.prompt_edit.draft.as_ref() != Some(expected)
+				|| (!checking
+					&& self.draft_profiles.execution.choice(expected.work_id.as_str())
+						!= *expected_execution)
+			{
+				return Err("Draft or settings changed. Nothing was submitted.");
+			}
+
+			self.stage_prompt_editor(pending.clone(), cx)?;
+
+			self.prompt_edit.draft = Some(pending.clone());
+
+			if !checking {
+				self.prompt_edit.prepared_send = Some((source_profile.clone(), pending.clone()));
+			}
+
+			Ok(pending)
+		});
+
+		match result {
+			Ok(pending) => {
+				self.prompt_edit.feedback = "Saving the exact send record…".into();
+
+				cx.notify();
+
+				Some(pending)
+			},
+			Err(message) => {
+				self.prompt_edit.task = None;
+				self.prompt_edit.feedback = message.into();
+
+				cx.notify();
+
+				None
+			},
+		}
 	}
 
 	fn prompt_send_eligible(&self, expected: &DesktopPromptEditDraft, checking: bool) -> bool {

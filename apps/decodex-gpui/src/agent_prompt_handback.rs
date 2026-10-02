@@ -55,40 +55,7 @@ impl AgentSurface {
 						return;
 					}
 
-					let result = async {
-						let _ = client
-							.execute(
-								AgentActionDto::AcknowledgePromptEditDraft {
-									work_id: original.work_id.clone(),
-									thread_id: original.thread_id.clone(),
-									receipt_id: original
-										.receipt_id
-										.ok_or("Missing edit receipt")?,
-									review_token: original.review_token.clone(),
-								},
-								IdempotencyKey::new(agent_surface::unique_command())
-									.map_err(|_| "Invalid handback identity")?,
-							)
-							.await;
-						let (status, content) = client
-							.prompt_edit(original.work_id.clone(), original.thread_id.clone())
-							.await
-							.map_err(
-								|_| "Draft handback could not be confirmed. Read its receipt again.",
-							)?;
-
-						if status.phase != PromptEditPhase::Restored {
-							return Err(
-								"Draft handback is not confirmed. Keep the draft and read its receipt again.",
-							);
-						}
-
-						original.recover_receipt(
-							&status,
-							&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
-						)
-					}
-					.await;
+					let result = acknowledge_prompt_handback(&client, &original).await;
 					let _ = completed.send(result);
 				});
 			});
@@ -164,6 +131,37 @@ impl AgentSurface {
 
 		cx.notify();
 	}
+}
+
+async fn acknowledge_prompt_handback(
+	client: &AgentClient,
+	original: &DesktopPromptEditDraft,
+) -> Result<DesktopPromptEditDraft, &'static str> {
+	let _ = client
+		.execute(
+			AgentActionDto::AcknowledgePromptEditDraft {
+				work_id: original.work_id.clone(),
+				thread_id: original.thread_id.clone(),
+				receipt_id: original.receipt_id.ok_or("Missing edit receipt")?,
+				review_token: original.review_token.clone(),
+			},
+			IdempotencyKey::new(agent_surface::unique_command())
+				.map_err(|_| "Invalid handback identity")?,
+		)
+		.await;
+	let (status, content) = client
+		.prompt_edit(original.work_id.clone(), original.thread_id.clone())
+		.await
+		.map_err(|_| "Draft handback could not be confirmed. Read its receipt again.")?;
+
+	if status.phase != PromptEditPhase::Restored {
+		return Err("Draft handback is not confirmed. Keep the draft and read its receipt again.");
+	}
+
+	original.recover_receipt(
+		&status,
+		&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
+	)
 }
 
 async fn load_restored_history(

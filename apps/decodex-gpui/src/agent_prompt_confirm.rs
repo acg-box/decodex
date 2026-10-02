@@ -10,7 +10,7 @@ use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 use crate::shell::{
 	agent_surface,
 	agent_surface::prompt_edit::{
-		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ClientProfile, Context,
 		DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft,
 	},
 };
@@ -50,25 +50,8 @@ impl AgentSurface {
 			return;
 		};
 		let resuming = expected.confirmation_key.is_some();
-		let pending = if resuming {
-			expected.clone()
-		} else {
-			let Ok(mut pending) = expected.begin_confirmation(
-				IdempotencyKey::new(agent_surface::unique_command())
-					.expect("bounded command identity"),
-			) else {
-				return;
-			};
-
-			if let Some(boundary) = boundary {
-				pending.fork = Some(PromptForkIntent {
-					target_work_id: EntityId::new(agent_surface::unique_command())
-						.expect("bounded branch identity"),
-					boundary,
-				});
-			}
-
-			pending
+		let Some(pending) = pending_prompt_confirmation(&expected, boundary, resuming) else {
+			return;
 		};
 		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
 		let expected_execution = execution.clone();
@@ -79,20 +62,12 @@ impl AgentSurface {
 		let (completed, completion) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-confirm-io".into()).spawn(move || {
-				let Ok(runtime) =
-					tokio::runtime::Builder::new_current_thread().enable_all().build()
-				else {
-					let _ = checked.send(Err("Could not start history confirmation"));
-
-					return;
-				};
-
-				runtime.block_on(confirm_worker(
-					AgentClient::new(profile),
+				run_confirmation_worker(
+					profile,
 					worker_draft,
 					execution,
 					(checked, permitted, completed),
-				));
+				);
 			});
 
 		if started.is_err() {
@@ -354,6 +329,53 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 	}
 
 	Ok(())
+}
+
+fn pending_prompt_confirmation(
+	expected: &DesktopPromptEditDraft,
+	boundary: Option<decodex_protocol::PromptForkBoundary>,
+	resuming: bool,
+) -> Option<DesktopPromptEditDraft> {
+	if resuming {
+		Some(expected.clone())
+	} else {
+		let Ok(mut pending) = expected.begin_confirmation(
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity"),
+		) else {
+			return None;
+		};
+
+		if let Some(boundary) = boundary {
+			pending.fork = Some(PromptForkIntent {
+				target_work_id: EntityId::new(agent_surface::unique_command())
+					.expect("bounded branch identity"),
+				boundary,
+			});
+		}
+
+		Some(pending)
+	}
+}
+
+fn run_confirmation_worker(
+	profile: ClientProfile,
+	worker_draft: DesktopPromptEditDraft,
+	execution: AgentExecutionOverrides,
+	channels: (Sender<Result<(), &'static str>>, Receiver<()>, Sender<ConfirmationReply>),
+) {
+	let (checked, permitted, completed) = channels;
+	let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else {
+		let _ = checked.send(Err("Could not start history confirmation"));
+
+		return;
+	};
+
+	runtime.block_on(confirm_worker(
+		AgentClient::new(profile),
+		worker_draft,
+		execution,
+		(checked, permitted, completed),
+	));
 }
 
 async fn confirm_worker(
