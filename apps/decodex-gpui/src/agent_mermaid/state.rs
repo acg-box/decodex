@@ -29,22 +29,7 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 		let mut rest = line;
 
 		if let Some(after) = rest.strip_prefix("state \"") {
-			let (label, after) = after.split_once('"').ok_or(RenderError::Unsupported)?;
-
-			crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
-
-			rest = after.trim_start().strip_prefix("as ").ok_or(RenderError::Unsupported)?;
-
-			let index = graph.node(
-				crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?,
-			)?;
-
-			if !rest.trim().is_empty() || graph.nodes[index].declared {
-				return Err(RenderError::Unsupported);
-			}
-
-			graph.nodes[index].label = label.to_owned();
-			graph.nodes[index].declared = true;
+			declare_state(&mut graph, after)?;
 
 			continue;
 		}
@@ -134,4 +119,23 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 	}
 
 	Ok(graph)
+}
+
+fn declare_state(graph: &mut Graph, after: &str) -> Result<(), RenderError> {
+	let (label, after) = after.split_once('"').ok_or(RenderError::Unsupported)?;
+
+	crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
+
+	let mut rest = after.trim_start().strip_prefix("as ").ok_or(RenderError::Unsupported)?;
+	let index = graph
+		.node(crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?)?;
+
+	if !rest.trim().is_empty() || graph.nodes[index].declared {
+		return Err(RenderError::Unsupported);
+	}
+
+	graph.nodes[index].label = label.to_owned();
+	graph.nodes[index].declared = true;
+
+	Ok(())
 }

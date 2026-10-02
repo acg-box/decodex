@@ -34,10 +34,6 @@ impl Canvas {
 	}
 }
 
-#[expect(
-	clippy::too_many_lines,
-	reason = "retain the reviewed upstream bounded parser and layout for source comparison"
-)]
 pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, RenderError> {
 	let horizontal = matches!(graph.direction, Direction::Right | Direction::Left);
 	let labels = graph
@@ -126,6 +122,51 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 
 	let mut canvas = Canvas { cells: vec![vec![Cell::edge(' '); width]; height], horizontal };
 
+	paint_nodes(&mut canvas, graph, &labels, &starts, &sizes, box_cross)?;
+
+	let endpoints = graph
+		.edges
+		.iter()
+		.enumerate()
+		.map(|(i, edge)| {
+			let offset = |node: usize, port: usize| {
+				starts[node]
+					+ if horizontal { 1 + port * stride } else { labels[node].len() + 1 + port }
+			};
+
+			(offset(edge.from, ports[i].0), offset(edge.to, ports[i].1))
+		})
+		.collect::<Vec<_>>();
+
+	paint_edges(&mut canvas, graph, &endpoints, first_lane, box_cross)?;
+
+	Ok(output::finish(canvas.cells))
+}
+
+pub(super) fn put_text(row: &mut [Cell], mut column: usize, text: &str) -> Result<(), RenderError> {
+	for ch in text.chars() {
+		let width = UnicodeWidthChar::width(ch).ok_or(RenderError::Unsupported)?;
+
+		row[column] = Cell { symbol: ch, role: Role::Text };
+
+		row[column + 1..column + width].fill(Cell { symbol: '\0', role: Role::Text });
+
+		column += width;
+	}
+
+	Ok(())
+}
+
+fn paint_nodes(
+	canvas: &mut Canvas,
+	graph: &Graph,
+	labels: &[Vec<String>],
+	starts: &[usize],
+	sizes: &[usize],
+	box_cross: usize,
+) -> Result<(), RenderError> {
+	let horizontal = canvas.horizontal;
+
 	for (i, lines) in labels.iter().enumerate() {
 		let start = starts[i];
 		let end = start + sizes[i] - 1;
@@ -154,21 +195,19 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 		}
 	}
 
-	let endpoints = graph
-		.edges
-		.iter()
-		.enumerate()
-		.map(|(i, edge)| {
-			let offset = |node: usize, port: usize| {
-				starts[node]
-					+ if horizontal { 1 + port * stride } else { labels[node].len() + 1 + port }
-			};
+	Ok(())
+}
 
-			(offset(edge.from, ports[i].0), offset(edge.to, ports[i].1))
-		})
-		.collect::<Vec<_>>();
-
+fn paint_edges(
+	canvas: &mut Canvas,
+	graph: &Graph,
+	endpoints: &[(usize, usize)],
+	first_lane: usize,
+	box_cross: usize,
+) -> Result<(), RenderError> {
+	let horizontal = canvas.horizontal;
 	// Paint lanes first so every crossing is independent of iteration order.
+
 	for (i, edge) in graph.edges.iter().enumerate() {
 		let (source, target) = endpoints[i];
 
@@ -206,20 +245,6 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 
 			put_text(&mut canvas.cells[y], x, label)?;
 		}
-	}
-
-	Ok(output::finish(canvas.cells))
-}
-
-pub(super) fn put_text(row: &mut [Cell], mut column: usize, text: &str) -> Result<(), RenderError> {
-	for ch in text.chars() {
-		let width = UnicodeWidthChar::width(ch).ok_or(RenderError::Unsupported)?;
-
-		row[column] = Cell { symbol: ch, role: Role::Text };
-
-		row[column + 1..column + width].fill(Cell { symbol: '\0', role: Role::Text });
-
-		column += width;
 	}
 
 	Ok(())

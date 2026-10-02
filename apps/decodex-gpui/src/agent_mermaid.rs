@@ -7,12 +7,12 @@
 //! syntax and outputs exceeding the caller's width return errors, leaving source fallback to
 //! the caller. This crate performs no I/O and does not depend on a Mermaid implementation.
 
-mod draw;
-mod output;
-mod parse;
-mod relations;
-mod sequence;
-mod state;
+#[path = "agent_mermaid/draw.rs"] mod draw;
+#[path = "agent_mermaid/output.rs"] mod output;
+#[path = "agent_mermaid/parse.rs"] mod parse;
+#[path = "agent_mermaid/relations.rs"] mod relations;
+#[path = "agent_mermaid/sequence.rs"] mod sequence;
+#[path = "agent_mermaid/state.rs"] mod state;
 
 pub use output::{Role, Span};
 
@@ -182,13 +182,17 @@ pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, Re
 #[cfg(test)]
 fn assert_snapshot(name: &str, actual: &str) {
 	let snapshot = match name {
-		"branches_merges_and_retry_loop" =>
-			include_str!("snapshots/codex_mermaid__tests__branches_merges_and_retry_loop.snap"),
-		"sequence" => include_str!("snapshots/codex_mermaid__families_tests__sequence.snap"),
-		"state" => include_str!("snapshots/codex_mermaid__families_tests__state.snap"),
-		"class" => include_str!("snapshots/codex_mermaid__families_tests__class.snap"),
-		"er" => include_str!("snapshots/codex_mermaid__families_tests__er.snap"),
-		"LR" => include_str!("snapshots/codex_mermaid__families_tests__LR.snap"),
+		"branches_merges_and_retry_loop" => include_str!(
+			"agent_mermaid/snapshots/codex_mermaid__tests__branches_merges_and_retry_loop.snap"
+		),
+		"sequence" =>
+			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__sequence.snap"),
+		"state" =>
+			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__state.snap"),
+		"class" =>
+			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__class.snap"),
+		"er" => include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__er.snap"),
+		"LR" => include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__LR.snap"),
 		_ => panic!("unknown upstream snapshot"),
 	};
 	let (_, expected) = snapshot.split_once("\n---\n").expect("snapshot metadata");
@@ -197,8 +201,8 @@ fn assert_snapshot(name: &str, actual: &str) {
 }
 
 #[cfg(test)]
-#[path = "families_tests.rs"]
+#[path = "agent_mermaid/families_tests.rs"]
 mod families_tests;
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "agent_mermaid/tests.rs"]
 mod tests;

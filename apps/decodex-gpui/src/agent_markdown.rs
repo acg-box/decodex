@@ -2,8 +2,8 @@
 #[path = "agent_markdown_cache.rs"] mod cache;
 #[path = "agent_clipboard.rs"] mod clipboard;
 #[path = "agent_code_comments.rs"] mod code_comments;
-#[path = "agent_math/mod.rs"] mod math;
-#[path = "agent_mermaid/mod.rs"] mod mermaid;
+#[path = "agent_math.rs"] mod math;
+#[path = "agent_mermaid.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
 
 use std::{
