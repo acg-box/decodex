@@ -83,24 +83,7 @@ impl FixtureFaults {
 			return Some(true);
 		}
 		if request["method"] == "thread/resume" && self.resume_failures > 0 {
-			self.resume_failures -= 1;
-
-			let message = if history["_resume_closing"] == true {
-				format!(
-					"thread {} is closing; retry thread/resume after the thread is closed",
-					request["params"]["threadId"].as_str().unwrap()
-				)
-			} else {
-				"thread private-id already has an active writer".into()
-			};
-			let error = history
-				.get("_resume_error")
-				.cloned()
-				.unwrap_or_else(|| serde_json::json!({"code":-32_600,"message":message}));
-			let mut frame = serde_json::json!({"id":request["id"],"error":error}).to_string();
-
-			frame.push('\n');
-			writer.write_all(frame.as_bytes()).await.unwrap();
+			self.reject_resume(request, history, writer).await;
 
 			return Some(true);
 		}
@@ -196,6 +179,32 @@ impl FixtureFaults {
 		}
 
 		None
+	}
+
+	async fn reject_resume(
+		&mut self,
+		request: &Value,
+		history: &Value,
+		writer: &mut WriteHalf<DuplexStream>,
+	) {
+		self.resume_failures -= 1;
+
+		let message = if history["_resume_closing"] == true {
+			format!(
+				"thread {} is closing; retry thread/resume after the thread is closed",
+				request["params"]["threadId"].as_str().unwrap()
+			)
+		} else {
+			"thread private-id already has an active writer".into()
+		};
+		let error = history
+			.get("_resume_error")
+			.cloned()
+			.unwrap_or_else(|| serde_json::json!({"code":-32_600,"message":message}));
+		let mut frame = serde_json::json!({"id":request["id"],"error":error}).to_string();
+
+		frame.push('\n');
+		writer.write_all(frame.as_bytes()).await.unwrap();
 	}
 }
 
@@ -323,6 +332,25 @@ fn live_review_token(agent: &AgentCoordinator, review: &AgentMisalignment) -> St
 		agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
 
 	misalignment::review_token(review, &guard).unwrap()
+}
+
+fn fixture_items_page(request: &Value, history: &Value) -> Value {
+	let id = request["params"]["threadId"].as_str().unwrap();
+	let turn_id = &request["params"]["turnId"];
+	let turn = history[id]["thread"]["turns"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|turn| turn["id"] == *turn_id)
+		.unwrap();
+	let entries: Vec<_> = turn["items"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.map(|item| serde_json::json!({"turnId":turn_id,"item":item}))
+		.collect();
+
+	serde_json::json!({"data":entries,"nextCursor":null})
 }
 
 #[tokio::test]
@@ -855,24 +883,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 
 				serde_json::json!({"data":turns,"nextCursor":null})
 			},
-			Some("thread/items/list") => {
-				let id = request["params"]["threadId"].as_str().unwrap();
-				let turn_id = &request["params"]["turnId"];
-				let turn = history[id]["thread"]["turns"]
-					.as_array()
-					.unwrap()
-					.iter()
-					.find(|turn| turn["id"] == *turn_id)
-					.unwrap();
-				let entries: Vec<_> = turn["items"]
-					.as_array()
-					.unwrap()
-					.iter()
-					.map(|item| serde_json::json!({"turnId":turn_id,"item":item}))
-					.collect();
-
-				serde_json::json!({"data":entries,"nextCursor":null})
-			},
+			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
 				let configured = settings.get(id).cloned().unwrap_or_else(

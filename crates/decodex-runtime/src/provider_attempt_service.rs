@@ -852,6 +852,44 @@ mod tests {
 		assert!(matches!(result, Err(super::ProviderAttemptServiceError::AuthorityConflict)));
 	}
 
+	fn persisted_resume_plan(
+		conversation_id: &ConversationId,
+		runtime_session_id: &RuntimeSessionId,
+		turn_id: &TurnId,
+		opaque_thread: &str,
+	) -> ContinuationPlanEffect {
+		ContinuationPlanEffect {
+			plan: ContinuationPlan {
+				plan_id: "4a000000-0000-4000-8000-000000000001".to_owned(),
+				operation_id: "4d000000-0000-4000-8000-000000000001".to_owned(),
+				routing_decision_id: "4b000000-0000-4000-8000-000000000001".to_owned(),
+				consumer: ExecutionConsumer::ConversationTurn {
+					conversation_id: conversation_id.clone(),
+					conversation_revision: 1,
+					source_runtime_session_id: Some(runtime_session_id.clone()),
+					source_runtime_session_revision: Some(4),
+					turn_id: turn_id.clone(),
+				},
+				conversation_id: conversation_id.clone(),
+				source_runtime_session_id: runtime_session_id.clone(),
+				source_runtime_session_revision: 4,
+				selected_account_id: AccountId::new("46000000-0000-4000-8000-000000000001")
+					.expect("account identity"),
+				kind: decodex_core::ContinuationPlanKind::SameThread,
+				codex_thread_id: Some(opaque_thread.to_owned()),
+				fallback_context_pack_id: None,
+				fallback_runtime_session_id: None,
+				same_thread_evidence: None,
+				replay_permitted: false,
+				dispatch_enabled: false,
+				planned_at_micros: 1,
+			},
+			runtime_session: None,
+			fallback_context_pack: None,
+			uncertain_predecessor_attempt_id: None,
+		}
+	}
+
 	#[tokio::test]
 	async fn reconstructed_service_executes_real_opaque_resume_preparation_once() {
 		let directory = tempfile::tempdir().expect("temporary product root");
@@ -886,36 +924,8 @@ mod tests {
 			3,
 		);
 		let opaque_thread = "provider/thread?after#restart%opaque";
-		let plan = ContinuationPlanEffect {
-			plan: ContinuationPlan {
-				plan_id: "4a000000-0000-4000-8000-000000000001".to_owned(),
-				operation_id: "4d000000-0000-4000-8000-000000000001".to_owned(),
-				routing_decision_id: "4b000000-0000-4000-8000-000000000001".to_owned(),
-				consumer: ExecutionConsumer::ConversationTurn {
-					conversation_id: conversation_id.clone(),
-					conversation_revision: 1,
-					source_runtime_session_id: Some(runtime_session_id.clone()),
-					source_runtime_session_revision: Some(4),
-					turn_id: turn_id.clone(),
-				},
-				conversation_id: conversation_id.clone(),
-				source_runtime_session_id: runtime_session_id.clone(),
-				source_runtime_session_revision: 4,
-				selected_account_id: AccountId::new("46000000-0000-4000-8000-000000000001")
-					.expect("account identity"),
-				kind: decodex_core::ContinuationPlanKind::SameThread,
-				codex_thread_id: Some(opaque_thread.to_owned()),
-				fallback_context_pack_id: None,
-				fallback_runtime_session_id: None,
-				same_thread_evidence: None,
-				replay_permitted: false,
-				dispatch_enabled: false,
-				planned_at_micros: 1,
-			},
-			runtime_session: None,
-			fallback_context_pack: None,
-			uncertain_predecessor_attempt_id: None,
-		};
+		let plan =
+			persisted_resume_plan(&conversation_id, &runtime_session_id, &turn_id, opaque_thread);
 		let preparation = ProviderAttemptPreparation::new(
 			ProviderAttemptId::new("50000000-0000-4000-8000-000000000001")
 				.expect("attempt identity"),

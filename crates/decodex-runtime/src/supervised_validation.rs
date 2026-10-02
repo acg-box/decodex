@@ -391,47 +391,8 @@ where
 	let _stderr_reader = spawn_capture(stderr, CaptureStream::Stderr, capture_sender);
 	let mut capture =
 		CaptureState::new(capture_receiver, authority.stdout_limit, authority.stderr_limit);
-	let mut forced = None;
-	let recorded_status = loop {
-		// Observe leader completion first. Once recorded, no later supervisor event may replace it.
-		match child.try_wait() {
-			Ok(Some(status)) => break Some(status),
-			Ok(None) => {},
-			Err(_) => {
-				forced = Some(ValidationTermination::SupervisionLost);
-
-				break None;
-			},
-		}
-
-		capture.drain_bounded(authority.deadline);
-
-		let now = Instant::now();
-		let supervisor_event = if capture.output_exceeded {
-			Some(ValidationTermination::OutputLimitExceeded)
-		} else if now >= authority.deadline {
-			Some(ValidationTermination::TimedOut)
-		} else if cancellation.is_cancelled() {
-			Some(ValidationTermination::Cancelled)
-		} else {
-			None
-		};
-
-		if let Some(supervisor_event) = supervisor_event {
-			// Close the observation gap between the iteration's first poll and committing a
-			// forced outcome. Any exit observed here has already happened and remains
-			// authoritative.
-			match child.try_wait() {
-				Ok(Some(status)) => break Some(status),
-				Ok(None) => forced = Some(supervisor_event),
-				Err(_) => forced = Some(ValidationTermination::SupervisionLost),
-			}
-
-			break None;
-		}
-
-		sleep_bounded(authority.deadline);
-	};
+	let (recorded_status, forced) =
+		observe_command_termination(&mut child, &mut capture, authority, cancellation);
 	// The command deadline decides the validation outcome. Once that decision is made, the
 	// supervisor gets a separate fixed budget to prove that the complete process group is gone
 	// and to collect the resulting capture EOFs.
@@ -480,6 +441,57 @@ where
 		stdout: capture.stdout,
 		stderr: capture.stderr,
 	})
+}
+
+fn observe_command_termination(
+	child: &mut Child,
+	capture: &mut CaptureState,
+	authority: &ValidationCommandAuthority,
+	cancellation: &ValidationCancellation,
+) -> (Option<ExitStatus>, Option<ValidationTermination>) {
+	let mut forced = None;
+	let recorded_status = loop {
+		// Observe leader completion first. Once recorded, no later supervisor event may replace it.
+		match child.try_wait() {
+			Ok(Some(status)) => break Some(status),
+			Ok(None) => {},
+			Err(_) => {
+				forced = Some(ValidationTermination::SupervisionLost);
+
+				break None;
+			},
+		}
+
+		capture.drain_bounded(authority.deadline);
+
+		let now = Instant::now();
+		let supervisor_event = if capture.output_exceeded {
+			Some(ValidationTermination::OutputLimitExceeded)
+		} else if now >= authority.deadline {
+			Some(ValidationTermination::TimedOut)
+		} else if cancellation.is_cancelled() {
+			Some(ValidationTermination::Cancelled)
+		} else {
+			None
+		};
+
+		if let Some(supervisor_event) = supervisor_event {
+			// Close the observation gap between the iteration's first poll and committing a
+			// forced outcome. Any exit observed here has already happened and remains
+			// authoritative.
+			match child.try_wait() {
+				Ok(Some(status)) => break Some(status),
+				Ok(None) => forced = Some(supervisor_event),
+				Err(_) => forced = Some(ValidationTermination::SupervisionLost),
+			}
+
+			break None;
+		}
+
+		sleep_bounded(authority.deadline);
+	};
+
+	(recorded_status, forced)
 }
 
 fn pre_spawn_rejection(
