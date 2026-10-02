@@ -1,6 +1,8 @@
 //! Exercise the public branch commands against the installed native app-server.
 use std::{path::Path, sync::atomic::AtomicUsize};
 
+use serde_json::Value;
+
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
 	self, AgentActionDto, AgentClient, EntityId, Ordering, SqliteStore, WireText,
 };
@@ -83,23 +85,7 @@ pub(super) async fn check(
 
 		targets.push(fork.clone());
 
-		let turns = native.thread_turns_since(fork.as_str(), None).await.expect("read fork prefix");
-
-		assert_eq!(
-			turns.len(),
-			usize::from(boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
-		);
-		assert_eq!(
-			native.thread_turns_since(thread, None).await.expect("reread unchanged source"),
-			source
-		);
-
-		let metadata = native
-			.thread_read(serde_json::json!({"threadId":fork.as_str()}))
-			.await
-			.expect("read fork lineage");
-
-		assert_eq!(metadata["thread"]["forkedFromId"], thread);
+		assert_fork_lineage(native, thread, &fork, boundary, &source).await;
 
 		if boundary == PromptForkBoundary::BeforeInput {
 			let (status, restored) = client
@@ -138,6 +124,32 @@ pub(super) async fn check(
 		3,
 		"retries must not reserve extra work"
 	);
+}
+
+async fn assert_fork_lineage(
+	native: &AppServerClient,
+	thread: &str,
+	fork: &WireText,
+	boundary: PromptForkBoundary,
+	source: &[Value],
+) {
+	let turns = native.thread_turns_since(fork.as_str(), None).await.expect("read fork prefix");
+
+	assert_eq!(
+		turns.len(),
+		usize::from(boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
+	);
+	assert_eq!(
+		native.thread_turns_since(thread, None).await.expect("reread unchanged source"),
+		source
+	);
+
+	let metadata = native
+		.thread_read(serde_json::json!({"threadId":fork.as_str()}))
+		.await
+		.expect("read fork lineage");
+
+	assert_eq!(metadata["thread"]["forkedFromId"], thread);
 }
 
 async fn prepare_review(
