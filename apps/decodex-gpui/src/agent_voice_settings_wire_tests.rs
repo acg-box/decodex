@@ -10,8 +10,8 @@ use tokio_tungstenite::tungstenite::Message;
 #[cfg(test)] use crate::shell::agent_surface::voice_settings::{ClientProfile, Render, Window};
 use crate::shell::agent_surface::{
 	voice_settings::{
-		AgentActionDto, AgentSurface, ComposerInput, Context, Entity, EntityId, IntoElement,
-		NextCall, State, WireText,
+		AgentActionDto, AgentSurface, AgentVoiceSettingsResult, ComposerInput, Context, Entity,
+		EntityId, IntoElement, NextCall, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -70,7 +70,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 	surface.read_with(visual,|s,_| {
         assert!(s.voice_settings.task.is_none());
         assert!(s.voice_settings.feedback.contains("could not be confirmed"));
-        assert!(matches!(&s.voice_settings.state,Some(State::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="maple"&&p.as_str()=="juniper"));
+        assert!(matches!(&s.voice_settings.state,Some(AgentVoiceSettingsResult::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="maple"&&p.as_str()=="juniper"));
         assert!(s.voice.is_none());
     });
 }
@@ -206,7 +206,7 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 
 		assert_eq!(work_id.as_str(), "root");
 
-		let state = State::Available {
+		let state = AgentVoiceSettingsResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 			voices: vec![WireText::new("juniper").unwrap(), WireText::new("maple").unwrap()],

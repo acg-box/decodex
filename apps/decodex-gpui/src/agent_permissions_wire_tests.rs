@@ -9,9 +9,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	permissions::{
-		self, AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult,
-		AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, ClientProfile, Context, Entity,
-		EntityId, IntoElement, Outcome, Render, State, Window, WireText,
+		self, AgentActionDto, AgentDispatchStateDto, AgentPermissionOutcome, AgentPermissionState,
+		AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
+		ClientProfile, Context, Entity, EntityId, IntoElement, Render, Window, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -33,8 +33,8 @@ fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
 	wire_test_support::fixture(serve)
 }
 
-fn available() -> State {
-	State::Available {
+fn available() -> AgentPermissionState {
+	AgentPermissionState::Available {
 		work_id: EntityId::new("root").unwrap(),
 		thread_id: EntityId::new("thread").unwrap(),
 		review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -138,7 +138,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 		assert!(s.permission_profiles.feedback.contains("could not be confirmed"));
 		assert!(matches!(
 			s.permission_profiles.state,
-			Some(State::Pending { state: Outcome::Unknown, .. })
+			Some(AgentPermissionState::Pending { state: AgentPermissionOutcome::Unknown, .. })
 		));
 	});
 	visual.update(|w, cx| {
@@ -209,7 +209,7 @@ fn running_permissions_offer_both_named_and_builtin_profiles(cx: &mut TestAppCon
 
 			let mut state = available();
 
-			if let State::Available { profiles, .. } = &mut state {
+			if let AgentPermissionState::Available { profiles, .. } = &mut state {
 				profiles[0].can_select = true;
 				profiles[1].id = WireText::new(":workspace").expect("builtin");
 				profiles[1].allowed = true;
@@ -303,10 +303,16 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 				assert!(s.permission_profiles.feedback.contains("could not be confirmed"));
 				assert!(matches!(
 					s.permission_profiles.state,
-					Some(State::Pending { state: Outcome::Unknown, .. })
+					Some(AgentPermissionState::Pending {
+						state: AgentPermissionOutcome::Unknown,
+						..
+					})
 				));
 			} else {
-				assert!(matches!(s.permission_profiles.state, Some(State::Available { .. })));
+				assert!(matches!(
+					s.permission_profiles.state,
+					Some(AgentPermissionState::Available { .. })
+				));
 			}
 		});
 	}
@@ -379,7 +385,10 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 		let state = if index == 0 {
 			available()
 		} else {
-			State::Pending { profile_id: WireText::new("scoped").unwrap(), state: Outcome::Unknown }
+			AgentPermissionState::Pending {
+				profile_id: WireText::new("scoped").unwrap(),
+				state: AgentPermissionOutcome::Unknown,
+			}
 		};
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,

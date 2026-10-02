@@ -14,7 +14,7 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::shell::agent_surface::recap::automatic::{
 	self, AgentActionDto, AgentDispatchStateDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
 	ClientProfile, Context, DELAY, Duration, Entity, EntityId, Instant, IntoElement, LoadState,
-	Phase, Render, TaskRecapStatus, Window, WireText,
+	Render, TaskRecapPhase, TaskRecapStatus, Window, WireText,
 };
 use decodex_protocol::{
 	AgentTimelineContent, AgentTimelinePage, AgentTimelineResult, CURRENT_VERSION, ClientMessage,
@@ -167,7 +167,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 		let pending = surface.update(visual, |s, cx| {
 			s.poll_automatic_recap(true, cx);
 
-			s.recap.state.as_ref().is_some_and(|v| v.phase == Phase::Pending)
+			s.recap.state.as_ref().is_some_and(|v| v.phase == TaskRecapPhase::Pending)
 		});
 
 		if pending {
@@ -337,7 +337,7 @@ async fn serve_generation(listener: &tokio::net::UnixListener) -> usize {
 					work_id: EntityId::new("work").unwrap(),
 					thread_id: Some(WireText::new("thread").unwrap()),
 					request_id: request.clone(),
-					phase: Phase::Pending,
+					phase: TaskRecapPhase::Pending,
 					recap: None,
 				};
 				let result = ServerMessage::QueryResult(QueryResultEnvelope {

@@ -5,8 +5,8 @@ use gpui::{AnyElement, AppContext as _, IntoElement, ParentElement, PathPromptOp
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::native_goal::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ComposerInput, Context,
-	Entity, EntityId, IdempotencyKey, Result, WireText,
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentNativeGoalResult, AgentSurface,
+	ComposerInput, Context, Entity, EntityId, IdempotencyKey, WireText,
 };
 use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit};
 
@@ -22,7 +22,7 @@ pub(super) struct Editor {
 impl AgentSurface {
 	fn begin_goal_edit(&mut self, cx: &mut Context<Self>) {
 		let Some(target) = self.native_goal_target() else { return };
-		let Some(Result::Available { review_token: Some(review), goal, .. }) =
+		let Some(AgentNativeGoalResult::Available { review_token: Some(review), goal, .. }) =
 			&self.native_goal.result
 		else {
 			return;
@@ -59,7 +59,8 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
-		let Some(Result::Available { review_token: Some(_), goal, .. }) = &self.native_goal.result
+		let Some(AgentNativeGoalResult::Available { review_token: Some(_), goal, .. }) =
+			&self.native_goal.result
 		else {
 			return gpui::div().into_any_element();
 		};
@@ -238,7 +239,8 @@ impl AgentSurface {
 		status: decodex_protocol::AgentNativeGoalStatus,
 		cx: &mut Context<Self>,
 	) {
-		let Some(Result::Available { review_token: Some(review), .. }) = &self.native_goal.result
+		let Some(AgentNativeGoalResult::Available { review_token: Some(review), .. }) =
+			&self.native_goal.result
 		else {
 			return;
 		};
@@ -288,8 +290,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = runtime.block_on(client.execute(action, key));
-			let read =
-				runtime.block_on(client.native_goal(work, thread)).unwrap_or(Result::Unavailable);
+			let read = runtime
+				.block_on(client.native_goal(work, thread))
+				.unwrap_or(AgentNativeGoalResult::Unavailable);
 
 			Some((outcome, read))
 		});

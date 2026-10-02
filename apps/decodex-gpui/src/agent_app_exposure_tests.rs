@@ -8,7 +8,8 @@ use crate::shell::agent_surface::app_exposure::{
 	Render, Window,
 };
 use crate::shell::agent_surface::app_exposure::{
-	AgentSnapshotDto, AgentSurface, Context, EntityId, IntoElement, State, Surface, WireText,
+	AgentAppExposureResult, AgentSnapshotDto, AgentSurface, AgentToolExposureSurface, Context,
+	EntityId, IntoElement, WireText,
 };
 use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
@@ -62,7 +63,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 
 		s.integrations = Some(("root".into(), None));
 		s.app_exposure.owner = Some(("root".into(), "calendar".into()));
-		s.app_exposure.state = Some(State::Available {
+		s.app_exposure.state = Some(AgentAppExposureResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			connector_id: WireText::new("calendar").unwrap(),
 			review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -82,7 +83,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 
 	visual.simulate_click(button.center(), Default::default());
 	surface.read_with(visual, |s, _| {
-		assert_eq!(s.app_exposure.draft, Some(vec![Surface::Deferred]));
+		assert_eq!(s.app_exposure.draft, Some(vec![AgentToolExposureSurface::Deferred]));
 		assert!(s.app_exposure.task.is_none(), "editing does not send a write");
 	});
 	visual.update(|w, cx| {
@@ -110,7 +111,8 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 	assert!(visual.debug_bounds("app-exposure-save").is_none());
 
 	surface.update(visual, |s, _| {
-		if let Some(State::Available { effective, .. }) = &mut s.app_exposure.state {
+		if let Some(AgentAppExposureResult::Available { effective, .. }) = &mut s.app_exposure.state
+		{
 			*effective = Some(vec!["future-surface".into()]);
 		}
 	});

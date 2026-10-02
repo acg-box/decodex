@@ -16,13 +16,13 @@ use crate::shell::agent_surface::{
 	Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement, ParentElement, Styled,
 	Task, WireText, mcp_forms,
 };
-use decodex_protocol::{AgentAppExposureResult as State, AgentToolExposureSurface as Surface};
+use decodex_protocol::{AgentAppExposureResult, AgentToolExposureSurface};
 
 #[derive(Default)]
 pub(super) struct Panel {
 	owner: Option<(String, String)>,
-	state: Option<State>,
-	draft: Option<Vec<Surface>>,
+	state: Option<AgentAppExposureResult>,
+	draft: Option<Vec<AgentToolExposureSurface>>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
@@ -81,7 +81,7 @@ impl AgentSurface {
 			return;
 		};
 		let action = if save {
-			let Some(State::Available {
+			let Some(AgentAppExposureResult::Available {
 				work_id: actual,
 				connector_id: app,
 				review_token,
@@ -128,7 +128,7 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state = runtime
 				.block_on(client.app_tool_exposure(work_id, connector_id))
-				.unwrap_or(State::Unavailable);
+				.unwrap_or(AgentAppExposureResult::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -143,7 +143,7 @@ impl AgentSurface {
 
     if s.selected.as_ref()!=Some(&work) || s.snapshot.as_ref().is_none_or(|v|v.runtime_source.as_ref()!=Some(&source) || !v.work_items.iter().any(|w|w.id==work && w.codex_thread_id.as_ref()==Some(&thread))) {s.reset_app_exposure();cx.notify();return;}
 
-    let (outcome,state)=result.unwrap_or((None,State::Unavailable));
+    let (outcome,state)=result.unwrap_or((None,AgentAppExposureResult::Unavailable));
 
     s.app_exposure.feedback=match outcome {
      Some(Ok(AgentCommandResponse::Accepted {..}))=>"Preference saved. Current settings are shown below; running tools may retain their previous configuration.",
@@ -153,7 +153,7 @@ impl AgentSurface {
      None=>"This setting affects the App across tasks using this native user configuration.",
     }.into();
 
-    if let State::Available {preference,..}=&state {s.app_exposure.draft=known(preference).flatten();}
+    if let AgentAppExposureResult::Available {preference,..}=&state {s.app_exposure.draft=known(preference).flatten();}
 
     s.app_exposure.state=Some(state);cx.notify();
    });
@@ -188,8 +188,13 @@ impl AgentSurface {
 			move |s, cx| s.update_app_exposure(&owner, &app, false, cx),
 		));
 
-		let Some(State::Available { effective, preference, can_update, last_outcome, .. }) =
-			&self.app_exposure.state
+		let Some(AgentAppExposureResult::Available {
+			effective,
+			preference,
+			can_update,
+			last_outcome,
+			..
+		}) = &self.app_exposure.state
 		else {
 			return panel.child("Settings are unavailable or still loading.").into_any_element();
 		};
@@ -250,9 +255,9 @@ impl AgentSurface {
 		));
 
 		for (index, surface, label) in [
-			(0, Surface::Direct, "Hide from initial tools"),
-			(1, Surface::Deferred, "Hide from tool search"),
-			(2, Surface::CodeMode, "Hide from Code Mode"),
+			(0, AgentToolExposureSurface::Direct, "Hide from initial tools"),
+			(1, AgentToolExposureSurface::Deferred, "Hide from tool search"),
+			(2, AgentToolExposureSurface::CodeMode, "Hide from Code Mode"),
 		] {
 			let inherited = known(effective).flatten().unwrap_or_default();
 			let selected =
@@ -299,15 +304,15 @@ impl AgentSurface {
 	}
 }
 
-fn known(values: &Option<Vec<String>>) -> Option<Option<Vec<Surface>>> {
+fn known(values: &Option<Vec<String>>) -> Option<Option<Vec<AgentToolExposureSurface>>> {
 	match values {
 		None => Some(None),
 		Some(values) => values
 			.iter()
 			.map(|v| match v.as_str() {
-				"code_mode" => Some(Surface::CodeMode),
-				"deferred" => Some(Surface::Deferred),
-				"direct" => Some(Surface::Direct),
+				"code_mode" => Some(AgentToolExposureSurface::CodeMode),
+				"deferred" => Some(AgentToolExposureSurface::Deferred),
+				"direct" => Some(AgentToolExposureSurface::Direct),
 				_ => None,
 			})
 			.collect::<Option<Vec<_>>>()

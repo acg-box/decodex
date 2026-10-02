@@ -15,8 +15,8 @@ use crate::shell::agent_surface::model_settings::{
 };
 use crate::shell::agent_surface::{
 	model_settings::{
-		self, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId, IntoElement,
-		State,
+		self, AgentModelSettingsResult, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context,
+		EntityId, IntoElement,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -108,15 +108,15 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut T
 				},
 				1 => assert!(matches!(
 					state,
-					State::Available {
+					AgentModelSettingsResult::Available {
 						model: None,
 						reasoning_effort: None,
 						model_provider: None,
 						..
 					}
 				)),
-				2 => assert_eq!(*state, State::NotReported),
-				_ => assert_eq!(*state, State::Unavailable),
+				2 => assert_eq!(*state, AgentModelSettingsResult::NotReported),
+				_ => assert_eq!(*state, AgentModelSettingsResult::Unavailable),
 			}
 		});
 	}
@@ -134,7 +134,9 @@ fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut TestAppCo
 
 			s.model_settings.work = Some("root".into());
 
-			s.model_settings.observations.insert("root".into(), State::NotReported);
+			s.model_settings
+				.observations
+				.insert("root".into(), AgentModelSettingsResult::NotReported);
 
 			let before = s.model_settings.epoch;
 			let mut next = snapshot();
@@ -168,7 +170,7 @@ fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut TestAppContext)
 
 		let version = s.draft_profiles.execution.revision();
 		let input_at_read = s.model.read(cx).content().to_owned();
-		let observation = State::Available {
+		let observation = AgentModelSettingsResult::Available {
 			work_id: EntityId::new("agent").unwrap(),
 			thread_id: EntityId::new("native-thread").unwrap(),
 			account_id: EntityId::new("account").unwrap(),
@@ -216,7 +218,7 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(cx: &mu
 
 		s.model_settings.observations.insert(
 			"agent".into(),
-			State::Available {
+			AgentModelSettingsResult::Available {
 				work_id: EntityId::new("agent").unwrap(),
 				thread_id: EntityId::new("native-thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
@@ -273,7 +275,7 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut
 
 		s.model_settings.observations.insert(
 			"agent".into(),
-			State::Available {
+			AgentModelSettingsResult::Available {
 				work_id: EntityId::new("agent").unwrap(),
 				thread_id: EntityId::new("native-thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
@@ -287,7 +289,10 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut
 
 		s.read_model_settings("worker", cx);
 
-		assert_eq!(s.model_settings.observations.get("worker"), Some(&State::Unavailable));
+		assert_eq!(
+			s.model_settings.observations.get("worker"),
+			Some(&AgentModelSettingsResult::Unavailable)
+		);
 		assert_eq!(s.composer_model_label(cx), "composer-model");
 		assert_eq!(s.composer_effort_value(), "medium");
 		assert_eq!(s.model_settings.observations.len(), 2);
@@ -302,10 +307,13 @@ fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
 
 	surface.update(cx, |s, cx| {
 		s.visual_workspace_fixture(cx);
-		s.model_settings.observations.insert("agent".into(), State::NotReported);
+		s.model_settings.observations.insert("agent".into(), AgentModelSettingsResult::NotReported);
 		s.clear_activity_detail();
 
-		assert_eq!(s.model_settings.observations.get("agent"), Some(&State::NotReported));
+		assert_eq!(
+			s.model_settings.observations.get("agent"),
+			Some(&AgentModelSettingsResult::NotReported)
+		);
 
 		let before = s.model_settings.epoch;
 
@@ -317,7 +325,7 @@ fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
 		);
 		assert_ne!(s.model_settings.epoch, before, "late reads must be discarded");
 
-		s.model_settings.observations.insert("agent".into(), State::NotReported);
+		s.model_settings.observations.insert("agent".into(), AgentModelSettingsResult::NotReported);
 
 		let before = s.model_settings.epoch;
 
@@ -396,7 +404,7 @@ fn missing_native_binding_reports_unavailable_without_starting_a_read(cx: &mut T
 			assert!(s.model_settings.task.is_none(), "{missing}");
 			assert_eq!(
 				s.model_settings.observations.get("root"),
-				Some(&State::Unavailable),
+				Some(&AgentModelSettingsResult::Unavailable),
 				"missing {missing} must not leave the panel reading indefinitely"
 			);
 		});
@@ -419,9 +427,9 @@ async fn serve(listener: UnixListener) {
 		assert_eq!(work_id.as_str(), "root");
 
 		let state = if index == 2 {
-			State::NotReported
+			AgentModelSettingsResult::NotReported
 		} else {
-			State::Available {
+			AgentModelSettingsResult::Available {
 				work_id: EntityId::new(if index == 3 { "foreign" } else { "root" }).unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),

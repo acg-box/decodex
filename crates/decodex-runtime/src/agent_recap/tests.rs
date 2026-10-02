@@ -2,7 +2,9 @@
 use tokio::io::{self, DuplexStream};
 
 use crate::{
-	agent_recap::{self, EntityId, Phase, Recaps, ServerEvent, Source, TaskRecap, mpsc::Receiver},
+	agent_recap::{
+		self, EntityId, Recaps, ServerEvent, Source, TaskRecap, TaskRecapPhase, mpsc::Receiver,
+	},
 	agent_usage_estimate::SourceKey,
 };
 use decodex_codex::app_server_client::AppServerClient;
@@ -82,7 +84,7 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
-		Phase::Cancelled
+		TaskRecapPhase::Cancelled
 	);
 
 	let _second = recaps.start(copy(&source), "two", Default::default()).expect("cleanup finished");
@@ -91,14 +93,14 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
-		Phase::Pending
+		TaskRecapPhase::Pending
 	);
 
 	recaps.finish("work", "two", None, Some(result()));
 
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
-		Phase::Ready
+		TaskRecapPhase::Ready
 	);
 
 	let mut changed = copy(&source);
@@ -107,7 +109,7 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 
 	let state = recaps.status(EntityId::new("work").expect("id"), Some(&changed));
 
-	assert_eq!(state.phase, Phase::Cancelled);
+	assert_eq!(state.phase, TaskRecapPhase::Cancelled);
 	assert!(state.recap.is_none());
 	assert!(state.is_valid());
 }
@@ -148,7 +150,7 @@ async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 	let restarted = Recaps::default();
 	let state = restarted.status(EntityId::new("work").expect("id"), Some(&source));
 
-	assert_eq!(state.phase, Phase::Idle);
+	assert_eq!(state.phase, TaskRecapPhase::Idle);
 	assert!(state.recap.is_none());
 	assert!(state.is_valid());
 }
@@ -166,7 +168,7 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 	// The service has not routed this event. Its readonly query still rejects the stale result.
 	let status = recaps.status(EntityId::new("work").expect("id"), Some(&source));
 
-	assert_eq!(status.phase, Phase::Cancelled);
+	assert_eq!(status.phase, TaskRecapPhase::Cancelled);
 	assert!(status.recap.is_none());
 	assert!(!*cancelled.borrow(), "query did not send a cancellation effect");
 }
@@ -186,9 +188,9 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 		recaps.finish("work", "voice-recap", None, Some(result()));
 
 		for (thread, text, expected) in [
-			("another-thread", "Spoken correction", Phase::Ready),
-			("native", "", Phase::Ready),
-			("native", "Spoken correction", Phase::Cancelled),
+			("another-thread", "Spoken correction", TaskRecapPhase::Ready),
+			("native", "", TaskRecapPhase::Ready),
+			("native", "Spoken correction", TaskRecapPhase::Cancelled),
 		] {
 			let mut params = serde_json::json!({"threadId":thread,"role":role});
 

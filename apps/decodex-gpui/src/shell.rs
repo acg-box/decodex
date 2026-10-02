@@ -91,7 +91,7 @@ use decodex_protocol::{
 	ConversationRecoveryAction, ConversationState, ConversationSummary, DesktopOrdinaryDraft,
 	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, EntityRevision, HistoryItemDto,
 	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
-	NativeProcessDiagnostics, NativeProcessDiagnostics as Native, WireText,
+	NativeProcessDiagnostics, WireText,
 };
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
@@ -5445,17 +5445,21 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 
 	match value {
 		None => "No native process sample yet.".into(),
-		Some(Native::Inactive) => "No active Agent process. Refresh does not start one.".into(),
-		Some(Native::Unsupported) =>
+		Some(NativeProcessDiagnostics::Inactive) =>
+			"No active Agent process. Refresh does not start one.".into(),
+		Some(NativeProcessDiagnostics::Unsupported) =>
 			"This Codex version does not provide process diagnostics.".into(),
-		Some(Native::Unavailable) =>
+		Some(NativeProcessDiagnostics::Unavailable) =>
 			"The process sample is unavailable. Refresh to try again.".into(),
-		Some(Native::Available { process_id, resident_memory_bytes, physical_footprint_bytes }) =>
-			format!(
-				"PID {process_id} · Resident: {} · Physical footprint: {}",
-				memory(*resident_memory_bytes),
-				memory(*physical_footprint_bytes)
-			),
+		Some(NativeProcessDiagnostics::Available {
+			process_id,
+			resident_memory_bytes,
+			physical_footprint_bytes,
+		}) => format!(
+			"PID {process_id} · Resident: {} · Physical footprint: {}",
+			memory(*resident_memory_bytes),
+			memory(*physical_footprint_bytes)
+		),
 	}
 }
 

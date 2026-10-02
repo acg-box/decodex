@@ -15,8 +15,8 @@ use crate::shell::agent_surface::hooks::{
 };
 use crate::shell::agent_surface::{
 	hooks::{
-		AgentActionDto, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Change, Context,
-		EntityId, IntoElement, State, WireText,
+		AgentActionDto, AgentHookChange, AgentHookSettingsState, AgentSnapshotDto, AgentSurface,
+		AgentWorkItemDto, Context, EntityId, IntoElement, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -38,8 +38,8 @@ fn fixture(restore: bool) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentAction
 	wire_test_support::fixture(move |listener| serve(listener, restore))
 }
 
-fn available() -> State {
-	State::Available {
+fn available() -> AgentHookSettingsState {
+	AgentHookSettingsState::Available {
 		work_id: EntityId::new("root").unwrap(),
 		thread_id: EntityId::new("thread").unwrap(),
 		review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -134,7 +134,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 			assert!(s.hook_settings.feedback.contains("could not be confirmed"));
 			assert!(matches!(
 				s.hook_settings.state,
-				Some(State::Available { can_update: false, .. })
+				Some(AgentHookSettingsState::Available { can_update: false, .. })
 			));
 		});
 		visual.update(|w, cx| {
@@ -209,7 +209,7 @@ fn child_navigation_and_disconnect_cannot_edit_parent_hooks(cx: &mut TestAppCont
 
 		s.update_hook_settings(
 			"root".into(),
-			Some((WireText::new("fixture-hook").unwrap(), Change::Trust)),
+			Some((WireText::new("fixture-hook").unwrap(), AgentHookChange::Trust)),
 			cx,
 		);
 
@@ -254,7 +254,9 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut Tes
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 
 	surface.update(visual, |s, cx| {
-		if let Some(State::Available { can_update, .. }) = &mut s.hook_settings.state {
+		if let Some(AgentHookSettingsState::Available { can_update, .. }) =
+			&mut s.hook_settings.state
+		{
 			*can_update = false;
 		}
 
@@ -278,14 +280,14 @@ fn managed_and_unknown_hooks_cannot_offer_consent_actions(cx: &mut TestAppContex
 		for (managed, status) in [(true, "trusted"), (false, "managed"), (false, "future-policy")] {
 			let mut state = available();
 
-			if let State::Available { hooks, .. } = &mut state {
+			if let AgentHookSettingsState::Available { hooks, .. } = &mut state {
 				hooks[0].managed = managed;
 				hooks[0].trust_status = status.into();
 			}
 
 			s.hook_settings.state = Some(state);
 
-			for change in [Change::Trust, Change::Enabled(false)] {
+			for change in [AgentHookChange::Trust, AgentHookChange::Enabled(false)] {
 				assert!(
 					s.hook_setting_action(
 						&EntityId::new("root").unwrap(),
@@ -311,7 +313,8 @@ fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut TestAppContext) 
 		s.profile = Some(profile);
 	});
 
-	for selection in [None, Some((WireText::new("fixture-hook").unwrap(), Change::Trust))] {
+	for selection in [None, Some((WireText::new("fixture-hook").unwrap(), AgentHookChange::Trust))]
+	{
 		let saving = selection.is_some();
 
 		surface.update(cx, |s, cx| {
@@ -331,7 +334,10 @@ fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut TestAppContext) 
 				s.hook_settings.task.is_none(),
 				"refresh must not strand a completed operation"
 			);
-			assert!(matches!(s.hook_settings.state, Some(State::Available { .. })));
+			assert!(matches!(
+				s.hook_settings.state,
+				Some(AgentHookSettingsState::Available { .. })
+			));
 			assert_eq!(s.hook_settings.reviewed, !saving);
 
 			if saving {
@@ -395,7 +401,10 @@ async fn serve(listener: UnixListener, restore: bool) -> Vec<AgentActionDto> {
 			assert_eq!(thread_id.as_str(), "thread");
 			assert_eq!(review_token.as_str(), "a".repeat(64));
 			assert_eq!(hook_key.as_str(), "fixture-hook");
-			assert_eq!(*change, if restore { Change::Enabled(false) } else { Change::Trust });
+			assert_eq!(
+				*change,
+				if restore { AgentHookChange::Enabled(false) } else { AgentHookChange::Trust }
+			);
 
 			actions.push(*action);
 			// Lose the response after dispatch. The client must read, never resend.
@@ -413,7 +422,7 @@ async fn serve(listener: UnixListener, restore: bool) -> Vec<AgentActionDto> {
 
 		let mut state = available();
 
-		if let State::Available { hooks, can_update, last_edit, .. } = &mut state {
+		if let AgentHookSettingsState::Available { hooks, can_update, last_edit, .. } = &mut state {
 			if restore {
 				hooks[0].trust_status = "trusted".into();
 				hooks[0].saved_hash = Some("hash".into());

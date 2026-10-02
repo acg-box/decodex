@@ -16,8 +16,8 @@ use crate::shell::agent_surface::app_exposure::{
 };
 use crate::shell::agent_surface::{
 	app_exposure::{
-		AgentActionDto, AgentSnapshotDto, AgentSurface, Context, EntityId, IntoElement, State,
-		Surface, WireText,
+		AgentActionDto, AgentAppExposureResult, AgentSnapshotDto, AgentSurface,
+		AgentToolExposureSurface, Context, EntityId, IntoElement, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -83,7 +83,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 	surface.read_with(visual,|s,_|{
  assert!(s.app_exposure.feedback.contains("not retried"));
  assert!(s.app_exposure.task.is_none());
- assert!(matches!(&s.app_exposure.state,Some(State::Available{preference:Some(values),..}) if values==&["direct"]));
+ assert!(matches!(&s.app_exposure.state,Some(AgentAppExposureResult::Available{preference:Some(values),..}) if values==&["direct"]));
  });
 }
 
@@ -130,7 +130,7 @@ fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut TestAppC
 	for save in [false, true] {
 		surface.update(cx, |s, cx| {
 			if save {
-				s.app_exposure.draft = Some(vec![Surface::Direct]);
+				s.app_exposure.draft = Some(vec![AgentToolExposureSurface::Direct]);
 			}
 
 			s.update_app_exposure("root", "calendar", save, cx);
@@ -146,12 +146,12 @@ fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut TestAppC
 		cx.run_until_parked();
 		surface.read_with(cx, |s, _| {
 			assert!(s.app_exposure.task.is_none(), "refresh must not strand a completed operation");
-			assert!(matches!(s.app_exposure.state, Some(State::Available { .. })));
+			assert!(matches!(s.app_exposure.state, Some(AgentAppExposureResult::Available { .. })));
 
 			if save {
 				assert!(s.app_exposure.feedback.contains("not retried"));
-				assert_eq!(s.app_exposure.draft, Some(vec![Surface::Direct]));
-				assert!(matches!(&s.app_exposure.state, Some(State::Available {
+				assert_eq!(s.app_exposure.draft, Some(vec![AgentToolExposureSurface::Direct]));
+				assert!(matches!(&s.app_exposure.state, Some(AgentAppExposureResult::Available {
 					last_outcome: Some(outcome), ..
 				}) if outcome == "unknown"));
 			} else {
@@ -188,7 +188,7 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 			assert_eq!(work_id.as_str(), "root");
 			assert_eq!(connector_id.as_str(), "calendar");
 			assert_eq!(review_token.as_str(), "a".repeat(64));
-			assert_eq!(*omit, Some(vec![Surface::Direct]));
+			assert_eq!(*omit, Some(vec![AgentToolExposureSurface::Direct]));
 
 			actions.push(*action);
 			// Lose the response after dispatch. The client must read, never resend.
@@ -205,7 +205,7 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 		assert_eq!(work_id.as_str(), "root");
 		assert_eq!(connector_id.as_str(), "calendar");
 
-		let state = State::Available {
+		let state = AgentAppExposureResult::Available {
 			work_id,
 			connector_id,
 			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),

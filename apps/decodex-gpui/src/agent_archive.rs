@@ -14,12 +14,12 @@ use crate::shell::agent_surface::{
 	Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
 	ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
 };
-use decodex_protocol::AgentArchiveResult as State;
+use decodex_protocol::AgentArchiveResult;
 
 #[derive(Default)]
 pub(super) struct Panel {
 	owner: Option<String>,
-	result: Option<State>,
+	result: Option<AgentArchiveResult>,
 	epoch: u64,
 	last_read: Option<std::time::Instant>,
 	request: Option<Task<()>>,
@@ -28,9 +28,13 @@ pub(super) struct Panel {
 	pub(super) feedback: String,
 }
 impl Panel {
-	fn apply_read(&mut self, result: State, explicit: bool) {
-		let failed =
-			matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded);
+	fn apply_read(&mut self, result: AgentArchiveResult, explicit: bool) {
+		let failed = matches!(
+			result,
+			AgentArchiveResult::Unavailable
+				| AgentArchiveResult::Unconfirmed
+				| AgentArchiveResult::CapacityExceeded
+		);
 
 		if failed {
 			if explicit {
@@ -78,7 +82,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.archive.result = Some(State::Unavailable);
+			self.archive.result = Some(AgentArchiveResult::Unavailable);
 
 			return;
 		};
@@ -100,7 +104,7 @@ impl AgentSurface {
 		});
 
 		self.archive.request = Some(cx.spawn(async move |surface, cx| {
-			let result = request.await.unwrap_or(State::Unavailable);
+			let result = request.await.unwrap_or(AgentArchiveResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if !s.complete_archive_read(&work, epoch, result, force) {
 					return;
@@ -115,7 +119,7 @@ impl AgentSurface {
 		&mut self,
 		work: &str,
 		epoch: u64,
-		result: State,
+		result: AgentArchiveResult,
 		explicit: bool,
 	) -> bool {
 		if self.selected.as_deref() != Some(work)
@@ -137,7 +141,7 @@ impl AgentSurface {
 			|| self.archive.owner.as_deref() != Some(work)
 			|| self.archive.mutation.is_some()
 			|| self.archive.request.is_some()
-			|| !matches!(&self.archive.result,Some(State::Archived {thread_id}) if thread_id==thread)
+			|| !matches!(&self.archive.result,Some(AgentArchiveResult::Archived {thread_id}) if thread_id==thread)
 		{
 			return;
 		}
@@ -175,8 +179,9 @@ impl AgentSurface {
 				AgentActionDto::RestoreArchivedThread { work_id: work_id.clone(), thread_id },
 				command_key,
 			));
-			let state =
-				runtime.block_on(client.archive_state(work_id)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.archive_state(work_id))
+				.unwrap_or(AgentArchiveResult::Unavailable);
 
 			Some((result, bind_readback(state, &expected_thread)))
 		});
@@ -195,9 +200,9 @@ impl AgentSurface {
 				s.archive.mutation_key = None;
 
 				let (feedback, state) = match completed {
-					Some((_, State::Active { thread_id })) => (
+					Some((_, AgentArchiveResult::Active { thread_id })) => (
 						"The original task is active. Previously queued work can continue.",
-						State::Active { thread_id },
+						AgentArchiveResult::Active { thread_id },
 					),
 					Some((Err(_), state)) =>
 						("No restore request was sent. Check the service connection.", state),
@@ -211,7 +216,7 @@ impl AgentSurface {
 					),
 					None => (
 						"Restoration is unconfirmed. Refresh the state before another explicit attempt.",
-						State::Unavailable,
+						AgentArchiveResult::Unavailable,
 					),
 				};
 
@@ -228,7 +233,7 @@ impl AgentSurface {
 
 	pub(super) fn selected_is_archived(&self) -> bool {
 		self.archive.owner == self.selected
-			&& (matches!(self.archive.result, Some(State::Archived { .. }))
+			&& (matches!(self.archive.result, Some(AgentArchiveResult::Archived { .. }))
 				|| self.archive.mutation.is_some())
 	}
 
@@ -243,7 +248,7 @@ impl AgentSurface {
 
 		let restoring = self.archive.mutation.is_some();
 		let thread = match &self.archive.result {
-			Some(State::Archived { thread_id }) => Some(thread_id.clone()),
+			Some(AgentArchiveResult::Archived { thread_id }) => Some(thread_id.clone()),
 			_ if restoring => None,
 			_ => return gpui::div().into_any_element(),
 		};
@@ -281,10 +286,11 @@ impl AgentSurface {
 	}
 }
 
-fn bind_readback(state: State, expected: &str) -> State {
+fn bind_readback(state: AgentArchiveResult, expected: &str) -> AgentArchiveResult {
 	match &state {
-		State::Active { thread_id } | State::Archived { thread_id } if thread_id != expected =>
-			State::Unconfirmed,
+		AgentArchiveResult::Active { thread_id } | AgentArchiveResult::Archived { thread_id }
+			if thread_id != expected =>
+			AgentArchiveResult::Unconfirmed,
 		_ => state,
 	}
 }
@@ -324,7 +330,7 @@ mod tests {
 	use std::future;
 
 	use crate::shell::agent_surface::archive::{
-		self, AgentSurface, AgentWorkItemDto, Panel, State,
+		self, AgentArchiveResult, AgentSurface, AgentWorkItemDto, Panel,
 	};
 	#[cfg(test)]
 	use crate::shell::agent_surface::archive::{
@@ -347,18 +353,18 @@ mod tests {
 			assert!(s.complete_archive_read(
 				"root",
 				epoch,
-				State::Active { thread_id: "thread".into() },
+				AgentArchiveResult::Active { thread_id: "thread".into() },
 				false
 			));
 			assert!(s.archive.request.is_none());
-			assert!(matches!(s.archive.result, Some(State::Active { .. })));
+			assert!(matches!(s.archive.result, Some(AgentArchiveResult::Active { .. })));
 
 			s.archive_disconnected();
 
 			assert!(!s.complete_archive_read(
 				"root",
 				epoch,
-				State::Archived { thread_id: "thread".into() },
+				AgentArchiveResult::Archived { thread_id: "thread".into() },
 				false
 			));
 			assert!(s.archive.result.is_none());
@@ -367,13 +373,14 @@ mod tests {
 
 	#[test]
 	fn restored_state_cannot_be_attributed_to_a_rebound_native_thread() {
-		for state in
-			[State::Active { thread_id: "new".into() }, State::Archived { thread_id: "new".into() }]
-		{
-			assert_eq!(archive::bind_readback(state, "original"), State::Unconfirmed);
+		for state in [
+			AgentArchiveResult::Active { thread_id: "new".into() },
+			AgentArchiveResult::Archived { thread_id: "new".into() },
+		] {
+			assert_eq!(archive::bind_readback(state, "original"), AgentArchiveResult::Unconfirmed);
 		}
 
-		let state = State::Active { thread_id: "original".into() };
+		let state = AgentArchiveResult::Active { thread_id: "original".into() };
 
 		assert_eq!(archive::bind_readback(state.clone(), "original"), state);
 	}
@@ -387,7 +394,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.selected = Some("root".into());
 			s.archive.owner = Some("root".into());
-			s.archive.result = Some(State::Archived { thread_id: "thread".into() });
+			s.archive.result = Some(AgentArchiveResult::Archived { thread_id: "thread".into() });
 
 			assert!(s.selected_is_archived());
 
@@ -404,9 +411,9 @@ mod tests {
 			s.selected = Some("root".into());
 
 			for state in [
-				State::Active { thread_id: "thread".into() },
-				State::Unavailable,
-				State::Unconfirmed,
+				AgentArchiveResult::Active { thread_id: "thread".into() },
+				AgentArchiveResult::Unavailable,
+				AgentArchiveResult::Unconfirmed,
 			] {
 				s.archive.result = Some(state);
 
@@ -444,7 +451,7 @@ mod tests {
 
 			s.archive = Panel {
 				owner: Some("root".into()),
-				result: Some(State::Archived { thread_id: "thread".into() }),
+				result: Some(AgentArchiveResult::Archived { thread_id: "thread".into() }),
 				..Default::default()
 			};
 		});
@@ -488,30 +495,34 @@ mod tests {
 }
 #[cfg(test)]
 mod background_read_tests {
-	use crate::shell::agent_surface::archive::{Panel, State};
+	use crate::shell::agent_surface::archive::{AgentArchiveResult, Panel};
 
 	#[test]
 	fn transient_read_does_not_flash_error_or_replace_known_state() {
 		let mut panel = Panel::default();
 
-		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
-		panel.apply_read(State::Unavailable, false);
+		panel.apply_read(AgentArchiveResult::Active { thread_id: "thread".into() }, false);
+		panel.apply_read(AgentArchiveResult::Unavailable, false);
 
 		assert!(panel.feedback.is_empty());
-		assert!(matches!(panel.result, Some(State::Active { .. })));
+		assert!(matches!(panel.result, Some(AgentArchiveResult::Active { .. })));
 
-		for failure in [State::Unavailable, State::Unconfirmed, State::CapacityExceeded] {
+		for failure in [
+			AgentArchiveResult::Unavailable,
+			AgentArchiveResult::Unconfirmed,
+			AgentArchiveResult::CapacityExceeded,
+		] {
 			panel.apply_read(failure, false);
 
 			assert!(panel.feedback.is_empty(), "background polling must not insert a banner");
-			assert!(matches!(panel.result, Some(State::Active { .. })));
+			assert!(matches!(panel.result, Some(AgentArchiveResult::Active { .. })));
 		}
 
-		panel.apply_read(State::Unavailable, true);
+		panel.apply_read(AgentArchiveResult::Unavailable, true);
 
 		assert_eq!(panel.feedback, "Could not check archive status. Try again.");
 
-		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
+		panel.apply_read(AgentArchiveResult::Active { thread_id: "thread".into() }, false);
 
 		assert!(panel.feedback.is_empty());
 	}

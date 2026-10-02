@@ -20,13 +20,13 @@ use crate::shell::agent_surface::{
 	ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
 	Task, WireText, unique_command,
 };
-use decodex_protocol::{AgentNativeGoalResult as Result, AgentNativeGoalStatus as S};
+use decodex_protocol::{AgentNativeGoalResult, AgentNativeGoalStatus};
 use editor::Editor;
 
 #[derive(Default)]
 pub(super) struct Panel {
 	target: Option<(String, String)>,
-	result: Option<Result>,
+	result: Option<AgentNativeGoalResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
 	read_at: Option<Instant>,
@@ -111,7 +111,7 @@ impl AgentSurface {
 		});
 
 		self.native_goal.task = Some(cx.spawn(async move |surface, cx| {
-			let result = request.await.unwrap_or(Result::Unavailable);
+			let result = request.await.unwrap_or(AgentNativeGoalResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.native_goal.epoch != epoch {
 					return;
@@ -167,17 +167,18 @@ impl AgentSurface {
 	}
 }
 
-fn goal_text(result: &Result) -> String {
+fn goal_text(result: &AgentNativeGoalResult) -> String {
 	match result {
-		Result::Available { goal: None, .. } => "This conversation has no native goal.".into(),
-		Result::Available { goal: Some(goal), observed_at_micros, .. } => {
+		AgentNativeGoalResult::Available { goal: None, .. } =>
+			"This conversation has no native goal.".into(),
+		AgentNativeGoalResult::Available { goal: Some(goal), observed_at_micros, .. } => {
 			let status = match goal.status {
-				S::Active => "Active",
-				S::Paused => "Paused",
-				S::Blocked => "Blocked",
-				S::UsageLimited => "Usage limited",
-				S::BudgetLimited => "Budget limited",
-				S::Complete => "Complete",
+				AgentNativeGoalStatus::Active => "Active",
+				AgentNativeGoalStatus::Paused => "Paused",
+				AgentNativeGoalStatus::Blocked => "Blocked",
+				AgentNativeGoalStatus::UsageLimited => "Usage limited",
+				AgentNativeGoalStatus::BudgetLimited => "Budget limited",
+				AgentNativeGoalStatus::Complete => "Complete",
 			};
 			let budget = goal
 				.token_budget
@@ -194,9 +195,12 @@ fn goal_text(result: &Result) -> String {
 				goal.time_used_seconds,
 			)
 		},
-		Result::Disabled => "Native goals are disabled for this account process.".into(),
-		Result::Unsupported => "This Codex version does not expose native goals.".into(),
-		Result::Unavailable => "The native goal could not be read. Refresh to try again.".into(),
+		AgentNativeGoalResult::Disabled =>
+			"Native goals are disabled for this account process.".into(),
+		AgentNativeGoalResult::Unsupported =>
+			"This Codex version does not expose native goals.".into(),
+		AgentNativeGoalResult::Unavailable =>
+			"The native goal could not be read. Refresh to try again.".into(),
 	}
 }
 

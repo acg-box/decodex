@@ -15,11 +15,11 @@ use crate::shell::agent_surface::{
 	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
 	WireText, mcp_forms,
 };
-use decodex_protocol::{AgentHookChange as Change, AgentHookDto, AgentHookSettingsState as State};
+use decodex_protocol::{AgentHookChange, AgentHookDto, AgentHookSettingsState};
 
 #[derive(Default)]
 pub(super) struct Panel {
-	state: Option<State>,
+	state: Option<AgentHookSettingsState>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
@@ -52,10 +52,16 @@ impl AgentSurface {
 		work: &EntityId,
 		thread: &str,
 		hook_key: WireText,
-		change: Change,
+		change: AgentHookChange,
 	) -> Option<AgentActionDto> {
-		let State::Available { work_id, thread_id, review_token, hooks, can_update: true, .. } =
-			self.hook_settings.state.as_ref()?
+		let AgentHookSettingsState::Available {
+			work_id,
+			thread_id,
+			review_token,
+			hooks,
+			can_update: true,
+			..
+		} = self.hook_settings.state.as_ref()?
 		else {
 			return None;
 		};
@@ -71,8 +77,9 @@ impl AgentSurface {
 
 		if !editable(hook)
 			|| match change {
-				Change::Trust => hook.saved_hash.as_deref() == Some(hook.current_hash.as_str()),
-				Change::Enabled(value) => hook.saved_enabled == Some(value),
+				AgentHookChange::Trust =>
+					hook.saved_hash.as_deref() == Some(hook.current_hash.as_str()),
+				AgentHookChange::Enabled(value) => hook.saved_enabled == Some(value),
 			} {
 			return None;
 		}
@@ -89,7 +96,7 @@ impl AgentSurface {
 	fn update_hook_settings(
 		&mut self,
 		work: String,
-		selection: Option<(WireText, Change)>,
+		selection: Option<(WireText, AgentHookChange)>,
 		cx: &mut Context<Self>,
 	) {
 		if self.hook_settings.task.is_some()
@@ -152,8 +159,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.hook_settings(work_id)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.hook_settings(work_id))
+				.unwrap_or(AgentHookSettingsState::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -184,7 +192,8 @@ impl AgentSurface {
 					return;
 				}
 
-				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+				let (outcome, state) =
+					result.unwrap_or((None, AgentHookSettingsState::Unavailable));
 
 				s.hook_settings.reviewed = !saving;
 				s.hook_settings.feedback = match outcome {
@@ -199,9 +208,9 @@ impl AgentSurface {
 				}
 				.into();
 				s.hook_settings.state = Some(match state {
-					State::Available { ref work_id, ref thread_id, .. }
+					AgentHookSettingsState::Available { ref work_id, ref thread_id, .. }
 						if work_id.as_str() != work || thread_id.as_str() != thread =>
-						State::Unavailable,
+						AgentHookSettingsState::Unavailable,
 					other => other,
 				});
 
@@ -242,8 +251,13 @@ impl AgentSurface {
 		panel = panel.child(self.hook_settings.feedback.clone());
 
 		match &self.hook_settings.state {
-			Some(State::Available {
-				config_file, hooks, notices, can_update, last_edit, ..
+			Some(AgentHookSettingsState::Available {
+				config_file,
+				hooks,
+				notices,
+				can_update,
+				last_edit,
+				..
 			}) => {
 				panel=panel.child(format!("Shared config: {}",config_file.as_str())).child("Trust approves only the displayed content hash. Enablement is separate. Other tasks using this file are also affected. Native policy and task plugin exclusions still apply.");
 
@@ -295,13 +309,13 @@ impl AgentSurface {
 						if matches!(hook.trust_status.as_str(), "untrusted" | "modified")
 							&& hook.saved_hash.as_deref() != Some(hook.current_hash.as_str())
 						{
-							changes.push((Change::Trust, "Trust this reviewed content"));
+							changes.push((AgentHookChange::Trust, "Trust this reviewed content"));
 						}
 
 						for enabled in [true, false] {
 							if hook.saved_enabled != Some(enabled) {
 								changes.push((
-									Change::Enabled(enabled),
+									AgentHookChange::Enabled(enabled),
 									if enabled { "Save enabled" } else { "Save disabled" },
 								));
 							}
@@ -331,7 +345,7 @@ impl AgentSurface {
 					panel = panel.child("No hooks were reported for this directory.");
 				}
 			},
-			Some(State::Unavailable) =>
+			Some(AgentHookSettingsState::Unavailable) =>
 				panel = panel.child(
 					"Current hook settings are unavailable. Reconnect and refresh to review them.",
 				),

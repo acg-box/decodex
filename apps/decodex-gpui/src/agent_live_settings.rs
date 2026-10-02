@@ -13,13 +13,12 @@ use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render, Window,
 };
 use decodex_protocol::{
-	AgentLiveReviewerOutcome, AgentLiveReviewerOutcome as O, AgentLiveReviewerState as State,
-	AgentModelDto, AgentReviewer as Reviewer,
+	AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentModelDto, AgentReviewer,
 };
 
 #[derive(Default)]
 pub(super) struct Panel {
-	state: Option<State>,
+	state: Option<AgentLiveReviewerState>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
@@ -30,7 +29,7 @@ pub(super) struct Panel {
 }
 
 enum Edit {
-	Reviewer(Reviewer),
+	AgentReviewer(AgentReviewer),
 	Model(decodex_protocol::AgentLiveModelSelection),
 }
 impl Edit {
@@ -42,7 +41,7 @@ impl Edit {
 		models: Option<&[AgentModelDto]>,
 	) -> Option<AgentActionDto> {
 		Some(match self {
-			Self::Reviewer(reviewer) => AgentActionDto::SetLiveReviewer {
+			Self::AgentReviewer(reviewer) => AgentActionDto::SetLiveReviewer {
 				work_id: work.clone(),
 				turn_id: turn.clone(),
 				review_token: review.clone(),
@@ -132,7 +131,7 @@ impl AgentSurface {
 			return;
 		};
 		let action = if let Some(edit) = edit {
-			let Some(State::Available {
+			let Some(AgentLiveReviewerState::Available {
 				thread_id,
 				turn_id,
 				review_token,
@@ -183,8 +182,9 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state =
-				runtime.block_on(client.live_settings(work_id, true)).unwrap_or(State::Unavailable);
+			let state = runtime
+				.block_on(client.live_settings(work_id, true))
+				.unwrap_or(AgentLiveReviewerState::Unavailable);
 
 			Some((outcome, state))
 		});
@@ -201,7 +201,7 @@ impl AgentSurface {
 
 				if !current||s.selected.as_ref()!=Some(&work) {s.reset_live_reviewer();cx.notify();return;}
 
-				let (outcome,state)=result.unwrap_or((None,State::Unavailable));
+				let (outcome,state)=result.unwrap_or((None,AgentLiveReviewerState::Unavailable));
 
 				s.live_reviewer.reviewed = !saving;
 
@@ -210,10 +210,10 @@ impl AgentSurface {
 					Some(Ok(AgentCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh and review the current turn.",
 					Some(_)=>"Publication could not be confirmed. No automatic retry was made.",
 					None if saving=>"The operation could not be confirmed. Refresh its receipt before another edit.",
-					None if matches!(state,State::Unavailable)=>"No editable active turn is available. Refresh the task.",
+					None if matches!(state,AgentLiveReviewerState::Unavailable)=>"No editable active turn is available. Refresh the task.",
 					None=>"Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged.",
 				}.into();
-				s.live_reviewer.state=Some(match state {State::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>State::Unavailable,other=>other});
+				s.live_reviewer.state=Some(match state {AgentLiveReviewerState::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>AgentLiveReviewerState::Unavailable,other=>other});
 				cx.notify();
 			});
 		}));
@@ -251,7 +251,7 @@ impl AgentSurface {
 		if self.live_reviewer.work.as_ref() == Some(&work.id) {
 			panel = panel.child(self.live_reviewer.feedback.clone());
 
-			if let Some(State::Available {
+			if let Some(AgentLiveReviewerState::Available {
 				turn_id,
 				can_update,
 				last_reviewer,
@@ -266,8 +266,8 @@ impl AgentSurface {
 					panel = panel.child(format!(
 						"Last local request: {} — {}",
 						match reviewer {
-							Reviewer::User => "User review",
-							Reviewer::AutoReview => "Automatic review",
+							AgentReviewer::User => "User review",
+							AgentReviewer::AutoReview => "Automatic review",
 						},
 						outcome_label(*outcome)
 					));
@@ -289,8 +289,8 @@ impl AgentSurface {
 				}
 				if *can_update && self.live_reviewer.reviewed {
 					for (id, label, reviewer) in [
-						("live-reviewer-user", "Ask me", Reviewer::User),
-						("live-reviewer-auto", "Automatic review", Reviewer::AutoReview),
+						("live-reviewer-user", "Ask me", AgentReviewer::User),
+						("live-reviewer-auto", "Automatic review", AgentReviewer::AutoReview),
 					] {
 						let (owner, target) = (work.id.clone(), turn.clone());
 
@@ -303,7 +303,7 @@ impl AgentSurface {
 								s.update_live_settings(
 									owner.clone(),
 									target.clone(),
-									Some(Edit::Reviewer(reviewer)),
+									Some(Edit::AgentReviewer(reviewer)),
 									cx,
 								)
 							},
@@ -423,11 +423,11 @@ impl AgentSurface {
 
 fn outcome_label(outcome: AgentLiveReviewerOutcome) -> &'static str {
 	match outcome {
-		O::Reserved => "awaiting confirmation",
-		O::Applied => "published",
-		O::TargetUnavailable => "turn no longer active",
-		O::Rejected => "rejected",
-		O::Unknown => "unconfirmed",
+		AgentLiveReviewerOutcome::Reserved => "awaiting confirmation",
+		AgentLiveReviewerOutcome::Applied => "published",
+		AgentLiveReviewerOutcome::TargetUnavailable => "turn no longer active",
+		AgentLiveReviewerOutcome::Rejected => "rejected",
+		AgentLiveReviewerOutcome::Unknown => "unconfirmed",
 	}
 }
 

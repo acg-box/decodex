@@ -6,8 +6,8 @@ use gpui::{AnyElement, InteractiveElement, StatefulInteractiveElement};
 use crate::{
 	shell::agent_surface::{
 		native_timeline::{
-			self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Content, Context,
-			IntoElement, ParentElement, Styled, markdown,
+			self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
+			Context, IntoElement, ParentElement, Styled, markdown,
 		},
 		progress,
 	},
@@ -201,9 +201,9 @@ impl AgentSurface {
 
 		for message in live {
 			if self.native_history.entries.iter().any(|entry| match &entry.content {
-				Content::Item { turn_id, item_id, .. } =>
+				AgentTimelineContent::Item { turn_id, item_id, .. } =>
 					turn_id == &message.turn_id && item_id == &message.item_id,
-				Content::TurnBoundary { turn_id, completed: true, .. } =>
+				AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
 					turn_id == &message.turn_id,
 				_ => false,
 			}) {
@@ -251,7 +251,7 @@ fn partial_replaced(
 	expected_kind: &str,
 ) -> bool {
 	thread == Some(source.thread_id.as_str()) && entries.iter().any(|entry| matches!(
-		&entry.content, Content::Item { turn_id, item_id, kind, text, truncated: false, .. }
+		&entry.content, AgentTimelineContent::Item { turn_id, item_id, kind, text, truncated: false, .. }
 		if turn_id == &source.turn_id && item_id == &source.item_id && kind == expected_kind && !text.is_empty()
 	))
 }
@@ -301,7 +301,7 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
 	use crate::shell::agent_surface::native_timeline::receipts::{
-		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, Content,
+		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, AgentTimelineContent,
 	};
 	#[gpui::test]
 	fn unfinished_output_is_visible_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
@@ -570,7 +570,7 @@ mod tests {
 		let item = |turn: &str, id: &str, text: &str, truncated: bool| {
 			decodex_protocol::AgentTimelineEntry {
 				position: 1,
-				content: Content::Item {
+				content: AgentTimelineContent::Item {
 					phase: None,
 					app_ui: false,
 					turn_id: turn.into(),
@@ -614,7 +614,7 @@ mod tests {
 
 		let terminal = decodex_protocol::AgentTimelineEntry {
 			position: 2,
-			content: Content::TurnBoundary {
+			content: AgentTimelineContent::TurnBoundary {
 				turn_id: "turn".into(),
 				completed: true,
 				status: None,

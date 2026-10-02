@@ -9,13 +9,17 @@ use crate::conversation::{self, ConversationRuntime, LocalSession, LocalTaskStat
 use decodex_codex::app_server_client::NativeThreadModelSettings;
 use decodex_core::ServiceTier;
 use decodex_protocol::{
-	ConversationModel, ConversationModelSettingsResult as ResultDto, ConversationReasoningEffort,
+	ConversationModel, ConversationModelSettingsResult, ConversationReasoningEffort,
 };
 
 impl ConversationRuntime {
-	pub(crate) async fn model_settings(&self, key: &str, conversation: &str) -> ResultDto {
+	pub(crate) async fn model_settings(
+		&self,
+		key: &str,
+		conversation: &str,
+	) -> ConversationModelSettingsResult {
 		if self.is_shutting_down() {
-			return ResultDto::Unavailable;
+			return ConversationModelSettingsResult::Unavailable;
 		}
 		if !self.local().contains_key(conversation) {
 			return self.cold_model_settings(key, conversation).await;
@@ -23,7 +27,9 @@ impl ConversationRuntime {
 
 		let (source, commands) = {
 			let mut local = self.local();
-			let Some(task) = local.get_mut(conversation) else { return ResultDto::Unavailable };
+			let Some(task) = local.get_mut(conversation) else {
+				return ConversationModelSettingsResult::Unavailable;
+			};
 
 			match &task.state {
 				LocalTaskState::Ready(session) => {
@@ -35,7 +41,7 @@ impl ConversationRuntime {
 				},
 				LocalTaskState::Active { session, commands, .. } =>
 					(session.clone(), Some(commands.clone())),
-				_ => return ResultDto::Unavailable,
+				_ => return ConversationModelSettingsResult::Unavailable,
 			}
 		};
 		let runtime = self.clone();
@@ -75,7 +81,9 @@ impl ConversationRuntime {
 				.ok()
 				.map(|v| v.account.revision);
 			let mut local = runtime.local();
-			let Some(task) = local.get_mut(&conversation) else { return ResultDto::Unavailable };
+			let Some(task) = local.get_mut(&conversation) else {
+				return ConversationModelSettingsResult::Unavailable;
+			};
 			let same = match &task.state {
 				LocalTaskState::CatalogReading(current) if idle =>
 					conversation::same_local_process(current, &source),
@@ -87,7 +95,7 @@ impl ConversationRuntime {
 			};
 
 			if !same {
-				return ResultDto::Unavailable;
+				return ConversationModelSettingsResult::Unavailable;
 			}
 
 			let requested_tier = source
@@ -99,19 +107,19 @@ impl ConversationRuntime {
 				task.state = LocalTaskState::Ready(source);
 			}
 			if before.is_none() || before != after {
-				return ResultDto::Unavailable;
+				return ConversationModelSettingsResult::Unavailable;
 			}
 
 			result
 				.and_then(|settings| project(settings, requested_tier))
-				.unwrap_or(ResultDto::Unavailable)
+				.unwrap_or(ConversationModelSettingsResult::Unavailable)
 		});
 
 		time::timeout(Duration::from_secs(12), query)
 			.await
 			.ok()
 			.and_then(Result::ok)
-			.unwrap_or(ResultDto::Unavailable)
+			.unwrap_or(ConversationModelSettingsResult::Unavailable)
 	}
 
 	async fn idle_model_settings(
@@ -142,8 +150,8 @@ impl ConversationRuntime {
 fn project(
 	settings: NativeThreadModelSettings,
 	requested_service_tier: Option<ServiceTier>,
-) -> Option<ResultDto> {
-	Some(ResultDto::Available {
+) -> Option<ConversationModelSettingsResult> {
+	Some(ConversationModelSettingsResult::Available {
 		requested_service_tier,
 		model_provider: settings.model_provider,
 		model: settings.model.map(ConversationModel::new).transpose().ok()?,

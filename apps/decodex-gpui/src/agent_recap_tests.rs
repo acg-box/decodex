@@ -14,7 +14,7 @@ use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::recap::{
-	AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, Phase,
+	AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, TaskRecapPhase,
 	TaskRecapStatus, Window, WireText, request, watch,
 };
 #[cfg(test)] use crate::shell::agent_surface::recap::{Entity, Render};
@@ -97,7 +97,10 @@ fn lost_recap_reply_is_read_back_and_cancelled_by_exact_request_without_replay()
 
 		time::timeout(Duration::from_secs(10), results.changed()).await.unwrap().unwrap();
 
-		assert_eq!(results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase, Phase::Pending);
+		assert_eq!(
+			results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase,
+			TaskRecapPhase::Pending
+		);
 
 		// Closing the panel drops its sender while the native request is pending.
 		drop(cancel);
@@ -133,7 +136,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestApp
 				work_id: EntityId::new(work).unwrap(),
 				thread_id: Some(WireText::new("thread").unwrap()),
 				request_id: Some(WireText::new("request").unwrap()),
-				phase: Phase::Ready,
+				phase: TaskRecapPhase::Ready,
 				recap: Some(TaskRecap {
 					summary: WireText::new("First batch complete.").unwrap(),
 					next_action: None,
@@ -194,7 +197,10 @@ fn opening_a_cold_recap_only_reads_and_does_not_start_inference() {
 		)
 		.await;
 
-		assert_eq!(results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase, Phase::Idle);
+		assert_eq!(
+			results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase,
+			TaskRecapPhase::Idle
+		);
 	});
 
 	assert!(server.join().unwrap().is_empty());
@@ -394,7 +400,7 @@ async fn serve(
 					work_id,
 					thread_id: generate.then(|| WireText::new("native-root").unwrap()),
 					request_id: request_id.clone(),
-					phase: if generate { Phase::Pending } else { Phase::Idle },
+					phase: if generate { TaskRecapPhase::Pending } else { TaskRecapPhase::Idle },
 					recap: None,
 				};
 				let result = ServerMessage::QueryResult(QueryResultEnvelope {

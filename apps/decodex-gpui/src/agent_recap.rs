@@ -16,7 +16,7 @@ use crate::shell::agent_surface::{
 use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkItemDto, Entity, LoadState, Render,
 };
-use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
+use decodex_protocol::{TaskRecapPhase, TaskRecapStatus};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -31,10 +31,9 @@ pub(super) struct Panel {
 impl Panel {
 	fn busy(&self) -> bool {
 		self.task.is_some()
-			&& self
-				.state
-				.as_ref()
-				.is_none_or(|s| matches!(s.phase, Phase::Pending | Phase::Cancelling))
+			&& self.state.as_ref().is_none_or(|s| {
+				matches!(s.phase, TaskRecapPhase::Pending | TaskRecapPhase::Cancelling)
+			})
 	}
 }
 
@@ -241,7 +240,7 @@ impl AgentSurface {
 		if !opened {
 			return panel.into_any_element();
 		}
-		if self.recap.state.as_ref().is_none_or(|s| s.phase != Phase::Ready) {
+		if self.recap.state.as_ref().is_none_or(|s| s.phase != TaskRecapPhase::Ready) {
 			panel = panel.child(self.recap.feedback.clone());
 		}
 
@@ -317,7 +316,7 @@ impl AgentSurface {
    work_id: EntityId::new(work).expect("fixture owner"),
    thread_id: Some(WireText::new("fixture-thread").expect("fixture thread")),
    request_id: Some(WireText::new("fixture-request").expect("fixture request")),
-   phase: Phase::Ready,
+   phase: TaskRecapPhase::Ready,
    recap: Some(decodex_protocol::TaskRecap {
     summary: WireText::new("You asked to complete the release checks. Existing sessions now reopen without another sign-in. Fresh-install verification is still running; the release has not been published.").expect("fixture summary"),
     next_action: Some(WireText::new("Review the fresh-install result before publishing.").expect("fixture next action")),
