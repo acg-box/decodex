@@ -480,6 +480,45 @@ mod tests {
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
 	}
 
+	fn initialize_latest_history(
+		s: &mut AgentSurface,
+		cx: &mut gpui::Context<AgentSurface>,
+	) -> Binding {
+		s.visual_workspace_fixture(cx);
+
+		s.graph_visible = false;
+
+		let work = s
+			.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| Some(&work.id) == s.selected.as_ref())
+			.unwrap();
+
+		work.codex_thread_id = Some("thread".into());
+
+		let binding =
+			Binding { work: work.id.clone(), thread: "thread".into(), account: "account".into() };
+
+		assert!(s.native_history.replace(
+			binding.clone(),
+			AgentTimelinePage {
+				thread_id: "thread".into(),
+				entries: vec![row(10)],
+				next_cursor: None,
+				weather: Default::default(),
+				safety_buffering_turn_id: None,
+				active_realtime_session_at_page_start: None,
+			}
+		));
+
+		cx.notify();
+
+		binding
+	}
+
 	#[gpui::test]
 	fn latest_arrival_scrolls_new_layout_but_respects_a_later_wheel_gesture(
 		cx: &mut gpui::TestAppContext,
@@ -496,44 +535,7 @@ mod tests {
 
 			visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(500.)));
 
-			let binding = surface.update(visual, |s, cx| {
-				s.visual_workspace_fixture(cx);
-
-				s.graph_visible = false;
-
-				let work = s
-					.snapshot
-					.as_mut()
-					.unwrap()
-					.work_items
-					.iter_mut()
-					.find(|work| Some(&work.id) == s.selected.as_ref())
-					.unwrap();
-
-				work.codex_thread_id = Some("thread".into());
-
-				let binding = Binding {
-					work: work.id.clone(),
-					thread: "thread".into(),
-					account: "account".into(),
-				};
-
-				assert!(s.native_history.replace(
-					binding.clone(),
-					AgentTimelinePage {
-						thread_id: "thread".into(),
-						entries: vec![row(10)],
-						next_cursor: None,
-						weather: Default::default(),
-						safety_buffering_turn_id: None,
-						active_realtime_session_at_page_start: None,
-					}
-				));
-
-				cx.notify();
-
-				binding
-			});
+			let binding = surface.update(visual, initialize_latest_history);
 
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
