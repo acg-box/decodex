@@ -1,15 +1,16 @@
 //! Route integration setup to Codex without installing or authorizing in Decodex.
 use gpui::AnyElement;
-use serde_json::{Value, json};
+#[cfg(test)] use gpui::px;
+use serde_json::Value;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkItemDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
 use crate::shell::agent_surface::{
-	self, AgentRequestResult, AgentSurface, Context, InteractiveElement, IntoElement,
-	ParentElement, Styled, mcp_forms,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
-	AgentWorkStatusDto, px,
+	AgentRequestResult, AgentSurface, Context, InteractiveElement, IntoElement, ParentElement,
+	Styled, mcp_forms,
 };
 
 impl AgentSurface {
@@ -20,7 +21,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut panel =
-			agent_surface::div().id("installation-suggestion").flex().flex_col().gap_2().child(
+			gpui::div().id("installation-suggestion").flex().flex_col().gap_2().child(
 				"Configure this integration in Codex for this account, then retry the task.",
 			);
 
@@ -29,7 +30,7 @@ impl AgentSurface {
 				format!("install-{action}"), label.into(), false, cx,
 				move |s, cx| {
 					if matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
-						s.respond(json!({"action":action,"content":null,"_meta":null}).to_string(), cx);
+						s.respond(serde_json::json!({"action":action,"content":null,"_meta":null}).to_string(), cx);
 					}
 				},
 			));
@@ -61,7 +62,7 @@ mod tests {
 				pending_events: vec![AgentPendingEventDto { id: 7, source_event_id: "suggestion".into(), work_item_id: "root".into(), event_kind: "server_request_pending".into(), created_at_micros: 1, delivery_claimed: false }],
 			})));
 
-			s.request = Some(AgentRequestResult::Available { event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(), request_json: decodex_protocol::AgentRequestText::new(install::json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample"}}).to_string()).unwrap() });
+			s.request = Some(AgentRequestResult::Available { event_id: 7, work_id: "root".into(), method: "mcpServer/elicitation/request".into(), request_json: decodex_protocol::AgentRequestText::new(serde_json::json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample"}}).to_string()).unwrap() });
 		});
 
 		visual.update(|window, cx| {

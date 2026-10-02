@@ -14,11 +14,11 @@ use gpui::{
 	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, Role,
 	ScrollWheelEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window,
-	WrappedLine, actions, div, fill, point,
+	WrappedLine, actions, fill,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
-	px, relative, rgb, rgba, size,
+	relative,
 };
 #[cfg(target_os = "macos")] use objc2_app_kit::NSView;
 #[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -31,7 +31,7 @@ use edit::Snapshot;
 use native::MAX_NATIVE_EDITOR_BYTES;
 use text::ComposerTextElement;
 
-actions!(
+gpui::actions!(
 	decodex_composer_input,
 	[
 		Backspace,
@@ -139,7 +139,7 @@ impl ComposerInput {
 			marked_range: None,
 			last_layout: None,
 			last_bounds: None,
-			text_offset: px(0.0),
+			text_offset: gpui::px(0.0),
 			scroll_manually: false,
 			is_selecting: false,
 			appearance,
@@ -233,8 +233,10 @@ impl ComposerInput {
 	fn vertical(&mut self, direction: f32, cx: &mut Context<Self>) {
 		if let Some(lines) = &self.last_layout {
 			let position = text::position_at(lines, self.cursor_offset());
-			let index =
-				text::index_at(lines, position + point(px(0.0), px(BODY_LINE_HEIGHT * direction)));
+			let index = text::index_at(
+				lines,
+				position + gpui::point(gpui::px(0.0), gpui::px(BODY_LINE_HEIGHT * direction)),
+			);
 
 			self.move_to(index, cx);
 		}
@@ -452,7 +454,10 @@ impl ComposerInput {
 			return self.content.len();
 		}
 
-		text::index_at(line, position - bounds.origin + point(px(0.0), self.text_offset))
+		text::index_at(
+			line,
+			position - bounds.origin + gpui::point(gpui::px(0.0), self.text_offset),
+		)
 	}
 
 	fn replacement_range(&self, range_utf16: Option<&Range<usize>>) -> Range<usize> {
@@ -600,11 +605,12 @@ impl EntityInputHandler for ComposerInput {
 		let range = range_from_utf16(&self.content, &range_utf16);
 		let start = text::position_at(line, range.start);
 		let end = text::position_at(line, range.end);
-		let origin = self.last_bounds.unwrap_or(bounds).origin - point(px(0.0), self.text_offset);
+		let origin = self.last_bounds.unwrap_or(bounds).origin
+			- gpui::point(gpui::px(0.0), self.text_offset);
 
 		Some(Bounds::new(
 			origin + start,
-			size((end.x - start.x).max(px(1.0)), px(BODY_LINE_HEIGHT)),
+			gpui::size((end.x - start.x).max(gpui::px(1.0)), gpui::px(BODY_LINE_HEIGHT)),
 		))
 	}
 
@@ -643,7 +649,7 @@ impl Render for ComposerInput {
 		let focus_handle = self.focus_handle.clone();
 		let workbench = self.appearance == ComposerAppearance::Workbench;
 
-		div()
+		gpui::div()
 			.id("conversation-composer-input")
 			.key_context("ComposerInput")
 			.role(Role::TextInput)
@@ -691,8 +697,9 @@ impl Render for ComposerInput {
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.on_scroll_wheel(cx.listener(|s, e: &ScrollWheelEvent, _, cx| {
 				if s.appearance == ComposerAppearance::Workbench {
-					s.text_offset =
-						(s.text_offset - e.delta.pixel_delta(px(BODY_LINE_HEIGHT)).y).max(px(0.0));
+					s.text_offset = (s.text_offset
+						- e.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y)
+						.max(gpui::px(0.0));
 					s.scroll_manually = true;
 
 					cx.stop_propagation();
@@ -703,22 +710,22 @@ impl Render for ComposerInput {
 			.w_full()
 			.when(!workbench, |d| d.h_full())
 			.px_2()
-			.py(px(if workbench { 4.0 } else { 8.0 }))
+			.py(gpui::px(if workbench { 4.0 } else { 8.0 }))
 			.flex()
 			.items_start()
 			.overflow_hidden()
-			.rounded(px(if workbench { 8.0 } else { 6.0 }))
+			.rounded(gpui::px(if workbench { 8.0 } else { 6.0 }))
 			.border_1()
 			.border_color(if workbench {
-				rgba(0x00000000)
+				gpui::rgba(0x00000000)
 			} else if focus_handle.is_focused(window) {
-				rgb(0x817789)
+				gpui::rgb(0x817789)
 			} else {
-				rgb(0x3c3744)
+				gpui::rgb(0x3c3744)
 			})
-			.bg(if workbench { rgba(0x00000000) } else { rgba(FIELD_MATERIAL) })
-			.text_size(px(BODY_SIZE))
-			.text_color(rgb(0xeeeaf0))
+			.bg(if workbench { gpui::rgba(0x00000000) } else { gpui::rgba(FIELD_MATERIAL) })
+			.text_size(gpui::px(BODY_SIZE))
+			.text_color(gpui::rgb(0xeeeaf0))
 			.child(ComposerTextElement { input: entity })
 	}
 }
@@ -921,7 +928,7 @@ mod multiline_tests {
 
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
 
-		visual.simulate_resize(size(px(240.0), px(300.0)));
+		visual.simulate_resize(gpui::size(gpui::px(240.0), gpui::px(300.0)));
 		input.update(visual, |input, cx| input.set_content("第一行", cx));
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
@@ -940,7 +947,7 @@ mod multiline_tests {
 			assert_eq!(lines.len(), 2);
 			assert_eq!(
 				text::position_at(lines, input.content.len()).y,
-				px(ui_theme::BODY_LINE_HEIGHT)
+				gpui::px(ui_theme::BODY_LINE_HEIGHT)
 			);
 
 			input.set_content(&"宽度有限，长段落必须自动换行。".repeat(40), cx);
@@ -954,12 +961,15 @@ mod multiline_tests {
 			let lines = input.last_layout.as_ref().unwrap();
 
 			assert!(!lines[0].wrap_boundaries().is_empty());
-			assert!(input.text_offset > px(0.0));
+			assert!(input.text_offset > gpui::px(0.0));
 
 			let caret = text::position_at(lines, input.content.len());
 
 			assert_eq!(text::index_at(lines, caret), input.content.len());
-			assert!(input.last_bounds.unwrap().size.height <= px(ui_theme::BODY_LINE_HEIGHT * 7.0));
+			assert!(
+				input.last_bounds.unwrap().size.height
+					<= gpui::px(ui_theme::BODY_LINE_HEIGHT * 7.0)
+			);
 		});
 	}
 

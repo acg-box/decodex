@@ -5,9 +5,7 @@ use std::cmp::Reverse;
 
 use gpui::{
 	AnyElement, App, Context, KeyDownEvent, PathBuilder, RenderOnce, Role, SharedString, Window,
-	div,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
-	px, rgb, rgba,
 };
 
 use crate::{
@@ -37,26 +35,26 @@ impl AgentSurface {
 	}
 
 	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut palette = div()
+		let mut palette = gpui::div()
 			.id("native-model-palette")
-			.max_h(px(240.))
+			.max_h(gpui::px(240.))
 			.overflow_y_scroll()
 			.flex()
 			.flex_col()
-			.gap(px(2.));
+			.gap(gpui::px(2.));
 		let models = match self.current_model_catalog(cx) {
 			Some(AgentCapabilitiesResult::Available { models, .. }) => models,
 			_ if self.capability_task.is_some() =>
 				return palette
-					.min_h(px(64.))
+					.min_h(gpui::px(64.))
 					.child(ui_loading::loading("Loading models"))
 					.into_any_element(),
 			_ =>
 				return palette
 					.child(
-						div()
-							.text_size(px(11.))
-							.text_color(rgb(TEXT_MUTED))
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child("Model options are unavailable. Reopen to retry."),
 					)
 					.into_any_element(),
@@ -66,7 +64,7 @@ impl AgentSurface {
 		models.sort_by_key(|entry| Reverse(model_version(entry.model.as_str())));
 
 		for pair in models.chunks(1) {
-			let mut row = div().flex().gap(px(2.));
+			let mut row = gpui::div().flex().gap(gpui::px(2.));
 
 			for entry in pair {
 				let model = entry.model.as_str().to_owned();
@@ -75,24 +73,28 @@ impl AgentSurface {
 				let full = model_settings::model_choice_label(entry);
 
 				row = row.child(
-					div()
+					gpui::div()
 						.id(SharedString::from(format!("model-{model}")))
 						.role(Role::Button)
 						.tab_index(0)
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(px(32.))
-						.px(px(7.))
-						.rounded(px(6.))
-						.bg(if selected { rgba(0xffffff0c) } else { rgba(0x00000000) })
+						.h(gpui::px(32.))
+						.px(gpui::px(7.))
+						.rounded(gpui::px(6.))
+						.bg(if selected { gpui::rgba(0xffffff0c) } else { gpui::rgba(0x00000000) })
 						.flex()
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
 						.hover(move |d| {
-							d.bg(rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-								.text_color(rgb(TEXT))
+							d.bg(gpui::rgba(if selected {
+								SELECTED_HOVER_FILL
+							} else {
+								HOVER_FILL
+							}))
+							.text_color(gpui::rgb(TEXT))
 						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
@@ -104,19 +106,25 @@ impl AgentSurface {
 							}
 						}))
 						.child(
-							div().flex_1().min_w_0().flex().flex_col().gap(px(2.)).child(
-								div()
-									.text_size(px(12.))
-									.whitespace_nowrap()
-									.text_ellipsis()
-									.child(full.clone()),
-							),
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.flex()
+								.flex_col()
+								.gap(gpui::px(2.))
+								.child(
+									gpui::div()
+										.text_size(gpui::px(12.))
+										.whitespace_nowrap()
+										.text_ellipsis()
+										.child(full.clone()),
+								),
 						)
 						.child(
-							div()
-								.w(px(16.))
-								.text_size(px(13.))
-								.text_color(rgb(TEXT_MUTED))
+							gpui::div()
+								.w(gpui::px(16.))
+								.text_size(gpui::px(13.))
+								.text_color(gpui::rgb(TEXT_MUTED))
 								.child(if selected { "✓" } else { "" }),
 						)
 						.smooth(),
@@ -131,25 +139,24 @@ impl AgentSurface {
 }
 
 pub(super) fn effort_indicator(level: &str) -> AnyElement {
-	div()
+	gpui::div()
 		.flex()
 		.items_center()
-		.gap(px(7.))
-		.child(div().text_size(px(11.)).child(level_label(level)))
+		.gap(gpui::px(7.))
+		.child(gpui::div().text_size(gpui::px(11.)).child(level_label(level)))
 		.into_any_element()
 }
 
 pub(super) fn live_mark() -> AnyElement {
-	div()
-		.size(px(16.))
+	gpui::div()
+		.size(gpui::px(16.))
 		.flex()
 		.items_center()
 		.justify_center()
-		.gap(px(1.5))
-		.children(
-			[5., 10., 15., 10., 5.]
-				.map(|height| div().w(px(2.)).h(px(height)).rounded_full().bg(rgb(0xf4f2f7))),
-		)
+		.gap(gpui::px(1.5))
+		.children([5., 10., 15., 10., 5.].map(|height| {
+			gpui::div().w(gpui::px(2.)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
+		}))
 		.into_any_element()
 }
 
@@ -157,21 +164,21 @@ pub(super) fn launch_mark() -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(px(1.5));
+			let mut path = PathBuilder::stroke(gpui::px(1.5));
 			let origin = bounds.origin;
 
-			path.move_to(origin + gpui::point(px(8.), px(13.)));
-			path.line_to(origin + gpui::point(px(8.), px(3.)));
-			path.move_to(origin + gpui::point(px(3.), px(8.)));
-			path.line_to(origin + gpui::point(px(8.), px(3.)));
-			path.line_to(origin + gpui::point(px(13.), px(8.)));
+			path.move_to(origin + gpui::point(gpui::px(8.), gpui::px(13.)));
+			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
+			path.move_to(origin + gpui::point(gpui::px(3.), gpui::px(8.)));
+			path.line_to(origin + gpui::point(gpui::px(8.), gpui::px(3.)));
+			path.line_to(origin + gpui::point(gpui::px(13.), gpui::px(8.)));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(TEXT));
+				window.paint_path(path, gpui::rgb(TEXT));
 			}
 		},
 	)
-	.size(px(16.))
+	.size(gpui::px(16.))
 }
 
 fn level_label(level: &str) -> String {
@@ -220,30 +227,30 @@ impl RenderOnce for StopMark {
 		let pending =
 			ui_motion::value("stop-pending", if self.pending { 1. } else { 0. }, window, cx);
 
-		div()
-			.size(px(16.))
+		gpui::div()
+			.size(gpui::px(16.))
 			.relative()
 			.flex()
 			.items_center()
 			.justify_center()
 			.child(
-				div()
+				gpui::div()
 					.absolute()
-					.size(px(24.))
+					.size(gpui::px(24.))
 					.rounded_full()
-					.bg(rgba(0xf5c98500 | (strength * 48.) as u32)),
+					.bg(gpui::rgba(0xf5c98500 | (strength * 48.) as u32)),
 			)
 			.child(
-				div()
-					.size(px(9.))
-					.rounded(px(2.))
-					.bg(rgb(CANVAS))
+				gpui::div()
+					.size(gpui::px(9.))
+					.rounded(gpui::px(2.))
+					.bg(gpui::rgb(CANVAS))
 					.opacity(0.9 - pending * 0.35)
 					.child(
-						div()
+						gpui::div()
 							.size_full()
-							.rounded(px(2.))
-							.bg(rgba(0xf5c98500 | (strength * 255.) as u32)),
+							.rounded(gpui::px(2.))
+							.bg(gpui::rgba(0xf5c98500 | (strength * 255.) as u32)),
 					),
 			)
 	}
@@ -266,7 +273,7 @@ pub(super) struct PrimaryMark {
 }
 impl RenderOnce for PrimaryMark {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let mut row = div().size(px(16.)).relative();
+		let mut row = gpui::div().size(gpui::px(16.)).relative();
 
 		for (id, mode, glyph) in [
 			("primary-live", PrimaryMode::Live, live_mark()),
@@ -276,12 +283,12 @@ impl RenderOnce for PrimaryMark {
 				StopMark { armed: self.armed, pending: self.pending }.into_any_element(),
 			),
 			("primary-send", PrimaryMode::Send, launch_mark().into_any_element()),
-			("primary-done", PrimaryMode::Done, div().child("✓").into_any_element()),
+			("primary-done", PrimaryMode::Done, gpui::div().child("✓").into_any_element()),
 		] {
 			let opacity = ui_motion::value(id, if self.mode == mode { 1. } else { 0. }, window, cx);
 
 			row = row.child(
-				div()
+				gpui::div()
 					.absolute()
 					.inset_0()
 					.flex()

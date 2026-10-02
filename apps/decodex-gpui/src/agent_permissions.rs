@@ -1,16 +1,19 @@
 //! Saved task permission profiles; current-turn reviewer controls remain separate.
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
 	WireText, mcp_forms,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render,
-	Window, px,
 };
 use decodex_protocol::{AgentPermissionOutcome as Outcome, AgentPermissionState as State};
 
@@ -212,20 +215,19 @@ impl AgentSurface {
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
 		{
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let owner = work.id.clone();
-		let mut panel =
-			agent_surface::div().flex().flex_col().gap_2().child("Task permissions").child(
-				mcp_forms::mcp_button(
-					"permission-profiles-read".into(),
-					"Review / refresh permissions".into(),
-					false,
-					cx,
-					move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
-				),
-			);
+		let mut panel = gpui::div().flex().flex_col().gap_2().child("Task permissions").child(
+			mcp_forms::mcp_button(
+				"permission-profiles-read".into(),
+				"Review / refresh permissions".into(),
+				false,
+				cx,
+				move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
+			),
+		);
 
 		if self.permission_profiles.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();

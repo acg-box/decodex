@@ -6,13 +6,17 @@ use std::{
 };
 
 use gpui::Subscription;
+#[cfg(test)] use gpui::div;
 use tokio::{runtime::Builder, time};
 
-#[cfg(test)]
-use crate::shell::agent_surface::recap::{
-	AgentActionDto, AgentSnapshotResult, AgentWorkItemDto, Entity, IntoElement, LoadState, Render,
-	div, watch,
-};
+#[cfg(test)] use crate::shell::agent_surface::recap::AgentActionDto;
+#[cfg(test)] use crate::shell::agent_surface::recap::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::recap::AgentWorkItemDto;
+#[cfg(test)] use crate::shell::agent_surface::recap::Entity;
+#[cfg(test)] use crate::shell::agent_surface::recap::IntoElement;
+#[cfg(test)] use crate::shell::agent_surface::recap::LoadState;
+#[cfg(test)] use crate::shell::agent_surface::recap::Render;
+#[cfg(test)] use crate::shell::agent_surface::recap::watch;
 use crate::shell::agent_surface::recap::{
 	AgentClient, AgentDispatchStateDto, AgentSnapshotDto, AgentSurface, ClientProfile, Context,
 	EntityId, Phase, Task, TaskRecapStatus, Window, WireText,

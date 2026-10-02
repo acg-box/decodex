@@ -5,8 +5,8 @@ use tokio::runtime::Builder;
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 	AgentWorkItemDto, AgentWorkStatusDto, Context, EntityId, IdempotencyKey, InteractiveElement,
-	IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, div, mcp_forms,
-	model_settings, px,
+	IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, mcp_forms,
+	model_settings,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -252,12 +252,12 @@ impl AgentSurface {
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
 		{
-			return div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let owner = work.id.clone();
 		let mut panel =
-			div().flex().flex_col().gap_2().child("Model").child(mcp_forms::mcp_button(
+			gpui::div().flex().flex_col().gap_2().child("Model").child(mcp_forms::mcp_button(
 				"task-models-read".into(),
 				"Review / change model".into(),
 				false,
@@ -291,7 +291,7 @@ impl AgentSurface {
 
 				if let Some(receipt) = last_receipt {
 					panel = panel.child(
-						div()
+						gpui::div()
 							.id("task-model-receipt")
 							.debug_selector(|| "task-model-receipt".into())
 							.child(history_label(receipt)),
@@ -321,7 +321,7 @@ impl AgentSurface {
 
 				if let Some(receipt) = last_receipt {
 					panel = panel.child(
-						div()
+						gpui::div()
 							.id("task-model-receipt")
 							.debug_selector(|| "task-model-receipt".into())
 							.child(history_label(receipt)),
@@ -346,13 +346,13 @@ impl AgentSurface {
 		models: &[AgentModelDto],
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut panel = div().flex().flex_col().gap_2();
-		let mut choices = div()
+		let mut panel = gpui::div().flex().flex_col().gap_2();
+		let mut choices = gpui::div()
 			.id("task-model-choices")
 			.flex()
 			.flex_col()
 			.gap_1()
-			.max_h(px(240.))
+			.max_h(gpui::px(240.))
 			.overflow_y_scroll();
 
 		for (index, model) in models.iter().enumerate() {

@@ -4,9 +4,8 @@
 use futures_util as _;
 use gpui::{
 	AppContext as _, Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window,
-	WindowBackgroundAppearance, WindowBounds, WindowOptions, div,
+	WindowBackgroundAppearance, WindowBounds, WindowOptions,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
-	px, rgb, rgba, size,
 };
 use libc as _;
 use objc2 as _;
@@ -38,29 +37,29 @@ struct Preview {
 }
 impl Render for Preview {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
+		gpui::div()
 			.size_full()
-			.bg(rgba(0x17191ed0))
-			.text_color(rgb(0xe8eaf0))
+			.bg(gpui::rgba(0x17191ed0))
+			.text_color(gpui::rgb(0xe8eaf0))
 			.font_family(".AppleSystemUIFont")
 			.p_6()
 			.flex()
 			.flex_col()
 			.gap_4()
 			.child(
-				div()
-					.max_w(px(460.))
-					.text_size(px(14.))
-					.line_height(px(22.))
+				gpui::div()
+					.max_w(gpui::px(460.))
+					.text_size(gpui::px(14.))
+					.line_height(gpui::px(22.))
 					.child("Mostly cloudy in Singapore, with showers possible overnight."),
 			)
 			.child(weather_card::render(&self.forecast, "preview"))
 			.child(
-				div()
+				gpui::div()
 					.id("copy-weather")
-					.w(px(26.))
-					.h(px(26.))
-					.text_color(rgb(0x9ca7b5))
+					.w(gpui::px(26.))
+					.h(gpui::px(26.))
+					.text_color(gpui::rgb(0x9ca7b5))
 					.cursor_pointer()
 					.on_click(cx.listener(|s, _, _, cx| {
 						cx.write_to_clipboard(ClipboardItem::new_string(s.forecast.markdown()));
@@ -80,7 +79,7 @@ fn main() {
 			WindowOptions {
 				window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
 					None,
-					size(px(560.), px(360.)),
+					gpui::size(gpui::px(560.), gpui::px(360.)),
 					cx,
 				))),
 				window_background: WindowBackgroundAppearance::Blurred,

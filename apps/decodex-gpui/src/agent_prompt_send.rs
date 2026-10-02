@@ -3,9 +3,12 @@ use std::time::Duration;
 
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
-use crate::shell::agent_surface::prompt_edit::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
-	DesktopPromptEditDraft, IdempotencyKey, confirmation,
+use crate::shell::{
+	agent_surface,
+	agent_surface::prompt_edit::{
+		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+		DesktopPromptEditDraft, IdempotencyKey, confirmation,
+	},
 };
 use decodex_protocol::{AgentExecutionOverrides, PromptInputUpload};
 
@@ -36,7 +39,7 @@ impl AgentSurface {
 		let worker_draft = expected.clone();
 		let panel_key = self.prompt_edit.key.clone();
 		let command_key =
-			IdempotencyKey::new(prompt_edit::unique_command()).expect("bounded command identity");
+			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let (staged, stage) = oneshot::channel();
 		let (permit, permitted) = oneshot::channel();
 		let (completed, completion) = oneshot::channel();

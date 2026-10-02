@@ -280,20 +280,26 @@ fn partial_message_settings_preserve_existing_values_and_explicit_standard_clear
 		serde_json::json!({"options":{"execution":execution,"attachments":[]}}).to_string()
 	};
 
-	apply_message_options(&mut params, &message(serde_json::json!({}))).unwrap();
+	agent::apply_message_options(&mut params, &message(serde_json::json!({}))).unwrap();
 
 	assert_eq!(params, baseline);
 
-	apply_message_options(&mut params, &message(serde_json::json!({"reasoning_effort":"medium"})))
-		.unwrap();
+	agent::apply_message_options(
+		&mut params,
+		&message(serde_json::json!({"reasoning_effort":"medium"})),
+	)
+	.unwrap();
 
 	assert_eq!(params["model"], "native-model");
 	assert_eq!(params["effort"], "medium");
 	assert_eq!(params["serviceTier"], "priority");
 	assert!(params.get("serviceTierForTurn").is_none());
 
-	apply_message_options(&mut params, &message(serde_json::json!({"service_tier":"default"})))
-		.unwrap();
+	agent::apply_message_options(
+		&mut params,
+		&message(serde_json::json!({"service_tier":"default"})),
+	)
+	.unwrap();
 
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
@@ -305,7 +311,7 @@ fn partial_message_settings_preserve_existing_values_and_explicit_standard_clear
 fn steering_receipt_preserves_turn_settings_when_carried_as_evidence() {
 	let mut params = serde_json::json!({"input":[],"model":"current-model","effort":"high","serviceTier":"priority"});
 
-	apply_message_options(&mut params,&serde_json::json!({"text":"Supplement","options":{"attachments":[{"path":"/tmp/steer.png","image":true}]}}).to_string()).unwrap();
+	agent::apply_message_options(&mut params,&serde_json::json!({"text":"Supplement","options":{"attachments":[{"path":"/tmp/steer.png","image":true}]}}).to_string()).unwrap();
 
 	assert_eq!(params["model"], "current-model");
 	assert_eq!(params["effort"], "high");
@@ -2440,14 +2446,14 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 
 	let mut params = serde_json::json!({"input":[],"serviceTier":"priority"});
 
-	apply_message_options(&mut params,&serde_json::json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
+	agent::apply_message_options(&mut params,&serde_json::json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
 
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
 
 	let tiered = serde_json::json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","fast":false,"service_tier":"ultrafast"},"attachments":[]}});
 
-	apply_message_options(&mut params, &tiered.to_string()).unwrap();
+	agent::apply_message_options(&mut params, &tiered.to_string()).unwrap();
 
 	assert_eq!(params["serviceTier"], "ultrafast");
 	assert_eq!(params["serviceTierForTurn"], "ultrafast");

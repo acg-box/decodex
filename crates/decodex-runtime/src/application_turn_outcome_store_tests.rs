@@ -1,9 +1,12 @@
 //! Reopen and verify actual stored provider outcomes, including missing evidence.
 use rusqlite::Connection;
 
-use crate::application::turn_outcomes::{
-	self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
-	ConversationTurnOutcomeState, ProductStore, TurnId,
+use crate::{
+	application::turn_outcomes::{
+		self, ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult,
+		ConversationTurnOutcomeState, ProductStore, TurnId,
+	},
+	conversation,
 };
 use decodex_core::{
 	DecodexRoot, ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence,
@@ -29,7 +32,7 @@ fn seed(root: &DecodexRoot, request: &ConversationTurnOutcomeRequest) {
 		.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
 		.unwrap();
 
-	let id = turn_outcomes::ordinary_provider_attempt_id(
+	let id = conversation::ordinary_provider_attempt_id(
 		request.idempotency_key.as_str(),
 		&TurnId::new(request.turn_id.as_str()).unwrap(),
 	)
@@ -90,7 +93,7 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 			ConversationTurnOutcomeResult::Conflict
 		);
 
-		let attempt = turn_outcomes::ordinary_provider_attempt_id(
+		let attempt = conversation::ordinary_provider_attempt_id(
 			request.idempotency_key.as_str(),
 			&TurnId::new(request.turn_id.as_str()).unwrap(),
 		)

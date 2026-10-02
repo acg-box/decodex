@@ -17,7 +17,7 @@ use std::{
 
 use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
-	StrikethroughStyle,
+	StrikethroughStyle, rgb, rgba,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
@@ -26,8 +26,7 @@ use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
 use crate::{
 	shell::agent_surface::{
 		FluentBuilder, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
-		SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
-		selectable_text, ui_theme,
+		SharedString, StatefulInteractiveElement, Styled, Window, selectable_text, ui_theme,
 	},
 	ui_motion::{self, SmoothControl as _},
 	ui_theme::HOVER_FILL,
@@ -93,19 +92,19 @@ impl RenderOnce for CopyButton {
 		let click_text = self.text.clone();
 		let selector = self.key.clone();
 
-		div()
+		gpui::div()
 			.id(SharedString::from(self.key))
 			.debug_selector(move || selector.clone())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(if copied { "Copied" } else { self.label })
-			.size(px(24.))
+			.size(gpui::px(24.))
 			.flex()
 			.items_center()
 			.justify_center()
-			.rounded(px(6.))
+			.rounded(gpui::px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(HOVER_FILL)))
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 
@@ -132,9 +131,9 @@ impl RenderOnce for CopyButton {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						let mut path = PathBuilder::stroke(px(1.1));
+						let mut path = PathBuilder::stroke(gpui::px(1.1));
 						let point = |x: f32, y: f32| {
-							bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75))
+							bounds.origin + gpui::point(gpui::px(x * 0.75), gpui::px(y * 0.75))
 						};
 
 						if copied {
@@ -153,11 +152,14 @@ impl RenderOnce for CopyButton {
 						}
 
 						if let Ok(path) = path.build() {
-							window.paint_path(path, rgb(if copied { BLUE } else { TEXT_MUTED }));
+							window.paint_path(
+								path,
+								gpui::rgb(if copied { BLUE } else { TEXT_MUTED }),
+							);
 						}
 					},
 				)
-				.size(px(12.)),
+				.size(gpui::px(12.)),
 			)
 			.smooth()
 	}
@@ -254,18 +256,18 @@ pub(super) fn response_text(text: &str) -> String {
 pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 
-	div()
+	gpui::div()
 		.flex()
 		.flex_col()
 		.gap_1()
-		.text_size(px(12.))
-		.line_height(px(19.))
-		.text_color(rgb(TEXT_MUTED))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(19.))
+		.text_color(gpui::rgb(TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
 			let key = format!("{key}-{i}");
 
 			if let Node::Block(Kind::Heading(_) | Kind::Paragraph, children) = node {
-				div()
+				gpui::div()
 					.font_weight(FontWeight::NORMAL)
 					.child({
 						let mut out = Inline::default();
@@ -295,12 +297,12 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 
-	div()
+	gpui::div()
 		.flex()
 		.flex_col()
 		.gap_2()
-		.text_size(px(BODY_SIZE))
-		.line_height(px(BODY_LINE_HEIGHT))
+		.text_size(gpui::px(BODY_SIZE))
+		.line_height(gpui::px(BODY_LINE_HEIGHT))
 		.children(
 			document
 				.nodes
@@ -436,11 +438,11 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 				match kind {
 					Kind::Strong => next.font_weight = Some(FontWeight::BOLD),
 					Kind::Emphasis => next.font_style = Some(FontStyle::Italic),
-					Kind::InlineCode => next.background_color = Some(rgba(0xffffff12).into()),
-					Kind::Link(_) => next.color = Some(rgb(BLUE).into()),
+					Kind::InlineCode => next.background_color = Some(gpui::rgba(0xffffff12).into()),
+					Kind::Link(_) => next.color = Some(gpui::rgb(BLUE).into()),
 					Kind::Strike =>
 						next.strikethrough =
-							Some(StrikethroughStyle { thickness: px(1.0), color: None }),
+							Some(StrikethroughStyle { thickness: gpui::px(1.0), color: None }),
 					_ => {},
 				}
 
@@ -487,14 +489,15 @@ fn render_math_paragraph(nodes: &[Node], key: &str) -> AnyElement {
 		elements.push(inline(&nodes[start..], &format!("{key}-after")));
 	}
 
-	div().w_full().min_w_0().flex().flex_col().gap_2().children(elements).into_any_element()
+	gpui::div().w_full().min_w_0().flex().flex_col().gap_2().children(elements).into_any_element()
 }
 
 fn render_node(node: &Node, key: &str) -> AnyElement {
 	let Node::Block(kind, children) = node else {
 		return match node {
-			Node::Rule => div().h(px(1.0)).my_2().bg(rgba(0xffffff18)).into_any_element(),
-			_ => div().child(inline(slice::from_ref(node), key)).into_any_element(),
+			Node::Rule =>
+				gpui::div().h(gpui::px(1.0)).my_2().bg(gpui::rgba(0xffffff18)).into_any_element(),
+			_ => gpui::div().child(inline(slice::from_ref(node), key)).into_any_element(),
 		};
 	};
 
@@ -512,7 +515,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 	}
 
 	match kind {
-		Kind::Math { source, display: true } => div()
+		Kind::Math { source, display: true } => gpui::div()
 			.id(SharedString::from(format!("math-{key}")))
 			.debug_selector({
 				let key = key.to_owned();
@@ -530,10 +533,10 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.child(inline(children, &format!("math-text-{key}")))
 			.child(copy_button(&format!("math-copy-{key}"), "Copy formula", source.clone()))
 			.into_any_element(),
-		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => div()
+		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => gpui::div()
 			.when(matches!(kind, Kind::Cell), |d| d.flex_1().min_w_0().p_2())
 			.when(matches!(kind, Kind::Heading(_)), |d| {
-				d.font_weight(FontWeight::SEMIBOLD).mt_2().text_size(px(
+				d.font_weight(FontWeight::SEMIBOLD).mt_2().text_size(gpui::px(
 					if let Kind::Heading(level) = kind {
 						19.0 - (*level as f32) * 1.0
 					} else {
@@ -543,60 +546,70 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			})
 			.child(inline(children, key))
 			.into_any_element(),
-		Kind::Code | Kind::Mermaid { .. } => div()
+		Kind::Code | Kind::Mermaid { .. } => gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
 			.p_3()
 			.rounded_md()
-			.bg(rgba(0x00000045))
+			.bg(gpui::rgba(0x00000045))
 			.font_family("Menlo")
-			.text_size(px(12.0))
-			.line_height(px(19.0))
+			.text_size(gpui::px(12.0))
+			.line_height(gpui::px(19.0))
 			.child(copy_button(&format!("copy-code-{key}"), "Copy code", code_text(children)))
 			.child(inline(children, key))
 			.into_any_element(),
-		Kind::List(start) => div()
+		Kind::List(start) => gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
 			.children(children.iter().enumerate().map(|(index, child)| {
-				div()
+				gpui::div()
 					.flex()
 					.gap_2()
-					.child(div().w(px(24.0)).flex_shrink_0().text_color(rgb(TEXT_MUTED)).child(
-						start.map_or_else(
-							|| "•".into(),
-							|start| format!("{}.", start + index as u64),
-						),
-					))
 					.child(
-						div()
+						gpui::div()
+							.w(gpui::px(24.0))
+							.flex_shrink_0()
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(start.map_or_else(
+								|| "•".into(),
+								|start| format!("{}.", start + index as u64),
+							)),
+					)
+					.child(
+						gpui::div()
 							.flex_1()
 							.min_w_0()
 							.child(render_node(child, &format!("{key}-{index}"))),
 					)
 			}))
 			.into_any_element(),
-		Kind::Row(header) => div()
+		Kind::Row(header) => gpui::div()
 			.flex()
 			.items_stretch()
 			.border_b_1()
-			.border_color(rgba(0xffffff12))
-			.when(*header, |d| d.font_weight(FontWeight::SEMIBOLD).bg(rgba(0xffffff08)))
+			.border_color(gpui::rgba(0xffffff12))
+			.when(*header, |d| d.font_weight(FontWeight::SEMIBOLD).bg(gpui::rgba(0xffffff08)))
 			.children(
 				children.iter().enumerate().map(|(i, n)| render_node(n, &format!("{key}-{i}"))),
 			)
 			.into_any_element(),
-		Kind::Item =>
-			div().flex().flex_col().gap_2().children(render_item(children, key)).into_any_element(),
-		_ => div()
+		Kind::Item => gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.when(matches!(kind, Kind::Quote), |d| d.pl_3().border_l_2().border_color(rgb(BLUE)))
+			.children(render_item(children, key))
+			.into_any_element(),
+		_ => gpui::div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.when(matches!(kind, Kind::Quote), |d| {
+				d.pl_3().border_l_2().border_color(gpui::rgb(BLUE))
+			})
 			.when(matches!(kind, Kind::Table), |d| {
-				d.border_1().border_color(rgba(0xffffff12)).rounded_md()
+				d.border_1().border_color(gpui::rgba(0xffffff12)).rounded_md()
 			})
 			.children(
 				children.iter().enumerate().map(|(i, n)| render_node(n, &format!("{key}-{i}"))),
@@ -634,7 +647,7 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 		) {
 			if start < index {
 				result.push(
-					div()
+					gpui::div()
 						.child(inline(&nodes[start..index], &format!("{key}-text-{start}")))
 						.into_any_element(),
 				);
@@ -648,7 +661,9 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 
 	if start < nodes.len() {
 		result.push(
-			div().child(inline(&nodes[start..], &format!("{key}-text-{start}"))).into_any_element(),
+			gpui::div()
+				.child(inline(&nodes[start..], &format!("{key}-text-{start}")))
+				.into_any_element(),
 		);
 	}
 
@@ -827,7 +842,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(markdown::px(700.), markdown::px(500.)));
+			window.resize(gpui::size(gpui::px(700.), gpui::px(500.)));
 			window.draw(cx).clear();
 		});
 
@@ -851,7 +866,7 @@ mod tests {
 		let (preview, visual) = cx.add_window_view(|_, _| CopyPreview { text: original.into() });
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(markdown::px(700.), markdown::px(500.)));
+			window.resize(gpui::size(gpui::px(700.), gpui::px(500.)));
 			window.draw(cx).clear();
 		});
 
@@ -900,7 +915,7 @@ mod tests {
 			cx.add_window_view(|_, _| CopyPreview { text: "Read **中文** text".into() });
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(markdown::px(700.), markdown::px(300.)));
+			window.resize(gpui::size(gpui::px(700.), gpui::px(300.)));
 			window.draw(cx).clear();
 		});
 

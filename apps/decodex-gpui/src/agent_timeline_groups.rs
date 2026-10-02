@@ -3,8 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gpui::{
 	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString,
-	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
-	px,
+	prelude::{
+		InteractiveElement as _, IntoElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::{
@@ -50,11 +52,11 @@ impl AgentSurface {
 			.cursor_pointer()
 			.flex()
 			.items_center()
-			.gap(px(6.))
-			.py(px(5.))
-			.text_size(px(13.))
+			.gap(gpui::px(6.))
+			.py(gpui::px(5.))
+			.text_size(gpui::px(13.))
 			.font_weight(FontWeight::NORMAL)
-			.line_height(px(18.))
+			.line_height(gpui::px(18.))
 			.text_color(gpui::rgb(TEXT_MUTED))
 			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.child(earlier_messages_label(group.count))
@@ -342,7 +344,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(groups::px(1_400.), groups::px(1_400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

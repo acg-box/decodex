@@ -7,8 +7,7 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, AppContext as _, KeyDownEvent, Pixels, Role, ScrollHandle, ScrollWheelEvent, point,
-	size,
+	AnyElement, AppContext as _, KeyDownEvent, Pixels, Role, ScrollHandle, ScrollWheelEvent,
 };
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTED};
 
@@ -17,8 +16,8 @@ use crate::{
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
 			FluentBuilder, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-			StatefulInteractiveElement, Styled, Window, div, history_entry, markdown,
-			native_timeline, px, rgb, rgba, ui_theme, workspace,
+			StatefulInteractiveElement, Styled, Window, history_entry, markdown, native_timeline,
+			ui_theme, workspace,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -147,7 +146,7 @@ impl AgentSurface {
 			&& let Some(action) =
 				self.voice_read_action(work, &format!("saved-{}", entry.id), &entry.text, true, cx)
 		{
-			body = div().child(body).child(action).into_any_element();
+			body = gpui::div().child(body).child(action).into_any_element();
 		}
 
 		self.anchor_history_row(&HistoryKey::Local(entry.id), body)
@@ -234,7 +233,7 @@ impl AgentSurface {
 			.cloned()
 			.unwrap_or_default();
 
-		div()
+		gpui::div()
 			.w_full()
 			.flex_none()
 			.on_children_prepainted(move |bounds, window, cx| {
@@ -278,11 +277,11 @@ impl AgentSurface {
 	}
 
 	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
-		let delta = event.delta.pixel_delta(px(BODY_LINE_HEIGHT));
+		let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT));
 
 		// macOS also sends phase-only and horizontal gesture events. They do
 		// not move the transcript and must not cancel its current scroll state.
-		if delta.y == px(0.) {
+		if delta.y == gpui::px(0.) {
 			return;
 		}
 
@@ -308,14 +307,15 @@ impl AgentSurface {
 			} else {
 				self.wheel_scroll = None;
 
-				let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.));
+				let offset =
+					(scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, gpui::px(0.));
 
-				scroll.set_offset(point(px(0.), offset));
+				scroll.set_offset(gpui::point(gpui::px(0.), offset));
 			}
 
 			let following = !smooth
-				&& delta.y < px(0.)
-				&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
+				&& delta.y < gpui::px(0.)
+				&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.);
 
 			if let Some(id) = &self.selected {
 				if following {
@@ -327,7 +327,7 @@ impl AgentSurface {
 
 			self.set_voice_follow(following);
 
-			if delta.y > px(0.) {
+			if delta.y > gpui::px(0.) {
 				self.prefetch_older_history(cx);
 			}
 
@@ -352,7 +352,7 @@ impl AgentSurface {
 				};
 				let offset = offset.clamp(-f32::from(scroll.max_offset().y).max(0.), 0.);
 
-				scroll.set_offset(point(px(0.), px(offset)));
+				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
 
 				if moving {
 					ui_motion::request_frame(window, cx);
@@ -395,9 +395,9 @@ impl AgentSurface {
 			};
 			let offset = navigation.from + (target - navigation.from) * (1.0 - (1.0 - t).powi(3));
 
-			scroll.set_offset(point(
-				px(0.0),
-				px(offset.clamp(-f32::from(scroll.max_offset().y).max(0.0), 0.0)),
+			scroll.set_offset(gpui::point(
+				gpui::px(0.0),
+				gpui::px(offset.clamp(-f32::from(scroll.max_offset().y).max(0.0), 0.0)),
 			));
 		}
 
@@ -428,9 +428,9 @@ impl AgentSurface {
 							id.as_ref().and_then(|id| s.history_marks.get(id)),
 							s.transcript_scroll.get(&work),
 						) {
-						scroll.set_offset(point(
+						scroll.set_offset(gpui::point(
 							scroll.offset().x,
-							px(navigation_offset(
+							gpui::px(navigation_offset(
 								mark.position.get(),
 								scroll.max_offset().y.into(),
 							)),
@@ -450,7 +450,7 @@ impl AgentSurface {
 		// the new footer height changes the scroll range, or keep the reader's offset.
 		if let Some(work) = self.selected.as_ref()
 			&& let Some(scroll) = self.transcript_scroll.get(work)
-			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.)
+			&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.)
 		{
 			self.latest_follow_work = Some(work.clone());
 		}
@@ -504,7 +504,7 @@ impl AgentSurface {
 			.selected
 			.as_ref()
 			.and_then(|id| self.transcript_scroll.get(id))
-			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > px(48.));
+			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.));
 		let working = self
 			.snapshot
 			.as_ref()
@@ -530,20 +530,20 @@ impl AgentSurface {
 		let opacity =
 			ui_motion::value("jump-latest-opacity", if visible { 1. } else { 0. }, window, cx);
 
-		div()
+		gpui::div()
 			.absolute()
 			.left_0()
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(px(if self.selected_is_manager() {
+			.bottom(gpui::px(if self.selected_is_manager() {
 				self.composer_footer_height + 8.
 			} else {
 				12.
 			}))
 			.when(opacity > 0.001, |d| {
 				d.child(
-					div()
+					gpui::div()
 						.id("jump-to-latest")
 						.debug_selector(|| "jump-to-latest".into())
 						.occlude()
@@ -554,17 +554,17 @@ impl AgentSurface {
 							"Jump to latest message"
 						})
 						.tab_index(0)
-						.h(px(28.))
-						.w(px(width))
+						.h(gpui::px(28.))
+						.w(gpui::px(width))
 						.rounded_full()
-						.bg(rgba(SURFACE_OVERLAY_MATERIAL))
+						.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
 						.flex()
 						.items_center()
 						.justify_center()
-						.gap(px(5.))
+						.gap(gpui::px(5.))
 						.opacity(opacity)
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0x302d397c)))
+						.hover(|d| d.bg(gpui::rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -573,13 +573,18 @@ impl AgentSurface {
 							}
 						}))
 						.when(working, |d| {
-							d.child(div().flex().items_center().gap(px(2.)).children((0..3).map(
-								|i| {
-									div().size(px(3.)).rounded_full().bg(rgb(BLUE)).opacity(
-										0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.,
-									)
-								},
-							)))
+							d.child(gpui::div().flex().items_center().gap(gpui::px(2.)).children(
+								(0..3).map(|i| {
+									gpui::div()
+										.size(gpui::px(3.))
+										.rounded_full()
+										.bg(gpui::rgb(BLUE))
+										.opacity(
+											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
+												/ 2.,
+										)
+								}),
+							))
 						})
 						.child(workspace_symbols::icon(Symbol::ArrowDown)),
 				)
@@ -605,8 +610,8 @@ impl AgentSurface {
 
 	fn active_history_index(&self, scroll: &ScrollHandle) -> usize {
 		let last = self.history_marks.len().saturating_sub(1);
-		let at_end = scroll.max_offset().y > px(0.)
-			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
+		let at_end = scroll.max_offset().y > gpui::px(0.)
+			&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.);
 
 		self.history_selected
 			.as_ref()
@@ -625,7 +630,7 @@ impl AgentSurface {
 
 	pub(super) fn history_rail(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.history_marks.is_empty() {
-			return div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let scroll = self
@@ -654,9 +659,9 @@ impl AgentSurface {
 		);
 		let spacing = ((f32::from(scroll.bounds().size.height) - 32.0) / positions.len() as f32)
 			.clamp(2.0, 11.0);
-		let mut rail = div()
+		let mut rail = gpui::div()
 			.id("conversation-history-rail")
-			.w(px(44.0))
+			.w(gpui::px(44.0))
 			.flex_none()
 			.h_full()
 			.py_4()
@@ -681,14 +686,14 @@ impl AgentSurface {
 			let hit_bounds = mark.hit_bounds.clone();
 
 			rail = rail.child(
-				div()
+				gpui::div()
 					.id(SharedString::from(format!("history-tick-{id}")))
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Jump to: {}", mark.question))
 					.w_full()
 					.flex_none()
-					.h(px(spacing))
+					.h(gpui::px(spacing))
 					.cursor_pointer()
 					.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
 						if *hovered {
@@ -717,20 +722,20 @@ impl AgentSurface {
 								let activity =
 									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									rgb(BLUE)
+									gpui::rgb(BLUE)
 								} else {
-									rgba((TEXT << 8) | (100. + 155. * activity) as u32)
+									gpui::rgba((TEXT << 8) | (100. + 155. * activity) as u32)
 								};
 								let width = 7.0 + influence * 16.0;
 								let height = 2.0 + influence;
 
 								window.paint_quad(gpui::fill(
 									gpui::Bounds::new(
-										point(
-											bounds.center().x - px(width / 2.0),
-											bounds.center().y - px(height / 2.),
+										gpui::point(
+											bounds.center().x - gpui::px(width / 2.0),
+											bounds.center().y - gpui::px(height / 2.),
 										),
-										size(px(width), px(height)),
+										gpui::size(gpui::px(width), gpui::px(height)),
 									),
 									color,
 								));
@@ -778,22 +783,29 @@ pub(super) struct WheelScroll {
 struct HistoryPreview(HistoryMark);
 impl Render for HistoryPreview {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.w(px(320.0))
+		gpui::div()
+			.w(gpui::px(320.0))
 			.p_3()
-			.rounded(px(10.0))
-			.bg(rgba(0x24242af5))
+			.rounded(gpui::px(10.0))
+			.bg(gpui::rgba(0x24242af5))
 			.border_1()
-			.border_color(rgba(0xffffff16))
+			.border_color(gpui::rgba(0xffffff16))
 			.flex()
 			.flex_col()
 			.gap_2()
-			.text_size(px(12.0))
-			.line_height(px(18.0))
-			.child(div().text_size(px(10.0)).text_color(rgb(TEXT_MUTED)).child(self.0.time.clone()))
-			.child(div().text_color(rgb(TEXT)).child(self.0.question.clone()))
+			.text_size(gpui::px(12.0))
+			.line_height(gpui::px(18.0))
+			.child(
+				gpui::div()
+					.text_size(gpui::px(10.0))
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.child(self.0.time.clone()),
+			)
+			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.0.question.clone()))
 			.when(!self.0.answer.is_empty(), |panel| {
-				panel.child(div().text_color(rgb(TEXT_MUTED)).child(self.0.answer.clone()))
+				panel.child(
+					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.0.answer.clone()),
+				)
 			})
 	}
 }
@@ -840,7 +852,7 @@ mod tests {
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(900.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 
 		let saved = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -901,7 +913,7 @@ mod tests {
 	fn deferred_navigation_finish_does_not_end_a_newer_jump(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(400.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -961,7 +973,7 @@ mod tests {
 		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(400.)));
 
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1069,7 +1081,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(400.)));
 
 		let keys = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1188,7 +1200,7 @@ mod tests {
 	fn long_history_scroll_draw_benchmark(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(900.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1239,10 +1251,8 @@ mod tests {
 				s.latest_follow_work = None;
 
 				s.history_follow_paused.insert("agent".into());
-				s.transcript_scroll["agent"].set_offset(activity::point(
-					activity::px(0.),
-					activity::px(-2_000. - frame as f32 * 17.),
-				));
+				s.transcript_scroll["agent"]
+					.set_offset(gpui::point(gpui::px(0.), gpui::px(-2_000. - frame as f32 * 17.)));
 				cx.notify();
 			});
 
@@ -1297,7 +1307,7 @@ mod tests {
 	fn rail_hit_targets_select_their_own_message(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(400.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1349,7 +1359,7 @@ mod tests {
 	fn history_marks_jump_to_real_message_anchors(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.0), activity::px(320.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.0), gpui::px(320.0)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1382,7 +1392,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		surface.update(visual, |s, _| {
-			assert!(s.transcript_scroll["agent"].offset().y < activity::px(0.0));
+			assert!(s.transcript_scroll["agent"].offset().y < gpui::px(0.0));
 			assert!(
 				s.transcript_scroll["agent"].offset().y
 					>= -s.transcript_scroll["agent"].max_offset().y
@@ -1395,7 +1405,7 @@ mod tests {
 	fn mouse_wheel_animates_and_trackpad_takes_over_immediately(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(300.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(300.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1410,16 +1420,16 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
 
-			scroll.set_offset(activity::point(activity::px(0.), activity::px(-50.)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-50.)));
 
 			let event = gpui::ScrollWheelEvent {
-				delta: gpui::ScrollDelta::Lines(activity::point(0., -1.)),
+				delta: gpui::ScrollDelta::Lines(gpui::point(0., -1.)),
 				..Default::default()
 			};
 
 			s.scroll_history(&event, cx);
 
-			assert_eq!(scroll.offset().y, activity::px(-50.), "notches must not jump immediately");
+			assert_eq!(scroll.offset().y, gpui::px(-50.), "notches must not jump immediately");
 
 			let first = s.wheel_scroll.as_ref().unwrap().motion.to;
 
@@ -1434,10 +1444,10 @@ mod tests {
 
 			assert!(midpoint < -50. && midpoint > wheel.motion.to);
 
-			scroll.set_offset(activity::point(activity::px(0.), activity::px(midpoint)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(midpoint)));
 			s.scroll_history(
 				&gpui::ScrollWheelEvent {
-					delta: gpui::ScrollDelta::Lines(activity::point(0., 1.)),
+					delta: gpui::ScrollDelta::Lines(gpui::point(0., 1.)),
 					..Default::default()
 				},
 				cx,
@@ -1450,17 +1460,14 @@ mod tests {
 
 			s.scroll_history(
 				&gpui::ScrollWheelEvent {
-					delta: gpui::ScrollDelta::Pixels(activity::point(
-						activity::px(0.),
-						activity::px(0.25),
-					)),
+					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(0.25))),
 					..Default::default()
 				},
 				cx,
 			);
 
 			assert!(s.wheel_scroll.is_none());
-			assert_eq!(scroll.offset().y, activity::px(midpoint + 0.25));
+			assert_eq!(scroll.offset().y, gpui::px(midpoint + 0.25));
 		});
 	}
 
@@ -1486,7 +1493,7 @@ mod tests {
 	fn trackpad_phase_events_preserve_follow_and_fractional_deltas(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(300.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(300.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1501,7 +1508,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
 
-			scroll.set_offset(activity::point(activity::px(0.), activity::px(-40.)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-40.)));
 
 			s.latest_follow_work = Some("agent".into());
 
@@ -1510,10 +1517,7 @@ mod tests {
 			for phase in [gpui::TouchPhase::Started, gpui::TouchPhase::Ended] {
 				s.scroll_history(
 					&gpui::ScrollWheelEvent {
-						delta: gpui::ScrollDelta::Pixels(activity::point(
-							activity::px(3.),
-							activity::px(0.),
-						)),
+						delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(3.), gpui::px(0.))),
 						touch_phase: phase,
 						..Default::default()
 					},
@@ -1522,15 +1526,12 @@ mod tests {
 
 				assert_eq!(s.latest_follow_work.as_deref(), Some("agent"));
 				assert!(!s.history_follow_paused.contains("agent"));
-				assert_eq!(scroll.offset().y, activity::px(-40.));
+				assert_eq!(scroll.offset().y, gpui::px(-40.));
 			}
 			for _ in 0..8 {
 				s.scroll_history(
 					&gpui::ScrollWheelEvent {
-						delta: gpui::ScrollDelta::Pixels(activity::point(
-							activity::px(0.),
-							activity::px(0.25),
-						)),
+						delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(0.25))),
 						..Default::default()
 					},
 					cx,
@@ -1539,7 +1540,7 @@ mod tests {
 
 			assert_eq!(
 				scroll.offset().y,
-				activity::px(-38.),
+				gpui::px(-38.),
 				"precise deltas accumulate without rounding or duplication"
 			);
 			assert!(s.history_follow_paused.contains("agent"));
@@ -1550,7 +1551,7 @@ mod tests {
 	fn wheel_scroll_keeps_adjacent_messages_accessible(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.0), activity::px(300.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.0), gpui::px(300.0)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1569,12 +1570,9 @@ mod tests {
 
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["agent"].clone());
 
+		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			scroll.max_offset().y >= activity::px(100.),
-			"fixture must allow the full wheel delta"
-		);
-		assert!(
-			scroll.bounds().bottom() > activity::px(280.),
+			scroll.bounds().bottom() > gpui::px(280.),
 			"history must extend behind the floating composer instead of clipping above it"
 		);
 
@@ -1582,26 +1580,20 @@ mod tests {
 
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
-			delta: gpui::ScrollDelta::Pixels(activity::point(
-				activity::px(0.0),
-				activity::px(-100.0),
-			)),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
 			..Default::default()
 		});
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
-		assert_eq!(scroll.offset().y, activity::px(-100.0), "wheel delta must be applied once");
+		assert_eq!(scroll.offset().y, gpui::px(-100.0), "wheel delta must be applied once");
 
 		let previous = scroll.offset().y;
 
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
-			delta: gpui::ScrollDelta::Pixels(activity::point(
-				activity::px(0.0),
-				activity::px(60.0),
-			)),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(60.0))),
 			..Default::default()
 		});
 		visual.update(|window, cx| {
@@ -1610,10 +1602,10 @@ mod tests {
 
 		assert!(scroll.offset().y > previous);
 
-		scroll.set_offset(activity::point(activity::px(0.), -scroll.max_offset().y));
+		scroll.set_offset(gpui::point(gpui::px(0.), -scroll.max_offset().y));
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
-			delta: gpui::ScrollDelta::Pixels(activity::point(activity::px(0.), activity::px(5.))),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(5.))),
 			..Default::default()
 		});
 
@@ -1629,7 +1621,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(320.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1651,7 +1643,7 @@ mod tests {
 		let before = surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
 
-			scroll.set_offset(activity::point(activity::px(0.), activity::px(-50.)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-50.)));
 			s.history_follow_paused.insert("agent".into());
 
 			let before = s.history_marks[&HistoryKey::Local(1)].position.get()
@@ -1704,7 +1696,7 @@ mod tests {
 	fn jump_to_latest_scrolls_to_bottom_and_resumes_follow(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(320.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1715,7 +1707,7 @@ mod tests {
 			s.transcript_scroll
 				.entry("agent".into())
 				.or_default()
-				.set_offset(activity::point(activity::px(0.), activity::px(0.)));
+				.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
 			cx.notify();
 		});
 
@@ -1748,7 +1740,7 @@ mod tests {
 			let scroll = &s.transcript_scroll["agent"];
 
 			assert!(
-				(scroll.offset().y + scroll.max_offset().y).abs() < activity::px(1.),
+				(scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.),
 				"offset={:?}, max={:?}, button={button:?}",
 				scroll.offset(),
 				scroll.max_offset()
@@ -1761,7 +1753,7 @@ mod tests {
 	fn sending_leaves_old_anchor_and_scrolls_to_latest(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(320.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1790,7 +1782,7 @@ mod tests {
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["agent"];
 
-			assert!((scroll.offset().y + scroll.max_offset().y).abs() < activity::px(1.));
+			assert!((scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.));
 			assert_eq!(s.active_history_index(scroll), s.history_marks.len() - 1);
 		});
 
@@ -1805,7 +1797,7 @@ mod tests {
 	fn details_resize_preserves_latest_and_history_reading(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(activity::size(activity::px(1_400.), activity::px(320.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1818,7 +1810,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
 
-			scroll.set_offset(activity::point(activity::px(0.), -scroll.max_offset().y));
+			scroll.set_offset(gpui::point(gpui::px(0.), -scroll.max_offset().y));
 
 			s.latest_follow_work = None;
 
@@ -1827,10 +1819,7 @@ mod tests {
 			assert_eq!(s.latest_follow_work.as_deref(), Some("agent"));
 
 			// Model the frame between a growing footer's layout and bottom-follow.
-			scroll.set_offset(activity::point(
-				activity::px(0.),
-				scroll.offset().y + activity::px(32.),
-			));
+			scroll.set_offset(gpui::point(gpui::px(0.), scroll.offset().y + gpui::px(32.)));
 
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
@@ -1845,11 +1834,11 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
 
-			assert!((scroll.offset().y + scroll.max_offset().y).abs() < activity::px(1.));
+			assert!((scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.));
 
 			s.latest_follow_work = None;
 
-			scroll.set_offset(activity::point(activity::px(0.), activity::px(-100.)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-100.)));
 
 			let before = scroll.offset();
 			let active = s.active_history_index(&scroll);

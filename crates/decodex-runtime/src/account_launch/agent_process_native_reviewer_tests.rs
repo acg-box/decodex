@@ -16,7 +16,7 @@ use std::{
 use serde_json::Value;
 use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
-use crate::account_launch::agent_process::native_tests::{NativeSession, serve_fixture};
+use crate::account_launch::agent_process::native_tests::{self, NativeSession, serve_fixture};
 use decodex_codex::{
 	app_server_client::{
 		AppServerClient, LiveReviewer, LiveSettingsOutcome, RequestId, ServerEvent,
@@ -126,7 +126,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,
@@ -242,7 +242,7 @@ async fn installed_native_guardian_preserves_large_action() {
 	let bodies = Arc::new(Mutex::new(Vec::new()));
 	let command = format!("true # {} END_OF_COMPLETE_ACTION", "a".repeat(300_000));
 	let emitted = command.clone();
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,
@@ -344,7 +344,7 @@ async fn qualify_direction(updated: AgentReviewer) {
 	let address = listener.local_addr().expect("native reviewer fixture");
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,

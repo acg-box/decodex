@@ -56,10 +56,10 @@ impl ComposerInput {
 					let mut position = text::position_at(lines, cursor);
 
 					match boundary {
-						Boundary::LineStart => position.x = px(0.),
-						Boundary::LineEnd => position.x = px(1_000_000.),
-						Boundary::RowUp => position.y -= px(BODY_LINE_HEIGHT),
-						Boundary::RowDown => position.y += px(BODY_LINE_HEIGHT),
+						Boundary::LineStart => position.x = gpui::px(0.),
+						Boundary::LineEnd => position.x = gpui::px(1_000_000.),
+						Boundary::RowUp => position.y -= gpui::px(BODY_LINE_HEIGHT),
+						Boundary::RowDown => position.y += gpui::px(BODY_LINE_HEIGHT),
 						_ => unreachable!(),
 					}
 
@@ -197,7 +197,7 @@ mod tests {
 
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
 
-		visual.simulate_resize(size(px(500.), px(200.)));
+		visual.simulate_resize(gpui::size(gpui::px(500.), gpui::px(200.)));
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			input.update(cx, |s, cx| s.set_content("first line\nhello, world", cx));

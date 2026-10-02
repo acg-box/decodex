@@ -10,16 +10,13 @@ use crate::shell::agent_surface::{
 	ClientProfile, Entity, LoadState, Render, Window, native_timeline,
 };
 use crate::{
-	shell::{
-		agent_surface,
-		agent_surface::{
-			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
-			InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
-			StatefulInteractiveElement, Styled, Task, WireText, div, px,
-			selectable_text::SelectableText, ui_theme,
-		},
+	shell::agent_surface::{
+		AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
+		InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
+		StatefulInteractiveElement, Styled, Task, WireText, selectable_text::SelectableText,
+		ui_theme,
 	},
-	ui_loading,
+	ui_loading, ui_motion,
 	ui_theme::HOVER_FILL,
 };
 use decodex_protocol::{
@@ -131,7 +128,7 @@ impl AgentSurface {
 			cx,
 		);
 
-		div()
+		gpui::div()
 			.w_full()
 			.min_w_0()
 			.debug_selector(|| "tool-detail-row".into())
@@ -142,7 +139,7 @@ impl AgentSurface {
 					.aria_label(format!("Inspect {}", item.label))
 					.aria_expanded(expanded)
 					.cursor_pointer()
-					.hover(|d| d.bg(agent_surface::rgba(HOVER_FILL)))
+					.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 					.on_click(
 						cx.listener(move |s, _, _, cx| s.toggle_activity_detail(click.clone(), cx)),
 					)
@@ -154,31 +151,31 @@ impl AgentSurface {
 					}))
 					.smooth(),
 			)
-			.child(agent_surface::disclosure(
+			.child(ui_motion::disclosure(
 				SharedString::from(format!("worker-tool-detail-{key}")),
 				expanded,
-				div()
+				gpui::div()
 					.id(SharedString::from(format!("detail-scroll-{key}")))
 					.w_full()
 					.min_w_0()
 					.flex()
 					.flex_col()
-					.gap(px(8.))
-					.max_h(px(280.))
+					.gap(gpui::px(8.))
+					.max_h(gpui::px(280.))
 					.overflow_y_scroll()
-					.p(px(10.))
-					.rounded(px(7.))
-					.bg(agent_surface::rgba(0x10101445))
+					.p(gpui::px(10.))
+					.rounded(gpui::px(7.))
+					.bg(gpui::rgba(0x10101445))
 					.font_family("Menlo")
-					.text_size(px(11.5))
-					.line_height(px(16.))
-					.text_color(agent_surface::rgb(TEXT))
+					.text_size(gpui::px(11.5))
+					.line_height(gpui::px(16.))
+					.text_color(gpui::rgb(TEXT))
 					.child(body)
 					.child(metadata_toggle)
-					.child(agent_surface::disclosure(
+					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
 						metadata_open,
-						div().mt(px(6.)).text_color(agent_surface::rgb(TEXT_MUTED)).child(
+						gpui::div().mt(gpui::px(6.)).text_color(gpui::rgb(TEXT_MUTED)).child(
 							SelectableText {
 								key: format!("detail-metadata-{key}"),
 								text: format!(
@@ -206,7 +203,7 @@ impl AgentSurface {
 				let first_ids = ids.clone();
 				let next_ids = ids.clone();
 
-				div()
+				gpui::div()
 					.child(SelectableText {
 						key: format!("detail-text-{key}-{offset}"),
 						text: text.clone(),
@@ -222,7 +219,7 @@ impl AgentSurface {
 						))
 					})
 					.when_some(next.clone(), |d, cursor| {
-						d.child(div().debug_selector(|| "detail-next-action".into()).child(
+						d.child(gpui::div().debug_selector(|| "detail-next-action".into()).child(
 							self.workspace_action(
 								"detail-next".into(),
 								"Read next portion".into(),
@@ -239,8 +236,8 @@ impl AgentSurface {
 					})
 			},
 			Some(AgentActivityDetailResult::Unavailable) =>
-				div().child("Source details are unavailable. Collapse and reopen to retry."),
-			None => div().child(ui_loading::loading("Loading details")),
+				gpui::div().child("Source details are unavailable. Collapse and reopen to retry."),
+			None => gpui::div().child(ui_loading::loading("Loading details")),
 		}
 	}
 
@@ -343,7 +340,7 @@ mod tests {
 	use std::thread;
 
 	use crate::shell::agent_surface::detail::{
-		self, AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
+		AgentActivityDetailResult, AgentActivityDto, AgentSurface, AgentWorkItemDto, Context,
 		EntityId,
 	};
 	#[cfg(test)]
@@ -404,7 +401,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(detail::px(900.), detail::px(1_000.)));
+		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(1_000.)));
 
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 

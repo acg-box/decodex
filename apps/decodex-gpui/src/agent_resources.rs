@@ -16,7 +16,7 @@ use crate::{
 		agent_surface::{
 			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 			Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement, ParentElement,
-			Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, WireText, px,
+			Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, WireText,
 		},
 	},
 	ui_loading,
@@ -58,8 +58,8 @@ impl AgentSurface {
 		let opened = self.resources.as_ref().filter(|(owner, _)| owner == work);
 		let click = work.to_owned();
 		let key = click.clone();
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().child(
-			agent_surface::div()
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(
+			gpui::div()
 				.id("agent-resources-toggle")
 				.debug_selector(|| "agent-resources-toggle".into())
 				.role(Role::Button)
@@ -79,13 +79,13 @@ impl AgentSurface {
 
 		if let Some((_, result)) = opened {
 			let body = match result {
-				None => agent_surface::div().child(ui_loading::loading("Loading resources")),
-				Some(AgentResourcesResult::Unsupported) => agent_surface::div()
-					.child("This Codex provider does not support task resources."),
+				None => gpui::div().child(ui_loading::loading("Loading resources")),
+				Some(AgentResourcesResult::Unsupported) =>
+					gpui::div().child("This Codex provider does not support task resources."),
 				Some(AgentResourcesResult::Unavailable) =>
-					agent_surface::div().child("Task resources are unavailable. Retrying…"),
+					gpui::div().child("Task resources are unavailable. Retrying…"),
 				Some(AgentResourcesResult::CapacityExceeded) =>
-					agent_surface::div().child("The resource list exceeds the display limit."),
+					gpui::div().child("The resource list exceeds the display limit."),
 				Some(AgentResourcesResult::Available { resources }) => {
 					let mut list = self.resource_editor(work, cx);
 
@@ -114,10 +114,10 @@ impl AgentSurface {
 							});
 
 						list = list.child(
-							agent_surface::div()
+							gpui::div()
 								.p_2()
-								.rounded(px(6.))
-								.bg(agent_surface::rgba(0xffffff06))
+								.rounded(gpui::px(6.))
+								.bg(gpui::rgba(0xffffff06))
 								.child(title)
 								.child(if resource.payload_omitted {
 									"Resource details are unavailable for display.".into()
@@ -166,10 +166,10 @@ impl AgentSurface {
 			};
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.id("agent-resources-body")
 					.debug_selector(|| "agent-resources-body".into())
-					.max_h(px(280.))
+					.max_h(gpui::px(280.))
 					.overflow_y_scroll()
 					.child(body),
 			);
@@ -188,12 +188,12 @@ impl AgentSurface {
 	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> Div {
 		let add_work = work.to_owned();
 
-		agent_surface::div()
+		gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(agent_surface::div().h(px(40.)).child(self.resource_title.clone()))
-			.child(agent_surface::div().h(px(40.)).child(self.resource_url.clone()))
+			.child(gpui::div().h(gpui::px(40.)).child(self.resource_title.clone()))
+			.child(gpui::div().h(gpui::px(40.)).child(self.resource_url.clone()))
 			.child(resource_button(
 				"resource-add-link".into(),
 				"Add link".into(),
@@ -389,7 +389,7 @@ fn resource_button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	agent_surface::div()
+	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
@@ -517,7 +517,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(resources::px(1_180.), resources::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.draw(cx).clear();
 		});
 

@@ -3,9 +3,12 @@
 use tokio::sync::oneshot;
 
 #[cfg(test)] use crate::shell::agent_surface::prompt_edit::Entity;
-use crate::shell::agent_surface::prompt_edit::{
-	self, AgentActionDto, AgentClient, AgentSnapshotResult, AgentSurface, Context,
-	DesktopPromptEditDraft, EntityId, IdempotencyKey, Panel, PromptDraft, WireText,
+use crate::shell::{
+	agent_surface,
+	agent_surface::prompt_edit::{
+		AgentActionDto, AgentClient, AgentSnapshotResult, AgentSurface, Context,
+		DesktopPromptEditDraft, EntityId, IdempotencyKey, Panel, PromptDraft, WireText,
+	},
 };
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
@@ -98,7 +101,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 				work_id: original.work_id.clone(),
 				review_token: original.review_token.clone(),
 			},
-			IdempotencyKey::new(prompt_edit::unique_command())
+			IdempotencyKey::new(agent_surface::unique_command())
 				.map_err(|_| "Invalid recovery identity")?,
 		)
 		.await;

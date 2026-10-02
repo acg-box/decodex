@@ -6,11 +6,16 @@ use std::{
 	mem,
 };
 
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
-	ConversationWorkingDirectory, IntoElement, LoadState, Render, Window, px,
-};
+#[cfg(test)] use gpui::px;
+
+#[cfg(test)] use crate::shell::agent_surface::AgentActionDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentCommandResponse;
+#[cfg(test)] use crate::shell::agent_surface::ConversationReasoningEffort;
+#[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
+#[cfg(test)] use crate::shell::agent_surface::IntoElement;
+#[cfg(test)] use crate::shell::agent_surface::LoadState;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
 	AgentSurface, ClientProfile, ComposerInput, Context, Entity, EntityId, IdempotencyKey,
 	PendingCommand, QueuedCommand, Task, WireText,

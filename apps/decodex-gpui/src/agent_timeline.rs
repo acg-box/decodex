@@ -14,14 +14,11 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
 #[cfg(test)] use crate::shell::agent_surface::wire_test_support;
 use crate::{
-	shell::{
-		agent_surface,
-		agent_surface::{
-			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
-			Context, EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
-			SharedString, Styled, StyledImage, Task, WireText, auth_recovery_entry, div, markdown,
-			muted, text_reveal::StreamingText,
-		},
+	shell::agent_surface::{
+		AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile, Context,
+		EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement, SharedString,
+		Styled, StyledImage, Task, WireText, auth_recovery_entry, markdown, muted,
+		text_reveal::StreamingText,
 	},
 	ui_loading, ui_motion,
 };
@@ -193,17 +190,19 @@ impl AgentSurface {
 	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = div().flex().flex_col().gap(agent_surface::px(ROW_GAP)).child(
-			div().debug_selector(|| "native-latest-action".into()).child(self.workspace_action(
-				"native-timeline-refresh".into(),
-				"Latest native history".into(),
-				move |s, cx| {
-					if let Some(thread) = &thread {
-						s.read_latest_native_history(&owner, thread, cx);
-					}
-				},
-				cx,
-			)),
+		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP)).child(
+			gpui::div().debug_selector(|| "native-latest-action".into()).child(
+				self.workspace_action(
+					"native-timeline-refresh".into(),
+					"Latest native history".into(),
+					move |s, cx| {
+						if let Some(thread) = &thread {
+							s.read_latest_native_history(&owner, thread, cx);
+						}
+					},
+					cx,
+				),
+			),
 		);
 
 		// Reserve the first-load state before the request starts, but retain
@@ -216,7 +215,7 @@ impl AgentSurface {
 		}) && let Some(message) = self.native_history.notice
 		{
 			panel = panel.child(
-				div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
+				gpui::div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
 			);
 		}
 		if self
@@ -226,7 +225,7 @@ impl AgentSurface {
 			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
 		{
 			panel = panel.child(
-				div().debug_selector(|| "native-history-source-toggle".into()).child(
+				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
 					self.workspace_action(
 						"native-history-source".into(),
 						if self.native_history.show_saved {
@@ -333,7 +332,7 @@ impl AgentSurface {
 				let source_work = work.clone();
 				let header = (index == group.first_index)
 					.then(|| self.turn_process_header(work, group, entry, cx));
-				let body = div()
+				let body = gpui::div()
 					.w_full()
 					.debug_selector(|| "turn-process-block".into())
 					.children(header)
@@ -348,11 +347,11 @@ impl AgentSurface {
 						move |cx| {
 							owner.update(cx, |s, cx| {
 								render::process_indent(
-									div()
+									gpui::div()
 										.w_full()
 										.flex()
 										.flex_col()
-										.gap(agent_surface::px(8.))
+										.gap(gpui::px(8.))
 										.children(
 											indices
 												.iter()

@@ -299,7 +299,7 @@ impl AgentSurface {
 		depth: usize,
 		cx: &mut Context<Self>,
 	) -> (AnyElement, usize) {
-		let mut rows = agent_surface::div().flex().flex_col();
+		let mut rows = gpui::div().flex().flex_col();
 		let mut count = 0;
 
 		if depth > 24 {
@@ -341,19 +341,19 @@ impl AgentSurface {
 			.child(if has_children {
 				self.tree_toggle(key.clone(), &label, expanded, cx)
 			} else {
-				agent_surface::div().w(agent_surface::px(DISCLOSURE)).flex_none().into_any_element()
+				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
 			})
-			.child(agent_surface::div().flex_1().min_w_0().child(self.workspace_action(
+			.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
 				format!("native-agent-open-{thread}"),
 				label,
 				move |s, cx| s.open_native_agent(&work, &thread, cx),
 				cx,
 			)))
 			.child(
-				agent_surface::div()
-					.text_size(agent_surface::px(CAPTION_SIZE))
+				gpui::div()
+					.text_size(gpui::px(CAPTION_SIZE))
 					.flex_none()
-					.text_color(agent_surface::rgb(TEXT_MUTED))
+					.text_color(gpui::rgb(TEXT_MUTED))
 					.child(format!("L{depth} · {}", agent.status)),
 			);
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
@@ -371,7 +371,7 @@ impl AgentSurface {
 	}
 
 	fn native_agent_transcript(&self, thread: &str) -> (AnyElement, bool) {
-		let mut body = agent_surface::div()
+		let mut body = gpui::div()
 			.id("native-agent-transcript")
 			.flex_1()
 			.min_h_0()
@@ -401,13 +401,11 @@ impl AgentSurface {
 					let user = message.role == "user";
 
 					body = body.child(
-						agent_surface::div().w_full().flex().when(user, |d| d.justify_end()).child(
-							agent_surface::div()
+						gpui::div().w_full().flex().when(user, |d| d.justify_end()).child(
+							gpui::div()
 								.max_w(gpui::relative(if user { 0.8 } else { 1.0 }))
 								.when(user, |d| {
-									d.p_3()
-										.rounded(agent_surface::px(15.))
-										.bg(agent_surface::rgba(0xffffff0b))
+									d.p_3().rounded(gpui::px(15.)).bg(gpui::rgba(0xffffff0b))
 								})
 								.child(markdown::render(
 									&message.text,
@@ -429,7 +427,7 @@ impl AgentSurface {
 
 	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, thread)) = &self.native_agents.selected else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 		let title = self
 			.native_agents
@@ -450,76 +448,71 @@ impl AgentSurface {
 			.find(|a| &a.thread_id == thread)
 			.map(|a| a.parent_thread_id.clone());
 		let (body, can_input) = self.native_agent_transcript(thread);
-		let mut panel =
-			agent_surface::div()
-				.size_full()
-				.flex()
-				.flex_col()
-				.rounded(agent_surface::px(14.))
-				.bg(agent_surface::rgba(AGENT_CHAT_OVERLAY))
-				.child(
-					agent_surface::div()
-						.h(agent_surface::px(36.))
-						.px_3()
-						.flex()
-						.items_center()
-						.gap_3()
-						.child(self.workspace_action(
-							"native-agent-back".into(),
-							"←".into(),
-							move |s, cx| {
-								if let Some(parent) = &parent
-									&& s.native_agents.lists.get(&back).is_some_and(|list| {
-										list.iter().any(|a| &a.thread_id == parent)
-									}) {
-									s.open_native_agent(&back, parent, cx);
+		let mut panel = gpui::div()
+			.size_full()
+			.flex()
+			.flex_col()
+			.rounded(gpui::px(14.))
+			.bg(gpui::rgba(AGENT_CHAT_OVERLAY))
+			.child(
+				gpui::div()
+					.h(gpui::px(36.))
+					.px_3()
+					.flex()
+					.items_center()
+					.gap_3()
+					.child(self.workspace_action(
+						"native-agent-back".into(),
+						"←".into(),
+						move |s, cx| {
+							if let Some(parent) = &parent
+								&& s.native_agents
+									.lists
+									.get(&back)
+									.is_some_and(|list| list.iter().any(|a| &a.thread_id == parent))
+							{
+								s.open_native_agent(&back, parent, cx);
 
-									return;
-								}
+								return;
+							}
 
-								s.open_page(&back, cx);
-							},
-							cx,
-						))
-						.when(!self.pages.is_empty(), |row| {
-							row.child(
-								agent_surface::div()
-									.max_w(agent_surface::px(360.))
-									.min_w_0()
-									.child(self.workspace_tabs(cx)),
-							)
-						})
-						.child(
-							agent_surface::div()
-								.flex_1()
+							s.open_page(&back, cx);
+						},
+						cx,
+					))
+					.when(!self.pages.is_empty(), |row| {
+						row.child(
+							gpui::div()
+								.max_w(gpui::px(360.))
 								.min_w_0()
-								.text_ellipsis()
-								.child(title.to_owned()),
+								.child(self.workspace_tabs(cx)),
 						)
-						.child(markdown::copy_button(
-							&format!("native-reference-{thread}"),
-							"Copy agent reference",
-							format!("thread://{thread}"),
-						)),
-				)
-				.child(body);
+					})
+					.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(title.to_owned()))
+					.child(markdown::copy_button(
+						&format!("native-reference-{thread}"),
+						"Copy agent reference",
+						format!("thread://{thread}"),
+					)),
+			)
+			.child(body);
 
 		if can_input {
 			if let Some(input) = &self.native_agents.input {
 				panel = panel.child(
-					agent_surface::div()
+					gpui::div()
 						.id("native-agent-input")
 						.m_4()
 						.p_2()
-						.rounded(agent_surface::px(16.))
-						.bg(agent_surface::rgba(0x202024ee))
+						.rounded(gpui::px(16.))
+						.bg(gpui::rgba(0x202024ee))
 						.flex()
 						.items_center()
 						.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 							s.send_native_agent(cx);
 							cx.stop_propagation();
 						}))
-						.child(agent_surface::div().flex_1().min_w_0().child(input.clone()))
+						.child(gpui::div().flex_1().min_w_0().child(input.clone()))
 						.child(self.workspace_action(
 							"native-agent-send".into(),
 							if self.native_agents.pending.is_some() { "…" } else { "↑" }.into(),
@@ -530,13 +523,13 @@ impl AgentSurface {
 			}
 		} else if matches!(self.native_agents.detail, Some(NativeAgentsResult::Conversation { .. }))
 		{
-			panel = panel.child(agent_surface::div().p_4().child(agent_surface::muted(
+			panel = panel.child(gpui::div().p_4().child(agent_surface::muted(
 				"This agent is controlled by its parent. Open the parent conversation to request changes.",
 			)));
 		}
 		if !self.native_agents.feedback.is_empty() {
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.px_4()
 					.pb_3()
 					.child(agent_surface::muted(self.native_agents.feedback.clone())),

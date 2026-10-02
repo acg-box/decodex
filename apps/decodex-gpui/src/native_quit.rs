@@ -8,7 +8,6 @@ use std::{
 use objc2::{
 	MainThreadMarker, ffi,
 	runtime::{AnyClass, AnyObject, Imp, Sel},
-	sel,
 };
 use objc2_app_kit::NSApplication;
 
@@ -64,7 +63,7 @@ pub(crate) fn request() {
 	// selector, not a main-dispatch-queue block which would prevent queued GPUI
 	// futures from running until that nested loop has already returned.
 	unsafe {
-		let _: () = objc2::msg_send![&*application, performSelector: sel!(terminate:), withObject: ptr::null::<AnyObject>(), afterDelay: 0.0_f64];
+		let _: () = objc2::msg_send![&*application, performSelector: objc2::sel!(terminate:), withObject: ptr::null::<AnyObject>(), afterDelay: 0.0_f64];
 	}
 }
 
@@ -95,7 +94,7 @@ extern "C" fn notify_request(_: *mut c_void) {
 }
 
 fn install_on_class(class: &AnyClass) -> bool {
-	let selector = sel!(applicationShouldTerminate:);
+	let selector = objc2::sel!(applicationShouldTerminate:);
 
 	if class.instance_method(selector).is_some() {
 		return false;
@@ -166,8 +165,7 @@ mod tests {
 	fn native_quit_adds_only_missing_delegate_method_and_coalesces_requests() {
 		let class =
 			ClassBuilder::new(c"DecodexQuitDelegateFixture", NSObject::class()).unwrap().register();
-		let original =
-			class.instance_method(native_quit::sel!(description)).unwrap().implementation();
+		let original = class.instance_method(objc2::sel!(description)).unwrap().implementation();
 
 		assert!(native_quit::install_on_class(class));
 		assert!(
@@ -176,7 +174,7 @@ mod tests {
 		);
 		assert!(ptr::fn_addr_eq(
 			original,
-			class.instance_method(native_quit::sel!(description)).unwrap().implementation()
+			class.instance_method(objc2::sel!(description)).unwrap().implementation()
 		));
 
 		let instance: objc2::rc::Retained<NSObject> = unsafe { objc2::msg_send![class, new] };

@@ -1,6 +1,7 @@
 //! Read durable local creation evidence without starting a runtime or replaying input.
+
 use crate::{
-	application::{ProductStore, runtime_execution_settings},
+	application::{self, ProductStore},
 	conversation::CreateConversation,
 };
 use decodex_core::ConversationId;
@@ -32,7 +33,7 @@ pub(super) async fn query_creation_receipt(
 		conversation_id: conversation_id.clone(),
 		message: request.message.as_str().into(),
 		working_directory: request.working_directory.as_str().into(),
-		execution: runtime_execution_settings(&request.execution),
+		execution: application::runtime_execution_settings(&request.execution),
 	};
 	let Ok(identity) = command.creation_identity() else {
 		return ConversationCreationReceiptResult::Conflict;
@@ -56,9 +57,12 @@ pub(super) async fn query_creation_receipt(
 
 #[cfg(test)]
 mod tests {
-	use crate::application::conversation_receipts::{
-		self, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
-		ConversationId, CreateConversation, EntityId, EntityRevision, ProductStore,
+	use crate::{
+		application,
+		application::conversation_receipts::{
+			self, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+			ConversationId, CreateConversation, EntityId, EntityRevision, ProductStore,
+		},
 	};
 
 	#[tokio::test]
@@ -100,7 +104,7 @@ mod tests {
 			conversation_id: ConversationId::new(request.conversation_id.as_str()).unwrap(),
 			message: request.message.as_str().into(),
 			working_directory: "/tmp".into(),
-			execution: conversation_receipts::runtime_execution_settings(&request.execution),
+			execution: application::runtime_execution_settings(&request.execution),
 		};
 
 		store

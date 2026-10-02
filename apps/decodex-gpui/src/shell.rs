@@ -14,10 +14,6 @@ mod native_status;
 #[path = "shell_status.rs"] mod status;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
-pub(crate) use status::{
-	count_preference as notification_count_preference, question_notice_preference,
-};
-
 use std::{
 	array,
 	cell::RefCell,
@@ -39,12 +35,11 @@ use gpui::{
 	Stateful, Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance,
 	WindowBounds, WindowControlArea, WindowHandle, WindowOptions,
 	accesskit::Toggled,
-	actions, div, ease_in_out,
+	ease_in_out,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
 	},
-	px, rgb, rgba,
 };
 use tokio::{runtime::Builder, time};
 
@@ -53,8 +48,8 @@ use crate::{
 	account_login::AccountLoginController,
 	account_profile::{AccountProfileController, AccountProfileLoadState, AccountProfileSnapshot},
 	accounts::{
-		AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
-		AccountsSnapshot, canonical_uuid_v4,
+		self, AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
+		AccountsSnapshot,
 	},
 	client_lifecycle::{ClientLifecycle, ConnectionView, LifecycleCancellation},
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
@@ -95,8 +90,11 @@ use decodex_protocol::{
 };
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
+pub(crate) use status::{
+	count_preference as notification_count_preference, question_notice_preference,
+};
 
-actions!(
+gpui::actions!(
 	decodex_shell,
 	[
 		FocusNext,
@@ -1764,12 +1762,12 @@ impl Drop for Shell {
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let presentation = connection_presentation(self.connection);
-		let root = div()
+		let root = gpui::div()
 			.id("decodex-shell")
 			.role(Role::Application)
 			.aria_label("Decodex operational shell")
 			.font_family(FONT_FAMILY)
-			.text_size(px(13.0))
+			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
 			.on_action(cx.listener(Self::focus_next))
@@ -1831,12 +1829,12 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::select_next_conversation))
 			.on_action(cx.listener(Self::submit_composer))
 			.size_full()
-			.min_w(px(1_180.0))
-			.min_h(px(720.0))
+			.min_w(gpui::px(1_180.0))
+			.min_h(gpui::px(720.0))
 			.flex()
 			.flex_col()
-			.bg(rgba(SHELL_MATERIAL))
-			.text_color(rgb(WB_TEXT));
+			.bg(gpui::rgba(SHELL_MATERIAL))
+			.text_color(gpui::rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
@@ -1938,13 +1936,13 @@ impl Render for SettingsWindow {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
 
-		div()
+		gpui::div()
 			.id("settings-window")
 			.size_full()
 			.flex()
 			.font_family(FONT_FAMILY)
-			.text_color(rgb(WB_TEXT))
-			.bg(rgba(SHELL_MATERIAL))
+			.text_color(gpui::rgb(WB_TEXT))
+			.bg(gpui::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
 			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
@@ -1983,15 +1981,15 @@ impl Global for LifecycleOwnerGlobal {}
 struct RefreshTooltip;
 impl Render for RefreshTooltip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
+		gpui::div()
 			.px_2()
 			.py_1()
-			.rounded(px(6.0))
+			.rounded(gpui::px(6.0))
 			.border_1()
-			.border_color(rgba(0xffffff14))
-			.bg(rgba(SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(11.0))
-			.text_color(rgb(WB_TEXT))
+			.border_color(gpui::rgba(0xffffff14))
+			.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(WB_TEXT))
 			.child("Refresh health")
 	}
 }
@@ -2031,13 +2029,13 @@ struct AccountDrag {
 }
 impl Render for AccountDrag {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
+		gpui::div()
 			.px_3()
 			.py_2()
-			.rounded(px(8.))
-			.bg(rgb(0x29292d))
-			.text_color(rgb(WB_TEXT))
-			.text_size(px(12.))
+			.rounded(gpui::px(8.))
+			.bg(gpui::rgb(0x29292d))
+			.text_color(gpui::rgb(WB_TEXT))
+			.text_size(gpui::px(12.))
 			.child(self.label.clone())
 	}
 }
@@ -2623,15 +2621,15 @@ fn floating_window_controls(
 	_window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.id("floating-window-controls")
 		.role(Role::Navigation)
 		.aria_label("Window controls")
 		.absolute()
-		.top(px(CONTROL_MARGIN))
-		.left(px(CONTROL_MARGIN))
-		.right(px(CONTROL_MARGIN))
-		.h(px(CONTROL_GROUP_HEIGHT))
+		.top(gpui::px(CONTROL_MARGIN))
+		.left(gpui::px(CONTROL_MARGIN))
+		.right(gpui::px(CONTROL_MARGIN))
+		.h(gpui::px(CONTROL_GROUP_HEIGHT))
 		.flex()
 		.items_center()
 		.justify_between()
@@ -2658,7 +2656,7 @@ fn floating_window_controls(
 		})
 		.child(
 			ui_theme::floating_group()
-				.pl(px(74.0))
+				.pl(gpui::px(74.0))
 				.child(agent_panel_control(shell, 0, cx))
 				.child(shell.navigation_control(false, cx))
 				.child(shell.navigation_control(true, cx)),
@@ -2668,15 +2666,15 @@ fn floating_window_controls(
 }
 
 fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	div()
+	gpui::div()
 		.px_2()
 		.py_1()
-		.rounded(px(6.0))
+		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(rgba(0xffffff14))
-		.bg(rgba(SURFACE_OVERLAY_MATERIAL))
-		.text_size(px(11.0))
-		.text_color(rgb(color))
+		.border_color(gpui::rgba(0xffffff14))
+		.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(color))
 		.child(text)
 }
 
@@ -2693,7 +2691,7 @@ fn topbar_controls(
 		.expect("Settings destination");
 
 	ui_theme::floating_group()
-		.text_size(px(11.0))
+		.text_size(gpui::px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
 			// Keep global controls in place while their data is loading.
 			controls
@@ -2708,7 +2706,7 @@ fn topbar_controls(
 			controls.child(topbar_inspector_toggle(inspector_visible, cx))
 		})
 		.child(
-			div()
+			gpui::div()
 				.id("open-settings")
 				.role(Role::Button)
 				.aria_label("Open settings")
@@ -2718,21 +2716,21 @@ fn topbar_controls(
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.on_action(cx.listener(Shell::activate_destination))
-				.size(px(CHROME_CONTROL_SIZE))
+				.size(gpui::px(CHROME_CONTROL_SIZE))
 				.flex()
 				.items_center()
 				.justify_center()
-				.rounded(px(6.0))
+				.rounded(gpui::px(6.0))
 				.border_1()
-				.border_color(rgba(0x00000000))
+				.border_color(gpui::rgba(0x00000000))
 				.bg(
 					if matches!(
 						shell.selected,
 						Destination::Settings | Destination::Accounts | Destination::Health
 					) {
-						rgba(0xffffff0a)
+						gpui::rgba(0xffffff0a)
 					} else {
-						rgba(0x00000000)
+						gpui::rgba(0x00000000)
 					},
 				)
 				.text_color(
@@ -2740,18 +2738,20 @@ fn topbar_controls(
 						shell.selected,
 						Destination::Settings | Destination::Accounts | Destination::Health
 					) {
-						rgb(WB_TEXT)
+						gpui::rgb(WB_TEXT)
 					} else {
-						rgb(WB_TEXT_MUTED)
+						gpui::rgb(WB_TEXT_MUTED)
 					},
 				)
 				.occlude()
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(rgba(0x8baaf780)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(gpui::rgba(0x8baaf780)))
 				.on_mouse_down(MouseButton::Left, |_, window, cx| {
 					window.prevent_default();
 					cx.stop_propagation();
@@ -2780,22 +2780,22 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		_ => "History · no messages yet",
 	};
 
-	div()
+	gpui::div()
 		.id(("agent-panel-control", index))
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label)
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
-		.size(px(CHROME_CONTROL_SIZE))
-		.rounded(px(5.0))
+		.size(gpui::px(CHROME_CONTROL_SIZE))
+		.rounded(gpui::px(5.0))
 		.flex()
 		.items_center()
 		.justify_center()
-		.when(active, |el| el.bg(rgba(0xffffff0c)))
+		.when(active, |el| el.bg(gpui::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
-			el.cursor_pointer().hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL)))
+			el.cursor_pointer().hover(|el| el.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
 		})
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
@@ -2998,44 +2998,48 @@ fn health_component_row(
 	let label = component_label(component);
 	let presentation = component_presentation(status);
 
-	div()
+	gpui::div()
 		.id(("health-component", index))
 		.role(Role::ListItem)
 		.aria_label(format!("{label}: {}", presentation.label))
 		.w_full()
-		.min_h(px(38.0))
+		.min_h(gpui::px(38.0))
 		.py_2()
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap_4()
 		.border_b_1()
-		.border_color(rgba(0xffffff0a))
-		.text_size(px(11.0))
-		.text_color(rgb(WB_TEXT_MUTED))
-		.child(div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
+		.border_color(gpui::rgba(0xffffff0a))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty()
 				&& !matches!(presentation.label, "Not checked" | "Disabled"),
 			|element| {
 				element.child(
-					div()
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
+					gpui::div()
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
 			},
 		))
 		.child(
-			div()
+			gpui::div()
 				.flex_none()
 				.justify_end()
-				.w(px(120.0))
-				.min_w(px(120.0))
+				.w(gpui::px(120.0))
+				.min_w(gpui::px(120.0))
 				.flex()
 				.items_center()
 				.gap_2()
 				.child(
-					div().size(px(5.0)).min_w(px(5.0)).rounded_full().bg(rgb(presentation.color)),
+					gpui::div()
+						.size(gpui::px(5.0))
+						.min_w(gpui::px(5.0))
+						.rounded_full()
+						.bg(gpui::rgb(presentation.color)),
 				)
 				.child(presentation.label),
 		)
@@ -3060,12 +3064,12 @@ fn health_component_section(
 		health_component_row(index_offset + index, component, status)
 	});
 
-	div()
+	gpui::div()
 		.id(id)
 		.flex()
 		.flex_col()
 		.child(
-			div()
+			gpui::div()
 				.px_1()
 				.pb_2()
 				.flex()
@@ -3073,24 +3077,29 @@ fn health_component_section(
 				.justify_between()
 				.gap_4()
 				.child(
-					div()
-						.text_size(px(11.0))
+					gpui::div()
+						.text_size(gpui::px(11.0))
 						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(rgb(WB_TEXT))
+						.text_color(gpui::rgb(WB_TEXT))
 						.child(title),
 				)
-				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_FAINT)).child(detail)),
+				.child(
+					gpui::div()
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.child(detail),
+				),
 		)
 		.child(
-			div()
+			gpui::div()
 				.id(("health-section-list", index_offset))
 				.role(Role::List)
 				.aria_label(title)
 				.px_4()
 				.border_1()
-				.border_color(rgba(0xffffff10))
-				.rounded(px(10.0))
-				.bg(rgba(0xffffff04))
+				.border_color(gpui::rgba(0xffffff10))
+				.rounded(gpui::px(10.0))
+				.bg(gpui::rgba(0xffffff04))
 				.children(rows),
 		)
 		.into_any_element()
@@ -3102,26 +3111,26 @@ fn refresh_control(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.id("health-refresh")
 		.role(Role::Button)
 		.aria_label("Refresh health")
 		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
-		.h(px(30.0))
-		.min_w(px(74.0))
+		.h(gpui::px(30.0))
+		.min_w(gpui::px(74.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(8.0))
+		.rounded(gpui::px(8.0))
 		.border_1()
 		.border_color(if can_refresh && focus.is_focused(window) {
-			rgb(WB_BLUE)
+			gpui::rgb(WB_BLUE)
 		} else {
-			rgba(0xffffff16)
+			gpui::rgba(0xffffff16)
 		})
-		.bg(if can_refresh { rgba(0xffffff08) } else { rgba(0xffffff03) })
-		.text_color(if can_refresh { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.bg(if can_refresh { gpui::rgba(0xffffff08) } else { gpui::rgba(0xffffff03) })
+		.text_color(if can_refresh { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_refresh, |element| {
 			element
 				.key_context("HealthRefresh")
@@ -3132,12 +3141,14 @@ fn refresh_control(
 				.on_click(cx.listener(|shell, _, _, cx| shell.request_health_refresh(cx)))
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 		})
-		.text_size(px(11.0))
+		.text_size(gpui::px(11.0))
 		.child("Refresh")
 		.smooth()
 		.into_any_element()
@@ -3150,7 +3161,7 @@ fn destination_header(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let title = div()
+	let title = gpui::div()
 		.id("destination-heading")
 		.role(Role::Heading)
 		.aria_level(1)
@@ -3159,22 +3170,22 @@ fn destination_header(
 		.flex_col()
 		.gap_1()
 		.child(
-			div()
-				.text_size(px(HEADING_SIZE))
+			gpui::div()
+				.text_size(gpui::px(HEADING_SIZE))
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_color(rgb(WB_TEXT))
+				.text_color(gpui::rgb(WB_TEXT))
 				.child(selected.label()),
 		);
-	let header = div()
-		.h(px(64.0))
-		.min_h(px(64.0))
+	let header = gpui::div()
+		.h(gpui::px(64.0))
+		.min_h(gpui::px(64.0))
 		.px_6()
 		.flex()
 		.items_center()
 		.justify_between()
 		.border_b_1()
-		.border_color(rgba(0xffffff0d))
-		.bg(rgba(0x00000014))
+		.border_color(gpui::rgba(0xffffff0d))
+		.bg(gpui::rgba(0x00000014))
 		.child(title);
 
 	if selected == Destination::Health {
@@ -3187,7 +3198,7 @@ fn destination_header(
 }
 
 fn placeholder_content(selected: Destination) -> AnyElement {
-	div()
+	gpui::div()
 		.flex_1()
 		.min_h_0()
 		.p_7()
@@ -3195,46 +3206,46 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 		.items_start()
 		.justify_center()
 		.child(
-			div()
+			gpui::div()
 				.w_full()
-				.max_w(px(760.0))
+				.max_w(gpui::px(760.0))
 				.p_6()
 				.flex()
 				.flex_col()
 				.gap_3()
-				.rounded(px(14.0))
+				.rounded(gpui::px(14.0))
 				.border_1()
-				.border_color(rgba(0xffffff10))
-				.bg(rgba(SURFACE_RAISED_MATERIAL))
+				.border_color(gpui::rgba(0xffffff10))
+				.bg(gpui::rgba(SURFACE_RAISED_MATERIAL))
 				.child(
-					div()
+					gpui::div()
 						.font_family(FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_ACCENT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_ACCENT))
 						.child("PLANNED SURFACE"),
 				)
 				.child(
-					div()
-						.text_size(px(18.0))
+					gpui::div()
+						.text_size(gpui::px(18.0))
 						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(rgb(WB_TEXT))
+						.text_color(gpui::rgb(WB_TEXT))
 						.child(selected.label()),
 				)
 				.child(
-					div()
-						.text_size(px(11.0))
-						.line_height(px(17.0))
-						.text_color(rgb(WB_TEXT_MUTED))
+					gpui::div()
+						.text_size(gpui::px(11.0))
+						.line_height(gpui::px(17.0))
+						.text_color(gpui::rgb(WB_TEXT_MUTED))
 						.child(selected.description()),
 				)
 				.child(
-					div()
+					gpui::div()
 						.pt_3()
 						.border_t_1()
-						.border_color(rgba(0xffffff0d))
+						.border_color(gpui::rgba(0xffffff0d))
 						.font_family(FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(
 							"No speculative controls are exposed before this projection has an authority owner.",
 						),
@@ -3277,20 +3288,24 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			let profile_id = account.account_id.clone();
 			let target = account.account_id.clone();
 
-			div()
+			gpui::div()
 				.id(("account-card", index))
 				.group(SharedString::from(format!("account-card-{index}")))
 				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
-				.rounded(px(8.))
-				.bg(rgba(if fixed == Some(&account.account_id) { 0xffffff0a } else { 0xffffff04 }))
+				.rounded(gpui::px(8.))
+				.bg(gpui::rgba(if fixed == Some(&account.account_id) {
+					0xffffff0a
+				} else {
+					0xffffff04
+				}))
 				.cursor_pointer()
-				.hover(|style| style.bg(rgba(0xffffff0c)))
+				.hover(|style| style.bg(gpui::rgba(0xffffff0c)))
 				.on_click(cx.listener(move |shell, _, _, cx| {
 					shell.toggle_account_activity(profile_id.clone(), cx);
 				}))
 				.when(snapshot.can_manage, |row| {
-					row.drag_over::<AccountDrag>(|style, _, _, _| style.bg(rgba(0x8baaf72a)))
+					row.drag_over::<AccountDrag>(|style, _, _, _| style.bg(gpui::rgba(0x8baaf72a)))
 						.on_drop(cx.listener(move |s, drag: &AccountDrag, _, cx| {
 							s.drop_account(drag, &target, cx)
 						}))
@@ -3304,7 +3319,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 						account.account_id.as_str()
 					)),
 					shell.expanded_accounts.contains(&account.account_id),
-					div()
+					gpui::div()
 						.w_full()
 						.flex()
 						.flex_col()
@@ -3336,24 +3351,24 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		})
 		.count();
 
-	div()
+	gpui::div()
 		.flex_1()
 		.min_h_0()
-		.px(px(SETTINGS_INSET))
-		.pt(px(SETTINGS_GROUP_GAP))
-		.pb(px(SETTINGS_INSET))
+		.px(gpui::px(SETTINGS_INSET))
+		.pt(gpui::px(SETTINGS_GROUP_GAP))
+		.pb(gpui::px(SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(
-			div()
+			gpui::div()
 				.w_full()
-				.max_w(px(SETTINGS_WIDTH))
+				.max_w(gpui::px(SETTINGS_WIDTH))
 				.min_h_0()
 				.flex()
 				.flex_col()
 				.gap_3()
 				.child(
-					div()
+					gpui::div()
 						.flex()
 						.items_center()
 						.justify_between()
@@ -3382,7 +3397,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.child(account_login_controls(shell, cx))
 				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
 				.child(
-					div()
+					gpui::div()
 						.id("account-list")
 						.flex_1()
 						.min_h_0()
@@ -3398,9 +3413,9 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								) {
 									ui_loading::loading("Loading accounts").into_any_element()
 								} else {
-									div()
-										.text_size(px(11.))
-										.text_color(rgb(WB_TEXT_MUTED))
+									gpui::div()
+										.text_size(gpui::px(11.))
+										.text_color(gpui::rgb(WB_TEXT_MUTED))
 										.child(accounts_load_label(snapshot.load))
 										.into_any_element()
 								},
@@ -3408,26 +3423,26 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						})
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(
-								div()
-									.h(px(100.0))
+								gpui::div()
+									.h(gpui::px(100.0))
 									.flex()
 									.flex_col()
 									.items_center()
 									.justify_center()
 									.gap_2()
-									.rounded(px(12.0))
+									.rounded(gpui::px(12.0))
 									.border_1()
-									.border_color(rgba(0xffffff0d))
-									.bg(rgba(0xffffff04))
-									.text_size(px(11.0))
-									.text_color(rgb(WB_TEXT_MUTED))
+									.border_color(gpui::rgba(0xffffff0d))
+									.bg(gpui::rgba(0xffffff04))
+									.text_size(gpui::px(11.0))
+									.text_color(gpui::rgb(WB_TEXT_MUTED))
 									.debug_selector(|| "accounts-empty".into())
 									.child("No accounts added")
 									.child(
-										div()
+										gpui::div()
 											.font_family(FONT_FAMILY)
-											.text_size(px(11.0))
-											.text_color(rgb(WB_TEXT_FAINT))
+											.text_size(gpui::px(11.0))
+											.text_color(gpui::rgb(WB_TEXT_FAINT))
 											.child("Sign in above to add your first account."),
 									),
 							)
@@ -3444,25 +3459,27 @@ fn account_mode_button(
 	can_manage: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.id("accounts-balanced")
 		.role(Role::Button)
 		.aria_label("Use balanced routing for new conversations")
-		.h(px(28.0))
+		.h(gpui::px(28.0))
 		.px_3()
 		.flex()
 		.items_center()
-		.rounded(px(7.0))
-		.bg(if selected { rgba(0x60a5fa16) } else { rgba(0x00000000) })
-		.text_size(px(11.0))
-		.text_color(if selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.rounded(gpui::px(7.0))
+		.bg(if selected { gpui::rgba(0x60a5fa16) } else { gpui::rgba(0x00000000) })
+		.text_size(gpui::px(11.0))
+		.text_color(if selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
 		.when(can_manage && !selected, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
 		})
 		.child(label)
@@ -3491,42 +3508,42 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		})
 		.map(account_login_status_label);
 
-	div()
+	gpui::div()
 		.id("account-login-controls")
 		.px_3()
-		.py(px(6.))
+		.py(gpui::px(6.))
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap_4()
-		.rounded(px(10.0))
+		.rounded(gpui::px(10.0))
 		.child(
-			div()
+			gpui::div()
 				.flex_1()
 				.min_w_0()
 				.flex()
 				.flex_col()
 				.gap_1()
 				.child(
-					div()
+					gpui::div()
 						.font_family(FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT))
 						.child("Add account"),
 				)
 				.when_some(status, |row, status| {
 					row.child(
-						div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child(status),
+						gpui::div().text_size(gpui::px(10.5)).text_color(gpui::rgb(WB_TEXT_MUTED)).child(status),
 					)
 				})
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url)).child(
-						div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
+						gpui::div().text_size(gpui::px(10.5)).text_color(gpui::rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
 					)
 				}),
 		)
 		.child(
-			div()
+			gpui::div()
 				.flex()
 				.items_center()
 				.gap_2()
@@ -3584,23 +3601,27 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 }
 
 fn account_login_prompt(code: String, url: String) -> AnyElement {
-	div()
+	gpui::div()
 		.pt_1()
 		.flex()
 		.items_center()
 		.gap_2()
 		.child(
-			div().font_family("SF Mono").text_size(px(13.0)).text_color(rgb(WB_TEXT)).child(code),
+			gpui::div()
+				.font_family("SF Mono")
+				.text_size(gpui::px(13.0))
+				.text_color(gpui::rgb(WB_TEXT))
+				.child(code),
 		)
 		.child(
-			div()
-				.max_w(px(360.0))
+			gpui::div()
+				.max_w(gpui::px(360.0))
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.text_ellipsis()
 				.font_family(FONT_FAMILY)
-				.text_size(px(11.0))
-				.text_color(rgb(WB_TEXT_FAINT))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
 				.child(url),
 		)
 		.into_any_element()
@@ -3613,26 +3634,28 @@ fn account_login_button(
 ) -> Stateful<Div> {
 	let label = label.into();
 
-	div()
+	gpui::div()
 		.id(id)
 		.role(Role::Button)
 		.aria_label(label.clone())
-		.h(px(27.0))
+		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(7.0))
-		.text_size(px(11.0))
-		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.rounded(gpui::px(7.0))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.55 })
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
 		})
 		.child(label)
 }
@@ -3662,15 +3685,16 @@ fn account_login_start(
 	existing: Option<(EntityId, EntityRevision, Option<EntityId>)>,
 ) -> Result<AccountLoginStart, SharedString> {
 	let next_entity = || {
-		canonical_uuid_v4()
+		accounts::canonical_uuid_v4()
 			.map_err(account_input_error_label)
 			.and_then(|value| EntityId::new(value).map_err(|_| "Login identity is invalid."))
 			.map_err(SharedString::from)
 	};
 	let session_id = next_entity()?;
 	let operation_id = next_entity()?;
-	let command_identity =
-		canonical_uuid_v4().map_err(account_input_error_label).map_err(SharedString::from)?;
+	let command_identity = accounts::canonical_uuid_v4()
+		.map_err(account_input_error_label)
+		.map_err(SharedString::from)?;
 	let idempotency_key = IdempotencyKey::new(format!("account-login/{command_identity}"))
 		.map_err(|_| SharedString::from("Login command identity is invalid."))?;
 	let install_mode =
@@ -3744,15 +3768,15 @@ fn account_pool_row(
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
 
-	div()
+	gpui::div()
 		.w_full()
-		.rounded(px(8.))
+		.rounded(gpui::px(8.))
 		.id(("account-row", index))
-		.px(px(14.0))
-		.py(px(6.0))
+		.px(gpui::px(14.0))
+		.py(gpui::px(6.0))
 		.flex()
 		.flex_col()
-		.gap(px(6.0))
+		.gap(gpui::px(6.0))
 		.relative()
 		.child(summary)
 		.into_any_element()
@@ -3769,28 +3793,35 @@ fn account_pool_summary(
 	let needs_login = account_needs_login(account);
 	let pin_enabled = can_route && enabled && !fixed;
 
-	div()
+	gpui::div()
 		.id(("account-summary", index))
 		.flex()
 		.min_w_0()
 		.items_center()
-		.gap(px(2.0))
+		.gap(gpui::px(2.0))
 		.child(account_row_identity(account, presentation.email.as_deref()))
 		.when(!needs_login, |row| {
 			row.child(
-				div()
+				gpui::div()
 					.debug_selector(move || format!("account-quota-{index}"))
 					.flex_1()
 					.min_w_0()
 					.flex()
 					.items_center()
-					.gap(px(8.0))
+					.gap(gpui::px(8.0))
 					.child(quota_meter::meter(
 						"5h",
 						account.five_hour_quota,
 						presentation.reset_fill.clone(),
 					))
-					.child(div().w(px(1.)).h(px(14.)).flex_none().mx(px(2.)).bg(rgba(0xffffff26)))
+					.child(
+						gpui::div()
+							.w(gpui::px(1.))
+							.h(gpui::px(14.))
+							.flex_none()
+							.mx(gpui::px(2.))
+							.bg(gpui::rgba(0xffffff26)),
+					)
 					.child(quota_meter::meter(
 						"7d",
 						account.seven_day_quota,
@@ -3798,14 +3829,14 @@ fn account_pool_summary(
 					)),
 			)
 		})
-		.when(needs_login, |row| row.child(div().flex_1()))
+		.when(needs_login, |row| row.child(gpui::div().flex_1()))
 		.when(presentation.can_manage, |row| {
 			row.child(account_reorder_handle(account, &presentation, cx))
 		})
 		.when(!needs_login, |row| {
 			row.child(
-				div().flex().items_center().gap_2().child(
-					div()
+				gpui::div().flex().items_center().gap_2().child(
+					gpui::div()
 						.id(("account-pin", index))
 						.debug_selector(move || format!("account-pin-{index}"))
 						.role(Role::Button)
@@ -3813,16 +3844,20 @@ fn account_pool_summary(
 							"Route new conversations to {}",
 							account.alias.as_str()
 						))
-						.h(px(24.0))
-						.w(px(24.0))
+						.h(gpui::px(24.0))
+						.w(gpui::px(24.0))
 						.flex_none()
 						.flex()
 						.items_center()
 						.justify_center()
-						.rounded(px(7.0))
-						.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
-						.text_size(px(11.0))
-						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+						.rounded(gpui::px(7.0))
+						.bg(if fixed { gpui::rgba(0x8baaf738) } else { gpui::rgba(0x00000000) })
+						.text_size(gpui::px(11.0))
+						.text_color(if fixed {
+							gpui::rgb(WB_BLUE)
+						} else {
+							gpui::rgb(WB_TEXT_MUTED)
+						})
 						.on_click(cx.listener(move |shell, _, _, cx| {
 							cx.stop_propagation();
 
@@ -3835,10 +3870,10 @@ fn account_pool_summary(
 								.cursor_pointer()
 								.hover(|element| {
 									element
-										.bg(rgba(crate::ui_theme::HOVER_FILL))
-										.text_color(rgb(WB_TEXT))
+										.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+										.text_color(gpui::rgb(WB_TEXT))
 								})
-								.active(|element| element.bg(rgba(PRESSED_FILL)))
+								.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
 						})
 						.child(workspace_symbols::icon(if fixed {
 							workspace_symbols::Symbol::AccountRouteActive
@@ -3956,11 +3991,11 @@ fn account_management_actions(
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
 
-	div()
+	gpui::div()
 		.flex()
 		.justify_start()
 		.items_center()
-		.gap(px(2.))
+		.gap(gpui::px(2.))
 		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
 			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
 			selector: format!(
@@ -3971,10 +4006,10 @@ fn account_management_actions(
 			color: *color,
 		}))
 		.child(
-			div()
+			gpui::div()
 				.flex()
 				.items_center()
-				.gap(px(2.))
+				.gap(gpui::px(2.))
 				.when(needs_login, |row| {
 					row.child(
 						account_icon_action(
@@ -4036,8 +4071,8 @@ fn account_icon_action(
 ) -> Stateful<Div> {
 	account_row_action(id, index, label, "", enabled)
 		.debug_selector(move || format!("{id}-{index}"))
-		.w(px(24.))
-		.h(px(24.))
+		.w(gpui::px(24.))
+		.h(gpui::px(24.))
 		.px_0()
 		.tab_index(0)
 		.tooltip(move |_, cx| {
@@ -4061,25 +4096,27 @@ fn account_row_action(
 	label: &'static str,
 	enabled: bool,
 ) -> Stateful<Div> {
-	div()
+	gpui::div()
 		.id((id, index))
 		.role(Role::Button)
 		.aria_label(aria_label)
-		.h(px(23.0))
+		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(6.0))
+		.rounded(gpui::px(6.0))
 		.font_family(FONT_FAMILY)
-		.text_size(px(11.0))
-		.text_color(rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.5 })
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
 				.active(|element| element.opacity(0.9))
 		})
@@ -4278,21 +4315,21 @@ fn conversation_refresh_status(refresh: ConversationRefreshState) -> Option<Stri
 fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let rows = conversation_session_rows(shell, cx);
 
-	div()
+	gpui::div()
 		.id("conversation-session-sidebar")
 		.role(Role::TabList)
 		.aria_label("Conversation conversations")
-		.w(px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
-		.min_w(px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
+		.w(gpui::px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
+		.min_w(gpui::px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
 		.h_full()
 		.flex()
 		.flex_col()
 		.border_r_1()
-		.border_color(rgba(0xffffff0d))
-		.bg(rgba(SIDEBAR_MATERIAL))
+		.border_color(gpui::rgba(0xffffff0d))
+		.bg(gpui::rgba(SIDEBAR_MATERIAL))
 		.child(conversation_sessions_header(shell, cx))
 		.child(
-			div()
+			gpui::div()
 				.id("conversation-list")
 				.flex_1()
 				.min_h_0()
@@ -4314,9 +4351,9 @@ fn animated_horizontal_panel_slot(
 	panel: AnyElement,
 ) -> AnyElement {
 	if ui_motion::reduced() {
-		let width = px(if visible { full_width } else { 0. });
+		let width = gpui::px(if visible { full_width } else { 0. });
 
-		return div()
+		return gpui::div()
 			.h_full()
 			.flex_none()
 			.overflow_hidden()
@@ -4329,7 +4366,7 @@ fn animated_horizontal_panel_slot(
 
 	let animation_id = format!("{id}-{generation}-{}", if visible { "open" } else { "close" });
 
-	div()
+	gpui::div()
 		.h_full()
 		.flex_none()
 		.overflow_hidden()
@@ -4339,7 +4376,7 @@ fn animated_horizontal_panel_slot(
 			Animation::new(MOTION_PANEL).with_easing(ease_in_out),
 			move |slot, delta| {
 				let progress = if visible { delta } else { 1.0 - delta };
-				let width = px(full_width * progress);
+				let width = gpui::px(full_width * progress);
 
 				slot.w(width).min_w(width).max_w(width).opacity(0.3 + progress * 0.7)
 			},
@@ -4380,25 +4417,27 @@ fn inspector_tab(
 ) -> AnyElement {
 	let is_selected = tab == selected;
 
-	div()
+	gpui::div()
 		.id(id)
 		.role(Role::Tab)
 		.aria_label(label)
 		.aria_selected(is_selected)
-		.h(px(27.0))
+		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(6.0))
-		.bg(if is_selected { rgba(0xffffff0e) } else { rgba(0x00000000) })
-		.text_size(px(11.0))
+		.rounded(gpui::px(6.0))
+		.bg(if is_selected { gpui::rgba(0xffffff0e) } else { gpui::rgba(0x00000000) })
+		.text_size(gpui::px(11.0))
 		.font_weight(if is_selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
+		.text_color(if is_selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
+		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			shell.inspector_tab = tab;
 
@@ -4409,21 +4448,27 @@ fn inspector_tab(
 }
 
 fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
-	div()
+	gpui::div()
 		.w_full()
-		.min_h(px(26.0))
+		.min_h(gpui::px(26.0))
 		.flex()
 		.items_start()
 		.justify_between()
 		.gap_3()
-		.text_size(px(11.0))
-		.child(div().w(px(78.0)).min_w(px(78.0)).text_color(rgb(WB_TEXT_FAINT)).child(label))
+		.text_size(gpui::px(11.0))
 		.child(
-			div()
+			gpui::div()
+				.w(gpui::px(78.0))
+				.min_w(gpui::px(78.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.child(label),
+		)
+		.child(
+			gpui::div()
 				.min_w_0()
 				.flex_1()
 				.font_family(FONT_FAMILY)
-				.text_color(rgb(WB_TEXT_MUTED))
+				.text_color(gpui::rgb(WB_TEXT_MUTED))
 				.text_right()
 				.overflow_hidden()
 				.whitespace_nowrap()
@@ -4437,17 +4482,17 @@ fn conversation_native_settings_inspector(
 	settings: Option<&ConversationNativeSettings>,
 ) -> AnyElement {
 	let Some(settings) = settings else {
-		return div()
+		return gpui::div()
 			.id("conversation-native-settings-unavailable")
 			.debug_selector(|| "conversation-native-settings-unavailable".into())
 			.role(Role::Status)
-			.text_size(px(11.0))
-			.text_color(rgb(WB_TEXT_FAINT))
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(WB_TEXT_FAINT))
 			.child("Native settings have not been observed.")
 			.into_any_element();
 	};
 
-	div()
+	gpui::div()
 		.id("conversation-native-settings")
 		.debug_selector(|| "conversation-native-settings".into())
 		.role(Role::Group)
@@ -4456,7 +4501,10 @@ fn conversation_native_settings_inspector(
 		.flex_col()
 		.gap_2()
 		.child(
-			div().text_size(px(11.0)).text_color(rgb(WB_TEXT_FAINT)).child("Last read from Codex"),
+			gpui::div()
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.child("Last read from Codex"),
 		)
 		.child(inspector_metadata_row("Model", settings.model.as_str().to_owned()))
 		.child(inspector_metadata_row("Provider", settings.model_provider.clone()))
@@ -4470,11 +4518,11 @@ fn conversation_native_settings_inspector(
 
 fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let Some(task) = shell.quick.selected_task() else {
-		return div()
+		return gpui::div()
 			.py_8()
 			.text_center()
-			.text_size(px(11.0))
-			.text_color(rgb(WB_TEXT_FAINT))
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(WB_TEXT_FAINT))
 			.child("Select a Conversation to inspect its durable context.")
 			.into_any_element();
 	};
@@ -4483,18 +4531,18 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		.as_ref()
 		.map(|identity| compact_identity(identity.as_str()))
 		.unwrap_or_else(|| "not established".to_owned());
-	let mut content = div()
+	let mut content = gpui::div()
 		.flex()
 		.flex_col()
 		.gap_4()
 		.child(
-			div()
+			gpui::div()
 				.id("inspector-conversation-heading")
 				.role(Role::Heading)
 				.aria_level(2)
-				.text_size(px(14.0))
+				.text_size(gpui::px(14.0))
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_color(rgb(WB_TEXT))
+				.text_color(gpui::rgb(WB_TEXT))
 				.child(task.title.as_str().to_owned()),
 		)
 		.child(inspector_metadata_row(
@@ -4516,10 +4564,10 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			))
 			.child(inspector_metadata_row("State", program.state.as_str().to_owned()))
 			.child(
-				div()
-					.text_size(px(11.0))
-					.line_height(px(14.0))
-					.text_color(rgb(WB_TEXT_MUTED))
+				gpui::div()
+					.text_size(gpui::px(11.0))
+					.line_height(gpui::px(14.0))
+					.text_color(gpui::rgb(WB_TEXT_MUTED))
 					.whitespace_normal()
 					.child(program.instructions.as_str().to_owned()),
 			);
@@ -4530,20 +4578,20 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		let url = url.to_string();
 
 		content = content.child(
-			div()
+			gpui::div()
 				.id("open-provider-thread")
 				.role(Role::Button)
 				.aria_label("Open exact Codex provider thread")
-				.h(px(30.0))
+				.h(gpui::px(30.0))
 				.px_3()
 				.flex()
 				.items_center()
 				.justify_center()
-				.rounded(px(7.0))
+				.rounded(gpui::px(7.0))
 				.border_1()
-				.border_color(rgba(0xffffff16))
-				.text_size(px(11.0))
-				.text_color(rgb(WB_BLUE))
+				.border_color(gpui::rgba(0xffffff16))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
 				.child("OPEN IN CODEX")
@@ -4551,14 +4599,84 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		);
 	} else {
 		content = content.child(
-			div()
-				.text_size(px(11.0))
-				.text_color(rgb(WB_TEXT_FAINT))
+			gpui::div()
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
 				.child("Codex link becomes available after exact provider-thread readback."),
 		);
 	}
 
 	content.into_any_element()
+}
+
+fn activity_inspector_row(
+	index: usize,
+	kind: String,
+	role: String,
+	summary: String,
+	status: HistoryItemStatusDto,
+) -> impl IntoElement {
+	let color = match status {
+		HistoryItemStatusDto::Streaming => WB_BLUE,
+		HistoryItemStatusDto::Completed => WB_TEXT_FAINT,
+		HistoryItemStatusDto::Failed => WB_AMBER,
+	};
+
+	gpui::div()
+		.id(("inspector-activity", index))
+		.w_full()
+		.min_h(gpui::px(54.0))
+		.flex()
+		.gap_3()
+		.child(
+			gpui::div()
+				.w(gpui::px(9.0))
+				.min_w(gpui::px(9.0))
+				.flex()
+				.flex_col()
+				.items_center()
+				.child(
+					gpui::div()
+						.mt(gpui::px(5.0))
+						.size(gpui::px(5.0))
+						.rounded_full()
+						.bg(gpui::rgb(color)),
+				)
+				.when(index + 1 < 8, |element| {
+					element.child(
+						gpui::div().mt_1().w(gpui::px(1.0)).flex_1().bg(gpui::rgba(0xffffff0c)),
+					)
+				}),
+		)
+		.child(
+			gpui::div()
+				.min_w_0()
+				.flex_1()
+				.pb_3()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					gpui::div()
+						.flex()
+						.items_center()
+						.justify_between()
+						.gap_2()
+						.text_size(gpui::px(11.0))
+						.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(kind))
+						.child(gpui::div().text_color(gpui::rgb(WB_TEXT_FAINT)).child(role)),
+				)
+				.child(
+					gpui::div()
+						.max_h(gpui::px(30.0))
+						.overflow_hidden()
+						.text_size(gpui::px(11.0))
+						.line_height(gpui::px(14.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.whitespace_normal()
+						.child(summary),
+				),
+		)
 }
 
 fn activity_inspector_content(shell: &Shell) -> AnyElement {
@@ -4594,88 +4712,36 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 	items.reverse();
 
 	let rows = items.into_iter().enumerate().map(|(index, (kind, role, summary, status))| {
-		let color = match status {
-			HistoryItemStatusDto::Streaming => WB_BLUE,
-			HistoryItemStatusDto::Completed => WB_TEXT_FAINT,
-			HistoryItemStatusDto::Failed => WB_AMBER,
-		};
-
-		div()
-			.id(("inspector-activity", index))
-			.w_full()
-			.min_h(px(54.0))
-			.flex()
-			.gap_3()
-			.child(
-				div()
-					.w(px(9.0))
-					.min_w(px(9.0))
-					.flex()
-					.flex_col()
-					.items_center()
-					.child(div().mt(px(5.0)).size(px(5.0)).rounded_full().bg(rgb(color)))
-					.when(index + 1 < 8, |element| {
-						element.child(div().mt_1().w(px(1.0)).flex_1().bg(rgba(0xffffff0c)))
-					}),
-			)
-			.child(
-				div()
-					.min_w_0()
-					.flex_1()
-					.pb_3()
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(
-						div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.gap_2()
-							.text_size(px(11.0))
-							.child(div().text_color(rgb(WB_TEXT_MUTED)).child(kind))
-							.child(div().text_color(rgb(WB_TEXT_FAINT)).child(role)),
-					)
-					.child(
-						div()
-							.max_h(px(30.0))
-							.overflow_hidden()
-							.text_size(px(11.0))
-							.line_height(px(14.0))
-							.text_color(rgb(WB_TEXT_FAINT))
-							.whitespace_normal()
-							.child(summary),
-					),
-			)
+		activity_inspector_row(index, kind, role, summary, status)
 	});
 
-	div()
+	gpui::div()
 		.flex()
 		.flex_col()
 		.gap_4()
 		.child(
-			div()
-				.h(px(34.0))
+			gpui::div()
+				.h(gpui::px(34.0))
 				.px_3()
 				.flex()
 				.items_center()
 				.gap_2()
-				.rounded(px(8.0))
-				.bg(rgba(0xffffff07))
-				.text_size(px(11.0))
-				.text_color(rgb(WB_TEXT_MUTED))
-				.child(div().size(px(5.0)).rounded_full().bg(rgb(task_color)))
+				.rounded(gpui::px(8.0))
+				.bg(gpui::rgba(0xffffff07))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_MUTED))
+				.child(gpui::div().size(gpui::px(5.0)).rounded_full().bg(gpui::rgb(task_color)))
 				.child(task_state),
 		)
 		.when(
 			shell.history.as_ref().and_then(|history| history.visible.as_ref()).is_none(),
 			|element| {
 				element.child(
-					div()
+					gpui::div()
 						.py_6()
 						.text_center()
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child("Activity appears after verified history readback."),
 				)
 			},
@@ -4690,38 +4756,38 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		InspectorTab::Activity => activity_inspector_content(shell),
 	};
 
-	div()
+	gpui::div()
 		.id("workbench-inspector")
 		.role(Role::Complementary)
 		.aria_label("Conversation context")
-		.w(px(WORKBENCH_INSPECTOR_WIDTH))
-		.min_w(px(WORKBENCH_INSPECTOR_WIDTH))
+		.w(gpui::px(WORKBENCH_INSPECTOR_WIDTH))
+		.min_w(gpui::px(WORKBENCH_INSPECTOR_WIDTH))
 		.h_full()
 		.flex()
 		.flex_col()
 		.border_l_1()
-		.border_color(rgba(0xffffff0f))
-		.bg(rgba(SIDEBAR_MATERIAL))
+		.border_color(gpui::rgba(0xffffff0f))
+		.bg(gpui::rgba(SIDEBAR_MATERIAL))
 		.child(
-			div()
-				.h(px(44.0))
-				.min_h(px(44.0))
+			gpui::div()
+				.h(gpui::px(44.0))
+				.min_h(gpui::px(44.0))
 				.px_3()
 				.flex()
 				.items_center()
 				.justify_between()
 				.border_b_1()
-				.border_color(rgba(0xffffff0d))
+				.border_color(gpui::rgba(0xffffff0d))
 				.child(
-					div()
+					gpui::div()
 						.id("inspector-tabs")
 						.role(Role::TabList)
 						.aria_label("Inspector views")
 						.p_1()
 						.flex()
 						.gap_1()
-						.rounded(px(8.0))
-						.bg(rgba(0x00000024))
+						.rounded(gpui::px(8.0))
+						.bg(gpui::rgba(0x00000024))
 						.child(inspector_tab(
 							"inspector-context",
 							"Context",
@@ -4738,25 +4804,27 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						)),
 				)
 				.child(
-					div()
+					gpui::div()
 						.id("open-agent")
 						.role(Role::Button)
 						.aria_label("Open Agent")
-						.h(px(26.0))
+						.h(gpui::px(26.0))
 						.px_2()
 						.flex()
 						.items_center()
-						.rounded(px(6.0))
+						.rounded(gpui::px(6.0))
 						.border_1()
-						.border_color(rgba(0xffffff10))
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_MUTED))
+						.border_color(gpui::rgba(0xffffff10))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
 						.hover(|element| {
-							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+							element
+								.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+								.text_color(gpui::rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(rgba(PRESSED_FILL)))
-						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+						.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+						.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Agent, cx);
 						}))
@@ -4765,7 +4833,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				),
 		)
 		.child(
-			div()
+			gpui::div()
 				.id("workbench-inspector-scroll")
 				.flex_1()
 				.min_h_0()
@@ -4785,57 +4853,63 @@ fn conversation_transcript(
 	let has_rows = !rows.is_empty();
 	let rendered_rows = rows.into_iter().map(|row| {
 		let content = match row {
-			TranscriptRow::Prompt { text, pending, .. } => div()
+			TranscriptRow::Prompt { text, pending, .. } => gpui::div()
 				.w_full()
 				.flex()
 				.justify_end()
 				.child(
-					div()
-						.max_w(px(620.0))
+					gpui::div()
+						.max_w(gpui::px(620.0))
 						.px_3()
 						.py_2()
-						.rounded(px(8.0))
-						.bg(rgba(0xffffff0a))
+						.rounded(gpui::px(8.0))
+						.bg(gpui::rgba(0xffffff0a))
 						.border_1()
-						.border_color(rgba(if pending { 0x7aa2ff32 } else { 0xffffff0b }))
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT))
+						.border_color(gpui::rgba(if pending { 0x7aa2ff32 } else { 0xffffff0b }))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT))
 						.whitespace_normal()
 						.child(text),
 				)
 				.into_any_element(),
-			TranscriptRow::Response { text, live, .. } => div()
+			TranscriptRow::Response { text, live, .. } => gpui::div()
 				.w_full()
 				.flex()
 				.gap_3()
 				.when(live, |element| {
-					element.child(div().mt(px(5.0)).size(px(5.0)).rounded_full().bg(rgb(WB_ACCENT)))
+					element.child(
+						gpui::div()
+							.mt(gpui::px(5.0))
+							.size(gpui::px(5.0))
+							.rounded_full()
+							.bg(gpui::rgb(WB_ACCENT)),
+					)
 				})
 				.child(
-					div()
+					gpui::div()
 						.flex_1()
 						.min_w_0()
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT))
 						.whitespace_normal()
 						.child(text),
 				)
 				.into_any_element(),
-			TranscriptRow::Activity { kind, status, text, .. } => div()
+			TranscriptRow::Activity { kind, status, text, .. } => gpui::div()
 				.w_full()
-				.h(px(26.0))
+				.h(gpui::px(26.0))
 				.px_2()
 				.flex()
 				.items_center()
 				.gap_2()
-				.rounded(px(6.0))
-				.text_size(px(11.0))
-				.text_color(rgb(WB_TEXT_FAINT))
+				.rounded(gpui::px(6.0))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
 				.child(
-					div()
+					gpui::div()
 						.font_family(FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(if status == HistoryItemStatusDto::Failed {
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(if status == HistoryItemStatusDto::Failed {
 							WB_AMBER
 						} else {
 							WB_TEXT_FAINT
@@ -4843,7 +4917,7 @@ fn conversation_transcript(
 						.child(history_kind_label(kind, status)),
 				)
 				.child(
-					div()
+					gpui::div()
 						.min_w_0()
 						.overflow_hidden()
 						.whitespace_nowrap()
@@ -4853,16 +4927,16 @@ fn conversation_transcript(
 				.into_any_element(),
 		};
 
-		div()
+		gpui::div()
 			.w_full()
 			.py_2()
 			.flex()
 			.justify_center()
-			.child(div().w_full().max_w(px(760.0)).child(content))
+			.child(gpui::div().w_full().max_w(gpui::px(760.0)).child(content))
 	});
 	let history_status = transcript_history_status(history, has_rows);
 
-	div()
+	gpui::div()
 		.id("conversation-transcript")
 		.role(Role::Log)
 		.aria_label("Conversation conversation")
@@ -4873,13 +4947,13 @@ fn conversation_transcript(
 		.py_5()
 		.when_some(history_status, |element, history_status| {
 			element.child(
-				div().w_full().flex().justify_center().child(
-					div()
+				gpui::div().w_full().flex().justify_center().child(
+					gpui::div()
 						.w_full()
-						.max_w(px(760.0))
+						.max_w(gpui::px(760.0))
 						.py_3()
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(history_status),
 				),
 			)
@@ -4894,77 +4968,77 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let can_retry = shell.history.as_ref().is_some_and(|history| history.can_retry);
 
 	if !can_previous && !can_next && !can_retry {
-		return div().w(px(0.0)).into_any_element();
+		return gpui::div().w(gpui::px(0.0)).into_any_element();
 	}
 
-	let previous = div()
+	let previous = gpui::div()
 		.id("conversation-history-previous")
 		.role(Role::Button)
 		.aria_label("Show less conversation history")
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Show less history")).into())
-		.h(px(24.0))
+		.h(gpui::px(24.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(11.0))
-		.text_color(if can_previous { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.text_size(gpui::px(11.0))
+		.text_color(if can_previous { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_previous, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_previous_history(window, cx);
 				}))
 		})
 		.child("Earlier");
-	let retry = div()
+	let retry = gpui::div()
 		.id("conversation-history-retry")
 		.role(Role::Button)
 		.aria_label("Retry conversation history")
-		.h(px(24.0))
+		.h(gpui::px(24.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(11.0))
-		.text_color(if can_retry { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.text_size(gpui::px(11.0))
+		.text_color(if can_retry { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_retry, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.retry_history(window, cx);
 				}))
 		})
 		.child("Retry");
-	let next = div()
+	let next = gpui::div()
 		.id("conversation-history-next")
 		.role(Role::Button)
 		.aria_label("Load more conversation history")
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Load more history")).into())
-		.h(px(24.0))
+		.h(gpui::px(24.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.justify_center()
 		.rounded_sm()
-		.text_size(px(11.0))
-		.text_color(if can_next { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.text_size(gpui::px(11.0))
+		.text_color(if can_next { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_next, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_next_history(window, cx);
 				}))
 		})
 		.child("Later");
 
-	div()
-		.min_w(px(126.0))
+	gpui::div()
+		.min_w(gpui::px(126.0))
 		.flex()
 		.items_center()
 		.justify_between()
@@ -4974,9 +5048,11 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
-fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	let task = shell.quick.selected_task();
-	let (has_executable_recovery, recovery_label) = if task.is_some_and(|task| {
+fn composer_recovery_presentation(
+	shell: &Shell,
+	task: Option<&ConversationSummary>,
+) -> (bool, &'static str) {
+	if task.is_some_and(|task| {
 		task.recovery_action == Some(ConversationRecoveryAction::ReviewModelSettings)
 	}) {
 		(
@@ -4989,7 +5065,23 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		)
 	} else {
 		conversation_recovery_presentation(task)
-	};
+	}
+}
+
+fn original_model_review_request(message: String) -> impl IntoElement {
+	gpui::div()
+		.id("model-review-original-input")
+		.debug_selector(|| "model-review-original-input".into())
+		.max_h(gpui::px(120.0))
+		.overflow_y_scroll()
+		.p_2()
+		.text_size(gpui::px(12.0))
+		.child(format!("Confirm and start will send the saved request:\n{message}"))
+}
+
+fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let task = shell.quick.selected_task();
+	let (has_executable_recovery, recovery_label) = composer_recovery_presentation(shell, task);
 	let can_continue = shell.creating_new
 		|| task.is_none()
 		|| task.is_some_and(|task| task.state == ConversationState::Ready);
@@ -5016,55 +5108,53 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let fast_control = composer_fast_control(fast_enabled, cx);
 	let effort_control = composer_effort_control(effort_label, cx);
 
-	div()
-		.min_h(px(88.0))
+	gpui::div()
+		.min_h(gpui::px(88.0))
 		.px_5()
 		.pt_1()
 		.pb_3()
 		.flex()
 		.justify_center()
 		.child(
-			div()
+			gpui::div()
 				.w_full()
-				.max_w(px(780.0))
+				.max_w(gpui::px(780.0))
 				.p_1()
 				.flex()
 				.flex_col()
-				.rounded(px(11.0))
+				.rounded(gpui::px(11.0))
 				.border_1()
-				.border_color(rgba(0xffffff16))
-				.bg(rgba(COMPOSER_MATERIAL))
+				.border_color(gpui::rgba(0xffffff16))
+				.bg(gpui::rgba(COMPOSER_MATERIAL))
 				.shadow(vec![
-					BoxShadow::new(px(0.0), px(10.0), Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.22 })
-						.blur_radius(px(28.0))
-						.spread_radius(px(-10.0)),
+					BoxShadow::new(
+						gpui::px(0.0),
+						gpui::px(10.0),
+						Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.22 },
+					)
+					.blur_radius(gpui::px(28.0))
+					.spread_radius(gpui::px(-10.0)),
 				])
 				.when_some(shell.quick.model_review_message.clone(), |element, message| {
-					element.child(
-						div()
-							.id("model-review-original-input")
-							.debug_selector(|| "model-review-original-input".into())
-							.max_h(px(120.0))
-							.overflow_y_scroll()
-							.p_2()
-							.text_size(px(12.0))
-							.child(format!(
-								"Confirm and start will send the saved request:\n{message}"
-							)),
-					)
+					element.child(original_model_review_request(message))
 				})
-				.child(div().h(px(35.0)).min_h(px(35.0)).child(shell.composer.clone()))
+				.child(
+					gpui::div()
+						.h(gpui::px(35.0))
+						.min_h(gpui::px(35.0))
+						.child(shell.composer.clone()),
+				)
 				.child(conversation_service_tiers(shell, cx))
 				.child(ordinary_drafts::creation_receipt_controls(shell, cx))
 				.child(
-					div()
-						.h(px(27.0))
+					gpui::div()
+						.h(gpui::px(27.0))
 						.px_1()
 						.flex()
 						.items_center()
 						.justify_between()
 						.child(
-							div()
+							gpui::div()
 								.min_w_0()
 								.flex()
 								.items_center()
@@ -5074,16 +5164,16 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.child(effort_control),
 						)
 						.child(
-							div()
+							gpui::div()
 								.flex()
 								.items_center()
 								.gap_2()
 								.when(composer_len > 0, |element| {
 									element.child(
-										div()
+										gpui::div()
 											.font_family(FONT_FAMILY)
-											.text_size(px(11.0))
-											.text_color(rgb(WB_TEXT_FAINT))
+											.text_size(gpui::px(11.0))
+											.text_color(gpui::rgb(WB_TEXT_FAINT))
 											.child(format!("{composer_len}/{MAX_COMPOSER_BYTES}")),
 									)
 								})
@@ -5097,28 +5187,34 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 }
 
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	let mut row =
-		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+	let mut row = gpui::div()
+		.id("conversation-service-tiers")
+		.flex()
+		.flex_wrap()
+		.gap_2()
+		.text_size(gpui::px(11.));
 
 	if let Some(notice) = shell.agent.read(cx).ordinary_draft_notice() {
-		row = row.child(div().id("ordinary-draft-storage-notice").child(notice.to_owned())).child(
-			div()
-				.id("ordinary-draft-recovery")
-				.cursor_pointer()
-				.child("Review saved drafts")
-				.on_click(cx.listener(|shell, _, _, cx| {
-					shell.agent.update(cx, |agent, cx| agent.show_ordinary_draft_recovery(cx));
+		row = row
+			.child(gpui::div().id("ordinary-draft-storage-notice").child(notice.to_owned()))
+			.child(
+				gpui::div()
+					.id("ordinary-draft-recovery")
+					.cursor_pointer()
+					.child("Review saved drafts")
+					.on_click(cx.listener(|shell, _, _, cx| {
+						shell.agent.update(cx, |agent, cx| agent.show_ordinary_draft_recovery(cx));
 
-					shell.selected = Destination::Agent;
+						shell.selected = Destination::Agent;
 
-					cx.notify();
-				})),
-		);
+						cx.notify();
+					})),
+			);
 	}
 
 	if shell.conversations.can_cancel_unsent_ordinary() {
 		row = row.child(
-			div()
+			gpui::div()
 				.id("ordinary-cancel-unsent")
 				.debug_selector(|| "ordinary-cancel-unsent".into())
 				.cursor_pointer()
@@ -5132,14 +5228,14 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	}
 	if shell.quick.selected.is_none() && !shell.quick.initial_defaults_ready {
 		row = row.child(
-			div()
+			gpui::div()
 				.id("conversation-defaults-pending")
 				.debug_selector(|| "conversation-defaults-pending".into())
 				.child("Waiting for account model defaults. Refresh model options to retry."),
 		);
 	}
 	if shell.quick.selected.is_some() && !shell.quick.model_settings_ready {
-		row = row.child(div().id("conversation-settings-pending").child("Read this conversation's settings or select model, reasoning and service tier before sending. Refresh model options to retry."));
+		row = row.child(gpui::div().id("conversation-settings-pending").child("Read this conversation's settings or select model, reasoning and service tier before sending. Refresh model options to retry."));
 	}
 	if shell.conversations.service_tier_unknown() {
 		row = row.child("Service tier follows the native thread");
@@ -5151,7 +5247,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	}
 
 	row = row.child(
-		div()
+		gpui::div()
 			.id("conversation-refresh-models")
 			.cursor_pointer()
 			.child("Refresh model options")
@@ -5182,7 +5278,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 			let id = choice.id.clone();
 
 			row = row.child(
-				div()
+				gpui::div()
 					.id(SharedString::from(format!("conversation-tier-{}", id.as_str())))
 					.debug_selector({
 						let label = format!("conversation-tier-{}", id.as_str());
@@ -5194,9 +5290,9 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					.py_1()
 					.rounded_md()
 					.text_color(if current == id && !shell.conversations.service_tier_unknown() {
-						rgb(WB_AMBER)
+						gpui::rgb(WB_AMBER)
 					} else {
-						rgb(WB_TEXT_MUTED)
+						gpui::rgb(WB_TEXT_MUTED)
 					})
 					.child(if choice.description.is_empty() {
 						choice.name
@@ -5253,7 +5349,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		})
 		.unwrap_or_else(|| conversation_load_status(shell.quick.load).to_owned());
 
-	div()
+	gpui::div()
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -5268,46 +5364,51 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			))
 		})
 		.child(
-			div()
+			gpui::div()
 				.flex_1()
 				.min_w_0()
 				.min_h_0()
 				.flex()
 				.child(
-					div()
+					gpui::div()
 						.flex_1()
 						.min_w_0()
 						.min_h_0()
 						.flex()
 						.flex_col()
-						.bg(rgba(CONTENT_MATERIAL))
+						.bg(gpui::rgba(CONTENT_MATERIAL))
 						.child(
-							div()
-								.h(px(44.0))
-								.min_h(px(44.0))
+							gpui::div()
+								.h(gpui::px(44.0))
+								.min_h(gpui::px(44.0))
 								.px_5()
 								.flex()
 								.items_center()
 								.gap_3()
 								.border_b_1()
-								.border_color(rgba(0xffffff0d))
-								.child(div().size(px(6.0)).rounded_full().bg(rgb(state_color)))
+								.border_color(gpui::rgba(0xffffff0d))
 								.child(
-									div()
-										.text_size(px(11.0))
+									gpui::div()
+										.size(gpui::px(6.0))
+										.rounded_full()
+										.bg(gpui::rgb(state_color)),
+								)
+								.child(
+									gpui::div()
+										.text_size(gpui::px(11.0))
 										.font_weight(FontWeight::MEDIUM)
-										.text_color(rgb(WB_TEXT))
+										.text_color(gpui::rgb(WB_TEXT))
 										.child(state_label),
 								)
 								.child(
-									div()
+									gpui::div()
 										.flex_1()
 										.min_w_0()
 										.overflow_hidden()
 										.whitespace_nowrap()
 										.text_ellipsis()
-										.text_size(px(11.0))
-										.text_color(rgb(WB_TEXT_FAINT))
+										.text_size(gpui::px(11.0))
+										.text_color(gpui::rgb(WB_TEXT_FAINT))
 										.child(detail),
 								)
 								.child(history_page_controls(shell, cx)),
@@ -5358,71 +5459,81 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 
 fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
-	let content = div()
+	let content = gpui::div()
 		.w_full()
-		.max_w(px(SETTINGS_WIDTH))
+		.max_w(gpui::px(SETTINGS_WIDTH))
 		.child(
-			div()
+			gpui::div()
 				.id("health-query-status")
 				.role(Role::Status)
 				.aria_label(format!("Health report: {}", presentation.label))
-				.h(px(44.0))
-				.min_h(px(44.0))
+				.h(gpui::px(44.0))
+				.min_h(gpui::px(44.0))
 				.px_4()
 				.flex()
 				.items_center()
 				.gap_3()
-				.rounded(px(10.0))
+				.rounded(gpui::px(10.0))
 				.border_1()
-				.border_color(rgba(0xffffff10))
-				.bg(rgba(0xffffff04))
+				.border_color(gpui::rgba(0xffffff10))
+				.bg(gpui::rgba(0xffffff04))
 				.child(
-					div().size(px(6.0)).min_w(px(6.0)).rounded_full().bg(rgb(presentation.color)),
+					gpui::div()
+						.size(gpui::px(6.0))
+						.min_w(gpui::px(6.0))
+						.rounded_full()
+						.bg(gpui::rgb(presentation.color)),
 				)
 				.child(
-					div()
-						.w(px(144.0))
-						.min_w(px(144.0))
-						.text_size(px(11.0))
+					gpui::div()
+						.w(gpui::px(144.0))
+						.min_w(gpui::px(144.0))
+						.text_size(gpui::px(11.0))
 						.font_weight(FontWeight::SEMIBOLD)
 						.child(presentation.label),
 				)
 				.child(
-					div()
+					gpui::div()
 						.min_w_0()
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_MUTED))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_MUTED))
 						.child(presentation.detail),
 				),
 		)
 		.child(
-			div()
+			gpui::div()
 				.id("health-components")
 				.pt_5()
 				.flex()
 				.flex_col()
 				.gap_4()
 				.child(
-					div()
+					gpui::div()
 						.id("health-native-process")
 						.flex()
 						.flex_col()
 						.gap_2()
 						.child(
-							div()
-								.text_size(px(12.))
+							gpui::div()
+								.text_size(gpui::px(12.))
 								.font_weight(FontWeight::SEMIBOLD)
 								.child("Active Agent process"),
 						)
-						.child(div().text_size(px(11.)).text_color(rgb(WB_TEXT_MUTED)).child(
-							native_process_summary(
-								snapshot.report.as_ref().and_then(|report| report.native_process()),
-							),
-						))
 						.child(
-							div()
-								.text_size(px(11.))
-								.text_color(rgb(WB_TEXT_MUTED))
+							gpui::div()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(WB_TEXT_MUTED))
+								.child(native_process_summary(
+									snapshot
+										.report
+										.as_ref()
+										.and_then(|report| report.native_process()),
+								)),
+						)
+						.child(
+							gpui::div()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(WB_TEXT_MUTED))
 								.child("Process-local snapshot from the latest Health refresh."),
 						),
 				)
@@ -5452,14 +5563,14 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 				)),
 		);
 
-	div()
+	gpui::div()
 		.id("health-scroll-viewport")
 		.flex_1()
 		.min_h_0()
 		.overflow_y_scroll()
-		.px(px(SETTINGS_INSET))
-		.pt(px(SETTINGS_GROUP_GAP))
-		.pb(px(SETTINGS_INSET))
+		.px(gpui::px(SETTINGS_INSET))
+		.pt(gpui::px(SETTINGS_GROUP_GAP))
+		.pb(gpui::px(SETTINGS_INSET))
 		.flex()
 		.justify_center()
 		.child(content)
@@ -5467,26 +5578,26 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 }
 
 fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
-	div()
+	gpui::div()
 		.id("connection-status")
 		.role(Role::Status)
 		.aria_label(format!("Connection: {}", presentation.label))
-		.h(px(42.0))
-		.min_h(px(42.0))
+		.h(gpui::px(42.0))
+		.min_h(gpui::px(42.0))
 		.px_6()
 		.flex()
 		.items_center()
 		.gap_3()
 		.border_t_1()
-		.border_color(rgba(0xffffff0d))
-		.bg(rgba(0x00000016))
+		.border_color(gpui::rgba(0xffffff0d))
+		.bg(gpui::rgba(0x00000016))
 		.font_family(FONT_FAMILY)
-		.text_size(px(11.0))
-		.text_color(rgb(WB_TEXT_FAINT))
-		.child(div().size(px(6.0)).rounded_full().bg(rgb(presentation.color)))
-		.child(div().w(px(110.0)).min_w(px(110.0)).child(presentation.label))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(WB_TEXT_FAINT))
+		.child(gpui::div().size(gpui::px(6.0)).rounded_full().bg(gpui::rgb(presentation.color)))
+		.child(gpui::div().w(gpui::px(110.0)).min_w(gpui::px(110.0)).child(presentation.label))
 		.child(
-			div()
+			gpui::div()
 				.min_w_0()
 				.overflow_hidden()
 				.whitespace_nowrap()
@@ -5507,7 +5618,7 @@ fn destination_content(
 
 	match selected {
 		Destination::Agent => {
-			return div()
+			return gpui::div()
 				.id("destination-content")
 				.flex_1()
 				.min_w_0()
@@ -5517,7 +5628,7 @@ fn destination_content(
 				.into_any_element();
 		},
 		Destination::Conversations => {
-			return div()
+			return gpui::div()
 				.id("destination-content")
 				.role(Role::Main)
 				.aria_label("Codex Workbench")
@@ -5537,7 +5648,7 @@ fn destination_content(
 
 	let content = placeholder_content(selected);
 
-	div()
+	gpui::div()
 		.id("destination-content")
 		.role(Role::Main)
 		.aria_label(format!("{} destination", selected.label()))
@@ -5546,7 +5657,7 @@ fn destination_content(
 		.h_full()
 		.flex()
 		.flex_col()
-		.bg(rgba(CONTENT_MATERIAL))
+		.bg(gpui::rgba(CONTENT_MATERIAL))
 		.child(destination_header(selected, &shell.health, refresh_focus, window, cx))
 		.child(content)
 		.child(connection_status(presentation))
@@ -5559,25 +5670,25 @@ fn settings_navigation(
 	selected: Destination,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let mut navigation = div()
+	let mut navigation = gpui::div()
 		.tab_group()
-		.w(px(192.0))
-		.min_w(px(192.0))
+		.w(gpui::px(192.0))
+		.min_w(gpui::px(192.0))
 		.h_full()
 		.p_3()
-		.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col()
-		.gap(px(3.0))
-		.text_size(px(BODY_SIZE))
-		.pr(px(16.))
-		.bg(rgba(AGENT_SIDEBAR_MATERIAL))
+		.gap(gpui::px(3.0))
+		.text_size(gpui::px(BODY_SIZE))
+		.pr(gpui::px(16.))
+		.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 		.child(
-			div()
+			gpui::div()
 				.px_2()
-				.pt(px(SETTINGS_TOP))
-				.pb(px(SETTINGS_GROUP_GAP))
-				.text_size(px(13.0))
+				.pt(gpui::px(SETTINGS_TOP))
+				.pb(gpui::px(SETTINGS_GROUP_GAP))
+				.text_size(gpui::px(13.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
 		);
@@ -5595,7 +5706,7 @@ fn settings_navigation(
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 
 		navigation = navigation.child(
-			div()
+			gpui::div()
 				.id(SharedString::from(format!("settings-section-{label}")))
 				.role(Role::Tab)
 				.aria_label(label)
@@ -5615,15 +5726,19 @@ fn settings_navigation(
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
-				.h(px(28.0))
+				.h(gpui::px(28.0))
 				.px_2()
-				.rounded(px(6.0))
+				.rounded(gpui::px(6.0))
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(TEXT)))
+				.when(active, |row| row.bg(gpui::rgba(0xffffff0c)).text_color(gpui::rgb(TEXT)))
 				.hover(move |row| {
-					row.bg(rgba(if active { SELECTED_HOVER_FILL } else { ui_theme::HOVER_FILL }))
+					row.bg(gpui::rgba(if active {
+						SELECTED_HOVER_FILL
+					} else {
+						ui_theme::HOVER_FILL
+					}))
 				})
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
@@ -5653,27 +5768,27 @@ fn settings_workspace_content(
 ) -> AnyElement {
 	let selected = if standalone { shell.settings_selected } else { shell.selected };
 	let navigation = settings_navigation(shell, standalone, selected, cx);
-	let panel = div()
+	let panel = gpui::div()
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(rgba(AGENT_SIDEBAR_MATERIAL))
-		.pt(px(WINDOW_CONTROLS_CLEARANCE))
+		.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
 	let content = if selected == Destination::Settings {
 		panel
-			.child(div().flex_1().min_h_0().overflow_hidden().child(shell.settings.clone()))
+			.child(gpui::div().flex_1().min_h_0().overflow_hidden().child(shell.settings.clone()))
 			.into_any_element()
 	} else {
 		panel
 			.child(
 				ui_theme::settings_header_inset().child(
-					div()
+					gpui::div()
 						.w_full()
-						.max_w(px(SETTINGS_WIDTH))
+						.max_w(gpui::px(SETTINGS_WIDTH))
 						.flex()
 						.items_center()
 						.justify_between()
@@ -5700,7 +5815,7 @@ fn settings_workspace_content(
 			.into_any_element()
 	};
 
-	div()
+	gpui::div()
 		.id("settings-workspace")
 		.role(Role::Main)
 		.aria_label("Settings")
@@ -5709,7 +5824,9 @@ fn settings_workspace_content(
 		.min_h_0()
 		.flex()
 		.when(standalone || shell.left_sidebar_visible, |layout| layout.child(navigation))
-		.child(div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content))
+		.child(
+			gpui::div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content),
+		)
 		.into_any_element()
 }
 
@@ -5725,7 +5842,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 		.into_iter()
 		.filter_map(|w| w.downcast::<Shell>())
 		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
-	let bounds = Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
+	let bounds = Bounds::centered(None, gpui::size(gpui::px(920.), gpui::px(620.)), cx);
 
 	match cx.open_window(
 		WindowOptions {
@@ -5736,7 +5853,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			}),
 			window_background: WindowBackgroundAppearance::Blurred,
 			window_bounds: Some(WindowBounds::Windowed(bounds)),
-			window_min_size: Some(gpui::size(px(860.), px(480.))),
+			window_min_size: Some(gpui::size(gpui::px(860.), gpui::px(480.))),
 			// Install the accessibility adapter before the first key-window notification.
 			focus: false,
 			show: false,
@@ -5810,7 +5927,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 }
 
 fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-send")
 		.debug_selector(|| "conversation-send".into())
 		.role(Role::Button)
@@ -5818,23 +5935,23 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.when(!can_send, |element| {
 			element.aria_label("Send unavailable; check conversation status")
 		})
-		.h(px(23.0))
-		.min_h(px(23.0))
+		.h(gpui::px(23.0))
+		.min_h(gpui::px(23.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(7.0))
-		.bg(if can_send { rgb(WB_TEXT) } else { rgba(0xffffff08) })
-		.text_size(px(11.0))
+		.rounded(gpui::px(7.0))
+		.bg(if can_send { gpui::rgb(WB_TEXT) } else { gpui::rgba(0xffffff08) })
+		.text_size(gpui::px(11.0))
 		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(if can_send { rgb(WB_CANVAS) } else { rgb(WB_TEXT_FAINT) })
+		.text_color(if can_send { gpui::rgb(WB_CANVAS) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_send, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| element.opacity(0.9))
 				.active(|element| element.opacity(0.72))
-				.focus_visible(|element| element.border_1().border_color(rgb(WB_BLUE)))
+				.focus_visible(|element| element.border_1().border_color(gpui::rgb(WB_BLUE)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.submit_conversation(window, cx);
 				}))
@@ -5844,27 +5961,27 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 }
 
 fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-interrupt")
 		.role(Role::Button)
 		.aria_label("Interrupt active turn")
-		.h(px(23.0))
-		.min_h(px(23.0))
+		.h(gpui::px(23.0))
+		.min_h(gpui::px(23.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(7.0))
+		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(rgba(0xffffff12))
-		.text_size(px(11.0))
-		.text_color(if can_interrupt { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.border_color(gpui::rgba(0xffffff12))
+		.text_size(gpui::px(11.0))
+		.text_color(if can_interrupt { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_interrupt, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)))
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.hover(|element| element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.interrupt_conversation(window, cx);
 				}))
@@ -5878,26 +5995,26 @@ fn composer_recover(
 	recovery_label: &'static str,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-recover")
 		.debug_selector(|| "conversation-recover".into())
 		.role(Role::Button)
 		.aria_label(recovery_label)
-		.h(px(23.0))
-		.min_h(px(23.0))
+		.h(gpui::px(23.0))
+		.min_h(gpui::px(23.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(7.0))
+		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(if can_recover { rgba(0xf59e0b55) } else { rgba(0xffffff10) })
-		.text_size(px(11.0))
-		.text_color(if can_recover { rgb(WB_AMBER) } else { rgb(WB_TEXT_FAINT) })
+		.border_color(if can_recover { gpui::rgba(0xf59e0b55) } else { gpui::rgba(0xffffff10) })
+		.text_size(gpui::px(11.0))
+		.text_color(if can_recover { gpui::rgb(WB_AMBER) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_recover, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xf59e0b12)))
+				.hover(|element| element.bg(gpui::rgba(0xf59e0b12)))
 				.active(|element| element.opacity(0.72))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.recover_conversation(window, cx);
@@ -5908,24 +6025,26 @@ fn composer_recover(
 }
 
 fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-model")
 		.role(Role::Button)
 		.aria_label(format!("Model {model_label}; select next model"))
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model · click to cycle")).into())
-		.h(px(23.0))
+		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
 		.items_center()
-		.rounded(px(6.0))
+		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(rgba(0xffffff10))
-		.bg(rgba(0x00000018))
+		.border_color(gpui::rgba(0xffffff10))
+		.bg(gpui::rgba(0x00000018))
 		.font_family(FONT_FAMILY)
-		.text_size(px(11.0))
-		.text_color(rgb(WB_TEXT_MUTED))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_model(cx)))
 		.child(model_label)
@@ -5933,55 +6052,59 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 }
 
 fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-fast")
 		.role(Role::Button)
 		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast · priority service tier")).into())
-		.h(px(23.0))
+		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.gap_1()
-		.rounded(px(6.0))
+		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
-		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
+		.border_color(if fast_enabled { gpui::rgba(0xffa45d40) } else { gpui::rgba(0xffffff10) })
+		.bg(if fast_enabled { gpui::rgba(0xff8a3d16) } else { gpui::rgba(0x00000018) })
 		.font_family(FONT_FAMILY)
-		.text_size(px(11.0))
-		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+		.text_size(gpui::px(11.0))
+		.text_color(if fast_enabled { gpui::rgb(WB_AMBER) } else { gpui::rgb(WB_TEXT_MUTED) })
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
-		.child(div().size(px(4.0)).rounded_full().bg(if fast_enabled {
-			rgb(WB_AMBER)
+		.child(gpui::div().size(gpui::px(4.0)).rounded_full().bg(if fast_enabled {
+			gpui::rgb(WB_AMBER)
 		} else {
-			rgb(WB_TEXT_FAINT)
+			gpui::rgb(WB_TEXT_FAINT)
 		}))
 		.child("Fast")
 		.into_any_element()
 }
 
 fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("conversation-effort")
 		.role(Role::Button)
 		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort · click to cycle")).into())
-		.h(px(23.0))
+		.h(gpui::px(23.0))
 		.px_2()
 		.flex()
 		.items_center()
-		.rounded(px(6.0))
+		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(rgba(0xffffff10))
-		.bg(rgba(0x00000018))
+		.border_color(gpui::rgba(0xffffff10))
+		.bg(gpui::rgba(0x00000018))
 		.font_family(FONT_FAMILY)
-		.text_size(px(11.0))
-		.text_color(rgb(WB_TEXT_MUTED))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_effort(cx)))
 		.child(effort_label)
@@ -5989,30 +6112,40 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 }
 
 fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("toggle-left-sidebar")
 		.role(Role::Button)
 		.aria_label("Toggle conversation sidebar")
 		.aria_expanded(left_sidebar_visible)
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle sessions · Command-E")).into())
-		.h(px(27.0))
+		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
 		.items_center()
-		.rounded(px(7.0))
+		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(if left_sidebar_visible { rgba(0xffffff20) } else { rgba(0xffffff10) })
-		.bg(if left_sidebar_visible { rgba(0xffffff10) } else { rgba(0x00000000) })
-		.text_color(if left_sidebar_visible { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.border_color(if left_sidebar_visible {
+			gpui::rgba(0xffffff20)
+		} else {
+			gpui::rgba(0xffffff10)
+		})
+		.bg(if left_sidebar_visible { gpui::rgba(0xffffff10) } else { gpui::rgba(0x00000000) })
+		.text_color(if left_sidebar_visible {
+			gpui::rgb(WB_TEXT)
+		} else {
+			gpui::rgb(WB_TEXT_MUTED)
+		})
 		.cursor_pointer()
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
+		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
 		}))
@@ -6021,30 +6154,36 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 }
 
 fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("toggle-inspector")
 		.role(Role::Button)
 		.aria_label("Toggle conversation context")
 		.aria_expanded(inspector_visible)
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Toggle context · Command-B")).into())
-		.h(px(27.0))
+		.h(gpui::px(27.0))
 		.px_3()
 		.flex()
 		.items_center()
-		.rounded(px(7.0))
+		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(if inspector_visible { rgba(0xffffff20) } else { rgba(0xffffff10) })
-		.bg(if inspector_visible { rgba(0xffffff10) } else { rgba(0x00000000) })
-		.text_color(if inspector_visible { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.border_color(if inspector_visible {
+			gpui::rgba(0xffffff20)
+		} else {
+			gpui::rgba(0xffffff10)
+		})
+		.bg(if inspector_visible { gpui::rgba(0xffffff10) } else { gpui::rgba(0x00000000) })
+		.text_color(if inspector_visible { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
 		.cursor_pointer()
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+		.hover(|element| {
+			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+		})
+		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
 		}))
@@ -6060,39 +6199,39 @@ fn account_pool_header(
 	emails_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.flex_1()
-		.px(px(14.0))
-		.py(px(6.0))
+		.px(gpui::px(14.0))
+		.py(gpui::px(6.0))
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap_3()
-		.rounded(px(10.0))
+		.rounded(gpui::px(10.0))
 		.child(
-			div().min_w_0().flex().flex_col().gap_1().child(
-				div()
+			gpui::div().min_w_0().flex().flex_col().gap_1().child(
+				gpui::div()
 					.flex()
 					.items_center()
 					.gap_2()
-					.child(div().size(px(6.0)).rounded_full().bg(rgb(WB_GREEN)))
+					.child(gpui::div().size(gpui::px(6.0)).rounded_full().bg(gpui::rgb(WB_GREEN)))
 					.child(
-						div()
-							.text_size(px(12.5))
+						gpui::div()
+							.text_size(gpui::px(12.5))
 							.font_weight(FontWeight::SEMIBOLD)
 							.child("Routing"),
 					)
 					.child(
-						div()
+						gpui::div()
 							.font_family(FONT_FAMILY)
-							.text_size(px(11.0))
-							.text_color(rgb(WB_TEXT_FAINT))
+							.text_size(gpui::px(11.0))
+							.text_color(gpui::rgb(WB_TEXT_FAINT))
 							.child(format!("{available} of {count} available")),
 					),
 			),
 		)
 		.child(
-			div()
+			gpui::div()
 				.flex()
 				.items_center()
 				.gap_2()
@@ -6122,30 +6261,34 @@ fn account_pool_header(
 fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
 	let enabled = account.enabled;
 
-	div()
+	gpui::div()
 		.id(SharedString::from(format!("account-identity-{}", account.account_id.as_str())))
 		.when_some(email.map(str::to_owned), |row, email| {
 			row.tooltip(move |_, cx| cx.new(|_| ControlTooltip(email.clone())).into())
 		})
-		.w(px(132.0))
-		.min_w(px(108.0))
+		.w(gpui::px(132.0))
+		.min_w(gpui::px(108.0))
 		.flex()
 		.items_center()
 		.gap_2()
 		.child(
-			div()
+			gpui::div()
 				.min_w_0()
 				.flex()
 				.flex_col()
-				.gap(px(2.))
+				.gap(gpui::px(2.))
 				.child(
-					div()
+					gpui::div()
 						.overflow_hidden()
 						.whitespace_nowrap()
 						.text_ellipsis()
-						.text_size(px(10.5))
+						.text_size(gpui::px(10.5))
 						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
+						.text_color(if enabled {
+							gpui::rgb(WB_TEXT)
+						} else {
+							gpui::rgb(WB_TEXT_FAINT)
+						})
 						.child(email.unwrap_or(account.alias.as_str()).to_owned()),
 				)
 				.when(
@@ -6153,13 +6296,13 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 						&& account.lifecycle_readiness != AccountLifecycleReadinessDto::Ready,
 					|row| {
 						row.child(
-							div()
+							gpui::div()
 								.flex()
 								.items_center()
 								.gap_2()
 								.font_family(FONT_FAMILY)
-								.text_size(px(10.5))
-								.text_color(rgb(WB_TEXT_FAINT))
+								.text_size(gpui::px(10.5))
+								.text_color(gpui::rgb(WB_TEXT_FAINT))
 								.child(account_readiness_status(account)),
 						)
 					},
@@ -6183,7 +6326,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 			let state = task.state;
 			let label = task.title.as_str().to_owned();
 
-			div()
+			gpui::div()
 				.id(("conversation-row", index))
 				.role(Role::Tab)
 				.tab_index(index as isize)
@@ -6191,24 +6334,30 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.aria_label(format!("{}, {}", label, conversation_state_label(state)))
 				.aria_selected(is_selected)
 				.w_full()
-				.min_h(px(52.0))
+				.min_h(gpui::px(52.0))
 				.px_3()
 				.py_2()
 				.flex()
 				.flex_col()
 				.justify_center()
 				.gap_1()
-				.rounded(px(9.0))
+				.rounded(gpui::px(9.0))
 				.border_1()
-				.border_color(if is_selected { rgba(0xffffff18) } else { rgba(0x00000000) })
-				.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
-				.text_size(px(11.0))
-				.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
-				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				.border_color(if is_selected {
+					gpui::rgba(0xffffff18)
+				} else {
+					gpui::rgba(0x00000000)
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+				.bg(if is_selected { gpui::rgba(0xffffff0f) } else { gpui::rgba(0x00000000) })
+				.text_size(gpui::px(11.0))
+				.text_color(if is_selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
+				.hover(|element| {
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 				.cursor_pointer()
 				.on_click(cx.listener(move |shell, _, window, cx| {
 					shell.choose_conversation(conversation_id.clone(), window, cx);
@@ -6221,21 +6370,21 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 					}
 				}))
 				.child(
-					div()
+					gpui::div()
 						.w_full()
 						.min_w_0()
 						.flex()
 						.items_center()
 						.gap_2()
 						.child(
-							div()
-								.size(px(5.0))
-								.min_w(px(5.0))
+							gpui::div()
+								.size(gpui::px(5.0))
+								.min_w(gpui::px(5.0))
 								.rounded_full()
-								.bg(rgb(conversation_state_color(state))),
+								.bg(gpui::rgb(conversation_state_color(state))),
 						)
 						.child(
-							div()
+							gpui::div()
 								.flex_1()
 								.min_w_0()
 								.overflow_hidden()
@@ -6245,11 +6394,11 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 						),
 				)
 				.child(
-					div()
-						.pl(px(13.0))
+					gpui::div()
+						.pl(gpui::px(13.0))
 						.font_family(FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(format!("{} · {short_id}", conversation_state_label(state))),
 				)
 		})
@@ -6276,41 +6425,41 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 			12.0
 		};
 
-	div()
-		.h(px(48.0))
-		.min_h(px(48.0))
+	gpui::div()
+		.h(gpui::px(48.0))
+		.min_h(gpui::px(48.0))
 		.px_3()
 		.flex()
 		.items_center()
 		.justify_between()
 		.border_b_1()
-		.border_color(rgba(0xffffff0d))
+		.border_color(gpui::rgba(0xffffff0d))
 		.child(
-			div()
+			gpui::div()
 				.min_w_0()
 				.flex()
 				.flex_col()
 				.gap_1()
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_size(px(11.0))
-				.text_color(rgb(WB_TEXT))
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT))
 				.child("Sessions")
 				.when_some(refresh_status, |element, status| {
 					element.child(
-						div()
-							.max_w(px(156.0))
+						gpui::div()
+							.max_w(gpui::px(156.0))
 							.overflow_hidden()
 							.whitespace_nowrap()
 							.text_ellipsis()
 							.font_weight(FontWeight::NORMAL)
-							.text_size(px(11.0))
-							.text_color(rgb(WB_TEXT_FAINT))
+							.text_size(gpui::px(11.0))
+							.text_color(gpui::rgb(WB_TEXT_FAINT))
 							.child(status),
 					)
 				}),
 		)
 		.child(
-			div()
+			gpui::div()
 				.flex()
 				.items_center()
 				.gap_1()
@@ -6322,24 +6471,26 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 				))
 				.child(conversation_archive_button(can_control, cx))
 				.child(
-					div()
+					gpui::div()
 						.id("new-conversation")
 						.role(Role::Button)
 						.aria_label("New conversation")
-						.h(px(27.0))
+						.h(gpui::px(27.0))
 						.px_2()
 						.flex()
 						.items_center()
-						.rounded(px(7.0))
+						.rounded(gpui::px(7.0))
 						.border_1()
-						.border_color(rgba(0xffffff14))
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_MUTED))
+						.border_color(gpui::rgba(0xffffff14))
+						.text_size(gpui::px(11.0))
+						.text_color(gpui::rgb(WB_TEXT_MUTED))
 						.hover(|element| {
-							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+							element
+								.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+								.text_color(gpui::rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(rgba(PRESSED_FILL)))
-						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+						.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+						.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
 						.cursor_pointer()
 						.on_click(cx.listener(|shell, _, window, cx| {
 							shell.start_new_conversation(window, cx);
@@ -6357,27 +6508,33 @@ fn conversation_refresh_button(
 	refresh_label: String,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	div()
+	gpui::div()
 		.id("refresh-conversation")
 		.role(Role::Button)
 		.aria_label("Sync Codex-backed conversations")
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Sync Codex-backed conversations")).into())
-		.h(px(27.0))
-		.min_w(px(27.0))
+		.h(gpui::px(27.0))
+		.min_w(gpui::px(27.0))
 		.px_2()
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(px(7.0))
-		.text_size(px(refresh_text_size))
-		.text_color(if can_refresh_all { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.rounded(gpui::px(7.0))
+		.text_size(gpui::px(refresh_text_size))
+		.text_color(if can_refresh_all {
+			gpui::rgb(WB_TEXT_MUTED)
+		} else {
+			gpui::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_refresh_all, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.refresh_conversation(window, cx);
 				}))
@@ -6387,25 +6544,27 @@ fn conversation_refresh_button(
 }
 
 fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> AnyElement {
-	div()
+	gpui::div()
 		.id("archive-conversation")
 		.role(Role::Button)
 		.aria_label("Archive selected Codex conversation")
 		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Archive selected thread")).into())
-		.h(px(27.0))
+		.h(gpui::px(27.0))
 		.px_2()
 		.flex()
 		.items_center()
-		.rounded(px(7.0))
-		.text_size(px(11.0))
-		.text_color(if can_control { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+		.rounded(gpui::px(7.0))
+		.text_size(gpui::px(11.0))
+		.text_color(if can_control { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
 		.when(can_control, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| {
-					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+					element
+						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(gpui::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(rgba(PRESSED_FILL)))
+				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.archive_conversation(window, cx);
 				}))
@@ -6540,7 +6699,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7110,7 +7269,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7147,7 +7306,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7203,7 +7362,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7275,7 +7434,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7508,7 +7667,7 @@ mod tests {
 	fn panel_resize_keyboard_bindings_reach_the_focused_panel(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -7519,7 +7678,7 @@ mod tests {
 		};
 		let initial = dimensions(visual);
 
-		visual.simulate_click(gpui::point(px(50.), px(170.)), Default::default());
+		visual.simulate_click(gpui::point(gpui::px(50.), gpui::px(170.)), Default::default());
 		visual.simulate_keystrokes("ctrl-alt-=");
 
 		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1, initial.2));
@@ -7598,7 +7757,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7725,7 +7884,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
 			window.draw(cx).clear();
 		});
 		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));

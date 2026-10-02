@@ -65,12 +65,11 @@ use std::{
 use gpui::{
 	AnyElement, AppContext as _, Bounds, ClipboardItem, Context, Div, Entity, FocusHandle,
 	FontWeight, KeyDownEvent, Pixels, Point, Render, Role, ScrollHandle, SharedString, Task,
-	Window, div,
+	Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled, StyledImage,
 	},
-	px, rgb, rgba,
 };
 use tokio::runtime::Builder;
 
@@ -79,7 +78,7 @@ use crate::{
 	panel_preferences::PanelDefaults,
 	shell::{workspace_symbols, workspace_symbols::Symbol},
 	ui_loading,
-	ui_motion::{SmoothControl, disclosure},
+	ui_motion::{self, SmoothControl},
 	ui_theme::{
 		self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, METADATA_GAP, TEXT_MUTED,
 	},
@@ -618,7 +617,7 @@ impl AgentSurface {
 						if let Some(scroll) = surface.transcript_scroll.get(&id)
 							&& surface.voice.is_none()
 							&& !surface.history_follow_paused.contains(&id)
-							&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
+							&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 						{
 							surface.latest_follow_work = Some(id.clone());
 						}
@@ -783,7 +782,7 @@ impl AgentSurface {
 			if let Some(scroll) = self.transcript_scroll.get(&source.event.work_item_id)
 				&& self.voice.is_none()
 				&& !self.history_follow_paused.contains(&source.event.work_item_id)
-				&& (scroll.offset().y + scroll.max_offset().y).abs() < px(24.0)
+				&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 			{
 				scroll.scroll_to_bottom();
 			}
@@ -1750,31 +1749,31 @@ impl AgentSurface {
 		let target = cx.entity();
 		let status = graph::state_in(snapshot, work).0;
 
-		div()
+		gpui::div()
 			.flex_none()
 			.px_4()
-			.h(px(36.))
+			.h(gpui::px(36.))
 			.justify_center()
 			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
 			.flex_col()
 			.child(
-				div()
+				gpui::div()
 					.flex()
 					.items_center()
 					.justify_between()
-					.gap(px(12.))
-					.child(div().flex_1().min_w_0().child(if self.pages.is_empty() {
-						div()
-							.text_size(px(12.))
-							.text_color(rgb(TEXT_MUTED))
+					.gap(gpui::px(12.))
+					.child(gpui::div().flex_1().min_w_0().child(if self.pages.is_empty() {
+						gpui::div()
+							.text_size(gpui::px(12.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child(format!("{} · {status}", self.work_label(work)))
 							.into_any_element()
 					} else {
 						self.workspace_tabs(cx)
 					}))
 					.child(
-						div()
+						gpui::div()
 							.child(self.workspace_action(
 								"inspect-work".into(),
 								"Details".into(),
@@ -1818,7 +1817,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
-		div()
+		gpui::div()
 			.id("agent-work-detail")
 			.flex()
 			.flex_col()
@@ -1955,13 +1954,13 @@ impl AgentSurface {
 	}
 
 	fn history_panel(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
-		let panel = div()
+		let panel = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex_none()
 			.flex()
 			.flex_col()
-			.gap(px(MESSAGE_GAP))
+			.gap(gpui::px(MESSAGE_GAP))
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 
@@ -2015,9 +2014,9 @@ impl AgentSurface {
 					work.active_turn_id.as_deref().is_none_or(|turn| turn == message.turn_id)
 				}) {
 					panel = panel.child(
-						div()
+						gpui::div()
 							.w_full()
-							.py(px(2.))
+							.py(gpui::px(2.))
 							.children(
 								(message.kind == AgentLiveMessageKind::ReasoningSummary)
 									.then(|| muted("Reasoning summary")),
@@ -2071,7 +2070,7 @@ impl AgentSurface {
 			&& self.native_history.safety_buffering_turn_id == work.active_turn_id
 		{
 			panel = panel.child(
-				div()
+				gpui::div()
 					.id("native-safety-buffering")
 					.role(Role::Status)
 					.child(muted("Waiting for provider safety checks…")),
@@ -2105,7 +2104,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
-		let mut panel = div().flex().flex_col().gap_2();
+		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		for event in snapshot
 			.pending_events
@@ -2115,13 +2114,13 @@ impl AgentSurface {
 			let id = event.id;
 
 			panel = panel.child(
-				div()
+				gpui::div()
 					.id(SharedString::from(format!("review-request-{id}")))
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label("Review request")
 					.cursor_pointer()
-					.text_color(rgb(BLUE))
+					.text_color(gpui::rgb(BLUE))
 					.on_click(cx.listener(move |s, _, _, cx| s.load_request(id, cx)))
 					.child(if event.event_kind == "user_input_pending" {
 						"Answer a question"
@@ -2145,12 +2144,12 @@ impl AgentSurface {
 		let selected = id.to_owned();
 		let keyboard_id = selected.clone();
 
-		div()
+		gpui::div()
 			.id(SharedString::from(format!("agent-relation-{label}-{id}")))
 			.role(Role::Button)
 			.tab_index(28)
 			.cursor_pointer()
-			.text_color(rgb(BLUE))
+			.text_color(gpui::rgb(BLUE))
 			.on_click(cx.listener(move |surface, _, _, cx| {
 				surface.open_page(&selected, cx);
 				cx.notify();
@@ -2185,26 +2184,26 @@ impl AgentSurface {
 
 impl AgentSurface {
 	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
+		gpui::div()
 			.w_full()
 			.flex()
 			.flex_col()
-			.gap(px(6.0))
-			.px(px(0.0))
-			.py(px(0.0))
+			.gap(gpui::px(6.0))
+			.px(gpui::px(0.0))
+			.py(gpui::px(0.0))
 			.child(
-				div()
+				gpui::div()
 					.id("agent-advanced-preferences")
 					.role(Role::Button)
 					.aria_label("New agent defaults")
 					.aria_expanded(self.setup_expanded)
 					.tab_index(0)
-					.h(px(32.0))
+					.h(gpui::px(32.0))
 					.flex()
 					.items_center()
 					.cursor_pointer()
-					.rounded(px(6.0))
-					.hover(|s| s.bg(rgba(HOVER_FILL)))
+					.rounded(gpui::px(6.0))
+					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.setup_expanded = !s.setup_expanded;
 
@@ -2228,8 +2227,8 @@ impl AgentSurface {
 					memory_enabled: Some(enabled),
 					..
 				}) => Some(
-					div()
-						.h(px(26.))
+					gpui::div()
+						.h(gpui::px(26.))
 						.flex()
 						.items_center()
 						.justify_between()
@@ -2238,7 +2237,7 @@ impl AgentSurface {
 				),
 				_ => None,
 			})
-			.child(disclosure(
+			.child(ui_motion::disclosure(
 				"agent-advanced-motion",
 				self.setup_expanded,
 				self.render_setup_controls(cx),
@@ -2257,7 +2256,7 @@ impl AgentSurface {
 							.as_ref()
 							.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
 							.map(|item| {
-								div()
+								gpui::div()
 									.flex()
 									.flex_col()
 									.gap_2()
@@ -2278,18 +2277,18 @@ impl AgentSurface {
 			.find(|(id, _)| id == self.account.read(cx).content())
 			.map_or("Automatic routing", |(_, label)| label.as_str());
 
-		div()
+		gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
 			.child(muted("Applies when starting a new agent."))
 			.child(
-				div()
+				gpui::div()
 					.flex()
 					.items_center()
 					.gap_2()
-					.child(div().w(px(72.)).child(muted("Directory")))
-					.child(div().flex_1().min_w_0().child(self.cwd.clone())),
+					.child(gpui::div().w(gpui::px(72.)).child(muted("Directory")))
+					.child(gpui::div().flex_1().min_w_0().child(self.cwd.clone())),
 			)
 			.child(self.workspace_action(
 				"agent-default-account".into(),
@@ -2431,13 +2430,16 @@ fn next_check_text(due: i64) -> String {
 }
 
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
-	div().text_size(px(CAPTION_SIZE)).text_color(rgb(TEXT_MUTED)).child(text.into())
+	gpui::div()
+		.text_size(gpui::px(CAPTION_SIZE))
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.child(text.into())
 }
 
 fn auth_recovery_entry(entry: &AgentHistoryEntryDto) -> Div {
 	let id = entry.id;
 
-	div()
+	gpui::div()
 		.w_full()
 		.flex()
 		.flex_col()
@@ -2467,7 +2469,7 @@ fn history_entry_with_metrics(
 	if entry.kind == "checklist" {
 		let id = entry.id;
 
-		return div()
+		return gpui::div()
 			.w_full()
 			.py_2()
 			.debug_selector(move || format!("checklist-receipt-{id}"))
@@ -2475,7 +2477,7 @@ fn history_entry_with_metrics(
 			.child(markdown::render(&entry.text, &format!("checklist-{id}")));
 	}
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
-		return div()
+		return gpui::div()
 			.w_full()
 			.py_2()
 			.child(muted(if entry.kind == "partial_plan" {
@@ -2499,11 +2501,11 @@ fn history_entry_with_metrics(
 	};
 
 	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending" | "stopped") {
-		return div()
+		return gpui::div()
 			.w_full()
 			.py_2()
-			.text_size(px(11.))
-			.text_color(rgb(if entry.kind == "stopped" { TEXT_MUTED } else { AMBER }))
+			.text_size(gpui::px(11.))
+			.text_color(gpui::rgb(if entry.kind == "stopped" { TEXT_MUTED } else { AMBER }))
 			.child(SelectableText {
 				key: format!("notice-{identity}"),
 				text: entry.text.clone(),
@@ -2512,29 +2514,29 @@ fn history_entry_with_metrics(
 			});
 	}
 
-	div()
+	gpui::div()
 		.w_full()
 		.min_w_0()
 		.flex_none()
 		.flex()
-		.when(user, |row| row.child(div().flex_1().min_w_0()))
+		.when(user, |row| row.child(gpui::div().flex_1().min_w_0()))
 		.child(
-			div()
+			gpui::div()
 				.min_w_0()
 				.when(user, |bubble| {
 					bubble
 						.flex_none()
 						.max_w(gpui::relative(0.78))
 						.px_4()
-						.py(px(9.))
-						.rounded(px(18.0))
-						.bg(rgba(0xffffff0e))
+						.py(gpui::px(9.))
+						.rounded(gpui::px(18.0))
+						.bg(gpui::rgba(0xffffff0e))
 				})
-				.when(!user, |body| body.w_full().py(px(2.)))
+				.when(!user, |body| body.w_full().py(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| {
 					body.pl_3()
 						.border_l_2()
-						.border_color(rgb(BLUE))
+						.border_color(gpui::rgb(BLUE))
 						.child(muted("Agent instructions"))
 				})
 				.child(markdown::render(&visible_text, &format!("message-{identity}")))
@@ -2547,11 +2549,11 @@ fn history_entry_with_metrics(
 				)
 				.when(!user, |body| {
 					body.child(
-						div()
-							.mt(px(METADATA_GAP))
+						gpui::div()
+							.mt(gpui::px(METADATA_GAP))
 							.flex()
 							.items_center()
-							.gap(px(2.))
+							.gap(gpui::px(2.))
 							.child(
 								metrics.unwrap_or_else(|| reply_metrics(entry).into_any_element()),
 							)
@@ -2901,7 +2903,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(agent_surface::px(1_400.), agent_surface::px(320.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -2916,8 +2918,7 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear());
 
 		surface.update(visual, |s, _| {
-			s.transcript_scroll["agent"]
-				.set_offset(gpui::point(agent_surface::px(0.), agent_surface::px(-20.)));
+			s.transcript_scroll["agent"].set_offset(gpui::point(gpui::px(0.), gpui::px(-20.)));
 
 			assert!(
 				!s.history_prefetch_needed(),
@@ -3023,7 +3024,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -3107,7 +3108,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(720.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(720.0)));
 			window.draw(cx).clear();
 		});
 	}
@@ -3351,7 +3352,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(agent_surface::px(1_180.0), agent_surface::px(720.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(720.0)));
 			window.draw(cx).clear();
 		});
 	}

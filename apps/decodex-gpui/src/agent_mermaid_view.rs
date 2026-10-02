@@ -5,8 +5,8 @@ use ui_theme::{BLUE, TEXT_MUTED};
 use crate::shell::agent_surface::{
 	markdown::{
 		self, AnyElement, HighlightStyle, Inline, InteractiveElement, IntoElement, Node,
-		ParentElement, Range, SharedString, StatefulInteractiveElement, Styled, code_text, mermaid,
-		mermaid::Role, px, ui_theme,
+		ParentElement, Range, SharedString, StatefulInteractiveElement, Styled, mermaid,
+		mermaid::Role, ui_theme,
 	},
 	selectable_text::SelectableText,
 };
@@ -28,12 +28,12 @@ pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: u
 }
 
 pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
-	let source = code_text(children);
+	let source = markdown::code_text(children);
 	let out = diagram(&source)?;
 	let selector = format!("mermaid-{key}");
 
 	Some(
-		markdown::div()
+		gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -43,15 +43,15 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 			.rounded_md()
 			.bg(markdown::rgba(0x00000045))
 			.font_family("Menlo")
-			.text_size(px(12.))
-			.line_height(px(19.))
+			.text_size(gpui::px(12.))
+			.line_height(gpui::px(19.))
 			.child(markdown::copy_button(
 				&format!("mermaid-copy-{key}"),
 				"Copy Mermaid source",
 				source,
 			))
 			.child(
-				markdown::div()
+				gpui::div()
 					.id(SharedString::from(selector.clone()))
 					.debug_selector(move || selector.clone())
 					.w_full()

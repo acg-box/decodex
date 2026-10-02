@@ -8,12 +8,10 @@
 use gpui::{
 	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
 	accesskit::Toggled,
-	div,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
 	},
-	px, rgb, rgba,
 };
 use ui_theme::window_material::GlassStyle;
 
@@ -26,7 +24,7 @@ use crate::{
 	native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost},
 	panel_preferences::PanelDefaults,
 	ui_loading,
-	ui_motion::{SmoothControl, switch_knob},
+	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
 		self, BODY_LINE_HEIGHT, BODY_SIZE, HOVER_FILL, LINE_STRONG, SETTINGS_GROUP_GAP,
@@ -321,13 +319,13 @@ impl SettingsSurface {
 
 	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> AnyElement {
 		if self.snapshot.settings.is_none() {
-			return div()
+			return gpui::div()
 				.id(match preference {
 					DesktopPreference::MenuBar => "menubar-loading",
 					DesktopPreference::Quota => "quota-loading",
 					DesktopPreference::Recap => "recap-loading",
 				})
-				.w(px(28.))
+				.w(gpui::px(28.))
 				.flex()
 				.justify_center()
 				.child(
@@ -338,7 +336,7 @@ impl SettingsSurface {
 					) {
 						ui_loading::loading("").into_any_element()
 					} else {
-						div().text_color(rgb(TEXT_MUTED)).child("—").into_any_element()
+						gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("—").into_any_element()
 					},
 				)
 				.into_any_element();
@@ -362,40 +360,40 @@ impl SettingsSurface {
 		};
 		let interactive = self.snapshot.can_toggle;
 
-		div()
+		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Switch)
 			.aria_label(label)
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(36.0))
-			.h(px(20.0))
-			.p(px(2.0))
+			.w(gpui::px(36.0))
+			.h(gpui::px(20.0))
+			.p(gpui::px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
 			.border_1()
-			.border_color(rgb(if enabled { BLUE } else { LINE }))
-			.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+			.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
+			.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
 			.opacity(if interactive { 1.0 } else { 0.58 })
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
 					.hover(move |element| {
-						element.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+						element.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
 					})
 					.active(|element| element.opacity(0.9))
-					.focus_visible(|element| element.border_color(rgb(BLUE)))
+					.focus_visible(|element| element.border_color(gpui::rgb(BLUE)))
 					.on_click(cx.listener(match preference {
 						DesktopPreference::Quota => Self::toggle_activation,
 						DesktopPreference::MenuBar => Self::toggle_menubar,
 						DesktopPreference::Recap => Self::toggle_recap,
 					}))
 			})
-			.child(switch_knob(
+			.child(ui_motion::switch_knob(
 				knob,
 				enabled,
-				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
+				gpui::div().size(gpui::px(14.0)).rounded_full().bg(gpui::rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -413,36 +411,36 @@ impl SettingsSurface {
 			LaunchAtLoginState::NotFound | LaunchAtLoginState::OperationFailed
 		);
 
-		div()
+		gpui::div()
 			.id("launch-at-login-toggle")
 			.debug_selector(|| "launch-at-login-toggle".into())
 			.role(Role::Switch)
 			.aria_label("Launch Decodex at login")
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-			.w(px(36.0))
-			.h(px(20.0))
-			.p(px(2.0))
+			.w(gpui::px(36.0))
+			.h(gpui::px(20.0))
+			.p(gpui::px(2.0))
 			.flex()
 			.items_center()
 			.rounded_full()
 			.border_1()
-			.border_color(rgb(if enabled { BLUE } else { LINE }))
-			.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+			.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
+			.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
 			.opacity(if interactive { 1.0 } else { 0.58 })
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
 					.hover(move |element| {
-						element.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+						element.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
 					})
 					.active(|element| element.opacity(0.9))
-					.focus_visible(|element| element.border_color(rgb(BLUE)))
+					.focus_visible(|element| element.border_color(gpui::rgb(BLUE)))
 					.on_click(cx.listener(Self::toggle_launch_at_login))
 			})
-			.child(switch_knob(
+			.child(ui_motion::switch_knob(
 				"login-knob",
 				enabled,
-				div().size(px(14.0)).rounded_full().bg(rgb(if enabled {
+				gpui::div().size(gpui::px(14.0)).rounded_full().bg(gpui::rgb(if enabled {
 					BLUE
 				} else {
 					TEXT_MUTED
@@ -455,7 +453,7 @@ impl SettingsSurface {
 	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		ui_theme::settings_row()
 			.px_0()
-			.child(div().flex_1().child("Launch at login"))
+			.child(gpui::div().flex_1().child("Launch at login"))
 			.child(self.launch_at_login_toggle(cx))
 	}
 }
@@ -471,26 +469,26 @@ impl SettingsSurface {
 	) -> impl IntoElement {
 		let enabled = preference(None);
 
-		ui_theme::settings_row().px_0().child(div().flex_1().child(label)).child(
-			div()
+		ui_theme::settings_row().px_0().child(gpui::div().flex_1().child(label)).child(
+			gpui::div()
 				.id(id)
 				.debug_selector(move || id.into())
 				.role(Role::Switch)
 				.aria_label(label)
 				.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 				.tab_index(0)
-				.w(px(36.))
-				.h(px(20.))
-				.p(px(2.))
+				.w(gpui::px(36.))
+				.h(gpui::px(20.))
+				.p(gpui::px(2.))
 				.flex()
 				.items_center()
 				.rounded_full()
 				.border_1()
-				.border_color(rgb(if enabled { BLUE } else { LINE }))
-				.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
+				.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
+				.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
 				.cursor_pointer()
-				.hover(move |d| d.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED })))
-				.focus_visible(|d| d.border_color(rgb(BLUE)))
+				.hover(move |d| d.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED })))
+				.focus_visible(|d| d.border_color(gpui::rgb(BLUE)))
 				.on_click(cx.listener(move |_, _, _, cx| {
 					preference(Some(!enabled));
 
@@ -504,10 +502,10 @@ impl SettingsSurface {
 						cx.stop_propagation();
 					}
 				}))
-				.child(switch_knob(
+				.child(ui_motion::switch_knob(
 					knob,
 					enabled,
-					div().size(px(14.)).rounded_full().bg(rgb(if enabled {
+					gpui::div().size(gpui::px(14.)).rounded_full().bg(gpui::rgb(if enabled {
 						BLUE
 					} else {
 						TEXT_MUTED
@@ -520,24 +518,24 @@ impl SettingsSurface {
 	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let current = PanelDefaults::configured();
 
-		div().flex().flex_col().children(
+		gpui::div().flex().flex_col().children(
 			[
 				(true, "Default sidebar width", current.sidebar),
 				(false, "Default dock height", current.dock),
 			]
 			.into_iter()
 			.map(|(sidebar, title, value)| {
-				ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
-					div()
+				ui_theme::settings_row().px_0().child(gpui::div().flex_1().child(title)).child(
+					gpui::div()
 						.flex()
 						.items_center()
 						.gap_2()
-						.child(div().text_size(px(12.)).child(format!("{value} px")))
+						.child(gpui::div().text_size(gpui::px(12.)).child(format!("{value} px")))
 						.children(
 							[(-24_i32, "−"), (24, "+")]
 								.into_iter()
 								.map(|(delta, label)| {
-									div()
+									gpui::div()
 										.id(SharedString::from(format!(
 											"panel-default-{sidebar}-{delta}"
 										)))
@@ -547,13 +545,13 @@ impl SettingsSurface {
 											if delta < 0 { "Decrease" } else { "Increase" }
 										))
 										.tab_index(0)
-										.size(px(26.))
+										.size(gpui::px(26.))
 										.flex()
 										.items_center()
 										.justify_center()
-										.rounded(px(7.))
+										.rounded(gpui::px(7.))
 										.cursor_pointer()
-										.hover(|s| s.bg(rgba(HOVER_FILL)))
+										.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 										.on_click(cx.listener(move |_, _, _, cx| {
 											let mut pref = PanelDefaults::configured();
 
@@ -623,11 +621,16 @@ impl SettingsSurface {
 			),
 		];
 
-		div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
-			ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
-				div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
-					values.into_iter().map(|(label, value)| {
-						div()
+		gpui::div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
+			ui_theme::settings_row().px_0().child(gpui::div().flex_1().child(title)).child(
+				gpui::div()
+					.flex()
+					.gap_1()
+					.p_1()
+					.rounded(gpui::px(9.))
+					.bg(gpui::rgba(0xffffff08))
+					.children(values.into_iter().map(|(label, value)| {
+						gpui::div()
 							.id(SharedString::from(format!("{title}-{label}")))
 							.role(Role::Button)
 							.aria_label(format!("{title}: {label}"))
@@ -638,14 +641,14 @@ impl SettingsSurface {
 							})
 							.tab_index(0)
 							.px_3()
-							.h(px(26.))
+							.h(gpui::px(26.))
 							.flex()
 							.items_center()
-							.rounded(px(6.))
-							.text_size(px(11.))
+							.rounded(gpui::px(6.))
+							.text_size(gpui::px(11.))
 							.cursor_pointer()
-							.when(value == current, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(HOVER_FILL)))
+							.when(value == current, |d| d.bg(gpui::rgba(0xffffff16)))
+							.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();
@@ -659,8 +662,7 @@ impl SettingsSurface {
 							}))
 							.child(label)
 							.smooth()
-					}),
-				),
+					})),
 			)
 		}))
 	}
@@ -668,77 +670,83 @@ impl SettingsSurface {
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let style = GlassStyle::configured();
 
-		ui_theme::settings_row().px_0().child(div().flex_1().child("Glass appearance")).child(
-			div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
-				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
-					|(value, label)| {
-						div()
-							.id(label)
-							.debug_selector(move || label.to_string())
-							.role(Role::Button)
-							.aria_label(format!("Glass appearance: {label}"))
-							.aria_toggled(if value == style {
-								Toggled::True
-							} else {
-								Toggled::False
-							})
-							.tab_index(0)
-							.px_3()
-							.h(px(26.))
-							.flex()
-							.items_center()
-							.rounded(px(6.))
-							.text_size(px(11.))
-							.cursor_pointer()
-							.when(value == style, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(HOVER_FILL)))
-							.on_click(cx.listener(move |_, _, _, cx| {
-								value.select(cx);
-								cx.notify();
-							}))
-							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
-								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+		ui_theme::settings_row().px_0().child(gpui::div().flex_1().child("Glass appearance")).child(
+			gpui::div()
+				.flex()
+				.gap_1()
+				.p_1()
+				.rounded(gpui::px(9.))
+				.bg(gpui::rgba(0xffffff08))
+				.children(
+					[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")]
+						.into_iter()
+						.map(|(value, label)| {
+							gpui::div()
+								.id(label)
+								.debug_selector(move || label.to_string())
+								.role(Role::Button)
+								.aria_label(format!("Glass appearance: {label}"))
+								.aria_toggled(if value == style {
+									Toggled::True
+								} else {
+									Toggled::False
+								})
+								.tab_index(0)
+								.px_3()
+								.h(gpui::px(26.))
+								.flex()
+								.items_center()
+								.rounded(gpui::px(6.))
+								.text_size(gpui::px(11.))
+								.cursor_pointer()
+								.when(value == style, |d| d.bg(gpui::rgba(0xffffff16)))
+								.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+								.on_click(cx.listener(move |_, _, _, cx| {
 									value.select(cx);
 									cx.notify();
-									cx.stop_propagation();
-								}
-							}))
-							.child(label)
-							.smooth()
-					},
+								}))
+								.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										value.select(cx);
+										cx.notify();
+										cx.stop_propagation();
+									}
+								}))
+								.child(label)
+								.smooth()
+						}),
 				),
-			),
 		)
 	}
 }
 
 impl SettingsSurface {
 	pub(crate) fn quota_control(&self, cx: &mut Context<Self>) -> AnyElement {
-		div()
+		gpui::div()
 			.flex_none()
 			.flex()
 			.flex_col()
-			.gap(px(3.))
+			.gap(gpui::px(3.))
 			.child(
 				ui_theme::settings_row()
 					.px_0()
-					.child(div().flex_1().child("Auto-activate weekly quota"))
+					.child(gpui::div().flex_1().child("Auto-activate weekly quota"))
 					.child(self.toggle(DesktopPreference::Quota, cx)),
 			)
-			.child(div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child(
+			.child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED)).child(
 				"Start the next weekly window with a small request. Uses quota; no chat is saved.",
 			))
 			.into_any_element()
 	}
 
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		let group = || div().flex().flex_col().gap(px(2.));
+		let group = || gpui::div().flex().flex_col().gap(gpui::px(2.));
 
 		match self.category {
-			SettingsCategory::General => div()
+			SettingsCategory::General => gpui::div()
 				.flex()
 				.flex_col()
-				.gap(px(24.))
+				.gap(gpui::px(24.))
 				.child(
 					group()
 						.child(settings_group_title("Startup"))
@@ -746,13 +754,13 @@ impl SettingsSurface {
 						.child(
 							ui_theme::settings_row()
 								.px_0()
-								.child(div().flex_1().child("Show in menu bar"))
+								.child(gpui::div().flex_1().child("Show in menu bar"))
 								.child(self.toggle(DesktopPreference::MenuBar, cx)),
 						),
 				)
 				.child(group().child(settings_group_title("Task recaps"))
-						.child(ui_theme::settings_row().px_0().child(div().flex_1().child("Automatic task recaps")).child(self.toggle(DesktopPreference::Recap, cx)))
-						.child(div().text_size(px(11.)).text_color(rgb(TEXT_MUTED)).child("After 30 minutes away, recap the selected task when it has new completed work. Uses its model and quota."))
+						.child(ui_theme::settings_row().px_0().child(gpui::div().flex_1().child("Automatic task recaps")).child(self.toggle(DesktopPreference::Recap, cx)))
+						.child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED)).child("After 30 minutes away, recap the selected task when it has new completed work. Uses its model and quota."))
 				)
 				.child(group().child(settings_group_title("Power")).child(self.power_control(cx)))
 				.child(
@@ -774,10 +782,10 @@ impl SettingsSurface {
 						)),
 				)
 				.into_any_element(),
-			SettingsCategory::Appearance => div()
+			SettingsCategory::Appearance => gpui::div()
 				.flex()
 				.flex_col()
-				.gap(px(24.))
+				.gap(gpui::px(24.))
 				.child(
 					group().child(settings_group_title("Materials")).child(self.glass_controls(cx)),
 				)
@@ -810,36 +818,36 @@ impl Render for SettingsSurface {
 			self.refresh_power(cx);
 		}
 
-		div()
+		gpui::div()
 			.id("settings-surface")
 			.role(Role::Main)
 			.aria_label("Decodex settings")
 			.size_full()
 			.min_w_0()
 			.min_h_0()
-			.text_size(px(BODY_SIZE))
-			.line_height(px(BODY_LINE_HEIGHT))
-			.text_color(rgb(TEXT))
+			.text_size(gpui::px(BODY_SIZE))
+			.line_height(gpui::px(BODY_LINE_HEIGHT))
+			.text_color(gpui::rgb(TEXT))
 			.child(
-				div()
+				gpui::div()
 					.id(("settings-scroll-viewport", self.category as usize))
 					.debug_selector(|| "settings-scroll-viewport".into())
 					.size_full()
 					.overflow_y_scroll()
-					.px(px(SETTINGS_INSET))
-					.pt(px(SETTINGS_TOP))
-					.pb(px(SETTINGS_INSET))
+					.px(gpui::px(SETTINGS_INSET))
+					.pt(gpui::px(SETTINGS_TOP))
+					.pb(gpui::px(SETTINGS_INSET))
 					.flex()
 					.justify_center()
 					.items_start()
 					.child(
-						div()
+						gpui::div()
 							.w_full()
-							.max_w(px(SETTINGS_WIDTH))
+							.max_w(gpui::px(SETTINGS_WIDTH))
 							.flex_none()
 							.flex()
 							.flex_col()
-							.gap(px(SETTINGS_GROUP_GAP))
+							.gap(gpui::px(SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					)
@@ -849,11 +857,11 @@ impl Render for SettingsSurface {
 }
 
 fn settings_group_title(label: &'static str) -> impl IntoElement {
-	div()
-		.text_size(px(11.))
+	gpui::div()
+		.text_size(gpui::px(11.))
 		.font_weight(FontWeight::MEDIUM)
-		.text_color(rgb(TEXT_MUTED))
-		.mb(px(4.))
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.mb(gpui::px(4.))
 		.child(label)
 }
 
@@ -902,16 +910,16 @@ const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 }
 
 fn quote_attribution() -> impl IntoElement {
-	div()
+	gpui::div()
 		.id("quote-source")
 		.debug_selector(|| "quote-source".into())
 		.role(Role::Link)
 		.tab_index(0)
 		.aria_label("Quotes provided by ZenQuotes. Open source website.")
-		.text_size(px(11.))
-		.text_color(rgb(TEXT_MUTED))
+		.text_size(gpui::px(11.))
+		.text_color(gpui::rgb(TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|d| d.text_color(rgb(TEXT)))
+		.hover(|d| d.text_color(gpui::rgb(TEXT)))
 		.on_click(|_, _, cx| cx.open_url("https://zenquotes.io/"))
 		.on_key_down(|event, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -985,9 +993,9 @@ mod tests {
 
 		impl Render for ShortSettings {
 			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-				settings_surface::div()
-					.w(settings_surface::px(800.))
-					.h(settings_surface::px(300.))
+				gpui::div()
+					.w(gpui::px(800.))
+					.h(gpui::px(300.))
 					.overflow_hidden()
 					.child(self.0.clone())
 			}
@@ -1008,10 +1016,7 @@ mod tests {
 
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position: viewport.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(
-				settings_surface::px(0.),
-				settings_surface::px(-1_000.),
-			)),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1_000.))),
 			..Default::default()
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
@@ -1038,7 +1043,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(settings_surface::px(800.), settings_surface::px(700.)));
+			window.resize(gpui::size(gpui::px(800.), gpui::px(700.)));
 			window.draw(cx).clear();
 		});
 
@@ -1097,7 +1102,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(settings_surface::px(800.), settings_surface::px(600.)));
+			window.resize(gpui::size(gpui::px(800.), gpui::px(600.)));
 			window.draw(cx).clear();
 		});
 
@@ -1120,7 +1125,7 @@ mod tests {
 		let (_settings, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(settings_surface::px(1_490.0), settings_surface::px(1_055.0)));
+			window.resize(gpui::size(gpui::px(1_490.0), gpui::px(1_055.0)));
 			window.draw(cx).clear();
 		});
 	}

@@ -9,7 +9,7 @@ use crate::{
 		controls,
 		controls::{
 			AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
-			StatefulInteractiveElement, Styled, level_label, px, ui_theme::TEXT,
+			StatefulInteractiveElement, Styled, ui_theme::TEXT,
 		},
 	},
 	ui_motion,
@@ -33,18 +33,18 @@ impl AgentSurface {
 	}
 
 	fn configured_effort_label(&self) -> AnyElement {
-		controls::div()
+		gpui::div()
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
-			.text_size(px(12.))
-			.text_color(controls::rgb(TEXT))
-			.child(format!("{} · configured", level_label(&self.composer_effort_value())))
+			.text_size(gpui::px(12.))
+			.text_color(gpui::rgb(TEXT))
+			.child(format!("{} · configured", controls::level_label(&self.composer_effort_value())))
 			.into_any_element()
 	}
 
 	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.root_id().is_none() && self.creation_inherit_effort {
-			return controls::div().child("Inherited from native configuration").into_any_element();
+			return gpui::div().child("Inherited from native configuration").into_any_element();
 		}
 
 		self.explicit_effort_scale(cx)
@@ -64,23 +64,23 @@ impl AgentSurface {
 		let measured = cx.entity().downgrade();
 		let events = measured.clone();
 
-		controls::div()
-			.px(px(7.))
-			.py(px(3.))
+		gpui::div()
+			.px(gpui::px(7.))
+			.py(gpui::px(3.))
 			.flex()
 			.items_center()
-			.gap(px(8.))
+			.gap(gpui::px(8.))
 			.child(
-				controls::div()
-					.min_w(px(54.))
+				gpui::div()
+					.min_w(gpui::px(54.))
 					.flex_none()
-					.text_size(px(12.))
+					.text_size(gpui::px(12.))
 					.whitespace_nowrap()
-					.text_color(controls::rgb(TEXT))
-					.child(level_label(&self.composer_effort_value())),
+					.text_color(gpui::rgb(TEXT))
+					.child(controls::level_label(&self.composer_effort_value())),
 			)
 			.child(
-				controls::div()
+				gpui::div()
 					.id("reasoning-slider")
 					.debug_selector(|| "reasoning-slider".into())
 					.role(Role::Slider)
@@ -88,10 +88,10 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label(format!(
 						"Reasoning: {}. Use Left and Right to adjust.",
-						level_label(&self.composer_effort_value())
+						controls::level_label(&self.composer_effort_value())
 					))
 					.flex_1()
-					.h(px(24.))
+					.h(gpui::px(24.))
 					.relative()
 					.cursor_pointer()
 					.on_mouse_down(
@@ -201,7 +201,7 @@ impl RenderOnce for SliderTrack {
 			ui_motion::value("reasoning-hover-motion", if active { 1. } else { 0. }, window, cx);
 		let thumb = 12. + 2. * feedback;
 
-		controls::div()
+		gpui::div()
 			.id("reasoning-feedback")
 			.absolute()
 			.inset_0()
@@ -213,46 +213,46 @@ impl RenderOnce for SliderTrack {
 				})
 			})
 			.child(
-				controls::div()
+				gpui::div()
 					.absolute()
 					.left_0()
 					.right_0()
-					.top(px(10. - feedback * 0.5))
-					.h(px(4. + feedback))
+					.top(gpui::px(10. - feedback * 0.5))
+					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(controls::rgba(0xffffff18)),
+					.bg(gpui::rgba(0xffffff18)),
 			)
 			.child(
-				controls::div()
+				gpui::div()
 					.absolute()
 					.left_0()
-					.top(px(10. - feedback * 0.5))
+					.top(gpui::px(10. - feedback * 0.5))
 					.w(gpui::relative(fraction))
-					.h(px(4. + feedback))
+					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(controls::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
+					.bg(gpui::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
 			)
 			.children((0..self.count).map(|i| {
-				controls::div()
+				gpui::div()
 					.absolute()
 					.left(gpui::relative(i as f32 / self.count.saturating_sub(1).max(1) as f32))
-					.top(px(20.))
-					.ml(px(-1.))
-					.w(px(2.))
-					.h(px(3.))
+					.top(gpui::px(20.))
+					.ml(gpui::px(-1.))
+					.w(gpui::px(2.))
+					.h(gpui::px(3.))
 					.rounded_full()
-					.bg(controls::rgba(0xd5d5da85))
+					.bg(gpui::rgba(0xd5d5da85))
 			}))
 			.child(
-				controls::div()
+				gpui::div()
 					.absolute()
 					.left(gpui::relative(fraction))
-					.top(px(12. - thumb / 2.))
-					.ml(px(-thumb / 2.))
-					.w(px(thumb))
-					.h(px(thumb))
+					.top(gpui::px(12. - thumb / 2.))
+					.ml(gpui::px(-thumb / 2.))
+					.w(gpui::px(thumb))
+					.h(gpui::px(thumb))
 					.rounded_full()
-					.bg(controls::rgb(0xe7e7ea)),
+					.bg(gpui::rgb(0xe7e7ea)),
 			)
 	}
 }
@@ -266,8 +266,9 @@ mod tests {
 
 	use gpui::AppContext;
 
-	use crate::shell::agent_surface::composer::controls::effort_slider::{
-		self, AgentSurface, MouseButton,
+	use crate::shell::agent_surface::composer::{
+		controls,
+		controls::effort_slider::{self, AgentSurface, MouseButton},
 	};
 	use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
 	#[cfg(test)] use decodex_protocol::{ConversationModel, ConversationReasoningEffort};
@@ -276,7 +277,7 @@ mod tests {
 	fn real_slider_drag_and_outside_dismiss(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(effort_slider::px(1_400.), effort_slider::px(900.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -338,7 +339,7 @@ mod tests {
 			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::High);
 		});
 		visual.simulate_mouse_move(
-			gpui::point(bounds.right() + effort_slider::px(30.), start.y),
+			gpui::point(bounds.right() + gpui::px(30.), start.y),
 			MouseButton::Left,
 			Default::default(),
 		);
@@ -347,10 +348,10 @@ mod tests {
 				s.effort,
 				crate::shell::agent_surface::ConversationReasoningEffort::Persistent
 			);
-			assert_eq!(effort_slider::level_label(s.effort.as_str()), "Persistent");
+			assert_eq!(controls::level_label(s.effort.as_str()), "Persistent");
 		});
 		visual.simulate_mouse_move(
-			gpui::point(bounds.left() - effort_slider::px(30.), start.y),
+			gpui::point(bounds.left() - gpui::px(30.), start.y),
 			MouseButton::Left,
 			Default::default(),
 		);
@@ -385,7 +386,7 @@ mod tests {
 			w.draw(cx).clear();
 		});
 		visual.simulate_mouse_down(
-			gpui::point(effort_slider::px(400.), effort_slider::px(200.)),
+			gpui::point(gpui::px(400.), gpui::px(200.)),
 			MouseButton::Left,
 			Default::default(),
 		);
@@ -423,7 +424,7 @@ mod tests {
 			s.set_effort_position(1.0, cx);
 
 			assert_eq!(s.effort, custom);
-			assert_eq!(effort_slider::level_label(s.effort.as_str()), "provider-defined-effort");
+			assert_eq!(controls::level_label(s.effort.as_str()), "provider-defined-effort");
 			assert_eq!(s.draft_profiles.execution.choice("agent").reasoning_effort, Some(custom));
 			assert!(s.composer_capability_error(cx).is_none());
 		});

@@ -1,9 +1,12 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
 use gpui::{AnyElement, KeyDownEvent, Task};
 
-use crate::settings_surface::{
-	self, BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
-	SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, ui_theme,
+use crate::{
+	settings_surface::{
+		BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
+		SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, ui_theme,
+	},
+	ui_motion,
 };
 
 #[derive(Default)]
@@ -67,7 +70,7 @@ impl SettingsSurface {
 
 	pub(super) fn power_control(&self, cx: &mut Context<Self>) -> AnyElement {
 		if !cfg!(target_os = "macos") {
-			return settings_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let enabled = self.power.enabled.unwrap_or(false);
@@ -76,52 +79,44 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.px_0()
 			.child(
-				settings_surface::div()
+				gpui::div()
 					.flex_1()
 					.flex()
 					.flex_col()
-					.gap(settings_surface::px(3.))
+					.gap(gpui::px(3.))
 					.child("Prevent system sleep")
 					.child(
-						settings_surface::div()
-							.text_size(settings_surface::px(11.))
-							.text_color(settings_surface::rgb(TEXT_MUTED))
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child(
 								"Applies to this Mac on power and battery, even after quitting Decodex.",
 							),
 					),
 			)
 			.child(
-				settings_surface::div()
+				gpui::div()
 					.id("prevent-system-sleep")
 					.debug_selector(|| "prevent-system-sleep".into())
 					.role(Role::Switch)
 					.aria_label("Prevent system sleep")
 					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 					.tab_index(if interactive { 0 } else { -1 })
-					.w(settings_surface::px(36.))
-					.h(settings_surface::px(20.))
-					.p(settings_surface::px(2.))
+					.w(gpui::px(36.))
+					.h(gpui::px(20.))
+					.p(gpui::px(2.))
 					.flex()
 					.items_center()
 					.rounded_full()
 					.border_1()
-					.border_color(settings_surface::rgb(if enabled { BLUE } else { LINE }))
-					.bg(if enabled {
-						settings_surface::rgba(0x8baaf730)
-					} else {
-						settings_surface::rgba(0xffffff0c)
-					})
+					.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
+					.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
 					.opacity(if interactive { 1. } else { 0.58 })
 					.when(interactive, |toggle| {
 						toggle
 							.cursor_pointer()
 							.hover(move |d| {
-								d.border_color(settings_surface::rgb(if enabled {
-									BLUE
-								} else {
-									TEXT_MUTED
-								}))
+								d.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
 							})
 							.on_click(
 								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
@@ -133,13 +128,14 @@ impl SettingsSurface {
 								}
 							}))
 					})
-					.child(settings_surface::switch_knob(
+					.child(ui_motion::switch_knob(
 						"power-sleep-knob",
 						enabled,
-						settings_surface::div()
-							.size(settings_surface::px(14.))
-							.rounded_full()
-							.bg(settings_surface::rgb(if enabled { BLUE } else { TEXT_MUTED })),
+						gpui::div().size(gpui::px(14.)).rounded_full().bg(gpui::rgb(if enabled {
+							BLUE
+						} else {
+							TEXT_MUTED
+						})),
 					)),
 			)
 			.into_any_element()

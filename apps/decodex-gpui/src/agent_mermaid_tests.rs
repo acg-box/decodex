@@ -1,8 +1,9 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
 use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
 
-use crate::shell::agent_surface::markdown::mermaid_view::{
-	self, Context, IntoElement, Kind, Node, Window, mermaid,
+use crate::shell::agent_surface::{
+	markdown,
+	markdown::mermaid_view::{self, Context, IntoElement, Kind, Node, Window, mermaid},
 };
 
 struct Preview {
@@ -19,7 +20,7 @@ fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 		.iter()
 		.flat_map(|node| match node {
 			Node::Block(kind @ (Kind::Code | Kind::Mermaid { .. }), children) =>
-				vec![(matches!(kind, Kind::Mermaid { .. }), mermaid_view::code_text(children))],
+				vec![(matches!(kind, Kind::Mermaid { .. }), markdown::code_text(children))],
 			Node::Block(_, children) => sources(children),
 			_ => Vec::new(),
 		})
@@ -89,14 +90,14 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 	let mut previous_size = None;
 
 	for width in [800., 160.] {
-		visual.simulate_resize(gpui::size(mermaid_view::px(width), mermaid_view::px(500.)));
+		visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(500.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let bounds = visual.debug_bounds("mermaid-diagram-preview-0").expect("diagram viewport");
 
-		assert!(bounds.size.width <= mermaid_view::px(width));
+		assert!(bounds.size.width <= gpui::px(width));
 
 		let text = visual.debug_bounds("mermaid-text-diagram-preview-0").expect("diagram text");
 
@@ -109,10 +110,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 		if width == 160. {
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: ScrollDelta::Pixels(gpui::point(
-					mermaid_view::px(-60.),
-					mermaid_view::px(0.),
-				)),
+				delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {

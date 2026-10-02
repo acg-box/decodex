@@ -12,7 +12,7 @@ use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto,
 	Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
-	ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, px, ui_theme,
+	ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
 };
 use decodex_protocol::AgentArchiveResult as State;
 
@@ -238,37 +238,37 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.archive.owner.as_deref() != Some(&work.id) {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let restoring = self.archive.mutation.is_some();
 		let thread = match &self.archive.result {
 			Some(State::Archived { thread_id }) => Some(thread_id.clone()),
 			_ if restoring => None,
-			_ => return agent_surface::div().into_any_element(),
+			_ => return gpui::div().into_any_element(),
 		};
 		let work = work.id.clone();
 
-		agent_surface::div()
+		gpui::div()
 			.w_full()
 			.flex_none()
-			.px(px(20.))
-			.py(px(10.))
+			.px(gpui::px(20.))
+			.py(gpui::px(10.))
 			.flex()
 			.items_center()
 			.justify_between()
 			.gap_3()
-			.bg(agent_surface::rgba(PANEL_HEADER_TINT))
-			.text_size(px(11.))
+			.bg(gpui::rgba(PANEL_HEADER_TINT))
+			.text_size(gpui::px(11.))
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.flex()
 					.flex_col()
 					.gap_1()
 					.child(if restoring { "Unarchiving…" } else { "Archived" })
 					.child(
-						agent_surface::div()
-							.text_color(agent_surface::rgb(TEXT_MUTED))
+						gpui::div()
+							.text_color(gpui::rgb(TEXT_MUTED))
 							.child("History is available. Unarchive to continue."),
 					),
 			)
@@ -298,14 +298,14 @@ fn button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	agent_surface::div()
+	gpui::div()
 		.id(id)
 		.debug_selector(move || id.to_owned())
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label)
 		.cursor_pointer()
-		.text_color(agent_surface::rgb(BLUE))
+		.text_color(gpui::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -450,7 +450,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(archive::px(1_180.), archive::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.draw(cx).clear();
 		});
 

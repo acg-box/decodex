@@ -21,21 +21,21 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
-		agent_surface::div()
+		gpui::div()
 			.id("work-inspection-scroll")
 			.debug_selector(|| "work-inspection-scroll".into())
 			.occlude()
-			.max_h(agent_surface::px(380.))
+			.max_h(gpui::px(380.))
 			.overflow_y_scroll()
-			.rounded(agent_surface::px(18.))
-			.bg(agent_surface::rgb(0x29292e))
-			.p(agent_surface::px(16.))
-			.text_size(agent_surface::px(12.))
-			.line_height(agent_surface::px(18.))
-			.text_color(agent_surface::rgb(TEXT))
+			.rounded(gpui::px(18.))
+			.bg(gpui::rgb(0x29292e))
+			.p(gpui::px(16.))
+			.text_size(gpui::px(12.))
+			.line_height(gpui::px(18.))
+			.text_color(gpui::rgb(TEXT))
 			.flex()
 			.flex_col()
-			.gap(agent_surface::px(14.))
+			.gap(gpui::px(14.))
 			.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
 				if s.menu_trigger_bounds
 					.get("inspect-work")
@@ -49,15 +49,11 @@ impl AgentSurface {
 				cx.notify();
 			}))
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.flex()
 					.items_center()
 					.justify_between()
-					.child(
-						agent_surface::div()
-							.font_weight(FontWeight::MEDIUM)
-							.child(self.work_label(work)),
-					)
+					.child(gpui::div().font_weight(FontWeight::MEDIUM).child(self.work_label(work)))
 					.child(agent_surface::muted(graph::state_in(snapshot, work).0)),
 			)
 			.child(self.recap_panel(&work.id, cx))
@@ -75,7 +71,7 @@ impl AgentSurface {
 			})
 			.when_some(work.codex_thread_id.as_ref(), |panel, thread| {
 				panel.child(
-					agent_surface::div()
+					gpui::div()
 						.flex()
 						.items_center()
 						.justify_between()
@@ -95,7 +91,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
-		let mut panel = agent_surface::div().flex().flex_col().gap(agent_surface::px(4.));
+		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(4.));
 
 		for (label, id) in snapshot
 			.dependencies
@@ -119,7 +115,7 @@ impl AgentSurface {
 			let selector = format!("inspection-{label}-{id}");
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.debug_selector(move || selector.clone())
 					.child(self.relation(label, snapshot, id, cx)),
 			);
@@ -129,7 +125,7 @@ impl AgentSurface {
 	}
 
 	fn inspection_resources(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		let mut rows = agent_surface::div().flex().flex_col().gap(agent_surface::px(4.));
+		let mut rows = gpui::div().flex().flex_col().gap(gpui::px(4.));
 
 		match self.resources.as_ref().filter(|(owner, _)| owner == work).map(|(_, result)| result) {
 			Some(Some(AgentResourcesResult::Available { resources })) =>
@@ -148,17 +144,17 @@ impl AgentSurface {
 								&& url.password().is_none()
 						},
 					);
-					let mut row = agent_surface::div()
+					let mut row = gpui::div()
 						.id(SharedString::from(format!("inspection-resource-{}", resource.id)))
-						.px(agent_surface::px(8.))
-						.py(agent_surface::px(7.))
-						.rounded(agent_surface::px(8.))
+						.px(gpui::px(8.))
+						.py(gpui::px(7.))
+						.rounded(gpui::px(8.))
 						.child(title);
 
 					if let Some(link) = link {
 						row = row
 							.cursor_pointer()
-							.hover(|row| row.bg(agent_surface::rgba(HOVER_FILL)))
+							.hover(|row| row.bg(gpui::rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| cx.open_url(link.as_str())));
 					}
 

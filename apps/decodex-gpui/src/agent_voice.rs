@@ -11,7 +11,7 @@ use std::{collections::BTreeSet, time::Duration};
 
 use gpui::{AnyElement, KeyDownEvent};
 use raw_window_handle as _;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, TEXT_MUTED};
 
@@ -23,7 +23,7 @@ use crate::{
 		agent_surface::{
 			AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, InteractiveElement,
 			IntoElement, ParentElement, Role, SmoothControl, StatefulInteractiveElement, Styled,
-			Window, div, px, ui_theme,
+			Window, ui_theme,
 		},
 	},
 	ui_motion,
@@ -199,7 +199,7 @@ impl Media {
 				},
 				None =>
 					return Some(
-						json!({"type":"error","message":"The selected audio device could not start."}),
+						serde_json::json!({"type":"error","message":"The selected audio device could not start."}),
 					),
 			}
 		}
@@ -211,14 +211,14 @@ impl Media {
 		if let Some(audio) = &self.audio {
 			if !audio.running() {
 				return Some(
-					json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
+					serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
 				);
 			}
 			if self.level_at.elapsed() >= Duration::from_millis(50) {
 				self.level_at = std::time::Instant::now();
 
 				return Some(
-					json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
+					serde_json::json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
 				);
 			}
 		}
@@ -245,7 +245,7 @@ impl Media {
 #[cfg(all(target_os = "macos", not(test)))]
 impl Drop for Media {
 	fn drop(&mut self) {
-		self.command(json!({"operation":"stop"}));
+		self.command(serde_json::json!({"operation":"stop"}));
 
 		// SAFETY: unique host, destroyed exactly once on the GPUI main thread.
 		unsafe { (self.destroy)(self.host) };
@@ -375,7 +375,7 @@ impl AgentSurface {
 			},
 		};
 
-		if !media.command(json!({"operation":"start","input":self.audio_input})) {
+		if !media.command(serde_json::json!({"operation":"start","input":self.audio_input})) {
 			self.feedback = "The audio host could not start.".into();
 
 			cx.notify();
@@ -557,8 +557,9 @@ impl AgentSurface {
 				if !voice.answered
 					&& let Some(answer) = status.answer
 				{
-					voice.answered =
-						voice.media.command(json!({"operation":"answer","sdp":answer.as_str()}));
+					voice.answered = voice
+						.media
+						.command(serde_json::json!({"operation":"answer","sdp":answer.as_str()}));
 				}
 			},
 			AgentVoicePhase::Ended | AgentVoicePhase::Failed => {
@@ -584,7 +585,7 @@ impl AgentSurface {
 		}
 
 		if let Ok(mut media) = Media::new(window) {
-			media.command(json!({"operation":"devices"}));
+			media.command(serde_json::json!({"operation":"devices"}));
 
 			while let Some(event) = media.poll() {
 				if event["type"] == "devices" {
@@ -609,35 +610,35 @@ impl AgentSurface {
 
 		inputs.extend(self.audio_inputs.clone());
 
-		div()
+		gpui::div()
 			.id("microphone-device-list")
-			.max_h(px(168.))
+			.max_h(gpui::px(168.))
 			.overflow_y_scroll()
 			.flex()
 			.flex_col()
-			.gap(px(2.))
+			.gap(gpui::px(2.))
 			.children(inputs.into_iter().enumerate().map(|(i, input)| {
 				let selected = input == self.audio_input;
 				let keyboard_input = input.clone();
 				let label =
 					if input.is_empty() { "System default".to_owned() } else { input.clone() };
 
-				div()
+				gpui::div()
 					.id(("microphone-input", i))
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Use {label}"))
-					.h(px(28.))
-					.px(px(6.))
-					.rounded(px(6.))
+					.h(gpui::px(28.))
+					.px(gpui::px(6.))
+					.rounded(gpui::px(6.))
 					.flex()
 					.items_center()
-					.gap(px(8.))
+					.gap(gpui::px(8.))
 					.cursor_pointer()
-					.text_size(px(12.))
-					.child(div().flex_1().min_w_0().text_ellipsis().child(label))
-					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
-					.hover(|d| d.bg(agent_surface::rgba(HOVER_FILL)))
+					.text_size(gpui::px(12.))
+					.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(label))
+					.child(gpui::div().w(gpui::px(12.)).child(if selected { "✓" } else { "" }))
+					.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
@@ -664,13 +665,13 @@ impl AgentSurface {
 		let voice = self.voice.as_ref()?;
 
 		Some(
-			div()
+			gpui::div()
 				.w_full()
-				.h(px(30.))
+				.h(gpui::px(30.))
 				.flex()
 				.items_center()
 				.justify_center()
-				.gap(px(3.))
+				.gap(gpui::px(3.))
 				.children(voice.levels.iter().enumerate().map(|(i, level)| {
 					let height = ui_motion::value(
 						("live-wave-height", i),
@@ -679,12 +680,12 @@ impl AgentSurface {
 						cx,
 					);
 
-					div()
+					gpui::div()
 						.id(("live-wave", i))
-						.w(px(3.))
-						.h(px(height))
+						.w(gpui::px(3.))
+						.h(gpui::px(height))
 						.rounded_full()
-						.bg(agent_surface::rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
+						.bg(gpui::rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
 				}))
 				.into_any_element(),
 		)
@@ -701,15 +702,15 @@ impl AgentSurface {
 		};
 
 		Some(
-			div()
+			gpui::div()
 				.flex_none()
 				.flex()
 				.items_center()
-				.gap(px(8.))
-				.text_size(px(11.))
-				.text_color(agent_surface::rgb(TEXT_MUTED))
+				.gap(gpui::px(8.))
+				.text_size(gpui::px(11.))
+				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(
-					div()
+					gpui::div()
 						.id("voice-status")
 						.role(Role::Status)
 						.aria_label(label.to_owned())
@@ -723,7 +724,10 @@ impl AgentSurface {
 						if let Some(voice) = &mut s.voice {
 							let muted = !voice.muted;
 
-							if voice.media.command(json!({"operation":"mute","muted":muted})) {
+							if voice
+								.media
+								.command(serde_json::json!({"operation":"mute","muted":muted}))
+							{
 								voice.muted = muted;
 							} else {
 								s.retire_voice_media();
@@ -828,7 +832,7 @@ impl AgentSurface {
 		}
 
 		Some(
-			div()
+			gpui::div()
 				.flex()
 				.flex_col()
 				.children(captions.into_iter().enumerate().map(|(i, caption)| {
@@ -861,7 +865,7 @@ impl AgentSurface {
 			let reduced = ui_motion::reduced();
 			let next = if reduced { target } else { current + (target - current) * 0.24 };
 
-			scroll.set_offset(gpui::point(px(0.), px(next)));
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(next)));
 
 			if !reduced {
 				ui_motion::request_frame(window, cx);
@@ -1090,7 +1094,7 @@ mod tests {
 
 	impl Render for VoiceToolbarView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |s, cx| voice::div().children(s.voice_toolbar(cx)))
+			self.0.update(cx, |s, cx| gpui::div().children(s.voice_toolbar(cx)))
 		}
 	}
 
@@ -1099,10 +1103,10 @@ mod tests {
 		let mut captions = Vec::new();
 
 		for event in [
-			voice::json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
-			voice::json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
-			voice::json!({"type":"turn.delta","turn_id":"u","delta":" world"}),
-			voice::json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
+			serde_json::json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
+			serde_json::json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
+			serde_json::json!({"type":"turn.delta","turn_id":"u","delta":" world"}),
+			serde_json::json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
 		] {
 			voice::update_caption(&event, &mut captions);
 		}
@@ -1113,7 +1117,7 @@ mod tests {
 		);
 
 		voice::update_caption(
-			&voice::json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
+			&serde_json::json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
 			&mut captions,
 		);
 
@@ -1126,12 +1130,12 @@ mod tests {
 		let mut captions = Vec::new();
 
 		for event in [
-			voice::json!({"type":"input_transcript.added","item":{"text":"hello"}}),
-			voice::json!({"type":"output_transcript.added","item":{"text":"reply"}}),
-			voice::json!({"type":"input_transcript.added","item":{"text":" world"}}),
-			voice::json!({"type":"turn.done","turn":{"role":"user","transcript":"Hello, world!"}}),
-			voice::json!({"type":"turn.done","turn":{"id":"late-id","role":"assistant","transcript":"Reply."}}),
-			voice::json!({"type":"turn.done","turn":{"id":"final-only","role":"user","transcript":"Another sentence."}}),
+			serde_json::json!({"type":"input_transcript.added","item":{"text":"hello"}}),
+			serde_json::json!({"type":"output_transcript.added","item":{"text":"reply"}}),
+			serde_json::json!({"type":"input_transcript.added","item":{"text":" world"}}),
+			serde_json::json!({"type":"turn.done","turn":{"role":"user","transcript":"Hello, world!"}}),
+			serde_json::json!({"type":"turn.done","turn":{"id":"late-id","role":"assistant","transcript":"Reply."}}),
+			serde_json::json!({"type":"turn.done","turn":{"id":"final-only","role":"user","transcript":"Another sentence."}}),
 		] {
 			voice::update_caption(&event, &mut captions);
 		}
@@ -1146,11 +1150,11 @@ mod tests {
 		);
 
 		voice::update_caption(
-			&voice::json!({"type":"input_transcript.added","item":{"text":"discard"}}),
+			&serde_json::json!({"type":"input_transcript.added","item":{"text":"discard"}}),
 			&mut captions,
 		);
 		voice::update_caption(
-			&voice::json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
+			&serde_json::json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
 			&mut captions,
 		);
 
@@ -1158,7 +1162,7 @@ mod tests {
 		assert!(captions[3].text.is_empty() && captions[3].complete);
 
 		voice::update_caption(
-			&voice::json!({"type":"input_transcript.added","item":{"text":"界".repeat(12_000)}}),
+			&serde_json::json!({"type":"input_transcript.added","item":{"text":"界".repeat(12_000)}}),
 			&mut captions,
 		);
 
@@ -1175,13 +1179,13 @@ mod tests {
 
 			if finalized {
 				voice::update_caption(
-					&voice::json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
+					&serde_json::json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
 					&mut captions,
 				);
 			} else {
 				for text in [&*prefix, suffix] {
 					voice::update_caption(
-						&voice::json!({"type":"input_transcript.added","item":{"text":text}}),
+						&serde_json::json!({"type":"input_transcript.added","item":{"text":text}}),
 						&mut captions,
 					);
 				}
@@ -1200,15 +1204,15 @@ mod tests {
 		let mut captions = Vec::new();
 
 		voice::update_caption(
-			&voice::json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
+			&serde_json::json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
 			&mut captions,
 		);
 
 		let mut pending = std::collections::VecDeque::from([
-			voice::json!({"type":"level","level":0.2}),
-			voice::json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
-			voice::json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
-			voice::json!({"type":"ended"}),
+			serde_json::json!({"type":"level","level":0.2}),
+			serde_json::json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
+			serde_json::json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
+			serde_json::json!({"type":"ended"}),
 		]);
 
 		voice::drain_caption_events(&mut captions, || pending.pop_front());
@@ -1224,7 +1228,7 @@ mod tests {
 		voice::drain_caption_events(&mut captions, || {
 			polled += 1;
 
-			Some(voice::json!({"type":"level"}))
+			Some(serde_json::json!({"type":"level"}))
 		});
 
 		assert_eq!(polled, 128, "Retirement must not wait for an ongoing producer");
@@ -1398,7 +1402,7 @@ mod tests {
 
 		for width in [320., 800.] {
 			visual.update(|window, cx| {
-				window.resize(gpui::size(voice::px(width), voice::px(400.)));
+				window.resize(gpui::size(gpui::px(width), gpui::px(400.)));
 				window.focus(&input.focus_handle(cx), cx);
 				window.draw(cx).clear();
 			});
@@ -1409,9 +1413,9 @@ mod tests {
 						.bounds_for_range(0..5, Default::default(), window, cx)
 						.expect("the visible draft must have text layout");
 
-					assert!(text.size.width > voice::px(0.) && text.size.height > voice::px(0.));
-					assert!(text.origin.x >= voice::px(0.) && text.origin.y >= voice::px(0.));
-					assert!(text.origin.x + text.size.width <= voice::px(width));
+					assert!(text.size.width > gpui::px(0.) && text.size.height > gpui::px(0.));
+					assert!(text.origin.x >= gpui::px(0.) && text.origin.y >= gpui::px(0.));
+					assert!(text.origin.x + text.size.width <= gpui::px(width));
 				});
 			});
 		}

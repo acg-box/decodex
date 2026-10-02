@@ -13,7 +13,7 @@ use crate::{
 			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
 			AgentWorkItemDto, Context, EntityId, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Task, WireText,
-			px, ui_theme::BLUE,
+			ui_theme::BLUE,
 		},
 	},
 	ui_loading,
@@ -439,14 +439,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.guardian.owner.as_deref() != Some(&work.id) {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let Some(result) = &self.guardian.result else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 		let Reviews::Available { reviews, next_before } = result else {
-			return agent_surface::div()
+			return gpui::div()
 				.child("Saved action reviews are unavailable.")
 				.child(button("guardian-refresh".into(), "Refresh reviews".into(), cx, |s, cx| {
 					s.guardian_page(None, cx)
@@ -455,7 +455,7 @@ impl AgentSurface {
 		};
 
 		if reviews.is_empty() && self.guardian.before.is_none() {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let denied = reviews
@@ -467,7 +467,7 @@ impl AgentSurface {
 		} else {
 			"Action reviews".into()
 		};
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().min_w_0().child(button(
+		let mut panel = gpui::div().flex().flex_col().gap_2().min_w_0().child(button(
 			"guardian-toggle".into(),
 			title,
 			cx,
@@ -487,16 +487,16 @@ impl AgentSurface {
 			);
 		}
 
-		let mut body = agent_surface::div().flex().flex_col().gap_3().min_w_0();
+		let mut body = gpui::div().flex().flex_col().gap_3().min_w_0();
 
 		for review in reviews {
 			body = body.child(self.guardian_review_card(work, review, cx));
 		}
 
 		panel = panel.child(
-			agent_surface::div()
+			gpui::div()
 				.id("guardian-review-list")
-				.max_h(px(360.))
+				.max_h(gpui::px(360.))
 				.overflow_y_scroll()
 				.child(body),
 		);
@@ -530,7 +530,7 @@ impl AgentSurface {
 		let row = review.row_id;
 		let digest = review.digest.clone();
 		let reader = self.guardian.detail.as_ref().filter(|d| d.row == row && d.digest == digest);
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().min_w_0();
+		let mut panel = gpui::div().flex().flex_col().gap_2().min_w_0();
 
 		if let Some(Detail::Available { offset, text, next_offset, .. }) =
 			reader.and_then(|d| d.page.as_ref())
@@ -539,11 +539,11 @@ impl AgentSurface {
 				reader.and_then(|d| d.starts.iter().position(|start| start == offset)).unwrap_or(0);
 
 			panel = panel.child(format!("Action details · page {}", position + 1)).child(
-				agent_surface::div()
+				gpui::div()
 					.id("guardian-detail-text")
-					.max_h(px(240.))
+					.max_h(gpui::px(240.))
 					.overflow_scroll()
-					.text_size(px(12.))
+					.text_size(gpui::px(12.))
 					.child(text.clone()),
 			);
 
@@ -609,7 +609,7 @@ impl AgentSurface {
 			Status::TimedOut => "Review timed out",
 			Status::Aborted => "Review stopped",
 		};
-		let mut card = agent_surface::div()
+		let mut card = gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -662,7 +662,7 @@ impl AgentSurface {
 			}
 			if let Some(action) = &review.action_json {
 				card = card
-					.child(agent_surface::div().min_w_0().text_size(px(12.)).child(action.clone()));
+					.child(gpui::div().min_w_0().text_size(gpui::px(12.)).child(action.clone()));
 			}
 			if let Some(reason) = &review.details_unavailable {
 				card = card.child(reason.clone());
@@ -707,14 +707,14 @@ fn button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	agent_surface::div()
+	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label.clone())
 		.cursor_pointer()
-		.text_color(agent_surface::rgb(BLUE))
+		.text_color(gpui::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -740,8 +740,8 @@ mod tests {
 	};
 	use crate::shell::agent_surface::{
 		guardian::{
-			self, AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-			AgentWorkItemDto, Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
+			AgentActionDto, AgentCommandResponse, AgentSnapshotDto, AgentSurface, AgentWorkItemDto,
+			Detail, DetailReader, EntityId, Panel, Reviews, Status, Submission,
 		},
 		wire_test_support,
 	};
@@ -786,7 +786,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(guardian::px(1_180.), guardian::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.draw(cx).clear();
 		});
 
@@ -955,7 +955,7 @@ mod tests {
 
 		surface.update(visual, |s, _| seed(s));
 		visual.update(|window, cx| {
-			window.resize(gpui::size(guardian::px(1_180.0), guardian::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 

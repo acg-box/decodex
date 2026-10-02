@@ -97,7 +97,7 @@ impl AgentSurface {
 				attachment.kind.as_str(),
 				"image" | "localImage" | "imageView" | "imageGeneration" | "inputImage"
 			);
-		let mut row = native_timeline::div().flex().flex_col().gap_1().min_w_0();
+		let mut row = gpui::div().flex().flex_col().gap_1().min_w_0();
 
 		if can_preview {
 			row = row.debug_selector(|| "native-media-action".into()).child(self.workspace_action(

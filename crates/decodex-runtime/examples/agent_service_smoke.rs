@@ -8,8 +8,7 @@
 
 use std::{
 	collections::HashSet,
-	env,
-	env::VarError,
+	env::{self, VarError},
 	error::Error,
 	fs::OpenOptions,
 	io::Write,

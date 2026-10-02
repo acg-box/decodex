@@ -1,4 +1,5 @@
 //! Content bounds and direct manipulation for the Agent workspace.
+
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
 	Stateful,
@@ -7,10 +8,10 @@ use gpui::{
 use crate::{
 	panel_preferences::PanelDefaults,
 	shell::{
-		WINDOW_CONTROLS_CLEARANCE, agent_surface,
+		WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
-			StatefulInteractiveElement, Styled, Window, graph, px,
+			StatefulInteractiveElement, Styled, Window, graph,
 		},
 	},
 	ui_motion,
@@ -143,30 +144,30 @@ impl AgentSurface {
 			cx,
 		);
 
-		agent_surface::div()
+		gpui::div()
 			.flex_none()
-			.w(px(width * fraction))
+			.w(gpui::px(width * fraction))
 			.h_full()
 			.overflow_hidden()
 			.id("left-panel-slot")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Left)))
-			.child(agent_surface::div().w(px(width)).h_full().child(self.workspace_sidebar(cx)))
+			.child(gpui::div().w(gpui::px(width)).h_full().child(self.workspace_sidebar(cx)))
 			.into_any_element()
 	}
 
 	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		agent_surface::div()
+		gpui::div()
 			.id("agent-sidebar-resize")
 			.absolute()
 			.right_0()
 			.top_0()
 			.bottom_0()
-			.w(px(6.0))
+			.w(gpui::px(6.0))
 			.cursor_col_resize()
 			.tab_index(0)
 			.role(Role::Slider)
 			.aria_label("Sidebar width. Drag or use Left and Right. Double-click to reset.")
-			.hover(|s| s.bg(agent_surface::rgba(0xffffff18)))
+			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -201,7 +202,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-		agent_surface::div()
+		gpui::div()
 			.id("agent-workspace")
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
 				let Some((start, width)) = s.sidebar_drag else {
@@ -249,7 +250,7 @@ mod tests {
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(workspace_size::px(1_400.0), workspace_size::px(900.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.0), gpui::px(900.0)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -261,7 +262,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		let point = |x| gpui::point(workspace_size::px(x), workspace_size::px(300.0));
+		let point = |x| gpui::point(gpui::px(x), gpui::px(300.0));
 
 		visual.simulate_mouse_down(point(189.0), MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(point(269.0), MouseButton::Left, Default::default());
@@ -281,7 +282,7 @@ mod tests {
 	fn panel_shortcuts_resize_only_the_selected_visible_panels(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(workspace_size::px(1_400.0), workspace_size::px(900.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.0), gpui::px(900.0)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
@@ -334,7 +335,7 @@ mod tests {
 	fn graph_panel_respects_manual_height_and_available_space(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(workspace_size::px(1_200.), workspace_size::px(900.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_200.), gpui::px(900.)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, cx| {
@@ -369,7 +370,7 @@ mod tests {
 			});
 		});
 
-		visual.simulate_resize(gpui::size(workspace_size::px(1_200.), workspace_size::px(300.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_200.), gpui::px(300.)));
 
 		visual.update(|window, cx| {
 			surface.update(cx, |s, _| {

@@ -2,16 +2,22 @@
 use std::collections::BTreeMap;
 
 use gpui::AnyElement;
+#[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
 
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+#[cfg(test)] use crate::shell::agent_surface::ClientProfile;
+#[cfg(test)] use crate::shell::agent_surface::ConversationModel;
+#[cfg(test)] use crate::shell::agent_surface::ConversationReasoningEffort;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
+#[cfg(test)] use crate::shell::agent_surface::Render;
+#[cfg(test)] use crate::shell::agent_surface::Window;
+#[cfg(test)] use crate::shell::agent_surface::WireText;
 use crate::shell::agent_surface::{
 	self, AgentClient, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId,
 	InteractiveElement, IntoElement, ParentElement, Styled, Task, mcp_forms,
-};
-#[cfg(test)]
-use crate::shell::agent_surface::{
-	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile,
-	ConversationModel, ConversationReasoningEffort, Entity, Render, Window, WireText, px,
 };
 use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult as State};
 
@@ -147,14 +153,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let owner = work.id.clone();
-		let mut panel =
-			agent_surface::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
-				"native-model-settings-read".into(),
-				"Refresh task model".into(),
-				self.model_settings.task.is_some(),
-				cx,
-				move |s, cx| s.read_model_settings(&owner, cx),
-			));
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+			"native-model-settings-read".into(),
+			"Refresh task model".into(),
+			self.model_settings.task.is_some(),
+			cx,
+			move |s, cx| s.read_model_settings(&owner, cx),
+		));
 
 		if self.model_settings.observations.contains_key(&work.id)
 			|| self.model_settings.work.as_ref() == Some(&work.id)
@@ -168,7 +173,7 @@ impl AgentSurface {
 
 			panel = panel
 				.child(
-					agent_surface::div()
+					gpui::div()
 						.debug_selector(|| "native-model-settings-observation".into())
 						.child(text),
 				)

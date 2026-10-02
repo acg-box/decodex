@@ -9,7 +9,7 @@ use gpui::AnyElement;
 #[cfg(test)] use crate::shell::agent_surface::native_timeline;
 use crate::shell::agent_surface::{
 	self, AgentHistoryResult, AgentSurface, FluentBuilder, InteractiveElement, IntoElement,
-	ParentElement, PendingCommand, Styled, px, ui_theme::USER_MESSAGE_ACTION_SIZE,
+	ParentElement, PendingCommand, Styled, ui_theme::USER_MESSAGE_ACTION_SIZE,
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent};
 
@@ -157,14 +157,14 @@ impl AgentSurface {
 					.and_then(|s| s.work_items.iter().find(|w| w.id == work))
 					.is_some_and(|w| self.native_history_active(w));
 
-				agent_surface::div()
+				gpui::div()
 					.debug_selector(|| "sending-message-preview".into())
 					.child(agent_surface::history_entry_with_key(
 						&entry,
 						&format!("sending-{}", p.key),
 					))
 					.when(native, |row| {
-						row.child(agent_surface::div().h(px(USER_MESSAGE_ACTION_SIZE)))
+						row.child(gpui::div().h(gpui::px(USER_MESSAGE_ACTION_SIZE)))
 					})
 					.into_any_element()
 			})
@@ -178,19 +178,19 @@ mod tests {
 
 	#[cfg(test)] use gpui::AppContext as _;
 
-	use crate::shell::agent_surface::send_preview::{
-		self, AgentHistoryResult, AgentSurface, PendingCommand,
-	};
 	#[cfg(test)]
 	use crate::shell::agent_surface::send_preview::{
 		AgentCommandResponse, EntityId, IdempotencyKey, native_timeline,
+	};
+	use crate::shell::agent_surface::send_preview::{
+		AgentHistoryResult, AgentSurface, PendingCommand,
 	};
 
 	#[gpui::test]
 	fn native_echo_replaces_preview_without_changing_bubble_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(send_preview::px(1_400.), send_preview::px(1_000.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

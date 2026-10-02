@@ -5,7 +5,7 @@ use crate::shell::agent_surface::{
 	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, creation_setup,
 };
 use crate::{
-	creation_defaults::resolve,
+	creation_defaults,
 	shell::agent_surface::{AgentSurface, Context, ConversationModel},
 };
 use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, ServiceTier};
@@ -76,7 +76,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let selected = resolve(
+		let selected = creation_defaults::resolve(
 			defaults,
 			&self.creation_intent,
 			InitialExecutionDefaults {

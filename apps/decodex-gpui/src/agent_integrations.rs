@@ -100,7 +100,7 @@ impl AgentSurface {
 	pub(super) fn integrations_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let opened = self.integrations.as_ref().filter(|(owner, _)| owner == work);
 		let work_id = work.to_owned();
-		let mut panel = agent_surface::div().flex().flex_col().gap_2().child(integration_button(
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(integration_button(
 			"integration-toggle",
 			"Tool status",
 			cx,
@@ -154,15 +154,14 @@ impl AgentSurface {
 
 			let text = match result {
 				None => ui_loading::loading("Loading tools and plugins").into_any_element(),
-				Some(result) =>
-					agent_surface::div().child(integration_text(result)).into_any_element(),
+				Some(result) => gpui::div().child(integration_text(result)).into_any_element(),
 			};
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.id("integration-status")
 					.debug_selector(|| "integration-status".into())
-					.max_h(agent_surface::px(300.))
+					.max_h(gpui::px(300.))
 					.overflow_y_scroll()
 					.child(text),
 			);
@@ -339,7 +338,7 @@ fn integration_button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	agent_surface::div()
+	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)

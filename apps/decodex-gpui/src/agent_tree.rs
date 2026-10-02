@@ -8,13 +8,10 @@ use ui_theme::{
 };
 
 use crate::{
-	shell::{
-		agent_surface,
-		agent_surface::{
-			AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder,
-			InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
-			StatefulInteractiveElement, Styled, Window, graph, px, ui_theme, workspace_size::Panel,
-		},
+	shell::agent_surface::{
+		AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder,
+		InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
+		StatefulInteractiveElement, Styled, Window, graph, ui_theme, workspace_size::Panel,
 	},
 	ui_motion,
 	ui_scroll::SmoothScrollArea,
@@ -46,7 +43,7 @@ impl AgentSurface {
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut list =
-			agent_surface::div().id("agent-structure-list").flex_1().min_h_0().overflow_y_scroll();
+			gpui::div().id("agent-structure-list").flex_1().min_h_0().overflow_y_scroll();
 
 		if let Some(snapshot) = &self.snapshot {
 			for root in snapshot.work_items.iter().filter(|work| work.parent_goal_id.is_none()) {
@@ -54,25 +51,25 @@ impl AgentSurface {
 			}
 		}
 
-		agent_surface::div()
+		gpui::div()
 			.id("agent-panel-focus")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = Some(Panel::Right)))
 			.size_full()
-			.text_size(px(12.0))
+			.text_size(gpui::px(12.0))
 			.min_w_0()
 			.flex()
 			.flex_col()
-			.px(px(INSET))
+			.px(gpui::px(INSET))
 			.child(
-				agent_surface::div()
-					.h(px(PANEL_HEADER_HEIGHT))
+				gpui::div()
+					.h(gpui::px(PANEL_HEADER_HEIGHT))
 					.flex_none()
-					.px(px(ROW_INSET))
+					.px(gpui::px(ROW_INSET))
 					.flex()
 					.items_center()
 					.child(
-						agent_surface::div()
-							.text_size(px(13.0))
+						gpui::div()
+							.text_size(gpui::px(13.0))
 							.font_weight(FontWeight::SEMIBOLD)
 							.child("Agents"),
 					),
@@ -91,7 +88,7 @@ impl AgentSurface {
 		let click_id = id.clone();
 		let key_id = id.clone();
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(format!("agent-toggle-{id}")))
 			.debug_selector({
 				let id = id.clone();
@@ -102,14 +99,14 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label(format!("{} {name}", if expanded { "Collapse" } else { "Expand" }))
 			.aria_expanded(expanded)
-			.size(px(DISCLOSURE))
+			.size(gpui::px(DISCLOSURE))
 			.flex_none()
 			.flex()
 			.items_center()
 			.justify_center()
-			.rounded(px(4.))
+			.rounded(gpui::px(4.))
 			.cursor_pointer()
-			.hover(|s| s.text_color(agent_surface::rgb(TEXT)))
+			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if !s.agent_tree_collapsed.remove(&click_id) {
 					s.agent_tree_collapsed.insert(click_id.clone());
@@ -155,21 +152,21 @@ impl AgentSurface {
 		let toggle = self.tree_toggle(work.id.clone(), &name, expanded, cx);
 		let row = tree_row(format!("agent-row-{}", work.id), depth, selected)
 			.child(if descendants.is_empty() && !has_native {
-				agent_surface::div().w(px(DISCLOSURE)).flex_none().into_any_element()
+				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
 			} else {
 				toggle.into_any_element()
 			})
-			.child(agent_surface::div().flex_1().min_w_0().child(self.workspace_action(
+			.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
 				format!("agent-open-{id}"),
 				name,
 				move |s, cx| s.open_page(&id, cx),
 				cx,
 			)))
 			.child(
-				agent_surface::div()
-					.text_size(px(CAPTION_SIZE))
+				gpui::div()
+					.text_size(gpui::px(CAPTION_SIZE))
 					.flex_none()
-					.text_color(agent_surface::rgb(color))
+					.text_color(gpui::rgb(color))
 					.child(format!("L{depth} · {status}")),
 			);
 		let mut nested = tree_children(depth);
@@ -190,7 +187,7 @@ impl AgentSurface {
 		}
 
 		(
-			agent_surface::div()
+			gpui::div()
 				.w_full()
 				.flex_none()
 				.flex()
@@ -209,45 +206,45 @@ impl AgentSurface {
 }
 
 pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {
-	agent_surface::div()
+	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id.clone())
 		.relative()
-		.h(px(TREE_ROW_HEIGHT))
+		.h(gpui::px(TREE_ROW_HEIGHT))
 		.flex_none()
 		.min_w_0()
-		.pl(px(ROW_INSET + depth as f32 * INDENT))
-		.pr(px(ROW_INSET))
+		.pl(gpui::px(ROW_INSET + depth as f32 * INDENT))
+		.pr(gpui::px(ROW_INSET))
 		.flex()
 		.items_center()
-		.gap(px(4.))
-		.rounded(px(5.))
-		.when(selected, |row| row.bg(agent_surface::rgba(0xffffff0b)))
+		.gap(gpui::px(4.))
+		.rounded(gpui::px(5.))
+		.when(selected, |row| row.bg(gpui::rgba(0xffffff0b)))
 		.hover(move |row| {
-			row.bg(agent_surface::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+			row.bg(gpui::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 		})
 		.when(depth > 0, |row| {
 			row.child(
-				agent_surface::div()
+				gpui::div()
 					.absolute()
-					.left(px(ROW_INSET + (depth - 1) as f32 * INDENT + DISCLOSURE / 2.))
-					.top(px(TREE_ROW_HEIGHT / 2.))
-					.w(px(5.))
-					.h(px(1.))
-					.bg(agent_surface::rgba(0xffffff18)),
+					.left(gpui::px(ROW_INSET + (depth - 1) as f32 * INDENT + DISCLOSURE / 2.))
+					.top(gpui::px(TREE_ROW_HEIGHT / 2.))
+					.w(gpui::px(5.))
+					.h(gpui::px(1.))
+					.bg(gpui::rgba(0xffffff18)),
 			)
 		})
 }
 
 pub(super) fn tree_children(depth: usize) -> Div {
-	agent_surface::div().relative().w_full().flex().flex_col().child(
-		agent_surface::div()
+	gpui::div().relative().w_full().flex().flex_col().child(
+		gpui::div()
 			.absolute()
-			.left(px(ROW_INSET + depth as f32 * INDENT + DISCLOSURE / 2.))
+			.left(gpui::px(ROW_INSET + depth as f32 * INDENT + DISCLOSURE / 2.))
 			.top_0()
-			.bottom(px(TREE_ROW_HEIGHT / 2.))
-			.w(px(1.))
-			.bg(agent_surface::rgba(0xffffff18)),
+			.bottom(gpui::px(TREE_ROW_HEIGHT / 2.))
+			.w(gpui::px(1.))
+			.bg(gpui::rgba(0xffffff18)),
 	)
 }
 
@@ -265,22 +262,22 @@ fn chevron(id: String, expanded: bool) -> impl IntoElement {
 			let point = |x: f32, y: f32| {
 				center
 					+ gpui::point(
-						px(x * angle.cos() - y * angle.sin()),
-						px(x * angle.sin() + y * angle.cos()),
+						gpui::px(x * angle.cos() - y * angle.sin()),
+						gpui::px(x * angle.sin() + y * angle.cos()),
 					)
 			};
-			let mut path = PathBuilder::stroke(px(1.2));
+			let mut path = PathBuilder::stroke(gpui::px(1.2));
 
 			path.move_to(point(-1.5, -3.));
 			path.line_to(point(1.5, 0.));
 			path.line_to(point(-1.5, 3.));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, agent_surface::rgb(TEXT_MUTED));
+				window.paint_path(path, gpui::rgb(TEXT_MUTED));
 			}
 		},
 	)
-	.size(px(12.))
+	.size(gpui::px(12.))
 }
 
 fn children<'a>(snapshot: &'a AgentSnapshotDto, parent: &str) -> Vec<&'a AgentWorkItemDto> {
@@ -303,7 +300,7 @@ mod tests {
 	fn native_tree_disclosure_uses_its_own_hit_target(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(agent_tree::px(1_400.), agent_tree::px(1_200.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_200.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);

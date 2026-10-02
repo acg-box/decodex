@@ -5,7 +5,7 @@ use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOn
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::shell::agent_surface::{
-	self, ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
+	ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
 	StatefulInteractiveElement, Styled, Window, markdown,
 };
 #[cfg(test)] use crate::shell::agent_surface::{Context, FontWeight};
@@ -41,7 +41,7 @@ impl RenderOnce for SelectableText {
 		let down_text = self.text.clone();
 		let selector = self.key.clone();
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(self.key))
 			.debug_selector(move || selector.clone())
 			.role(Role::Label)
@@ -187,7 +187,7 @@ fn selection_highlights(
 				.unwrap_or_default();
 
 			if selection.contains(&range.start) {
-				style.background_color = Some(agent_surface::rgba(0x788dff66).into());
+				style.background_color = Some(gpui::rgba(0x788dff66).into());
 			}
 
 			(range, style)

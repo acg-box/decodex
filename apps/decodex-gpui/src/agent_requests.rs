@@ -1,4 +1,5 @@
 //! Provider request forms bound to the exact persisted request event.
+
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent};
 use serde_json::{Map, Value};
 
@@ -13,7 +14,7 @@ use crate::{
 			AgentDispatchStateDto, AgentRequestResult, AgentSnapshotDto, AgentSurface,
 			AgentWorkItemDto, ComposerInput, Context, InteractiveElement, IntoElement, LoadState,
 			ParentElement, Role, SharedString, SmoothControl, StatefulInteractiveElement, Styled,
-			SubmitComposer, px, ui_theme::BLUE,
+			SubmitComposer, ui_theme::BLUE,
 		},
 	},
 	ui_theme::HOVER_FILL,
@@ -133,12 +134,12 @@ impl AgentSurface {
 		let Some(AgentRequestResult::Available { work_id, event_id, method, request_json }) =
 			&self.request
 		else {
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		};
 
 		if work_id != &work.id || !snapshot.pending_events.iter().any(|event| event.id == *event_id)
 		{
-			return agent_surface::div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 
 		let large = request_json.as_str().len() > MAX_HISTORY_INLINE_BYTES;
@@ -154,7 +155,7 @@ impl AgentSurface {
 			};
 		}
 
-		let mut panel = agent_surface::div()
+		let mut panel = gpui::div()
 			.capture_key_down(cx.listener(|s, _, _, cx| {
 				s.snooze_question_timeout();
 				cx.notify();
@@ -168,9 +169,9 @@ impl AgentSurface {
 				cx.stop_propagation();
 			}))
 			.p_3()
-			.rounded(px(8.0))
+			.rounded(gpui::px(8.0))
 			.border_1()
-			.border_color(agent_surface::rgba(0xffffff18))
+			.border_color(gpui::rgba(0xffffff18))
 			.flex()
 			.flex_col()
 			.gap_2();
@@ -184,13 +185,13 @@ impl AgentSurface {
 			}
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.id("agent-answer-questions")
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label("Send answers")
 					.cursor_pointer()
-					.text_color(agent_surface::rgb(BLUE))
+					.text_color(gpui::rgb(BLUE))
 					.on_click(cx.listener(|s, _, _, cx| s.submit_answers(cx)))
 					.child("Send answers")
 					.smooth(),
@@ -224,18 +225,18 @@ impl AgentSurface {
 		let revision = self.request_reader.revision;
 		let section =
 			self.request_reader.starts.iter().position(|start| *start == offset).unwrap_or(0) + 1;
-		let mut panel = agent_surface::div()
+		let mut panel = gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
 			.child(format!("Request details · section {section}"))
 			.child(
-				agent_surface::div()
+				gpui::div()
 					.id("large-request-detail")
-					.max_h(px(280.0))
+					.max_h(gpui::px(280.0))
 					.overflow_y_scroll()
 					.font_family("Menlo")
-					.text_size(px(12.0))
+					.text_size(gpui::px(12.0))
 					.child(text[offset..end].to_owned()),
 			);
 		let previous =
@@ -247,7 +248,7 @@ impl AgentSurface {
 		] {
 			let Some(target) = target else { continue };
 
-			panel = panel.child(agent_surface::div().id(id).debug_selector(move || id.into())
+			panel = panel.child(gpui::div().id(id).debug_selector(move || id.into())
 				.role(Role::Button).tab_index(0).aria_label(label).cursor_pointer().child(label)
 				.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&key.keystroke.key.as_str()) && s.generation == generation
@@ -299,14 +300,13 @@ impl AgentSurface {
 			("Allow this command?", "approval-kind-command")
 		};
 
-		panel = panel
-			.child(agent_surface::div().debug_selector(move || selector.into()).child(heading));
+		panel = panel.child(gpui::div().debug_selector(move || selector.into()).child(heading));
 
 		for key in ["reason", "command", "cwd", "grantRoot"] {
 			if let Some(text) = value[key].as_str() {
 				panel = panel.child(
-					agent_surface::div()
-						.text_size(px(12.0))
+					gpui::div()
+						.text_size(gpui::px(12.0))
 						.child(self.request_summary(text.to_owned())),
 				);
 			}
@@ -318,11 +318,11 @@ impl AgentSurface {
 				.unwrap_or("File paths and patch details are unavailable.");
 
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.id("file-approval-details")
-					.max_h(px(280.0))
+					.max_h(gpui::px(280.0))
 					.overflow_y_scroll()
-					.text_size(px(12.0))
+					.text_size(gpui::px(12.0))
 					.font_family("Menlo")
 					.child(self.request_summary(details.to_owned())),
 			);
@@ -337,16 +337,16 @@ impl AgentSurface {
 		) && let Some(environment) = value["environmentId"].as_str().filter(|id| !id.is_empty())
 		{
 			panel = panel.child(
-				agent_surface::div()
+				gpui::div()
 					.debug_selector(|| "approval-executor-environment".into())
-					.text_size(px(12.0))
+					.text_size(gpui::px(12.0))
 					.child(self.request_summary(format!("Execution environment: {environment}"))),
 			);
 		}
 		if method == "item/permissions/requestApproval" {
 			panel = panel.child(
-				agent_surface::div()
-					.text_size(px(12.0))
+				gpui::div()
+					.text_size(gpui::px(12.0))
 					.child(self.request_summary(permission_summary(&value["permissions"]))),
 			);
 			panel = panel.child(self.request_choice(
@@ -399,11 +399,10 @@ impl AgentSurface {
 					continue;
 				};
 
-				panel = panel.child(agent_surface::div().text_size(px(11.0)).child(
-					self.request_summary(
+				panel =
+					panel.child(gpui::div().text_size(gpui::px(11.0)).child(self.request_summary(
 						serde_json::to_string_pretty(decision).unwrap_or_default(),
-					),
-				));
+					)));
 				panel = panel.child(self.request_choice(
 					&format!("policy-{index}"),
 					label,
@@ -529,7 +528,7 @@ impl AgentSurface {
 
 	fn question_form(&self, question: &Value, cx: &mut Context<Self>) -> AnyElement {
 		let id = question["id"].as_str().unwrap_or_default();
-		let mut row = agent_surface::div()
+		let mut row = gpui::div()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -549,15 +548,15 @@ impl AgentSurface {
 			let selector = format!("question-{id}-{index}");
 
 			row = row.child(
-				agent_surface::div()
+				gpui::div()
 					.id(SharedString::from(format!("question-{id}-{index}")))
 					.debug_selector(move || selector)
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(label.clone())
 					.p_2()
-					.rounded(px(6.0))
-					.bg(agent_surface::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+					.rounded(gpui::px(6.0))
+					.bg(gpui::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 					.cursor_pointer()
 					.on_click(cx.listener(move |_, _, _, cx| {
 						input.update(cx, |input, cx| input.set_content(&answer, cx));
@@ -571,7 +570,7 @@ impl AgentSurface {
 			);
 		}
 
-		row.child(agent_surface::div().h(px(36.0)).child(input.clone())).into_any_element()
+		row.child(gpui::div().h(gpui::px(36.0)).child(input.clone())).into_any_element()
 	}
 
 	fn request_choice(
@@ -590,20 +589,20 @@ impl AgentSurface {
 		let response = response.to_string();
 		let selector = format!("request-{id}");
 
-		agent_surface::div()
+		gpui::div()
 			.id(SharedString::from(format!("request-{id}")))
 			.debug_selector(move || selector)
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label)
 			.px_2()
-			.h(px(28.0))
+			.h(gpui::px(28.0))
 			.flex()
 			.items_center()
-			.rounded(px(5.0))
+			.rounded(gpui::px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(agent_surface::rgba(HOVER_FILL)))
-			.text_color(agent_surface::rgb(BLUE))
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.text_color(gpui::rgb(BLUE))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision
 					&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
@@ -631,10 +630,10 @@ mod timing_tests {
 	#[cfg(test)]
 	#[cfg(not(test))]
 	use gpui::AppContext as _;
-
 	#[cfg(test)]
 	#[cfg(not(test))]
-	use crate::shell::agent_surface::requests::px;
+	use gpui::px;
+
 	use crate::shell::agent_surface::requests::{
 		self, AgentRequestResult, AgentSurface, QuestionTimer,
 	};
@@ -693,7 +692,7 @@ mod timing_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(requests::px(1_180.), requests::px(1_200.)));
+			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.draw(cx).clear();
 		});
 
@@ -798,7 +797,7 @@ mod timing_tests {
 
 		for _ in 0..32 {
 			visual.update(|window, cx| {
-				window.resize(gpui::size(requests::px(1_180.), requests::px(1_200.)));
+				window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 				window.draw(cx).clear();
 			});
 			surface.update(visual, |s, cx| {
@@ -872,7 +871,7 @@ mod timing_tests {
         });
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(requests::px(1_180.0), requests::px(1_200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -943,7 +942,7 @@ mod timing_tests {
 			});
 
 				visual.update(|window, cx| {
-					window.resize(gpui::size(requests::px(1_180.), requests::px(1_200.)));
+					window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 					window.draw(cx).clear();
 				});
 
@@ -995,7 +994,7 @@ mod timing_tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(requests::px(1_180.), requests::px(1_200.)));
+				window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 				window.draw(cx).clear();
 			});
 
