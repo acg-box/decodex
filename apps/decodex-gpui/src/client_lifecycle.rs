@@ -467,6 +467,42 @@ impl ClientLifecycle {
 		}
 	}
 
+	async fn next_session_step<I>(
+		&self,
+		io: &mut I,
+		generation: u64,
+		requires_snapshot: bool,
+		observation: &mut Option<Wait>,
+	) -> SessionStep<I::Confirmation>
+	where
+		I: LifecycleIo,
+	{
+		let accounts = self.accounts.clone();
+		let account_profile = self.account_profile.clone();
+		let desktop_settings = self.desktop_settings.clone();
+		let health_query = self.health_query.clone();
+		let history_pager = self.history_pager.clone();
+		let conversations = self.conversations.clone();
+		let server_id = self.server_id.clone();
+
+		tokio::select! {
+			delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
+			result = account_observation::poll(observation) => SessionStep::AccountObservation(result),
+			dispatch = accounts.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::Account(dispatch),
+			dispatch = account_profile.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::AccountProfile(dispatch),
+			dispatch = desktop_settings.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::DesktopSettings(dispatch),
+			dispatch = health_query.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::Health(dispatch),
+			dispatch = history_pager.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::History(dispatch),
+			dispatch = conversations.next_dispatch(generation, &server_id),
+				if !requires_snapshot => SessionStep::Conversation(dispatch),
+		}
+	}
+
 	async fn run_connected_session<I>(
 		&mut self,
 		io: &mut I,
@@ -479,29 +515,8 @@ impl ClientLifecycle {
 		let mut observation: Option<Wait> = None;
 
 		loop {
-			let accounts = self.accounts.clone();
-			let account_profile = self.account_profile.clone();
-			let desktop_settings = self.desktop_settings.clone();
-			let health_query = self.health_query.clone();
-			let history_pager = self.history_pager.clone();
-			let conversations = self.conversations.clone();
-			let server_id = self.server_id.clone();
-			let step = tokio::select! {
-				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
-				result = account_observation::poll(&mut observation) => SessionStep::AccountObservation(result),
-				dispatch = accounts.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::Account(dispatch),
-				dispatch = account_profile.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::AccountProfile(dispatch),
-				dispatch = desktop_settings.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::DesktopSettings(dispatch),
-				dispatch = health_query.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::Health(dispatch),
-				dispatch = history_pager.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::History(dispatch),
-				dispatch = conversations.next_dispatch(generation, &server_id),
-					if !requires_snapshot => SessionStep::Conversation(dispatch),
-			};
+			let step =
+				self.next_session_step(io, generation, requires_snapshot, &mut observation).await;
 
 			if self.ensure_generation(generation).is_err() {
 				return RetainedSessionFailure::PublicationOrder;

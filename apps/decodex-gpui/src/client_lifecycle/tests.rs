@@ -34,7 +34,7 @@ use crate::{
 	history_pager::{
 		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
 		HistoryNavigationResult, HistoryPageSource, HistoryPager, HistoryRetryReason,
-		HistoryStaleReason,
+		HistorySendToken, HistoryStaleReason,
 	},
 	shell::{self, Shell},
 };
@@ -975,6 +975,56 @@ fn configured_live_lifecycle() -> ClientLifecycle {
 	ClientLifecycle::production(config).expect("the production lifecycle is available")
 }
 
+fn verify_unavailable_history_cache_keeps_fresh_page(pager: &HistoryPager, name: &str) {
+	let fresh = pager.snapshot();
+
+	assert_eq!(fresh.visible, Some(history_page(None)), "{name}");
+	assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer), "{name}",);
+	assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved, "{name}",);
+	assert_eq!(fresh.load, HistoryLoadState::Visible, "{name}");
+	assert_eq!(
+		fresh.cache_diagnostic,
+		Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable),
+		"{name}",
+	);
+}
+
+fn inject_history_cache_failure(
+	phase: HistoryCacheFailurePhase,
+	root: &Path,
+	history_root: &Path,
+	pager: &HistoryPager,
+	send: &HistorySendToken,
+	name: &str,
+) {
+	match phase {
+		HistoryCacheFailurePhase::ParentResolution => {
+			fs::set_permissions(
+				root.parent().expect("cache parent has an external base"),
+				Permissions::from_mode(0o770),
+			)
+			.expect("external base is made unsafe");
+
+			pager.lookup_sent_request(send);
+		},
+		HistoryCacheFailurePhase::InitialValidation => {
+			fs::create_dir(history_root).expect("history cache root is created");
+			fs::set_permissions(history_root, Permissions::from_mode(0o755))
+				.expect("history cache root is made unsafe");
+
+			pager.lookup_sent_request(send);
+		},
+		HistoryCacheFailurePhase::PostOpenOperation => {
+			pager.lookup_sent_request(send);
+
+			assert_eq!(pager.snapshot().cache_diagnostic, None, "{name}");
+
+			fs::write(history_root.join("foreign"), b"foreign")
+				.expect("foreign post-open artifact is created");
+		},
+	}
+}
+
 #[tokio::test]
 async fn fake_session_await_cancellation_survives_a_dropped_receive() {
 	let temporary = TempDir::new().expect("temporary directory is available");
@@ -1088,8 +1138,7 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	assert!(lifecycle.quarantine.is_none());
 }
 
-#[tokio::test]
-async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
+async fn verify_failed_history_send_has_no_cache_io() {
 	let failed_temporary = TempDir::new().expect("temporary directory is available");
 	let failed_root = cache_parent(&failed_temporary);
 	let mut failed_lifecycle = lifecycle(&failed_root);
@@ -1115,6 +1164,11 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	assert_eq!(failed_lifecycle.run_with_io(&mut failed_io).await, RunResult::Stopped);
 	assert!(failed_pager.cache_probe_events().is_empty());
 	assert!(!failed_root.join("history-page-cache-v1").exists());
+}
+
+#[tokio::test]
+async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
+	verify_failed_history_send_has_no_cache_io().await;
 
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
@@ -1514,48 +1568,14 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 
 		assert!(pager.finish_send(&send));
 
-		match phase {
-			HistoryCacheFailurePhase::ParentResolution => {
-				fs::set_permissions(
-					root.parent().expect("cache parent has an external base"),
-					Permissions::from_mode(0o770),
-				)
-				.expect("external base is made unsafe");
-
-				pager.lookup_sent_request(&send);
-			},
-			HistoryCacheFailurePhase::InitialValidation => {
-				fs::create_dir(&history_root).expect("history cache root is created");
-				fs::set_permissions(&history_root, Permissions::from_mode(0o755))
-					.expect("history cache root is made unsafe");
-
-				pager.lookup_sent_request(&send);
-			},
-			HistoryCacheFailurePhase::PostOpenOperation => {
-				pager.lookup_sent_request(&send);
-
-				assert_eq!(pager.snapshot().cache_diagnostic, None, "{name}");
-
-				fs::write(history_root.join("foreign"), b"foreign")
-					.expect("foreign post-open artifact is created");
-			},
-		}
+		inject_history_cache_failure(phase, &root, &history_root, &pager, &send, name);
 
 		lifecycle
 			.route_history_result(1, history_result(&dispatch, &server_id, None))
 			.expect("fresh history result remains request-local and usable");
 
-		let fresh = pager.snapshot();
+		verify_unavailable_history_cache_keeps_fresh_page(&pager, name);
 
-		assert_eq!(fresh.visible, Some(history_page(None)), "{name}");
-		assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer), "{name}",);
-		assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved, "{name}",);
-		assert_eq!(fresh.load, HistoryLoadState::Visible, "{name}");
-		assert_eq!(
-			fresh.cache_diagnostic,
-			Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable),
-			"{name}",
-		);
 		assert_eq!(
 			lifecycle
 				.cache
@@ -2263,6 +2283,58 @@ async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 	);
 }
 
+async fn await_live_conversation_acceptance<F>(
+	conversations: &Conversations,
+	mut run: Pin<&mut F>,
+) -> EntityId
+where
+	F: std::future::Future<Output = RunResult>,
+{
+	let accepted_deadline = Instant::now() + Duration::from_secs(120);
+
+	loop {
+		let snapshot = conversations.snapshot();
+
+		match snapshot.command {
+			ConversationCommandState::ManualRecovery(action) => {
+				panic!("the live daemon requested manual recovery before starting: {action:?}")
+			},
+			ConversationCommandState::OutcomeUnknown => {
+				panic!("the live daemon could not determine whether the command was accepted")
+			},
+			ConversationCommandState::Refused => {
+				panic!("the live daemon refused the composed Conversation")
+			},
+			_ => {},
+		}
+
+		if let Some(conversation_id) = snapshot.selected.as_ref() {
+			let task = snapshot
+				.tasks
+				.iter()
+				.find(|task| &task.conversation_id == conversation_id)
+				.expect("the selected conversation has a projection");
+
+			if task.state == ConversationState::Ready {
+				break conversation_id.clone();
+			}
+		}
+
+		assert!(
+			tokio::time::Instant::now() < accepted_deadline,
+			"the live daemon did not finish the composed Conversation; load={:?}, command={:?}, state={:?}",
+			snapshot.load,
+			snapshot.command,
+			snapshot.selected_task().map(|task| task.state),
+		);
+
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before command acceptance: {result:?}"),
+			() = time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
 async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
@@ -2305,48 +2377,8 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 			))
 			.expect("the live composer command is accepted for dispatch");
 
-		let accepted_deadline = Instant::now() + Duration::from_secs(120);
-		let conversation_id = loop {
-			let snapshot = conversations.snapshot();
-
-			match snapshot.command {
-				ConversationCommandState::ManualRecovery(action) => {
-					panic!("the live daemon requested manual recovery before starting: {action:?}")
-				},
-				ConversationCommandState::OutcomeUnknown => {
-					panic!("the live daemon could not determine whether the command was accepted")
-				},
-				ConversationCommandState::Refused => {
-					panic!("the live daemon refused the composed Conversation")
-				},
-				_ => {},
-			}
-
-			if let Some(conversation_id) = snapshot.selected.as_ref() {
-				let task = snapshot
-					.tasks
-					.iter()
-					.find(|task| &task.conversation_id == conversation_id)
-					.expect("the selected conversation has a projection");
-
-				if task.state == ConversationState::Ready {
-					break conversation_id.clone();
-				}
-			}
-
-			assert!(
-				tokio::time::Instant::now() < accepted_deadline,
-				"the live daemon did not finish the composed Conversation; load={:?}, command={:?}, state={:?}",
-				snapshot.load,
-				snapshot.command,
-				snapshot.selected_task().map(|task| task.state),
-			);
-
-			tokio::select! {
-				result = &mut run => panic!("live lifecycle stopped before command acceptance: {result:?}"),
-				() = time::sleep(Duration::from_millis(50)) => {},
-			}
-		};
+		let conversation_id =
+			await_live_conversation_acceptance(&conversations, run.as_mut()).await;
 
 		history.open(conversation_id.clone()).expect("the accepted conversation history opens");
 
