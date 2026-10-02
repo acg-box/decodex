@@ -7,7 +7,8 @@ use tokio::time;
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::ServiceTier;
 use decodex_protocol::{
-	AgentCapabilitiesResult, AgentModelDto, AgentModelUpgradeDto, ConversationModel,
+	AgentCapabilitiesResult, AgentModelDto, AgentModelUpgradeDto, AgentServiceTierDto,
+	ConversationModel,
 };
 
 /// Shared model-page projection for retained Agent and ordinary process transports.
@@ -148,52 +149,7 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 	let default_effort = serde_json::from_value(value["defaultReasoningEffort"].clone())
 		.ok()
 		.filter(|effort| efforts.contains(effort));
-	let mut service_tiers = Vec::new();
-
-	if !value["serviceTiers"].is_null() {
-		let tiers = value["serviceTiers"].as_array().filter(|tiers| tiers.len() <= 32)?;
-
-		for tier in tiers {
-			let id = ServiceTier::new(tier["id"].as_str()?).ok()?;
-
-			if service_tiers
-				.iter()
-				.any(|known: &decodex_protocol::AgentServiceTierDto| known.id == id)
-			{
-				return None;
-			}
-
-			let name = tier["name"].as_str().unwrap_or(id.as_str());
-			let description = tier["description"].as_str().unwrap_or("");
-
-			if name.is_empty()
-				|| name.len() > 256
-				|| name.chars().any(char::is_control)
-				|| description.len() > 2_048
-				|| description.chars().any(|c| c.is_control() && c != '\n')
-			{
-				return None;
-			}
-
-			service_tiers.push(decodex_protocol::AgentServiceTierDto {
-				name: name.into(),
-				description: description.into(),
-				id,
-			});
-		}
-	}
-	if service_tiers.is_empty()
-		&& value["additionalSpeedTiers"]
-			.as_array()
-			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"))
-	{
-		service_tiers.push(decodex_protocol::AgentServiceTierDto {
-			id: ServiceTier::from_fast(true),
-			name: "Fast".into(),
-			description: String::new(),
-		});
-	}
-
+	let service_tiers = project_service_tiers(value)?;
 	let default_service_tier = if value["defaultServiceTier"].is_null() {
 		None
 	} else {
@@ -260,6 +216,53 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 		availability: notice(&value["availabilityNux"]["message"]),
 		upgrade,
 	})
+}
+
+fn project_service_tiers(value: &Value) -> Option<Vec<AgentServiceTierDto>> {
+	let mut service_tiers = Vec::new();
+
+	if !value["serviceTiers"].is_null() {
+		let tiers = value["serviceTiers"].as_array().filter(|tiers| tiers.len() <= 32)?;
+
+		for tier in tiers {
+			let id = ServiceTier::new(tier["id"].as_str()?).ok()?;
+
+			if service_tiers.iter().any(|known: &AgentServiceTierDto| known.id == id) {
+				return None;
+			}
+
+			let name = tier["name"].as_str().unwrap_or(id.as_str());
+			let description = tier["description"].as_str().unwrap_or("");
+
+			if name.is_empty()
+				|| name.len() > 256
+				|| name.chars().any(char::is_control)
+				|| description.len() > 2_048
+				|| description.chars().any(|c| c.is_control() && c != '\n')
+			{
+				return None;
+			}
+
+			service_tiers.push(AgentServiceTierDto {
+				name: name.into(),
+				description: description.into(),
+				id,
+			});
+		}
+	}
+	if service_tiers.is_empty()
+		&& value["additionalSpeedTiers"]
+			.as_array()
+			.is_some_and(|tiers| tiers.iter().any(|tier| tier == "fast" || tier == "priority"))
+	{
+		service_tiers.push(AgentServiceTierDto {
+			id: ServiceTier::from_fast(true),
+			name: "Fast".into(),
+			description: String::new(),
+		});
+	}
+
+	Some(service_tiers)
 }
 
 async fn read_inner(client: &AppServerClient) -> AgentCapabilitiesResult {

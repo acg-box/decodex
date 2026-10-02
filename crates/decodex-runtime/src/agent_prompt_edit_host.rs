@@ -36,42 +36,7 @@ impl AgentHost {
 				thread_id,
 				turn_id,
 				item_id,
-			} => {
-				let pending = self
-					.store
-					.agent_prompt_edit_receipt(work_id.as_str().into(), thread_id.as_str().into())
-					.await
-					.map_err(|_| "Edit receipt is unavailable")?;
-
-				if pending.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "applied")) {
-					return Err("Recover the existing prompt edit first".into());
-				}
-
-				let review = agent
-					.prepare_prompt_edit(
-						work_id.as_str(),
-						thread_id.as_str(),
-						turn_id.as_str(),
-						item_id.as_str(),
-						key,
-					)
-					.await
-					.map_err(|_| "Prompt review failed")?
-					.ok_or("This input cannot be edited")?;
-				let mut reviews = self.prompt_edits.lock().await;
-
-				reviews.retain(|_, (when, review)| {
-					when.elapsed() < REVIEW_LIFETIME && review.is_live()
-				});
-
-				if reviews.len() >= 8 && !reviews.contains_key(work_id.as_str()) {
-					return Err("Too many active prompt reviews".into());
-				}
-
-				reviews.insert(work_id.as_str().into(), (Instant::now(), review));
-
-				Ok(work_id.as_str().into())
-			},
+			} => self.prepare_prompt_review(agent, key, work_id, thread_id, turn_id, item_id).await,
 			decodex_protocol::AgentActionDto::ConfirmPromptEdit {
 				work_id,
 				thread_id,
@@ -161,6 +126,49 @@ impl AgentHost {
 					.await,
 			_ => Err("Unsupported prompt edit command".into()),
 		}
+	}
+
+	async fn prepare_prompt_review(
+		&self,
+		agent: &mut AgentCoordinator,
+		key: &str,
+		work_id: EntityId,
+		thread_id: WireText,
+		turn_id: WireText,
+		item_id: WireText,
+	) -> Result<String, AgentHostError> {
+		let pending = self
+			.store
+			.agent_prompt_edit_receipt(work_id.as_str().into(), thread_id.as_str().into())
+			.await
+			.map_err(|_| "Edit receipt is unavailable")?;
+
+		if pending.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "applied")) {
+			return Err("Recover the existing prompt edit first".into());
+		}
+
+		let review = agent
+			.prepare_prompt_edit(
+				work_id.as_str(),
+				thread_id.as_str(),
+				turn_id.as_str(),
+				item_id.as_str(),
+				key,
+			)
+			.await
+			.map_err(|_| "Prompt review failed")?
+			.ok_or("This input cannot be edited")?;
+		let mut reviews = self.prompt_edits.lock().await;
+
+		reviews.retain(|_, (when, review)| when.elapsed() < REVIEW_LIFETIME && review.is_live());
+
+		if reviews.len() >= 8 && !reviews.contains_key(work_id.as_str()) {
+			return Err("Too many active prompt reviews".into());
+		}
+
+		reviews.insert(work_id.as_str().into(), (Instant::now(), review));
+
+		Ok(work_id.as_str().into())
 	}
 
 	async fn acknowledge_prompt_draft(

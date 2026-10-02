@@ -859,41 +859,7 @@ impl AgentHost {
 						}
 					},
 					event = receive(&mut active) => {
-						if let Some((root,agent,_)) = active.as_mut() {
-							agent.pause_dispatch(self.runtime.agent_account_exhausted(root).await);
-
-							let closed = event.is_none() || matches!(&event,Some(ServerEvent::Closed(_)));
-
-							if closed { self.recaps.stop(); }
-
-							let event = event.and_then(|event|self.recaps.route(event));
-
-							if let Some(event)=event.as_ref() && let Some(generation)=agent.native_generation() {
-								self.mcp_login.observe(generation,event).await;
-
-								if let ServerEvent::Notification { method, params } = event
-									&& matches!(method.as_str(), "configWarning" | "warning" | "mcpServer/startupStatus/updated")
-									&& native_config_warning::record_notification(&self.store, root, generation, method, params).await.is_err() {
-									self.record_error(root,"event_processing_failed").await;
-								}
-							}
-
-							if closed && let Some(generation)=agent.native_generation() {self.mcp_login.disconnect(Some(generation)).await;}
-
-							if let Some(event) = event
-								&& let Err(error) = agent.handle_event(event).await
-								&& event_failure_needs_attention(closed, &error) {
-								self.record_error(root,"event_processing_failed").await;
-							}
-
-							if closed {
-								let root = root.clone();
-								let _ = self.runtime.close_agent_connection(&root).await;
-
-								active = None;
-								recovery = RecoverySchedule::new();
-							}
-						}
+						self.handle_native_event(event, &mut active, &mut recovery).await;
 					},
 					_ = tick.tick() => {
 						self.dictation.expire().await;
@@ -943,6 +909,68 @@ impl AgentHost {
 
 		if let Some(root) = root {
 			let _ = self.runtime.close_agent_connection(&root).await;
+		}
+	}
+
+	async fn handle_native_event(
+		&self,
+		event: Option<ServerEvent>,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+		recovery: &mut RecoverySchedule,
+	) {
+		if let Some((root, agent, _)) = active.as_mut() {
+			agent.pause_dispatch(self.runtime.agent_account_exhausted(root).await);
+
+			let closed = event.is_none() || matches!(&event, Some(ServerEvent::Closed(_)));
+
+			if closed {
+				self.recaps.stop();
+			}
+
+			let event = event.and_then(|event| self.recaps.route(event));
+
+			if let Some(event) = event.as_ref()
+				&& let Some(generation) = agent.native_generation()
+			{
+				self.mcp_login.observe(generation, event).await;
+
+				if let ServerEvent::Notification { method, params } = event
+					&& matches!(
+						method.as_str(),
+						"configWarning" | "warning" | "mcpServer/startupStatus/updated"
+					)
+					&& native_config_warning::record_notification(
+						&self.store,
+						root,
+						generation,
+						method,
+						params,
+					)
+					.await
+					.is_err()
+				{
+					self.record_error(root, "event_processing_failed").await;
+				}
+			}
+
+			if closed && let Some(generation) = agent.native_generation() {
+				self.mcp_login.disconnect(Some(generation)).await;
+			}
+
+			if let Some(event) = event
+				&& let Err(error) = agent.handle_event(event).await
+				&& event_failure_needs_attention(closed, &error)
+			{
+				self.record_error(root, "event_processing_failed").await;
+			}
+
+			if closed {
+				let root = root.clone();
+				let _ = self.runtime.close_agent_connection(&root).await;
+
+				*active = None;
+				*recovery = RecoverySchedule::new();
+			}
 		}
 	}
 
