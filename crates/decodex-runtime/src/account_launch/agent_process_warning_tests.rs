@@ -39,6 +39,63 @@ fn prepare_warning_fixture(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
 	(home, project, source)
 }
 
+async fn record_turn_warnings(session: &mut NativeSession, owned: &OwnedReviewer, thread: &str) {
+	let generation = ProcessGenerationId::new(GENERATION).expect("warning generation");
+	let mut seen = 0;
+
+	loop {
+		let event = session.events.recv().await.expect("native warning event");
+
+		if let ServerEvent::Notification { method, params } = &event {
+			native_config_warning::record_notification(
+				&owned.store,
+				"root",
+				&generation,
+				method,
+				params,
+			)
+			.await
+			.expect("record native warning");
+
+			if method == "warning" {
+				// Exercise the alternate startup notification shape with the real
+				// native message through the same production owner.
+				native_config_warning::record_notification(
+					&owned.store,
+					"root",
+					&generation,
+					"configWarning",
+					&serde_json::json!({"summary":params["message"],"details":null}),
+				)
+				.await
+				.expect("record native warning");
+
+				assert_eq!(params["threadId"], thread);
+				assert!(params["message"].as_str().expect("warning message").contains("AGENTS.md"));
+
+				seen += 1;
+
+				native_config_warning::record_notification(
+					&owned.store,
+					"root",
+					&generation,
+					method,
+					params,
+				)
+				.await
+				.expect("record native warning");
+			}
+			if method == "turn/completed" {
+				assert_eq!(params["turn"]["status"], "completed");
+
+				break;
+			}
+		}
+	}
+
+	assert_eq!(seen, 1);
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native global instruction failure"]
 async fn installed_native_warning_crosses_bridge_owner_history_and_reopen() {
@@ -102,60 +159,8 @@ async fn installed_native_warning_crosses_bridge_owner_history_and_reopen() {
 
 		owned.store.acknowledge_agent_dispatch("root".into(), turn.clone()).await.unwrap();
 
-		let generation = ProcessGenerationId::new(GENERATION).unwrap();
-		let mut seen = 0;
+		record_turn_warnings(&mut session, &owned, &thread).await;
 
-		loop {
-			let event = session.events.recv().await.unwrap();
-
-			if let ServerEvent::Notification { method, params } = &event {
-				native_config_warning::record_notification(
-					&owned.store,
-					"root",
-					&generation,
-					method,
-					params,
-				)
-				.await
-				.unwrap();
-
-				if method == "warning" {
-					// Exercise the alternate startup notification shape with the real
-					// native message through the same production owner.
-					native_config_warning::record_notification(
-						&owned.store,
-						"root",
-						&generation,
-						"configWarning",
-						&serde_json::json!({"summary":params["message"],"details":null}),
-					)
-					.await
-					.unwrap();
-
-					assert_eq!(params["threadId"], thread);
-					assert!(params["message"].as_str().unwrap().contains("AGENTS.md"));
-
-					seen += 1;
-
-					native_config_warning::record_notification(
-						&owned.store,
-						"root",
-						&generation,
-						method,
-						params,
-					)
-					.await
-					.unwrap();
-				}
-				if method == "turn/completed" {
-					assert_eq!(params["turn"]["status"], "completed");
-
-					break;
-				}
-			}
-		}
-
-		assert_eq!(seen, 1);
 		assert_eq!(
 			owned.store.get_agent_work_item("root".into()).await.unwrap().active_turn_id,
 			Some(turn.clone()),

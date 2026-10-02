@@ -1,6 +1,8 @@
 //! Exercise the permission owner against a retained wire source and admitted database fixture.
 use std::{
 	env, fs,
+	net::SocketAddr,
+	path::Path,
 	sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
@@ -36,6 +38,25 @@ use decodex_protocol::AgentPermissionState;
 fn facts(profile: &str) -> Value {
 	serde_json::json!({"cwd":"/native","activePermissionProfile":{"id":profile},"approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}})
 }
+fn write_ordinary_resume_config(cwd: &Path, address: SocketAddr) {
+	fs::write(
+		cwd.join("config.toml"),
+		format!(
+			r#"model = "gpt-5.6-sol"
+model_provider = "fixture"
+cli_auth_credentials_store = "file"
+[model_providers.fixture]
+name = "Isolated ordinary resume fixture"
+base_url = "http://{address}"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+"#
+		),
+	)
+	.expect("write ordinary resume config");
+}
+
 async fn save(owned: &OwnedReviewer, profile: &str) {
 	let projected = NativeTaskPermissions::from_notification(&facts(profile))
 		.expect("valid permission fixture");
@@ -373,22 +394,7 @@ async fn installed_native_ordinary_resume_preserves_saved_settings() {
 		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	));
 
-	fs::write(
-		cwd.join("config.toml"),
-		format!(
-			r#"model = "gpt-5.6-sol"
-model_provider = "fixture"
-cli_auth_credentials_store = "file"
-[model_providers.fixture]
-name = "Isolated ordinary resume fixture"
-base_url = "http://{address}"
-wire_api = "responses"
-requires_openai_auth = false
-supports_websockets = false
-"#
-		),
-	)
-	.unwrap();
+	write_ordinary_resume_config(&cwd, address);
 
 	let mut session = NativeSession::start(&binary, &cwd);
 
