@@ -760,7 +760,7 @@ pub(super) fn attachment_caption(attachment: &AgentTimelineAttachment) -> String
 mod tests {
 	use std::thread;
 
-	use gpui::{self, AppContext};
+	use gpui::{self, AppContext, ClipboardItem};
 
 	use crate::shell::agent_surface::native_timeline::{
 		self, Binding, Timeline,
@@ -969,9 +969,25 @@ mod tests {
 				window.draw(cx).clear();
 			});
 
+			// Present received text over frames before reading the copy control bounds.
+			for _ in 0..32 {
+				thread::sleep(std::time::Duration::from_millis(16));
+
+				visual.update(|window, cx| window.draw(cx).clear());
+			}
+
+			visual.update(|_, cx| {
+				cx.write_to_clipboard(ClipboardItem::new_string("not copied".into()));
+			});
+
 			let copy = visual.debug_bounds(selector).expect("native response remains copyable");
 
-			visual.simulate_click(copy.center(), Default::default());
+			visual.simulate_mouse_down(copy.center(), gpui::MouseButton::Left, Default::default());
+			visual.update(|window, cx| window.draw(cx).clear());
+
+			assert_eq!(visual.debug_bounds(selector), Some(copy));
+
+			visual.simulate_mouse_up(copy.center(), gpui::MouseButton::Left, Default::default());
 			visual.update(|_, cx| {
 				assert_eq!(
 					cx.read_from_clipboard().and_then(|item| item.text()),

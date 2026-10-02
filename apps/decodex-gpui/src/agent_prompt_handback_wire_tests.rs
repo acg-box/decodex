@@ -22,8 +22,8 @@ use crate::shell::agent_surface::drafts::storage::{
 };
 use crate::shell::agent_surface::drafts::{
 	storage::{
-		AgentSurface, ClientDraftStore, Context, DesktopDraftDocument, DesktopPromptEditDraft,
-		EntityId, Storage, WireText,
+		AgentSurface, ClientDraftStore, ClientProfile, Context, DesktopDraftDocument,
+		DesktopPromptEditDraft, EntityId, Storage, WireText,
 	},
 	tests,
 };
@@ -67,68 +67,7 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut TestAppCo
 	let (acknowledged, acknowledgement) = mpsc::channel();
 	let (checked, check) = mpsc::channel();
 	let server = spawn_server(listener, inspect, inspect_scope, acknowledged, check);
-	let (view, visual) = cx.add_window_view(|_, cx| {
-		let surface = cx.new(AgentSurface::new);
-
-		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-
-		let work = surface.update(cx, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-			s.bind_profile(Some(profile.clone()), cx);
-
-			s.poll_task = None;
-
-			s.visual_workspace_fixture(cx);
-
-			s.state = LoadState::Ready;
-
-			let work = s.selected.clone().unwrap();
-
-			s.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|item| item.id == work)
-				.unwrap()
-				.codex_thread_id = Some("thread".into());
-
-			s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
-
-			let input = PromptDraft::new(vec![
-				serde_json::json!({"type":"text","text":"Edited input"}),
-				serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
-			])
-			.unwrap();
-			let mut original = input.clone();
-
-			original.replace_text(0, 0..6, "Original").unwrap();
-			s.stage_prompt_editor(
-				DesktopPromptEditDraft {
-					work_id: EntityId::new(&work).unwrap(),
-					thread_id: WireText::new("thread").unwrap(),
-					before_turn_id: WireText::new("turn").unwrap(),
-					item_id: WireText::new("item").unwrap(),
-					original_hash: original.fingerprint().unwrap(),
-					review_token: WireText::new("a".repeat(64)).unwrap(),
-					receipt_id: Some(10),
-					confirmation_key: None,
-					fork: None,
-					pending_send: None,
-					handback_pending: true,
-					input,
-				},
-				cx,
-			)
-			.unwrap();
-			s.older_history.insert(work.clone(), (vec![], Some(99)));
-
-			work
-		});
-
-		View { surface, work }
-	});
+	let (view, visual) = cx.add_window_view(|_, cx| handback_view(&store, &profile, cx));
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 
 	for button in [
@@ -195,6 +134,73 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut TestAppCo
 	assert_eq!(draft.input.parts()[0]["text"], "Edited input");
 	assert_eq!(draft.input.parts()[1]["fileId"], "retained-file");
 	assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
+}
+
+fn handback_view(
+	store: &ClientDraftStore,
+	profile: &ClientProfile,
+	cx: &mut Context<View>,
+) -> View {
+	let surface = cx.new(AgentSurface::new);
+
+	cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
+	let work = surface.update(cx, |s, cx| {
+		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
+		s.bind_profile(Some(profile.clone()), cx);
+
+		s.poll_task = None;
+
+		s.visual_workspace_fixture(cx);
+
+		s.state = LoadState::Ready;
+
+		let work = s.selected.clone().unwrap();
+
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("thread".into());
+
+		s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
+
+		let input = PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"Edited input"}),
+			serde_json::json!({"type":"image","fileId":"retained-file","detail":"original"}),
+		])
+		.unwrap();
+		let mut original = input.clone();
+
+		original.replace_text(0, 0..6, "Original").unwrap();
+		s.stage_prompt_editor(
+			DesktopPromptEditDraft {
+				work_id: EntityId::new(&work).unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				before_turn_id: WireText::new("turn").unwrap(),
+				item_id: WireText::new("item").unwrap(),
+				original_hash: original.fingerprint().unwrap(),
+				review_token: WireText::new("a".repeat(64)).unwrap(),
+				receipt_id: Some(10),
+				confirmation_key: None,
+				fork: None,
+				pending_send: None,
+				handback_pending: true,
+				input,
+			},
+			cx,
+		)
+		.unwrap();
+		s.older_history.insert(work.clone(), (vec![], Some(99)));
+
+		work
+	});
+
+	View { surface, work }
 }
 
 fn spawn_server(
