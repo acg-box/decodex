@@ -389,6 +389,23 @@ impl AgentSurface {
 		self.request_prompt_review((work, thread, turn, item), None, cx);
 	}
 
+	fn begin_prompt_review(&mut self, profile: &ClientProfile, work: &str, thread: &str) -> String {
+		let key = agent_surface::unique_command();
+
+		self.reset_prompt_edit();
+
+		self.prompt_edit = Panel {
+			key: key.clone(),
+			profile: Some(profile.clone()),
+			work: work.into(),
+			thread: thread.into(),
+			feedback: "Reading the original input…".into(),
+			..Default::default()
+		};
+
+		key
+	}
+
 	fn request_prompt_review(
 		&mut self,
 		source: (&str, &str, &str, &str),
@@ -407,19 +424,7 @@ impl AgentSurface {
 		else {
 			return;
 		};
-		let key = agent_surface::unique_command();
-
-		self.reset_prompt_edit();
-
-		self.prompt_edit = Panel {
-			key: key.clone(),
-			profile: Some(profile.clone()),
-			work: work.into(),
-			thread: thread.into(),
-			feedback: "Reading the original input…".into(),
-			..Default::default()
-		};
-
+		let key = self.begin_prompt_review(&profile, work, thread);
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
 		let started =
@@ -958,6 +963,57 @@ mod tests {
 		})
 	}
 
+	fn qualify_saved_prompt_revisions(
+		s: &mut AgentSurface,
+		saved: &DesktopPromptEditDraft,
+		work: &str,
+		cx: &mut gpui::Context<AgentSurface>,
+	) -> DesktopPromptEditDraft {
+		let mut stale = saved.clone();
+
+		stale.input.replace_text(0, 0..0, "stale").unwrap();
+
+		assert!(s.discard_prompt_editor(&stale, cx).is_err());
+		assert_eq!(s.saved_prompt_editors(work), vec![saved.clone()]);
+
+		s.discard_prompt_editor(saved, cx).unwrap();
+
+		assert!(s.saved_prompt_editors(work).is_empty());
+
+		s.stage_prompt_editor(saved.clone(), cx).unwrap();
+
+		let mut fresh = saved.clone();
+
+		fresh.input = original_input();
+		fresh.review_token = WireText::new("c".repeat(64)).unwrap();
+
+		let renewed = s.renew_prompt_editor(saved, &fresh, cx).unwrap();
+
+		assert_eq!(renewed.input, saved.input);
+		assert_eq!(s.saved_prompt_editors(work), vec![renewed.clone()]);
+
+		let mut later = renewed.clone();
+
+		later.input.replace_text(0, 0..0, "Later edit ").unwrap();
+		s.stage_prompt_editor(later.clone(), cx).unwrap();
+
+		fresh.review_token = WireText::new("d".repeat(64)).unwrap();
+
+		assert!(s.renew_prompt_editor(&renewed, &fresh, cx).is_err());
+		assert_eq!(s.saved_prompt_editors(work), vec![later.clone()]);
+
+		let pending =
+			later.begin_confirmation(IdempotencyKey::new("confirm-once").unwrap()).unwrap();
+
+		s.stage_prompt_editor(pending.clone(), cx).unwrap();
+
+		assert!(s.discard_prompt_editor(&pending, cx).is_err());
+		assert!(s.renew_prompt_editor(&pending, &fresh, cx).is_err());
+		assert_eq!(s.saved_prompt_editors(work), vec![pending]);
+
+		later
+	}
+
 	#[gpui::test]
 	fn prompt_review_keeps_the_main_composer_and_stops_after_source_invalidation(
 		cx: &mut gpui::TestAppContext,
@@ -1027,48 +1083,7 @@ mod tests {
 
 			s.install_prompt_editors(saved.clone(), cx).unwrap();
 
-			let mut stale = saved.clone();
-
-			stale.input.replace_text(0, 0..0, "stale").unwrap();
-
-			assert!(s.discard_prompt_editor(&stale, cx).is_err());
-			assert_eq!(s.saved_prompt_editors(&work), vec![saved.clone()]);
-
-			s.discard_prompt_editor(&saved, cx).unwrap();
-
-			assert!(s.saved_prompt_editors(&work).is_empty());
-
-			s.stage_prompt_editor(saved.clone(), cx).unwrap();
-
-			let mut fresh = saved.clone();
-
-			fresh.input = original_input();
-			fresh.review_token = WireText::new("c".repeat(64)).unwrap();
-
-			let renewed = s.renew_prompt_editor(&saved, &fresh, cx).unwrap();
-
-			assert_eq!(renewed.input, saved.input);
-			assert_eq!(s.saved_prompt_editors(&work), vec![renewed.clone()]);
-
-			let mut later = renewed.clone();
-
-			later.input.replace_text(0, 0..0, "Later edit ").unwrap();
-			s.stage_prompt_editor(later.clone(), cx).unwrap();
-
-			fresh.review_token = WireText::new("d".repeat(64)).unwrap();
-
-			assert!(s.renew_prompt_editor(&renewed, &fresh, cx).is_err());
-			assert_eq!(s.saved_prompt_editors(&work), vec![later.clone()]);
-
-			let pending =
-				later.begin_confirmation(IdempotencyKey::new("confirm-once").unwrap()).unwrap();
-
-			s.stage_prompt_editor(pending.clone(), cx).unwrap();
-
-			assert!(s.discard_prompt_editor(&pending, cx).is_err());
-			assert!(s.renew_prompt_editor(&pending, &fresh, cx).is_err());
-			assert_eq!(s.saved_prompt_editors(&work), vec![pending]);
-
+			let later = qualify_saved_prompt_revisions(s, &saved, &work, cx);
 			let mut restored = later;
 
 			restored.receipt_id = Some(42);

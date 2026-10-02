@@ -568,6 +568,47 @@ fn disconnect_invalidates_task_model_review_before_same_source_reconnect(cx: &mu
 	});
 }
 
+fn model_selection_after_dispatch(
+	index: usize,
+	preserve: bool,
+	confirmed: bool,
+) -> AgentModelSelectionState {
+	if index == 1 {
+		available()
+	} else if confirmed {
+		let mut state = available();
+
+		if let AgentModelSelectionState::Available {
+			model,
+			effort,
+			last_outcome,
+			last_receipt,
+			..
+		} = &mut state
+		{
+			*model = ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
+				.unwrap();
+			*effort = if preserve {
+				None
+			} else {
+				Some(ConversationReasoningEffort::new(EFFORT).unwrap())
+			};
+			*last_outcome = Some(AgentModelOutcome::TargetObserved);
+			*last_receipt = Some(receipt(preserve, true));
+		}
+
+		state
+	} else {
+		AgentModelSelectionState::Pending {
+			model: ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
+				.unwrap(),
+			effort: None,
+			state: AgentModelOutcome::Unknown,
+			last_receipt: Some(receipt(preserve, false)),
+		}
+	}
+}
+
 async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
@@ -641,45 +682,7 @@ async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<A
 
 		assert_eq!(work_id.as_str(), "root");
 
-		let state = if index == 1 {
-			available()
-		} else if confirmed {
-			let mut state = available();
-
-			if let AgentModelSelectionState::Available {
-				model,
-				effort,
-				last_outcome,
-				last_receipt,
-				..
-			} = &mut state
-			{
-				*model =
-					ConversationModel::new(if preserve { "plain-model" } else { "future-model" })
-						.unwrap();
-				*effort = if preserve {
-					None
-				} else {
-					Some(ConversationReasoningEffort::new(EFFORT).unwrap())
-				};
-				*last_outcome = Some(AgentModelOutcome::TargetObserved);
-				*last_receipt = Some(receipt(preserve, true));
-			}
-
-			state
-		} else {
-			AgentModelSelectionState::Pending {
-				model: ConversationModel::new(if preserve {
-					"plain-model"
-				} else {
-					"future-model"
-				})
-				.unwrap(),
-				effort: None,
-				state: AgentModelOutcome::Unknown,
-				last_receipt: Some(receipt(preserve, false)),
-			}
-		};
+		let state = model_selection_after_dispatch(index, preserve, confirmed);
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),
