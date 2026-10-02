@@ -2163,6 +2163,7 @@ mod tests {
 			control.clear_local_generation(&intent.generation_id).unwrap();
 		}
 	}
+
 	#[tokio::test]
 	async fn termination_store_failures_preserve_ownership_until_positive_death() {
 		for blocked_state in ["stopping", "dead"] {

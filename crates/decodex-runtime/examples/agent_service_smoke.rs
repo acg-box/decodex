@@ -163,56 +163,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),sandbox:AgentSandboxDto::ReadOnly,
 		}),IdempotencyKey::new("smoke-start").expect("valid bounded qualification fixture")).await?;
 
-		if !matches!(outcome, AgentCommandResponse::Accepted { .. }) {
-			eprintln!("Agent public start outcome: {outcome:?}");
-
-			return Err::<(), Box<dyn Error>>("production Agent start was not accepted".into());
-		}
-
-		tokio::time::timeout(Duration::from_secs(90), async {
-			loop {
-				if let AgentHistoryResult::Available { entries, .. } = client
-					.history(
-						EntityId::new("agent-service-smoke")
-							.expect("valid bounded qualification fixture"),
-					)
-					.await?
-				{
-					if entries.iter().any(|entry| {
-						entry.kind == "assistant" && entry.text.contains("SERVICE_READY")
-					}) {
-						break;
-					}
-
-					if let Some(entry) = entries.iter().find(|entry| {
-						entry.kind == "system"
-							&& entry.text.contains("reconnection_needs_attention")
-					}) {
-						eprintln!("Agent public attention: {}", entry.text);
-
-						return Err("production Agent connection needs attention".into());
-					}
-				}
-
-				tokio::time::sleep(Duration::from_millis(500)).await;
-			}
-
-			Ok::<(), Box<dyn Error>>(())
-		})
-		.await??;
-
-		if !matches!(client.query().await?, AgentSnapshotResult::Available(_)) {
-			return Err("snapshot unavailable".into());
-		}
-
-		println!(
-			"Production Agent start, model response, history and snapshot passed through same-UID protocol."
-		);
-
-		verify_capabilities(&client).await?;
-		closed_loop_before_restart(&client, &root, scope).await?;
-
-		Ok(())
+		verify_initial_service(&client, outcome, &root, scope).await
 	};
 	let result = match tokio::time::timeout(Duration::from_secs(900), run).await {
 		Ok(result) => result,
@@ -466,43 +417,7 @@ async fn closed_loop_before_restart(
 	reliability::carryover(client, root).await?;
 
 	send(client,"repair-original-worker","Use agent_continue_worker exactly once on existing service-a; request exactly REPAIRED_A without tools. Do not create work. Resolve the new worker completion event when it arrives and summarize REPAIR_ACCEPTED. Only Agent coordination tools.").await?;
-
-	let repaired = wait_graph(client, "repair original worker", |graph| {
-		idle(graph)
-			&& graph
-				.work_items
-				.iter()
-				.find(|work| work.id == "service-a")
-				.is_some_and(|work| work.status == AgentWorkStatusDto::Resolved)
-			&& !graph.pending_events.iter().any(|event| {
-				event.event_kind == "user_message" || event.event_kind == "worker_turn_completed"
-			})
-	})
-	.await?;
-
-	for work in &initial.work_items {
-		if repaired
-			.work_items
-			.iter()
-			.find(|next| next.id == work.id)
-			.and_then(|next| next.codex_thread_id.as_ref())
-			!= work.codex_thread_id.as_ref()
-		{
-			return Err("repair changed a thread identity".into());
-		}
-	}
-
-	let results = history(client, "service-a").await?;
-	let assistants: Vec<_> = results.iter().filter(|entry| entry.kind == "assistant").collect();
-
-	if assistants.len() != 2 || !assistants.iter().any(|entry| entry.text.contains("REPAIRED_A")) {
-		return Err("repair did not complete exactly once".into());
-	}
-
-	println!(
-		"Service repair: original service-a thread produced exactly two assistant completions."
-	);
-
+	verify_worker_repair(client, &initial).await?;
 	send(client,"decision-policy","The next automation result for service-a will present a choice of two summary formats: A concise or B detailed. Record user_decision on that exact automation event and ask the user to choose. Do not choose automatically. The next service-b automation result carries nextCheckAtMicros: record wait on that exact event and schedule that exact check; when followup_due arrives, resolve it and summarize FOLLOWUP_DONE. Never dispatch another worker for these events.").await?;
 	wait_graph(client, "decision policy accepted", |graph| {
 		idle(graph) && !graph.pending_events.iter().any(|event| event.event_kind == "user_message")
@@ -799,6 +714,104 @@ async fn verify_capabilities(client: &AgentClient) -> SmokeResult<()> {
 		},
 		_ => return Err("native capabilities are unavailable".into()),
 	}
+
+	Ok(())
+}
+
+async fn verify_initial_service(
+	client: &AgentClient,
+	outcome: AgentCommandResponse,
+	root: &DecodexRoot,
+	scope: SmokeScope,
+) -> SmokeResult<()> {
+	if !matches!(outcome, AgentCommandResponse::Accepted { .. }) {
+		eprintln!("Agent public start outcome: {outcome:?}");
+
+		return Err::<(), Box<dyn Error>>("production Agent start was not accepted".into());
+	}
+
+	tokio::time::timeout(Duration::from_secs(90), async {
+		loop {
+			if let AgentHistoryResult::Available { entries, .. } = client
+				.history(
+					EntityId::new("agent-service-smoke")
+						.expect("valid bounded qualification fixture"),
+				)
+				.await?
+			{
+				if entries
+					.iter()
+					.any(|entry| entry.kind == "assistant" && entry.text.contains("SERVICE_READY"))
+				{
+					break;
+				}
+
+				if let Some(entry) = entries.iter().find(|entry| {
+					entry.kind == "system" && entry.text.contains("reconnection_needs_attention")
+				}) {
+					eprintln!("Agent public attention: {}", entry.text);
+
+					return Err("production Agent connection needs attention".into());
+				}
+			}
+
+			tokio::time::sleep(Duration::from_millis(500)).await;
+		}
+
+		Ok::<(), Box<dyn Error>>(())
+	})
+	.await??;
+
+	if !matches!(client.query().await?, AgentSnapshotResult::Available(_)) {
+		return Err("snapshot unavailable".into());
+	}
+
+	println!(
+		"Production Agent start, model response, history and snapshot passed through same-UID protocol."
+	);
+
+	verify_capabilities(client).await?;
+	closed_loop_before_restart(client, root, scope).await?;
+
+	Ok(())
+}
+
+async fn verify_worker_repair(client: &AgentClient, initial: &AgentSnapshotDto) -> SmokeResult<()> {
+	let repaired = wait_graph(client, "repair original worker", |graph| {
+		idle(graph)
+			&& graph
+				.work_items
+				.iter()
+				.find(|work| work.id == "service-a")
+				.is_some_and(|work| work.status == AgentWorkStatusDto::Resolved)
+			&& !graph.pending_events.iter().any(|event| {
+				event.event_kind == "user_message" || event.event_kind == "worker_turn_completed"
+			})
+	})
+	.await?;
+
+	for work in &initial.work_items {
+		if repaired
+			.work_items
+			.iter()
+			.find(|next| next.id == work.id)
+			.and_then(|next| next.codex_thread_id.as_ref())
+			!= work.codex_thread_id.as_ref()
+		{
+			return Err("repair changed a thread identity".into());
+		}
+	}
+
+	let results = history(client, "service-a").await?;
+	let assistants: Vec<_> = results.iter().filter(|entry| entry.kind == "assistant").collect();
+
+	if assistants.len() != 2 || !assistants.iter().any(|entry| entry.text.contains("REPAIRED_A")) {
+		return Err("repair did not complete exactly once".into());
+	}
+
+	println!(
+		"Service repair: original service-a thread produced exactly two assistant completions."
+	);
 
 	Ok(())
 }
