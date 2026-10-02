@@ -1045,36 +1045,7 @@ impl Conversations {
 			ConversationQueryPurpose::CreationReceipt { command } =>
 				state.route_creation_receipt(&command, &result.payload),
 			ConversationQueryPurpose::InitialCatalog { epoch, working_directory } => {
-				if state.selected.is_none() && state.catalog_epoch == epoch {
-					state.catalog = None;
-					state.catalog_source = None;
-					state.initial_defaults = None;
-					state.initial_defaults_ready = false;
-
-					if let QueryResultPayload::InitialModelCatalog(
-						InitialModelCatalogResult::Available {
-							account_id,
-							account_revision,
-							working_directory: actual,
-							models,
-							defaults,
-						},
-					) = &result.payload
-						&& actual == &working_directory
-						&& *account_revision > 0
-					{
-						state.catalog_source = Some(CatalogSource::Initial {
-							account_id: account_id.clone(),
-							account_revision: *account_revision,
-						});
-						state.catalog = Some(models.clone());
-						state.initial_defaults = defaults.clone();
-
-						state.apply_initial_defaults();
-					}
-
-					state.reconcile_catalog_tier();
-				}
+				state.apply_initial_catalog_result(epoch, &working_directory, &result.payload);
 
 				(ConversationRouteOutcome::Fresh, false)
 			},
@@ -1377,39 +1348,8 @@ impl Conversations {
 				ConversationRouteOutcome::Fresh
 			},
 			CommandOutcome::Rejected => {
-				if matches!(result.error.as_ref(), Some(CommandError::AcceptanceUnknown)) {
-					if submission {
-						state.requested_selection =
-							Some(command_conversation_id(&in_flight.envelope.payload));
-					}
-
-					state.command = ConversationCommandState::OutcomeUnknown;
-
-					state.cancel_refresh_batch();
-
-					dispatch_queued = state.queue_command_readback();
-				} else if batch_refresh {
-					state.routing_successor_reconciliation = None;
-					state.outcome_unknown_readback_generation = None;
-					dispatch_queued = state.advance_refresh_batch(false, true);
-				} else {
-					state.routing_successor_reconciliation = None;
-					state.outcome_unknown_readback_generation = None;
-					state.command = match result.error.as_ref() {
-						Some(CommandError::ConversationRecoveryRequired { action }) =>
-							ConversationCommandState::ManualRecovery(*action),
-						_ => ConversationCommandState::Refused,
-					};
-
-					if matches!(
-						result.error.as_ref(),
-						Some(CommandError::ConversationRecoveryRequired { .. })
-					) {
-						state.reset_pagination();
-
-						dispatch_queued = state.queue_list();
-					}
-				}
+				dispatch_queued =
+					state.apply_rejected_command(&in_flight, result, submission, batch_refresh);
 
 				ConversationRouteOutcome::Fresh
 			},
@@ -1484,6 +1424,88 @@ struct State {
 	execution: ConversationExecutionSettings,
 }
 impl State {
+	fn apply_initial_catalog_result(
+		&mut self,
+		epoch: u64,
+		working_directory: &ConversationWorkingDirectory,
+		payload: &QueryResultPayload,
+	) {
+		if self.selected.is_none() && self.catalog_epoch == epoch {
+			self.catalog = None;
+			self.catalog_source = None;
+			self.initial_defaults = None;
+			self.initial_defaults_ready = false;
+
+			if let QueryResultPayload::InitialModelCatalog(InitialModelCatalogResult::Available {
+				account_id,
+				account_revision,
+				working_directory: actual,
+				models,
+				defaults,
+			}) = payload
+				&& actual == working_directory
+				&& *account_revision > 0
+			{
+				self.catalog_source = Some(CatalogSource::Initial {
+					account_id: account_id.clone(),
+					account_revision: *account_revision,
+				});
+				self.catalog = Some(models.clone());
+				self.initial_defaults = defaults.clone();
+
+				self.apply_initial_defaults();
+			}
+
+			self.reconcile_catalog_tier();
+		}
+	}
+
+	fn apply_rejected_command(
+		&mut self,
+		in_flight: &InFlightCommand,
+		result: &CommandResultEnvelope,
+		submission: bool,
+		batch_refresh: bool,
+	) -> bool {
+		let mut dispatch_queued = false;
+
+		if matches!(result.error.as_ref(), Some(CommandError::AcceptanceUnknown)) {
+			if submission {
+				self.requested_selection =
+					Some(command_conversation_id(&in_flight.envelope.payload));
+			}
+
+			self.command = ConversationCommandState::OutcomeUnknown;
+
+			self.cancel_refresh_batch();
+
+			dispatch_queued = self.queue_command_readback();
+		} else if batch_refresh {
+			self.routing_successor_reconciliation = None;
+			self.outcome_unknown_readback_generation = None;
+			dispatch_queued = self.advance_refresh_batch(false, true);
+		} else {
+			self.routing_successor_reconciliation = None;
+			self.outcome_unknown_readback_generation = None;
+			self.command = match result.error.as_ref() {
+				Some(CommandError::ConversationRecoveryRequired { action }) =>
+					ConversationCommandState::ManualRecovery(*action),
+				_ => ConversationCommandState::Refused,
+			};
+
+			if matches!(
+				result.error.as_ref(),
+				Some(CommandError::ConversationRecoveryRequired { .. })
+			) {
+				self.reset_pagination();
+
+				dispatch_queued = self.queue_list();
+			}
+		}
+
+		dispatch_queued
+	}
+
 	fn apply_model_review(
 		&mut self,
 		epoch: u64,
@@ -4469,6 +4491,90 @@ pub(crate) mod tests {
 		));
 	}
 
+	fn complete_stale_establishment_refresh(
+		conversations: &Conversations,
+		server_id: &ServerId,
+		establishing: &ConversationSummary,
+	) {
+		let fourth = conversations
+			.try_take_dispatch(1, server_id)
+			.expect("stale establishment refresh is attempted after live work");
+		let fourth_command = fourth.command().expect("fourth refresh is a command");
+
+		assert!(matches!(
+			&fourth_command.payload,
+			CommandPayload::RefreshConversation { conversation_id }
+				if conversation_id == &establishing.conversation_id
+		));
+
+		conversations.command_sent(&fourth);
+
+		let establishing_revision = EntityRevision(establishing.conversation_revision.0 + 1);
+		let fourth_result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: fourth_command.client_command_id.clone(),
+			idempotency_key: fourth_command.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(establishing_revision),
+			payload: Some(ResultPayload::ConversationArchived {
+				conversation_id: establishing.conversation_id.clone(),
+				conversation_revision: establishing_revision,
+			}),
+			error: None,
+		};
+
+		assert_eq!(
+			conversations.route_command_result(1, server_id, &fourth_result),
+			ConversationRouteOutcome::Fresh
+		);
+	}
+
+	fn read_routing_successor_redirect(
+		conversations: &Conversations,
+		server_id: &ServerId,
+		source: &ConversationSummary,
+		successor_id: &EntityId,
+		successor: &ConversationSummary,
+	) -> QueryResultEnvelope {
+		let source_query = match conversations
+			.try_take_dispatch(2, server_id)
+			.expect("complete list queues the exact source read")
+		{
+			ConversationDispatch::Query(query) => query,
+			ConversationDispatch::Command(_) => {
+				panic!("reconciliation must not resend the command")
+			},
+		};
+
+		assert!(matches!(
+			&source_query.payload,
+			QueryPayload::GetConversation { conversation_id }
+				if conversation_id == &source.conversation_id
+		));
+
+		let redirect_result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			query_id: source_query.query_id,
+			payload: QueryResultPayload::Conversation(
+				ConversationResult::RoutingSuccessorRedirect {
+					source_conversation_id: source.conversation_id.clone(),
+					source_conversation_revision: EntityRevision(2),
+					successor_conversation_id: successor_id.clone(),
+					successor_conversation_revision: successor.conversation_revision,
+				},
+			),
+		};
+
+		assert_eq!(
+			conversations.route_query_result(2, server_id, &redirect_result),
+			ConversationRouteOutcome::Fresh
+		);
+
+		redirect_result
+	}
+
 	fn seed_refresh_batch(
 		conversations: &Conversations,
 		current: &ConversationSummary,
@@ -4783,39 +4889,7 @@ pub(crate) mod tests {
 			ConversationRouteOutcome::Fresh
 		);
 
-		let fourth = conversations
-			.try_take_dispatch(1, &server_id)
-			.expect("stale establishment refresh is attempted after live work");
-		let fourth_command = fourth.command().expect("fourth refresh is a command");
-
-		assert!(matches!(
-			&fourth_command.payload,
-			CommandPayload::RefreshConversation { conversation_id }
-				if conversation_id == &establishing.conversation_id
-		));
-
-		conversations.command_sent(&fourth);
-
-		let establishing_revision = EntityRevision(establishing.conversation_revision.0 + 1);
-		let fourth_result = CommandResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: server_id.clone(),
-			client_command_id: fourth_command.client_command_id.clone(),
-			idempotency_key: fourth_command.idempotency_key.clone(),
-			outcome: CommandOutcome::Succeeded,
-			entity_revision: Some(establishing_revision),
-			payload: Some(ResultPayload::ConversationArchived {
-				conversation_id: establishing.conversation_id.clone(),
-				conversation_revision: establishing_revision,
-			}),
-			error: None,
-		};
-
-		assert_eq!(
-			conversations.route_command_result(1, &server_id, &fourth_result),
-			ConversationRouteOutcome::Fresh
-		);
-
+		complete_stale_establishment_refresh(&conversations, &server_id, &establishing);
 		verify_refresh_batch_readback(&conversations, &server_id, current, busy);
 	}
 
@@ -5477,41 +5551,13 @@ pub(crate) mod tests {
 		assert!(!listed.can_submit);
 		assert_eq!(conversations.submit("must remain fenced"), Err(ConversationInputError::Busy));
 
-		let source_query = match conversations
-			.try_take_dispatch(2, &server_id)
-			.expect("complete list queues the exact source read")
-		{
-			ConversationDispatch::Query(query) => query,
-			ConversationDispatch::Command(_) => {
-				panic!("reconciliation must not resend the command")
-			},
-		};
-
-		assert!(matches!(
-			&source_query.payload,
-			QueryPayload::GetConversation { conversation_id }
-				if conversation_id == &source.conversation_id
-		));
-
-		let redirect_result = QueryResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: server_id.clone(),
-			query_id: source_query.query_id,
-			payload: QueryResultPayload::Conversation(
-				ConversationResult::RoutingSuccessorRedirect {
-					source_conversation_id: source.conversation_id.clone(),
-					source_conversation_revision: EntityRevision(2),
-					successor_conversation_id: successor_id.clone(),
-					successor_conversation_revision: successor.conversation_revision,
-				},
-			),
-		};
-
-		assert_eq!(
-			conversations.route_query_result(2, &server_id, &redirect_result),
-			ConversationRouteOutcome::Fresh
+		let redirect_result = read_routing_successor_redirect(
+			&conversations,
+			&server_id,
+			&source,
+			&successor_id,
+			&successor,
 		);
-
 		let successor_query = match conversations
 			.try_take_dispatch(2, &server_id)
 			.expect("exact redirect queues the successor projection read")
