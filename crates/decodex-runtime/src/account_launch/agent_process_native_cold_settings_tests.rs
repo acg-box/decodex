@@ -4,6 +4,7 @@
 
 use std::{
 	env,
+	ffi::OsStr,
 	fs::{self, OpenOptions},
 	io::Write as _,
 	os::unix::fs::OpenOptionsExt as _,
@@ -119,6 +120,26 @@ fn counter_output(input: &Value) -> Value {
 	counter(&specs, None).expect("advertised native counter tool")
 }
 
+fn metadata_response(path: &str) -> (u16, &'static str, String) {
+	if path.contains("/models") {
+		(200, "application/json", serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
+	} else if path.contains("/accounts/check") {
+		(200,"application/json",serde_json::json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"},{"id":"workspace-fixture-2","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
+	} else if path.contains("/settings/user") {
+		(
+			200,
+			"application/json",
+			serde_json::json!({"commit_attribution_enabled":false}).to_string(),
+		)
+	} else if path.contains("/plugins/featured") {
+		(200, "application/json", "[]".into())
+	} else {
+		eprintln!("optional fixture metadata unavailable: {path}");
+
+		(404, "application/json", "{}".into())
+	}
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
@@ -163,33 +184,7 @@ async fn qualify(home: &Path) {
 	.expect("native cold-read qualification");
 	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("native cold-read qualification");
 
-	let mut native = NativeSession::start(&binary, &native_home);
-	let started = native
-		.client
-		.thread_start(
-			serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
-		)
-		.await
-		.expect("native cold-read qualification");
-	let thread =
-		started["thread"]["id"].as_str().expect("native cold-read qualification").to_owned();
-	let turn = native
-		.client
-		.turn_start(
-			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Save fixture input"}]}),
-		)
-		.await
-		.expect("native cold-read qualification");
-
-	loop {
-		if matches!(native.events.recv().await.expect("native cold-read qualification"), ServerEvent::Notification { method, params } if method == "turn/completed" && params["threadId"] == thread && params["turn"]["id"] == turn["turn"]["id"])
-		{
-			break;
-		}
-	}
-
-	drop(native);
-
+	let thread = seed_native_thread(&binary, &native_home, home).await;
 	// The saved fixture turn did not need authentication. The production reader
 	// uses the enrolled ChatGPT account and must admit native token projection.
 	let config = native_home.join("config.toml");
@@ -282,6 +277,37 @@ async fn qualify(home: &Path) {
 	);
 
 	backend.abort();
+}
+
+async fn seed_native_thread(binary: &OsStr, native_home: &Path, home: &Path) -> String {
+	let mut native = NativeSession::start(binary, native_home);
+	let started = native
+		.client
+		.thread_start(
+			serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
+		)
+		.await
+		.expect("native cold-read qualification");
+	let thread =
+		started["thread"]["id"].as_str().expect("native cold-read qualification").to_owned();
+	let turn = native
+		.client
+		.turn_start(
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Save fixture input"}]}),
+		)
+		.await
+		.expect("native cold-read qualification");
+
+	loop {
+		if matches!(native.events.recv().await.expect("native cold-read qualification"), ServerEvent::Notification { method, params } if method == "turn/completed" && params["threadId"] == thread && params["turn"]["id"] == turn["turn"]["id"])
+		{
+			break;
+		}
+	}
+
+	drop(native);
+
+	thread
 }
 
 async fn restart_and_submit(
@@ -442,23 +468,7 @@ async fn serve(
 		let (status, content_type, body) = if first.starts_with("GET ") {
 			metadata.fetch_add(1, Ordering::AcqRel);
 
-			if path.contains("/models") {
-				(200, "application/json", serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
-			} else if path.contains("/accounts/check") {
-				(200,"application/json",serde_json::json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"},{"id":"workspace-fixture-2","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
-			} else if path.contains("/settings/user") {
-				(
-					200,
-					"application/json",
-					serde_json::json!({"commit_attribution_enabled":false}).to_string(),
-				)
-			} else if path.contains("/plugins/featured") {
-				(200, "application/json", "[]".into())
-			} else {
-				eprintln!("optional fixture metadata unavailable: {path}");
-
-				(404, "application/json", "{}".into())
-			}
+			metadata_response(&path)
 		} else {
 			assert!(
 				first.starts_with("POST ") && path.ends_with("/responses"),

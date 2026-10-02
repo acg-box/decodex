@@ -12,7 +12,7 @@ pub(super) struct SettingsRevisions(Arc<Mutex<HashMap<String, Weak<AtomicU64>>>>
 impl SettingsRevisions {
 	fn next_revision(&self) -> u64 {
 		self.1
-			.fetch_update(Ordering::AcqRel, Ordering::Acquire, |v| Some(v.saturating_add(1)))
+			.try_update(Ordering::AcqRel, Ordering::Acquire, |v| Some(v.saturating_add(1)))
 			.unwrap_or(u64::MAX)
 			.saturating_add(1)
 	}

@@ -1177,7 +1177,8 @@ impl ConversationRuntime {
 			process_generation_id: generation_id,
 		};
 
-		self.admit_initial_process(
+		// Bound startup state separately from the caller's conversation future.
+		Box::pin(self.admit_initial_process(
 			InitialSessionEstablishment {
 				command,
 				conversation_revision,
@@ -1192,7 +1193,7 @@ impl ConversationRuntime {
 			created,
 			process_request,
 			establishment,
-		)
+		))
 		.await
 	}
 
@@ -2851,9 +2852,15 @@ impl ConversationRuntime {
 		};
 
 		if plan.plan.kind == ContinuationPlanKind::ContextPackFallback {
-			return self
-				.establish_context_fallback(command, sequence, decision, plan, Some(session))
-				.await;
+			// Keep the fallback startup state out of ordinary submission futures.
+			return Box::pin(self.establish_context_fallback(
+				command,
+				sequence,
+				decision,
+				plan,
+				Some(session),
+			))
+			.await;
 		}
 
 		let resume = match self.resume_same_thread(&session).await {
@@ -2983,14 +2990,15 @@ impl ConversationRuntime {
 				},
 			};
 
-		self.prepare_dispatch_attempt(
+		// Keep the dispatch future off the nested startup and recovery poll stacks.
+		Box::pin(self.prepare_dispatch_attempt(
 			TurnDispatch { operation_key, session, turn_id, turn_sequence },
 			decision,
 			plan,
 			runtime_authority,
 			attempt_id,
 			prepared,
-		)
+		))
 		.await
 	}
 
@@ -5224,9 +5232,15 @@ impl ConversationRuntime {
 		if planned.plan.plan.kind == ContinuationPlanKind::ContextPackFallback {
 			let RehydratedTurnPlan { admission, decision, plan } = planned;
 
-			return self
-				.establish_context_fallback(command, admission.sequence, decision, plan, None)
-				.await;
+			// Keep the fallback startup state out of ordinary submission futures.
+			return Box::pin(self.establish_context_fallback(
+				command,
+				admission.sequence,
+				decision,
+				plan,
+				None,
+			))
+			.await;
 		}
 
 		let account = match self.load_rehydrated_account_revision(&command, planned).await {

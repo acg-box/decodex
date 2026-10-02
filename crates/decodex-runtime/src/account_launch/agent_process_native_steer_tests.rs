@@ -128,9 +128,33 @@ async fn qualify(cold: bool) {
 
 	agent.recover_persisted().await.expect("native steering fixture operation");
 
+	assert_recovered_steer(&store, &thread_id, &turn, key, pending).await;
+	assert_steer_history(&session, &thread_id, &turn, key).await;
+	qualify_query(&root, store.clone(), &thread_id, &turn, key).await;
+
+	assert_eq!(count.load(Ordering::Acquire), calls, "receipt recovery cannot replay input");
+
+	drop(agent);
+	drop(session);
+
+	backend.abort();
+}
+
+async fn assert_recovered_steer(
+	store: &SqliteStore,
+	thread_id: &str,
+	turn: &str,
+	key: &str,
+	pending: i64,
+) {
 	assert!(
 		store
-			.agent_steer_confirmed("agent".into(), thread_id.clone(), turn.clone(), key.into())
+			.agent_steer_confirmed(
+				"agent".into(),
+				thread_id.to_owned(),
+				turn.to_owned(),
+				key.into()
+			)
 			.await
 			.expect("native steering fixture operation")
 	);
@@ -138,8 +162,8 @@ async fn qualify(cold: bool) {
 		!store
 			.agent_steer_confirmed(
 				"agent".into(),
-				thread_id.clone(),
-				turn.clone(),
+				thread_id.to_owned(),
+				turn.to_owned(),
 				"another-submission".into()
 			)
 			.await
@@ -153,10 +177,12 @@ async fn qualify(cold: bool) {
 			.disposition
 			.is_some()
 	);
+}
 
+async fn assert_steer_history(session: &NativeSession, thread_id: &str, turn: &str, key: &str) {
 	let history = session
 		.client
-		.thread_read_turn(&thread_id, &turn)
+		.thread_read_turn(thread_id, turn)
 		.await
 		.expect("native steering fixture operation");
 	let items = history["thread"]["turns"]
@@ -170,15 +196,6 @@ async fn qualify(cold: bool) {
 
 	assert_eq!(items.iter().filter(|item| item["type"] == "userMessage").count(), 2);
 	assert_eq!(items.iter().filter(|item| item["clientId"] == key).count(), 1);
-
-	qualify_query(&root, store.clone(), &thread_id, &turn, key).await;
-
-	assert_eq!(count.load(Ordering::Acquire), calls, "receipt recovery cannot replay input");
-
-	drop(agent);
-	drop(session);
-
-	backend.abort();
 }
 
 async fn consume_receipt(

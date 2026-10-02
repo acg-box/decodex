@@ -3634,7 +3634,7 @@ impl ProcessQuarantineState {
 		#[cfg(test)]
 		if self
 			.panic_after_worker_pops
-			.fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
+			.try_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
 			.is_ok()
 		{
 			panic!("injected quarantine worker panic after pop");
