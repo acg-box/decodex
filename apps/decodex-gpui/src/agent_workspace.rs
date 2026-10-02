@@ -159,45 +159,7 @@ impl AgentSurface {
 			self.resource_feedback.clear();
 		}
 
-		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				work.id == id
-					&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
-			})
-		});
-
-		if is_manager {
-			let previous = self.composer_manager.clone().or_else(|| self.root_id());
-
-			if previous.as_deref() != Some(id) {
-				if let Some(previous) = previous {
-					self.draft_profiles
-						.tasks
-						.insert(previous.clone(), mem::take(&mut self.task_references));
-					self.draft_profiles
-						.files
-						.insert(previous.clone(), mem::take(&mut self.attachments));
-					self.draft_profiles
-						.texts
-						.insert(previous, self.composer.read(cx).content().into());
-				}
-
-				self.attachments = self.draft_profiles.files.remove(id).unwrap_or_default();
-				self.task_references = self.draft_profiles.tasks.remove(id).unwrap_or_default();
-				self.composer_menu = None;
-
-				let draft = self.draft_profiles.texts.get(id).cloned().unwrap_or_default();
-
-				self.composer.update(cx, |input, cx| {
-					input.set_content(&draft, cx);
-					input.set_placeholder(prompts::next(), cx);
-				});
-
-				Self::refresh_prompt(cx);
-			}
-
-			self.composer_manager = Some(id.into());
-		}
+		self.restore_manager_composer(id, cx);
 
 		if let Some((old, history)) = &self.history {
 			self.history_cache.insert(old.clone(), history.clone());
@@ -269,6 +231,48 @@ impl AgentSurface {
 		self.load_history(cx);
 		self.sync_request(cx);
 		cx.notify();
+	}
+
+	fn restore_manager_composer(&mut self, id: &str, cx: &mut Context<Self>) {
+		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
+			snapshot.work_items.iter().any(|work| {
+				work.id == id
+					&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
+			})
+		});
+
+		if is_manager {
+			let previous = self.composer_manager.clone().or_else(|| self.root_id());
+
+			if previous.as_deref() != Some(id) {
+				if let Some(previous) = previous {
+					self.draft_profiles
+						.tasks
+						.insert(previous.clone(), mem::take(&mut self.task_references));
+					self.draft_profiles
+						.files
+						.insert(previous.clone(), mem::take(&mut self.attachments));
+					self.draft_profiles
+						.texts
+						.insert(previous, self.composer.read(cx).content().into());
+				}
+
+				self.attachments = self.draft_profiles.files.remove(id).unwrap_or_default();
+				self.task_references = self.draft_profiles.tasks.remove(id).unwrap_or_default();
+				self.composer_menu = None;
+
+				let draft = self.draft_profiles.texts.get(id).cloned().unwrap_or_default();
+
+				self.composer.update(cx, |input, cx| {
+					input.set_content(&draft, cx);
+					input.set_placeholder(prompts::next(), cx);
+				});
+
+				Self::refresh_prompt(cx);
+			}
+
+			self.composer_manager = Some(id.into());
+		}
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -414,37 +418,7 @@ impl AgentSurface {
 			},
 			cx,
 		));
-		panel = panel.child(
-			gpui::div()
-				.mt_5()
-				.px_2()
-				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(TEXT_MUTED))
-				.flex()
-				.items_center()
-				.justify_between()
-				.child("Projects")
-				.child(self.workspace_action(
-					"new-project".into(),
-					"+".into(),
-					|s, cx| {
-						if let Some(id) = s.root_id() {
-							s.open_page(&id, cx);
-						}
-
-						if s.composer.read(cx).content().trim().is_empty() {
-							s.composer.update(cx, |input, cx| {
-								input.set_content("Create a project workspace for ", cx)
-							});
-						} else {
-							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
-						}
-
-						cx.notify();
-					},
-					cx,
-				)),
-		);
+		panel = panel.child(self.workspace_projects_header(cx));
 
 		let mut list = gpui::div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
 
@@ -510,6 +484,40 @@ impl AgentSurface {
 		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
 
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
+	}
+
+	fn workspace_projects_header(&self, cx: &mut Context<Self>) -> Div {
+		gpui::div()
+			.mt_5()
+			.px_2()
+			.text_size(gpui::px(11.0))
+			.text_color(gpui::rgb(TEXT_MUTED))
+			.flex()
+			.items_center()
+			.justify_between()
+			.child("Projects")
+			.child(self.workspace_action(
+				"new-project".into(),
+				"+".into(),
+				|s, cx| {
+					if let Some(id) = s.root_id() {
+						s.open_page(&id, cx);
+					}
+
+					if s.composer.read(cx).content().trim().is_empty() {
+						s.composer.update(cx, |input, cx| {
+							input.set_content("Create a project workspace for ", cx)
+						});
+					} else {
+						s.feedback =
+							"Your draft is kept. Send or clear it before starting a new project."
+								.into();
+					}
+
+					cx.notify();
+				},
+				cx,
+			))
 	}
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -980,31 +988,7 @@ impl AgentSurface {
 				.child(self.workspace_followup(work, cx));
 		}
 
-		let presence = ui_motion::value(
-			"work-details-presence",
-			if self.details_visible { 1. } else { 0. },
-			window,
-			cx,
-		);
-
-		if presence > 0.001
-			&& let (Some(snapshot), Some(work)) = (&self.snapshot, selected.as_ref())
-		{
-			chat = chat.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.top(gpui::px(38. + (1. - presence) * 5.))
-						.right(gpui::px(12.))
-						.w(gpui::px(320.))
-						.max_w_full()
-						.opacity(presence)
-						.child(self.inspection_card(snapshot, work, cx)),
-				)
-				.with_priority(2),
-			);
-		}
-
+		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
 		let chat = if self.native_agents.selected.is_some() {
 			self.native_agent_view(cx)
 		} else {
@@ -1047,6 +1031,41 @@ impl AgentSurface {
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
 			.into_any_element()
+	}
+
+	fn workspace_details_overlay(
+		&self,
+		mut chat: Stateful<Div>,
+		selected: Option<&AgentWorkItemDto>,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		let presence = ui_motion::value(
+			"work-details-presence",
+			if self.details_visible { 1. } else { 0. },
+			window,
+			cx,
+		);
+
+		if presence > 0.001
+			&& let (Some(snapshot), Some(work)) = (&self.snapshot, selected)
+		{
+			chat = chat.child(
+				gpui::deferred(
+					gpui::div()
+						.absolute()
+						.top(gpui::px(38. + (1. - presence) * 5.))
+						.right(gpui::px(12.))
+						.w(gpui::px(320.))
+						.max_w_full()
+						.opacity(presence)
+						.child(self.inspection_card(snapshot, work, cx)),
+				)
+				.with_priority(2),
+			);
+		}
+
+		chat
 	}
 
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1390,21 +1409,9 @@ impl AgentSurface {
 			.tab_index(0)
 			.role(Role::Group)
 			.aria_label("Work graph. Drag or scroll to pan. Control-scroll to zoom.")
-			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
-				match event.keystroke.key.as_str() {
-					"left" => s.graph_pan.0 += 32.0,
-					"right" => s.graph_pan.0 -= 32.0,
-					"up" => s.graph_pan.1 += 32.0,
-					"down" => s.graph_pan.1 -= 32.0,
-					"+" | "=" => s.graph_zoom = (s.graph_zoom * 1.2).min(1.8),
-					"-" => s.graph_zoom = (s.graph_zoom / 1.2).max(0.35),
-					"escape" => s.graph_expanded = false,
-					_ => return,
-				};
-
-				cx.stop_propagation();
-				cx.notify();
-			}))
+			.on_key_down(
+				cx.listener(|s, event: &KeyDownEvent, _, cx| s.handle_graph_key(event, cx)),
+			)
 			.flex_1()
 			.min_h_0()
 			.relative()
@@ -1489,6 +1496,22 @@ impl AgentSurface {
 				.absolute()
 				.size_full(),
 			)
+	}
+
+	fn handle_graph_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+		match event.keystroke.key.as_str() {
+			"left" => self.graph_pan.0 += 32.0,
+			"right" => self.graph_pan.0 -= 32.0,
+			"up" => self.graph_pan.1 += 32.0,
+			"down" => self.graph_pan.1 -= 32.0,
+			"+" | "=" => self.graph_zoom = (self.graph_zoom * 1.2).min(1.8),
+			"-" => self.graph_zoom = (self.graph_zoom / 1.2).max(0.35),
+			"escape" => self.graph_expanded = false,
+			_ => return,
+		};
+
+		cx.stop_propagation();
+		cx.notify();
 	}
 
 	fn graph_node(
@@ -1584,39 +1607,7 @@ impl AgentSurface {
 			return;
 		}
 		if ["composer", "composer-menu", "composer-effort"].contains(&page) {
-			self.visual_workspace_page("markdown", cx);
-			self.composer.update(cx, |input,cx|input.set_content("Review the interface and simplify the controls.\nKeep the glass material and check keyboard navigation.",cx));
-
-			self.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
-				models: ["gpt-6-astra", "gpt-5.6-sol"]
-					.into_iter()
-					.map(|name| decodex_protocol::AgentModelDto {
-						model: decodex_protocol::ConversationModel::new(name)
-							.expect("valid fixture model"),
-						name: name.into(),
-						efforts: vec![
-							ConversationReasoningEffort::Low,
-							ConversationReasoningEffort::Medium,
-							ConversationReasoningEffort::High,
-						],
-						default_effort: Some(ConversationReasoningEffort::Medium),
-						supports_fast: true,
-						service_tiers: vec![],
-						default_service_tier: None,
-						available_cyber_programs: None,
-						specialty: None,
-						supports_images: true,
-						availability: None,
-						upgrade: None,
-					})
-					.collect(),
-				memory_enabled: None,
-			});
-			self.fast = true;
-
-			if matches!(page, "composer-menu" | "composer-effort") {
-				self.composer_menu = Some("model");
-			}
+			self.visual_composer_page(page, cx);
 
 			return;
 		}
@@ -1704,6 +1695,42 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	fn visual_composer_page(&mut self, page: &str, cx: &mut Context<Self>) {
+		self.visual_workspace_page("markdown", cx);
+		self.composer.update(cx, |input,cx|input.set_content("Review the interface and simplify the controls.\nKeep the glass material and check keyboard navigation.",cx));
+
+		self.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
+			models: ["gpt-6-astra", "gpt-5.6-sol"]
+				.into_iter()
+				.map(|name| decodex_protocol::AgentModelDto {
+					model: decodex_protocol::ConversationModel::new(name)
+						.expect("valid fixture model"),
+					name: name.into(),
+					efforts: vec![
+						ConversationReasoningEffort::Low,
+						ConversationReasoningEffort::Medium,
+						ConversationReasoningEffort::High,
+					],
+					default_effort: Some(ConversationReasoningEffort::Medium),
+					supports_fast: true,
+					service_tiers: vec![],
+					default_service_tier: None,
+					available_cyber_programs: None,
+					specialty: None,
+					supports_images: true,
+					availability: None,
+					upgrade: None,
+				})
+				.collect(),
+			memory_enabled: None,
+		});
+		self.fast = true;
+
+		if matches!(page, "composer-menu" | "composer-effort") {
+			self.composer_menu = Some("model");
+		}
 	}
 
 	/// Explicit capture fixture. Never installed by the normal application path.
