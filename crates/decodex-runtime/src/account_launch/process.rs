@@ -6819,6 +6819,30 @@ pub(crate) mod tests {
 	}
 
 	#[test]
+	fn generated_schema_rejection_fixtures_record_app_server_spawn() {
+		for mode in ["too-many-schema-files", "schema-symlink"] {
+			let temp = TempDir::new().unwrap();
+			let marker_path = temp.path().join("spawned");
+			let mut command = fake_command(mode, temp.path(), Some(&marker_path));
+
+			command
+				.schema_args
+				.retain(|arg| arg != "--too-many-files" && arg != "--schema-symlink");
+
+			ReadOnlyProbe::new_for_test(
+				command,
+				binding(),
+				SchemaMarker::accepted(),
+				Duration::from_secs(5),
+			)
+			.run(&mut CapabilityCache::default())
+			.unwrap();
+
+			assert!(marker_path.exists(), "{mode} must record app-server startup");
+		}
+	}
+
+	#[test]
 	fn generated_schema_file_count_and_symlinks_fail_before_app_server_spawn() {
 		for mode in ["too-many-schema-files", "schema-symlink"] {
 			let temp = TempDir::new().unwrap();

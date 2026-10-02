@@ -208,7 +208,10 @@ if sys.argv[1] == "generate-json-schema":
 
 assert sys.argv[1] == "serve"
 mode = sys.argv[2]
-if mode in ("mark-spawn", "schema-missing", "nested-refresh-schema"):
+if mode in (
+    "mark-spawn", "schema-missing", "nested-refresh-schema",
+    "too-many-schema-files", "schema-symlink",
+):
     Path(sys.argv[3]).write_text("spawned")
 if mode in ("orphan-exit", "orphan-stubborn", "orphan-error", "orphan-timeout"):
     if mode == "orphan-stubborn":
