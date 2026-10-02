@@ -1,6 +1,6 @@
 //! Connector-level visibility preferences, separate from account approval settings.
-use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
+use gpui::{AnyElement, Div, Stateful};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
@@ -231,28 +231,7 @@ impl AgentSurface {
 				.into_any_element();
 		}
 
-		panel = panel.child(mcp_forms::mcp_button(
-			"app-exposure-inherit".into(),
-			"Use inherited settings".into(),
-			self.app_exposure.draft.is_none(),
-			cx,
-			|s, cx| {
-				s.app_exposure.draft = None;
-
-				cx.notify();
-			},
-		));
-		panel = panel.child(mcp_forms::mcp_button(
-			"app-exposure-clear".into(),
-			"Clear App-specific omissions".into(),
-			self.app_exposure.draft == Some(vec![]),
-			cx,
-			|s, cx| {
-				s.app_exposure.draft = Some(vec![]);
-
-				cx.notify();
-			},
-		));
+		panel = self.app_exposure_reset_controls(panel, cx);
 
 		for (index, surface, label) in [
 			(0, AgentToolExposureSurface::Direct, "Hide from initial tools"),
@@ -301,6 +280,39 @@ impl AgentSurface {
 				"Server restrictions still apply. This does not change tool approvals or disconnect the App.",
 			)
 			.into_any_element()
+	}
+}
+
+impl AgentSurface {
+	fn app_exposure_reset_controls(
+		&self,
+		mut panel: Stateful<Div>,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		panel = panel.child(mcp_forms::mcp_button(
+			"app-exposure-inherit".into(),
+			"Use inherited settings".into(),
+			self.app_exposure.draft.is_none(),
+			cx,
+			|s, cx| {
+				s.app_exposure.draft = None;
+
+				cx.notify();
+			},
+		));
+		panel = panel.child(mcp_forms::mcp_button(
+			"app-exposure-clear".into(),
+			"Clear App-specific omissions".into(),
+			self.app_exposure.draft == Some(vec![]),
+			cx,
+			|s, cx| {
+				s.app_exposure.draft = Some(vec![]);
+
+				cx.notify();
+			},
+		));
+
+		panel
 	}
 }
 

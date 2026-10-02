@@ -161,21 +161,7 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-
-		self.live_reviewer.epoch = self.live_reviewer.epoch.wrapping_add(1);
-
-		let epoch = self.live_reviewer.epoch;
-
-		self.live_reviewer.work = Some(work.clone());
-		self.live_reviewer.state = None;
-		self.live_reviewer.reviewed = false;
-		self.live_reviewer.feedback = if saving {
-			"Updating current-turn settings…"
-		} else {
-			"Reading current-turn operation state…"
-		}
-		.into();
-
+		let epoch = self.begin_live_settings_review(&work, saving);
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
@@ -418,6 +404,26 @@ impl AgentSurface {
 		}
 
 		panel.into_any_element()
+	}
+}
+
+impl AgentSurface {
+	fn begin_live_settings_review(&mut self, work: &str, saving: bool) -> u64 {
+		self.live_reviewer.epoch = self.live_reviewer.epoch.wrapping_add(1);
+
+		let epoch = self.live_reviewer.epoch;
+
+		self.live_reviewer.work = Some(work.to_owned());
+		self.live_reviewer.state = None;
+		self.live_reviewer.reviewed = false;
+		self.live_reviewer.feedback = if saving {
+			"Updating current-turn settings…"
+		} else {
+			"Reading current-turn operation state…"
+		}
+		.into();
+
+		epoch
 	}
 }
 
