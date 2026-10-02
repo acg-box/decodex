@@ -15,12 +15,12 @@ use rusqlite as _;
 use serde as _;
 use sha2 as _;
 use time as _;
-use tokio::process::Command;
+use tokio::{process::Command, sync::mpsc::Receiver};
 use tokio_tungstenite as _;
 use zeroize as _;
 
 use decodex_account_login as _;
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, ServerEvent};
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentDispatchState, AgentDisposition, AgentWorkStatus, SqliteStore};
 use decodex_protocol as _;
@@ -103,67 +103,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 		println!("Initial evidence passed: three independent threads; both worker results disposed after the initial Agent ended.");
 
-		let original_worker = store.get_agent_work_item("smoke-a".into()).await?;
-		let first_results = store.read_agent_work_events("smoke-a".into(), 100).await?;
-		let first_result = first_results.iter().find(|event| event.event_kind == "worker_turn_completed").ok_or("first worker result missing")?;
-
-		agent.enqueue_user_message("smoke-agent", "repair-and-decision-policy", "Continue the EXISTING smoke-a worker exactly once using agent_continue_worker. Ask it to reply exactly REPAIRED_A without tools. Do not create a worker or goal. Record a resolved disposition for this user_message event and for the repaired worker completion when it arrives. For the later automation result whose source_event_id is smoke:automation:decision:1, record a user_decision disposition on its exact event ID and ask the user to select option A or B; do not choose for them. Do not use shell, network, or file tools.").await?;
-		agent.wake_pending().await?;
-
-		loop {
-			agent.handle_event(events.recv().await.ok_or("event stream closed during repair")?).await?;
-
-			let worker = store.get_agent_work_item("smoke-a".into()).await?;
-			let root_work = store.get_agent_work_item("smoke-agent".into()).await?;
-			let results = store.read_agent_work_events("smoke-a".into(), 100).await?;
-			let completions: Vec<_> = results.iter().filter(|event| event.event_kind == "worker_turn_completed").collect();
-
-			if completions.len() > 2 { return Err("repair dispatched more than once".into()); }
-			if completions.len() == 2 && completions.iter().all(|event| event.disposition == Some(AgentDisposition::Resolved))
-				&& worker.dispatch_state == AgentDispatchState::Idle && root_work.dispatch_state == AgentDispatchState::Idle {
-				if worker.codex_thread_id != original_worker.codex_thread_id { return Err("repair replaced the original worker thread".into()); }
-
-				let repaired = completions.iter().find(|event| event.id != first_result.id).ok_or("repair completion missing")?;
-
-				if !repaired.payload.contains("REPAIRED_A") { return Err("repair output marker missing".into()); }
-
-				println!("Repair evidence passed: same smoke-a thread, distinct completion events {} and {}, repaired output observed.", first_result.id, repaired.id);
-
-				break;
-			}
-		}
-
-		let source = "smoke:automation:decision:1";
-		let payload = serde_json::json!({"observation":"Options A and B are available; user selection is required."});
-
-		agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
-		agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
-
-		loop {
-			agent.handle_event(events.recv().await.ok_or("event stream closed during automation")?).await?;
-
-			let root_work = store.get_agent_work_item("smoke-agent".into()).await?;
-			let records = store.read_agent_work_events("smoke-a".into(), 100).await?;
-			let receipts: Vec<_> = records.iter().filter(|event| event.source_event_id == source).collect();
-
-			if receipts.len() != 1 { return Err("duplicate automation intake created multiple receipts".into()); }
-			if root_work.dispatch_state == AgentDispatchState::Idle && receipts[0].disposition.is_some() {
-				if receipts[0].disposition != Some(AgentDisposition::UserDecision) { return Err("automation did not preserve the user decision".into()); }
-
-				let delivered = receipts[0].delivered_turn_id.clone().ok_or("automation delivery was not acknowledged")?;
-
-				agent.ingest_automation_result(source, "smoke-a", payload).await?;
-
-				let after = store.get_agent_inbox_event(receipts[0].id).await?;
-
-				if after != *receipts[0] || store.get_agent_work_item("smoke-agent".into()).await?.dispatch_state != AgentDispatchState::Idle { return Err("disposed automation duplicate woke or changed the Agent".into()); }
-				if store.get_agent_work_item("smoke-a".into()).await?.status != AgentWorkStatus::UserDecision { return Err("user decision work state missing".into()); }
-
-				println!("Automation evidence passed: one receipt {}, one delivery {}, duplicate before and after disposition unchanged; user decision persisted.", after.id, delivered);
-
-				break;
-			}
-		}
+		repair_existing_worker(&mut agent, &store, &mut events).await?;
+		verify_automation_decision(&mut agent, &store, &mut events).await?;
 
 		let work = store.list_agent_work_items().await?;
 
@@ -191,6 +132,126 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let result = result.map_err(|_| "Agent smoke timed out; no automatic dispatch retry")?;
 
 	result?;
+
+	Ok(())
+}
+
+async fn repair_existing_worker(
+	agent: &mut AgentCoordinator,
+	store: &SqliteStore,
+	events: &mut Receiver<ServerEvent>,
+) -> Result<(), Box<dyn Error>> {
+	let original_worker = store.get_agent_work_item("smoke-a".into()).await?;
+	let first_results = store.read_agent_work_events("smoke-a".into(), 100).await?;
+	let first_result = first_results
+		.iter()
+		.find(|event| event.event_kind == "worker_turn_completed")
+		.ok_or("first worker result missing")?;
+
+	agent.enqueue_user_message("smoke-agent", "repair-and-decision-policy", "Continue the EXISTING smoke-a worker exactly once using agent_continue_worker. Ask it to reply exactly REPAIRED_A without tools. Do not create a worker or goal. Record a resolved disposition for this user_message event and for the repaired worker completion when it arrives. For the later automation result whose source_event_id is smoke:automation:decision:1, record a user_decision disposition on its exact event ID and ask the user to select option A or B; do not choose for them. Do not use shell, network, or file tools.").await?;
+	agent.wake_pending().await?;
+
+	loop {
+		agent.handle_event(events.recv().await.ok_or("event stream closed during repair")?).await?;
+
+		let worker = store.get_agent_work_item("smoke-a".into()).await?;
+		let root_work = store.get_agent_work_item("smoke-agent".into()).await?;
+		let results = store.read_agent_work_events("smoke-a".into(), 100).await?;
+		let completions: Vec<_> =
+			results.iter().filter(|event| event.event_kind == "worker_turn_completed").collect();
+
+		if completions.len() > 2 {
+			return Err("repair dispatched more than once".into());
+		}
+		if completions.len() == 2
+			&& completions.iter().all(|event| event.disposition == Some(AgentDisposition::Resolved))
+			&& worker.dispatch_state == AgentDispatchState::Idle
+			&& root_work.dispatch_state == AgentDispatchState::Idle
+		{
+			if worker.codex_thread_id != original_worker.codex_thread_id {
+				return Err("repair replaced the original worker thread".into());
+			}
+
+			let repaired = completions
+				.iter()
+				.find(|event| event.id != first_result.id)
+				.ok_or("repair completion missing")?;
+
+			if !repaired.payload.contains("REPAIRED_A") {
+				return Err("repair output marker missing".into());
+			}
+
+			println!(
+				"Repair evidence passed: same smoke-a thread, distinct completion events {} and {}, repaired output observed.",
+				first_result.id, repaired.id
+			);
+
+			break;
+		}
+	}
+
+	Ok(())
+}
+
+async fn verify_automation_decision(
+	agent: &mut AgentCoordinator,
+	store: &SqliteStore,
+	events: &mut Receiver<ServerEvent>,
+) -> Result<(), Box<dyn Error>> {
+	let source = "smoke:automation:decision:1";
+	let payload = serde_json::json!({"observation":"Options A and B are available; user selection is required."});
+
+	agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
+	agent.ingest_automation_result(source, "smoke-a", payload.clone()).await?;
+
+	loop {
+		agent
+			.handle_event(events.recv().await.ok_or("event stream closed during automation")?)
+			.await?;
+
+		let root_work = store.get_agent_work_item("smoke-agent".into()).await?;
+		let records = store.read_agent_work_events("smoke-a".into(), 100).await?;
+		let receipts: Vec<_> =
+			records.iter().filter(|event| event.source_event_id == source).collect();
+
+		if receipts.len() != 1 {
+			return Err("duplicate automation intake created multiple receipts".into());
+		}
+		if root_work.dispatch_state == AgentDispatchState::Idle && receipts[0].disposition.is_some()
+		{
+			if receipts[0].disposition != Some(AgentDisposition::UserDecision) {
+				return Err("automation did not preserve the user decision".into());
+			}
+
+			let delivered = receipts[0]
+				.delivered_turn_id
+				.clone()
+				.ok_or("automation delivery was not acknowledged")?;
+
+			agent.ingest_automation_result(source, "smoke-a", payload).await?;
+
+			let after = store.get_agent_inbox_event(receipts[0].id).await?;
+
+			if after != *receipts[0]
+				|| store.get_agent_work_item("smoke-agent".into()).await?.dispatch_state
+					!= AgentDispatchState::Idle
+			{
+				return Err("disposed automation duplicate woke or changed the Agent".into());
+			}
+			if store.get_agent_work_item("smoke-a".into()).await?.status
+				!= AgentWorkStatus::UserDecision
+			{
+				return Err("user decision work state missing".into());
+			}
+
+			println!(
+				"Automation evidence passed: one receipt {}, one delivery {}, duplicate before and after disposition unchanged; user decision persisted.",
+				after.id, delivered
+			);
+
+			break;
+		}
+	}
 
 	Ok(())
 }
