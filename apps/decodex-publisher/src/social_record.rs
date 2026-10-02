@@ -257,7 +257,9 @@ fn validate_attempt_records(attempts_dir: &Path) -> Result<()> {
 
 				ledger::validate_observation_cost_record(&attempt)?;
 			},
-			_ => eyre::bail!("{} has invalid xurl attempt state", path.display()),
+			_ => {
+				eyre::bail!("{} has invalid xurl attempt state", path.display());
+			},
 		}
 	}
 
