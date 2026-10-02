@@ -47,6 +47,36 @@ fn add_project_warning(saved: &Path) {
 		.expect("write fixture warning");
 }
 
+fn assert_catalog_source(
+	catalog: InitialModelCatalogResult,
+	account: &AccountId,
+	revision: i64,
+	saved: &Path,
+) -> EntityId {
+	let InitialModelCatalogResult::Available {
+		account_id,
+		account_revision,
+		working_directory,
+		defaults,
+		models,
+	} = catalog
+	else {
+		panic!("complete native catalog");
+	};
+
+	assert_eq!(account_id.as_str(), account.as_str());
+	assert_eq!(account_revision, revision);
+	assert_eq!(working_directory.as_str(), saved.to_str().expect("saved cwd"));
+
+	let defaults = defaults.expect("native defaults");
+
+	assert_eq!(defaults.configured.model.expect("cwd model").as_str(), "gpt-5.6-sol");
+	assert_eq!(defaults.configured.reasoning_effort.expect("cwd effort").as_str(), "high");
+	assert!(!models.is_empty());
+
+	account_id
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone in an isolated fixture HOME below the OS account home and outside its .codex"]
 async fn native_model_review_uses_saved_directory_without_starting_a_turn() {
@@ -163,26 +193,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 	assert_eq!(review.message.as_str(), "Preserve the original request");
 	assert_eq!(review.execution.model.as_str(), "gpt-6-astra");
 
-	let InitialModelCatalogResult::Available {
-		account_id,
-		account_revision,
-		working_directory,
-		defaults,
-		models,
-	} = review.catalog
-	else {
-		panic!("complete native catalog");
-	};
-
-	assert_eq!(account_id.as_str(), account.as_str());
-	assert_eq!(account_revision, revision);
-	assert_eq!(working_directory.as_str(), saved.to_str().expect("saved cwd"));
-
-	let defaults = defaults.expect("native defaults");
-
-	assert_eq!(defaults.configured.model.expect("cwd model").as_str(), "gpt-5.6-sol");
-	assert_eq!(defaults.configured.reasoning_effort.expect("cwd effort").as_str(), "high");
-	assert!(!models.is_empty());
+	let account_id = assert_catalog_source(review.catalog, &account, revision, &saved);
 
 	assert_review_still_unstarted(&store, &conversation).await;
 	assert_stale_review_unavailable(&app, query, id).await;

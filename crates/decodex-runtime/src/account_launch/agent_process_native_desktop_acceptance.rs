@@ -1,12 +1,16 @@
 //! Opt-in interactive signed desktop acceptance against the isolated real service.
 use std::{
 	env,
+	ffi::OsStr,
 	fs::{self, OpenOptions},
 	path::Path,
 	sync::atomic::AtomicUsize,
 };
 
-use tokio::{process::Command, time};
+use tokio::{
+	process::{Child, Command},
+	time,
+};
 
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
 	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
@@ -70,22 +74,7 @@ pub(super) async fn check(
 		assert_eq!(requests.load(Ordering::Acquire), 3);
 	}
 
-	let launch = || {
-		let log = OpenOptions::new()
-			.create(true)
-			.append(true)
-			.open(home.join("desktop.log"))
-			.expect("open desktop log");
-		let error = log.try_clone().expect("clone desktop log");
-
-		Command::new(&binary)
-			.current_dir(home)
-			.stdout(log)
-			.stderr(error)
-			.kill_on_drop(true)
-			.spawn()
-			.expect("launch explicit desktop executable")
-	};
+	let launch = || launch_desktop(&binary, home);
 	let mut child = launch();
 	let mut launches = 1;
 	let mut exits = 0;
@@ -146,4 +135,21 @@ pub(super) async fn check(
 
 		time::sleep(Duration::from_millis(100)).await;
 	}
+}
+
+fn launch_desktop(binary: &OsStr, home: &Path) -> Child {
+	let log = OpenOptions::new()
+		.create(true)
+		.append(true)
+		.open(home.join("desktop.log"))
+		.expect("open desktop log");
+	let error = log.try_clone().expect("clone desktop log");
+
+	Command::new(binary)
+		.current_dir(home)
+		.stdout(log)
+		.stderr(error)
+		.kill_on_drop(true)
+		.spawn()
+		.expect("launch explicit desktop executable")
 }
