@@ -47,8 +47,12 @@ use std::{
 	time::Instant,
 };
 
+use base64::Engine as _;
 use serde_json::json;
-use tokio::time;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _},
+	time,
+};
 
 use crate::{
 	account_launch::agent_process::{
@@ -357,8 +361,6 @@ async fn read_history(
 }
 
 async fn qualify_media(client: &AppServerClient, thread_id: &str, entries: &[AgentTimelineEntry]) {
-	use base64::Engine as _;
-
 	let (turn_id, item_id, index) = entries
 		.iter()
 		.find_map(|entry| {
@@ -477,8 +479,6 @@ async fn serve_fixture_frames(
 	bodies: Option<Arc<std::sync::Mutex<Vec<Value>>>>,
 	frames: impl Fn(usize) -> Vec<Value>,
 ) {
-	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
-
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
 		let mut length = 0;

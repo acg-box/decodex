@@ -48,6 +48,7 @@ use gpui::{
 };
 use tokio::{runtime::Builder, time};
 
+#[cfg(feature = "visual-capture")] use crate::history_pager::HistoryCursorObservation;
 use crate::{
 	account_login::AccountLoginController,
 	account_profile::{AccountProfileController, AccountProfileLoadState, AccountProfileSnapshot},
@@ -79,6 +80,8 @@ use crate::{
 use account_feedback::AccountFeedback;
 use account_identity::Emails;
 use agent_surface::AgentSurface;
+#[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AccountRoutingControlDto;
+#[cfg(feature = "visual-capture")] use decodex_protocol::ConversationHistoryPage;
 #[cfg(test)] use decodex_protocol::Cursor;
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
@@ -89,8 +92,9 @@ use decodex_protocol::{
 	ConversationRecoveryAction, ConversationState, ConversationSummary, DesktopOrdinaryDraft,
 	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, EntityRevision, HistoryItemDto,
 	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
-	NativeProcessDiagnostics, WireText,
+	NativeProcessDiagnostics, NativeProcessDiagnostics as Native, WireText,
 };
+#[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
 
 actions!(
@@ -387,10 +391,6 @@ impl Shell {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code)]
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
-		use decodex_protocol::{
-			ConversationSummary, ConversationTitle, EntityRevision, ProviderThreadId,
-		};
-
 		let mut shell = Self::new(
 			window,
 			cx,
@@ -487,8 +487,6 @@ impl Shell {
 
 	#[cfg(any(test, feature = "visual-capture"))]
 	fn visual_accounts_and_health(&mut self) {
-		use decodex_protocol::{AccountRoutingControlDto, EntityRevision, WireText};
-
 		let visual_account =
 			|id: &str, alias: &str, used_five_hour: u8, used_seven_day: u8, revision: u64| {
 				AccountDto {
@@ -577,10 +575,6 @@ impl Shell {
 
 	#[cfg(feature = "visual-capture")]
 	fn visual_history(&mut self, conversation_id: EntityId, runtime_session_id: EntityId) {
-		use crate::history_pager::{HistoryCursorObservation, HistoryPageSource};
-
-		use decodex_protocol::ConversationHistoryPage;
-
 		let item = |history_item_id: &str,
 		            turn_id: &str,
 		            role: &str,
@@ -5329,8 +5323,6 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 }
 
 fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
-	use decodex_protocol::NativeProcessDiagnostics as Native;
-
 	let memory = |value: Option<u64>| {
 		value.map_or_else(
 			|| "Not reported".into(),
@@ -7008,19 +7000,24 @@ mod tests {
 
 	#[test]
 	fn native_health_keeps_missing_memory_distinct_from_zero() {
-		use decodex_protocol::NativeProcessDiagnostics as Native;
-
-		let text = native_process_summary(Some(&Native::Available {
-			process_id: 42,
-			resident_memory_bytes: None,
-			physical_footprint_bytes: Some(0),
-		}));
+		let text =
+			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Available {
+				process_id: 42,
+				resident_memory_bytes: None,
+				physical_footprint_bytes: Some(0),
+			}));
 
 		assert!(text.contains("PID 42"));
 		assert!(text.contains("Resident: Not reported"));
 		assert!(text.contains("Physical footprint: 0.0 MiB"));
-		assert!(native_process_summary(Some(&Native::Inactive)).contains("does not start"));
-		assert!(native_process_summary(Some(&Native::Unsupported)).contains("does not provide"));
+		assert!(
+			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Inactive))
+				.contains("does not start")
+		);
+		assert!(
+			native_process_summary(Some(&decodex_protocol::NativeProcessDiagnostics::Unsupported))
+				.contains("does not provide")
+		);
 	}
 
 	#[test]
@@ -7069,15 +7066,25 @@ mod tests {
 
 	#[gpui::test]
 	fn recorded_turn_acknowledgement_preserves_later_and_failed_input(cx: &mut TestAppContext) {
-		use decodex_protocol::ConversationTurnOutcomeState as Outcome;
-
 		let (shell, visual) = open_shell(cx);
 
 		for (outcome, text, expected) in [
-			(Outcome::Completed, "Original message", ""),
-			(Outcome::Completed, "Later unsent input", "Later unsent input"),
-			(Outcome::Failed, "Original message", "Original message"),
-			(Outcome::NotSubmitted, "Original message", "Original message"),
+			(decodex_protocol::ConversationTurnOutcomeState::Completed, "Original message", ""),
+			(
+				decodex_protocol::ConversationTurnOutcomeState::Completed,
+				"Later unsent input",
+				"Later unsent input",
+			),
+			(
+				decodex_protocol::ConversationTurnOutcomeState::Failed,
+				"Original message",
+				"Original message",
+			),
+			(
+				decodex_protocol::ConversationTurnOutcomeState::NotSubmitted,
+				"Original message",
+				"Original message",
+			),
 		] {
 			let (conversations, server, _original) = tests::recorded_turn_fixture(outcome);
 

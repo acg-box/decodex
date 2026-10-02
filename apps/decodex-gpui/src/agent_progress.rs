@@ -331,6 +331,7 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 #[cfg(test)]
 mod tests {
 
+	#[cfg(test)] use crate::shell::agent_surface::progress::AgentDispatchStateDto;
 	use crate::shell::agent_surface::progress::{AgentHistoryResult, AgentSurface};
 
 	#[gpui::test]
@@ -385,10 +386,6 @@ mod tests {
 	}
 	#[gpui::test]
 	fn live_compaction_yields_only_to_its_completion_or_turn_end(cx: &mut gpui::TestAppContext) {
-		use crate::shell::agent_surface::progress::{
-			AgentDispatchStateDto, AgentHistoryResult, AgentSurface,
-		};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {

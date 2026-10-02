@@ -6,6 +6,11 @@ use std::{
 };
 
 use gpui::{App, Context, Subscription, Task, Window, WindowId};
+#[cfg(all(target_os = "macos", not(test)))]
+use objc2::{
+	rc::Retained,
+	runtime::{AnyClass, AnyObject},
+};
 
 use crate::composer_input::ComposerInput;
 
@@ -147,20 +152,16 @@ pub(super) fn eligible(focused: bool, window_active: bool, selection_empty: bool
 
 #[cfg(all(target_os = "macos", not(test)))]
 fn saved() -> Option<u8> {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
 		let key = objc2_foundation::NSString::from_str("DecodexInsertionCursor");
-		let value: Option<Retained<AnyObject>> = msg_send![&*defaults, objectForKey: &*key];
+		let value: Option<Retained<AnyObject>> = objc2::msg_send![&*defaults, objectForKey: &*key];
 
 		value.map(|_| {
-			let value: isize = msg_send![&*defaults, integerForKey: &*key];
+			let value: isize = objc2::msg_send![&*defaults, integerForKey: &*key];
 
 			value as u8
 		})
@@ -169,17 +170,13 @@ fn saved() -> Option<u8> {
 
 #[cfg(all(target_os = "macos", not(test)))]
 fn save(value: u8) {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
 		let key = objc2_foundation::NSString::from_str("DecodexInsertionCursor");
-		let _: () = msg_send![&*defaults, setInteger: isize::from(value), forKey: &*key];
+		let _: () = objc2::msg_send![&*defaults, setInteger: isize::from(value), forKey: &*key];
 	}
 }
 

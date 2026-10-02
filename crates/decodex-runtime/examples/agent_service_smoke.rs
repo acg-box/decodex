@@ -393,8 +393,6 @@ async fn closed_loop_before_restart(
 		return qualify_hierarchy(client, root).await;
 	}
 
-	use decodex_protocol::AgentWorkStatusDto as Status;
-
 	let initial = wait_graph(client, "two workers complete and wake Agent", |graph| {
 		graph.work_items.len() == 3
 			&& idle(graph)
@@ -402,7 +400,7 @@ async fn closed_loop_before_restart(
 				.work_items
 				.iter()
 				.filter(|work| work.id != "agent-service-smoke")
-				.all(|work| work.status == Status::Resolved)
+				.all(|work| work.status == AgentWorkStatusDto::Resolved)
 			&& !graph.pending_events.iter().any(|event| event.event_kind == "worker_turn_completed")
 	})
 	.await?;
@@ -449,7 +447,7 @@ async fn closed_loop_before_restart(
 				.work_items
 				.iter()
 				.find(|work| work.id == "service-a")
-				.is_some_and(|work| work.status == Status::Resolved)
+				.is_some_and(|work| work.status == AgentWorkStatusDto::Resolved)
 			&& !graph.pending_events.iter().any(|event| {
 				event.event_kind == "user_message" || event.event_kind == "worker_turn_completed"
 			})
@@ -491,10 +489,9 @@ async fn closed_loop_before_restart(
 	accept(client, decision.clone(), "automation-choice-duplicate").await?;
 	wait_graph(client, "user decision surfaced", |graph| {
 		idle(graph)
-			&& graph
-				.work_items
-				.iter()
-				.any(|work| work.id == "service-a" && work.status == Status::UserDecision)
+			&& graph.work_items.iter().any(|work| {
+				work.id == "service-a" && work.status == AgentWorkStatusDto::UserDecision
+			})
 	})
 	.await?;
 
@@ -596,18 +593,15 @@ async fn closed_loop_after_restart(
 	client: &AgentClient,
 	original: &AgentSnapshotDto,
 ) -> SmokeResult<()> {
-	use decodex_protocol::AgentWorkStatusDto as Status;
-
 	send(client,"answer-decision","I choose option A: concise summary. Call agent_resolve_decision with id service-a, userEventId the exact currently delivered user_message event ID for this reply, and a summary of the user's chosen concise format. Do not dispatch workers. Report DECISION_RESOLVED. Continue honoring service-b scheduled check, resolving its due event without worker dispatch.").await?;
 
-	let graph =
-		wait_graph(client, "decision and due followup after restart", |graph| {
-			idle(graph)
-				&& graph.work_items.iter().filter(|work| work.id != "agent-service-smoke").all(
-					|work| work.status == Status::Resolved && work.next_check_at_micros.is_none(),
-				)
-		})
-		.await?;
+	let graph = wait_graph(client, "decision and due followup after restart", |graph| {
+		idle(graph)
+			&& graph.work_items.iter().filter(|work| work.id != "agent-service-smoke").all(|work| {
+				work.status == AgentWorkStatusDto::Resolved && work.next_check_at_micros.is_none()
+			})
+	})
+	.await?;
 
 	if graph.work_items.len() != original.work_items.len() {
 		return Err("restart created extra work".into());

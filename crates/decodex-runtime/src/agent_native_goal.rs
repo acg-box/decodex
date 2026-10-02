@@ -4,6 +4,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use sha2::{Digest as _, Sha256};
 use tokio::time;
 
 use crate::{
@@ -207,8 +208,6 @@ where
 }
 
 fn review_token(source: &Source, thread: &str, goal: Option<&NativeThreadGoal>) -> String {
-	use sha2::{Digest as _, Sha256};
-
 	let identity = serde_json::json!([
 		format!("{:?}", source.key),
 		source.client.connection_identity(),

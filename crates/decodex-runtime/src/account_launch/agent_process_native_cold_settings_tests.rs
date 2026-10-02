@@ -5,12 +5,18 @@
 use std::{
 	env,
 	fs::{self, OpenOptions},
+	io::Write as _,
+	os::unix::fs::OpenOptionsExt as _,
 	path::{Path, PathBuf},
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rusqlite::Connection;
-use tokio::{net::TcpStream, task, time};
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _},
+	net::TcpStream,
+	task, time,
+};
 
 use crate::{
 	account_launch::{
@@ -322,8 +328,6 @@ async fn enroll_numbered(
 	home: &Path,
 	number: u64,
 ) -> AccountId {
-	use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
-
 	let account = AccountId::new(format!("10000000-0000-4000-8000-{number:012}"))
 		.expect("synthetic account enrollment");
 	let workspace = if number == 1 {
@@ -412,8 +416,6 @@ async fn serve(
 	metadata: Arc<std::sync::atomic::AtomicUsize>,
 	expected_recap: Option<&str>,
 ) {
-	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
-
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
 		let mut first = String::new();
@@ -538,8 +540,6 @@ async fn serve(
 }
 
 async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<TcpStream>) -> bool {
-	use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-
 	if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
 		return false;
 	}

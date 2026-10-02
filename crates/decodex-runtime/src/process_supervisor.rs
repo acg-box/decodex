@@ -1833,6 +1833,10 @@ mod tests {
 		thread,
 		time::{Duration, Instant},
 	};
+	#[cfg(test)] use std::{
+		future::Future as _,
+		task::{Context, Poll, Waker},
+	};
 
 	use crate::{
 		account_launch::process::tests,
@@ -1869,11 +1873,6 @@ mod tests {
 
 	#[test]
 	fn cancelled_failed_identity_cleanup_releases_supervision() {
-		use std::{
-			future::Future as _,
-			task::{Context, Poll, Waker},
-		};
-
 		let runtime = tokio::runtime::Builder::new_current_thread()
 			.enable_all()
 			.max_blocking_threads(1)

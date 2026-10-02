@@ -185,10 +185,8 @@ fn observe(
 	target: &EntityId,
 	result: &ConversationResult,
 ) -> ControlObservation {
-	use ControlObservation as O;
-
 	let Some(expected) = command.expected_revision.filter(|revision| revision.0 > 0) else {
-		return O::Conflict;
+		return ControlObservation::Conflict;
 	};
 
 	match result {
@@ -199,7 +197,7 @@ fn observe(
 					command.payload,
 					CommandPayload::CreateConversationRoutingSuccessor { .. }
 				) =>
-			O::Archived,
+			ControlObservation::Archived,
 		ConversationResult::RoutingSuccessorRedirect {
 			source_conversation_id,
 			source_conversation_revision,
@@ -212,18 +210,18 @@ fn observe(
 			if matches!(command.payload, CommandPayload::CreateConversationRoutingSuccessor { .. })
 			{
 				if expected.0.checked_add(1) == Some(source_conversation_revision.0) {
-					O::RoutingAdvanced
+					ControlObservation::RoutingAdvanced
 				} else {
-					O::Conflict
+					ControlObservation::Conflict
 				}
 			} else {
-				O::Archived
+				ControlObservation::Archived
 			},
 		ConversationResult::Available(current)
 			if &current.conversation_id == target
 				&& current.conversation_revision.0 >= expected.0 =>
 			match &command.payload {
-				CommandPayload::RefreshConversation { .. } => O::Current,
+				CommandPayload::RefreshConversation { .. } => ControlObservation::Current,
 				CommandPayload::ResumeConversationRouting { .. }
 					if current.conversation_revision.0 > expected.0
 						&& matches!(
@@ -236,7 +234,7 @@ fn observe(
 								| decodex_protocol::ConversationState::Running
 								| decodex_protocol::ConversationState::ManualRecovery
 						) =>
-					O::RoutingAdvanced,
+					ControlObservation::RoutingAdvanced,
 				CommandPayload::ResumeConversationEstablishment { .. }
 					if current.conversation_revision.0 > expected.0
 						&& matches!(
@@ -245,7 +243,7 @@ fn observe(
 								| decodex_protocol::ConversationState::Running
 								| decodex_protocol::ConversationState::ManualRecovery
 						) =>
-					O::RoutingAdvanced,
+					ControlObservation::RoutingAdvanced,
 				CommandPayload::InterruptConversation { turn_id, .. }
 					if current.conversation_revision.0 > expected.0
 						&& matches!(
@@ -254,16 +252,16 @@ fn observe(
 								| decodex_protocol::ConversationState::Running
 						)
 						&& current.active_turn_id.as_ref() != Some(turn_id) =>
-					O::TurnInactive,
+					ControlObservation::TurnInactive,
 				CommandPayload::InterruptConversation { turn_id, .. }
 					if current.active_turn_id.as_ref() == Some(turn_id) =>
-					O::StillActive,
-				CommandPayload::InterruptConversation { .. } => O::Unavailable,
-				_ => O::Conflict,
+					ControlObservation::StillActive,
+				CommandPayload::InterruptConversation { .. } => ControlObservation::Unavailable,
+				_ => ControlObservation::Conflict,
 			},
-		ConversationResult::NotFound => O::Missing,
-		ConversationResult::Unavailable { .. } => O::Unavailable,
-		_ => O::Conflict,
+		ConversationResult::NotFound => ControlObservation::Missing,
+		ConversationResult::Unavailable { .. } => ControlObservation::Unavailable,
+		_ => ControlObservation::Conflict,
 	}
 }
 

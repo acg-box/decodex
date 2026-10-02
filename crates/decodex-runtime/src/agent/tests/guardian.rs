@@ -17,9 +17,10 @@ use crate::{
 use decodex_core::{DecodexRoot, ProcessGenerationId};
 use decodex_database::AgentGuardianObservation;
 use decodex_protocol::{
-	AgentActivityDto, AgentGuardianReviewsResult, CURRENT_VERSION, ConversationUnavailableReason,
-	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, QueryEnvelope,
-	QueryId, QueryPayload, QueryResultPayload, ServerId, WireText,
+	AgentActivityDto, AgentGuardianDetailResult, AgentGuardianReviewsResult, CURRENT_VERSION,
+	ConversationUnavailableReason, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
+	DoctorStatus, EntityId, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ServerId,
+	WireText,
 };
 
 fn review(id: &str, status: &str) -> Value {
@@ -67,8 +68,6 @@ fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication 
 
 #[tokio::test]
 async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
-	use decodex_protocol::AgentGuardianDetailResult as Detail;
-
 	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -140,7 +139,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 		assert!(page.matches_request(row.id, &digest, offset));
 		assert!(serde_json::to_vec(&page).unwrap().len() < 60 * 1_024);
 
-		let Detail::Available { text, next_offset, .. } = page else {
+		let AgentGuardianDetailResult::Available { text, next_offset, .. } = page else {
 			panic!("missing detail page");
 		};
 
@@ -170,7 +169,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	] {
 		assert_eq!(
 			agent_guardian::detail(&peer, work, row.id, expected, offset).await,
-			Detail::Unavailable
+			decodex_protocol::AgentGuardianDetailResult::Unavailable
 		);
 	}
 
@@ -191,7 +190,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 
 	assert_eq!(
 		agent_guardian::detail(&peer, "agent", saved.id, &digest, 0).await,
-		Detail::Unavailable
+		decodex_protocol::AgentGuardianDetailResult::Unavailable
 	);
 }
 

@@ -17,7 +17,7 @@ use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
 	ClientProfile, Render, Window, px,
 };
-use decodex_protocol::AgentNativeGoalResult as Result;
+use decodex_protocol::{AgentNativeGoalResult as Result, AgentNativeGoalStatus as S};
 use editor::Editor;
 
 #[derive(Default)]
@@ -168,8 +168,6 @@ fn goal_text(result: &Result) -> String {
 	match result {
 		Result::Available { goal: None, .. } => "This conversation has no native goal.".into(),
 		Result::Available { goal: Some(goal), observed_at_micros, .. } => {
-			use decodex_protocol::AgentNativeGoalStatus as S;
-
 			let status = match goal.status {
 				S::Active => "Active",
 				S::Paused => "Paused",

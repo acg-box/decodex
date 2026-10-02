@@ -2,6 +2,11 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use gpui::App;
+#[cfg(all(target_os = "macos", not(test)))]
+use objc2::{
+	rc::Retained,
+	runtime::{AnyClass, AnyObject},
+};
 
 static DEFAULTS: AtomicU32 = AtomicU32::new(0);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -38,20 +43,16 @@ impl PanelDefaults {
 }
 #[cfg(all(target_os = "macos", not(test)))]
 fn saved() -> Option<u32> {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
 		let key = objc2_foundation::NSString::from_str("DecodexPanelDefaults");
-		let object: Option<Retained<AnyObject>> = msg_send![&*defaults, objectForKey: &*key];
+		let object: Option<Retained<AnyObject>> = objc2::msg_send![&*defaults, objectForKey: &*key];
 
 		object.map(|_| {
-			let value: isize = msg_send![&*defaults, integerForKey: &*key];
+			let value: isize = objc2::msg_send![&*defaults, integerForKey: &*key];
 
 			value as u32
 		})
@@ -59,17 +60,13 @@ fn saved() -> Option<u32> {
 }
 #[cfg(all(target_os = "macos", not(test)))]
 fn save(value: u32) {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-
 	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
 		let key = objc2_foundation::NSString::from_str("DecodexPanelDefaults");
-		let _: () = msg_send![&*defaults, setInteger: value as isize, forKey: &*key];
+		let _: () = objc2::msg_send![&*defaults, setInteger: value as isize, forKey: &*key];
 	}
 }
 #[cfg(not(all(target_os = "macos", not(test))))]

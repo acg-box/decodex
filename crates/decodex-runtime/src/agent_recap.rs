@@ -17,15 +17,14 @@ use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::{HistoryGuard, ServerEvent};
 use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
 use decodex_protocol::{
-	AgentActionDto, EntityId, TaskRecap, TaskRecapPhase as Phase, TaskRecapStatus, WireText,
+	AgentActionDto, AgentActionDto as Action, EntityId, TaskRecap, TaskRecapPhase as Phase,
+	TaskRecapStatus, WireText,
 };
 
 #[derive(Clone, Default)]
 pub(crate) struct Recaps(Arc<Mutex<State>>);
 impl Recaps {
 	pub(crate) fn note_input(&self, action: &AgentActionDto) {
-		use decodex_protocol::AgentActionDto as Action;
-
 		match action {
 			Action::Send { root_id, .. } | Action::SendConfigured { root_id, .. } =>
 				self.cancel_work(root_id.as_str()),

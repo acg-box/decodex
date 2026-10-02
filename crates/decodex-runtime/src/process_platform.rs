@@ -681,6 +681,12 @@ fn invalid_identity() -> io::Error {
 #[cfg(test)]
 mod tests {
 	use std::os::fd::AsRawFd as _;
+	#[cfg(target_os = "macos")]
+	#[cfg(test)]
+	use std::{
+		io::{BufRead as _, BufReader},
+		process::{Command, Stdio},
+	};
 
 	#[cfg(target_os = "macos")]
 	use crate::process_platform::{self, MACOS_BOOT_SESSION_IDENTITY_PREFIX};
@@ -689,11 +695,6 @@ mod tests {
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn kernel_recovery_requires_both_leader_and_group_to_be_gone() {
-		use std::{
-			io::{BufRead as _, BufReader},
-			process::{Command, Stdio},
-		};
-
 		let mut command = Command::new("/bin/sh");
 
 		command

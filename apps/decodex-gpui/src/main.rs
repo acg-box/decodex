@@ -39,7 +39,16 @@ use gpui::{
 	TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
 };
 #[cfg(target_os = "macos")] use objc2 as _;
+#[cfg(target_os = "macos")] use objc2::AnyThread;
+#[cfg(target_os = "macos")] use objc2::ClassType;
+#[cfg(target_os = "macos")] use objc2::MainThreadMarker;
+#[cfg(target_os = "macos")] use objc2_app_kit::NSWindowButton;
+#[cfg(target_os = "macos")] use objc2_app_kit::{NSApplication, NSPanel};
+#[cfg(target_os = "macos")] use objc2_app_kit::{NSTrackingArea, NSView};
 #[cfg(target_os = "macos")] use objc2_foundation as _;
+#[cfg(target_os = "macos")] use objc2_foundation::NSObjectProtocol;
+#[cfg(target_os = "macos")] use objc2_foundation::NSRect;
+#[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::{
 	account_login::AccountLoginController,
@@ -207,12 +216,6 @@ fn activate_main_window(window: &WindowHandle<Shell>, cx: &mut App) {
 
 #[cfg(target_os = "macos")]
 fn activate_native_application() {
-	use objc2::{ClassType, MainThreadMarker};
-
-	use objc2_app_kit::{NSApplication, NSPanel};
-
-	use objc2_foundation::NSObjectProtocol;
-
 	let main_thread =
 		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	let application = NSApplication::sharedApplication(main_thread);
@@ -234,22 +237,14 @@ fn activate_native_application() {
 
 #[cfg(target_os = "macos")]
 fn configure_pointer_tracking(window: &gpui::Window) {
-	use objc2::AnyThread;
-
-	use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions as Options, NSView};
-
-	use objc2_foundation::NSRect;
-
-	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
 	let Ok(native) = HasWindowHandle::window_handle(window) else { return };
 	let RawWindowHandle::AppKit(handle) = native.as_raw() else { return };
 	// The live GPUI window owns this AppKit view; setup runs on the main thread.
 	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
-	let options = Options::MouseMoved
-		| Options::MouseEnteredAndExited
-		| Options::ActiveAlways
-		| Options::InVisibleRect;
+	let options = objc2_app_kit::NSTrackingAreaOptions::MouseMoved
+		| objc2_app_kit::NSTrackingAreaOptions::MouseEnteredAndExited
+		| objc2_app_kit::NSTrackingAreaOptions::ActiveAlways
+		| objc2_app_kit::NSTrackingAreaOptions::InVisibleRect;
 
 	if view.trackingAreas().iter().any(|area| area.options() == options) {
 		return;
@@ -275,10 +270,6 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 	// AppKit can replace or resize standard buttons during activation. Measure
 	// after that layout pass, not once while the initial window is still hidden.
 	window.on_next_frame(|window, _| {
-		use objc2::MainThreadMarker;
-
-		use objc2_app_kit::{NSApplication, NSWindowButton};
-
 		let main_thread = MainThreadMarker::new().expect("window layout runs on the main thread");
 
 		for native in NSApplication::sharedApplication(main_thread).windows().iter() {
@@ -300,12 +291,6 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 
 #[cfg(target_os = "macos")]
 fn order_out_native_windows() {
-	use objc2::{ClassType, MainThreadMarker};
-
-	use objc2_app_kit::{NSApplication, NSPanel};
-
-	use objc2_foundation::NSObjectProtocol;
-
 	let main_thread =
 		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	let application = NSApplication::sharedApplication(main_thread);

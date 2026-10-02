@@ -23,6 +23,7 @@ mod probe {
 
 	use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+	#[cfg(not(test))] use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 	struct Backdrop {
@@ -123,8 +124,6 @@ mod probe {
 	/// Exercise the production overlay owner without a daemon or user preferences.
 	#[cfg(not(test))]
 	pub fn run_material_update() {
-		use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
-
 		gpui_platform::application().run(|cx| {
 			let open = |cx: &mut App| {
 				cx.open_window(

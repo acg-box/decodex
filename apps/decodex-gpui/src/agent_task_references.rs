@@ -245,6 +245,7 @@ mod tests {
 	use std::{slice, thread};
 
 	use gpui::AppContext as _;
+	#[cfg(test)] use gpui::Focusable as _;
 
 	use crate::shell::agent_surface::composer::task_references::{
 		self, AgentSurface, AgentTaskReferenceDto, EntityId, WireText,
@@ -323,8 +324,6 @@ mod tests {
 
 	#[gpui::test]
 	fn real_picker_search_select_remove_and_manager_drafts(cx: &mut gpui::TestAppContext) {
-		use gpui::Focusable as _;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual

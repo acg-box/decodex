@@ -1,3 +1,4 @@
+#[cfg(test)] use tokio::io::AsyncWriteExt as _;
 use tokio::io::{self, DuplexStream};
 
 use crate::{
@@ -154,8 +155,6 @@ async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 
 #[tokio::test]
 async fn transport_observed_changes_hide_ready_results_before_service_event_delivery() {
-	use tokio::io::AsyncWriteExt as _;
-
 	let (source, mut remote, mut events) = source();
 	let recaps = Recaps::default();
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
@@ -174,8 +173,6 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 
 #[tokio::test]
 async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_native_turn() {
-	use tokio::io::AsyncWriteExt as _;
-
 	for (method, role, field) in [
 		("thread/realtime/transcript/delta", "user", "delta"),
 		("thread/realtime/transcript/done", "user", "text"),

@@ -30,6 +30,8 @@ use cursor::Cursor;
 use decodex_protocol::PromptDraft;
 use edit::Snapshot;
 use native::MAX_NATIVE_EDITOR_BYTES;
+#[cfg(target_os = "macos")] use objc2_app_kit::NSView;
+#[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use text::ComposerTextElement;
 
 actions!(
@@ -757,10 +759,6 @@ pub(crate) fn bind_keys(cx: &mut App) {
 // the editor must reclaim the native text client after another native view used it.
 #[cfg(target_os = "macos")]
 fn claim_native_text_focus(window: &Window) {
-	use objc2_app_kit::NSView;
-
-	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
 	let Ok(handle) = HasWindowHandle::window_handle(window) else {
 		return;
 	};

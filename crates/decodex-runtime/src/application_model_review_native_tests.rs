@@ -4,6 +4,7 @@
 use std::{
 	env,
 	fs::{self, OpenOptions},
+	io::Write as _,
 	path::Path,
 	time::{SystemTime, UNIX_EPOCH},
 };
@@ -37,8 +38,6 @@ use decodex_protocol::{
 };
 
 fn add_project_warning(saved: &Path) {
-	use std::io::Write as _;
-
 	let mut file = OpenOptions::new()
 		.append(true)
 		.open(saved.join(".codex/config.toml"))

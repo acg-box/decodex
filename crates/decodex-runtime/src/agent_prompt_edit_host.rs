@@ -14,7 +14,7 @@ use crate::{
 use decodex_database::{AgentForkBoundary, AgentPromptEditAttempt};
 use decodex_protocol::{
 	EntityId, PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary,
-	PromptForkResult, WireText,
+	PromptForkPhase, PromptForkResult, WireText,
 };
 
 pub(super) type Reviews = Arc<Mutex<BTreeMap<String, (Instant, PromptEditReview)>>>;
@@ -324,34 +324,29 @@ impl AgentHost {
 		work: &EntityId,
 		review: &WireText,
 	) -> PromptForkResult {
-		use decodex_protocol::{
-			PromptForkBoundary as Boundary, PromptForkPhase as Phase, PromptForkResult as Result,
-			PromptForkStatus,
-		};
-
 		let saved =
 			match self.store.agent_fork_receipt(work.as_str().into(), review.as_str().into()).await
 			{
 				Ok(Some(saved)) => saved,
-				Ok(None) => return Result::Available(None),
-				Err(_) => return Result::Unavailable,
+				Ok(None) => return PromptForkResult::Available(None),
+				Err(_) => return PromptForkResult::Unavailable,
 			};
-		let convert = || -> Option<PromptForkStatus> {
-			Some(PromptForkStatus {
+		let convert = || -> Option<decodex_protocol::PromptForkStatus> {
+			Some(decodex_protocol::PromptForkStatus {
 				work_id: work.clone(),
 				thread_id: WireText::new(saved.attempt.source.thread).ok()?,
 				review_token: review.clone(),
 				target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
 				target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
 				boundary: match saved.attempt.boundary {
-					AgentForkBoundary::BeforeInput => Boundary::BeforeInput,
-					AgentForkBoundary::AfterTurn => Boundary::AfterTurn,
+					AgentForkBoundary::BeforeInput => PromptForkBoundary::BeforeInput,
+					AgentForkBoundary::AfterTurn => PromptForkBoundary::AfterTurn,
 				},
 				phase: match saved.state.as_str() {
-					"reserved" => Phase::Uncertain,
-					"acknowledged" => Phase::Acknowledged,
-					"forked" => Phase::Forked,
-					"rejected" => Phase::Rejected,
+					"reserved" => PromptForkPhase::Uncertain,
+					"acknowledged" => PromptForkPhase::Acknowledged,
+					"forked" => PromptForkPhase::Forked,
+					"rejected" => PromptForkPhase::Rejected,
 					_ => return None,
 				},
 				edit_receipt_id: saved.edit_receipt_id,
@@ -359,8 +354,8 @@ impl AgentHost {
 		};
 
 		match convert() {
-			Some(status) => Result::Available(Some(status)),
-			None => Result::Unavailable,
+			Some(status) => PromptForkResult::Available(Some(status)),
+			None => PromptForkResult::Unavailable,
 		}
 	}
 }

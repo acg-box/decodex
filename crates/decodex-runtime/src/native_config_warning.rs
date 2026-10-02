@@ -1,6 +1,7 @@
 //! Bounded public configuration diagnostics. Never retain arbitrary provider fields.
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
 use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::RpcError;
@@ -88,8 +89,6 @@ pub(crate) async fn record(
 	generation: &ProcessGenerationId,
 	params: &Value,
 ) -> Result<(), StoreError> {
-	use sha2::{Digest as _, Sha256};
-
 	let Some(value) = project(params) else {
 		return Ok(());
 	};
@@ -133,8 +132,6 @@ pub(crate) async fn record_warning(
 	generation: &ProcessGenerationId,
 	params: &Value,
 ) -> Result<(), StoreError> {
-	use sha2::{Digest as _, Sha256};
-
 	let Some(value) = warning(params) else {
 		return Ok(());
 	};

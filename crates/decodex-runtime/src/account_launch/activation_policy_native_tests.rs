@@ -3,7 +3,10 @@
 use std::sync::atomic::AtomicUsize;
 
 use reqwest::Client;
-use tokio::task;
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+	task,
+};
 
 #[cfg(test)] use crate::account_launch::process::RunnerCapacity;
 use crate::account_launch::process::{
@@ -126,8 +129,6 @@ async fn serve_policy(
 	mode: Arc<AtomicUsize>,
 	reads: Arc<AtomicUsize>,
 ) {
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-
 	loop {
 		let (stream, _) = listener.accept().await.expect("native fixture connection");
 		let mut stream = BufReader::new(stream);

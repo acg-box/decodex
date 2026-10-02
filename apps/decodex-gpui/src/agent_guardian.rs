@@ -1179,11 +1179,6 @@ mod tests {
 	}
 	#[gpui::test]
 	fn submission_readback_keeps_a_concurrent_detail_read(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-			ServerId, ServerMessage,
-		};
-
 		let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
 			let (mut lists, mut details) = (0, 0);
 

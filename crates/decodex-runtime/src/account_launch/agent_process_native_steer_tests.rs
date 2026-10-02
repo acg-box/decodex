@@ -2,6 +2,7 @@
 use std::{
 	env,
 	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
 	path::PathBuf,
 	sync::atomic::AtomicUsize,
 };
@@ -281,8 +282,6 @@ async fn qualify_query(
 	turn: &str,
 	key: &str,
 ) {
-	use std::os::unix::fs::PermissionsExt as _;
-
 	let server_id =
 		ServerId::new("20000000-0000-4000-8000-000000000001").expect("fixture server identity");
 	let doctor = DoctorReport::new(

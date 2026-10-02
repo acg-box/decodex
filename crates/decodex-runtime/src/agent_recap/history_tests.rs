@@ -1,4 +1,5 @@
 use tokio::io;
+#[cfg(test)] use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 use crate::agent_recap::{
 	excerpts,
@@ -106,8 +107,6 @@ fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor(
 
 #[tokio::test]
 async fn native_turn_and_item_pages_are_joined_without_model_requests() {
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-
 	let (local, remote) = io::duplex(16_384);
 	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);

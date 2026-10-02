@@ -71,6 +71,8 @@ use gpui::{
 #[allow(dead_code)]
 #[cfg(target_os = "macos")]
 use objc2 as _;
+#[cfg(target_os = "macos")] use objc2_app_kit::{NSResponder, NSView};
+#[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde_json::Value;
 use tokio::runtime::Builder;
 #[cfg(target_os = "macos")] use {objc2_app_kit as _, objc2_foundation as _};
@@ -385,10 +387,6 @@ fn verify_native_composer_focus(
 	if std::env::var_os("DECODEX_VISUAL_NATIVE_INPUT_FOCUS").is_none() {
 		return Ok(());
 	}
-
-	use objc2_app_kit::{NSResponder, NSView};
-
-	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 	cx.update_window(window, |_, window, _| {
 		let handle =

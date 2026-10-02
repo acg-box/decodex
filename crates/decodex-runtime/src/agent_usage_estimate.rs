@@ -29,10 +29,8 @@ where
 	F: Fn() -> Fut,
 	Fut: Future<Output = Option<Source>>,
 {
-	use AgentUsageEstimateResult as Result;
-
 	let Some(before) = source().await else {
-		return Result::Unavailable;
+		return AgentUsageEstimateResult::Unavailable;
 	};
 	let response = time::timeout(
 		Duration::from_secs(65),
@@ -40,39 +38,45 @@ where
 	)
 	.await;
 	let Some(after) = source().await else {
-		return Result::Unavailable;
+		return AgentUsageEstimateResult::Unavailable;
 	};
 
 	if before.key != after.key {
-		return Result::Unavailable;
+		return AgentUsageEstimateResult::Unavailable;
 	}
 
 	match response {
 		Ok(Ok(Some(estimate))) => {
 			let Ok(estimate) = serde_json::to_value(estimate).and_then(serde_json::from_value)
 			else {
-				return Result::Unavailable;
+				return AgentUsageEstimateResult::Unavailable;
 			};
 			let (Ok(work_id), Ok(account_id)) = (
 				EntityId::new(before.key.work),
 				EntityId::new(before.key.account.as_str().to_owned()),
 			) else {
-				return Result::Unavailable;
+				return AgentUsageEstimateResult::Unavailable;
 			};
 			let observed_at_micros = SystemTime::now()
 				.duration_since(UNIX_EPOCH)
 				.ok()
 				.and_then(|v| i64::try_from(v.as_micros()).ok());
 			let Some(observed_at_micros) = observed_at_micros else {
-				return Result::Unavailable;
+				return AgentUsageEstimateResult::Unavailable;
 			};
 
-			Result::Available { work_id, account_id, observed_at_micros, estimate }
+			AgentUsageEstimateResult::Available {
+				work_id,
+				account_id,
+				observed_at_micros,
+				estimate,
+			}
 		},
-		Ok(Ok(None)) => Result::NotReported,
-		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 => Result::Unsupported,
-		Ok(Err(ClientError::CapacityExceeded)) => Result::CapacityExceeded,
-		_ => Result::Unavailable,
+		Ok(Ok(None)) => AgentUsageEstimateResult::NotReported,
+		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 =>
+			AgentUsageEstimateResult::Unsupported,
+		Ok(Err(ClientError::CapacityExceeded)) => AgentUsageEstimateResult::CapacityExceeded,
+		_ => AgentUsageEstimateResult::Unavailable,
 	}
 }
 

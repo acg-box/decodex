@@ -1,5 +1,5 @@
 //! Explicit edits to the reviewed native goal, without a second goal store.
-use std::fs::File;
+use std::{fs::File, io::Read as _};
 
 use gpui::{AnyElement, AppContext as _, IntoElement, ParentElement, PathPromptOptions, Styled};
 use tokio::runtime::Builder;
@@ -149,8 +149,6 @@ impl AgentSurface {
 			let text = cx
 				.background_executor()
 				.spawn(async move {
-					use std::io::Read as _;
-
 					let mut file = File::open(path).map_err(|_| ())?;
 					let mut bytes = Vec::new();
 

@@ -12,7 +12,8 @@ use tokio::{task, time};
 
 use crate::agent_host::AgentHost;
 use decodex_protocol::{
-	AgentHistoryEntryDto, AgentHistoryResult, AgentTimelinePage, WeatherForecast,
+	AgentHistoryEntryDto, AgentHistoryResult, AgentTimelineContent, AgentTimelinePage,
+	WeatherForecast,
 };
 
 pub(super) struct CachedWeather {
@@ -81,13 +82,11 @@ impl AgentHost {
 	}
 
 	pub(crate) async fn enrich_timeline_weather(&self, page: &mut AgentTimelinePage) {
-		use decodex_protocol::AgentTimelineContent as Content;
-
 		let turns = page
 			.entries
 			.iter()
 			.filter_map(|entry| match &entry.content {
-				Content::Item { kind, text, turn_id, .. }
+				AgentTimelineContent::Item { kind, text, turn_id, .. }
 					if kind == "agentMessage" && has_weather(text) =>
 					Some(turn_id.clone()),
 				_ => None,

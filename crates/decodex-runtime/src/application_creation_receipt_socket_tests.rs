@@ -1,5 +1,6 @@
 //! Real same-UID transport proof for cold, read-only creation recovery.
 use std::fs::{self, Permissions};
+#[cfg(test)] use std::os::unix::fs::PermissionsExt as _;
 
 use crate::{
 	ProtocolServer, ServerConfig,
@@ -141,9 +142,6 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 	let server_id = ServerId::new("20000000-0000-4000-8000-000000000001").unwrap();
 	// SAFETY: geteuid has no arguments or failure return.
 	let uid = unsafe { libc::geteuid() };
-
-	use std::os::unix::fs::PermissionsExt as _;
-
 	let config = root.as_path().join("config.toml");
 
 	fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).unwrap();

@@ -253,6 +253,7 @@ fn valid_audio(audio: &str) -> bool {
 mod tests {
 	use std::time::Duration;
 
+	#[cfg(test)] use base64::Engine as _;
 	use tokio::{sync::mpsc, time};
 
 	use crate::dictation::{DictationGateway, DictationPhase, DictationRequest};
@@ -302,8 +303,6 @@ mod tests {
 
 	#[test]
 	fn pcm_validation_rejects_invalid_or_partial_samples() {
-		use base64::Engine as _;
-
 		for audio in ["", "not base64", "AQ=="] {
 			assert!(!super::valid_audio(audio));
 		}

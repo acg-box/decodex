@@ -6,6 +6,7 @@ mod audio;
 #[path = "native_voice_transport.rs"]
 mod transport;
 
+#[cfg(all(target_os = "macos", not(test)))] use std::os::unix::ffi::OsStrExt as _;
 use std::{collections::BTreeSet, time::Duration};
 
 use gpui::{AnyElement, KeyDownEvent};
@@ -14,6 +15,7 @@ use serde_json::{Value, json};
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, TEXT_MUTED};
 
+#[cfg(all(target_os = "macos", not(test)))] use crate::native_menu_bar::{self};
 #[cfg(test)] use crate::shell::agent_surface::{Entity, Render};
 use crate::{
 	shell::{
@@ -66,18 +68,14 @@ pub(super) struct Media;
 #[cfg(all(target_os = "macos", not(test)))]
 impl Media {
 	pub(super) fn new(window: &Window) -> Result<Self, ()> {
-		use crate::native_menu_bar::{bundled_library_path, symbol};
-
-		use std::{ffi::CString, os::unix::ffi::OsStrExt as _};
-
-		let path =
-			bundled_library_path(&std::env::current_exe().map_err(|_| ())?).map_err(|_| ())?;
+		let path = native_menu_bar::bundled_library_path(&std::env::current_exe().map_err(|_| ())?)
+			.map_err(|_| ())?;
 
 		if !std::fs::symlink_metadata(&path).map_err(|_| ())?.file_type().is_file() {
 			return Err(());
 		}
 
-		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
+		let path = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
 
 		// SAFETY: fixed signed-app library and exact versioned C ABI; this object cannot cross
 		// threads.
@@ -89,17 +87,21 @@ impl Media {
 			}
 
 			let version: unsafe extern "C" fn() -> u32 =
-				symbol(image, c"decodex_voice_media_abi_version").map_err(|_| ())?;
+				native_menu_bar::symbol(image, c"decodex_voice_media_abi_version")
+					.map_err(|_| ())?;
 
 			if version() != 3 {
 				return Err(());
 			}
 
 			let create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
-				symbol(image, c"decodex_voice_media_create").map_err(|_| ())?;
-			let command_fn = symbol(image, c"decodex_voice_media_command").map_err(|_| ())?;
-			let poll_fn = symbol(image, c"decodex_voice_media_poll").map_err(|_| ())?;
-			let destroy = symbol(image, c"decodex_voice_media_destroy").map_err(|_| ())?;
+				native_menu_bar::symbol(image, c"decodex_voice_media_create").map_err(|_| ())?;
+			let command_fn =
+				native_menu_bar::symbol(image, c"decodex_voice_media_command").map_err(|_| ())?;
+			let poll_fn =
+				native_menu_bar::symbol(image, c"decodex_voice_media_poll").map_err(|_| ())?;
+			let destroy =
+				native_menu_bar::symbol(image, c"decodex_voice_media_destroy").map_err(|_| ())?;
 			let native =
 				raw_window_handle::HasWindowHandle::window_handle(window).map_err(|_| ())?;
 			let raw_window_handle::RawWindowHandle::AppKit(handle) = native.as_raw() else {

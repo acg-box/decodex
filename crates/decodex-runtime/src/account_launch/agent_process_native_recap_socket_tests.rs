@@ -9,11 +9,13 @@ use std::{
 	collections::BTreeSet,
 	env,
 	fs::{self, File, Permissions},
+	os::unix::fs::PermissionsExt as _,
 	panic::AssertUnwindSafe,
 	path::{Path, PathBuf},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
+use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, task, time};
 
 use crate::{
@@ -213,9 +215,6 @@ async fn qualify(home: &Path) {
 	let config = root.as_path().join("config.toml");
 
 	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).expect("local profile");
-
-	use std::os::unix::fs::PermissionsExt as _;
-
 	fs::set_permissions(config, Permissions::from_mode(0o600)).expect("private profile");
 
 	let client = AgentClient::new(ClientProfile::load(root.as_path(), None).expect("local client"));
@@ -224,9 +223,6 @@ async fn qualify(home: &Path) {
 		.bind(authority())
 		.await
 		.expect("public local server");
-
-	use futures_util::FutureExt as _;
-
 	let outcome = AssertUnwindSafe(time::timeout(
 		Duration::from_secs(interaction_seconds(interactive)),
 		async {

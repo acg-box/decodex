@@ -13,9 +13,9 @@ use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotResult, ClientProfile, Entity, Render, Window, WireText,
 };
 use decodex_protocol::{
-	AgentModelDto, AgentModelOutcome as Outcome, AgentModelSelectionReceipt,
-	AgentModelSelectionState as State, ClientFailure, ConversationModel,
-	ConversationReasoningEffort,
+	AgentModelDto, AgentModelOutcome as Outcome, AgentModelResponse as Response,
+	AgentModelSelectionReceipt, AgentModelSelectionState as State, ClientFailure,
+	ConversationModel, ConversationReasoningEffort,
 };
 
 #[derive(Default)]
@@ -433,8 +433,6 @@ fn label(state: Outcome) -> &'static str {
 }
 
 fn history_label(receipt: &AgentModelSelectionReceipt) -> String {
-	use decodex_protocol::AgentModelResponse as Response;
-
 	let response = match receipt.response {
 		Response::Reserved => "awaiting response",
 		Response::Queued => "queued",

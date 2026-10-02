@@ -61,6 +61,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(feature = "visual-capture")] use gpui::Focusable;
 use gpui::{
 	AnyElement, AppContext as _, Bounds, ClipboardItem, Context, Div, Entity, FocusHandle,
 	FontWeight, KeyDownEvent, Pixels, Point, Render, Role, ScrollHandle, SharedString, Task,
@@ -292,8 +293,6 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		use gpui::Focusable;
-
 		self.profile = Some(profile);
 
 		self.composer.update(cx, |input, cx| input.set_content(message, cx));
