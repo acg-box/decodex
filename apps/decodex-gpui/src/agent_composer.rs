@@ -24,16 +24,15 @@ use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_M
 use crate::{
 	shell::{
 		agent_surface::{
-			AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 			AgentHistoryResult, AgentSnapshotResult, AgentSurface, ClipboardItem, ComposerInput,
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, compact_tokens, model_settings, ui_theme,
-			unique_command,
+			Styled, SubmitComposer, Window, model_settings, ui_theme,
 		},
 		workspace_symbols,
-		workspace_symbols::{Symbol, icon},
+		workspace_symbols::Symbol,
 	},
 	ui_motion,
 };
@@ -231,7 +230,7 @@ impl AgentSurface {
 				let result = client
 					.execute(
 						AgentActionDto::Interrupt { work_id, turn_id },
-						IdempotencyKey::new(unique_command()).expect("command identity"),
+						IdempotencyKey::new(agent_surface::unique_command()).expect("command identity"),
 					)
 					.await;
 				// The turn can finish before interruption reaches Codex. Read back before
@@ -503,8 +502,8 @@ impl AgentSurface {
 							format!(
 								"Context · {:.0}%\n{} / {} tokens",
 								u.context_tokens as f64 / capacity as f64 * 100.,
-								compact_tokens(u.context_tokens),
-								compact_tokens(capacity)
+								agent_surface::compact_tokens(u.context_tokens),
+								agent_surface::compact_tokens(capacity)
 							)
 						}),
 					_ => None,
@@ -822,12 +821,12 @@ impl AgentSurface {
 				pending: self.awaiting_start(cx) || self.interrupting.is_some(),
 			}
 			.into_any_element(),
-			"attach" => icon(Symbol::Plus),
+			"attach" => workspace_symbols::icon(Symbol::Plus),
 			"attachment-item" => gpui::div()
 				.flex()
 				.items_center()
 				.gap(gpui::px(10.))
-				.child(icon(Symbol::Plus))
+				.child(workspace_symbols::icon(Symbol::Plus))
 				.child("Add attachments…")
 				.into_any_element(),
 			"audio-item" => gpui::div()
@@ -835,7 +834,7 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.gap(gpui::px(10.))
-				.child(icon(Symbol::Microphone))
+				.child(workspace_symbols::icon(Symbol::Microphone))
 				.child("Microphone")
 				.child(gpui::div().flex_1())
 				.child(
@@ -850,7 +849,7 @@ impl AgentSurface {
 					self.composer_menu == Some("microphone"),
 				))
 				.into_any_element(),
-			"dictation" => icon(Symbol::Microphone),
+			"dictation" => workspace_symbols::icon(Symbol::Microphone),
 			"delivery" => gpui::div()
 				.w_full()
 				.flex()
@@ -869,7 +868,11 @@ impl AgentSurface {
 				.whitespace_nowrap()
 				.text_color(gpui::rgb(TEXT))
 				.when(self.fast, |d| {
-					d.child(gpui::div().text_color(gpui::rgb(BLUE)).child(icon(Symbol::Fast)))
+					d.child(
+						gpui::div()
+							.text_color(gpui::rgb(BLUE))
+							.child(workspace_symbols::icon(Symbol::Fast)),
+					)
 				})
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
 				.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
@@ -1210,7 +1213,7 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 		ImageFormat::Gif => "gif",
 		_ => return Err(Error::other("Paste a PNG, JPEG, WebP, or GIF image")),
 	};
-	let path = dir.join(format!("{}.{ext}", unique_command()));
+	let path = dir.join(format!("{}.{ext}", agent_surface::unique_command()));
 
 	OpenOptions::new()
 		.write(true)

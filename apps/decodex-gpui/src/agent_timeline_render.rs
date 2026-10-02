@@ -6,9 +6,9 @@ use crate::{
 		agent_surface,
 		agent_surface::{
 			native_timeline::{
-				AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
+				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
 				AgentWorkItemDto, Context, FluentBuilder, InteractiveElement, IntoElement,
-				ParentElement, SharedString, Styled, key, markdown,
+				ParentElement, SharedString, Styled, markdown,
 			},
 			response_metrics::ResponseMetrics,
 			text_reveal::StreamingText,
@@ -76,7 +76,9 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
+		let identity =
+			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
+				.to_string();
 		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, cx);
 		let process = matches!(&entry.content, AgentTimelineContent::Item { kind, phase, activity, attachments, app_ui: false, .. }
@@ -761,7 +763,7 @@ mod tests {
 	use gpui::{self, AppContext};
 
 	use crate::shell::agent_surface::native_timeline::{
-		Binding, Timeline,
+		self, Binding, Timeline,
 		render::{AgentSurface, AgentTimelineContent, AgentTimelineEntry, Context},
 	};
 	use decodex_protocol::AgentTimelinePage;
@@ -908,7 +910,8 @@ mod tests {
 			}
 
 			let identity =
-				serde_json::json!([work.id, work.codex_thread_id, super::key(&entry)]).to_string();
+				serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(&entry)])
+					.to_string();
 
 			s.native_history.replace(
 				Binding {
@@ -1233,7 +1236,7 @@ mod tests {
 			.map(|entry| {
 				format!(
 					"native-history-{}",
-					serde_json::json!([work.id, work.codex_thread_id, super::key(entry)])
+					serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
 				)
 			})
 			.collect::<Vec<_>>();

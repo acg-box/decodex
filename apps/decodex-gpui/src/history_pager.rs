@@ -6,7 +6,7 @@ use std::{
 	collections::VecDeque,
 	mem,
 	path::{Path, PathBuf},
-	sync::{Arc, Mutex, MutexGuard, TryLockError},
+	sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -739,7 +739,7 @@ impl HistoryPager {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, PagerState> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
 	fn try_lock_page_cache(&self) -> Option<MutexGuard<'_, PageCacheOwner>> {
@@ -751,25 +751,18 @@ impl HistoryPager {
 	}
 
 	fn lock_cache_publication_commit_gate(&self) -> MutexGuard<'_, ()> {
-		self.inner
-			.cache_publication_commit_gate
-			.lock()
-			.unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.cache_publication_commit_gate.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
 	#[cfg(test)]
 	pub(crate) fn cache_probe_events(&self) -> Vec<HistoryCacheProbeEvent> {
-		self.inner
-			.cache_probe_events
-			.lock()
-			.unwrap_or_else(std::sync::PoisonError::into_inner)
-			.clone()
+		self.inner.cache_probe_events.lock().unwrap_or_else(PoisonError::into_inner).clone()
 	}
 
 	#[cfg(test)]
 	fn record_cache_probe_event(&self, event: HistoryCacheProbeEvent) {
 		let mut events =
-			self.inner.cache_probe_events.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+			self.inner.cache_probe_events.lock().unwrap_or_else(PoisonError::into_inner);
 
 		if events.len() < MAX_CACHE_PROBE_EVENTS {
 			events.push(event);
@@ -1888,7 +1881,7 @@ fn history_availability(error: HistoryQueryError) -> HistoryAvailability {
 
 #[cfg(test)]
 mod tests {
-	use std::env;
+	use std::{env, sync::PoisonError};
 
 	use tempfile::TempDir;
 
@@ -2018,7 +2011,7 @@ mod tests {
 				.inner
 				.page_cache
 				.lock()
-				.unwrap_or_else(std::sync::PoisonError::into_inner),
+				.unwrap_or_else(PoisonError::into_inner),
 			PageCacheOwner::Dormant { parent, cache_schema_generation }
 				if parent == &cache_parent
 					&& *cache_schema_generation == TEST_CACHE_SCHEMA_GENERATION
@@ -2039,7 +2032,7 @@ mod tests {
 		assert!(pager.finish_send(&send));
 		assert!(pager.snapshot().visible.is_none());
 		assert!(matches!(
-			&*pager.inner.page_cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+			&*pager.inner.page_cache.lock().unwrap_or_else(PoisonError::into_inner),
 			PageCacheOwner::Dormant { .. }
 		));
 
@@ -2052,7 +2045,7 @@ mod tests {
 		assert_eq!(provisional.cursor, HistoryCursorObservation::Unknown);
 		assert_eq!(provisional.retained_pages, 1);
 		assert!(matches!(
-			&*pager.inner.page_cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner),
+			&*pager.inner.page_cache.lock().unwrap_or_else(PoisonError::into_inner),
 			PageCacheOwner::Enabled(_)
 		));
 

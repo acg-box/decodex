@@ -14,9 +14,9 @@ use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTE
 use crate::{
 	shell::{
 		agent_surface::{
-			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
-			FluentBuilder, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-			StatefulInteractiveElement, Styled, Window, history_entry, markdown, native_timeline,
+			self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto,
+			Context, FluentBuilder, InteractiveElement, IntoElement, ParentElement, Render,
+			SharedString, StatefulInteractiveElement, Styled, Window, markdown, native_timeline,
 			ui_theme, workspace,
 		},
 		workspace_symbols,
@@ -140,7 +140,7 @@ impl AgentSurface {
 		work: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut body = history_entry(entry).into_any_element();
+		let mut body = agent_surface::history_entry(entry).into_any_element();
 
 		if entry.kind == "assistant"
 			&& let Some(action) =
