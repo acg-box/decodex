@@ -13,16 +13,18 @@ use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::recap::{
-	AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement, TaskRecapPhase,
-	TaskRecapStatus, Window, WireText, request, watch,
-};
 #[cfg(test)] use crate::shell::agent_surface::recap::{Entity, Render};
+use crate::shell::agent_surface::{
+	recap::{
+		AgentActionDto, AgentSurface, ClientProfile, Context, EntityId, IntoElement,
+		TaskRecapPhase, TaskRecapStatus, Window, WireText, request, watch,
+	},
+	wire_test_support,
+};
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
-	CommandResultEnvelope, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ReceiptDisposition, ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
-	TaskRecap,
+	CommandResultEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+	ReceiptDisposition, ServerId, ServerMessage, TaskRecap,
 };
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -292,31 +294,7 @@ async fn serve(
 	let mut request_id = None;
 
 	loop {
-		let mut socket =
-			tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
-		let _hello = socket.next().await.unwrap().unwrap();
-
-		for message in [
-			ServerMessage::Welcome(ServerWelcome {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				instance_id: None,
-				cursor: Cursor(0),
-				reconnect: ReconnectMode::Snapshot,
-			}),
-			ServerMessage::Snapshot(SnapshotEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER).unwrap(),
-				cursor: Cursor(0),
-				items: vec![],
-			}),
-		] {
-			socket
-				.send(Message::Text(serde_json::to_string(&message).unwrap().into()))
-				.await
-				.unwrap();
-		}
-
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};

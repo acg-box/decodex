@@ -106,16 +106,7 @@ impl RenderOnce for SelectableText {
 					&& let Ok(ix) = up_layout.index_for_position(event.position)
 					&& let Some((_, url)) = self.links.iter().find(|(range, _)| range.contains(&ix))
 				{
-					if url.starts_with("https://")
-						|| url.starts_with("http://")
-						|| url.starts_with("codex://threads/")
-					{
-						cx.open_url(url);
-					} else if url.starts_with('/') {
-						let path = markdown::without_line_column(url);
-
-						cx.reveal_path(Path::new(path));
-					}
+					open_selection_link(url, cx);
 				}
 			})
 			.on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
@@ -158,6 +149,19 @@ impl Selection {
 			..text.floor_char_boundary(self.anchor.max(self.head).min(text.len()))
 	}
 }
+fn open_selection_link(url: &str, cx: &mut App) {
+	if url.starts_with("https://")
+		|| url.starts_with("http://")
+		|| url.starts_with("codex://threads/")
+	{
+		cx.open_url(url);
+	} else if url.starts_with('/') {
+		let path = markdown::without_line_column(url);
+
+		cx.reveal_path(Path::new(path));
+	}
+}
+
 fn selection_highlights(
 	length: usize,
 	highlights: Vec<(Range<usize>, HighlightStyle)>,
