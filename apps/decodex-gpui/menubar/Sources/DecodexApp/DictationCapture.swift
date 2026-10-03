@@ -69,82 +69,37 @@ protocol DictationCapturing: AnyObject {
     func stop()
 }
 
-/// Direct Core Audio input for dictation; speech recognition stays in the subscription.
+private enum DictationCaptureEvent: Sendable {
+    case ready(Double), level(Float), pcm(Data, Float), ended, failed
+
+    var payload: [String: Any] {
+        switch self {
+        case .ready(let elapsed): ["type": "dictation_ready", "capture_ms": elapsed]
+        case .level(let value): ["type": "level", "value": value]
+        case .pcm(let data, let level): ["type": "pcm", "audio": data.base64EncodedString(), "level": level]
+        case .ended: ["type": "ended"]
+        case .failed: ["type": "error", "message": "The microphone could not capture audio. Check the input device and try again."]
+        }
+    }
+}
+
+/// Main-thread adapter; engine operations run on one serial audio queue.
 @MainActor
 final class DictationCapture: DictationCapturing {
-    private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
-    private let engine = AVAudioEngine()
-    private var encoder: DictationPCMEncoder?
-    private var active = false
-    private let emit: @MainActor @Sendable ([String: Any]) -> Void
-    private let requestedAt = Date()
+    private let worker: DictationAudioWorker
 
-    init(emit: @escaping @MainActor @Sendable ([String: Any]) -> Void) { self.emit = emit }
-
-    func start(input name: String) throws {
-        let input = engine.inputNode
-        // Enabling voice processing replaces the I/O unit. Select the device and
-        // read its format afterward so the encoder uses the processed stream.
-        try input.setVoiceProcessingEnabled(true)
-        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
-            enableAdvancedDucking: false, duckingLevel: .min
-        )
-        if !name.isEmpty {
-            var device = try Self.device(named: name)
-            let status = input.withAudioUnit { unit -> OSStatus in
-                guard let unit else { return kAudio_ParamError }
-                return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-            }
-            guard status == noErr else { throw CaptureError.device }
-        }
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.format }
-        let encoder = try DictationPCMEncoder(format: format)
-        self.encoder = encoder
-        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 10), format: format, error: ()) { @Sendable [weak self, encoder] buffer, _ in
-            guard let frame = encoder.encode(buffer) else {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.active else { return }
-                    self.stop()
-                    self.emit(["type":"error", "message":"The microphone audio format could not be converted."])
-                }
-                return
-            }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.active else { return }
-                if frame.first {
-                    let elapsed = Date().timeIntervalSince(self.requestedAt) * 1_000
-                    Self.logger.info("Microphone ready in \(elapsed, privacy: .public) ms")
-                    self.emit(["type":"dictation_ready", "capture_ms":elapsed])
-                }
-                self.emit(["type":"level", "value":frame.level])
-                for pcm in frame.frames { self.emit(["type":"pcm", "audio":pcm.base64EncodedString(), "level":frame.level]) }
-                if frame.final { self.stop(); self.emit(["type":"ended"]) }
-            }
-        }
-        active = true
-        do { engine.prepare(); try engine.start() } catch { stop(); throw error }
-    }
-
-    func finish() {
-        encoder?.requestFinish()
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
-            guard let self, self.active else { return }
-            self.stop()
-            self.emit(["type":"ended"])
+    init(queue: DispatchQueue = DispatchQueue(label: "box.acg.decodex.dictation-capture", qos: .userInitiated),
+         emit: @escaping @MainActor @Sendable ([String: Any]) -> Void) {
+        worker = DictationAudioWorker(queue: queue) { event in
+            DispatchQueue.main.async { emit(event.payload) }
         }
     }
 
-    func stop() {
-        guard active else { return }
-        active = false
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        encoder = nil
-    }
+    func start(input: String) throws { worker.start(input: input) }
+    func finish() { worker.finish() }
+    func stop() { worker.stop() }
 
-    static func device(named name: String) throws -> AudioDeviceID {
+    nonisolated static func device(named name: String) throws -> AudioDeviceID {
         var property = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size) == noErr else { throw CaptureError.device }
@@ -165,4 +120,99 @@ final class DictationCapture: DictationCapturing {
         }
         throw CaptureError.device
     }
+}
+
+/// All mutable engine state is confined to queue. The tap only uses its captured encoder.
+/// Recognition and transcript ownership remain in the subscription runtime.
+private final class DictationAudioWorker: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
+    private var engine: AVAudioEngine?
+    private let queue: DispatchQueue
+    private var encoder: DictationPCMEncoder?
+    private var active = false
+    private let emit: @Sendable (DictationCaptureEvent) -> Void
+    private let requestedAt = Date()
+
+    init(queue: DispatchQueue, emit: @escaping @Sendable (DictationCaptureEvent) -> Void) {
+        self.queue = queue
+        self.emit = emit
+    }
+
+    func start(input: String) {
+        queue.async { [self] in
+            do { try startEngine(input: input) }
+            catch { stopEngine(); emit(.failed) }
+        }
+    }
+
+    private func startEngine(input name: String) throws {
+        let requestedDevice = name.isEmpty ? nil : try DictationCapture.device(named: name)
+        let engine = AVAudioEngine()
+        self.engine = engine
+        let input = engine.inputNode
+        // Enabling voice processing replaces the I/O unit. Select the device and
+        // read its format afterward so the encoder uses the processed stream.
+        try input.setVoiceProcessingEnabled(true)
+        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+            enableAdvancedDucking: false, duckingLevel: .min
+        )
+        if var device = requestedDevice {
+            let status = input.withAudioUnit { unit -> OSStatus in
+                guard let unit else { return kAudio_ParamError }
+                return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
+            }
+            guard status == noErr else { throw CaptureError.device }
+        }
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.format }
+        let encoder = try DictationPCMEncoder(format: format)
+        self.encoder = encoder
+        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 10), format: format, error: ()) { @Sendable [weak self, encoder] buffer, _ in
+            guard let frame = encoder.encode(buffer) else {
+                self?.queue.async { [weak self] in
+                    guard let self, self.active else { return }
+                    self.stopEngine()
+                    self.emit(.failed)
+                }
+                return
+            }
+            self?.queue.async { [weak self] in
+                guard let self, self.active else { return }
+                if frame.first {
+                    let elapsed = Date().timeIntervalSince(self.requestedAt) * 1_000
+                    Self.logger.info("Microphone ready in \(elapsed, privacy: .public) ms")
+                    self.emit(.ready(elapsed))
+                }
+                self.emit(.level(frame.level))
+                for pcm in frame.frames { self.emit(.pcm(pcm, frame.level)) }
+                if frame.final { self.stopEngine(); self.emit(.ended) }
+            }
+        }
+        active = true
+        do { engine.prepare(); try engine.start() } catch { stopEngine(); throw error }
+    }
+
+    func finish() {
+        queue.async { [self] in
+            encoder?.requestFinish()
+            queue.asyncAfter(deadline: .now() + .milliseconds(200)) { [self] in
+                guard active else { return }
+                stopEngine()
+                emit(.ended)
+            }
+        }
+    }
+
+    func stop() { queue.async { [self] in stopEngine() } }
+
+    private func stopEngine() {
+        if active {
+            active = false
+            engine?.inputNode.removeTap(onBus: 0)
+        }
+        engine?.stop()
+        encoder = nil
+        engine = nil
+    }
+
 }
