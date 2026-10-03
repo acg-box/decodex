@@ -306,6 +306,8 @@ fn create_panel(
 		return None;
 	}
 
+	super::voice::Media::prepare_input(parent_window, "");
+
 	cx.on_window_closed(move |cx, id| {
 		if id == parent.window_id() {
 			let _ = child.update(cx, |_, window, _| window.remove_window());

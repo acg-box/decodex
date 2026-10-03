@@ -90,13 +90,19 @@ private enum DictationCaptureEvent: Sendable {
 @MainActor
 final class DictationCapture: DictationCapturing {
     private static let audioQueue = DispatchQueue(label: "box.acg.decodex.dictation-capture", qos: .userInitiated)
+    private static let resources = DictationAudioResources()
     private let worker: DictationAudioWorker
 
     init(queue: DispatchQueue? = nil,
          emit: @escaping @MainActor @Sendable ([String: Any]) -> Void) {
-        worker = DictationAudioWorker(queue: queue ?? Self.audioQueue) { event in
+        worker = DictationAudioWorker(queue: queue ?? Self.audioQueue, resources: queue == nil ? Self.resources : DictationAudioResources()) { event in
             DispatchQueue.main.async { emit(event.payload) }
         }
+    }
+
+    static func prepare(input: String) {
+        let resources = Self.resources
+        audioQueue.async { resources.prepare(input: input) }
     }
 
     func start(input: String) throws { worker.start(input: input) }
@@ -131,6 +137,7 @@ final class DictationCapture: DictationCapturing {
 private final class DictationAudioWorker: @unchecked Sendable {
     private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
     private var engine: AVAudioEngine?
+    private let resources: DictationAudioResources
     private let queue: DispatchQueue
     private var encoder: DictationPCMEncoder?
     private var active = false
@@ -139,8 +146,9 @@ private final class DictationAudioWorker: @unchecked Sendable {
     private let emit: @Sendable (DictationCaptureEvent) -> Void
     private let requestedAt = Date()
 
-    init(queue: DispatchQueue, emit: @escaping @Sendable (DictationCaptureEvent) -> Void) {
+    init(queue: DispatchQueue, resources: DictationAudioResources, emit: @escaping @Sendable (DictationCaptureEvent) -> Void) {
         self.queue = queue
+        self.resources = resources
         self.emit = emit
     }
 
@@ -148,36 +156,23 @@ private final class DictationAudioWorker: @unchecked Sendable {
         queue.async { [self] in
             guard !cancellationLock.withLock({ cancelled }) else { return }
             do { try startEngine(input: input) }
-            catch { stopEngine(); emit(.failed) }
+            catch { resources.discard(); stopEngine(); emit(.failed) }
         }
     }
 
     private func startEngine(input name: String) throws {
-        let requestedDevice = name.isEmpty ? nil : try DictationCapture.device(named: name)
-        let engine = AVAudioEngine()
+        let engine = try resources.engine(input: name)
         self.engine = engine
         let input = engine.inputNode
-        // Enabling voice processing replaces the I/O unit. Select the device and
-        // read its format afterward so the encoder uses the processed stream.
-        try input.setVoiceProcessingEnabled(true)
-        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
-            enableAdvancedDucking: false, duckingLevel: .min
-        )
-        if var device = requestedDevice {
-            let status = input.withAudioUnit { unit -> OSStatus in
-                guard let unit else { return kAudio_ParamError }
-                return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-            }
-            guard status == noErr else { throw CaptureError.device }
-        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.format }
         let encoder = try DictationPCMEncoder(format: format)
         self.encoder = encoder
-        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 10), format: format, error: ()) { @Sendable [weak self, encoder] buffer, _ in
+        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 100), format: format, error: ()) { @Sendable [weak self, encoder] buffer, _ in
             guard let frame = encoder.encode(buffer) else {
                 self?.queue.async { [weak self] in
                     guard let self, self.active else { return }
+                    self.resources.discard()
                     self.stopEngine()
                     self.emit(.failed)
                 }
@@ -197,7 +192,13 @@ private final class DictationAudioWorker: @unchecked Sendable {
         }
         active = true
         guard !cancellationLock.withLock({ cancelled }) else { stopEngine(); return }
-        do { engine.prepare(); try engine.start() } catch { stopEngine(); throw error }
+        do {
+            engine.prepare()
+            let beforeStart = Date()
+            try engine.start()
+            let startMs = Date().timeIntervalSince(beforeStart) * 1_000
+            Self.logger.info("Engine started: start_ms=\(startMs, privacy: .public) channels=\(format.channelCount, privacy: .public) sample_rate=\(format.sampleRate, privacy: .public)")
+        } catch { stopEngine(); throw error }
     }
 
     func finish() {
@@ -217,13 +218,76 @@ private final class DictationAudioWorker: @unchecked Sendable {
     }
 
     private func stopEngine() {
+        if let engine {
+            engine.pause()
+            Self.logger.info("Microphone paused; capture_running=\(engine.isRunning, privacy: .public)")
+        }
         if active {
             active = false
             engine?.inputNode.removeTap(onBus: 0)
         }
-        engine?.stop()
         encoder = nil
         engine = nil
     }
 
+}
+
+/// One stopped engine, owned exclusively by the shared audio queue. No tap or
+/// hardware start occurs during preparation. Device changes invalidate reuse.
+private final class DictationAudioResources: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
+    private var prepared: PreparedDictationEngine?
+
+    func prepare(input: String) {
+        guard prepared?.engine.isRunning != true else { return }
+        _ = try? engine(input: input)
+    }
+
+    func engine(input name: String) throws -> AVAudioEngine {
+        if let prepared, prepared.input == name, prepared.valid { return prepared.engine }
+        prepared = nil
+        let started = Date()
+        let requestedDevice = name.isEmpty ? nil : try DictationCapture.device(named: name)
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        // Enabling voice processing replaces the I/O unit. Select the device and
+        // read its format afterward so the encoder uses the processed stream.
+        try input.setVoiceProcessingEnabled(true)
+        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+            enableAdvancedDucking: false, duckingLevel: .min
+        )
+        if var device = requestedDevice {
+            let status = input.withAudioUnit { unit -> OSStatus in
+                guard let unit else { return kAudio_ParamError }
+                return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
+            }
+            guard status == noErr else { throw CaptureError.device }
+        }
+        prepared = PreparedDictationEngine(engine: engine, input: name)
+        let elapsed = Date().timeIntervalSince(started) * 1_000
+        Self.logger.info("Audio configuration ready in \(elapsed, privacy: .public) ms; capture_running=\(engine.isRunning, privacy: .public)")
+        return engine
+    }
+
+    func discard() { prepared = nil }
+}
+
+private final class PreparedDictationEngine: @unchecked Sendable {
+    let engine: AVAudioEngine
+    let input: String
+    private let lock = NSLock()
+    private var invalidated = false
+    private var observer: NSObjectProtocol?
+    var valid: Bool { lock.withLock { !invalidated } }
+
+    init(engine: AVAudioEngine, input: String) {
+        self.engine = engine
+        self.input = input
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.lock.withLock { self.invalidated = true }
+        }
+    }
+
+    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
 }

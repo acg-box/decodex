@@ -26,6 +26,10 @@ final class VoiceMediaHost: NSObject {
               let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               let operation = value["operation"] as? String else { return false }
         switch operation {
+        case "prepare":
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+                DictationCapture.prepare(input: value["input"] as? String ?? "")
+            }
         case "devices":
             let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
             emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
