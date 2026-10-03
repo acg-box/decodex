@@ -17,6 +17,9 @@ final class DictationPCMEncoder: @unchecked Sendable {
         guard let output = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: format, to: output) else { throw CaptureError.format }
         self.output = output
+        // Voice processing can expose a discrete multichannel layout. Its first
+        // channel is the microphone; implicit layout conversion can yield silence.
+        converter.channelMap = [0]
         converter.primeMethod = .none
         self.converter = converter
     }
