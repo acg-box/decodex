@@ -823,6 +823,10 @@ impl AgentSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		// Live uses this slot for the microphone. Do not send a hidden draft.
+		if self.voice.is_some() {
+			return;
+		}
 		if self.composer_unavailable_reason().is_some() {
 			cx.notify();
 
