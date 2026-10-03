@@ -2481,6 +2481,15 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
+	history_entry_presented(entry, identity, metrics, None)
+}
+
+fn history_entry_presented(
+	entry: &AgentHistoryEntryDto,
+	identity: &str,
+	metrics: Option<AnyElement>,
+	streamed_body: Option<AnyElement>,
+) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
 
@@ -2554,7 +2563,9 @@ fn history_entry_with_metrics(
 						.border_color(gpui::rgb(BLUE))
 						.child(muted("Agent instructions"))
 				})
-				.child(markdown::render(&visible_text, &format!("message-{identity}")))
+				.child(streamed_body.unwrap_or_else(|| {
+					markdown::render(&visible_text, &format!("message-{identity}"))
+				}))
 				.children(
 					entry
 						.weather

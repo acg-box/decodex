@@ -77,6 +77,8 @@ pub(crate) struct ComposerInput {
 	placeholder: SharedString,
 	aria_label: SharedString,
 	content: String,
+	text_reveal: Option<crate::ui_motion::TextReveal>,
+	visible_end: Option<usize>,
 	native_part: Option<PromptDraft>,
 	selected_range: Range<usize>,
 	selection_reversed: bool,
@@ -133,6 +135,8 @@ impl ComposerInput {
 			placeholder: placeholder.into(),
 			aria_label: aria_label.into(),
 			content: String::new(),
+			text_reveal: None,
+			visible_end: None,
 			native_part: None,
 			selected_range: 0..0,
 			selection_reversed: false,
@@ -207,8 +211,25 @@ impl ComposerInput {
 		self.redo.clear();
 	}
 
+	pub(crate) fn set_streaming_content(&mut self, value: &str, cx: &mut Context<Self>) {
+		if self.content == value {
+			return;
+		}
+		let reveal = self.text_reveal.take().unwrap_or_else(|| {
+			crate::ui_motion::TextReveal::settled(&self.content, std::time::Instant::now())
+		});
+		self.set_content(value, cx);
+		self.text_reveal = Some(reveal);
+	}
+
+	fn visible_content(&self) -> &str {
+		&self.content[..self.visible_end.unwrap_or(self.content.len())]
+	}
+
 	fn changed(&mut self, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
+		self.text_reveal = None;
+		self.visible_end = None;
 
 		cx.notify();
 		cx.emit(ComposerEvent::Changed);
@@ -643,6 +664,15 @@ impl EntityInputHandler for ComposerInput {
 
 impl Render for ComposerInput {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		if let Some(reveal) = &mut self.text_reveal {
+			let (end, moving) = reveal.sample(&self.content, std::time::Instant::now());
+			self.visible_end = moving.then_some(end);
+			if moving {
+				crate::ui_motion::request_frame(window, cx);
+			} else {
+				self.text_reveal = None;
+			}
+		}
 		self.update_cursor(window, cx);
 
 		let entity = cx.entity();
@@ -923,6 +953,30 @@ mod multiline_tests {
 
 				assert_eq!(input.content(), "你");
 			});
+		});
+	}
+
+	#[gpui::test]
+	fn streamed_draft_keeps_complete_text_and_manual_edits_end_reveal(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		let text = "你好👨‍👩‍👧‍👦".repeat(60);
+		input.update(visual, |input, cx| input.set_streaming_content(&text, cx));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		input.update(visual, |input, cx| {
+			assert_eq!(
+				input.content(),
+				text,
+				"saving and submitting never use the animated prefix"
+			);
+			assert!(input.visible_content().len() < text.len());
+			input.replace_bytes(0..0, "Edit: ", false, None, cx);
+			assert!(input.text_reveal.is_none());
+			assert_eq!(input.visible_content(), input.content());
+			assert_eq!(input.content(), format!("Edit: {text}"));
 		});
 	}
 

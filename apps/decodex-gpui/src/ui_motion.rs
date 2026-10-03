@@ -1,4 +1,7 @@
 //! Interruptible motion shared by native controls and workspace panels.
+#[path = "ui_text_reveal.rs"] mod text_reveal;
+pub(crate) use text_reveal::TextReveal;
+
 use std::time::{Duration, Instant};
 
 use gpui::{

@@ -281,7 +281,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 	} else if input.secret {
 		"*".repeat(input.content.len()).into()
 	} else {
-		input.content.clone().into()
+		input.visible_content().to_owned().into()
 	};
 	let style = window.text_style();
 	let run = TextRun {
