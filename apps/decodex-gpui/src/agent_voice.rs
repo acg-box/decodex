@@ -56,7 +56,6 @@ pub(super) struct Media {
 	command_fn: unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> bool,
 	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
 	destroy: unsafe extern "C" fn(*mut std::ffi::c_void),
-	audio: Option<audio::Device>,
 	transport: Option<transport::Transport>,
 	muted: bool,
 	level_at: std::time::Instant,
@@ -119,7 +118,6 @@ impl Media {
 				command_fn,
 				poll_fn,
 				destroy,
-				audio: None,
 				transport: None,
 				muted: false,
 				level_at: std::time::Instant::now(),
@@ -150,7 +148,6 @@ impl Media {
 				return accepted;
 			},
 			Some("start" | "dictate" | "stop") => {
-				self.audio = None;
 				self.transport = None;
 			},
 			_ => {},
@@ -182,15 +179,10 @@ impl Media {
 			let started = event["device"]
 				.as_u64()
 				.and_then(|id| u32::try_from(id).ok())
-				.and_then(|id| audio::Device::start(id).ok())
-				.and_then(|(device, pcm)| {
-					transport::Transport::start(pcm).ok().map(|transport| (device, transport))
-				});
+				.and_then(|id| transport::Transport::start_device(id).ok());
 
 			match started {
-				Some((device, transport)) => {
-					self.audio = Some(device);
-
+				Some(transport) => {
 					if self.muted {
 						transport.command(transport::Command::Mute(true));
 					}
@@ -203,22 +195,14 @@ impl Media {
 					),
 			}
 		}
-		if let Some(transport) = &self.transport
-			&& let Some(event) = transport.poll()
-		{
-			return Some(event);
-		}
-		if let Some(audio) = &self.audio {
-			if !audio.running() {
-				return Some(
-					serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
-				);
+		if let Some(transport) = &self.transport {
+			if let Some(event) = transport.poll() {
+				return Some(event);
 			}
 			if self.level_at.elapsed() >= Duration::from_millis(50) {
 				self.level_at = std::time::Instant::now();
-
 				return Some(
-					serde_json::json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
+					serde_json::json!({"type":"level","level":if self.muted {0.0} else {(transport.level() * 5.0).min(1.0)}}),
 				);
 			}
 		}
