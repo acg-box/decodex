@@ -18,6 +18,20 @@ final class DictationCaptureTests: XCTestCase {
         capture.stop()
     }
 
+    func testCancelBeforeQueuedStartupDoesNotOpenTheEngine() async throws {
+        let queue = DispatchQueue(label: "dictation-cancel-test")
+        queue.suspend()
+        let drained = expectation(description: "Cancelled startup drained")
+        let capture = DictationCapture(queue: queue) { _ in
+            XCTFail("Cancelled queued startup must not produce capture or device errors")
+        }
+        try capture.start(input: "missing-input-" + UUID().uuidString)
+        capture.stop()
+        queue.async { DispatchQueue.main.async { drained.fulfill() } }
+        queue.resume()
+        await fulfillment(of: [drained], timeout: 5)
+    }
+
     func testConversionBatchesMono24kPCMAndFlushesTheTail() throws {
         let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))

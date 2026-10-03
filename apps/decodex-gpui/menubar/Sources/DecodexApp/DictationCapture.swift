@@ -86,11 +86,12 @@ private enum DictationCaptureEvent: Sendable {
 /// Main-thread adapter; engine operations run on one serial audio queue.
 @MainActor
 final class DictationCapture: DictationCapturing {
+    private static let audioQueue = DispatchQueue(label: "box.acg.decodex.dictation-capture", qos: .userInitiated)
     private let worker: DictationAudioWorker
 
-    init(queue: DispatchQueue = DispatchQueue(label: "box.acg.decodex.dictation-capture", qos: .userInitiated),
+    init(queue: DispatchQueue? = nil,
          emit: @escaping @MainActor @Sendable ([String: Any]) -> Void) {
-        worker = DictationAudioWorker(queue: queue) { event in
+        worker = DictationAudioWorker(queue: queue ?? Self.audioQueue) { event in
             DispatchQueue.main.async { emit(event.payload) }
         }
     }
@@ -130,6 +131,8 @@ private final class DictationAudioWorker: @unchecked Sendable {
     private let queue: DispatchQueue
     private var encoder: DictationPCMEncoder?
     private var active = false
+    private let cancellationLock = NSLock()
+    private var cancelled = false
     private let emit: @Sendable (DictationCaptureEvent) -> Void
     private let requestedAt = Date()
 
@@ -140,6 +143,7 @@ private final class DictationAudioWorker: @unchecked Sendable {
 
     func start(input: String) {
         queue.async { [self] in
+            guard !cancellationLock.withLock({ cancelled }) else { return }
             do { try startEngine(input: input) }
             catch { stopEngine(); emit(.failed) }
         }
@@ -189,6 +193,7 @@ private final class DictationAudioWorker: @unchecked Sendable {
             }
         }
         active = true
+        guard !cancellationLock.withLock({ cancelled }) else { stopEngine(); return }
         do { engine.prepare(); try engine.start() } catch { stopEngine(); throw error }
     }
 
@@ -203,7 +208,10 @@ private final class DictationAudioWorker: @unchecked Sendable {
         }
     }
 
-    func stop() { queue.async { [self] in stopEngine() } }
+    func stop() {
+        cancellationLock.withLock { cancelled = true }
+        queue.async { [self] in stopEngine() }
+    }
 
     private func stopEngine() {
         if active {
