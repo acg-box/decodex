@@ -32,6 +32,25 @@ final class DictationCaptureTests: XCTestCase {
         await fulfillment(of: [drained], timeout: 5)
     }
 
+    func testConversionPreservesMicrophoneInMultichannelVoiceProcessingInput() throws {
+        let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 5))
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channelLayout: layout))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
+        buffer.frameLength = 4_800
+        for channel in 0..<5 {
+            let samples = try XCTUnwrap(buffer.floatChannelData?[channel])
+            for index in 0..<4_800 { samples[index] = channel == 0 ? 0.25 : -0.5 }
+        }
+        let encoder = try DictationPCMEncoder(format: format)
+        let frame = try XCTUnwrap(encoder.encode(buffer))
+        let pcm = try XCTUnwrap(frame.frames.first)
+        let samples = stride(from: 0, to: pcm.count, by: 2).map { offset in
+            Int16(bitPattern: UInt16(pcm[offset]) | UInt16(pcm[offset + 1]) << 8)
+        }
+        XCTAssertGreaterThan(Int(samples.last ?? 0), 7_000,
+                             "Voice processing's microphone channel must reach dictation without downmix attenuation")
+    }
+
     func testConversionBatchesMono24kPCMAndFlushesTheTail() throws {
         let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
