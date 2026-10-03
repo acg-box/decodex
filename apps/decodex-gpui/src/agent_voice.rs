@@ -236,6 +236,14 @@ impl Drop for Media {
 	}
 }
 
+impl Media {
+	pub(super) fn prepare_input(window: &Window, input: &str) {
+		if let Ok(mut media) = Self::new(window) {
+			media.command(serde_json::json!({"operation":"prepare","input":input}));
+		}
+	}
+}
+
 pub(super) struct CaptionHistory {
 	session: EntityId,
 	work: EntityId,
@@ -635,16 +643,22 @@ impl AgentSurface {
 					.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(gpui::div().w(gpui::px(12.)).child(if selected { "✓" } else { "" }))
 					.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
-					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
+							if s.voice.is_none() && s.dictation.is_none() {
+								Media::prepare_input(window, &s.audio_input);
+							}
 
 							cx.stop_propagation();
 							cx.notify();
 						}
 					}))
-					.on_click(cx.listener(move |s, _, _, cx| {
+					.on_click(cx.listener(move |s, _, window, cx| {
 						s.audio_input = input.clone();
+						if s.voice.is_none() && s.dictation.is_none() {
+							Media::prepare_input(window, &s.audio_input);
+						}
 
 						cx.notify();
 					}))
