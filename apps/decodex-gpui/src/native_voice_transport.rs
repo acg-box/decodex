@@ -3,7 +3,7 @@ use std::{
 	future,
 	sync::{
 		Arc,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU32, Ordering},
 		mpsc::{self, SyncSender},
 	},
 };
@@ -29,7 +29,7 @@ use tokio::{
 	time::{self, Duration, Instant, MissedTickBehavior},
 };
 
-use crate::shell::agent_surface::voice::audio::Pcm;
+use crate::shell::agent_surface::voice::audio::{Device, Pcm};
 
 #[cfg(test)]
 type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
@@ -39,13 +39,29 @@ pub(super) enum Command {
 	Mute(bool),
 }
 
+enum Input {
+	Device(u32),
+	#[cfg(test)]
+	Pcm(Pcm),
+}
+
 pub(super) struct Transport {
 	commands: sync::mpsc::Sender<Command>,
 	events: mpsc::Receiver<Value>,
 	overflow: Arc<AtomicBool>,
+	level: Arc<AtomicU32>,
 	stop: Option<oneshot::Sender<()>>,
 }
 impl Transport {
+	pub(super) fn start_device(device: u32) -> Result<Self, ()> {
+		Self::start_input(
+			Input::Device(device),
+			#[cfg(test)]
+			None,
+		)
+	}
+
+	#[cfg(test)]
 	pub(super) fn start(pcm: Pcm) -> Result<Self, ()> {
 		Self::start_inner(
 			pcm,
@@ -54,12 +70,19 @@ impl Transport {
 		)
 	}
 
-	fn start_inner(pcm: Pcm, #[cfg(test)] offer_pause: Option<OfferPause>) -> Result<Self, ()> {
+	#[cfg(test)]
+	fn start_inner(pcm: Pcm, offer_pause: Option<OfferPause>) -> Result<Self, ()> {
+		Self::start_input(Input::Pcm(pcm), offer_pause)
+	}
+
+	fn start_input(input: Input, #[cfg(test)] offer_pause: Option<OfferPause>) -> Result<Self, ()> {
 		let (commands, requests) = sync::mpsc::channel(8);
 		let (sender, events) = mpsc::sync_channel(128);
 		let overflow = Arc::new(AtomicBool::new(false));
 		let output = Events { sender, overflow: overflow.clone() };
-		let (stop, cancelled) = oneshot::channel();
+		let (stop, mut cancelled) = oneshot::channel();
+		let level = Arc::new(AtomicU32::new(0));
+		let captured_level = level.clone();
 
 		std::thread::Builder::new()
 			.name("native-voice".into())
@@ -74,20 +97,51 @@ impl Transport {
 					return;
 				};
 
-				runtime.block_on(async {
-					tokio::select! {
+				// Create, use and release the engine on this worker. GPUI never waits for
+                // device configuration, and a cancelled startup never opens a network call.
+                let (device, pcm) = match input {
+                    Input::Device(id) => match Device::start(id) {
+                        Ok((device, pcm)) => (Some(device), pcm),
+                        Err(()) => {
+                            output.send(serde_json::json!({"type":"error","message":"The selected audio device could not start."}));
+                            return;
+                        }
+                    },
+                    #[cfg(test)]
+                    Input::Pcm(pcm) => (None, pcm),
+                };
+                if !matches!(cancelled.try_recv(), Err(oneshot::error::TryRecvError::Empty)) { return; }
+                runtime.block_on(async {
+                    let monitor = async {
+                        loop {
+                            time::sleep(Duration::from_millis(50)).await;
+                            if let Some(device) = &device {
+                                if !device.running() {
+                                    output.send(serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}));
+                                    return;
+                                }
+                                captured_level.store(device.level().to_bits(), Ordering::Relaxed);
+                            }
+                        }
+                    };
+                    tokio::select! {
 						_ = cancelled => {},
+                        _ = monitor => {},
 						_ = run(pcm, requests, output.clone(), #[cfg(test)] offer_pause) => {},
 					}
 				});
 			})
 			.map_err(|_| ())?;
 
-		Ok(Self { commands, events, overflow, stop: Some(stop) })
+		Ok(Self { commands, events, overflow, level, stop: Some(stop) })
 	}
 
 	pub(super) fn command(&self, command: Command) -> bool {
 		self.commands.try_send(command).is_ok()
+	}
+
+	pub(super) fn level(&self) -> f32 {
+		f32::from_bits(self.level.load(Ordering::Relaxed))
 	}
 
 	pub(super) fn poll(&self) -> Option<Value> {
