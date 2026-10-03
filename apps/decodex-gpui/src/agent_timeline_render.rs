@@ -350,13 +350,15 @@ impl AgentSurface {
 			}
 
 			body = if draft.is_some() {
-				body.child(StreamingText { text: text.into(), key: identity.into() }).child(
-					markdown::response_copy_button(
-						&format!("copy-response-{identity}"),
-						"Copy response",
-						text.to_owned(),
-					),
-				)
+				body.child(StreamingText {
+					text: markdown::response_text(text),
+					key: identity.into(),
+				})
+				.child(markdown::response_copy_button(
+					&format!("copy-response-{identity}"),
+					"Copy response",
+					text.to_owned(),
+				))
 			} else {
 				let last_reply = self.timeline.native.entries.iter().rev().find_map(|entry| {
 					match &entry.content {

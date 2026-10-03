@@ -290,7 +290,7 @@ impl AgentSurface {
                             AgentTimelineContent::Item{ turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
                 }) {
                     panel = panel.child(StreamingText {
-                        text: message.text.clone(),
+                        text: markdown::response_text(&message.text),
                         key: format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id),
                     });
                 }

@@ -245,6 +245,7 @@ pub(super) struct CaptionHistory {
 
 #[derive(Clone, Debug)]
 struct Caption {
+	key: String,
 	complete: bool,
 	turn: String,
 	role: &'static str,
@@ -831,19 +832,30 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.children(captions.into_iter().enumerate().map(|(i, caption)| {
-					agent_surface::history_entry(&decodex_protocol::AgentHistoryEntryDto {
-						native_source: None,
-						turn_id: None,
-						weather: Vec::new(),
-						receipt: None,
-						activity: None,
-						usage: None,
-						duration_ms: None,
-						id: -(i as i64) - 1,
-						kind: caption.role.into(),
-						text: caption.text.clone(),
-						created_at_micros: 0,
-					})
+					agent_surface::history_entry_presented(
+						&decodex_protocol::AgentHistoryEntryDto {
+							native_source: None,
+							turn_id: None,
+							weather: Vec::new(),
+							receipt: None,
+							activity: None,
+							usage: None,
+							duration_ms: None,
+							id: -(i as i64) - 1,
+							kind: caption.role.into(),
+							text: caption.text.clone(),
+							created_at_micros: 0,
+						},
+						&caption.key,
+						None,
+						Some(
+							agent_surface::text_reveal::StreamingText {
+								text: caption.text.clone(),
+								key: caption.key.clone(),
+							}
+							.into_any_element(),
+						),
+					)
 					.into_any_element()
 				}))
 				.into_any_element(),
@@ -933,7 +945,13 @@ fn append_caption_delta(event: &Value, captions: &mut Vec<Caption>, role: &'stat
 		return;
 	}
 	if !captions.iter().any(|c| c.role == role && !c.complete) {
-		captions.push(Caption { complete: false, turn: String::new(), role, text: String::new() });
+		captions.push(Caption {
+			key: crate::shell::agent_surface::unique_command(),
+			complete: false,
+			turn: String::new(),
+			role,
+			text: String::new(),
+		});
 	}
 
 	let caption = captions
@@ -978,7 +996,13 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 		let (Some(id), Some(role)) = (id, role) else { return };
 
 		if !captions.iter().any(|c| c.turn == id) {
-			captions.push(Caption { complete: false, turn: id.into(), role, text: String::new() });
+			captions.push(Caption {
+				key: crate::shell::agent_surface::unique_command(),
+				complete: false,
+				turn: id.into(),
+				role,
+				text: String::new(),
+			});
 		}
 	}
 	// Frameless v3 finals can omit the turn ID, including a final with no deltas.
@@ -992,6 +1016,7 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 			}
 
 			captions.push(Caption {
+				key: crate::shell::agent_surface::unique_command(),
 				complete: false,
 				turn: String::new(),
 				role,
@@ -1030,7 +1055,13 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 			.is_some_and(|text| !text.is_empty())
 		{
 			// The native parser also accepts a final when no delta was received.
-			captions.push(Caption { complete: false, turn: id.into(), role, text: String::new() });
+			captions.push(Caption {
+				key: crate::shell::agent_surface::unique_command(),
+				complete: false,
+				turn: id.into(),
+				role,
+				text: String::new(),
+			});
 		}
 	}
 
@@ -1251,6 +1282,7 @@ mod tests {
 						connection_status: "Live".into(),
 						muted,
 						captions: vec![Caption {
+							key: crate::shell::agent_surface::unique_command(),
 							complete: false,
 							turn: "turn".into(),
 							role: "user",
@@ -1472,6 +1504,7 @@ mod tests {
 				muted: false,
 				matched_receipts: Default::default(),
 				captions: vec![Caption {
+					key: crate::shell::agent_surface::unique_command(),
 					complete: true,
 					turn: "turn".into(),
 					role: "user",
@@ -1496,6 +1529,7 @@ mod tests {
 			assert!(s.live_chat_caption("agent").is_none());
 
 			s.voice.as_mut().unwrap().captions.push(Caption {
+				key: crate::shell::agent_surface::unique_command(),
 				complete: true,
 				turn: "repeat".into(),
 				role: "user",

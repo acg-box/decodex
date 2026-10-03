@@ -252,7 +252,7 @@ impl AgentSurface {
 		if text != dictation.expected {
 			dictation.expected = text.clone();
 
-			self.composer.update(cx, |input, cx| input.set_content(&text, cx));
+			self.composer.update(cx, |input, cx| input.set_streaming_content(&text, cx));
 		}
 
 		match status.phase {
