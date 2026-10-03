@@ -400,8 +400,13 @@ impl AgentSurface {
 				s.submit(cx);
 				cx.stop_propagation();
 			}))
-			.children(self.voice_controls(window, cx))
-			.child(self.composer.clone());
+			.map(|editor| {
+				if let Some(waveform) = self.voice_controls(window, cx) {
+					editor.child(waveform)
+				} else {
+					editor.child(self.composer.clone())
+				}
+			});
 
 		gpui::div()
 			.id("agent-composer")

@@ -673,28 +673,43 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let voice = self.voice.as_ref()?;
-
 		Some(
 			gpui::div()
+				.id("live-waveform")
+				.debug_selector(|| "live-waveform".into())
+				.role(Role::Image)
+				.aria_label(if voice.muted {
+					"Microphone muted"
+				} else {
+					"Live microphone waveform"
+				})
 				.w_full()
-				.h(gpui::px(30.))
+				.min_w_0()
+				.h(gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.))
+				.px(gpui::px(8.))
+				.overflow_hidden()
 				.flex()
 				.items_center()
 				.justify_center()
-				.gap(gpui::px(3.))
-				.children(voice.levels.iter().enumerate().map(|(i, level)| {
-					let height = ui_motion::value(
-						("live-wave-height", i),
-						if voice.muted { 2. } else { 2. + level * 40. },
-						window,
-						cx,
-					);
-
+				.gap(gpui::px(2.))
+				.children((0_usize..32).map(|i| {
+					let distance = ((i as f32 - 15.5) / 15.5).abs();
+					let envelope = 0.25 + 0.75 * (1. - distance).powf(0.7);
+					let lag = (distance * 6.).round() as usize;
+					let level = voice.levels.iter().rev().nth(lag).copied().unwrap_or_default();
+					let target = if voice.muted {
+						2.
+					} else {
+						2. + 22. * level.clamp(0., 1.).sqrt() * envelope
+					};
+					let height = ui_motion::value(("live-wave-height", i), target, window, cx);
 					gpui::div()
 						.id(("live-wave", i))
-						.w(gpui::px(3.))
+						.flex_none()
+						.w(gpui::px(2.5))
 						.h(gpui::px(height))
 						.rounded_full()
+						.opacity(if voice.muted { 0.35 } else { 0.3 + 0.7 * envelope })
 						.bg(gpui::rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
 				}))
 				.into_any_element(),
@@ -1410,7 +1425,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn active_voice_keeps_the_draft_visible_and_editable(cx: &mut gpui::TestAppContext) {
+	fn active_voice_replaces_the_editor_and_restores_its_draft(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
 
 		let (view, visual) = cx.add_window_view(|_, cx| {
@@ -1443,28 +1458,35 @@ mod tests {
 		let input = surface.read_with(visual, |s, _| s.composer.clone());
 
 		for width in [320., 800.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(400.)));
 			visual.update(|window, cx| {
-				window.resize(gpui::size(gpui::px(width), gpui::px(400.)));
-				window.focus(&input.focus_handle(cx), cx);
 				window.draw(cx).clear();
-			});
-
-			visual.update(|window, cx| {
 				input.update(cx, |input, cx| {
-					let text = input
-						.bounds_for_range(0..5, Default::default(), window, cx)
-						.expect("the visible draft must have text layout");
-
-					assert!(text.size.width > gpui::px(0.) && text.size.height > gpui::px(0.));
-					assert!(text.origin.x >= gpui::px(0.) && text.origin.y >= gpui::px(0.));
-					assert!(text.origin.x + text.size.width <= gpui::px(width));
+					assert!(
+						input.bounds_for_range(0..5, Default::default(), window, cx).is_none(),
+						"Live must not render the text editor below the waveform"
+					);
+					assert_eq!(input.content(), "Draft");
 				});
 			});
+			let wave = visual.debug_bounds("live-waveform").expect("waveform replaces the editor");
+			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
+			assert!(
+				wave.origin.x >= gpui::px(0.) && wave.origin.x + wave.size.width <= gpui::px(width),
+				"waveform {wave:?} must fit width {width}"
+			);
 		}
-
+		surface.update(visual, |s, cx| {
+			s.retire_voice_media();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.focus(&input.focus_handle(cx), cx);
+			window.draw(cx).clear();
+		});
 		visual.simulate_keystrokes("shift-enter");
 		input.read_with(visual, |input, _| assert_eq!(input.content(), "Draft\n"));
-		surface.read_with(visual, |s, _| assert!(s.voice.is_some()));
+		surface.read_with(visual, |s, _| assert!(s.voice.is_none()));
 	}
 
 	fn saved_voice_history(session: Option<&str>) -> AgentHistoryResult {
