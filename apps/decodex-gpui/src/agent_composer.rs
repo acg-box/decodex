@@ -363,8 +363,8 @@ impl AgentSurface {
 		gpui::div()
 			.w_full()
 			.px_4()
-			.pt(gpui::px(12.))
-			.pb(gpui::px(20.))
+			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
+			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
 			.justify_center()
 			.child(
@@ -732,7 +732,8 @@ impl AgentSurface {
 		let send = id == "send";
 		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
-		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
+		let tooltip =
+			if id == "model" { format!("Model and reasoning · {label}") } else { tip.to_owned() };
 
 		gpui::div()
 			.id(SharedString::from(format!("composer-{id}")))
@@ -795,7 +796,7 @@ impl AgentSurface {
 					gpui::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
 				})
 			})
-			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
+			.when(!["attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
 			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))

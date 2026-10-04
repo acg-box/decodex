@@ -886,7 +886,7 @@ impl AgentSurface {
 				let content = if is_agent {
 					gpui::div()
 						.p_4()
-						.pb(gpui::px(self.composer_footer_height + 16.))
+						.pb(gpui::px(self.composer_footer_height))
 						.w_full()
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))

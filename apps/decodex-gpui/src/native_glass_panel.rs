@@ -70,6 +70,16 @@ impl GlassPanel {
 			let _: () = objc2::msg_send![&*glass, setAutoresizingMask: 18_usize];
 
 			gpu.removeFromSuperview();
+			// This child often stays non-key while history owns keyboard focus. Match
+			// GPUI's popup tracking so hover, cursor and tooltips still receive movement.
+			let tracking: Retained<AnyObject> = objc2::msg_send![
+				objc2::msg_send![AnyClass::get(c"NSTrackingArea")?, alloc],
+				initWithRect: NSRect::new(NSPoint::new(0., 0.), NSSize::new(0., 0.)),
+				options: 0x283_usize,
+				owner: &*gpu,
+				userInfo: ptr::null::<AnyObject>()
+			];
+			let _: () = objc2::msg_send![&*gpu, addTrackingArea: &*tracking];
 
 			if let Some(radius) = radius {
 				let _: () = objc2::msg_send![&*glass, setCornerRadius: radius];

@@ -236,8 +236,8 @@ impl AgentSurface {
 		gpui::div()
 			.w_full()
 			.px_4()
-			.pt(gpui::px(12.))
-			.pb(gpui::px(20.))
+			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
+			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
 			.justify_center()
 			.child(
