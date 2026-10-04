@@ -1274,6 +1274,10 @@ mod tests {
 		let selectors = entries
 			.iter()
 			.map(|entry| {
+				if matches!(entry.content, AgentTimelineContent::Speech { .. }) {
+					return "voice-history-block".into();
+				}
+
 				format!(
 					"native-history-{}",
 					serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
@@ -1328,7 +1332,11 @@ mod tests {
 
 		let bounds = selectors
 			.into_iter()
-			.map(|selector| visual.debug_bounds(Box::leak(selector.into_boxed_str())).unwrap())
+			.map(|selector| {
+				visual
+					.debug_bounds(Box::leak(selector.clone().into_boxed_str()))
+					.unwrap_or_else(|| panic!("missing {selector}"))
+			})
 			.collect::<Vec<_>>();
 
 		assert!(bounds.iter().all(|bounds| bounds.size.height > gpui::px(0.)));
@@ -1378,6 +1386,13 @@ mod tests {
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
+		surface.update(visual, |s, cx| {
+			s.workspace.details_visible = true;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|window, cx| window.draw(cx).clear());
 		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());

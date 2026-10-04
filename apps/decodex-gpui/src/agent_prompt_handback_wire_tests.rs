@@ -41,7 +41,12 @@ struct View {
 }
 impl Render for View {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.prompt_edit_panel(&self.work, cx))
+		self.surface.update(cx, |s, cx| {
+			use gpui::ParentElement as _;
+			gpui::div()
+				.child(s.saved_prompt_edits_panel(&self.work, cx))
+				.child(s.prompt_edit_panel(&self.work, cx))
+		})
 	}
 }
 

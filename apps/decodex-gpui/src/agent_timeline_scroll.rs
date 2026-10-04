@@ -547,6 +547,13 @@ mod tests {
 				window.draw(cx).clear();
 			});
 
+			surface.update(visual, |s, cx| {
+				s.workspace.details_visible = true;
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear());
+			std::thread::sleep(std::time::Duration::from_millis(250));
+			visual.update(|window, cx| window.draw(cx).clear());
 			let button = visual.debug_bounds("native-latest-action").unwrap();
 
 			visual.simulate_click(button.center(), Default::default());

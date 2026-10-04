@@ -184,18 +184,18 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn native_timeline_panel(
+	pub(super) fn native_history_controls(
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP)).child(
+		let mut controls = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP)).child(
 			gpui::div().debug_selector(|| "native-latest-action".into()).child(
 				self.workspace_action(
 					"native-timeline-refresh".into(),
-					"Latest native history".into(),
+					"Refresh conversation".into(),
 					move |s, cx| {
 						if let Some(thread) = &thread {
 							s.read_latest_native_history(&owner, thread, cx);
@@ -205,6 +205,46 @@ impl AgentSurface {
 				),
 			),
 		);
+
+		if self
+			.timeline
+			.native
+			.binding
+			.as_ref()
+			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
+		{
+			controls = controls.child(
+				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
+					self.workspace_action(
+						"native-history-source".into(),
+						if self.timeline.native.show_saved {
+							"Show conversation"
+						} else {
+							"Show saved local records"
+						}
+						.into(),
+						|s, cx| {
+							s.cancel_native_scroll_anchor();
+
+							s.timeline.native.show_saved = !s.timeline.native.show_saved;
+							s.timeline.navigation = None;
+
+							cx.notify();
+						},
+						cx,
+					),
+				),
+			);
+		}
+		controls.into_any_element()
+	}
+
+	pub(super) fn native_timeline_panel(
+		&self,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP));
 
 		// Reserve the first-load state before the request starts, but retain
 		// existing history during background refreshes and fallback retries.
@@ -228,29 +268,6 @@ impl AgentSurface {
 			.as_ref()
 			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
 		{
-			panel = panel.child(
-				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
-					self.workspace_action(
-						"native-history-source".into(),
-						if self.timeline.native.show_saved {
-							"Show conversation"
-						} else {
-							"Show saved local records"
-						}
-						.into(),
-						|s, cx| {
-							s.cancel_native_scroll_anchor();
-
-							s.timeline.native.show_saved = !s.timeline.native.show_saved;
-							s.timeline.navigation = None;
-
-							cx.notify();
-						},
-						cx,
-					),
-				),
-			);
-
 			if self.timeline.native.show_saved {
 				return panel
 					.child(agent_surface::muted(
@@ -262,7 +279,9 @@ impl AgentSurface {
 			let binding = self.timeline.native.binding.as_ref().expect("matching binding").clone();
 
 			if self.timeline.native.browsing_window {
-				panel = panel.child(agent_surface::muted("Showing an earlier history window. Select Latest native history to return to recent messages."));
+				panel = panel.child(agent_surface::muted(
+					"Showing an earlier history window. Open Details to refresh the conversation.",
+				));
 			}
 			if self.timeline.native.older_cursor.is_some() {
 				panel = panel.child(

@@ -633,7 +633,11 @@ impl AgentSurface {
 		Ok(())
 	}
 
-	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn saved_prompt_edits_panel(
+		&self,
+		work: &str,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let mut saved = gpui::div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
 
 		for draft in self.saved_prompt_editors(work) {
@@ -656,7 +660,10 @@ impl AgentSurface {
 				} else {
 					format!("Edit draft: {title}")
 				},
-				move |s, cx| s.reopen_prompt_editor(&owner, &review, cx),
+				move |s, cx| {
+					s.workspace.details_visible = false;
+					s.reopen_prompt_editor(&owner, &review, cx);
+				},
 				cx,
 			));
 
@@ -684,11 +691,40 @@ impl AgentSurface {
 			}
 		}
 
-		if self.prompt_edit.work != work || !self.prompt_editor_source_current() {
-			return saved.into_any_element();
-		}
+		saved.into_any_element()
+	}
 
-		let mut panel = saved.child(self.prompt_edit.feedback.clone());
+	pub(super) fn prompt_editor_visible(&self, work: &str) -> bool {
+		(self.prompt_edit.work == work && self.prompt_editor_source_current())
+			|| self.saved_prompt_editors(work).iter().any(|draft| {
+				draft.handback_pending
+					|| draft.pending_send.is_some()
+					|| draft.confirmation_key.is_some()
+					|| draft.fork.is_some()
+			})
+	}
+
+	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+		if self.prompt_edit.work != work || !self.prompt_editor_source_current() {
+			return self
+				.workspace_action(
+					"prompt-recovery-notice".into(),
+					"An unfinished edit needs attention · Review".into(),
+					|s, cx| {
+						s.workspace.details_visible = true;
+						cx.notify();
+					},
+					cx,
+				)
+				.into_any_element();
+		}
+		let mut panel = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.prompt_edit.feedback.clone());
 
 		for (_, editor) in &self.prompt_edit.editors {
 			panel = panel.child(editor.clone());
