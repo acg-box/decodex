@@ -419,7 +419,7 @@ impl AgentSurface {
 			.min_w_0()
 			.px(gpui::px(10.))
 			.py(gpui::px(7.))
-			.rounded(gpui::px(24.))
+			.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
 			.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
 			.when(!native, |d| {
 				d.shadow(vec![gpui::BoxShadow {
