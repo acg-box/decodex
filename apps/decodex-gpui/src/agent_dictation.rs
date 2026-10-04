@@ -284,7 +284,8 @@ impl AgentSurface {
 
 		Some(
 			gpui::div()
-				.flex_none()
+				.flex_1()
+				.min_w_0()
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.))
@@ -308,6 +309,9 @@ impl AgentSurface {
 				.child(
 					gpui::div()
 						.id("dictation-status")
+						.flex_1()
+						.min_w_0()
+						.text_ellipsis()
 						.role(Role::Status)
 						.aria_label(label.clone())
 						.child(label),
