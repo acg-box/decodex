@@ -21,6 +21,7 @@ use crate::{
 		},
 	},
 	ui_loading, ui_motion,
+	ui_scroll::SmoothScrollArea,
 };
 use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
@@ -423,7 +424,7 @@ impl AgentSurface {
 
 		(
 			gpui::div()
-				.id("native-agent-transcript")
+				.id(SharedString::from(format!("native-agent-transcript-{thread}")))
 				.flex_1()
 				.min_h_0()
 				.min_w_0()
@@ -431,6 +432,8 @@ impl AgentSurface {
 				.py_4()
 				.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
 				.child(body)
+				.smooth_scroll(SharedString::from(format!("native-agent-scroll-{thread}")))
+				.with_scrollbar()
 				.into_any_element(),
 			can_input,
 		)

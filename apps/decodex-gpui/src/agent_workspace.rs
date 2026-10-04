@@ -915,7 +915,23 @@ impl AgentSurface {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
 
-		transcript.into_any_element()
+		let owner = cx.entity();
+		let key = self.selected.clone().unwrap_or_default();
+		gpui::div()
+			.flex_1()
+			.min_h_0()
+			.min_w_0()
+			.relative()
+			.flex()
+			.child(transcript)
+			.child(crate::ui_scroll::Scrollbar {
+				id: SharedString::from(format!("history-scrollbar-{key}")).into(),
+				scroll,
+				changed: Rc::new(move |offset, _, cx| {
+					owner.update(cx, |s, cx| s.drag_history_scrollbar(offset, cx));
+				}),
+			})
+			.into_any_element()
 	}
 
 	pub(super) fn render_workspace(

@@ -304,6 +304,34 @@ impl AgentSurface {
 		}
 	}
 
+	pub(super) fn drag_history_scrollbar(&mut self, offset: f32, cx: &mut Context<Self>) {
+		self.timeline.latest_follow_work = None;
+		self.cancel_native_scroll_anchor();
+		self.timeline.navigation = None;
+		self.timeline.selected = None;
+		self.timeline.wheel_scroll = None;
+		if let Some(id) = self.selected.clone()
+			&& let Some(scroll) = self.timeline.scroll.get(&id)
+		{
+			let previous = f32::from(scroll.offset().y);
+			let maximum = f32::from(scroll.max_offset().y).max(0.);
+			let offset = offset.clamp(-maximum, 0.);
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
+			let following = (offset + maximum).abs() < 1.;
+			if following {
+				self.timeline.follow_paused.remove(&id);
+			} else {
+				self.timeline.follow_paused.insert(id);
+			}
+			self.set_voice_follow(following);
+			if offset > previous {
+				self.timeline.native.prefetch_requested = true;
+				self.prefetch_older_history(cx);
+			}
+			cx.notify();
+		}
+	}
+
 	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
 		let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT));
 
