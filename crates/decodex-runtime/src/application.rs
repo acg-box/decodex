@@ -496,6 +496,7 @@ impl ServiceApplication {
 	}
 
 	async fn query_agent_snapshot(&self) -> QueryResultPayload {
+		let initializing = self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 		let before = match &self.agent {
 			Some(agent) => agent.runtime_source().await,
 			None => None,
@@ -509,6 +510,8 @@ impl ServiceApplication {
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			snapshot.runtime_source = if before == after { after } else { None };
+			snapshot.connection_initializing = initializing
+				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 
 			if !snapshot.is_valid() {
 				result = decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -6098,6 +6101,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = AgentSnapshotDto {
+		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()

@@ -1396,8 +1396,11 @@ impl AgentSurface {
 				surface.apply_result(result);
 				surface.refresh_native_goal(cx);
 
-				if surface.current_model_catalog(cx).is_none()
-					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
+				if !surface.connection_initializing()
+					&& (surface.current_model_catalog(cx).is_none()
+						|| surface
+							.capabilities_checked
+							.is_none_or(|at| at.elapsed().as_secs() >= 60))
 				{
 					surface.load_capabilities(cx);
 				}
@@ -1576,6 +1579,9 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
+		if self.connection_initializing() {
+			return None;
+		}
 		if !self.sending
 			&& !self.feedback.is_empty()
 			&& self.feedback != "Message saved · Waiting for agent…"
@@ -2830,6 +2836,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3003,6 +3010,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![AgentWorkItemDto {
@@ -3071,6 +3079,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![AgentWorkItemDto {
@@ -3206,6 +3215,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3330,6 +3340,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3419,6 +3430,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],

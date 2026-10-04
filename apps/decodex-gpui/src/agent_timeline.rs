@@ -131,6 +131,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_open_native_history(&mut self, cx: &mut Context<Self>) {
+		if self.connection_initializing() {
+			return;
+		}
 		let Some((work, thread)) = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot
 				.work_items

@@ -938,6 +938,9 @@ pub struct AgentWorkspaceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// The service is still checking its persisted connection after startup.
+	#[serde(default)]
+	pub connection_initializing: bool,
 	/// Opaque current account revision and process identity; absent while unavailable.
 	pub runtime_source: Option<EntityId>,
 	/// Persisted project scopes.
@@ -1221,6 +1224,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -1241,6 +1245,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],

@@ -629,6 +629,10 @@ impl AgentSurface {
 		row.into_any_element()
 	}
 
+	pub(super) fn connection_initializing(&self) -> bool {
+		self.snapshot.as_ref().is_some_and(|s| s.connection_initializing)
+	}
+
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.uncertain {
 			return Some(
@@ -637,6 +641,10 @@ impl AgentSurface {
 		}
 		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			return Some("The service connection is unavailable. Your history and draft are kept.");
+		}
+
+		if self.connection_initializing() {
+			return Some("Connecting to Codex…");
 		}
 
 		let selected = self.selected.as_deref()?;
@@ -699,13 +707,10 @@ impl AgentSurface {
 		if reason == THREAD_LOCKED_MESSAGE {
 			return gpui::div()
 				.id("conversation-unavailable")
+				.debug_selector(|| "conversation-unavailable".into())
 				.role(Role::Status)
 				.aria_label(THREAD_LOCKED_MESSAGE)
-				.mx_4()
-				.my_3()
 				.h(gpui::px(40.))
-				.rounded(gpui::px(14.))
-				.bg(gpui::rgb(0x26262b))
 				.flex()
 				.items_center()
 				.justify_center()
@@ -721,12 +726,10 @@ impl AgentSurface {
 		let (title, description) = match detail {
 			Some(text) if text.contains("ProcessUnavailable") => (
 				"Codex couldn't start",
-				"The local Codex connection could not be started or initialized. Your messages are saved. Decodex will retry automatically; you do not need to resend them.",
+				"The local connection could not start. Decodex will retry automatically.",
 			),
-			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") => (
-				"Account availability needs checking",
-				"Codex could not confirm an account with available usage. Your messages are saved. Review account availability in Settings → Accounts.",
-			),
+			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
+				("Account unavailable", "Check account usage or sign-in in Settings → Accounts."),
 			Some(text) if text.contains("SelectWorkingDirectory") => (
 				"Project folder is unavailable",
 				"Restore access to the project folder so this conversation can resume. Your messages and draft are kept.",
@@ -736,12 +739,9 @@ impl AgentSurface {
 
 		gpui::div()
 			.id("conversation-unavailable")
+			.debug_selector(|| "conversation-unavailable".into())
 			.role(Role::Status)
 			.aria_label(format!("{title}. {description}"))
-			.m_4()
-			.p(gpui::px(16.))
-			.rounded(gpui::px(12.))
-			.bg(gpui::rgb(0x26262b))
 			.text_color(gpui::rgb(TEXT))
 			.flex()
 			.flex_col()
@@ -822,13 +822,39 @@ impl AgentSurface {
 					.flex_col()
 					.child(self.conversation_activity(cx))
 					.child(self.recovered_draft_panel(cx))
-					.when_some(self.composer_unavailable_reason(), |d, reason| {
-						d.child(self.unavailable_composer(reason, cx))
-							.child(self.recovery_composer(cx))
-					})
-					.when(self.composer_unavailable_reason().is_none(), |d| {
-						d.child(self.render_composer(window, cx))
-					}),
+					.when_some(
+						self.composer_unavailable_reason()
+							.filter(|_| !self.connection_initializing()),
+						|d, reason| {
+							d.child(
+								gpui::div()
+									.w_full()
+									.px(gpui::px(ui_theme::CONVERSATION_INSET))
+									.py(gpui::px(12.))
+									.flex()
+									.justify_center()
+									.child(
+										gpui::div()
+											.w_full()
+											.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+											.min_w_0()
+											.p(gpui::px(14.))
+											.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
+											.bg(gpui::rgb(0x27272b))
+											.flex()
+											.flex_col()
+											.gap(gpui::px(12.))
+											.child(self.unavailable_composer(reason, cx))
+											.child(self.recovery_composer(cx)),
+									),
+							)
+						},
+					)
+					.when(
+						self.connection_initializing()
+							|| self.composer_unavailable_reason().is_none(),
+						|d| d.child(self.render_composer(window, cx)),
+					),
 			)
 	}
 
@@ -1664,6 +1690,7 @@ impl AgentSurface {
 				}
 
 				self.snapshot = Some(AgentSnapshotDto {
+					connection_initializing: false,
 					runtime_source: None,
 					workspaces: vec![],
 					work_items: vec![],
@@ -1789,6 +1816,7 @@ impl AgentSurface {
 			};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			connection_initializing: false,
 			runtime_source: None,
 			workspaces: vec![],
 			work_items: vec![
@@ -2017,6 +2045,12 @@ impl AgentSurface {
 	}
 
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.connection_initializing()
+			|| (self.composer_unavailable_reason().is_some()
+				&& self.draft_storage_notice().is_none())
+		{
+			return gpui::div().into_any_element();
+		}
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
@@ -2272,6 +2306,49 @@ mod tests {
 
 			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
 		});
+	}
+
+	#[gpui::test]
+	fn startup_rechecks_saved_failures_before_showing_one_blocker(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().connection_initializing = true;
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "old-failure".into(),
+					work_item_id: "agent".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+			s.submit(cx);
+			assert!(!s.sending);
+			assert!(s.submission.command.is_none());
+			assert!(s.status_notice().is_none());
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(visual.debug_bounds("conversation-unavailable").is_none());
+		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+		surface.update(visual, |s, cx| {
+			s.snapshot.as_mut().unwrap().connection_initializing = false;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("conversation-unavailable").is_some());
+		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+		surface.update(visual, |s, cx| {
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 	}
 
 	#[gpui::test]

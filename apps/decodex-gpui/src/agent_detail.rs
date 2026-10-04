@@ -435,6 +435,7 @@ mod tests {
 
 	fn activity_detail_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			connection_initializing: false,
 			runtime_source: Some(EntityId::new("source").expect("valid activity detail source")),
 			workspaces: vec![],
 			dependencies: vec![],

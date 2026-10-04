@@ -9,7 +9,10 @@ use std::{
 	fmt::{Display, Formatter},
 	future::{self, Future},
 	path::Path,
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -85,6 +88,7 @@ impl From<&'static str> for AgentHostError {
 
 #[derive(Clone)]
 pub(crate) struct AgentHost {
+	initializing: Arc<AtomicBool>,
 	skill_roots: Result<crate::agent_skill_roots::RuntimeSkillRoots, &'static str>,
 	observations: Option<AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
@@ -105,6 +109,7 @@ impl AgentHost {
 		let (sender, receiver) = mpsc::channel(32);
 
 		Self {
+			initializing: Arc::new(AtomicBool::new(true)),
 			observations: None,
 			skill_roots: crate::agent_skill_roots::RuntimeSkillRoots::from_environment(),
 			recovery_cursor: Default::default(),
@@ -331,6 +336,10 @@ impl AgentHost {
 
 	pub(crate) async fn process_diagnostics(&self) -> NativeProcessDiagnostics {
 		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
+	}
+
+	pub(crate) fn connection_initializing(&self) -> bool {
+		self.initializing.load(Ordering::Acquire)
 	}
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
@@ -830,6 +839,7 @@ impl AgentHost {
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
+			self.initializing.store(false, Ordering::Release);
 
 			let mut recovery = RecoverySchedule::new();
 			let mut tick = time::interval(Duration::from_secs(15));

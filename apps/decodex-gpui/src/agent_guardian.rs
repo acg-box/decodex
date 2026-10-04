@@ -875,6 +875,7 @@ mod tests {
 	}
 	fn seed(s: &mut AgentSurface) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			connection_initializing: false,
 			runtime_source: None,
 			workspaces: vec![],
 			dependencies: vec![],

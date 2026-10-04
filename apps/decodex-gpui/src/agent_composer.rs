@@ -305,11 +305,7 @@ impl AgentSurface {
 
 	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
 		gpui::div()
-			.mx_4()
-			.mb_3()
-			.p_3()
-			.rounded(gpui::px(14.))
-			.bg(gpui::rgb(0x27272b))
+			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -324,7 +320,7 @@ impl AgentSurface {
 						gpui::div()
 							.text_size(gpui::px(11.))
 							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("Draft only · Sending paused"),
+							.child("Draft"),
 					)
 					.child(self.composer_control(
 						"copy-draft",
@@ -639,6 +635,15 @@ impl AgentSurface {
 	}
 
 	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.connection_initializing() {
+			return gpui::div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.justify_end()
+				.child(crate::ui_loading::loading("Connecting to Codex…"))
+				.into_any_element();
+		}
 		if let Some(controls) = self.dictation_controls(cx) {
 			return controls;
 		}

@@ -131,6 +131,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 		s.state = LoadState::Ready;
 		s.selected = Some("work".into());
 		s.snapshot = Some(AgentSnapshotDto {
+			connection_initializing: false,
 			runtime_source: Some(EntityId::new("runtime").unwrap()),
 			workspaces: vec![],
 			dependencies: vec![],
