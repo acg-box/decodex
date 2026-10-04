@@ -9,14 +9,13 @@ final class VoiceMediaHost: NSObject {
     private var captureIdentity: UUID?
     private var captureCancelled = false
     private var isClosed = false
-    private var nativeDictation: (any DictationCapturing)?
     private let authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)?
-    private let dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)?
+    private let deviceForTesting: (() throws -> AudioDeviceID)?
 
     init(authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)? = nil,
-         dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)? = nil) {
+         deviceForTesting: (() throws -> AudioDeviceID)? = nil) {
         self.authorizationRequestForTesting = authorizationRequestForTesting
-        self.dictationFactoryForTesting = dictationFactoryForTesting
+        self.deviceForTesting = deviceForTesting
         super.init()
     }
 
@@ -28,7 +27,9 @@ final class VoiceMediaHost: NSObject {
         switch operation {
         case "prepare":
             if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
-                DictationCapture.prepare(input: value["input"] as? String ?? "")
+                if let device = try? MicrophoneDevice.device(named: value["input"] as? String ?? "") {
+                    emit(["type":"dictation_prepare_authorized", "device":device])
+                }
             }
         case "devices":
             let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
@@ -38,19 +39,14 @@ final class VoiceMediaHost: NSObject {
             captureCancelled = false
             let identity = UUID()
             captureIdentity = identity
-            nativeDictation?.stop()
-            nativeDictation = nil
             let input = value["input"] as? String ?? ""
             let authorized: @MainActor (Bool) -> Void = { [weak self] allowed in
                 guard let self, !self.isClosed, !self.captureCancelled, self.captureIdentity == identity else { return }
                 guard allowed else { self.emit(["type":"error", "message":"Allow microphone access in System Settings."]); return }
-                if operation == "dictate" { self.beginNativeDictation(input) }
-                else {
-                    do {
-                        let device = input.isEmpty ? 0 : try DictationCapture.device(named: input)
-                        self.emit(["type":"voice_authorized", "device":device])
-                    } catch { self.emit(["type":"error", "message":"The selected microphone is unavailable."]) }
-                }
+                do {
+                    let device = try self.deviceForTesting?() ?? MicrophoneDevice.device(named: input)
+                    self.emit(["type":operation == "dictate" ? "dictation_authorized" : "voice_authorized", "device":device])
+                } catch { self.emit(["type":"error", "message":"The selected microphone is unavailable."]) }
             }
             if let authorizationRequestForTesting { authorizationRequestForTesting(authorized) }
             else if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized { authorized(true) }
@@ -61,36 +57,16 @@ final class VoiceMediaHost: NSObject {
             }
         case "finish":
             captureCancelled = true
-            if let nativeDictation { nativeDictation.finish() }
-            else { captureIdentity = nil; emit(["type":"ended"]) }
+            captureIdentity = nil
+            emit(["type":"ended"])
         case "stop":
             events.removeAll()
             captureCancelled = true
             captureIdentity = nil
-            nativeDictation?.stop()
-            nativeDictation = nil
             emit(["type":"ended"])
         default: return false
         }
         return true
-    }
-
-    private func beginNativeDictation(_ input: String) {
-        guard let identity = captureIdentity, !isClosed, !captureCancelled else { return }
-        let emitCapture: @MainActor @Sendable ([String: Any]) -> Void = { [weak self] value in
-            guard let self, !self.isClosed, self.captureIdentity == identity else { return }
-            if let type = value["type"] as? String, type == "ended" || type == "error" {
-                self.captureIdentity = nil
-                self.captureCancelled = true
-                self.nativeDictation?.stop()
-                self.nativeDictation = nil
-            }
-            self.emit(value)
-        }
-        let capture = dictationFactoryForTesting?(emitCapture) ?? DictationCapture(emit: emitCapture)
-        nativeDictation = capture
-        do { try capture.start(input: input) }
-        catch { capture.stop(); nativeDictation = nil; emit(["type":"error", "message":"The selected microphone could not start. Check the input device and try again."]) }
     }
 
     func poll() -> UnsafePointer<CChar>? {
@@ -121,13 +97,11 @@ final class VoiceMediaHost: NSObject {
         isClosed = true
         captureCancelled = true
         captureIdentity = nil
-        nativeDictation?.stop()
-        nativeDictation = nil
     }
 }
 
 @_cdecl("decodex_voice_media_abi_version")
-public func decodexVoiceMediaABIVersion() -> UInt32 { 3 }
+public func decodexVoiceMediaABIVersion() -> UInt32 { 4 }
 
 @_cdecl("decodex_voice_media_create")
 public func decodexVoiceMediaCreate(_ nativeView: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {

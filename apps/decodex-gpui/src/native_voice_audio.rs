@@ -38,6 +38,22 @@ impl Device {
 	/// Call after microphone authorization and retain this owner on its creating thread. A zero ID
 	/// uses the system input.
 	pub(super) fn start(device: u32) -> Result<(Self, Pcm), ()> {
+		let (engine, pcm) = Self::prepare(device, 48_000.0)?;
+		engine.resume()?;
+		Ok((engine, pcm))
+	}
+
+	pub(super) fn resume(&self) -> Result<(), ()> {
+		unsafe { self.engine.startAndReturnError().map_err(|_| ()) }
+	}
+
+	pub(super) fn pause(&self) {
+		unsafe {
+			self.engine.pause();
+		}
+	}
+
+	pub(super) fn prepare(device: u32, sample_rate: f64) -> Result<(Self, Pcm), ()> {
 		let (capture, captured) = RingBuffer::new(4_800);
 		let (playback, output) = RingBuffer::new(4_800);
 		let capture = Mutex::new(capture);
@@ -121,7 +137,7 @@ impl Device {
 
 			let format = AVAudioFormat::initStandardFormatWithSampleRate_channels(
 				AVAudioFormat::alloc(),
-				48_000.0,
+				sample_rate,
 				1,
 			)
 			.ok_or(())?;
@@ -144,7 +160,6 @@ impl Device {
 			let device = Self { engine, sink, source, level, _thread: std::marker::PhantomData };
 
 			device.engine.prepare();
-			device.engine.startAndReturnError().map_err(|_| ())?;
 
 			Ok((device, Pcm { captured, playback }))
 		}
