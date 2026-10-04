@@ -198,7 +198,12 @@ private final class DictationAudioWorker: @unchecked Sendable {
                     self.emit(.ready(elapsed))
                 }
                 self.emit(.level(frame.level))
-                for pcm in frame.frames { self.emit(.pcm(pcm, frame.level)) }
+                // The system can deliver several packets at once. Send that batch in one
+                // event so the request loop does not accumulate one RPC per 20 ms.
+                if !frame.frames.isEmpty {
+                    let pcm = frame.frames.reduce(into: Data()) { $0.append($1) }
+                    self.emit(.pcm(pcm, frame.level))
+                }
                 if frame.final { self.stopEngine(); self.emit(.ended) }
             }
         }
