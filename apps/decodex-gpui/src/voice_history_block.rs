@@ -109,7 +109,10 @@ impl RenderOnce for VoiceBlock {
 				gpui::div()
 					.debug_selector(|| "voice-history-transcript".into())
 					.pt_2()
-					.child(markdown::render(&self.text, &format!("voice-transcript-{}", self.key)))
+					.child(markdown::render(
+						&self.text.replace('\n', "\n\n"),
+						&format!("voice-transcript-{}", self.key),
+					))
 					.child(markdown::response_copy_button(
 						&format!("voice-copy-{}", self.key),
 						"Copy voice transcript",

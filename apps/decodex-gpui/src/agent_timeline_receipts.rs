@@ -9,7 +9,7 @@ use crate::{
 		agent_surface::{
 			native_timeline::{
 				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
-				Context, IntoElement, ParentElement, Styled, markdown,
+				Context, FluentBuilder, IntoElement, ParentElement, Styled, markdown,
 			},
 			progress,
 		},
@@ -44,16 +44,20 @@ impl AgentSurface {
 		diagnostics: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut panel = gpui::div().flex().flex_col().gap_2();
+		let mut rows = Vec::new();
 
 		if !diagnostics {
-			panel = panel.child(self.native_input_receipts_panel(work, cx));
+			rows.extend(self.native_input_receipts_panel(work, cx));
 		}
 
 		let Some((_, AgentHistoryResult::Available { entries, live, next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
-			return panel
+			return gpui::div()
+				.flex()
+				.flex_col()
+				.gap_2()
+				.children(rows)
 				.child(agent_surface::muted("Local delivery records are unavailable. Retrying…"))
 				.into_any_element();
 		};
@@ -68,10 +72,10 @@ impl AgentSurface {
 			});
 
 		if has_records && diagnostics {
-			panel = panel.child(self.local_records_toggle(records_key, expanded, cx));
+			rows.push((self.local_records_toggle(records_key, expanded, cx)).into_any_element());
 		}
 		if expanded {
-			panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
+			rows.extend(self.earlier_local_records(cursor.is_some(), cx));
 		}
 
 		let mut saved = BTreeMap::new();
@@ -101,7 +105,7 @@ impl AgentSurface {
 					continue;
 				}
 
-				panel = panel.child(native_timeline::auth_recovery_entry(entry));
+				rows.push((native_timeline::auth_recovery_entry(entry)).into_any_element());
 
 				continue;
 			}
@@ -139,14 +143,22 @@ impl AgentSurface {
 
 			let row = self.local_receipt_row(entry, label, work, cx);
 
-			panel = panel.child(row);
+			rows.push((row).into_any_element());
 		}
 
 		if diagnostics {
-			return panel.into_any_element();
+			return gpui::div().flex().flex_col().gap_2().children(rows).into_any_element();
 		}
 
-		panel.children(self.native_live_receipts(live)).into_any_element()
+		rows.extend(self.native_live_receipts(live));
+		let empty = rows.is_empty();
+		gpui::div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.when(empty, |panel| panel.hidden())
+			.children(rows)
+			.into_any_element()
 	}
 
 	fn local_receipt_row(

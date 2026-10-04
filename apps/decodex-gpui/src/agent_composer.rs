@@ -796,6 +796,7 @@ impl AgentSurface {
 					gpui::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
 				})
 			})
+			.focus(|d| d.bg(gpui::rgba(SELECTED_HOVER_FILL)))
 			.when(!["attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})

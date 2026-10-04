@@ -93,22 +93,24 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
+	) -> Vec<AnyElement> {
 		let state = &self.timeline.native.input_receipts;
-		let mut panel = gpui::div().flex().flex_col().gap_2();
+		let mut rows = Vec::new();
 
 		if state.after.is_some() {
 			let owner = work.id.clone();
 
-			panel =
-				panel.child(gpui::div().debug_selector(|| "input-receipts-first".into()).child(
+			rows.push(
+				(gpui::div().debug_selector(|| "input-receipts-first".into()).child(
 					self.workspace_action(
 						"first-input-receipts".into(),
 						"First unconfirmed inputs".into(),
 						move |surface, cx| surface.input_receipt_cursor(&owner, None, cx),
 						cx,
 					),
-				));
+				))
+				.into_any_element(),
+			);
 		}
 
 		match &state.result {
@@ -123,27 +125,30 @@ impl AgentSurface {
 						continue;
 					}
 
-					panel = panel.child(
-						gpui::div()
+					rows.push(
+						(gpui::div()
 							.debug_selector(|| "unconfirmed-native-input".into())
 							.child(agent_surface::muted("Local input · Delivery not confirmed"))
 							.child(markdown::render(
 								&entry.text,
 								&format!("input-receipt-{}", entry.id),
-							)),
+							)))
+						.into_any_element(),
 					);
 				}
 
 				if *shortened {
-					panel =
-						panel.child(agent_surface::muted("Some local input text is shortened."));
+					rows.push(
+						(agent_surface::muted("Some local input text is shortened."))
+							.into_any_element(),
+					);
 				}
 
 				if let Some(after) = next_after {
 					let (owner, after) = (work.id.clone(), *after);
 
-					panel = panel.child(
-						gpui::div().debug_selector(|| "input-receipts-next".into()).child(
+					rows.push(
+						(gpui::div().debug_selector(|| "input-receipts-next".into()).child(
 							self.workspace_action(
 								"next-input-receipts".into(),
 								"More unconfirmed inputs".into(),
@@ -152,24 +157,26 @@ impl AgentSurface {
 								},
 								cx,
 							),
-						),
+						))
+						.into_any_element(),
 					);
 				}
 
 				if entries.is_empty() && state.after.is_some() {
-					panel = panel.child(agent_surface::muted(
-						"No remaining unconfirmed inputs on this page.",
-					));
+					rows.push(
+						(agent_surface::muted("No remaining unconfirmed inputs on this page."))
+							.into_any_element(),
+					);
 				}
 			},
-			None => panel = panel.child(ui_loading::loading("Loading delivery records")),
-			_ =>
-				panel = panel.child(agent_surface::muted(
-					"Local delivery records could not be read. Retrying…",
-				)),
+			None => rows.push((ui_loading::loading("Loading delivery records")).into_any_element()),
+			_ => rows.push(
+				(agent_surface::muted("Local delivery records could not be read. Retrying…"))
+					.into_any_element(),
+			),
 		}
 
-		panel.into_any_element()
+		rows
 	}
 }
 
