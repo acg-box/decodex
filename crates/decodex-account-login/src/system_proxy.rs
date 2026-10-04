@@ -33,31 +33,126 @@ enum SystemProxyDecision {
 	Unavailable { failure: RouteFailureClass },
 }
 
-pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Error> {
-	let mut builder = Client::builder()
-		.redirect(Policy::none())
-		.connect_timeout(config.http_timeout.min(Duration::from_secs(10)))
-		.read_timeout(config.http_timeout)
-		.timeout(config.http_timeout)
-		.user_agent(format!(
-			"decodex/{} codex-login-source/rust-v0.148.0-alpha.9",
-			env!("CARGO_PKG_VERSION")
-		));
+// Async login and blocking service refresh share the same transport policy.
+// Neither redirects nor automatic retries may replay a one-time credential.
+macro_rules! configure_client {
+	($builder:expr, $timeout:expr, $connect_timeout:expr, $route:expr) => {{
+		let mut builder = $builder
+			.redirect(Policy::none())
+			.retry(reqwest::retry::never())
+			.connect_timeout($timeout.min($connect_timeout))
+			.timeout($timeout)
+			.user_agent(concat!("decodex/", env!("CARGO_PKG_VERSION")))
+			.default_headers({
+				let mut headers = reqwest::header::HeaderMap::new();
+				headers.insert(
+					"originator",
+					reqwest::header::HeaderValue::from_static(crate::OAUTH_ORIGINATOR),
+				);
+				headers
+			});
+		if let Some(route) = $route {
+			builder = builder.no_proxy();
+			if let Route::Proxy(proxy) = route {
+				builder = builder.proxy(*proxy);
+			}
+		}
+		builder
+	}};
+}
 
+pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Error> {
 	#[cfg(test)]
-	if config.fallback_proxy_fixture.is_some() {
-		builder = builder.no_proxy();
+	let route = route.or_else(|| config.fallback_proxy_fixture.as_ref().map(|_| Route::Direct));
+	configure_client!(Client::builder(), config.http_timeout, Duration::from_secs(10), route)
+		.build()
+		.map_err(|_| Error::Unavailable)
+}
+
+/// Secret-free transport outcome. A request that might have reached the provider is not replayed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RefreshTransportError {
+	/// No usable connection or route was established.
+	Unavailable,
+	/// The provider may have consumed the refresh token.
+	Ambiguous,
+}
+
+// Native external-auth callbacks time out after 10 seconds (upstream c2f7fe89).
+// Leave time for persistence and the reply; a proxy fallback shares this budget.
+const REFRESH_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Blocking OAuth transport for the account service's blocking worker.
+/// Uses the same network policy and destination-specific proxy resolution as login.
+pub struct RefreshTransport {
+	client: reqwest::blocking::Client,
+}
+impl RefreshTransport {
+	/// Construct the transport without reading account credentials.
+	pub fn new() -> Result<Self, RefreshTransportError> {
+		Ok(Self { client: Self::client(None)? })
 	}
 
-	if let Some(route) = route {
-		builder = builder.no_proxy();
+	fn client(route: Option<Route>) -> Result<reqwest::blocking::Client, RefreshTransportError> {
+		configure_client!(
+			reqwest::blocking::Client::builder(),
+			REFRESH_TIMEOUT,
+			Duration::from_secs(2),
+			route
+		)
+		.build()
+		.map_err(|_| RefreshTransportError::Unavailable)
+	}
 
-		if let Route::Proxy(proxy) = route {
-			builder = builder.proxy(*proxy);
+	/// Exchange a refresh token once; retry only a connection failure using the system route.
+	pub fn refresh(
+		&self,
+		endpoint: &str,
+		refresh_token: &str,
+	) -> Result<reqwest::blocking::Response, RefreshTransportError> {
+		self.refresh_with_route(endpoint, refresh_token, resolve_blocking)
+	}
+
+	fn refresh_with_route(
+		&self,
+		endpoint: &str,
+		refresh_token: &str,
+		resolve_route: impl FnOnce(&str) -> Result<Route, Error>,
+	) -> Result<reqwest::blocking::Response, RefreshTransportError> {
+		#[derive(serde::Serialize)]
+		struct Grant<'a> {
+			client_id: &'static str,
+			grant_type: &'static str,
+			refresh_token: &'a str,
+		}
+		let grant =
+			Grant { client_id: crate::OAUTH_CLIENT_ID, grant_type: "refresh_token", refresh_token };
+		let started = Instant::now();
+		let send = |client: &reqwest::blocking::Client, timeout| {
+			client.post(endpoint).json(&grant).timeout(timeout).send()
+		};
+		match send(&self.client, REFRESH_TIMEOUT) {
+			Ok(response) => Ok(response),
+			Err(error) if error.is_connect() => {
+				let route =
+					resolve_route(endpoint).map_err(|_| RefreshTransportError::Unavailable)?;
+				let remaining = REFRESH_TIMEOUT
+					.checked_sub(started.elapsed())
+					.filter(|duration| !duration.is_zero())
+					.ok_or(RefreshTransportError::Unavailable)?;
+				send(&Self::client(Some(route))?, remaining).map_err(classify_refresh_transport)
+			},
+			Err(error) => Err(classify_refresh_transport(error)),
 		}
 	}
+}
 
-	builder.build().map_err(|_| Error::Unavailable)
+fn classify_refresh_transport(error: reqwest::Error) -> RefreshTransportError {
+	if error.is_builder() || error.is_connect() {
+		RefreshTransportError::Unavailable
+	} else {
+		RefreshTransportError::Ambiguous
+	}
 }
 
 pub(super) async fn exchange(
@@ -131,19 +226,20 @@ where
 }
 
 async fn resolve(url: String) -> Result<Route, Error> {
+	tokio::task::spawn_blocking(move || resolve_blocking(&url))
+		.await
+		.map_err(|_| Error::Unavailable)?
+}
+
+fn resolve_blocking(url: &str) -> Result<Route, Error> {
 	#[cfg(target_os = "macos")]
 	{
-		let route = tokio::task::spawn_blocking(move || macos::resolve(&url))
-			.await
-			.map_err(|_| Error::Unavailable)?;
-
-		match route {
+		match macos::resolve(url) {
 			SystemProxyDecision::Proxy { url } =>
 				Proxy::all(url).map(Box::new).map(Route::Proxy).map_err(|_| Error::Unavailable),
 			SystemProxyDecision::Direct => Ok(Route::Direct),
 			SystemProxyDecision::Unavailable { failure } => {
 				let _ = failure;
-
 				Err(Error::Unavailable)
 			},
 		}
@@ -151,7 +247,6 @@ async fn resolve(url: String) -> Result<Route, Error> {
 	#[cfg(not(target_os = "macos"))]
 	{
 		let _ = url;
-
 		Err(Error::Unavailable)
 	}
 }

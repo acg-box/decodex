@@ -15,6 +15,7 @@
 // by the daemon-owned import authority.
 
 mod system_proxy;
+pub use system_proxy::{RefreshTransport, RefreshTransportError};
 
 use std::{
 	collections::HashMap,
