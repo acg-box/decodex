@@ -8,7 +8,7 @@
 
 use std::{collections::BTreeSet, mem, time::Duration};
 
-use gpui::{AnyElement, Div};
+use gpui::{AnyElement, Div, StatefulInteractiveElement as _};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
@@ -328,6 +328,9 @@ impl AgentSurface {
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
 			if let Some(group) = voice_headers.get(&index) {
+				if group.hidden() {
+					continue;
+				}
 				if !hidden.is_empty() {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
@@ -338,17 +341,25 @@ impl AgentSurface {
 				} else {
 					"Voice conversation"
 				};
-				let body = super::voice::history::VoiceBlock {
-					key: serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-					title: title.into(),
-					expanded: !group.ended,
-					text: if group.text.is_empty() {
-						"No transcript recorded.".into()
-					} else {
-						group.text.clone()
-					},
-				}
-				.into_any_element();
+				let body = if group.text.trim().is_empty() {
+					gpui::div()
+						.id(SharedString::from(format!(
+							"voice-status-{}",
+							serde_json::json!([work.id, key(entry)])
+						)))
+						.role(gpui::Role::Status)
+						.child(agent_surface::muted(group.empty_status()))
+						.into_any_element()
+				} else {
+					super::voice::history::VoiceBlock {
+						key: serde_json::json!([work.id, work.codex_thread_id, key(entry)])
+							.to_string(),
+						title: title.into(),
+						expanded: !group.ended,
+						text: group.text.clone(),
+					}
+					.into_any_element()
+				};
 				let body = self.anchored_native_history_entry(work, entry, body);
 				panel = panel.child(self.native_scroll_row(work, entry, body, cx));
 				continue;
