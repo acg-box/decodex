@@ -3,21 +3,25 @@ type: Reference
 title: "Runtime architecture"
 description: "Service, native execution, desktop bundle and persistent state ownership."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T09:30:20.448Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
+  - id: openwiki-source-c1d5f763b821a11957a8c33b
+    resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-6230c010baca677fa60c32c1
+    resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Runtime Architecture
@@ -43,7 +47,7 @@ flowchart LR
 
 `Decodex.app` is the macOS GUI. It contains `decodex-gpui`, signed `Contents/Helpers/decodex`, a native-client FFI library, and `libDecodexMenuBar.dylib`. The menu bar and attached glass controls belong to the same app process. They are not extra apps or state owners.
 
-For local profiles, the app starts the helper with `serve --parent-fd` when no service is available. It reuses an exact-version service and reports a mismatch instead of silently using an incompatible one. Closing the main window differs from quitting: the former preserves the running app; quitting retires only its owned service.
+For local profiles, the app supervises its bundled helper with `serve --parent-fd`. The local service boundary prevents a second owner from replacing an existing service. Typed clients reject incompatible protocol versions instead of opening product storage directly. Closing the main window differs from quitting: the former preserves the running app; quitting retires only its owned service.
 
 The GUI installer links the user CLI to the bundled helper. The standalone service installer supplies a regular executable instead. These are alternative installation modes.
 

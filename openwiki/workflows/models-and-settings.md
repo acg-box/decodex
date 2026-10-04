@@ -3,9 +3,6 @@ type: Reference
 title: "Model selection and settings ownership"
 description: "Native model, Goal and search settings, source-bound writes and memory observation."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
@@ -20,6 +17,9 @@ sources:
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Model selection and settings ownership

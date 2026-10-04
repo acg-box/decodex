@@ -10,8 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 

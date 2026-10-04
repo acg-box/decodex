@@ -3,9 +3,6 @@ type: Reference
 title: "Desktop workspace and native glass"
 description: "Workspace ownership, native menu focus, compositor motion, and consistent status presentation."
 tags: [decodex, architecture, desktop, presentation]
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T18:35:20.136Z
 sources:
   - id: openwiki-source-75aea95b5b7fd328b3b6a396
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
@@ -36,6 +33,9 @@ sources:
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
 generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Desktop workspace and native glass

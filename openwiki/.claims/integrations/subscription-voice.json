@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:262e1bd94cbaa0715ab5ea9eb305278c68f8e562a44627f0a226e718034ff566",
+  "pageVersion": "sha256:8831ee7d204143424dec5603ad37c44029a42e486957ea6879105412c48661dc",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:421a0cf9a0ceed661acf2ff2bdf047b80c10fd1429146296bcd414568e055301"
+          "version": "repo-file-v1:sha256:425543236afbdee4d30eb32ef59a9a21fa39a98ca1546f4ff0d788667cdde96b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
-          "version": "repo-file-v1:sha256:ad526fe9fa9bb69b94f65c7993d71eafd11f38b865510dee4ded09efc16aaf34"
+          "version": "repo-file-v1:sha256:bb46a590e7e82004b1b7fcdddb9ab8833356052d2fd1b78a2048d42fd0bc85b2"
         }
       ]
     },
@@ -22,15 +22,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift",
-          "version": "repo-file-v1:sha256:909a4366b47974d7d6c771543da4f3a4c3e114162340ceffce6342c299f7d08a"
+          "version": "repo-file-v1:sha256:9aa71dc717c2ab47f4f11ba696bdd528b87fb8f67ce23759b6448853f150ae63"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:421a0cf9a0ceed661acf2ff2bdf047b80c10fd1429146296bcd414568e055301"
+          "version": "repo-file-v1:sha256:425543236afbdee4d30eb32ef59a9a21fa39a98ca1546f4ff0d788667cdde96b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_transcript.rs",
-          "version": "repo-file-v1:sha256:d3f6aeb544715e1a38b157f7a6aa0b8c1827de882946dddc72d98a4563ca6798"
+          "version": "repo-file-v1:sha256:143ae91268cfd2ed19ac60be6159c5a82dc55aa455f9665c9cb3353ae5589817"
         }
       ]
     },
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:1d32a998326ce209389aec440b31eaa930883a067d455aeb2ccf134d30f64cb1"
+          "version": "repo-file-v1:sha256:3f3276e5ff939b5c4f0f0854eef4e192300b88add53ce806b68bf451285f5607"
         }
       ]
     },
@@ -49,8 +49,8 @@
       "statement": "Saving a reviewed native voice preference affects the next call and does not restart active audio.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L84-L110",
-          "version": "repo-lines-v1:sha256:bf2701321695fa2847e971ab48096e202d988f06f902970aa91d8a1a320db356:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L93-L120",
+          "version": "repo-lines-v1:sha256:6780641b229ee2cefaae00ffc529153d77987a79104f9624b41ee13c757cb15e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
         }
       ]
     },
@@ -60,15 +60,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
+          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
+          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
         }
       ]
     },
@@ -77,8 +77,8 @@
       "statement": "Live call startup reads the effective voice for the exact native thread and sends it in the v3 real-time request with startup context and transcript-tail flushing; optional model and start/end instructions are call-scoped.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L144-L199",
-          "version": "repo-lines-v1:sha256:1724e1ba194cf192e0ea4a2e71dac64f796ebe1f1a3f6baf92d8b5bab91d218b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ZjIzY2QwYTJlM2Q2OTUzNzA3OGFjODJlZDg2NGUxYmJiNDc5N2NiNzMyZDQyYTllOTYwOGI1MDYzZThlOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3MjM5M2E5YmVlOTU1NzE5MjQxYjcxM2IxNmNkMmIwYTNmMzQwZjVmNWE1ZTg4ZTQxM2VmODVjY2Q5MzlmMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NjI0ZjBjMzVjZjFmN2FlMjBkNmVhZWE3YzM3OWExNjM4MmE1ZmM3NTFhNGNkNzhjMTZkNGQyYjI0OTIwNGEifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L250-L287",
+          "version": "repo-lines-v1:sha256:6eb881107d48991d09052df921dab0ef6ae8520d81d4c11148b20c6a9403b3c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYzUyZjAxMGQyYTdhNzY3ZTBkOTc0MTQwMWNhMjkwMzI4Y2NlNWI0NWY1ZDMwNTJlNTBkNzYxY2Q4Y2RkYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMWVjNWJhNDE1YjA3NTgwM2UwZGZlNjhhNjU2MWNjMTlhYjQyZmE5MDUxOTE5YjJlYTdkZTgxZDM0YjgzYWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MWVlYjE3YWMyNDkzYzlmMDZkMDVjM2YxMGY5MjQ3ZjdlNGU3Mzg2Y2UyNDhiMTdmYjk2YmE3MDJkYTQ1NzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzMWVjNmE1Yjg1YWE2YWRkMmMyYmJkZGIxM2ZmZmNiNjAwMjVlNGNhMmNmNDVjMzhmNjM1OWViMmYxM2M3OGQifQ"
         }
       ]
     },
@@ -88,15 +88,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
+          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
+          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
         }
       ]
     },
@@ -105,22 +105,26 @@
       "statement": "Local live-voice transcript storage preserves newer received text when a final is its shorter prefix, marks that saved text incomplete, and ignores empty finals without replaying transcript input; expanded finals and ordinary corrections remain supported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L282-L308",
-          "version": "repo-lines-v1:sha256:24510d932e4d5628ae0ca8122616dcf24da553525d2a16c3f382d65f0baad61e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NmJlODAyMzA0ZGY2ZmZkOGIzNWUxN2VmY2MyYzQ0MTkzMzVkNmMzMWQ2ZjU1Yzg3ZjkzZjU2ZTYzYTQyMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNjAyNTViNGZiNjJlODIzODBhMTRhZDU4MzRiMWZjNjZmNWY2ZTBlZmMwZDI1ZDJmNThmMDc2ODAxMTY1MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNjFmNGExYjZkMzI3ZDU3ZDMxNzY3NjgzNWQ5MWQ3NGExYjdiMzM0NWE3YjFkY2E4NzNkZjFmYjA4NWRkMGQifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L334-L380",
+          "version": "repo-lines-v1:sha256:529dbd63e889b87c68b548df6bfaa3cea689fc956c352608dd7b66d88f16d87f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxY2FkZTFkNTBjNzY4YjM0YzdmODg3OGYxZjI1ODY3ZTY3N2FmNWNhN2YxMmZlOTYwOTJmMmE5Y2M1NGRmNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjOWI2YTRmMjBiODUwZTcxNjFjNjM1MzQ0MDhhOTJiYTdiZmZlMTc3NjQ1ZDEwYjc2MTgwMDE0MTIzNWVhNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMWI2MjhkNGJjNDQ0MzI5ZTRmYTU0ZDE5MzZiZjBmMTVmYzdiYzQyODEzOTBiMjYwOWM4YTMwNDUwOGI5ZTcifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs",
-          "version": "repo-file-v1:sha256:98dc96c5403b969797bc21c526b8025b354fddd213eaf6e5a21fa6686b81da9c"
+          "version": "repo-file-v1:sha256:8765f6903dbb760de3f71843deb276721b76d84fdc6288a57bc47e6cfb129e31"
         }
       ]
     },
     {
       "id": "claim_df5da7bde1244ccb896c5b328ec25d36",
-      "statement": "Dictation capture enables AVAudioEngine voice processing before device selection and format conversion, with minimum other-audio ducking.",
+      "statement": "Dictation and Live share Rust-owned Apple AVAudioEngine capture with voice processing enabled before device selection, minimum other-audio ducking and an AVAudioSinkNode configured for 24 kHz dictation or 48 kHz Live.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift",
-          "version": "repo-file-v1:sha256:54785baab5f5604d2c0102bf2d7b59f39fb398bde9bf1ebdfb2ad22d376560e5"
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
+          "version": "repo-file-v1:sha256:e7545e34ced490cca67d1dd22c5cbfeb1f91911867ddbb15b0bd94a0c4aa308b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs#L40-L165",
+          "version": "repo-lines-v1:sha256:fd9c6e536e230cd02afc85a4c3b20d5f640c14eba48fd2d23fd37d474a08d166:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5N2YyZTJjODQxZjA1YTcyMzllN2I3NzEwNDkxZWZmYWMwODI1ODIwNmYxOTA0NzhlYjBlMzQ0MjEyODZiZGI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NGVmYzQ5NDE4ZDI2ZGNmMTI5YjIyYTZhYTIxMTA4Y2VlYzM3Njc3YTMyZDA4ZTlkNWZlZTM1ZGRhNjZiYjlkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MjU3MmE2YmFkMTNiYjM0MTFhNzk4YjdmODYyZDFkMjlmZTFjYmRkNzY0OWFkM2NlMzdkYTA2MGE1ZWJlYjg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkMTc4YzQzZjlkZTFiZTIzNmZmNmQ2ZDA3NWNlYjdkNmI5NTNjZmNiNGNjNDc2OGVhNDAxOTY2YzBmYjc0YmY2In0"
         }
       ]
     },
@@ -130,7 +134,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
-          "version": "repo-file-v1:sha256:ad526fe9fa9bb69b94f65c7993d71eafd11f38b865510dee4ded09efc16aaf34"
+          "version": "repo-file-v1:sha256:bb46a590e7e82004b1b7fcdddb9ab8833356052d2fd1b78a2048d42fd0bc85b2"
         }
       ]
     },
@@ -140,25 +144,25 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
+          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
         }
       ]
     },
     {
       "id": "claim_605a177892684fe4b712720f039792fe",
-      "statement": "Native media ABI 3 uses a static libwebrtc archive with Objective-C linking and bundled third-party license notices.",
+      "statement": "Native media ABI 4 uses a static libwebrtc archive with Objective-C linking and bundled third-party license notices.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/build.rs",
-          "version": "repo-file-v1:sha256:3efff0afd6ddb62711de38de2b4be8e6617fe07fd0bfaeaf2851161c98d87efd"
+          "version": "repo-file-v1:sha256:67e264807f36bcb3ee4efa3f305ba4112d5b0087c62e8551d0dfb32f081e6048"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
+          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -172,17 +176,45 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
+          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
+        }
+      ]
+    },
+    {
+      "id": "claim_642e05ce915d4c1a8cd711b5e90f434e",
+      "statement": "Dictation prepares and reuses a stopped selected-device engine on a dedicated audio thread, clears old samples before Start, pauses after Finish or cancellation, and reports first-PCM capture timing separately from network or recognition latency.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
+          "version": "repo-file-v1:sha256:e7545e34ced490cca67d1dd22c5cbfeb1f91911867ddbb15b0bd94a0c4aa308b"
+        }
+      ]
+    },
+    {
+      "id": "claim_87fab16a346147f3879893a0b5e8a513",
+      "statement": "The composer buffers early dictation audio until the subscription session listens, continues capture feedback during pending requests and drains buffered audio before Finish.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs#L150-L235",
+          "version": "repo-lines-v1:sha256:988f07687f3eb1e302b1db0d39ba31b19e6cd74c1c223e6194ef0c52352c8429:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmNTMyYTEzNTBiMWU4MWY4NzUyMWQ3ZDAwMGEzZWVhNzc0OTdlMGIzMjBjM2ViYTVlOGE1OWI3ODRmY2Y0OGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5M2FlOTBiYzVlYTFiYTczM2YwZjI2YWMwZTllZTk3ODA5MmUzZDBkYTcxZjU3ZGJlNjdjNDgyOWI1OGQ2MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkNzkxNTQwMGQyZmFjZjhmN2JkODNhOGJlZWE3NTk5MzZhMmM2NWVmNThkNzBhNTIxNWY3NjExNzgyOWIzZDUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs#L347-L365",
+          "version": "repo-lines-v1:sha256:adadd7371affbb733f5357feffefcf02b9251859be64525b9f48efa5b253c341:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZjhiMzIzMDQ0N2YyNDNiYWJkOTlmMzZhYTBlYWIxOTE2NGRiY2RjNmI1ZmZlOWQwMDI5NTZiNTg5Yzk0MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3M2MzNGY5NWFkYzI2ZTEwNDBiMzk2YTczMzNlYTRhZDhlOGQwZGMzOWE1NDlkZDc2ZDEwYTgyMmRjZWVhNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzYTVkOWM1Mjg4ZjM1YmJiMWJkMmM0NTU5NzFhMjU0ZDcyNTUzOTRhZDY2NDk2MTRjZjliMWMzNTc2ZDYxNTkifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs#L540-L574",
+          "version": "repo-lines-v1:sha256:48e3d7da152082036e4c68e18153e537cbba27597996eab069cd6ea51a4f9c15:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNmRmODdhOTNlNGUxZWY0ODljYmE2NDBjMWM0NzAzOTgxMWI4NDdkMWM2ZDk1ZjgzZTZlZjM1YmRlMmYwNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhNDQwNzZhOTE5YzYxYWI2MmRkMjU0ZTA0NWY0YmJjMTY1OGQ0ZmY4OGMwZDdmYzM3ZTA4MWFlMTViYTgyNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjVhZmYwNmFhYWRiZDFiZTI3NmExMzViODcyNTIxM2Q0OTRiYmRlYTRjNDllOTUxNzJhYmY3ZjRhNDAxOGMifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T14:27:56.062Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

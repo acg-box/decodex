@@ -18,10 +18,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+  - id: openwiki-source-dd24c2ff3c2515a21892e312
+    resource: repo://database/src/program_cycles.rs
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T17:38:04.493Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Current local product contract
@@ -52,11 +54,11 @@ Shared-auth writes use exact-source compare-and-swap and readback. Passive follo
 
 Desktop controllers apply results only for the exact active session and command. They never kill or restart external Codex to make a route succeed. Account ordering, enablement, logout and explicit recovery remain service-owned.
 
-Reset Card redemption is explicit and durably one-attempt. Weekly activation is separately configurable and deduplicates expired unchanged resets. Neither UI animation nor a timeout proves a successful provider effect.
+Reset Card redemption is explicit and durably one-attempt. Weekly activation is separately configurable and deduplicates expired or observed floating reset windows. Neither UI animation nor a timeout proves a successful provider effect.
 
 ## Retained and retired scope
 
-Program cycles and compiled-in Domain Pack projections remain storage/runtime mechanisms. The historical Factory graph is not the current UI. Built-in repository/PR/check-run orchestration and the private-artifact lane are retired; old evidence must not reactivate them.
+Historical Program cycles and their Domain Pack projections remain readable through compatibility queries; they do not define a current execution scheduler. The historical Factory graph is not the current UI. Built-in repository/PR/check-run orchestration and the private-artifact lane are retired; old evidence must not reactivate them.
 
 No historical disposable-database instruction applies to user data. Ordered migrations, compatibility refusal and preserved recovery evidence are the current boundary.
 

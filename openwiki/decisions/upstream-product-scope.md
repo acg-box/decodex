@@ -24,8 +24,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-29T20:08:07.145Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Product scope and native ownership

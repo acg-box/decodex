@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a6fd45a2aecfea4dd259878c560f6380ef705345ce2f6bf3151ab3915ccc1861",
+  "pageVersion": "sha256:37fb7912a4634169f2eae47de53dab7fc926c5e2bbf943b945b100081af447e5",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_graph.rs",
-          "version": "repo-file-v1:sha256:f010e2afaf8199dbb3171b7b608a3126f7108d63318846db5b44f0f766f7d94f"
+          "version": "repo-file-v1:sha256:35decaddcac820fb6f97964fbec3426976deeba40561a70d53c6892b47c04802"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:a9764933d0bea4a2c6c7ca125d64a4eb6bae71a2f3a88682682222e5ab1b677e"
+          "version": "repo-file-v1:sha256:1563654dce70c0ef9a89db0baa8ef82025090bd911a9cb06ed936c0f0186d49c"
         }
       ]
     },
@@ -22,11 +22,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:82d4047d749aad23813407d4abbe8ec6234734dbb8d7651263d425c32ee29d28"
+          "version": "repo-file-v1:sha256:27ccad2d6978ad30906e93ebae752f1a6acbef07171d12d2f128dc6af1dfd0bc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_glass_panel.rs",
-          "version": "repo-file-v1:sha256:a81cb501206f58b2ac0890de96421d01c4c6dcd1dd2640909abd2c6728c5fae2"
+          "version": "repo-file-v1:sha256:fc537dc448a197fbe0bae25f569c45a1b6194445fba1a58c07ce95761e4babf7"
         }
       ]
     },
@@ -35,8 +35,8 @@
       "statement": "Background archive-read failures preserve the last confirmed state; explicit failed checks show local feedback.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L17-L30",
-          "version": "repo-lines-v1:sha256:2e2d11a9bf91d49002deb3416d838a76331b59cc86ce0a2450e3ad17a7291929:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTYxMjE0NDUzMzgxMGJkYjBkYWY3Y2EwYTliZGNmMDhmZmUzZTMzZWM0NGYyMjQ1OTUwYmJlYjU2YjI3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNTA2MmQ2YmQ5MzNmNDIxNjRiNGUzM2FiMGMyYzIwMjU5YzgyNzUxMjU0MTViZDY2ZjI4NWRjYjg3MWQyODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L30-L51",
+          "version": "repo-lines-v1:sha256:216e94869ff8bbf603cdcfc50d384860174475c8d826d0ae9f5c93a1c19203b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTYxMjE0NDUzMzgxMGJkYjBkYWY3Y2EwYTliZGNmMDhmZmUzZTMzZWM0NGYyMjQ1OTUwYmJlYjU2YjI3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MDliMzk2MDhlMzI4MDZlMmIzN2RkZmE1ZTQ3MTljMjUzNjg4YmRhYmRlNmU1ZjAxZGNlMDk1OGQ3ZGIxNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5YjZlZjA5YTViODNhYTQ2NGUwMzEyNGU1ZmY1ZDJhODJmMzY0ZjdhMDQxOWJiMWY1ZDNmM2MwODU0ZWRjZTYifQ"
         }
       ]
     },
@@ -46,11 +46,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs",
-          "version": "repo-file-v1:sha256:552ba8153e4ac00ea99979403b5d7f82542218e9624f2d3cd0154a451c4b4c18"
+          "version": "repo-file-v1:sha256:5cd8251c63d6c97db1d0572462e9caa8db9649428e2751e1c4b6b9cbb7008cb4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_selectable_text.rs",
-          "version": "repo-file-v1:sha256:fb8b1109b26ad57070fd66ef8d8dd8cde9a1a4bbda1bae951746d317ba69bbdc"
+          "version": "repo-file-v1:sha256:b3df729a3bfb355f59e3c1cc1bf52af234b3bc8c4354b6af6cbc5e3e0f06e3c7"
         }
       ]
     },
@@ -73,16 +73,16 @@
       "statement": "Native account disclosures use one Core Animation transaction to move and reveal account rows; the canvas accommodates both animation endpoints and requests the screen refresh rate without per-frame window resizing.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L152-L190",
-          "version": "repo-lines-v1:sha256:28e282e326ed5f2f7db5ccd3855ea58c16e53d184de53113a327906f405d3125:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODJiZmJmYjEzNDNkYTE2ZDk2ZTNiOTEyNGZmNDhkOGJlOTc5MDM1MDJiMWJlZDZjY2YzMzkxOThhZWZiOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYTBkNDRjMjdkZDE0Y2RjOGZkZWI4ODViYTJhOTU2MTk4Y2QxYWM1MmUwYTdmYzcyNDQ3ZGExY2RmMDVlYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzYjEyYjE3OTNiMTVjMzdmZTcxZWNhNzE5MmEyODM3MzE4ODc4MDgxY2YyY2Y5MTBiMmIyMDkwYjM0NzIwNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1Njg2MzhiNjEwMGRjMjMxYjllMTIwYWIzYTJmZDViN2JlMTkwNmM1OGIwZTYwZGFjNmZlOTc0MDM3Mjk3OWEifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L166-L193",
+          "version": "repo-lines-v1:sha256:62091a82de79a088f0e29d69eaaaba95c211ae9c072f9e431ec8fb7dc77bfafc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiYmUwNzNkOGM5NWYzOWI0MTAyMjdlYTk5NzRlYTU3NjNjMWY5ZWM5YTM4OThjZjI0NGViYjk2ZmY5MzEzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNjlhNTQzMWUyOWIxYTE2NDg2NmE3NTY0MjgzOWMzOWE2ZDI0ZmNmMjhjN2Y1YTVhNzI3YThhMjVlMTFiMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1OTlkZmUwZGMxZGQ0ZDAyZWQxNTA1ZDEwZjZiNjZkNDZmMTIxZjJiMjk3NDM4ZjY5MTBmMTU1YWQyMjI4MWYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L57-L107",
-          "version": "repo-lines-v1:sha256:19fa61f27d48867cd3691d897aea15702308580825e51961be7e36b7a6f5a739:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyYzk1MmVhMzQwY2RlOTQ0NWFiZmExMDcyMGQ4ODZjNDYyMWVkYjU5NzVkZmVlZTE1NmZiZjk5MjhhZDhiNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3ZTM2NTZiMjYwMTAxM2UxYjc2ODgzODE3OGZiZjUwODY0MGRkZTAzM2NhYmFhODQxN2QwYzJlOWM3ZmZlOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmNDA3ZTM1NDQ4MTMwYmY5ZjE2ODk1NmJmNTNmYjAyYjk4OTY5ZTBlMWYwYmY4NmE1NzM2ZDkwMjJmNzRlNjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxNzgzN2Y4NWVjNDVlODUxZmFjNTk4ZGViZTQyYTY0OTk1YjUzNjcyOGY2NzFiODg2MDg5ZTQ2ZDc1OTdjNmUifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L55-L106",
+          "version": "repo-lines-v1:sha256:c34f3aa213b61f7b1ca7433df0279bf077fa45561a3d7bd289891b42d45d230d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNzg5OGU1MzgyMmQ4N2EwZDBlZTZkM2I3Mjk0ZjRmN2E0NzZhMzM4NGI2NjQ2MzVhNTI5YjJmMGYwMjYxMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMzcwM2I1ODBkODM0NDdiOWE5YjY3NGIwMGU5YWFkZTgwMWY1MGU5OTJjZTc0OGM2ZTllMTI4MTIxMjQ0NzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmNWNkNjg0NDk2YzNmODgzZjAyN2JjN2Y1YjcyYWNmZTZkNGIzMjJmMTMwMzY5N2EzY2U3ZDhhN2QwZDViNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNWJhZWUxYTJmYTJiYzZmOTVhODBjZjU5MDkyOGEwM2Q2NjM5MzM1NmVmMTRkZDkyNTZhZjliZTc5NWZiOTcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift#L200-L218",
-          "version": "repo-lines-v1:sha256:f2f18466da9c2b6da93cf325571af62cc638a1ed35e2fb3fd8fc429fca48157e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxN2ZmNjc4MDMzYTU1ZjNjNGFlN2RlNmQzODllNjA3NmEyNzExMjZkMjA5MjE0MjJhNzI3M2MyMDA0N2EzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMGMzZjU0ZjQxNjE4NzUyNTU4NDk3MDVhZWM0YzQ1MTEyNTUwOGUyYmIyZThmYzNjYzljYTM0Y2Y5OTIxZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYmE4MmRkYjVkYWUwZjhjZTVhM2ZkZmYwNjQ2NzJmMWE5YzNkZDJhZmQxNDA5MjczMDM4NWY4N2VjNzNkNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNjEwMTdlZmVmYmFhMzQwNjBkYzVlODdjOWNkYWUxYWIzNTEzNTNiYTY4NWJjZWMzYWEyZDc3MTJkMGI3YTAifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift#L200-L215",
+          "version": "repo-lines-v1:sha256:2b685583923b421df13408b8cabb2420f693d5f016a64d1306b8cba50c4a9f24:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxN2ZmNjc4MDMzYTU1ZjNjNGFlN2RlNmQzODllNjA3NmEyNzExMjZkMjA5MjE0MjJhNzI3M2MyMDA0N2EzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYmE4MmRkYjVkYWUwZjhjZTVhM2ZkZmYwNjQ2NzJmMWE5YzNkZDJhZmQxNDA5MjczMDM4NWY4N2VjNzNkNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZDI1OWZkYjQyMDQ1ZjFkNWVlNjMwMzZiZmFhYjExZjEwZDAwOTI4Njg4MGNkYjY1ODE3YWI1NjljMTRiN2MifQ"
         }
       ]
     },
@@ -92,15 +92,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L3-L34",
-          "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkZjQ2Yjk5OGQzYWY0ZmZkOWEzMmY4MTA5YjI5Njk1NDM2Nzg1MDczMDYxMDE0ZmI0ZmU1ZjlkOTkwNjcxNGIifQ"
+          "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5M2NjZTJlMTY0ZWE0ZmFkMTRkMzYzYzdhYzQ4OTc5MDYzMDdkOWZmNTk4YWExMDdmNDYyZTkxMTg1NWJiYzkifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L19-L51",
-          "version": "repo-lines-v1:sha256:acbc319374b820fa0180867eadc29c28ec02a26cf9c3a2c519141f598b630c17:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExY2ZkOTU1M2Q1NGFiMjAxMmM2MzcxOTIzZGNhOWFjYTVkOThkZWZiOTA2NWM1NTZiZmQ0NWI3MDBiMGUwNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMzhiMzhmNzUyYjgxZDRkYWRkMDFlMDQwYTZjNDFmZDY0NDA0ZWZlZWM2ZGFjNGU4M2RjODhmYmEwNGRlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxMGQ3YjczNmI5MTQwNTllNDE1MTU1NzZhNTZmM2NlNjNhNjIyYmNjM2VlZGQ3MDNlOWExZDU1ZWQyMmZkMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZGUwMTlkMDQ0YzAzOThkODdiNWUyYThjYzgyYmI0MGFjOTA3NjU1ODhlYjQ3OWEzZWJhMDU5NTg4ZDY1MmQifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L430-L492",
+          "version": "repo-lines-v1:sha256:c52f1d89aa756ab232ecda7b8785cc11b56ea38af3f1ab7937ff8f6528b5d398:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYWQxMjFmZGRlZGRmNGU0NzJmYzUyZDgxNDU3Y2VmMThjYmU2ZDg0MzNiMjQ0Y2NmMmYxMjYyNmRmNjc5YzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1YWJjM2QzMTE1ZTkyZTk2ZjA4ZTc3ZTk5ZjYzMmE0ZjEwYWFmMGNkYzNkNDUwMGI2MDE5MGEwODg3NTUyMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1MzU0NDA1YjNkYjY5MzljOTQ5Mjg1MTQzMTNjY2JlODVhN2NlMTg1OGUwZGMzNzMyNTAwNTkzNDRiYWVjMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ODUzNGMwNjk1YTRhMDFhMzBkOGQ4NTM5OTcyNGViNzE0MDQ3ZDk4ZDc0MGEyMjgxOGU3NmE3MDE3YmY0YWUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L378-L426",
-          "version": "repo-lines-v1:sha256:8870ddc1262c8b69ee1bbd440a875bfe5be2b68fecd55b6643e0e77c12bd4362:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMWY2MWQwY2UyM2EwODNkMjY1M2Q3Mzk3ZGU4Mjg1ZThiZjcwMzNjOTY3ZWQ5YmJlM2MwMGNiMDg0MzM3NzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZTVjMTFhYTMyMWUzOTE1YzNmMGRkNTE0MWM2NGRlZTE5Yjk3ZmM2MWNhMjI3M2FlZmRjNTA1NGQ2NWI1NDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3Y2EyMDYzNTUxNDU1ODYwM2E5MTFjMTkyNTc3NTEwNjZhNTVhOTA4Y2E0YTQyYjI1NzkzZjJlYmI4OGQzZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkYjlkNzIwM2ZjZmJkZTRlYTUxOGZhODQwMDQzYTY4MzQ1N2U4NzI3NDYyMDNmY2YzYzFkYjRhZWJhN2ViNjAifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L561-L569",
+          "version": "repo-lines-v1:sha256:37db9c22f235a45ae278abb55608a4afbbedf9d6768032400b438bd35ba94d40:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGQxOWEwYzA1ZmNmMjRlYTJlZTBhNDBiMTQ3OWVhYTUxYzc0MTM0NjFhYTVlZmE3MmM2OGFlYWUxNWM4Y2NmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ1ZjU4OTliZDVhMDU4MWYwMDBhMmFjODlhYzljOWZlMDQ1NTZlMGM4OTI5YjAxYWFjMzAxMTE2NTNjYWE1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE5N2JhOGQ1NGUzMDExZGVlOWMwYTUyMzUwNGQ2YjEwMzE1ODZkODc1YTdkNjVlOTBlMTQ2NzBmMzlhZWQ5YiJ9"
         }
       ]
     },
@@ -109,7 +109,7 @@
       "statement": "Native and GPUI account warnings use clickable severity-colored icons with explanatory popovers instead of inline activity-warning labels; popovers have no Dismiss button and closing them preserves the warning source.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift#L32-L62",
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift#L31-L61",
           "version": "repo-lines-v1:sha256:dafafc701b468f41564bb2593b99f83942f9637ae63e6986d94e4cc7089f848e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNzM4MzExZDljZDBmYjM0N2I5YWI0NGExMDk2ZTc4MGY1MzIyZjE3MTEwZTRjODQ0ZjkxOGM1ODk5NDcyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYmQxOWE3NTU1NjI5NWZhMjIyYjE1MGFmMGJjMTVjMzY3YWU2ZWIzMDcxNjAwYTk5ZDIwYzM3NGRmZmFkZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2YTI5YTllZTg4NDBmMDMzOGIxZWE2OTYxYWUzYTYxOGNjMjJlMGI2ZWNmYjMzY2Q2MzAxZTM2MzBlYWY2ZDMifQ"
         },
         {
@@ -118,13 +118,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
-          "version": "repo-file-v1:sha256:5e8dc2a2e9effbc0604a244279de316aebe2d4e5faffacfc97ad99661a118b9f"
+          "version": "repo-file-v1:sha256:6dfca85d39a808fef4fae42a11b4edae8e77342cfa1edeee2411882e44bf66d5"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T18:35:20.136Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

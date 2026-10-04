@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:896140d8c7d20dfadfd3cd4ae324ed3115ce2ce69aaa6d3f5827dc8f0bdfc30f",
+  "pageVersion": "sha256:dc748c7197cd19dd700cedc89bf0da3541a0501374e31a25b04ba968efc8ccb8",
   "claims": [
     {
       "id": "claim_2be91f3b07f54663a6f4b76c366b7238",
       "statement": "ProcessSupervisor reconciles durable process authority using positive evidence and does not adopt, reacquire or signal restored processes.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/process_supervisor.rs#L1-L27",
-          "version": "repo-lines-v1:sha256:d6fa166f7019ce3797243a717eb000ed965f67705e25e0b7b7da2c40a2caf653:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMTQzODc2NDNjZmVkMzNmZGQ4MTZhNTYyYTM5NzZlODk1ODkzMDRiMmE5ZTRkMzgxYzliZDZjOTkzMTk1YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1OTNjOGQzYWZhNTlmN2EyZTM3ZTIyMmY1NjIyMzFmOWJmMDczYTQ4NjJiMWRmZWE5MTc1YTNjNmQ0YWU3MzkifQ"
+          "resource": "repo://crates/decodex-runtime/src/process_supervisor.rs#L1-L5",
+          "version": "repo-lines-v1:sha256:cbf7fc2516b2cbc608677ff2727e110015fccb946eec6531e4bb38ce251a8adf:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmMxNDM4NzY0M2NmZWQzM2ZkZDgxNmE1NjJhMzk3NmU4OTU4OTMwNGIyYTllNGQzODFjOWJkNmM5OTMxOTViNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTEwODgwNGY2NDZiOGU2NThkMTUxZmZjZTNjODk1ZDdmM2U5NzY4MDExY2ZjYTE1ZmJjYjliNDY2MDg4ZjkyOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDU3NjYxNTY3ODhmNWQ3OTlkZGNiM2M3ZmViNGJkNGQ5Njk2YjhjMDBjM2RhN2IzMzkwZjcwZWI1OWM2Y2Q2ZSJ9"
         }
       ]
     },
@@ -18,17 +18,17 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent_process.rs",
-          "version": "repo-file-v1:sha256:a8aa4cc6ad17946e49845db787cc8f6dee6d155067e55c8c04d9df466a660e57"
+          "version": "repo-file-v1:sha256:c476db87ff4996fd43246e4403cda2fb64aff728eca231136be272c707833389"
         },
         {
           "resource": "repo://database/src/process_generations.rs",
-          "version": "repo-file-v1:sha256:4a9e447220d30637e333b230f949aeaabb71fe59ac234c61d890a4475925624b"
+          "version": "repo-file-v1:sha256:e40ccdb5db11dbf83195de725130ca915c140f7f4453ecff51652e48387fb652"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:07:44.872Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

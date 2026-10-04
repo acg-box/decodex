@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aec6e161c0ccb94f59f9a6cfed3317e4b06c81f79b0d7816cf4cf499037cdeaa",
+  "pageVersion": "sha256:52fa72305f5dbad4f9b21b8ff410170e2ede995eef768bd1b3735a08f2af8c3a",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -8,17 +8,17 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs",
-          "version": "repo-file-v1:sha256:0c87851dac99151b222518ca86420f0dcf36d85e15c7c7ac44efc4c5974055eb"
+          "version": "repo-file-v1:sha256:f4252d8843366ab4efc3b30b20ec5348c9dcdf30bc114bb343031915f1e41531"
         }
       ]
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The checked-in portfolio defines three native tasks, with the upstream Maintainer active and Radar and Publisher retained as separate auxiliary tools.",
+      "statement": "The checked-in portfolio defines desired configuration for three native tasks, including ACTIVE defaults; Radar and Publisher remain separate auxiliary tools, and repository configuration does not establish live scheduler status.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-publisher/src/lib.rs",
-          "version": "repo-file-v1:sha256:697837fdb258f7b42b0596beb625731f3ca2709aeec1af495c3a68c89788ca2c"
+          "version": "repo-file-v1:sha256:b3498c65c7bf3e567078bc1f246f83b03d00b2f86e37487c7a422ff214e7828f"
         },
         {
           "resource": "repo://apps/radar/src/lib.rs",
@@ -26,13 +26,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
+          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T14:27:56.062Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

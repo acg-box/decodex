@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:917bc9a64300c7788e354a54186a19fe02618d304d6e0a8d9788dd9a2ef50976",
+  "pageVersion": "sha256:2d888dbeadc93fa9919a0ad232862618a67b7f50936c4b26ea191d3cfeca5bf7",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-cli/src/lib.rs",
-          "version": "repo-file-v1:sha256:298e3bfe0e13b94506fbf1703bd7b008cfec64c7ad8bcc1d7229b01a966b1d85"
+          "version": "repo-file-v1:sha256:f4b818379a39c19c9dfc16832a4983ddde8532c52206478b22bb5770530d1c98"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -22,11 +22,19 @@
     },
     {
       "id": "claim_fbb0a565a3af434989353e3bbd03f7bd",
-      "statement": "GPUI's bundled service launcher uses parent lifetime supervision and refuses incompatible service versions instead of opening product storage directly.",
+      "statement": "GPUI supervises its bundled service through a parent-lifetime channel, while typed clients reject incompatible protocol versions instead of opening product storage directly.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
-          "version": "repo-file-v1:sha256:8916a59db0f138ad5d3acd7bd6bbab1ecc2472d22ae174aa10d5a72fef0e8909"
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs#L455-L499",
+          "version": "repo-lines-v1:sha256:6da85f00185c9515c44a81b9a4a2a228c450e0fa72b919f8069a6b847df66aea:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNWFmYjgzNTA3MWUxYTc2YmFlNDlmYTBiZWVmYjYwN2RjNGFjNGQxNjUzMmI2YjU5YmYzZTM5YjljNWE2Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYjcyMzQ2NzYxODM3YzczODA0YmM4YWQ5NjRkMmI4OGU0Zjc3NGRmNWZmZjc2YzM2MjRlYTM5YjliYmM2YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmYzYyNGFlOWNkZDNkNjMxYWRhZDcxYzgxMGEyMjNiNjMyZTk0MGQ3NTgxODIyZGVkYzBiYzQ4Y2EyMjVjYTAifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/client_lifecycle.rs#L1048-L1060",
+          "version": "repo-lines-v1:sha256:e730ee0cb44b1c4ae1c87a6c36d03c6f1331bac286b45cc2e5e5d7748c37d43c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYTBkZmUwZjk0YTlmZmQ0MDRkZGEyNGMyZWQ3ZDIyOTA4MTIwNmZmMTE1ZmIxOTE5ZjhlZDNhY2IwMjIzNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzM0ODNhOGY0ZDNhM2Q0YTc3OTMxOTNiYzM1YjI3ZDNiY2ZlMjU0OTI0ZWM2MGE4YjZmM2NlZmQ5NjJmZTQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/client.rs#L2260-L2287",
+          "version": "repo-lines-v1:sha256:f9076f56054fb5de44d6c9b0483832b918a24c0b0193ecdb0dbe39c73f00ef75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMDMxNjg5NzQxYmNjM2ZlMmIxYmNiMDFjMDE3ZDNkYTg0YjcyN2JjMzY0ODQzY2RmMjI4ZWI2YWY5MmUwNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYzBjMmJhYThjYjgxMTg0MzAxZjA4OGYwNzFkZWNjNzgwMzgzNTMyNDM4YTVjYTVhNjMwNzIzM2E4N2JkZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxODUxNjFiNGVmZmVlNzE1NGNmNWUxNTUxYTMyZjFmMWY5NWZiYjhkNmZmZjhiODQzMzMyMzVlNzllYmViZmUifQ"
         }
       ]
     },
@@ -42,7 +50,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:30:20.448Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

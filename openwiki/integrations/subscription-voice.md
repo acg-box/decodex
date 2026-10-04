@@ -6,12 +6,14 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-759ed0025679548e066b427b
     resource: repo://apps/decodex-gpui/build.rs
-  - id: openwiki-source-3e2768126a812e862f175d21
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift
   - id: openwiki-source-2e244c19d3ad0a0d54117218
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
+  - id: openwiki-source-7a380101e79db24d163b9af6
+    resource: repo://apps/decodex-gpui/src/agent_dictation.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-7bc7ef970363495451bd9aac
+    resource: repo://apps/decodex-gpui/src/native_dictation_capture.rs
   - id: openwiki-source-7647aba6b390035d3777c2b5
     resource: repo://apps/decodex-gpui/src/native_voice_audio.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
@@ -30,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-30T09:06:10.197Z" }
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T14:27:56.062Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Subscription dictation and live voice
@@ -51,9 +53,11 @@ Two flows share microphone presentation but have different semantics.
 
 The Swift URLSession adapter connects to the subscription dictation stream and transports bounded messages. Rust constructs the session configuration and audio messages, validates PCM16, 24 kHz, mono input, and interprets server events. The Rust session also owns segment order, revision numbers and final markers. An older revision cannot replace newer text, and finalized segments remain stable. The Swift adapter forwards raw server messages; if its event queue fills, it reports a terminal error instead of discarding accepted segments. The final transcript corrects the same composer draft rather than opening a second editor.
 
-Audio, authentication and the draft are not stored in SQLite by this gateway. Starting without a ready account fails clearly. Audio arriving before readiness is rejected. Disconnect before final correction preserves received text and does not replay audio. The endpoint is a subscription transport dependency, not a promise that every account or future server version supports it.
+Audio, authentication and the draft are not stored in SQLite by this gateway. Starting without a ready account fails clearly. The composer buffers captured audio while the subscription handshake is pending and drains that audio before sending Finish. The service rejects audio submitted before its Listening state; the UI therefore waits for that state before upload. Capture feedback continues while a network request is pending. Disconnect before final correction preserves received text and does not replay audio. The endpoint is a subscription transport dependency, not a promise that every account or future server version supports it.
 
-Native dictation capture uses AVAudioEngine voice processing. The capture enables it while the engine is stopped, selects the requested input device, then reads the processed format for PCM conversion. Other-audio ducking uses the minimum level. Actual microphone quality, device switching and playback effects require installed acceptance; the conversion test does not measure them.
+Dictation and Live share the Apple audio implementation in `native_voice_audio.rs`, called from Rust through Objective-C bindings. It enables AVAudioEngine voice processing before selecting the input device and connecting the audio graph, with minimum other-audio ducking. An AVAudioSinkNode receives processed mono samples at 24 kHz for dictation or 48 kHz for Live. Swift retains permission and device discovery, not the capture engine.
+
+A dedicated dictation audio thread prepares a stopped engine for the selected device and reuses it across recordings. Preparation does not start recording. Start clears queued samples from the previous session and resumes the engine; Finish drains the final captured samples and pauses it. Cancellation also pauses capture. A device change or failed engine discards the prepared instance. The first received PCM sample emits the Listening event and the `dictation_sink_first_pcm_ms` diagnostic. This measures capture startup, not subscription connection time or time to recognized text. Preparation and buffering reduce work on the click path; they do not establish a millisecond latency guarantee. Actual first-word completeness, microphone quality, device switching and playback effects require installed acceptance.
 
 The versioned `decodex_dictation_create_v2` symbol binds the Rust session to the matching native message contract. This adapter remains in the existing signed application library.
 
@@ -69,13 +73,13 @@ One AVAudioEngine processes both microphone and remote playback audio. All clien
 
 Closing the Rust media owner stops the Apple engine and cancels the peer connection worker. Each call has separate queues. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
 
-The native media ABI is version 3. The static libwebrtc archive needs the Objective-C linker flag in the GPUI build script. Bundles include its license notices under `Resources/ThirdPartyNotices`. Subscription voice does not switch to API-key billing.
+The native media ABI is version 4. The static libwebrtc archive needs the Objective-C linker flag in the GPUI build script. Bundles include its license notices under `Resources/ThirdPartyNotices`. Subscription voice does not switch to API-key billing.
 
 ## UI and verification
 
 The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
 
-Focused tests live in the Rust dictation/voice modules and Swift `DictationCaptureTests` and `VoiceMediaHostTests`. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. The opt-in Apple hardware test checks capture and playback on one engine. Neither test proves audible quality, echo cancellation quality, device changes or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. The opt-in Apple hardware test checks capture and playback on one engine. Neither test proves audible quality, echo cancellation quality, device changes or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
 

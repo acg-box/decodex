@@ -9,20 +9,20 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T17:38:04.493Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 
 # Codex upstream maintenance
 
-## Current registration and authority
+## Desired registration and authority
 
-The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The upstream Maintainer is configured **ACTIVE**, uses its own worktree, and points to `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
+The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository default configures the upstream Maintainer as **ACTIVE** with worktree execution, and points to `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
 
-The user explicitly authorized resumption on 2026-09-28. Existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
+The checked-in prompt records maintenance authorization dated 2026-09-28. That historical authorization does not override a later pause or authorize this documentation update to resume a host task. When maintenance is authorized to run, existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
 
 ## Review the delta against real consumers
 
@@ -49,6 +49,6 @@ Match checks to the changed behavior. Use isolated system-temporary fixtures, re
 
 ## Notifications and historical records
 
-Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. Run daily on the existing schedule. After about 30 minutes of active work, stop taking new work and save a continuation; this is not a hard process timeout. Record pending CI for the next run rather than waiting indefinitely.
+Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. When enabled by the current operator decision, use the configured daily schedule. After about 30 minutes of active work, stop taking new work and save a continuation; this is not a hard process timeout. Record pending CI for the next run rather than waiting indefinitely.
 
-The automation directory's `state.json` owns the current reviewed cursor, next unreviewed commit, pending adaptations, PRs and separate baseline-audit queue. Historical pause and unfinished-goal notes do not override the user's newer authorization. Complete or repair existing PRs first; avoid overlapping runs and duplicate implementation.
+The automation directory's `state.json` owns the current reviewed cursor, next unreviewed commit, pending adaptations, PRs and separate baseline-audit queue. Apply the latest explicit operator decision; neither old pause notes nor old resumption notes determine current host state. Complete or repair existing PRs first; avoid overlapping runs and duplicate implementation.

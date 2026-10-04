@@ -22,8 +22,8 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
 generated: { by: "codex", at: "2026-09-30T09:24:46.437Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T14:27:56.062Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 

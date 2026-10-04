@@ -1,28 +1,53 @@
 ---
 type: Architecture
 title: Conversation presentation and motion
-description: How Decodex keeps final answers readable, retains work details, and renders loading and floating controls without disturbing the transcript.
+description: Bounded chat layout, grouped voice history, incremental loading, and adaptive streamed text in the native desktop.
 tags: [desktop, conversation, motion]
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 sources:
+  - id: openwiki-source-2fc387fccf8dd1285437f49e
+    resource: repo://apps/decodex-gpui/src/agent_activity.rs
+  - id: openwiki-source-d701c906e7fcc9ab2d0917bc
+    resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
     resource: repo://apps/decodex-gpui/src/agent_mermaid_view.rs
   - id: openwiki-source-d626966ee70bffd764516a59
     resource: repo://apps/decodex-gpui/src/agent_mermaid/draw.rs
   - id: openwiki-source-63e4988aff5dd37bc614412f
     resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
+  - id: openwiki-source-b2084dffd07b4229957a0f94
+    resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-4247deee56f626d37a52d5b0
+    resource: repo://apps/decodex-gpui/src/agent_text_reveal.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
     resource: repo://apps/decodex-gpui/src/agent_timeline_groups.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
+    resource: repo://apps/decodex-gpui/src/composer_text.rs
   - id: openwiki-source-246a7882a46c2cac4571760d
     resource: repo://apps/decodex-gpui/src/ui_loading.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
-generated: { by: "codex", at: "2026-09-30T14:27:56.062Z" }
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T14:27:56.062Z
+  - id: openwiki-source-23959670579000a30234423d
+    resource: repo://apps/decodex-gpui/src/ui_text_reveal.rs
+  - id: openwiki-source-570564020f98df7a4d6d0b61
+    resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
+    resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
+  - id: openwiki-source-64d7588c1af50398568a792e
+    resource: repo://crates/decodex-runtime/src/agent/timeline.rs
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 ---
+
 
 # Conversation presentation and motion
 
@@ -40,11 +65,29 @@ Response metadata stays compact at the end of the answer: duration and abbreviat
 
 A first conversation read reserves a centered reading surface. Its shape is deliberately neutral: history has not arrived, so the placeholder does not invent message bubbles or text lengths. Compact loading feedback uses a status role and respects reduced motion. Existing content can remain readable during refresh instead of repeatedly replacing the page with a loading state.
 
+## Conversation layout
+
+The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
+
+The composer reserves real space below the transcript viewport. History is clipped above that footer instead of extending behind a floating input. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. Live replaces the text editor slot with a compact waveform and restores the draft when the call ends.
+
+## Voice history and pagination
+
+A voice call has one expandable group with speaker-labelled transcript text. Call occurrences remain distinct even when a session ID is reused. An overlapping final transcript tail is merged into the recorded utterances instead of becoming another chat message. Ordinary typed messages stay outside the voice group.
+
+Completed calls with no transcript and no failure are hidden from history and its navigation rail. Failed or pending empty calls retain a compact status. A completed call uses its closing boundary for both the disclosure identity and the outer history anchor. Loading earlier records therefore preserves an already-expanded call.
+
+The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch requires fresh upward-scroll intent and waits for anchor restoration. Remaining near the top does not drain successive pages while the user is idle.
+
+Saved edit recovery and history refresh/source controls live in Details. The normal transcript contains the active editor or a compact notice for an unresolved operation, rather than a permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+
 ## Floating controls and motion
 
 The shared GPUI popover is currently a fixed-anchor opaque surface. Its background, shadow and content are shown together. It does not apply separate primitive fades or slide an already opaque card; those effects previously produced a visible dark surface before or after the content. This is a deliberate fallback, not a claim that fully composited transitions are implemented.
 
 Animation requests use the workspace frame owner on macOS and the normal GPUI animation-frame path elsewhere. Native glass surfaces have their own host integration. Keep these ownership boundaries intact when changing a disclosure: transcript expansion must not recreate or change the composer's material.
+
+Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Its rate adapts to the pending text and time remaining, with a 120 ms catch-up target. Corrections replace the visible prefix without replaying it; reduced motion reveals the current text directly. This is a presentation policy, not a guarantee about transport latency or microphone readiness.
 
 ## Mermaid flowcharts
 

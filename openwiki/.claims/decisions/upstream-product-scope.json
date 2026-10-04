@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:706e1f8bb5bfe6a1c6a52dee49ca61629e483b863d5ad8333e8d091f2bcd481f",
+  "pageVersion": "sha256:1e02d2e25d8072efb8b684bb41d8c5aaea6bf9cb06a45b487e155d32bed907bf",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs",
-          "version": "repo-file-v1:sha256:8e6500b4e95225aacd3fd45b541af1af301fec12d15b46e33ef01707526c09a4"
+          "version": "repo-file-v1:sha256:213ea7564227c5b9a5356756cc6790fb8f4969b8f05c61e25d85f95c5e368476"
         }
       ]
     },
@@ -17,16 +17,12 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L329-L382",
-          "version": "repo-lines-v1:sha256:48d8c7bd30cc797da6856d9d76d302742069073d919840386655dda2bbfc55d9:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NDMwZjM4OTUyZTg5YTZkZmFiODAxNDliMGViNTE2ZTcxYWI4Yjc0N2U0MTBjZTUwZDNmZmUyNWY2ODBiNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwN2VlZTk4OTVlZTY0YmU3MGUyMjg3M2Q5MzFkODk0NWU4OWFlOGQxMjMzNmNlYzZkYWU3YjNkZGQ1MWU1YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YTYzY2MwNzZmYjdkZWI0YWM4ZmZhMTFiYTRjZTI0MTQ2NTY4MTZlZDE3NjI5Y2QwNzMwNTU2M2U3NjZlNTgifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L618-L649",
-          "version": "repo-lines-v1:sha256:6affb1d4baf1346e2e51162abab22f6d707796741de9748ed7af4e563258fa14:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjE4YTdjN2YyMDNjYTc0NjE2M2RhM2NjM2I1M2JhZTQwNjRmNTNkZmQ4NzdjZDFiYmU3Y2UwOTU4ZmJmYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzMTJmMGQyMTMzNGVlODgwYjU2NTQ2MmFjYzUwNmE4ODg4MDhhMTNmN2ZkZjZlZDM3N2FlNzYzOGFhM2YxYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4Njg5NmM1ODk2Nzg3OGRlYjUxYmEwYTUwYjgzYWM4YjlkNTZiMDJhMDc2Y2RkMmFkOGMzNmNmMjI4NDc2OTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNjhiNDRjN2ZkZDI0OTdiNWU2ZjU2MGIyZWMzZDBiZTRjZDVmYWYxMmJhYTU3ZGNhN2E2NzZjMjJmM2RlNjUifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L714-L755",
+          "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_plugins.rs",
-          "version": "repo-file-v1:sha256:e518ba3f7b32bd44391e9c289d34a53163d895c4293e117bad98c302cae564f8"
+          "version": "repo-file-v1:sha256:41b45688467010afb36342608fbcb541453b19bd252c5da87035db8126fa40e5"
         }
       ]
     },
@@ -35,12 +31,12 @@
       "statement": "The skill picker projects only enabled native skills for the selected workspace, preserves exact skill paths, and does not install or enable plugin candidates.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L133-L174",
-          "version": "repo-lines-v1:sha256:1dc6b00f9d75ac68ff7fa53ee5187aebc3126f898d2237d0a2ae2fbac9b1f4c6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyZjllNzlkOTEwYmI4ZWNhZDRiZDRlNmVmNzI1MGQ1NmY0NjY2NzU1NTI5OGVmOWY2NTQ1MTM0NDg0ZTYwNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZDNhNmQ5MDk3MWRkNTg5OWFjODQzZGNlMzY4NDQ1YTZlNDY3YWY4NmExMGRjZDFhOWE2NDBiMTc1NDNkN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmMzFhMDMwYmYwOTJlMDI2MDdiZWUxNzU0ZGVlZjJmZWU0OWJjMjFmYTc0NDFhZjNjNmZiMmRjMjRiNmQ0MGEifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L185",
+          "version": "repo-lines-v1:sha256:f0b3180f23bb41ab44b1f27484a0bcae6bfd3dd6294048eca51e43f5e61d5926:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljMTlkZTliNDRlYWE4M2YwNGU0ZTJiNjI4MzAyMmQxOTMzYzRmYTg4MDVlM2UzZGJjZmMxZGUwY2VjYTcxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3YWMzYWNhZjVlNWNmNzg4MzFiZjQxOTBiZmMyZDhjNDYxY2ExYmM5M2VmY2QzMDQ5OWZlZDI4MGNmOTM1ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0YmM2MTAyMWRiY2ZjMmJmMWZiZDIwYTU3YTc5NGU3NGVmMWI2MDQ5NDIwMzY4MzIwNWQ3MjI5ZGNmZDQxOGEifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skills.rs#L1-L108",
-          "version": "repo-lines-v1:sha256:7d14dbe453b8aa8967275217456ae4e4c5fe860303ea23b53f8756e2a64cb3af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDM2NmQ2ZjAyOGJlZDE3OTk4ODVlZmU0NTYwYTEyYTU3YTAzYWZlZjkwZjY3ZDI5ZTBmODI1NmRmY2Q1OTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzY2JhYjQ1MGQyN2U5OTJmZjhmMDQ1ODE2MTVkMTliYTc3ZWFhYmRlM2EwZDZlNmU3NmZlZmFkNTgzMjdhOTljIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMmEwYzk2MjM0MTIxOTYyMzdmOTg2NTY3YjIyNDgyODhiZWQ0NzdiYmM0Y2ZmYjcwMWQ0OWZiNjA5MGU0M2JlIn0"
+          "version": "repo-lines-v1:sha256:8a76c73369f78e006f2e16e725c7e5023956127aae61b8508aab3a4a2f24c1db:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDM2NmQ2ZjAyOGJlZDE3OTk4ODVlZmU0NTYwYTEyYTU3YTAzYWZlZjkwZjY3ZDI5ZTBmODI1NmRmY2Q1OTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYTY1NjE2NDliZTVlMDlmYmY4YTA4MDZhYTM5ZmU0YWZlNzA1ODI0NDhjM2IzYzU1ZmZmYzQwODMwMDQ3N2FlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5YTJhMmE0NjAyODQ0ZTU3MDU1NTg4Njk5MzEyMDViZjY1OTEyMmI1OTdhMGUyZmY5ZmIwZDNiMWVkMDc2OGE1In0"
         }
       ]
     },
@@ -49,12 +45,16 @@
       "statement": "The desktop offers explicit source-preserving native branch choices alongside same-thread edits and keeps branch input as a canonical draft until a separate send.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L620-L641",
-          "version": "repo-lines-v1:sha256:ecb9df4b77a02cd2390e16ce369fdb45f2939a36418218c50db6bb7c5b08cb6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2M2Q5NWMyNDI1NzFjZDgwMDg1YzBlODc4MjExMzJkOTIzMDY5Y2Q4ZTNjZDg0YTg3MmRiMzNmNGE4OTJmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZDA0YzkyZTg0MDM4MGZlY2ZmODI2MDhkZDVmNjhlODZjNmFmYjQ0NTgwYWY0NDcwZjFmYzMxNDNjOGI1YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTRiYWEzNjNhOTU3ZjZkODM3MTYwNzRhYjY3OTBjY2RhNDNkYTE0Y2Q0OWRlMzdmN2JkZjE3NGZkYTAzZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlZGUzMGNiODI5OTNhMzcwYWE3N2Y4YjI3N2MzOTkyMGNjN2RkZmViNGEyNWI1MTNlMTA4ZTE5NjI2NjVlNzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L761-L786",
+          "version": "repo-lines-v1:sha256:1b127aab4b8c6d9a37d297fc6ac6d8b043de2d5b2211b4f9ff4aaaa60af0fda8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlM2Y0NTE0YmI1MTczYTliODk3N2U2MjBhNzZkMzZkNjI0ODAyZTUyODEyZDNlNDgwZjAwNjUwZDcyNTNkODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2ZTVlNGI0YmM0ZTU2MWMxMGFjNjIzYWY1N2ViNzFiNjc3YjIyZjI5ODJkMWQwMjZlNGYwZDcwYzcyMWEzMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0ZjIyYTVlMGFlMGE5YmUyNDhmNzhlYjNjMmQwYTNhMmE4NjgxNTY2NjA4M2YwMjk4ZjA0YjVjZmNkYzNmYjcifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L879-L937",
+          "version": "repo-lines-v1:sha256:ee86e61f9b87cdac0925adfa11d2212bdb94469d41ec88edde3d52884c542fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NmM2YzU4MGI0YWQyMWI3NGQwZTQ3ZWNmNWRiMmEzMWU4M2VlZjM1ZmM1OWM3YWE1MjQ0OGVhMmNkNjk2OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyODNjNjljNzkxODM4YjUyMGM5ZTJkYmUxMTEyMzkyOTA0YTExYTRlMzZmNmRiOTczZjg4YmI3MmM3M2I1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2YyOGNhMDJkZDExZDhhMmRiZDZkYjMwNDNkMzAyMzMxNDAwYzgxM2ViYjVjOTZkNzE3NzdjMTU4Yjg4OTkifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
-          "version": "repo-file-v1:sha256:92527401ad11e03f7df820a16dbccb7e54c29cc787921a3f567670f946a965df"
+          "version": "repo-file-v1:sha256:bb4af741c95ed5612ca3f84790d1acd90e15c4b2ef0c1be5b3c3a7731083f891"
         }
       ]
     },
@@ -63,18 +63,18 @@
       "statement": "Imported ChatGPT PAT accounts use identity verified by the native whoami authority and retain no synthetic OAuth refresh token or expiry.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service/personal_access_token.rs#L34-L93",
-          "version": "repo-lines-v1:sha256:b849c8f787263b00883cb80ba6d91d5dec5ae6134bcb601f158503cf595fe762:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Y2Y1ZmMyM2YyYTZkMjNjM2VhNTFlNzJmNWU4OTZjNzU1NWZiYWEwNWNkNWIxZWExODJiZjk2MThhOGU4MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1ZmQ3NzNjM2YxZWYxNDIxNTYwNDY0ODU5Zjc5ODZiNTczMGQ5MzdjNzg0MzAxODFkOGYzMWRkYzkzOTNiZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0Nzc3ZGE2NzlmNTczOGU0ODA1YTg1Mzc2NmRiMjAzN2IyMDA5MjdkNTg4Y2U4NzllNjExMDUyNDYwNTc2ZjkifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service/personal_access_token.rs#L1-L100",
+          "version": "repo-lines-v1:sha256:0eabd160abfea2fd1c158a93c23180394692cd0eb0b00dca7b6003d75d1df2b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwODRmZTFiYzM0ZDYyY2I2ZDkzM2UyZjVhMjQ4YTRjNDE0MDQwZmU1ODE1YjQxNTJkZjdiYTQ5ZmIzZTJmODM2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YmM5OGQ2YjBkYzQ5MmM1MDE2ZGYxMDgwNWEzYTU0ZWI5YzE4NGE1YTYxMzdlN2Y0YmVjZmEwYzIyMDU1MGQwIn0"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/host_credentials.rs#L67-L104",
-          "version": "repo-lines-v1:sha256:af55ea063afc3deab0130ee93bdbc1b8257f30a9d28b4ea661f41cd294cdcb2f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MDNmNTEwZmI3MTRkODhmZjA5YzczMWE4ZWUyMTUxYzAxZjI3YjgzZTRjNzg2MzQ2NjVjMGMwOGRhOWI2OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNTI0YjhjMGYyYzBmOTMwYzQzMGNjNDE4ODgxOTc3ZmYyY2M0NGQ4NGJjNTU1YjQ5MDQ4NzY1Yjc2Mjk4Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5YTUzMjBiZDcxYzkwNmY0NTAzMzQ0MjZjYTkzMTk1OTlmNGE5YjA3MmQ3YmQ3ZTRiYzUwNmJhMDg4ZjljMWMifQ"
+          "resource": "repo://crates/decodex-runtime/src/host_credentials.rs#L118-L149",
+          "version": "repo-lines-v1:sha256:0d8919c520b39aef27b96d17d6b7d0ed0139eb6e88bcf2b84644a3e4e67a4afd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MDNmNTEwZmI3MTRkODhmZjA5YzczMWE4ZWUyMTUxYzAxZjI3YjgzZTRjNzg2MzQ2NjVjMGMwOGRhOWI2OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2N2IzYTg3YWZhZjliYWI4YTllMjlkMTI5YzVlYWJiN2M1NGYwMmIyNzUzYzExN2FhYWYzNWE2ODVlMTFkMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNTI0YjhjMGYyYzBmOTMwYzQzMGNjNDE4ODgxOTc3ZmYyY2M0NGQ4NGJjNTU1YjQ5MDQ4NzY1Yjc2Mjk4Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxNzM3NTJlN2U0OWQ1ZGE3YjkzNWY4NGM2MDYxMWY2OTM0OWM4MTc1NDFiZjI5MDM1MjJjMjI5NDU2NWZhNzYifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-29T20:08:07.145Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }
