@@ -397,7 +397,11 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 				assert!(s.saved_prompt_editors("branch").is_empty());
 			}
 
-			assert_eq!(s.saved_prompt_editors(expected.work_id.as_str()), vec![expected]);
+			if boundary == PromptForkBoundary::BeforeInput {
+				assert_eq!(s.saved_prompt_editors(expected.work_id.as_str()), vec![expected]);
+			} else {
+				assert!(s.saved_prompt_editors(pending.work_id.as_str()).is_empty());
+			}
 			assert!(s.composer.read(cx).content().is_empty());
 
 			s.open_page(pending.work_id.as_str(), cx);

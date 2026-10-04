@@ -259,8 +259,7 @@ impl AgentSurface {
 			Ok(None) => {
 				self.reset_prompt_edit();
 
-				self.feedback =
-					"Edited input accepted. A complete recovery copy was retained.".into();
+				self.feedback = "Edited input accepted.".into();
 				self.history_requested_for = None;
 
 				self.load_history(cx);
