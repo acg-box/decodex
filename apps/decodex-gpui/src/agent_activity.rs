@@ -561,11 +561,7 @@ impl AgentSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(gpui::px(if self.selected_is_manager() {
-				self.composer_footer_height + 8.
-			} else {
-				12.
-			}))
+			.bottom(gpui::px(8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					gpui::div()
@@ -1578,6 +1574,34 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn composer_growth_never_overlaps_history(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+		});
+		for text in [
+			"Short draft".to_owned(),
+			"Line one\nLine two\nLine three\nLine four".into(),
+			"Long draft line\n".repeat(40),
+			"Short again".into(),
+		] {
+			surface.update(visual, |s, cx| {
+				s.composer.update(cx, |input, cx| input.set_content(&text, cx));
+				cx.notify();
+			});
+			for _ in 0..8 {
+				visual.update(|w, cx| w.draw(cx).clear());
+			}
+			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+			let footer = visual.debug_bounds("composer-footer").unwrap();
+			assert!(transcript.bottom() <= footer.top(), "{text}: {transcript:?} / {footer:?}");
+			assert!(transcript.size.height > gpui::px(0.));
+		}
+	}
+
+	#[gpui::test]
 	fn wheel_scroll_keeps_adjacent_messages_accessible(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -1602,8 +1626,8 @@ mod tests {
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			scroll.bounds().bottom() > gpui::px(280.),
-			"history must extend behind the floating composer instead of clipping above it"
+			scroll.bounds().bottom() <= visual.debug_bounds("composer-footer").unwrap().top(),
+			"history must be clipped above the composer"
 		);
 
 		let position = scroll.bounds().center();

@@ -1057,7 +1057,7 @@ mod multiline_tests {
 			assert_eq!(text::index_at(lines, caret), input.content.len());
 			assert!(
 				input.last_bounds.unwrap().size.height
-					<= gpui::px(ui_theme::BODY_LINE_HEIGHT * 7.0)
+					<= gpui::px(ui_theme::BODY_LINE_HEIGHT * 6.0)
 			);
 		});
 	}

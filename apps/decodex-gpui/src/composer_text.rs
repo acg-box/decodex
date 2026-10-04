@@ -58,7 +58,7 @@ impl Element for ComposerTextElement {
 				let input = input.read(cx);
 				let lines = shape_with_style(input, width, window, &text_style);
 				let limit =
-					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
+					if input.appearance == ComposerAppearance::Workbench { 6.0 } else { 1.0 };
 
 				gpui::size(
 					width,
