@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7c509d95f5e2220a8b46abdae0e9f22bb3c201b7cb0eff358b224c3147c02eea",
+  "pageVersion": "sha256:20d690301498921b5bdc98908b0c4299bb7a45f6cc34896695506d26d450c6c2",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
       "statement": "Integration inventory is read independently and accepted only for the same selected native thread directory and live settings guard.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L1-L41",
-          "version": "repo-lines-v1:sha256:2c4fbecacbbd7d491b4b69fa454ff1b323142a267630081348e010758b1b13df:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MWFiOTM5ODI3Y2Y0M2M3MjViYzVlZGIxZGQ5MjI4NGZlNDFhOTBhNjc0MjJhZGQxOWFmZjBjMjRjOTVhY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3M2IwYmQ2NzNhMmU3YWZlZDk0MWU4MjEyZDAzOTYyZDZkOWY2M2M1OTZiZTkzY2YzNGVmZTdkZGNiNWQzZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMzNiNGVjMGRhYjRjNTljMDY2YWNmMTVhOGUxZWRmMGU0NTRiMDM3NzFmNTIwMTI0NGFhYzhiZmFhNTVjYjYifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L83-L125",
+          "version": "repo-lines-v1:sha256:1a2f0a0f2cd66d104da48ab36610486ad8b4ca6ce9a7bed662a37b7326898ad1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiNGU2ZWJhNWFkMzU2ZTA0OWM3NjIzMTUwNTNkMDFmMDMwZTAzNjZiZGM0ZGU4YjlkYjY1NjliZDhhZDZkZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZWQ2OTFhNjNiNDJkNzZiNjU1NWM3MTFhZWRkNzQyNTRhYWNhMmRmN2U4NmE3Zjc3Yzc5ZmNiZjEwMTAyNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3NzI4NzdiZjE0MGE4MGNlOWU1MDcyMzg0NGUwNGEzNjA3NmQyNWMxYzg0NjNlMDY0MGU0NDMyM2I0ZTFmNmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlMjI3OWRmMzc4ZWRmZDgyZmJkZWU2OGIwYzNkMjNkNTc5Y2YyMWQ4MWQyYmZmMmE2YzRkYmMzNWVlYTk1MGMifQ"
         }
       ]
     },
@@ -17,8 +17,8 @@
       "statement": "Shared Hook trust applies to reviewed content, while enablement is separate and affects other tasks using the same configuration file.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_hooks.rs#L180-L280",
-          "version": "repo-lines-v1:sha256:6abeccf71fdd228886d675ec9c8d9fa524f34c69034b8eab1fbc60bea5326c7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZWVmNWRlN2Q1Yzg3NThjNGI4MDVmODQ0NDBmMmQ0ZjllNzZkMGMxMDMxZTc1NzY0YjQ5NjhlODhhM2M0YTJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ZGM3NjAyMGJhZTcwNTc3ZTY0YjMzMGRjYTgzZmRmMjRmM2Q3NTkzYTAxNTRkOGFiZWM2ZGM2M2Y1ODk3ZmQ5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NGUxOTVlZmZkNDk4MjZhYzA3MjQ2NDA1NzIwZWU5Y2FjYTBhNDI3ZGIxZTk2M2QzZjc2NTRjNGUyN2U2OTA3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNDY3NWNmMmI2NDRmOTQxMDEyZjM3NTQ5YTRhMTBhN2QwZDNmZTIzNjAxNjg4MGE1YTcyMzZkNTBkYWI4MGQzIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_hooks.rs#L216-L334",
+          "version": "repo-lines-v1:sha256:4e1d98b074ad961f6f4b4d3eb9c25f43a93ed0757e3449295cf98860b943e9ba:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDNjYzdiYTZlMGZhZmM5ODMyZjg5ODYzYmI4MjNkYWIyYTg0M2Q2ZjBmZDFmNzJkZmI5NGE2MTMwZjM0ZDI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NGUxOTVlZmZkNDk4MjZhYzA3MjQ2NDA1NzIwZWU5Y2FjYTBhNDI3ZGIxZTk2M2QzZjc2NTRjNGUyN2U2OTA3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNDY3NWNmMmI2NDRmOTQxMDEyZjM3NTQ5YTRhMTBhN2QwZDNmZTIzNjAxNjg4MGE1YTcyMzZkNTBkYWI4MGQzIn0"
         }
       ]
     },
@@ -27,8 +27,8 @@
       "statement": "The account-owned bridge rejects local plugin management and retired widget resource/tool-call methods while retaining native integration observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L597-L649",
-          "version": "repo-lines-v1:sha256:21ed29886129df8d0443b07268db665d3883b7216baa91a015df7df2a0510868:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNjhlYjNjYzhmYzliYTA0ZDdmZTExMmZiOWQ4NDZhYWQzN2Y1OTRiNmVlZmZhY2Y2YTNlNjQ2MGE4NzhjNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyZjg5NmMyYmJhMjNjZDNlNzJiMTE5YjYxMTY0MmI2MjA5MjQzZDY4MjU4NjYyOWRlZjVhNzk2ZDQ5M2UwOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MTUyMDQ1YWI5NmJhYTA5ZGFhOWQwOTk4ZjU5OTc0Mjg0YWIxYTg2ZDhmN2RkM2Y3ZmMzZmM4NDdiOWNlZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiYWNhMWQ4YWZhN2JmZGU3MmQxNmM4MmY5ZjExODk2ZWE4OTRjNjNiNTMwZmE3OTExNGFlY2ZmNDRlZTkyNWQifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L714-L757",
+          "version": "repo-lines-v1:sha256:c6d3d32d87a2b9459e0ee8c261b88bd9386392bb456ff9dd93eed96d99ba76ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1YmZmMDY0M2Y4MTMwOWI5OTYzNjY3ODkyZTMzYWNhYzU2NzBiMzQ2YWZjMDc5MDk2Mjc0ZTA5Y2QzNTk0MjUifQ"
         }
       ]
     },
@@ -37,12 +37,12 @@
       "statement": "The composer offers only enabled native skills for the selected source and inserts the exact name and absolute path as an input attachment without installing or enabling plugins.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L133-L158",
-          "version": "repo-lines-v1:sha256:4487b3eb3ad9f7abde28701eba9491dfd32cc30a51dd77287b34c6d503b2f452:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyZjllNzlkOTEwYmI4ZWNhZDRiZDRlNmVmNzI1MGQ1NmY0NjY2NzU1NTI5OGVmOWY2NTQ1MTM0NDg0ZTYwNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3Mzg3Zjc5YTI2ZWYyOWNiNDM4OGFkYjE1YzFiNWViMjNlOThkN2UxNWI0MzZhMzY4NzBmNmQ5YjQ5MDc0MWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1NmM5NWU4YjQzYTdjM2IyNTkxZDRkYWI2MGJmMTMwMGMwMzBmNTRkNjVjMGVlZjEzN2FmZTAwZTcwYmE0MDMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L187",
+          "version": "repo-lines-v1:sha256:9ebce433c329585a5b149c1ffef90e6cdc0d3ed5144a0e7ada1d5058a0002186:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3YWMzYWNhZjVlNWNmNzg4MzFiZjQxOTBiZmMyZDhjNDYxY2ExYmM5M2VmY2QzMDQ5OWZlZDI4MGNmOTM1ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1MTQ4MTUwZDUyZDdjYTI0ZmZhODUzNTE5NjliNzc4ZTQ0ZGM4MjNkMjM4NjJhZWQ5ZDM0ZTllN2FmOGJiNzcifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_skills.rs#L1-L105",
-          "version": "repo-lines-v1:sha256:ad0ae2bd5d1290d9b8b2a4c73561954ffa8bfddd5314b289702f7ecca3dc4e5b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDM2NmQ2ZjAyOGJlZDE3OTk4ODVlZmU0NTYwYTEyYTU3YTAzYWZlZjkwZjY3ZDI5ZTBmODI1NmRmY2Q1OTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlOTc5YmIyMDhjY2FhMWI2MzY0ZjIyMjNiYzBkNWU5NTY1MmQyMjM3YWQwYTRjZjgwODllN2E0NzBjZDRiZDkyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhOWZhYjU3OGRmNmYzNDQyOTJlYzA5ZjViMjUwMGU4NjMzYmFiZGY0MzBkNThkOGJmOTk3N2RjOTNlMzQ1ZDY1In0"
+          "resource": "repo://crates/decodex-runtime/src/agent_skills.rs#L1-L108",
+          "version": "repo-lines-v1:sha256:8a76c73369f78e006f2e16e725c7e5023956127aae61b8508aab3a4a2f24c1db:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDM2NmQ2ZjAyOGJlZDE3OTk4ODVlZmU0NTYwYTEyYTU3YTAzYWZlZjkwZjY3ZDI5ZTBmODI1NmRmY2Q1OTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYTY1NjE2NDliZTVlMDlmYmY4YTA4MDZhYTM5ZmU0YWZlNzA1ODI0NDhjM2IzYzU1ZmZmYzQwODMwMDQ3N2FlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5YTJhMmE0NjAyODQ0ZTU3MDU1NTg4Njk5MzEyMDViZjY1OTEyMmI1OTdhMGUyZmY5ZmIwZDNiMWVkMDc2OGE1In0"
         }
       ]
     },
@@ -51,12 +51,12 @@
       "statement": "DECODEX_SKILL_ROOTS is captured at service startup as an optional absolute path list and applied through native skills/extraRoots/set on fresh retained Agent processes; native discovery remains unchanged when the variable is absent.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-cli/src/lib.rs#L130-L145",
-          "version": "repo-lines-v1:sha256:abf0b1ecf307ed73ac4cddf8000ebdbffa8f9099ae670629ead95095e636b3d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxNTRiNGYxZDAyZWU1YjQ0MjEwZGE4MTA1ZjNhZWE3YTUxMjFmY2VjYWVlNmQwZjBiYjNlM2ExYTViOGJlNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4ZmIyZmNkMzFjZDZjYWY0NWVjMDRlYjQxYmI1OTBhNTRiMzI0ZDIwMDZjZWNjODM2YWQ3NGUxNzU5YjY3Y2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5MThjNjgwOTlkYjMxZDhhZTQ0YWIxMjg3NzMxYzMxZDc0M2U2NjFkM2Y0MTEyZTQ5ZDFjNjU5YmQ4ODlmM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMDhkYzE0MzNkNzk1NjBiY2I5NDRlMTBiMzA0YzRmMjFiOGQ4MjgzZmJiZjZhZGFlNDk4NjYwZTM3ZTI4NDUifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1763-L1815",
+          "version": "repo-lines-v1:sha256:3e423c696e7ea3b3afb98a8f8b8156b390fc3d0e391539eb9b4795c39d54026e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3YzdhMTQzY2RkZDk3NTQ3NjJmNGM2NmQxMGRlOTkxYTYxYmMyNjBiYjM3YzBmNzEwMWVlYzJlMWFiNzkyMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzNmRiODhiNGM3MWI3OGFkNDM5ZTViZTRlMmFjNjQzMGNlZjBhNWQwMjQ2M2VlMjNiZTZlNDkwZGE3MTRhNjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNTEyNWM2YTNlNTdiNGNjNmQzNjQyMGY1OWZjNjNiZDNkZDVkODYyZmIxMzU2NGI5NjcxMTc5YzUyOTU0MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyMTAxYTZjOTY5NTNhNjE5NzdjZWIyOGNhOGNlNzEwZWE2NDYyOGIwYWFkNzFkM2YyNjNjZWYxOTBhNzk0YjAifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs#L1-L57",
-          "version": "repo-lines-v1:sha256:c0b4eb47cf45a391fd58e7d35f6aa7c76a1a1178e1b6ce67fa7ef8184343b0d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwYTQwMDJmNjk4ODM3NmFkZGU2MjM5MGFiNDBhMjA2MzM4Y2QwMmViMmMxOWZiMDQ4MzgxYTQ0ZDQ4MWY3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMTBlOTFmMDA3YzIwZmI5ZjlmMTExM2Q0MTllNTJjNDNkZTM4MTAwYWE1YjgzZmYxZmYwYTdmYmFjOTViM2MifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs#L1-L63",
+          "version": "repo-lines-v1:sha256:b58e8f134d2981ef41b57e54f76eb36763794ecbc01ef7312d76cec57514888c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwYTQwMDJmNjk4ODM3NmFkZGU2MjM5MGFiNDBhMjA2MzM4Y2QwMmViMmMxOWZiMDQ4MzgxYTQ0ZDQ4MWY3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhYjhlZDcxMjZlMjE5YTQ5YzI0YTQyM2U0ZDA2NDcxNjc2NWNmMDA0YjBlN2U2MTAwMDQzYWRjNjMzNTJjZTcifQ"
         }
       ]
     },
@@ -65,18 +65,18 @@
       "statement": "Local saved and effective connector approval/reviewer management commands are retired, while native integration observations and pending approval handling remain separate capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1194-L1208",
-          "version": "repo-lines-v1:sha256:9945ee8274ff21a0e701ad403605cb18a6ba7deef916729574cd882398393382:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3N2VhZjIyZTZkZTQ3MTIzYWQwMjY5NjdiNWFhMDlmNGU0ZGMwMjg3NDhiMTZhNzIxNTZhOGRjMThhMjI2NjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3NDk0MGNjYzMyODU1YzJjNzljNDU2ODFhMzk3MjNmMDA3YmIxZDIzOTgxNDA4NjU3ZWE1MWY3MDY3NTQ5MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlZjQxZjYyMTYzOGMwYTBiODNlOTYyNzdjNTNmZjkxZjI1MWMwYzViYWI5MzVhMmJjZDVjZjIzMjJhMjVhNzcifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1265-L1275",
+          "version": "repo-lines-v1:sha256:8a3e2e579ee80808c1fcd8807e022f5cfa285cca8421d64edc203c49e0d4ccf0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMTU0ZGViZTBlNjlhNThlYThjZGFkNzhmZmMxZjhiM2I1NmViMDliNGYyNWI3OGU1ZjU1YjYxNTcwZmQxMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MDk5YTZiY2I3NjFlMDk4NTc2ZDNiZGJlNGIyNTU4MWY0ZDZiMjJlNjZmMmFlYTZmMDg1YzE4NDA5ZGYyMjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NzhkNzlkZjYyMGEyYzI5YjhhNzVhYTRhMjg1MTYwMWI0MjFkY2JiM2YxYjlmMTQ1Y2VhMjg5ZWMzYTEzNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4ZjkzYzQ3YzE3MDgxM2I3NzUwNDM4ZmQxMmI1NmNjOGJkYmUzNDRiZGQ5N2U2ZTBjZWRjMjA2OTM4OWVkZjIifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L2327-L2334",
-          "version": "repo-lines-v1:sha256:21d9a555006b13d666cecf5f159d5baeae5e5d9eaa70ff32abe70d92808155ad:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDcwMDE1M2E0MzM0Mzg3ODc4MjYwZWM2NjgxZDlmZGJhNmMxM2E2MzhjZmZjN2IwZWExYWNkNWI5NzQ2ZmUxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzYyYjVjZjdmMWZmN2EwZjA3YTIxYTk3ODFlYWM2ZDljNzk0MmJhMTk3NGQwN2FkYTAyOTg2MTZhMGFkYTAzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ1MzM2NGJjMTNiMDgxYzIxNDUyOTNiMTY3YWRiYzlkMTJjZjI2ZGM5N2Q0MGM4MDA4ODFjYTFkYzZjMTA0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDk3NTJjMTljYzYwYTBmYTI5MzAxYWIxOGY1NDQ2ZTg1MmE5N2ZjNDljM2Y0OTYwZWQxOWM0Yjk0Y2M2NTRhNyJ9"
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L2776-L2782",
+          "version": "repo-lines-v1:sha256:df962b0be96bca6d36f9f3d851b2ac0725a82b5bb7768a0b620931cea613cc81:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDcwYTU4YTg5OTRkYTFiM2RmYzUxZGJhODE5NjA4MGU5ZmRkZTllMTJmZjA2Zjg2MTVlMjQzNTcyYjVmZmI3MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGEyN2ZiOWMxMzIwNWI3MGJmY2I0NmIxZDI1NTc5MzRiYTY4YzA5MWU3ZjBiZmQxNzdhOWI1MGFhNjk4NjMyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM0NzgyNzdlMGQzZTZmNWFmMmRiNzJlZTU2YmJkY2YzODYwY2NmMTdjZTY3YmM1NGY5ZmJkMTliZWVkYjhjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODhmOTNkZWE4OWNlNDQzODMyYTc5ZjY0ODgxMzQwMDNiMTc3ODUxY2Y4YmQwZDY5OThlNDU3OTA2NmVmYWI0YyJ9"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:61191f7799557eccd84d02da6e474d835c5afbc86df76e121e2addbdfb3357de",
+  "pageVersion": "sha256:a7552bce00484ecebe56a9b3d2dc08107a224768a59a2277628e83d7a4db5e43",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift",
-          "version": "repo-file-v1:sha256:3a63da2df83790b71d7a60aeb3f0feb113ffa27b8095b08be2662ce80ae7af0b"
+          "version": "repo-file-v1:sha256:4c1cf17baeba1b42c3e44bf8e40856a8a209c089c1ac9c49735d1d9b8a428335"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift",
@@ -54,7 +54,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T14:27:56.062Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

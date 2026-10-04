@@ -8,8 +8,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/domain_packs.rs
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T08:07:44.872Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Current status

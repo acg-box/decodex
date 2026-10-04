@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f32224aacbdcb5da0374ac839b229f815f0e10991edb4e5b44dbea4d434bd3c6",
+  "pageVersion": "sha256:5f74bc44dba8bd5f48d0e4bb2825efd9ce1f5ee1b0f886ed2aed261c95a5733e",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs",
-          "version": "repo-file-v1:sha256:d78504e3a89d24462f4774b64c2e33655217c4950b7b925fb8fd97c3a7711810"
+          "version": "repo-file-v1:sha256:40b67a567dcd3c53e2178b19d1dc88a955b8ce4bb44f90b932670c5cdce91929"
         },
         {
           "resource": "repo://database/src/reset_cards.rs",
-          "version": "repo-file-v1:sha256:6b4ff169c9dbeee42ee4a5bb6de07e2ffdecf02228295fc13f394b4c3ca0066c"
+          "version": "repo-file-v1:sha256:55ba6fc0834879744f30de9b6ba5f124f5eaf378fd2e2cf182bc9a44c66cc445"
         }
       ]
     },
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
+          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
         }
       ]
     },
@@ -40,15 +40,15 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:c880be25b9a5c52e96086d8315b0032555cdd54c3ae34718e7605ca041f36398"
+          "version": "repo-file-v1:sha256:0e1aa884464633d766834846b81e1493abd02066d1bb64e21c7e2492ddf7f55c"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:9f041bad111ff17603334761f4da1c0c38b282c5842c807d9aa18d5d1d9d67d0"
+          "version": "repo-file-v1:sha256:1ba9cbd1b5663c0d46d59de2593953ea20b7279fbaad0a673cea7b00b0bff22c"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:f8850a92ab4f514bc4989bf98c2a4b2185dc44e5f008cccf7057bedeab5ff055"
+          "version": "repo-file-v1:sha256:96422789b1e6382bde2aca83e4e6e15a4ec466118ed8a4711baa975e674546d3"
         }
       ]
     },
@@ -66,7 +66,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
+          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
         },
         {
           "resource": "repo://scripts/macos/test_native_app.sh",
@@ -84,11 +84,11 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:9f041bad111ff17603334761f4da1c0c38b282c5842c807d9aa18d5d1d9d67d0"
+          "version": "repo-file-v1:sha256:1ba9cbd1b5663c0d46d59de2593953ea20b7279fbaad0a673cea7b00b0bff22c"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
+          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
         }
       ]
     },
@@ -98,19 +98,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L77-L196",
-          "version": "repo-lines-v1:sha256:0a63e99c841979ef8b81041c1b02bafe35e3e04eb619f5b2af992a356440123a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxMTAxYTM1Mzc1MmUyNmViYWZiMzQ2ZGFmNzYzZjZmOTgzMGFiZDQ1ZGExN2M2ZGNkNTc4MDhhMTJhMDA2M2Q2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjM2IxOWY4NzkwNDdmNjRjZWExN2NlNWVkODIzZDljNDE2ODI5YzRlYjE2YTc2MzE2MTJlOWMxZGMxOGQ5NzBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjA2ZTFhYzZhMGMwNDZjZDFiZDYyNmNjMjU3NWUxZGFjYmM2MjYwZjgyN2E5MTFmMjA4YzhkZWRhNTE3NzhlIn0"
+          "version": "repo-lines-v1:sha256:1fd20a6a4138ed3f5848359631d60d3aacb0d5254cc70a828718fe3622d36248:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZWMyYWRhZjNmM2Y3ZTQ5MDFlZTVkOGE0MTY1ZDczZGJlMTc5NjgxOWMzZGMxNzY4OGIzOWY4ZTcwNDM3YmE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyZTJhZjhhODg0YjdjZDY2NDczZGYxN2VjZmI0OGE5ODIyZWI3M2Y5OGRkZTlhNjhmMjM4ZjY1MzA0NGZlNDg4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkYmY4OTM4YTk4YmMwYTNmZTlkM2U5ZjIxYjFjOGYyZGUzYWRjYTlkMjc3YjQ3ZjI0OTNkZDIxYTUxNTg3Njc5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmNTc3YTFmY2RmMjllZGFmZGI4ZmY1OGJiMjllMjViMzA1MmMzOWJjZjJkODg4ZmU0NDdlMTNkZDY5YmJjZjRkIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1402-L1408",
-          "version": "repo-lines-v1:sha256:88d8cdea43b1832a4987a27d1c70a8d8214f8ee8aaa25a0b2bd9104c6f5fce4a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFkMGI1ZGEwMDc0ZmVjNjRjNzljNzZlOTEzYjc0NTY3OGZiMmQ0MjNhNmFiMDJkMzI3MjkzY2U4MWQ5Yzc1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTRlMTk1ZWZmZDQ5ODI2YWMwNzI0NjQwNTcyMGVlOWNhY2EwYTQyN2RiMWU5NjNkM2Y3NjU0YzRlMjdlNjkwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdiMzE3NjAzOTRjZmM0ZmRmNzE3MDQ4NjJjZGViMzYzNzM0MGIzNjAxODVlZTFkZmY1OTZmN2FhNmRlMGY4YSJ9"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1114-L1144",
+          "version": "repo-lines-v1:sha256:91830a9bbed7dc8b0fa52686359788839a5933b5e3a78741cb69a1b4ef293c5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhZDBiNWRhMDA3NGZlYzY0Yzc5Yzc2ZTkxM2I3NDU2NzhmYjJkNDIzYTZhYjAyZDMyNzI5M2NlODFkOWM3NWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZWI5NmNiNjVlNjcyYzRkNDliMjg1ZjU1NzQ5OTllNGE3MzBhNDAxZjhiODEyNjNiYTJjOWIwMTFjODU5NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0NjI4NDdlMzI5NjkxNWM4NGVmYmQ3MDA3MDU2ZWQzODY5Y2JjZGI4YTJlYzAyYzhkNzFhOGJmMTMwNzQ1MWIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2852-L2897",
-          "version": "repo-lines-v1:sha256:204517daf2cd3e933c1374e3b08887fa4bdca09c7c53f1b0fe4c9ed76fe703fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNTg5YWIwYjFlNzk3NTJjZmU4ZDdmMGRjMjBlY2VmZWZhZWZlNGNiZmZmMzU1NWM1MjZmODA4Y2Q3OWU1YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmM2JiMzc0NGZkMzU4NDQzMmI0NDhmMzFhNThmN2FmMjI1MDZiMmQ5YzQ2MTEwOGYyOTBlNjU5N2Q0NTE0YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExNGQ0MGFhZWNkZDVmMGU1MDc1MDhlZGY2MWQxZmViZDJiMjUzYTVmZDA1MWRmZWQzMzI3ODRjM2U0ZTIwMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiOGU0ZDk5ZDFlMjkzNjVmZDMzOWQ3Zjk2YTc2MTY4YmNlZDliNzIzZDk0NzQwNWE2MTFkYTVjYzZlNjQ4MDIifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L446-L464",
-          "version": "repo-lines-v1:sha256:0c4cdd741d47ca54b9df9a5dcc74ae24a431b47ca4c4259db8d02272f9ab49b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NDg5ODQxOWM1N2I2YzgyZjRiMDlkMDMxYTc3MDZmYzc5ZmM4YjQ1MjU1NWE0YmQ1ZTkyMTViNGRjNTAzZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MWY3MWFjOGE2ZDljMDMyMTVhNjhmOTQ0YTM1YmE3OTg2ZDk1MWI1Yzk4MzBlNGQxYWVkN2E1NWVmZDMzNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3ZGUyZDA1NzQxMjc3NWZmMzA5MjQ5OTBiNWU4YzkzYTk2NWUzOWVmNjNhOGUyYTExMzUzYjRiNWE4NTZlNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L387-L405",
+          "version": "repo-lines-v1:sha256:cc11080c86ffc202242a92396c42db74a00e167f3291198e1f56658776edd075:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5YzkxMWM5NDdiY2ZmMTYyMGY2MDUxN2VmMjQ2YTk2YzY1M2ZlMmFmM2ExMDVjM2Q1MWVkNTYyNGQwMDBkZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZmMwYzU3NTRmYTFhOGJiN2YxMmFkYTJmYjg4Y2FjZTI5NTJhYzBlMmMyYzcxNjkyNzU3NmZkNTZiZTI1NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYTJiNGY2ZWYxOTIyOTA2M2M5ODdjODc2YmYxMTU3MTVlZDQzOTQzOTJmNWFiZDgzZmIyNDJhMjhlYmNhMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3YTU2MmFlYzg3ODljZDhmOWFlZjk5NjhiN2EzZTQ3NDU4Y2Q5ZjFkYmQxNTU4ZjAxMzAzOGRmNGQ5ODI4YTUifQ"
         }
       ]
     },
@@ -119,26 +115,22 @@
       "statement": "The compact Reset Card controls require a second activation of the same selected card within a five-second confirmation window and recheck eligibility before dispatch.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L462-L544",
-          "version": "repo-lines-v1:sha256:41376bc497e4beff9c096d2f5ce046757f4bd0299dbf8b1317cbf719e6907c25:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NTRkZmIxNGY0ODIxYTQyOTkxZTRmNDRjZDk1ZDdlNzZkNmM3YjQ1ZWRiMGQ0MWUwMzAyOThiNTg3MTc2NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjMmNhMTJhYzljYTY2YjVmMmJkMWQzMmEzODk2MDAxOTNhYjRjMTk1MmExM2FkZjNkYTk1NGQwOTI5NGY1NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjk2ZjIxNzVkNWFiNjYzMTU3MTU5MjgxNTkwNWM0MWMyZTgxNDRkMWZiMDZjMmUyZThiYzUyNDAxMWUzOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2NDVhNGMyNTkzMTExZTdiZTcwYmRlMTU3NTFhNWM4MmJhNzEwNzEzMzUwNGJiYWNkMzY5N2U0NDc5NjQ1YTcifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift#L1201-L1228",
+          "version": "repo-lines-v1:sha256:2b5bec5e93f1a3e69857ca1c8cf34f1fb114dd71cf9e621982917b626e82853b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3Njk3MzM2OGRjYmVjMTFhZjc4ZDU4MmI5Y2M2Nzg5MmVmMWEwZTgxMmQwOTE5Yjg3M2Q0MGI5NTY4YWQ0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDJjMjUxN2NkMjI0YmU5MGRhMTgzZmVhYWM2NDYxMGMxOGQ5MGYyNjk1ZjI5MDZkN2FhOGI2NDlmODUyNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwOTg1MDIzOWIyNTdiNzY5OWI4MGIwZTI3ZjVkZWJmZjI3MTk5ZDA5MzQ3YzE3OGQwZmNiOTgxODFiYmYyZmMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L584-L620",
-          "version": "repo-lines-v1:sha256:2beff31213edc5967d7c5de9638eacf1b28e58a55f0bb3980ea3846f86b46825:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4Zjk4ODcyM2NhYWM5YzgxYTViZGY4NzIwMTFjMjk2OGI0ZDBjYWIwZTY5MzQxMjNmZjkyZGNkMmU0MmVmZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYTgzMjc1MGFhYjE4YmMzYTZhMTIxNTY0ZDY1ZDFiNTg5YTQ0ODkzNTY2YTg2Nzc5MTFhOWI0YTJhNTQ2NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0OGMzYWExNDFiYjYwMjllMzI4ZGNmNmIyMmVlYjZjNmUzMmJjODhmMDljZmU3N2QxM2Y0NjRmMjQ3NTEyMTUifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift#L40-L80",
+          "version": "repo-lines-v1:sha256:7ed560fe5f165330012aab7d45afec5ad8bc58ce4fc33730cd6de96185be29cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZDAyMjE1MTc5MmM4MGZlODgxNDllYTNkYzNkOTBkZDRjOWQ1OTE2Y2Q5MmEzYTVkOGIwMDhkOWRhMTg4ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5ODliM2I0NjIxNjEzYWJhNGM1NTNiYmUyOWQ0Y2EwZjM1ZmVjMTZjMzQwMTAwNmU5N2E1ZmNhMjNiMDhjMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhYWI4NDg5MjMyZjAwZTc2ZDZjMDQyZGY0YmZmMGViZDBjMjhmOWU4ZGMzMWMwMWZiZTlkY2NhMWFjYWI5ZTgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L49-L62",
-          "version": "repo-lines-v1:sha256:a52e2c3db349e1e4826d88b56fd567de220b5c8d16dc632c93eaafa0652e175e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ODc0YjQ2MjY2NzQ4ZDE2NDIwNjY1YmNlMGQ2YTY3ODBhOTU3ZDBhMzRlYTUyYzk4YzdlMWM1NWQwMjcwNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwNjcwZGJiMWE0MWNlNjQ3MDMzZTQ4NTRjNmUxMDRjMzFiYmZmMzgxZmJlM2Y3YzA3MjI3MTE2ZTdlYzc2OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNDJhNTJiYWQ3ODE0NWEyNTU2MDNiNTkzMGJlOWMyYzIzNmZjMmE2NGZjYThmZDM5NWNmNDY0NzZjOTY0NGQifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L83-L113",
-          "version": "repo-lines-v1:sha256:27c987eecb9787d85ea25675674349f6019438b8876c3480f86d1cb3bbb31a8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MmJkMWYwY2NkOWU5NDg0MTY3YTAwY2FjNzQ5NDUzZGVhNGE0NGQ1NzkwN2ZkZTNhOWM3ODI3ZTIyOGQ1OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYmNmMGQ2YzcxYjg3ZTc2NTQ3OGQ4YmYyOTY5ZjkzZjdkMjIyZTMwZTc2ZDE5ZmI1ZDMyNjk0NjVhYWQ5MTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MmZmNTA1NDBhYmI0NjVhZjdhNzRlN2QwMzhjNDI3M2M2NzdiNjExZDIxODhiNDNjYzRjMjQ1MmFhYmJmZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiN2U2NGIxYWQ0NTZhNDcwZjYwYzU3NTg0OTAwMGNlYTU5NjNhM2U1ZmY0NjE0NzAzMGFkZjNmNTFmODZjZGMifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L185-L220",
+          "version": "repo-lines-v1:sha256:fde8c067b2978e49be6d2d0080a7890028c780c6221968023686795bd86ea5d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MmJkMWYwY2NkOWU5NDg0MTY3YTAwY2FjNzQ5NDUzZGVhNGE0NGQ1NzkwN2ZkZTNhOWM3ODI3ZTIyOGQ1OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYmNmMGQ2YzcxYjg3ZTc2NTQ3OGQ4YmYyOTY5ZjkzZjdkMjIyZTMwZTc2ZDE5ZmI1ZDMyNjk0NjVhYWQ5MTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MmZmNTA1NDBhYmI0NjVhZjdhNzRlN2QwMzhjNDI3M2M2NzdiNjExZDIxODhiNDNjYzRjMjQ1MmFhYmJmZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2NmNiYWM1MjMxMDlmNzAwZWI0YmQ4NDRhMDA2NGE4ZjFhZjE5NDBlOWVjNzFjYWE3MjE5MTQ5Njk3M2E0ZjMifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T18:35:20.136Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

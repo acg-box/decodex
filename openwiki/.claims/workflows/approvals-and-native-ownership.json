@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3315c172d39c3262ad92badb525ea6ab7ccdfbdb0b90915b6d80ec69d2b24cac",
+  "pageVersion": "sha256:2190ea2760862b62c7dd3321f5cc3b2a9e965aaa14913b56895b8c06c4928405",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
       "statement": "Native child approval ownership requires bounded verified thread-spawn ancestry; a fork does not establish local manager authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs#L19-L49",
-          "version": "repo-lines-v1:sha256:e0c70c957d7b999833d1e2ab29c77b8b4af5407b97d6e2598769718a1c993b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmI2NzA0Y2VkMTY3ZjE5YjRkNWI5YWQ2ZWU4NmExZjIwMjNjMmRiNzUwZmE0ZTEzMjZiMTdlNDhmNzU1NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMTVjMGI0ZWJmMmNiYzE3NWVlNzc0NDllNzkxNjRjMjQ3YmU3Y2I2M2MzNjgzZWZiYTA3MTNmMjEwOTMxYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs#L21-L61",
+          "version": "repo-lines-v1:sha256:767a06c62ba522ca7d70ba6f5d45e45de0050b0fee6e4b4f3d5e4c16fba424d7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmI2NzA0Y2VkMTY3ZjE5YjRkNWI5YWQ2ZWU4NmExZjIwMjNjMmRiNzUwZmE0ZTEzMjZiMTdlNDhmNzU1NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMTVjMGI0ZWJmMmNiYzE3NWVlNzc0NDllNzkxNjRjMjQ3YmU3Y2I2M2MzNjgzZWZiYTA3MTNmMjEwOTMxYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -17,14 +17,14 @@
       "statement": "Guardian observations preserve review evidence but do not independently authorize execution or wake work.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_guardian.rs#L1-L61",
-          "version": "repo-lines-v1:sha256:855ee41f95df95b59e63c10e0d0026b8a569dd54588e69166b79f097869b1a22:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTI0ODBkZWIyMzI1ZGJiYTJkM2Q2ZjczMGI2N2MwZGIxMTJlODY0MTk1YjdhNmNmZGY0MzM2ZmYwMmRhMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMTMxZjYzNzk2ZTIzZGI0MzFlNzc3ZTljZTk1Zjk0ZTg0MTE3Yzk0MTFkYTFkMjIxMmFmNDJjYTI5ZGVkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2MmIxOWE1NThjODY1YzUwNjY4MmVjZGEyMjM1ZDYxNGMwNDkxYzhiNjFiOGQ3NTljZmI5YTFjOWJjOWQyNDQifQ"
+          "resource": "repo://database/src/agent_guardian.rs#L1-L59",
+          "version": "repo-lines-v1:sha256:58e6bc8a573d9595e85125b32737356f7e7e564af7e0a50c5ade20957a51d8df:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTI0ODBkZWIyMzI1ZGJiYTJkM2Q2ZjczMGI2N2MwZGIxMTJlODY0MTk1YjdhNmNmZGY0MzM2ZmYwMmRhMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMTBjYmI3YmZjZmJkYTYwODYyZDUwMTEyM2M0YWFkNDMzMGMxYWE3MWY5MTZhZjhmNTQwNTM1MWUzMzM2M2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZmY5NWMyY2UwMDUxMGM0MmMyMGE4MmIwZjQwYWY4OTYwNjE5NTY2ZjkyNTgyZmY2ZjQxOTczYTllZjc1OGUifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

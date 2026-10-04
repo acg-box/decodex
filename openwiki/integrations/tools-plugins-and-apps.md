@@ -3,12 +3,7 @@ type: Reference
 title: "Native tools and connection ownership"
 description: "Codex-owned plugin setup, enabled skill selection, host skill roots and retired HTML execution."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
-  - id: openwiki-source-d700ef551f46158044378d8f
-    resource: repo://apps/decodex-cli/src/lib.rs
   - id: openwiki-source-08ce10c44b7d18a074304e2e
     resource: repo://apps/decodex-gpui/src/agent_hooks.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
@@ -26,6 +21,9 @@ sources:
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Native tools and connection ownership

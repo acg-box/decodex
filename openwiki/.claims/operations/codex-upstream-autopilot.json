@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:29ee89918dc270ca4b26950e10954da684e9f386849e27834cb36dd5beb6c78b",
+  "pageVersion": "sha256:6516b9452688e06d20de4cae89527aee1343600b151ac237333d7d8689e97413",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
-      "statement": "The current upstream portfolio uses one active Maintainer; native content research and publication are separate roles.",
+      "statement": "The repository portfolio specifies one upstream Maintainer and separate content research and publication roles; its desired configuration does not prove live scheduler registration or execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
+          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -18,11 +18,11 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio defines three native automation roles and configures the upstream Maintainer active with worktree execution.",
+      "statement": "The portfolio defines three native automation roles and gives the upstream Maintainer an ACTIVE repository default with worktree execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
+          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
         }
       ]
     },
@@ -48,7 +48,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T17:38:04.493Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

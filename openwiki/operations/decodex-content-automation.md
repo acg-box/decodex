@@ -11,14 +11,14 @@ sources:
     resource: repo://automations/decodex/prompts/xurl-publisher.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T14:27:56.062Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 
-> Current configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit ACTIVE setting for the upstream Maintainer. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
+> Repository configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit ACTIVE setting for the upstream Maintainer. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 
@@ -39,12 +39,14 @@ server, runtime, queue, planner, or MCP.
 
 ## Activation State
 
-`PAUSED` is the initial acceptance state. Native status must always match the
-current manifest exactly; while it is `PAUSED`, Manager must not activate. First
-land the portfolio with `status = "PAUSED"` and run live acceptance only by
-explicit one-shot manual invocation. After all non-activation acceptance evidence
-passes, signed-land the one-line promotion to `status = "ACTIVE"`; Manager/native
-sync can then activate the selected content roles. No activation workflow engine or extra state exists.
+Repository defaults and live scheduler state are separate. Read the actual native task
+status before operating a schedule, and honor the latest explicit operator decision.
+A paused task must not be resumed merely to match an `ACTIVE` repository default.
+A documentation refresh does not register, resume, or execute a task.
+
+The original rollout used `PAUSED` for acceptance, followed by a reviewed promotion
+to `ACTIVE`. That sequence is historical setup guidance, not proof of current host
+state or authorization to publish.
 
 ## Editorial Loop
 

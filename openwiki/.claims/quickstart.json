@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ae55172c24057b7cefc4f077dd988f792b2ec88377fdf9d79c34aacb1f2b399b",
+  "pageVersion": "sha256:2b960031c8d511f829ce8703c3308868ae22e7a7d293b1d4f813c40fc1d47a94",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_graph.rs",
-          "version": "repo-file-v1:sha256:f010e2afaf8199dbb3171b7b608a3126f7108d63318846db5b44f0f766f7d94f"
+          "version": "repo-file-v1:sha256:35decaddcac820fb6f97964fbec3426976deeba40561a70d53c6892b47c04802"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:a9764933d0bea4a2c6c7ca125d64a4eb6bae71a2f3a88682682222e5ab1b677e"
+          "version": "repo-file-v1:sha256:1563654dce70c0ef9a89db0baa8ef82025090bd911a9cb06ed936c0f0186d49c"
         }
       ]
     },
@@ -21,8 +21,8 @@
       "statement": "Account Route is now a synchronous service-owned operation with shared-auth liveness, exact-source projection and authoritative completion rather than the former Pending-route queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L914-L1311",
-          "version": "repo-lines-v1:sha256:c50e54a80f8f027a64edd4e195fa62a5ed046cf20cbc10d1caa71d50c1d148f2:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMjFkMmJlNmI3YzRhNGUzNmZlOTg0ZTY3MjliNmQ3ZjBhMDA5MDA2ZGY3MzA5NzQ2YzkxZDNjZDU3NWMxYmVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjhkNmU5MDM5OWVmMzI4MWRiNWQ4NmZlYzBmMWYxMzM3ODIyN2FiNjAzZDJhMWY1NTkxMmFkYjNjZjcyOTVlIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L574-L1101",
+          "version": "repo-lines-v1:sha256:6e13c1257ba348dd98f4e906118afe1c77efcb7d0be2d2c50d7a6645cae5e449:eyJzZWxlY3RlZExpbmVDb3VudCI6NTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YWMzYmVjNjlhMTQ0NDk4NmQyYTFkYTc2ODI3ZjYxODYwNDY2ZDg5NmEyMzJmNmJjZTAwZTU5ZWE2MjJiZWY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlYzEzMDYxNzE4OWVjZDI4MTgzY2NmYzk4NTE2MTc3NmQ4NzQxZmUwNWJjODA5NDRhYjQ4YmI4ZjM3ODRjZjlhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlY2E1ZGJlMDdkYzI0ZDk3NDMzM2QwZjc5MDdmNmJjZDQxYmU1Y2M3M2JkOGI5ZDZmZjhiZDExNDA1ZjEyOWUyIn0"
         }
       ]
     },
@@ -32,11 +32,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:1af0ddc31e17a3b940879213c55b88c61f0c00ee169b52215aa34ee6eebbabcd"
+          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
-          "version": "repo-file-v1:sha256:dd4f43c08ec74cd891de3cab0766cbbd9431bfe0485aa2a84661516d0542baeb"
+          "version": "repo-file-v1:sha256:f372f0d7da0646ec3f65432b637dbbaf03c2c508e11dbfae1d913736d52dd997"
         }
       ]
     },
@@ -45,12 +45,12 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L246-L268",
-          "version": "repo-lines-v1:sha256:fc1121886d9737c2d227d168c72a9dd828872f8bb21c836fdebd084ade840f23:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhY2FhOWQ5NjMzNTkwNTgxZWZmYTEyYjU5YTJhYTJhN2RmNGIyNTU4MTRhM2VlNWUwN2QxNDA1NTA3NGJiNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNzVhZjI5NTk0ODM4MTFjZjk5NzI3Yzc4MjZiNmY4MTIwMzkzNWI0MjFkZDhmNThiYzc4YWRhZTBlYjBhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L265-L282",
+          "version": "repo-lines-v1:sha256:6a14bf19ba5b0804c31fee4057da330e2fa680b07e4a559118ee9560c334eacf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlOTIzMGQwYzlhNTFjMTI5MzljZDM0YzEwYmNkY2Y2ZGI4YjMzOWFkMjQ3ZGM5ODY0NjNiN2Q2NjRkOGViYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L1-L135",
-          "version": "repo-lines-v1:sha256:0ec7bbc3a357242bc13307918844a0172f10fb8896f0a397be663a20070226c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMGZlNmNmZWViNTE0YTU2MDE2NjhlNDk4ODgzOGFiMWVjM2ZiOGZlOWNlNDA2OGZjMjk4MmFhZWFjMGNkOTZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhYThmNTRhM2RjNmE3YzBiOTM1ZWY1ZWFmOTc0ZmIzYzc0MDNhMTk5NjE3YzM4OTJjMTdmMzIyZTZiZjUwZDNmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjOTE4OGJmMjk5ZmE4YTEyYjliN2U5ZGI5MzkwYTRhOGNhZTUyZmViODU3NTdlZTNhMGQyNTJlZmM4ZGE2OGQxIn0"
+          "resource": "repo://database/src/migrations.rs#L8-L38",
+          "version": "repo-lines-v1:sha256:76ebafeb8420bde95d3109d01eadf0346b6bfdf36bf546e8ecc643f4d6589807:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZjAzZTZhZGI0NzdlYjZiZTRhNGY2MjBlZDdhOWY0ZmQ1NjZhMjZkOWIyNTY0ZDY1ZTk0MDVjOTc4MGE2ZWYifQ"
         }
       ]
     },
@@ -59,12 +59,16 @@
       "statement": "The unified decodex executable provides serve, and the macOS package uses the selected Xcode installation unless explicitly overridden.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-cli/src/lib.rs#L122-L151",
-          "version": "repo-lines-v1:sha256:17c26fede52102be6fb73d0a2888978985ad4430f3c18c2d00eae16bdf22b8bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0M2NmNjM4OGQ0NTVjNjliOGZmNWRlYmI0MmVhZmMzM2MwYTcwYmZhNjczNDJhMTIzODJkZTJiMjAzYmZiMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYTNhYTBmYWE3ZThkMzdjY2UyOGVmNGVjNTg0ZGRmM2FhNTkwZTlkZTU3MTgzZjBjZTU1NGNiOTc2ZmUxZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTBiZTVmMWYyNmMyNGVmNDhiNmU1ZDIyMmFmMTM5MWFlMTczMTc2Mjg4OTQyN2UzNGMwMmI4MTY0N2U3NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjYzQxYjNiNTM4MDQ2MDJiMjBjMTRhODk4M2YwOWI2NWVmMzM1YTkwZGNjMDY0ZTY1ODEyMGQ0MDc1NzBlNDUifQ"
+          "resource": "repo://apps/decodex-cli/src/lib.rs#L200-L207",
+          "version": "repo-lines-v1:sha256:4352ef020dadba6199f8f31056405276e72487fea150c1fea5138c67438883c3:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDUzMjYwNGJiMTk0ZDIwOGU5MzQzNThkMjUzMTMxYmE4ZWMwNWZhMWVhZGU0YWQ2YjU4ZjFmZGJkZjgyMDdjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjNkZThhODU4YmI0OWQ3MTZiZGRjNTViMGNmNDk5ZGE4MDBlNzczNjViOTVlNjI5MTE0MGIxZDQyMmE0MGM5MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTJjODcwMGUxNmQzOTBiNTRjN2Y1MWJhY2FlMDI0ZDU4MTgwYjdjNTY4MzhjMjk1NGU3OGU0NzljMTI4NTMzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzNmZGI3MGU5MTQ1NDQ5NGVkYjAwYWVlZTVmOTUyYzY4YTVjZWNmZGRhZTI2ZjI0NWJlOWFlN2NlZDE2NTBhYSJ9"
         },
         {
-          "resource": "repo://scripts/macos/stage_decodex_app.sh#L1-L40",
-          "version": "repo-lines-v1:sha256:be8c2a6f299811a452df3a1803d6f0db68c3b8cb312d47d700b5fb78edca76e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MDc2ZDNkMjhkMjFlMDIwMTJiMjBlYWY3ZGJmNzU0MDlhNjI3NzEzNDQzOTAyNWYyODJlMzY4ZTMzMDVhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YzA4ZTBmOTk2NzVkM2M2YzI2OGZhNDQyMWRmNjU4ZDRmZmU0NTg5ZDI5Y2M4ZjFmYjFkYzY0YTQ0MDAwNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiZGQyZGQyYjUzMzE1ZDkwMzlmM2M2OTA0MWUwZjc1NTZiYjRjYTU5YWYxY2UzYjkwZjRlZWQyZTA5YWJjY2EifQ"
+          "resource": "repo://apps/decodex-cli/src/lib.rs#L98-L110",
+          "version": "repo-lines-v1:sha256:0cb8784c247acf3cabdfd2391b4398ac182b92bfcfe5c1cc62b1a5fde2be01bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMDQ2ZWM5M2IyNjc2Nzc5MDkyNzY0MTY0OGUyMTQ2YTllZmNmMTk0MDI2MDViNGFkYjViYmMzZjhkZGU2YjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzNDRjYjI0NWYzOTNlZTVhNDMyYzkwOThjZjgzYTA5NGM0NGY4NTJmZmRiZTAwOTJiYjUyNzEwMjUzY2QyOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNmFlY2I1YTNlMWY3OGQ2NTU0YWUwOGZiYzA5MTJkMzA1MmIxZjNlZjVlNWYxYzAxNWNhOWE1ZDVjMmFkNWYifQ"
+        },
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh#L1-L25",
+          "version": "repo-lines-v1:sha256:9acfbb06522223d721151a4f5c3a68625119769eef6049e862a2d99fda9313af:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MDc2ZDNkMjhkMjFlMDIwMTJiMjBlYWY3ZGJmNzU0MDlhNjI3NzEzNDQzOTAyNWYyODJlMzY4ZTMzMDVhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0YWE5ZTE1ODJjMmUyYzdjMjNhY2NiNDQ4N2UwZmMyZjk1N2RjZGRkMGMyMDgwMmUzN2MxOWU1MTI2NDEzY2QifQ"
         }
       ]
     },
@@ -74,13 +78,13 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
+          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:07:44.872Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

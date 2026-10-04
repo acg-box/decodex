@@ -13,6 +13,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift
   - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
+  - id: openwiki-source-ec2ac1cc0fd71a4228e71e95
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift
   - id: openwiki-source-6bb61549bdedebfcb6463cb5
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift
   - id: openwiki-source-2fab31262c7d705356b67f7b
@@ -35,8 +37,8 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
 generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T18:35:20.136Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).

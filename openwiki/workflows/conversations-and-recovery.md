@@ -4,6 +4,10 @@ title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-5eddd1d872eed61f8ba7e703
+    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
+  - id: openwiki-source-d701c906e7fcc9ab2d0917bc
+    resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-0a913db08f7e3fac688dbce5
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
@@ -20,10 +24,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-09-29T20:08:07.145Z" }
+generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T08:07:44.872Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Conversation input, history and recovery
@@ -36,7 +40,7 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 ## Drafts and uncertain outcomes
 
-`agent_draft_storage`, `agent_draft_recovery` and `ClientDraftStore` preserve unsent input and recovered copies. Shared-store conflicts retain the local edit and the competing saved copy; explicit recovery and export make the distinction visible. Quit can be cancelled while the conflict remains unresolved.
+`agent_draft_storage`, `agent_draft_recovery` and `ClientDraftStore` preserve unsent input and copies needed for conflict or uncertain-operation recovery. They are not a permanent archive of accepted edits. Shared-store conflicts retain the local edit and the competing saved copy; explicit recovery and export make the distinction visible. Quit can be cancelled while the conflict remains unresolved.
 
 Persist input before dispatch. A lost response can mean that an operation ran. Check the exact saved receipt or native history before changing its state; do not resend an uncertain command. A later observation from another task, account or generation cannot settle it. Native closing-thread recovery resumes the existing conversation and keeps delivery evidence.
 
@@ -55,6 +59,14 @@ A branch before the first input is an empty-prefix native fork, not an unrelated
 The desktop saves the exact choice, destination and edited draft before dispatch. The service reserves the operation before one native write. It saves a returned fork ID before a separate prefix read. If creation acceptance is unknown, retain the draft and read its receipt; do not create another branch. Known fork recovery only reads native identity and history. The source keeps its normal history and has no branch-draft input fence.
 
 For a before-input branch or same-thread edit, projection refresh and durable draft handback must finish before that destination can accept normal input. Images and skill references stay in the canonical input path. **Send edited input** remains a separate explicit action. Ordinary composer drafts remain independent. Resuming a saved confirmation retains its original choice rather than asking for a new destination.
+
+## Finish or cancel an edit
+
+Cancel edit removes the exact saved draft when no confirmation, native receipt, pending handback, fork or send exists. Once a native operation may have run, closing the editor retains its identity for recovery. It does not cancel a confirmed history mutation or make an unknown send safe to repeat.
+
+An accepted edited-input send removes its matching draft without creating a recovered archive copy. A completed after-turn branch removes the finished source edit operation; a before-input branch keeps the canonical draft on its new destination until the user sends it. Explicit Fork is the way to preserve the original conversation while continuing elsewhere.
+
+Unfinished edit entries, Refresh conversation and Show saved local records live in Details. The normal timeline shows the active editor or one unresolved-edit notice rather than a list of saved drafts. Existing unsent drafts remain available for explicit recovery or discard; this change does not batch-delete them.
 
 ## History and rendering
 

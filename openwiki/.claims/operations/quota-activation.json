@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:68e31183620d5977a8a84c5a7df9825404266a66fb391de660d1e623c35709d3",
+  "pageVersion": "sha256:90f462da39f9cf10a079a5f79865cb4344df7a7914975e5ede324bb4ca4b0c43",
   "claims": [
     {
       "id": "claim_0cb251fa04a54e8d8923b6e334a500f9",
-      "statement": "Weekly activation reserves an expired unchanged seven-day reset before sending and suppresses completed or ambiguous attempts until reset progression.",
+      "statement": "Weekly activation reserves an expired or observed floating seven-day window before sending, suppresses completed or ambiguous attempts for that window, and preserves floating-window reservations across restart until a real countdown starts.",
       "evidence": [
         {
-          "resource": "repo://database/src/quota_activation.rs",
-          "version": "repo-file-v1:sha256:0db2ba49bde40df89f2ceb694bb1d3364e6363ae9646f32d9183583fe0a84e88"
+          "resource": "repo://database/src/quota_activation.rs#L8-L149",
+          "version": "repo-lines-v1:sha256:cc37c95dc90951040ce392ac20b0f328896517d4104c5e6f35685d8982b3bb29:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YmVlZGQ0MGU0NTk1N2U0N2Q3NmUyYWE1OTAwOTU0ZDgxMjcwN2NkNDU4ODYzMDJiYjc2MDIxNGE0YjJkNjk3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwNmU1ZmJkNGIzYzYxNGUxOWFkMDg1ZWVlNjI0MjA2YjZkNWY4MmU3N2EzM2RlMjgyZmQ0ZGFiYzllOWJiNzQ3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5N2EyZTgyZDYxY2FhNWRmMGE3NzMzNTcyNmQ0ZDM5ZTk0MDBiODA5MzRjNjQwMTJiNzQ0MWJjNjk0YzhmZjhlIn0"
         }
       ]
     },
@@ -18,13 +18,27 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs",
-          "version": "repo-file-v1:sha256:ff73783de89040e4422daf510806423247b8b3b857217c6b517d8e8434d98b3e"
+          "version": "repo-file-v1:sha256:c02335fac04ca8f4ae0bbc68a30cd87b5442c06cf63e04192b41d3ba76a77912"
+        }
+      ]
+    },
+    {
+      "id": "claim_a2609a0bfad54fe4957803084c3d7d0f",
+      "statement": "Quota activation reads native policy through a short-lived account-bound app-server process and shuts it down before the direct Responses request.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L88-L103",
+          "version": "repo-lines-v1:sha256:b557c37ae40f17652f7df0d597e6ee8f2e5d36ea7c7f481a5cd0f08592367167:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YjcyMzY1MWIyZTdkNDllNzFiZDc0Yjk5MzczMzNlNzIwNmIyNmQ4Mjg2NjUxNTc3NTkzYjBhM2IwMTNjM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ODFlN2NmYzRmMGExYWM5OWEzMjI4YTM0ZjJlYmZhNGU0NjhkOGE4MmUzN2QxNDBkMGU2NmM1MTY0ODBhMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjZTM0MzUzMjg4M2RlMjBiYWQzNmE0MDQzNjRmYWQ2MjdkYjRmYmNlMzQ1ZDUyNDI3Yzg1ZGUwOWVjMjg1ZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5NDhiZjQxMzc3MWFkNTcxYTAzNThlNTU2MGRmNjI3NTEzMGRmZDliM2Q1NzU3ZmYwNjlmNjRkMTBiYzkyMGYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/activation_policy.rs#L133-L165",
+          "version": "repo-lines-v1:sha256:088f4f78c07ffc9a0adfbacea5cc2aa3a90055258ca8c851019c0b941cd3d9b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmMGY0MjFiNGE5MzkzNjIwMTkxMWE0ODIzZTYwZjNlZDJjNGI4OTc3ZjljMmM1OTQ5OGE5MGMxNWFlODNkZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1ZWZlM2QzZWFhOTZlYTViZjU2YTdmMzhiNjdiZDE1YmUwNTY2ODE1OGRiY2Y0YzAyYmE3M2UwOWM2ZTE2YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZTc3YWYwZTcyZGJkZjI3OTQyNDdiZDIzYTA4MzU2NTk5ZTllNjc3NGU5ZmNkYTViODllZTBhNTJkNjllOGEifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:07:44.872Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

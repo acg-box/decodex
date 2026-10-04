@@ -32,8 +32,8 @@ sources:
     resource: repo://database/src/quota_activation.rs
 generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T18:35:20.136Z
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Account routing and recovery

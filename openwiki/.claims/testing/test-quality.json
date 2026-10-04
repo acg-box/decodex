@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:090bf8633b3c4a68778e7dea385d6e0c702f5045587ada7ca3d91ccda0b6ff9e",
+  "pageVersion": "sha256:19209885d1675579ae2d9a6c1d72065ef1d82dba702e91955b3fb87879632ef6",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -17,8 +17,8 @@
       "statement": "The login crate tests real callback parsing limits and private login-home cleanup, including filesystem identity drift.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-account-login/src/lib.rs#L1747-L1796",
-          "version": "repo-lines-v1:sha256:0b8a6e1af08675bfa868c003d1f145c3f02c1c97f39c3536d42fb17e47199206:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZDM3MTQ2M2VjODQ5ZWRiNDc1MmM5Nzg3ODk4YzNjMGZjNDExMWU2MTQyZWRlNjNhYzNlNmZkNTE1NjVlZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkNWJjZjE4NDg5NTJhMDMxOWE1ZTM0ZmMyN2MxYjVkNzQ1OWI4ZjJhMTEzYzc0NDgyOWQ3Y2I5YmJjNzM1YWMifQ"
+          "resource": "repo://crates/decodex-account-login/src/lib.rs#L2006-L2063",
+          "version": "repo-lines-v1:sha256:dbd6eb03c8bf6d556094f1673a60b38646d0d4b97356ccbb641010eafbf87fbc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1ODAxNTkyYjVjZmRiN2QxMDFiNGNkYzcxMDQyMGM4MGRhMDA5OTQ0NTE4YjJhNTRiM2UwOTJiYjM1NTA1OWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkNWJjZjE4NDg5NTJhMDMxOWE1ZTM0ZmMyN2MxYjVkNzQ1OWI4ZjJhMTEzYzc0NDgyOWQ3Y2I5YmJjNzM1YWMifQ"
         }
       ]
     },
@@ -27,14 +27,14 @@
       "statement": "Refresh endpoint tests exercise the fixed ordinary-build authority and, under the debug fixture feature, reject unsafe loopback endpoint forms.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L7896-L7921",
-          "version": "repo-lines-v1:sha256:2dfee16e7e7fa3a62de08df4e0cc4e92d0a492c9dade8e3af6fba634a83d7a45:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MTgzMDM2MzhmYTY2ODY5MTg3NmI4NmY2OGU5MDlhNTIwMDU3NzkzODFlZTliZTM5ZjNlMTM3YjgzMmE3MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNjEzZTJkNzA5ZTU5MjJlZjIyMThhZWRiMDQ0N2QzOWI1OTY2ZWQ0ZWJiOWMwYTEyMmU5M2EwYmU0MTk1NGMifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L6808-L6838",
+          "version": "repo-lines-v1:sha256:1d6dfe7f7ea3db5285363f58baa71ed6d8e8ac928d587dd4a4bbe1e275f238fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOGYxZWE3NWVmYWZjNmZlNzNlMjI3MmY4ZWI2NTczYzY2NWIxZGRhMTNiY2RmZDkwMjExMmNmNWQzMTFhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOTIxZGVkZWQ2YzRjNWYwNGQ3NzY4ZWEyOTMxNWE1YWEyYzhiMzRlMWUxOWYwMjU0NmVhYmNhNTIxNjdhNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxMjA1MDRjYWRlMDJkN2MwY2QzY2FjMzgyNDNmOGU5MTdkMGU0NDI1NTM5ODE2ZmRiMjJlYWY1MjBhOThiZjMifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T14:27:56.062Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }

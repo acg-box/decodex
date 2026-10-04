@@ -4,15 +4,15 @@ title: "Historical credential-vault cutover evidence"
 description: "Historical credential-vault cutover evidence"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-b65c7b5b5dc0aaa9a79ded46
     resource: repo://database/src/credentials.rs
   - id: openwiki-source-9049593cc0d6330da1c28f56
     resource: repo://database/transfer/Cargo.toml
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+verified:
+  - by: openwiki/0.7.0
+    at: 2026-10-03T17:31:35.485Z
 ---
 
 # Current status

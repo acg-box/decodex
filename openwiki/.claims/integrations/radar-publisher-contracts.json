@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d041bd95ae98b7b5f0d872aa7dc97893f07a030e24debb28f7a2c5fd9a0e1303",
+  "pageVersion": "sha256:f8ae71f5f1d35652f5629f7513f22563fe6a62912bcd415be260d5e6002d8a14",
   "claims": [
     {
       "id": "claim_86c25cbab2c043ba9c7f55a2af5d3ca5",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-publisher/src/social_contracts.rs",
-          "version": "repo-file-v1:sha256:a753aad8a5828f5d471b4a9281a1fc142a25655da4b057751de11c1553445d8f"
+          "version": "repo-file-v1:sha256:9418b6e14d557c0f44426f311543841a2fe963cfb72adc724a8ff04fcdee28c5"
         },
         {
           "resource": "repo://apps/decodex-publisher/src/social_workflow.rs",
-          "version": "repo-file-v1:sha256:a19e1709179b530d96e650eb60a0cf3859f5956e54d2dd08dda579ee538513bb"
+          "version": "repo-file-v1:sha256:4f40610accf91d191f8bb5d3293b18eab0edc3ffae21b9ff2c340417fd7d6ad4"
         },
         {
           "resource": "repo://apps/radar/src/paths.rs",
@@ -36,7 +36,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.1",
-    "at": "2026-09-30T14:27:56.062Z"
+    "by": "openwiki/0.7.0",
+    "at": "2026-10-03T17:31:35.485Z"
   }
 }
