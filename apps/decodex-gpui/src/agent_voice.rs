@@ -5,6 +5,7 @@ mod audio;
 #[cfg(target_os = "macos")]
 #[path = "native_dictation_capture.rs"]
 mod dictation_capture;
+#[path = "voice_history_block.rs"] pub(crate) mod history;
 #[cfg(target_os = "macos")]
 #[path = "native_voice_transport.rs"]
 mod transport;
