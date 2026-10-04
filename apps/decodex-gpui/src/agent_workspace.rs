@@ -807,41 +807,22 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-		let owner = cx.entity().downgrade();
-
-		// Only the capsule occludes history; the measured footer reserves scroll space.
-		gpui::div()
-			.absolute()
-			.bottom_0()
-			.w_full()
-			.on_children_prepainted(move |bounds, _, cx| {
-				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height);
-					let _ = owner.update(cx, |s, cx| {
-						if (s.composer_footer_height - height).abs() > 0.5 {
-							s.composer_footer_height = height;
-
-							cx.notify();
-						}
-					});
-				}
-			})
-			.child(
-				gpui::div()
-					.w_full()
-					.flex()
-					.flex_col()
-					.child(self.conversation_activity(cx))
-					.child(self.recovered_draft_panel(cx))
-					.when_some(self.composer_unavailable_reason(), |d, reason| {
-						d.child(self.unavailable_composer(reason, cx))
-							.child(self.recovery_composer(cx))
-					})
-					.when(self.composer_unavailable_reason().is_none(), |d| {
-						d.child(self.render_composer(window, cx))
-					}),
-			)
+	fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+		// Reserve real layout space so history can never paint beneath the native input window.
+		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
+			gpui::div()
+				.w_full()
+				.flex()
+				.flex_col()
+				.child(self.conversation_activity(cx))
+				.child(self.recovered_draft_panel(cx))
+				.when_some(self.composer_unavailable_reason(), |d, reason| {
+					d.child(self.unavailable_composer(reason, cx)).child(self.recovery_composer(cx))
+				})
+				.when(self.composer_unavailable_reason().is_none(), |d| {
+					d.child(self.render_composer(window, cx))
+				}),
+		)
 	}
 
 	pub(super) fn selected_is_manager(&self) -> bool {
@@ -886,7 +867,7 @@ impl AgentSurface {
 				let content = if is_agent {
 					gpui::div()
 						.p_4()
-						.pb(gpui::px(self.composer_footer_height))
+						.pb(gpui::px(0.))
 						.w_full()
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))
@@ -981,7 +962,7 @@ impl AgentSurface {
 			&& selected.is_some()
 			&& !self.selected_is_archived()
 		{
-			chat = chat.child(self.floating_composer(window, cx));
+			chat = chat.child(self.composer_footer(window, cx));
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
