@@ -330,9 +330,6 @@ impl AgentSurface {
 		self.prepare_process_folds(work, &collapsed);
 
 		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
-		for group in &voice_groups {
-			self.preserve_group_anchor(&group.indices);
-		}
 		let voice_headers: std::collections::BTreeMap<_, _> =
 			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
 		let voice_hidden: BTreeSet<_> =
@@ -342,6 +339,8 @@ impl AgentSurface {
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
 			if let Some(group) = voice_headers.get(&index) {
+				let entry = &self.timeline.native.entries
+					[group.anchor_index(&self.timeline.native.entries)];
 				if group.hidden() {
 					continue;
 				}
