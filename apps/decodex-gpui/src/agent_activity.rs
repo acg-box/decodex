@@ -177,7 +177,9 @@ impl AgentSurface {
 		let voice_hidden: BTreeSet<_> =
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
-			if voice_hidden.contains(&index) {
+			if voice_hidden.contains(&index)
+				|| voice_headers.get(&index).is_some_and(|g| g.hidden())
+			{
 				continue;
 			}
 			let (user, text, label) = if let Some(group) = voice_headers.get(&index) {
@@ -207,7 +209,11 @@ impl AgentSurface {
 				});
 
 				mark.question = if voice_headers.contains_key(&index) {
-					format!("Voice conversation · {}", preview(text))
+					if text.trim().is_empty() {
+						voice_headers[&index].empty_status().into()
+					} else {
+						format!("Voice conversation · {}", preview(text))
+					}
 				} else {
 					preview(text)
 				};

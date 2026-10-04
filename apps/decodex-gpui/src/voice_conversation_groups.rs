@@ -9,6 +9,20 @@ pub(crate) struct Conversation {
 	pub failed: bool,
 }
 
+impl Conversation {
+	pub fn hidden(&self) -> bool {
+		self.ended && !self.failed && self.text.trim().is_empty()
+	}
+
+	pub fn empty_status(&self) -> &'static str {
+		if self.failed {
+			"Voice conversation failed"
+		} else {
+			"Voice conversation · Awaiting transcript"
+		}
+	}
+}
+
 pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 	let mut result: Vec<Conversation> = Vec::new();
 	let mut latest: Option<usize> = None;
@@ -52,6 +66,9 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 		group.indices.push(index);
 		match &entry.content {
 			Content::Speech { role, text, truncated, .. } => {
+				if text.trim().is_empty() && !truncated {
+					continue;
+				}
 				if !group.text.is_empty() {
 					group.text.push('\n');
 				}
@@ -133,6 +150,25 @@ mod tests {
 			attachments: vec![],
 		})
 	}
+	#[test]
+	fn empty_calls_hide_only_after_successful_end() {
+		let empty =
+			groups(&[boundary("start", true), speech("user", "   "), boundary("end", false)]);
+		assert!(empty[0].hidden());
+		let pending = groups(&[boundary("start", true)]);
+		assert!(!pending[0].hidden());
+		assert_eq!(pending[0].empty_status(), "Voice conversation · Awaiting transcript");
+		let mut failure = boundary("failure", false);
+		if let Content::VoiceBoundary { outcome, .. } = &mut failure.content {
+			*outcome = Some("failed".into());
+		}
+		let failed = groups(&[boundary("start", true), failure]);
+		assert!(!failed[0].hidden());
+		assert_eq!(failed[0].empty_status(), "Voice conversation failed");
+		let spoken = groups(&[speech("user", "Hello"), boundary("end", false)]);
+		assert!(!spoken[0].hidden());
+	}
+
 	#[test]
 	fn one_group_per_call_preserves_speakers_and_keeps_typed_messages_outside() {
 		let entries = vec![
