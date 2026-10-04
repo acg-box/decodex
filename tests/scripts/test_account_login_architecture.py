@@ -61,14 +61,14 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 			"ReauthenticateAccountFromCredentialFile",
 			"callback_ports",
 			"reqwest::",
+			"base64::",
 			"std::thread",
 		):
 			with self.subTest(marker=forbidden):
 				self.assertNotIn(forbidden, bridge)
 		dependencies = toml("apps/decodex-gpui/Cargo.toml")["dependencies"]
-		# Public prompt fetching and timestamp formatting do not own account login.
+		# Prompt fetching, dictation encoding and timestamps do not own account login.
 		for provider_dependency in (
-			"base64",
 			"getrandom",
 			"httparse",
 			"url",

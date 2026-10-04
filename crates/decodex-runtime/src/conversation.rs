@@ -4648,8 +4648,12 @@ impl ConversationRuntime {
 				SelectedWorkingDirectory::acquire(&working_directory)
 					.map_err(|()| ConversationControlOutcome::Unavailable)?,
 			);
-			let callback: Arc<dyn AccountRefreshCallback> =
-				Arc::new(ConversationRefreshCallback { accounts, runtime, generation_id });
+			let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+				accounts,
+				runtime,
+				generation_id,
+				last_projected: std::sync::Mutex::new(None),
+			});
 			let binding =
 				AccountBinding::shared_home_bound(account_id.clone(), credential.binding, callback)
 					.and_then(|binding| binding.with_credential(&credential.stored))
@@ -5018,6 +5022,7 @@ impl ConversationRuntime {
 			accounts: Arc::clone(&self.inner.accounts),
 			runtime: tokio::runtime::Handle::current(),
 			generation_id: generation_id.clone(),
+			last_projected: std::sync::Mutex::new(None),
 		});
 		let profile = self.inner.launch_profile.clone();
 		let capacity = Arc::clone(&self.inner.capacity);
@@ -6518,6 +6523,8 @@ struct ConversationRefreshCallback {
 	accounts: Arc<AccountService>,
 	runtime: tokio::runtime::Handle,
 	generation_id: ProcessGenerationId,
+	// Launch evidence is immutable; this cursor tracks credentials supplied during its lifetime.
+	last_projected: std::sync::Mutex<Option<decodex_core::CredentialBinding>>,
 }
 impl AccountRefreshCallback for ConversationRefreshCallback {
 	fn refresh(
@@ -6531,24 +6538,29 @@ impl AccountRefreshCallback for ConversationRefreshCallback {
 			return Err(CredentialVaultError::ProjectionRejected);
 		}
 
+		let mut last_projected =
+			self.last_projected.lock().map_err(|_| CredentialVaultError::Unavailable)?;
+		let observed = last_projected.as_ref().unwrap_or(&initial_binding.credential);
 		let operation_id =
 			AccountOperationId::generate().map_err(|_| CredentialVaultError::Unavailable)?;
 		let projection = self
 			.runtime
-			.block_on(self.accounts.refresh(
+			.block_on(self.accounts.refresh_for_process(
 				operation_id,
 				account_id,
-				None,
-				Some((&self.generation_id, initial_binding)),
+				(&self.generation_id, initial_binding),
 				previous_provider_account_id,
+				observed,
 			))
 			.map_err(|_| CredentialVaultError::Unavailable)?;
 
-		ChatgptRefreshProjection::new(
+		let response = ChatgptRefreshProjection::new(
 			projection.access_token().to_owned(),
 			projection.provider_account_id().to_owned(),
 			projection.plan_type().map(str::to_owned),
-		)
+		)?;
+		*last_projected = Some(projection.binding().clone());
+		Ok(response)
 	}
 }
 

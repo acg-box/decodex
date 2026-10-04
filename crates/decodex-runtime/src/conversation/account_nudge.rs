@@ -55,6 +55,7 @@ impl ConversationRuntime {
 		};
 		let runtime = Handle::current();
 		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+			last_projected: std::sync::Mutex::new(None),
 			accounts: self.inner.accounts.clone(),
 			runtime: runtime.clone(),
 			generation_id,
