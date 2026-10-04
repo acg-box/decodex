@@ -54,7 +54,7 @@ impl RenderOnce for Working {
 		let visible = elapsed.is_some() && closing.is_none_or(|t| t < 0.35 && !reduced);
 
 		if !visible {
-			return gpui::div().into_any_element();
+			return gpui::div().hidden().into_any_element();
 		}
 		if !reduced {
 			ui_motion::request_frame(window, cx);
