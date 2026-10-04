@@ -3,6 +3,9 @@
 #[path = "native_voice_audio.rs"]
 mod audio;
 #[cfg(target_os = "macos")]
+#[path = "native_dictation_capture.rs"]
+mod dictation_capture;
+#[cfg(target_os = "macos")]
 #[path = "native_voice_transport.rs"]
 mod transport;
 
@@ -57,6 +60,7 @@ pub(super) struct Media {
 	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
 	destroy: unsafe extern "C" fn(*mut std::ffi::c_void),
 	transport: Option<transport::Transport>,
+	capture: Option<dictation_capture::Capture>,
 	muted: bool,
 	level_at: std::time::Instant,
 	_main_thread: std::marker::PhantomData<std::rc::Rc<()>>,
@@ -89,7 +93,7 @@ impl Media {
 				native_menu_bar::symbol(image, c"decodex_voice_media_abi_version")
 					.map_err(|_| ())?;
 
-			if version() != 3 {
+			if version() != 4 {
 				return Err(());
 			}
 
@@ -119,6 +123,7 @@ impl Media {
 				poll_fn,
 				destroy,
 				transport: None,
+				capture: None,
 				muted: false,
 				level_at: std::time::Instant::now(),
 				_main_thread: std::marker::PhantomData,
@@ -147,8 +152,13 @@ impl Media {
 
 				return accepted;
 			},
+			Some("finish") if self.capture.is_some() => {
+				self.capture.as_ref().unwrap().finish();
+				return true;
+			},
 			Some("start" | "dictate" | "stop") => {
 				self.transport = None;
+				self.capture = None;
 			},
 			_ => {},
 		}
@@ -172,6 +182,24 @@ impl Media {
 		};
 
 		if let Some(event) = platform {
+			if event["type"] == "dictation_prepare_authorized" {
+				if let Some(device) = event["device"].as_u64().and_then(|v| u32::try_from(v).ok()) {
+					dictation_capture::Capture::prepare(device);
+				}
+				return None;
+			}
+			if event["type"] == "dictation_authorized" {
+				self.capture = event["device"]
+					.as_u64()
+					.and_then(|v| u32::try_from(v).ok())
+					.and_then(|id| dictation_capture::Capture::start(id).ok());
+				if self.capture.is_none() {
+					return Some(
+						serde_json::json!({"type":"error","message":"The microphone worker could not start."}),
+					);
+				}
+				return None;
+			}
 			if event["type"] != "voice_authorized" {
 				return Some(event);
 			}
@@ -193,6 +221,11 @@ impl Media {
 					return Some(
 						serde_json::json!({"type":"error","message":"The selected audio device could not start."}),
 					),
+			}
+		}
+		if let Some(capture) = &self.capture {
+			if let Some(event) = capture.poll() {
+				return Some(event);
 			}
 		}
 		if let Some(transport) = &self.transport {
@@ -240,6 +273,7 @@ impl Media {
 	pub(super) fn prepare_input(window: &Window, input: &str) {
 		if let Ok(mut media) = Self::new(window) {
 			media.command(serde_json::json!({"operation":"prepare","input":input}));
+			let _ = media.poll();
 		}
 	}
 }

@@ -6,6 +6,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gpui::{AnyElement, AsyncApp, Task, WeakEntity};
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, TEXT_MUTED};
@@ -175,7 +176,9 @@ impl AgentSurface {
 					dictation.level =
 						event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
 
-					if dictation.audio.len() > 128 {
+					if dictation.audio.iter().map(|audio| audio.as_str().len()).sum::<usize>()
+						> 640_000
+					{
 						self.dictation = None;
 						self.feedback="Dictation stopped because audio delivery fell behind. Your received text remains in the draft.".into();
 
@@ -220,7 +223,7 @@ impl AgentSurface {
 		}
 
 		if dictation.network_ready
-			&& let Some(audio) = dictation.audio.pop_front()
+			&& let Some(audio) = take_audio_batch(&mut dictation.audio)
 		{
 			return Some(DictationRequest::Audio { session_id: dictation.session.clone(), audio });
 		}
@@ -563,5 +566,39 @@ mod tests {
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Finish { .. })));
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));
 		});
+	}
+}
+
+// Coalesce audio already available without waiting to fill a batch. Preserve invalid input
+// unchanged for the service to reject; do not silently drop a frame.
+fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBuffer> {
+	let first = queue.pop_front()?;
+	let Ok(mut pcm) = STANDARD.decode(first.as_str()) else { return Some(first) };
+	while let Some(next) = queue.front() {
+		let Ok(bytes) = STANDARD.decode(next.as_str()) else { break };
+		if pcm.len() + bytes.len() > 48_000 {
+			break;
+		}
+		pcm.extend_from_slice(&bytes);
+		queue.pop_front();
+	}
+	Some(DictationBuffer::new(STANDARD.encode(pcm)).expect("bounded PCM batch"))
+}
+
+#[cfg(test)]
+mod packet_tests {
+	use super::*;
+	#[test]
+	fn queued_audio_is_sent_in_order_without_waiting_for_a_full_batch() {
+		let frame = |bytes: &[u8]| DictationBuffer::new(STANDARD.encode(bytes)).unwrap();
+		let mut queue = VecDeque::from([frame(&[1, 2]), frame(&[3, 4])]);
+		let batch = take_audio_batch(&mut queue).unwrap();
+		assert_eq!(STANDARD.decode(batch.as_str()).unwrap(), [1, 2, 3, 4]);
+		assert!(queue.is_empty());
+		queue.push_back(frame(&[5, 6]));
+		assert_eq!(
+			STANDARD.decode(take_audio_batch(&mut queue).unwrap().as_str()).unwrap(),
+			[5, 6]
+		);
 	}
 }
