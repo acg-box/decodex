@@ -10,6 +10,21 @@ pub(crate) struct Conversation {
 }
 
 impl Conversation {
+	pub fn anchor_index(&self, entries: &[AgentTimelineEntry]) -> usize {
+		// Keep the outer history anchor and disclosure state on the same stable boundary.
+		self.indices.iter().rev().copied().find(|i| {
+            matches!(&entries[*i].content, Content::VoiceBoundary { kind, .. } if kind == "realtimeSessionClosed")
+        }).unwrap_or(self.indices[0])
+	}
+
+	pub fn identity(&self, entries: &[AgentTimelineEntry]) -> String {
+		serde_json::json!([
+			self.session,
+			crate::shell::agent_surface::native_timeline::key(&entries[self.anchor_index(entries)])
+		])
+		.to_string()
+	}
+
 	pub fn hidden(&self) -> bool {
 		self.ended && !self.failed && self.text.trim().is_empty()
 	}
@@ -150,6 +165,93 @@ mod tests {
 			attachments: vec![],
 		})
 	}
+	#[gpui::test]
+	fn expanded_call_stays_open_when_its_first_page_is_prepended(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::{
+			AgentSurface,
+			native_timeline::{Binding, Timeline},
+		};
+		use gpui::AppContext as _;
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		let mut entries = vec![
+			boundary("start", true),
+			speech("user", "Hi"),
+			speech("assistant", "Hello"),
+			boundary("end", false),
+		];
+		for (i, e) in entries.iter_mut().enumerate() {
+			e.position = i as u64;
+		}
+		let page = |entries, cursor| decodex_protocol::AgentTimelinePage {
+			thread_id: "thread".into(),
+			entries,
+			next_cursor: cursor,
+			weather: Default::default(),
+			safety_buffering_turn_id: None,
+			active_realtime_session_at_page_start: None,
+		};
+		let binding = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			let binding = Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+			let mut timeline = Timeline::default();
+			assert!(
+				timeline
+					.replace(binding.clone(), page(entries[2..].to_vec(), Some("older".into())))
+			);
+			s.timeline.native = timeline;
+			cx.notify();
+			binding
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let button = visual.debug_bounds("voice-history-block").unwrap();
+		visual.simulate_click(button.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("voice-history-transcript").is_some());
+		surface.update(visual, |s, cx| {
+			assert!(s.prepend_native_history(&binding, "older", page(entries[..2].to_vec(), None)));
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(
+			visual.debug_bounds("voice-history-transcript").is_some(),
+			"pagination collapsed the existing transcript"
+		);
+	}
+
+	#[test]
+	fn loading_earlier_speech_preserves_the_conversation_identity() {
+		let entries = vec![
+			boundary("start", true),
+			speech("user", "Hi"),
+			speech("assistant", "Hello"),
+			boundary("end", false),
+		];
+		let initial = &entries[2..];
+		assert_eq!(groups(initial)[0].identity(initial), groups(&entries)[0].identity(&entries));
+		let later = vec![
+			boundary("start-again", true),
+			speech("user", "Again"),
+			boundary("end-again", false),
+		];
+		assert_ne!(groups(&entries)[0].identity(&entries), groups(&later)[0].identity(&later));
+	}
+
 	#[test]
 	fn empty_calls_hide_only_after_successful_end() {
 		let empty =

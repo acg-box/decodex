@@ -182,6 +182,9 @@ impl AgentSurface {
 			{
 				continue;
 			}
+			let entry = voice_headers.get(&index).map_or(entry, |g| {
+				&self.timeline.native.entries[g.anchor_index(&self.timeline.native.entries)]
+			});
 			let (user, text, label) = if let Some(group) = voice_headers.get(&index) {
 				(true, &group.text, "Voice conversation")
 			} else {
@@ -353,6 +356,7 @@ impl AgentSurface {
 			self.set_voice_follow(following);
 
 			if delta.y > gpui::px(0.) {
+				self.timeline.native.prefetch_requested = true;
 				self.prefetch_older_history(cx);
 			}
 

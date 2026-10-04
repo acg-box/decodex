@@ -160,6 +160,10 @@ struct Anchor {
 }
 
 impl AgentSurface {
+	pub(super) fn native_pagination_settling(&self) -> bool {
+		self.timeline.native.viewport.0.borrow().pending.is_some()
+	}
+
 	pub(in super::super) fn prepare_history_layout(&self, window: &Window) {
 		let width = self
 			.selected

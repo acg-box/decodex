@@ -47,7 +47,8 @@ where
 		return AgentTimelineResult::Unavailable;
 	};
 	let operation = async {
-		for limit in [30, 15, 7, 3, 1] {
+		let limits: &[u32] = if cursor.is_some() { &[15, 7, 3, 1] } else { &[30, 15, 7, 3, 1] };
+		for &limit in limits {
 			let Some(current) = source().await else {
 				return AgentTimelineResult::Unavailable;
 			};
@@ -715,7 +716,7 @@ mod tests {
 			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let limits = if changed { vec![30] } else { vec![30, 15, 7] };
+				let limits = if changed { vec![15] } else { vec![15, 7] };
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 
