@@ -294,7 +294,11 @@ fn create_panel(
 		.ok()?;
 	let installed = child
 		.update(cx, |s, window, _| {
-			s.glass = GlassPanel::install(parent_window, window, 24.);
+			s.glass = GlassPanel::install(
+				parent_window,
+				window,
+				f64::from(crate::ui_theme::COMPOSER_RADIUS),
+			);
 
 			s.glass.is_some()
 		})
