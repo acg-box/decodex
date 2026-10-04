@@ -322,6 +322,24 @@ impl AgentSurface {
 		self.prompt_edit = Panel::default();
 	}
 
+	fn close_prompt_editor(&mut self, cx: &mut Context<Self>) {
+		if let Some(draft) = self.prompt_edit.draft.clone()
+			&& draft.receipt_id.is_none()
+			&& !draft.handback_pending
+			&& draft.confirmation_key.is_none()
+			&& draft.fork.is_none()
+			&& draft.pending_send.is_none()
+			&& let Err(message) = self.discard_prompt_editor(&draft, cx)
+		{
+			self.prompt_edit.feedback = message.into();
+			cx.notify();
+			return;
+		}
+		self.reset_prompt_edit();
+		self.save_draft_document(cx);
+		cx.notify();
+	}
+
 	fn reopen_prompt_editor(&mut self, work: &str, review: &str, cx: &mut Context<Self>) {
 		if self.selected.as_deref() != Some(work) {
 			return;
@@ -615,7 +633,11 @@ impl AgentSurface {
 		Ok(())
 	}
 
-	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn saved_prompt_edits_panel(
+		&self,
+		work: &str,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let mut saved = gpui::div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
 
 		for draft in self.saved_prompt_editors(work) {
@@ -638,7 +660,10 @@ impl AgentSurface {
 				} else {
 					format!("Edit draft: {title}")
 				},
-				move |s, cx| s.reopen_prompt_editor(&owner, &review, cx),
+				move |s, cx| {
+					s.workspace.details_visible = false;
+					s.reopen_prompt_editor(&owner, &review, cx);
+				},
 				cx,
 			));
 
@@ -666,11 +691,40 @@ impl AgentSurface {
 			}
 		}
 
-		if self.prompt_edit.work != work || !self.prompt_editor_source_current() {
-			return saved.into_any_element();
-		}
+		saved.into_any_element()
+	}
 
-		let mut panel = saved.child(self.prompt_edit.feedback.clone());
+	pub(super) fn prompt_editor_visible(&self, work: &str) -> bool {
+		(self.prompt_edit.work == work && self.prompt_editor_source_current())
+			|| self.saved_prompt_editors(work).iter().any(|draft| {
+				draft.handback_pending
+					|| draft.pending_send.is_some()
+					|| draft.confirmation_key.is_some()
+					|| draft.fork.is_some()
+			})
+	}
+
+	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+		if self.prompt_edit.work != work || !self.prompt_editor_source_current() {
+			return self
+				.workspace_action(
+					"prompt-recovery-notice".into(),
+					"An unfinished edit needs attention · Review".into(),
+					|s, cx| {
+						s.workspace.details_visible = true;
+						cx.notify();
+					},
+					cx,
+				)
+				.into_any_element();
+		}
+		let mut panel = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(self.prompt_edit.feedback.clone());
 
 		for (_, editor) in &self.prompt_edit.editors {
 			panel = panel.child(editor.clone());
@@ -683,16 +737,25 @@ impl AgentSurface {
 		panel = panel.child(self.prompt_removal_panel(cx));
 
 		panel
-			.child(self.workspace_action(
-				"prompt-review-close".into(),
-				"Close review".into(),
-				|s, cx| {
-					s.reset_prompt_edit();
-					s.save_draft_document(cx);
-					cx.notify();
-				},
-				cx,
-			))
+			.child(
+				self.workspace_action(
+					"prompt-review-close".into(),
+					if self.prompt_edit.draft.as_ref().is_some_and(|draft| {
+						draft.receipt_id.is_some()
+							|| draft.handback_pending
+							|| draft.confirmation_key.is_some()
+							|| draft.fork.is_some()
+							|| draft.pending_send.is_some()
+					}) {
+						"Close"
+					} else {
+						"Cancel edit"
+					}
+					.into(),
+					|s, cx| s.close_prompt_editor(cx),
+					cx,
+				),
+			)
 			.into_any_element()
 	}
 
@@ -895,6 +958,37 @@ mod tests {
 		AgentSurface, ClientProfile, ComposerInput, DesktopPromptEditDraft, Entity, EntityId,
 		IdempotencyKey, Panel, PromptDraft, WireText,
 	};
+
+	#[gpui::test]
+	fn cancel_edit_removes_only_unsubmitted_draft(cx: &mut gpui::TestAppContext) {
+		let (_directory, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		install_fixture_editor(&surface, profile.clone(), cx);
+		surface.update(cx, |s, cx| {
+			let work = s.selected.clone().unwrap();
+			assert_eq!(s.saved_prompt_editors(&work).len(), 1);
+			s.close_prompt_editor(cx);
+			assert!(s.saved_prompt_editors(&work).is_empty());
+			assert!(s.prompt_edit.draft.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
+		});
+		install_fixture_editor(&surface, profile, cx);
+		surface.update(cx, |s, cx| {
+			let work = s.selected.clone().unwrap();
+			let pending = s
+				.prompt_edit
+				.draft
+				.clone()
+				.unwrap()
+				.begin_confirmation(IdempotencyKey::new("pending-edit").unwrap())
+				.unwrap();
+			s.stage_prompt_editor(pending.clone(), cx).unwrap();
+			s.prompt_edit.draft = Some(pending.clone());
+			s.close_prompt_editor(cx);
+			assert_eq!(s.saved_prompt_editors(&work), vec![pending]);
+			assert!(s.prompt_edit.draft.is_none());
+		});
+	}
 
 	fn original_input() -> PromptDraft {
 		PromptDraft::new(vec![

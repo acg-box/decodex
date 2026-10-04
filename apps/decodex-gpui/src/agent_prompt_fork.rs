@@ -73,6 +73,9 @@ impl AgentSurface {
 						match target {
 							None => { s.prompt_edit.draft = Some(retained); s.prompt_edit.feedback = "Branch was rejected. Original conversation and edited draft retained.".into(); },
 							Some((work, thread, boundary, snapshot)) => {
+                                if boundary == PromptForkBoundary::AfterTurn {
+                                    if let Err(message) = s.discard_prompt_editor(&retained, cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
+                                }
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
 

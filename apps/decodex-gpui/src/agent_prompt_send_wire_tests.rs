@@ -38,7 +38,12 @@ struct View {
 }
 impl Render for View {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.prompt_edit_panel(&self.work, cx))
+		self.surface.update(cx, |s, cx| {
+			use gpui::ParentElement as _;
+			gpui::div()
+				.child(s.saved_prompt_edits_panel(&self.work, cx))
+				.child(s.prompt_edit_panel(&self.work, cx))
+		})
 	}
 }
 
@@ -118,10 +123,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 
 	assert!(!disk.profiles[&scope].prompt_edits.contains_key(&"a".repeat(64)));
 	assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
-	assert_eq!(
-		disk.recovered.last().unwrap().draft.prompt_edits[&"a".repeat(64)].input.parts()[1]["fileId"],
-		"retained-file"
-	);
+	assert!(disk.recovered.is_empty(), "accepted input no longer needs a recovery copy");
 }
 
 fn send_view(store: &ClientDraftStore, profile: &ClientProfile, cx: &mut Context<View>) -> View {

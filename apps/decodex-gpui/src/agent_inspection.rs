@@ -56,6 +56,17 @@ impl AgentSurface {
 					.child(gpui::div().font_weight(FontWeight::MEDIUM).child(self.work_label(work)))
 					.child(agent_surface::muted(graph::state_in(snapshot, work).0)),
 			)
+			.when(!self.saved_prompt_editors(&work.id).is_empty(), |panel| {
+				panel.child(
+					gpui::div()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(agent_surface::muted("Unfinished edits"))
+						.child(self.saved_prompt_edits_panel(&work.id, cx)),
+				)
+			})
+			.child(self.native_history_controls(work, cx))
 			.child(self.recap_panel(&work.id, cx))
 			.child(self.inspection_resources(&work.id, cx))
 			.child(self.native_receipts_panel(work, true, cx))

@@ -176,17 +176,6 @@ impl AgentSurface {
 		if accepted {
 			profile.prompt_edits.remove(key);
 
-			// Keep a manually restorable copy; acceptance never loses canonical media.
-			let mut copy = DesktopProfileDraft::default();
-
-			copy.prompt_edits.insert(key.into(), retained);
-
-			let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft: copy };
-
-			if !next.recovered.contains(&copy) {
-				next.recovered.push(copy);
-			}
-
 			next.encode()?;
 
 			self.draft_profiles.storage.document = next;
@@ -303,7 +292,12 @@ impl AgentSurface {
 		{
 			return Err("Draft source changed");
 		}
-		if draft.handback_pending || draft.receipt_id.is_some() {
+		if draft.handback_pending
+			|| draft.receipt_id.is_some()
+			|| draft.confirmation_key.is_some()
+			|| draft.fork.is_some()
+			|| draft.pending_send.is_some()
+		{
 			return Err("Recover the history edit before discarding its draft");
 		}
 
@@ -982,7 +976,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn prompt_send_acceptance_retains_full_copy_and_clears_only_exact_editor(
+	fn prompt_send_acceptance_clears_exact_editor_without_archiving_input(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (_service, profile, _) = tests::profiles();
@@ -1050,30 +1044,7 @@ mod tests {
 		assert!(saved.prompt_edits.contains_key(&"b".repeat(64)));
 		assert_eq!(saved.composer.text, "Unrelated main input");
 
-		let copy =
-			&document.recovered.last().unwrap().draft.prompt_edits[pending.review_token.as_str()];
-
-		assert_eq!(copy.input, draft.input);
-		assert!(copy.pending_send.is_none());
-		assert!(!document.recovered.last().unwrap().draft.has_unconfirmed_delivery());
-
-		let restored = document.restore_recovered_copy(document.recovered.last().unwrap()).unwrap();
-
-		assert_eq!(
-			restored.profiles[&profile.draft_scope_key()].composer.text,
-			"Unrelated main input"
-		);
-		assert_eq!(
-			restored.profiles[&profile.draft_scope_key()].prompt_edits
-				[pending.review_token.as_str()]
-			.input,
-			draft.input
-		);
-		assert!(
-			restored.profiles[&profile.draft_scope_key()]
-				.prompt_edits
-				.contains_key(&"b".repeat(64))
-		);
+		assert!(document.recovered.is_empty(), "accepted edits are not a draft archive");
 	}
 
 	#[gpui::test]

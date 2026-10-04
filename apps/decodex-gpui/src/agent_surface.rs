@@ -1891,7 +1891,9 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(MESSAGE_GAP))
-			.child(self.prompt_edit_panel(&work.id, cx))
+			.when(self.prompt_editor_visible(&work.id), |panel| {
+				panel.child(self.prompt_edit_panel(&work.id, cx))
+			})
 			.child(self.native_timeline_panel(work, cx));
 
 		if self.native_history_active(work) {
