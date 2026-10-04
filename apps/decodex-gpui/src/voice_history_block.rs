@@ -1,4 +1,6 @@
-//! Presentation of Codex realtime handoff envelopes. Stored messages stay unchanged.
+#[path = "voice_conversation_groups.rs"] mod conversations;
+pub(crate) use conversations::groups;
+// Presentation of Codex realtime handoff envelopes. Stored messages stay unchanged.
 use crate::{
 	shell::agent_surface::markdown,
 	ui_motion,
@@ -38,10 +40,26 @@ pub(crate) fn handoff(text: &str) -> Option<String> {
 	Some(text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
 }
 
+fn transcript_markdown(text: &str) -> String {
+	text.lines()
+		.map(|line| {
+			if let Some(text) = line.strip_prefix("user: ") {
+				format!("**You:** {text}")
+			} else if let Some(text) = line.strip_prefix("assistant: ") {
+				format!("**Assistant:** {text}")
+			} else {
+				line.to_owned()
+			}
+		})
+		.collect::<Vec<_>>()
+		.join("\n\n")
+}
+
 #[derive(IntoElement)]
 pub(crate) struct VoiceBlock {
 	pub key: String,
 	pub title: String,
+	pub expanded: bool,
 	pub text: String,
 }
 impl RenderOnce for VoiceBlock {
@@ -49,7 +67,7 @@ impl RenderOnce for VoiceBlock {
 		let expanded = window.use_keyed_state(
 			SharedString::from(format!("voice-block-{}", self.key)),
 			cx,
-			|_, _| false,
+			|_, _| self.expanded,
 		);
 		let open = *expanded.read(cx);
 		let click = expanded.clone();
@@ -110,7 +128,7 @@ impl RenderOnce for VoiceBlock {
 					.debug_selector(|| "voice-history-transcript".into())
 					.pt_2()
 					.child(markdown::render(
-						&self.text.replace('\n', "\n\n"),
+						&transcript_markdown(&self.text),
 						&format!("voice-transcript-{}", self.key),
 					))
 					.child(markdown::response_copy_button(
@@ -132,6 +150,7 @@ mod tests {
 			VoiceBlock {
 				key: "fixture".into(),
 				title: "Voice conversation".into(),
+				expanded: false,
 				text: "user: Hello\nassistant: Hi".into(),
 			}
 		}

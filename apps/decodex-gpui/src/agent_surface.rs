@@ -2527,6 +2527,7 @@ fn history_entry_presented(
 		return gpui::div().w_full().child(voice::history::VoiceBlock {
 			key: identity.into(),
 			title: "Voice conversation".into(),
+			expanded: false,
 			text,
 		});
 	}

@@ -318,10 +318,44 @@ impl AgentSurface {
 
 		self.prepare_process_folds(work, &collapsed);
 
+		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
+		let voice_headers: std::collections::BTreeMap<_, _> =
+			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
+		let voice_hidden: BTreeSet<_> =
+			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let empty_reasoning = groups::empty_completed_reasoning(&self.timeline.native.entries);
 		let mut hidden = Vec::new();
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
+			if let Some(group) = voice_headers.get(&index) {
+				if !hidden.is_empty() {
+					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
+				}
+				let title = if group.failed {
+					"Voice conversation · Failed"
+				} else if group.ended {
+					"Voice conversation · Ended"
+				} else {
+					"Voice conversation"
+				};
+				let body = super::voice::history::VoiceBlock {
+					key: serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+					title: title.into(),
+					expanded: !group.ended,
+					text: if group.text.is_empty() {
+						"No transcript recorded.".into()
+					} else {
+						group.text.clone()
+					},
+				}
+				.into_any_element();
+				let body = self.anchored_native_history_entry(work, entry, body);
+				panel = panel.child(self.native_scroll_row(work, entry, body, cx));
+				continue;
+			}
+			if voice_hidden.contains(&index) {
+				continue;
+			}
 			if empty_reasoning.contains(&index) {
 				continue;
 			}
