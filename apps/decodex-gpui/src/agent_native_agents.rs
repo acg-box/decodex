@@ -372,11 +372,10 @@ impl AgentSurface {
 
 	fn native_agent_transcript(&self, thread: &str) -> (AnyElement, bool) {
 		let mut body = gpui::div()
-			.id("native-agent-transcript")
-			.flex_1()
-			.min_h_0()
-			.overflow_y_scroll()
-			.p_5()
+			.w_full()
+			.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
+			.min_w_0()
+			.mx_auto()
 			.flex()
 			.flex_col()
 			.gap_5();
@@ -422,7 +421,19 @@ impl AgentSurface {
 				)),
 		}
 
-		(body.into_any_element(), can_input)
+		(
+			gpui::div()
+				.id("native-agent-transcript")
+				.flex_1()
+				.min_h_0()
+				.min_w_0()
+				.overflow_y_scroll()
+				.py_4()
+				.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
+				.child(body)
+				.into_any_element(),
+			can_input,
+		)
 	}
 
 	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -501,24 +512,41 @@ impl AgentSurface {
 			if let Some(input) = &self.native_agents.input {
 				panel = panel.child(
 					gpui::div()
-						.id("native-agent-input")
-						.m_4()
-						.p_2()
-						.rounded(gpui::px(16.))
-						.bg(gpui::rgba(0x202024ee))
-						.flex()
-						.items_center()
-						.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-							s.send_native_agent(cx);
-							cx.stop_propagation();
-						}))
-						.child(gpui::div().flex_1().min_w_0().child(input.clone()))
-						.child(self.workspace_action(
-							"native-agent-send".into(),
-							if self.native_agents.pending.is_some() { "…" } else { "↑" }.into(),
-							|s, cx| s.send_native_agent(cx),
-							cx,
-						)),
+						.w_full()
+						.flex_none()
+						.py_4()
+						.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
+						.child(
+							gpui::div()
+								.id("native-agent-input")
+								.w_full()
+								.min_w_0()
+								.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
+								.mx_auto()
+								.p_2()
+								.rounded(gpui::px(16.))
+								.bg(gpui::rgba(0x202024ee))
+								.flex()
+								.items_center()
+								.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
+									s.send_native_agent(cx);
+									cx.stop_propagation();
+								}))
+								.child(gpui::div().flex_1().min_w_0().child(input.clone()))
+								.child(
+									self.workspace_action(
+										"native-agent-send".into(),
+										if self.native_agents.pending.is_some() {
+											"…"
+										} else {
+											"↑"
+										}
+										.into(),
+										|s, cx| s.send_native_agent(cx),
+										cx,
+									),
+								),
+						),
 				);
 			}
 		} else if matches!(self.native_agents.detail, Some(NativeAgentsResult::Conversation { .. }))

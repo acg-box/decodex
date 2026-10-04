@@ -235,7 +235,7 @@ impl AgentSurface {
 
 		gpui::div()
 			.w_full()
-			.px_4()
+			.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
 			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
 			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
@@ -244,7 +244,7 @@ impl AgentSurface {
 				gpui::div()
 					.relative()
 					.w_full()
-					.max_w(gpui::px(820.))
+					.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
 					.h(gpui::px(self.native_composer.height))
 					.child(anchor.absolute().size_full())
 					.child(self.render_composer_popover(cx)),

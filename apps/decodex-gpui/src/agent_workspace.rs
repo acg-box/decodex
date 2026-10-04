@@ -807,22 +807,28 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+	fn composer_footer(&self, rail_width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		// Reserve real layout space so history can never paint beneath the native input window.
-		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
-			gpui::div()
-				.w_full()
-				.flex()
-				.flex_col()
-				.child(self.conversation_activity(cx))
-				.child(self.recovered_draft_panel(cx))
-				.when_some(self.composer_unavailable_reason(), |d, reason| {
-					d.child(self.unavailable_composer(reason, cx)).child(self.recovery_composer(cx))
-				})
-				.when(self.composer_unavailable_reason().is_none(), |d| {
-					d.child(self.render_composer(window, cx))
-				}),
-		)
+		gpui::div()
+			.debug_selector(|| "composer-footer".into())
+			.flex_none()
+			.w_full()
+			.pl(gpui::px(rail_width))
+			.child(
+				gpui::div()
+					.w_full()
+					.flex()
+					.flex_col()
+					.child(self.conversation_activity(cx))
+					.child(self.recovered_draft_panel(cx))
+					.when_some(self.composer_unavailable_reason(), |d, reason| {
+						d.child(self.unavailable_composer(reason, cx))
+							.child(self.recovery_composer(cx))
+					})
+					.when(self.composer_unavailable_reason().is_none(), |d| {
+						d.child(self.render_composer(window, cx))
+					}),
+			)
 	}
 
 	pub(super) fn selected_is_manager(&self) -> bool {
@@ -866,9 +872,14 @@ impl AgentSurface {
 			if let Some(snapshot) = &self.snapshot {
 				let content = if is_agent {
 					gpui::div()
-						.p_4()
-						.pb(gpui::px(0.))
+						.debug_selector(|| "conversation-content".into())
+						.pt(gpui::px(16.))
+						.px(gpui::px(ui_theme::CONVERSATION_INSET))
 						.w_full()
+						.max_w(gpui::px(
+							ui_theme::CONVERSATION_WIDTH + 2. * ui_theme::CONVERSATION_INSET,
+						))
+						.min_w_0()
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))
 						.child(self.history_panel(work, cx))
@@ -945,13 +956,19 @@ impl AgentSurface {
 		}
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
+		let rail_width = ui_motion::value(
+			"history-rail-width",
+			if self.workspace.timeline_visible { 44. } else { 0. },
+			window,
+			cx,
+		);
 
 		chat = chat.child(
 			gpui::div()
 				.flex_1()
 				.min_h_0()
 				.flex()
-				.child(self.history_rail_slot(window, cx))
+				.child(self.history_rail_slot(rail_width, window, cx))
 				.relative()
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
@@ -962,7 +979,7 @@ impl AgentSurface {
 			&& selected.is_some()
 			&& !self.selected_is_archived()
 		{
-			chat = chat.child(self.composer_footer(window, cx));
+			chat = chat.child(self.composer_footer(rail_width, window, cx));
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
@@ -1140,9 +1157,7 @@ impl AgentSurface {
 			.pb(gpui::px(90.0))
 			.child(self.conversation_activity(cx))
 			.child(self.recovered_draft_panel(cx))
-			.child(
-				gpui::div().w_full().max_w(gpui::px(672.0)).child(self.render_composer(window, cx)),
-			)
+			.child(gpui::div().w_full().child(self.render_composer(window, cx)))
 			.into_any_element()
 	}
 

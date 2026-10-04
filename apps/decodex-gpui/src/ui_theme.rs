@@ -30,6 +30,9 @@ pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+// Conversation text and composer share a bounded, responsive reading column.
+pub(crate) const CONVERSATION_WIDTH: f32 = 880.0;
+pub(crate) const CONVERSATION_INSET: f32 = 16.0;
 pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
 pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
