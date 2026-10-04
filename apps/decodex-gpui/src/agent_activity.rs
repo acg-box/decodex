@@ -171,14 +171,26 @@ impl AgentSurface {
 		let mut retained = BTreeSet::new();
 		let mut current = None;
 
-		for entry in &self.timeline.native.entries {
-			let (user, text, label) = match &entry.content {
-				AgentTimelineContent::Item { kind, text, .. }
-					if kind == "userMessage" || kind == "agentMessage" =>
-					(kind == "userMessage", text, "Conversation message"),
-				AgentTimelineContent::Speech { role, text, .. } =>
-					(role == "user", text, "Voice message"),
-				_ => continue,
+		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
+		let voice_headers: std::collections::BTreeMap<_, _> =
+			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
+		let voice_hidden: BTreeSet<_> =
+			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
+		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
+			if voice_hidden.contains(&index) {
+				continue;
+			}
+			let (user, text, label) = if let Some(group) = voice_headers.get(&index) {
+				(true, &group.text, "Voice conversation")
+			} else {
+				match &entry.content {
+					AgentTimelineContent::Item { kind, text, .. }
+						if kind == "userMessage" || kind == "agentMessage" =>
+						(kind == "userMessage", text, "Conversation message"),
+					AgentTimelineContent::Speech { role, text, .. } =>
+						(role == "user", text, "Voice message"),
+					_ => continue,
+				}
 			};
 
 			if user {
@@ -194,7 +206,11 @@ impl AgentSurface {
 					answer: String::new(),
 				});
 
-				mark.question = preview(text);
+				mark.question = if voice_headers.contains_key(&index) {
+					format!("Voice conversation · {}", preview(text))
+				} else {
+					preview(text)
+				};
 
 				mark.answer.clear();
 

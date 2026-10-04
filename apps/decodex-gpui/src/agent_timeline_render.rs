@@ -41,8 +41,13 @@ impl AgentSurface {
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
 		{
-			return VoiceBlock { key: identity, title: "Voice conversation".into(), text }
-				.into_any_element();
+			return VoiceBlock {
+				key: identity,
+				title: "Voice conversation".into(),
+				expanded: false,
+				text,
+			}
+			.into_any_element();
 		}
 		let mut row = gpui::div()
 			.w_full()
@@ -242,11 +247,8 @@ impl AgentSurface {
 			content @ AgentTimelineContent::Item { .. } =>
 				self.native_item_content(work, content, identity, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
-				.child(VoiceBlock {
-					key: identity.into(),
-					title: if role == "user" { "You · Voice" } else { "Assistant · Voice" }.into(),
-					text: text.clone(),
-				})
+				.child(agent_surface::muted(if role == "user" { "You" } else { "Assistant" }))
+				.child(markdown::render(text, identity))
 				.when(*truncated, |r| r.child(agent_surface::muted("Voice transcript shortened.")))
 				.into_any_element(),
 			AgentTimelineContent::VoiceBoundary { kind, outcome, .. } => row
@@ -338,8 +340,13 @@ impl AgentSurface {
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
 		{
-			return VoiceBlock { key: identity.into(), title: "Voice conversation".into(), text }
-				.into_any_element();
+			return VoiceBlock {
+				key: identity.into(),
+				title: "Voice conversation".into(),
+				expanded: false,
+				text,
+			}
+			.into_any_element();
 		}
 
 		if kind == "agentMessage"
