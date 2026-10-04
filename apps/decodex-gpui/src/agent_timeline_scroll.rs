@@ -160,6 +160,19 @@ struct Anchor {
 }
 
 impl AgentSurface {
+	pub(super) fn native_pagination_settling(&self) -> bool {
+		self.timeline.native.viewport.0.borrow().pending.is_some()
+	}
+
+	pub(super) fn preserve_group_anchor(&self, indices: &[usize]) {
+		let mut state = self.timeline.native.viewport.0.borrow_mut();
+		if let Some(anchor) = &mut state.pending
+			&& indices.iter().any(|i| row_key(&self.timeline.native.entries[*i]) == anchor.key)
+		{
+			anchor.key = row_key(&self.timeline.native.entries[indices[0]]);
+		}
+	}
+
 	pub(in super::super) fn prepare_history_layout(&self, window: &Window) {
 		let width = self
 			.selected

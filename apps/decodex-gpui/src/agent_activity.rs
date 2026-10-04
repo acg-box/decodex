@@ -353,6 +353,7 @@ impl AgentSurface {
 			self.set_voice_follow(following);
 
 			if delta.y > gpui::px(0.) {
+				self.timeline.native.prefetch_requested = true;
 				self.prefetch_older_history(cx);
 			}
 

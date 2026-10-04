@@ -10,6 +10,16 @@ pub(crate) struct Conversation {
 }
 
 impl Conversation {
+	pub fn identity(&self, entries: &[AgentTimelineEntry]) -> String {
+		// The closing boundary is present on the newest page and remains stable as older
+		// speech is prepended. Session IDs alone can be reused by later calls.
+		let entry = self.indices.iter().rev().map(|i| &entries[*i]).find(|entry| {
+            matches!(&entry.content, Content::VoiceBoundary { kind, .. } if kind == "realtimeSessionClosed")
+        }).unwrap_or(&entries[self.indices[0]]);
+		serde_json::json!([self.session, crate::shell::agent_surface::native_timeline::key(entry)])
+			.to_string()
+	}
+
 	pub fn hidden(&self) -> bool {
 		self.ended && !self.failed && self.text.trim().is_empty()
 	}
@@ -150,6 +160,24 @@ mod tests {
 			attachments: vec![],
 		})
 	}
+	#[test]
+	fn loading_earlier_speech_preserves_the_conversation_identity() {
+		let entries = vec![
+			boundary("start", true),
+			speech("user", "Hi"),
+			speech("assistant", "Hello"),
+			boundary("end", false),
+		];
+		let initial = &entries[2..];
+		assert_eq!(groups(initial)[0].identity(initial), groups(&entries)[0].identity(&entries));
+		let later = vec![
+			boundary("start-again", true),
+			speech("user", "Again"),
+			boundary("end-again", false),
+		];
+		assert_ne!(groups(&entries)[0].identity(&entries), groups(&later)[0].identity(&later));
+	}
+
 	#[test]
 	fn empty_calls_hide_only_after_successful_end() {
 		let empty =

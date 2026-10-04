@@ -113,8 +113,10 @@ impl AgentSurface {
 			return false;
 		};
 
-		if self.timeline.native.older_cursor.is_some()
+		if self.timeline.native.prefetch_requested
+			&& self.timeline.native.older_cursor.is_some()
 			&& self.timeline.native.task.is_none()
+			&& !self.native_pagination_settling()
 			&& self.timeline.native.can_retry(std::time::Instant::now())
 			&& self.timeline.follow_paused.contains(&binding.work)
 			&& self.timeline.scroll.get(&binding.work).is_some_and(|scroll| {
@@ -263,12 +265,21 @@ impl AgentSurface {
 				panel = panel.child(agent_surface::muted("Showing an earlier history window. Select Latest native history to return to recent messages."));
 			}
 			if self.timeline.native.older_cursor.is_some() {
-				panel = panel.child(self.workspace_action(
-					"native-timeline-older".into(),
-					"Read earlier native history".into(),
-					move |s, cx| s.load_native_timeline(&binding.work, &binding.thread, true, cx),
-					cx,
-				));
+				panel = panel.child(
+					self.workspace_action(
+						"native-timeline-older".into(),
+						if self.timeline.native.task.is_some() {
+							"Loading earlier history…"
+						} else {
+							"Load earlier history · up to 15 records"
+						}
+						.into(),
+						move |s, cx| {
+							s.load_native_timeline(&binding.work, &binding.thread, true, cx)
+						},
+						cx,
+					),
+				);
 			}
 			if self.timeline.native.opening_session.is_some() {
 				panel = panel.child(agent_surface::muted(
@@ -319,6 +330,9 @@ impl AgentSurface {
 		self.prepare_process_folds(work, &collapsed);
 
 		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
+		for group in &voice_groups {
+			self.preserve_group_anchor(&group.indices);
+		}
 		let voice_headers: std::collections::BTreeMap<_, _> =
 			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
 		let voice_hidden: BTreeSet<_> =
@@ -352,8 +366,12 @@ impl AgentSurface {
 						.into_any_element()
 				} else {
 					super::voice::history::VoiceBlock {
-						key: serde_json::json!([work.id, work.codex_thread_id, key(entry)])
-							.to_string(),
+						key: serde_json::json!([
+							work.id,
+							work.codex_thread_id,
+							group.identity(&self.timeline.native.entries)
+						])
+						.to_string(),
 						title: title.into(),
 						expanded: !group.ended,
 						text: group.text.clone(),
@@ -549,6 +567,7 @@ impl AgentSurface {
 		};
 
 		if older {
+			self.timeline.native.prefetch_requested = false;
 			self.timeline.follow_paused.insert(work.into());
 
 			self.timeline.navigation = None;
@@ -670,6 +689,7 @@ pub(super) struct Timeline {
 	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
 	summary: Vec<AgentTimelineContent>,
 	pub older_cursor: Option<String>,
+	pub prefetch_requested: bool,
 	pub opening_session: Option<String>,
 	requested: Option<(String, String)>,
 	requested_turn: Option<String>,
