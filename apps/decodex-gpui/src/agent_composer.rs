@@ -382,9 +382,11 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		let editor = gpui::div()
 			.id("composer-editor-area")
+			.debug_selector(|| "composer-editor-area".into())
 			.flex()
 			.flex_col()
 			.flex_1()
+			.when(self.voice.is_none(), |d| d.flex_none().w_full())
 			.min_w_0()
 			.when(native, |d| {
 				d.on_mouse_down(
@@ -445,11 +447,14 @@ impl AgentSurface {
 			)
 			.children(self.attachment_row(cx))
 			.children(self.task_reference_row(cx))
-			.child(
-				gpui::div()
+			.map(|capsule| {
+				let controls = gpui::div()
+					.id("composer-action-row")
+					.debug_selector(|| "composer-action-row".into())
 					.w_full()
+					.min_w_0()
 					.flex()
-					.items_end()
+					.items_center()
 					.gap(gpui::px(4.))
 					.child(self.composer_control(
 						"attach",
@@ -457,10 +462,13 @@ impl AgentSurface {
 						"Attachments, skills and microphone",
 						|s, cx| s.toggle_composer_menu("attachments", cx),
 						cx,
-					))
-					.child(editor)
-					.child(self.composer_toolbar(cx)),
-			)
+					));
+				if self.voice.is_some() {
+					capsule.child(controls.child(editor).child(self.composer_toolbar(cx)))
+				} else {
+					capsule.child(editor).child(controls.child(self.composer_toolbar(cx)))
+				}
+			})
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -481,7 +489,8 @@ impl AgentSurface {
 						.mb(gpui::px(if left { 8. } else { 10. }))
 						.when(left, |d| d.left(gpui::px(0.)))
 						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-						.when(!left, |d| d.right(gpui::px(70.)))
+						.when(menu == Some("model"), |d| d.left(gpui::px(36.)))
+						.when(!left && menu != Some("model"), |d| d.right(gpui::px(70.)))
 						.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
 							380.
 						} else if left {
@@ -643,11 +652,11 @@ impl AgentSurface {
 		let model = self.composer_model_label(cx);
 
 		gpui::div()
-			.flex_none()
+			.flex_1()
+			.min_w_0()
 			.flex()
 			.items_center()
 			.gap(gpui::px(1.0))
-			.children(self.usage_line(cx))
 			.child(self.composer_control(
 				"model",
 				model,
@@ -655,6 +664,8 @@ impl AgentSurface {
 				|s, cx| s.toggle_composer_menu("model", cx),
 				cx,
 			))
+			.child(gpui::div().flex_1())
+			.children(self.usage_line(cx))
 			.child(self.composer_control_with_window(
 				"dictation",
 				"".into(),
@@ -756,7 +767,13 @@ impl AgentSurface {
 			.line_height(gpui::px(16.0))
 			.text_color(gpui::rgb(if send { TEXT } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
-				d.px(gpui::px(4.)).text_size(gpui::px(11.)).font_weight(FontWeight::NORMAL)
+				d.px(gpui::px(4.))
+					.text_size(gpui::px(11.))
+					.font_weight(FontWeight::NORMAL)
+					.flex_shrink(1.)
+					.min_w_0()
+					.max_w(gpui::px(220.))
+					.overflow_hidden()
 			})
 			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
 				d.w_full().h(gpui::px(32.)).justify_start().text_size(gpui::px(12.))

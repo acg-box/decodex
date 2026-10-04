@@ -1459,6 +1459,36 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn composer_text_uses_full_width_above_a_stable_action_row(cx: &mut gpui::TestAppContext) {
+		let (view, visual) =
+			cx.add_window_view(|_, cx| VoiceComposerView(cx.new(AgentSurface::new)));
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		for width in [360., 800.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(400.)));
+			let mut footer_height = None;
+			for text in ["Short draft", "First line\nSecond line\nThird line"] {
+				surface.update(visual, |s, cx| {
+					s.composer.update(cx, |input, cx| input.set_content(text, cx))
+				});
+				visual.update(|window, cx| {
+					window.draw(cx).clear();
+				});
+				let editor = visual.debug_bounds("composer-editor-area").unwrap();
+				let footer = visual.debug_bounds("composer-action-row").unwrap();
+				let send = visual.debug_bounds("composer-send").unwrap();
+				assert_eq!(editor.size.width, footer.size.width);
+				assert!(editor.origin.y + editor.size.height <= footer.origin.y);
+				assert!(send.origin.x + send.size.width <= gpui::px(width));
+				assert_eq!(send.origin.y + send.size.height, footer.origin.y + footer.size.height);
+				if let Some(height) = footer_height {
+					assert_eq!(footer.size.height, height);
+				}
+				footer_height = Some(footer.size.height);
+			}
+		}
+	}
+
+	#[gpui::test]
 	fn active_voice_replaces_the_editor_and_restores_its_draft(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
 
