@@ -2,6 +2,7 @@ import AppKit
 @preconcurrency import AVFoundation
 import AudioToolbox
 import CoreAudio
+import Darwin
 import OSLog
 
 /// Only the engine's serial tap calls encode. The finish flag also has a UI writer.
@@ -9,6 +10,8 @@ final class DictationPCMEncoder: @unchecked Sendable {
     private let converter: AVAudioConverter
     private let output: AVAudioFormat
     private var pending: [Int16] = []
+    // Deliver 20 ms of 24 kHz PCM without waiting for an 85 ms packet.
+    private static let packetSamples = 480
     private var first = true
     private let lock = NSLock()
     private var finishing = false
@@ -51,8 +54,8 @@ final class DictationPCMEncoder: @unchecked Sendable {
             if status != .haveData || buffer.frameLength == 0 { break }
         }
         var frames: [Data] = []
-        while pending.count >= 2_048 || (final && !pending.isEmpty) {
-            let count = min(2_048, pending.count)
+        while pending.count >= Self.packetSamples || (final && !pending.isEmpty) {
+            let count = min(Self.packetSamples, pending.count)
             let bytes = Array(pending.prefix(count)).map { $0.littleEndian }
             frames.append(bytes.withUnsafeBytes { Data($0) })
             pending.removeFirst(count)
@@ -145,6 +148,7 @@ private final class DictationAudioWorker: @unchecked Sendable {
     private var cancelled = false
     private let emit: @Sendable (DictationCaptureEvent) -> Void
     private let requestedAt = Date()
+    private let requestedHostTime = mach_absolute_time()
 
     init(queue: DispatchQueue, resources: DictationAudioResources, emit: @escaping @Sendable (DictationCaptureEvent) -> Void) {
         self.queue = queue
@@ -166,9 +170,9 @@ private final class DictationAudioWorker: @unchecked Sendable {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.format }
-        let encoder = try DictationPCMEncoder(format: format)
+        let encoder = try resources.takeEncoder(format: format)
         self.encoder = encoder
-        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 100), format: format, error: ()) { @Sendable [weak self, encoder] buffer, _ in
+        try input.__installTap(onBus: 0, bufferSize: AVAudioFrameCount(format.sampleRate / 100), format: format, error: ()) { @Sendable [weak self, encoder] buffer, time in
             guard let frame = encoder.encode(buffer) else {
                 self?.queue.async { [weak self] in
                     guard let self, self.active else { return }
@@ -178,9 +182,17 @@ private final class DictationAudioWorker: @unchecked Sendable {
                 }
                 return
             }
+            let callbackHostTime = mach_absolute_time()
+            let sampleHostTime = time.isHostTimeValid ? time.hostTime : nil
+            let bufferMs = Double(buffer.frameLength) / buffer.format.sampleRate * 1_000
             self?.queue.async { [weak self] in
                 guard let self, self.active else { return }
                 if frame.first {
+                    if let sampleHostTime {
+                        let sampleMs = (AVAudioTime.seconds(forHostTime: sampleHostTime) - AVAudioTime.seconds(forHostTime: self.requestedHostTime)) * 1_000
+                        let deliveryMs = (AVAudioTime.seconds(forHostTime: callbackHostTime) - AVAudioTime.seconds(forHostTime: sampleHostTime)) * 1_000
+                        Self.logger.info("First microphone buffer: sample_ms=\(sampleMs, privacy: .public) delivery_ms=\(deliveryMs, privacy: .public) duration_ms=\(bufferMs, privacy: .public)")
+                    }
                     let elapsed = Date().timeIntervalSince(self.requestedAt) * 1_000
                     Self.logger.info("Microphone ready in \(elapsed, privacy: .public) ms")
                     self.emit(.ready(elapsed))
@@ -228,6 +240,7 @@ private final class DictationAudioWorker: @unchecked Sendable {
         }
         encoder = nil
         engine = nil
+        resources.prepareNextCapture()
     }
 
 }
@@ -237,6 +250,18 @@ private final class DictationAudioWorker: @unchecked Sendable {
 private final class DictationAudioResources: @unchecked Sendable {
     private static let logger = Logger(subsystem: "box.acg.decodex", category: "DictationCapture")
     private var prepared: PreparedDictationEngine?
+    private var nextEncoder: DictationPCMEncoder?
+
+    func takeEncoder(format: AVAudioFormat) throws -> DictationPCMEncoder {
+        defer { nextEncoder = nil }
+        return try nextEncoder ?? DictationPCMEncoder(format: format)
+    }
+
+    func prepareNextCapture() {
+        guard let prepared, prepared.valid, !prepared.engine.isRunning else { return }
+        nextEncoder = try? DictationPCMEncoder(format: prepared.engine.inputNode.outputFormat(forBus: 0))
+        prepared.engine.prepare()
+    }
 
     func prepare(input: String) {
         guard prepared?.engine.isRunning != true else { return }
@@ -246,6 +271,7 @@ private final class DictationAudioResources: @unchecked Sendable {
     func engine(input name: String) throws -> AVAudioEngine {
         if let prepared, prepared.input == name, prepared.valid { return prepared.engine }
         prepared = nil
+        nextEncoder = nil
         let started = Date()
         let requestedDevice = name.isEmpty ? nil : try DictationCapture.device(named: name)
         let engine = AVAudioEngine()
@@ -264,12 +290,13 @@ private final class DictationAudioResources: @unchecked Sendable {
             guard status == noErr else { throw CaptureError.device }
         }
         prepared = PreparedDictationEngine(engine: engine, input: name)
+        prepareNextCapture()
         let elapsed = Date().timeIntervalSince(started) * 1_000
         Self.logger.info("Audio configuration ready in \(elapsed, privacy: .public) ms; capture_running=\(engine.isRunning, privacy: .public)")
         return engine
     }
 
-    func discard() { prepared = nil }
+    func discard() { prepared = nil; nextEncoder = nil }
 }
 
 private final class PreparedDictationEngine: @unchecked Sendable {

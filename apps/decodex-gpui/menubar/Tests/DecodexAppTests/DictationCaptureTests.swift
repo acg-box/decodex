@@ -51,6 +51,17 @@ final class DictationCaptureTests: XCTestCase {
                              "Voice processing's microphone channel must reach dictation without downmix attenuation")
     }
 
+    func testTwentyMillisecondsOfAudioIsDeliveredWithoutWaitingForAnotherBuffer() throws {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
+        buffer.frameLength = 480
+        for index in 0..<480 { buffer.floatChannelData![0][index] = 0.25 }
+        let encoder = try DictationPCMEncoder(format: format)
+        let encoded = try XCTUnwrap(encoder.encode(buffer))
+        XCTAssertEqual(encoded.frames.count, 1)
+        XCTAssertEqual(encoded.frames.first?.count, 960)
+    }
+
     func testConversionBatchesMono24kPCMAndFlushesTheTail() throws {
         let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
@@ -63,7 +74,7 @@ final class DictationCaptureTests: XCTestCase {
         let first = try XCTUnwrap(encoder.encode(buffer))
         XCTAssertTrue(first.first)
         XCTAssertFalse(first.final)
-        XCTAssertEqual(first.frames.first?.count, 4_096)
+        XCTAssertEqual(first.frames.first?.count, 960)
         XCTAssertGreaterThan(first.level, 0)
         let pcm = try XCTUnwrap(first.frames.first)
         let samples = stride(from: 0, to: pcm.count, by: 2).map { offset in
@@ -79,7 +90,7 @@ final class DictationCaptureTests: XCTestCase {
         let bytes = (first.frames + last.frames).reduce(0) { $0 + $1.count }
         XCTAssertGreaterThanOrEqual(bytes, 9_600, "The converter must flush its buffered audio")
         XCTAssertLessThanOrEqual(bytes, 9_648, "Allow at most 1 ms of resampling filter tail")
-        XCTAssertTrue(last.frames.allSatisfy { !$0.isEmpty && $0.count <= 4_096 && $0.count.isMultiple(of: 2) })
-        XCTAssertLessThan(try XCTUnwrap(last.frames.last).count, 4_096, "The final partial buffer must not be discarded")
+        XCTAssertTrue(last.frames.allSatisfy { !$0.isEmpty && $0.count <= 960 && $0.count.isMultiple(of: 2) })
+        XCTAssertLessThanOrEqual(try XCTUnwrap(last.frames.last).count, 960, "The final partial buffer must not be discarded")
     }
 }
