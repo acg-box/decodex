@@ -12,6 +12,7 @@ use crate::{
 			},
 			response_metrics::ResponseMetrics,
 			text_reveal::StreamingText,
+			voice::history::{VoiceBlock, handoff},
 		},
 		workspace_symbols,
 	},
@@ -36,6 +37,13 @@ impl AgentSurface {
 		let identity =
 			serde_json::json!(["summary", work.id, work.codex_thread_id, turn_id, item_id])
 				.to_string();
+		if kind == "userMessage"
+			&& attachments.is_empty()
+			&& let Some(text) = handoff(text)
+		{
+			return VoiceBlock { key: identity, title: "Voice conversation".into(), text }
+				.into_any_element();
+		}
 		let mut row = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -234,12 +242,11 @@ impl AgentSurface {
 			content @ AgentTimelineContent::Item { .. } =>
 				self.native_item_content(work, content, identity, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
-				.child(agent_surface::muted(if role == "user" {
-					"You · Voice"
-				} else {
-					"Assistant · Voice"
-				}))
-				.child(text.clone())
+				.child(VoiceBlock {
+					key: identity.into(),
+					title: if role == "user" { "You · Voice" } else { "Assistant · Voice" }.into(),
+					text: text.clone(),
+				})
 				.when(*truncated, |r| r.child(agent_surface::muted("Voice transcript shortened.")))
 				.into_any_element(),
 			AgentTimelineContent::VoiceBoundary { kind, outcome, .. } => row
@@ -326,6 +333,14 @@ impl AgentSurface {
 		let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
 			(message.text.as_str(), message.truncated)
 		});
+
+		if kind == "userMessage"
+			&& attachments.is_empty()
+			&& let Some(text) = handoff(text)
+		{
+			return VoiceBlock { key: identity.into(), title: "Voice conversation".into(), text }
+				.into_any_element();
+		}
 
 		if kind == "agentMessage"
 			&& phase.as_deref() == Some("commentary")

@@ -822,7 +822,9 @@ fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
 }
 
 fn preview(text: &str) -> String {
-	let text = markdown::plain_text(text);
+	let voice =
+		super::voice::history::handoff(text).map(|text| format!("Voice conversation · {text}"));
+	let text = markdown::plain_text(voice.as_deref().unwrap_or(text));
 	let mut chars = text.chars();
 	let mut text: String = chars.by_ref().take(180).collect();
 

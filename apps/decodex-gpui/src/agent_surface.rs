@@ -2521,6 +2521,15 @@ fn history_entry_presented(
 			));
 	}
 
+	if entry.kind == "user"
+		&& let Some(text) = voice::history::handoff(&entry.text)
+	{
+		return gpui::div().w_full().child(voice::history::VoiceBlock {
+			key: identity.into(),
+			title: "Voice conversation".into(),
+			text,
+		});
+	}
 	let user = entry.kind == "user";
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
