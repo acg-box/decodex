@@ -981,6 +981,37 @@ mod multiline_tests {
 	}
 
 	#[gpui::test]
+	fn measured_height_matches_painted_wrapping(cx: &mut gpui::TestAppContext) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		input.update(visual, |input, cx| {
+			input.set_content(
+				"Wait, wait, wait, you are a  Wait, wait, 一二三四五六你好，你好能听到吗？你好",
+				cx,
+			)
+		});
+		for width in [460., 500., 600., 740.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			input.read_with(visual, |input, _| {
+				let painted: gpui::Pixels = input
+					.last_layout
+					.as_ref()
+					.unwrap()
+					.iter()
+					.map(|line| line.size(gpui::px(ui_theme::BODY_LINE_HEIGHT)).height)
+					.sum();
+				assert_eq!(
+					input.last_bounds.unwrap().size.height,
+					painted,
+					"measurement must not reserve a blank row at width {width}"
+				);
+			});
+		}
+	}
+
+	#[gpui::test]
 	fn newline_wrap_and_native_caret_share_geometry(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
 

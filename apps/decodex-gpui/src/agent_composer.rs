@@ -449,7 +449,7 @@ impl AgentSurface {
 				gpui::div()
 					.w_full()
 					.flex()
-					.items_center()
+					.items_end()
 					.gap(gpui::px(4.))
 					.child(self.composer_control(
 						"attach",

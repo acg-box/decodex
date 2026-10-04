@@ -47,6 +47,7 @@ impl Element for ComposerTextElement {
 		style.size.width = composer_input::relative(1.0).into();
 
 		let input = self.input.clone();
+		let text_style = window.text_style();
 
 		(
 			window.request_measured_layout(style, move |known, available, window, cx| {
@@ -55,7 +56,7 @@ impl Element for ComposerTextElement {
 					_ => gpui::px(500.0),
 				});
 				let input = input.read(cx);
-				let lines = shape(input, width, window);
+				let lines = shape_with_style(input, width, window, &text_style);
 				let limit =
 					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
 
@@ -275,6 +276,16 @@ fn height(lines: &[WrappedLine]) -> Pixels {
 }
 
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
+	let style = window.text_style();
+	shape_with_style(input, width, window, &style)
+}
+
+fn shape_with_style(
+	input: &ComposerInput,
+	width: Pixels,
+	window: &Window,
+	style: &gpui::TextStyle,
+) -> Vec<WrappedLine> {
 	let empty = input.content.is_empty();
 	let text: SharedString = if empty {
 		input.placeholder.clone()
@@ -283,7 +294,6 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 	} else {
 		input.visible_content().to_owned().into()
 	};
-	let style = window.text_style();
 	let run = TextRun {
 		len: text.len(),
 		font: style.font(),
