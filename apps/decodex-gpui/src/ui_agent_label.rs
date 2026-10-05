@@ -1,4 +1,4 @@
-//! Quiet agent state and automatic overflow motion shared by navigation surfaces.
+//! Quiet agent state and automatic overflow motion for the ownership sidebar.
 use crate::{ui_motion, ui_theme};
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, TextRun, Window, prelude::*};
 use std::time::Instant;
@@ -94,6 +94,8 @@ impl RenderOnce for AgentLabel {
 					},
 				)
 				.absolute()
+				.top_0()
+				.left_0()
 				.size_full(),
 			)
 	}

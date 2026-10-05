@@ -399,7 +399,7 @@ impl AgentSurface {
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
-			} else if is_tree || is_tab {
+			} else if is_tree {
 				crate::ui_motion::AgentLabel {
 					id: SharedString::from(label_id).into(),
 					text: label.into(),
@@ -1706,10 +1706,13 @@ impl AgentSurface {
 				id: SharedString::from(format!("graph-signal-{}", work.id)).into(),
 				state: status.into(),
 			})
-			.child(crate::ui_motion::AgentLabel {
-				id: SharedString::from(format!("graph-label-{}", work.id)).into(),
-				text: self.work_label(work).into(),
-			});
+			.child(
+				gpui::div()
+					.min_w_0()
+					.whitespace_nowrap()
+					.text_ellipsis()
+					.child(self.work_label(work)),
+			);
 
 		element.into_any_element()
 	}
