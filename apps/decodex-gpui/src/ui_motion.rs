@@ -64,49 +64,19 @@ pub(crate) struct TabReveal {
 }
 impl RenderOnce for TabReveal {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| (0.0_f32, Tween::new(0.0)));
+		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
 		let now = Instant::now();
-		let (width, progress, moving) = state.update(cx, |s, _| {
-			s.1.target(if self.visible { 1.0 } else { 0.0 }, now);
-
-			(s.0, s.1.sample(now), s.1.moving(now))
+		let (height, moving) = state.update(cx, |s, _| {
+			s.target(if self.visible { 38. } else { 0. }, now);
+			(s.sample(now), s.moving(now))
 		});
-
 		if moving {
 			request_frame(window, cx);
 		}
 		if !self.visible && !moving {
 			cx.defer(self.closed);
 		}
-
-		gpui::div()
-			.flex_none()
-			.w(gpui::px((width + 4.0) * progress))
-			.h(gpui::px(36.0))
-			.overflow_hidden()
-			.flex()
-			.items_center()
-			.child(
-				gpui::div()
-					.flex_none()
-					.flex()
-					.items_center()
-					.opacity(progress)
-					.on_children_prepainted(move |bounds, _, cx| {
-						if let Some(bounds) = bounds.first() {
-							let measured = f32::from(bounds.size.width);
-
-							state.update(cx, |s, cx| {
-								if (s.0 - measured).abs() > 0.5 {
-									s.0 = measured;
-
-									cx.notify();
-								}
-							});
-						}
-					})
-					.child(self.child),
-			)
+		gpui::div().w_full().h(gpui::px(height)).flex_none().overflow_hidden().child(self.child)
 	}
 }
 
@@ -646,5 +616,71 @@ mod tests {
 
 		assert_eq!(tween.sample(end), 0.0);
 		assert!(!tween.moving(end));
+	}
+}
+
+/// A status indicator, not a fabricated completion percentage.
+#[derive(IntoElement)]
+pub(crate) struct AgentRailStatus {
+	pub state: String,
+}
+impl RenderOnce for AgentRailStatus {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let busy = matches!(
+			self.state.as_str(),
+			"Running" | "Starting" | "running" | "working" | "active"
+		);
+		let attention = matches!(
+			self.state.as_str(),
+			"Needs you" | "Needs attention" | "Blocked" | "failed" | "systemError"
+		);
+		let clock = window.use_keyed_state("agent-rail-clock", cx, |_, _| Instant::now());
+		let phase = if busy && !reduced() {
+			request_frame(window, cx);
+			clock.read(cx).elapsed().as_secs_f32() * 2.2
+		} else {
+			0.
+		};
+		let color = if attention {
+			crate::ui_theme::AMBER
+		} else if busy {
+			crate::ui_theme::BLUE
+		} else {
+			crate::ui_theme::TEXT_MUTED
+		};
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				let mut path = gpui::PathBuilder::stroke(gpui::px(1.5));
+				for i in 0..=32 {
+					let angle = phase
+						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.72 } else { 1. };
+					let p = bounds.center()
+						+ gpui::point(gpui::px(angle.cos() * 7.), gpui::px(angle.sin() * 7.));
+					if i == 0 {
+						path.move_to(p);
+					} else {
+						path.line_to(p);
+					}
+				}
+				if let Ok(path) = path.build() {
+					window.paint_path(
+						path,
+						gpui::rgba((color << 8) | if busy || attention { 230 } else { 100 }),
+					);
+				}
+				if attention {
+					window.paint_quad(gpui::fill(
+						gpui::Bounds::new(
+							bounds.center() - gpui::point(gpui::px(1.5), gpui::px(1.5)),
+							gpui::size(gpui::px(3.), gpui::px(3.)),
+						),
+						gpui::rgb(color),
+					));
+				}
+			},
+		)
+		.size(gpui::px(24.))
+		.flex_none()
 	}
 }

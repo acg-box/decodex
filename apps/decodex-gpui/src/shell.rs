@@ -2629,7 +2629,7 @@ fn floating_window_controls(
 				.top_0()
 				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
 				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
-				.h(gpui::px(36.))
+				.h_full()
 				.flex()
 				.items_center()
 				.min_w_0()

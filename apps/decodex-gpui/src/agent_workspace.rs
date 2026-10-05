@@ -97,6 +97,8 @@ impl AgentSurface {
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
+		self.workspace.sidebar_peek = false;
+		self.workspace.sidebar_leave = None;
 
 		cx.notify();
 	}
@@ -358,7 +360,7 @@ impl AgentSurface {
 			})
 			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
 			.on_click(cx.listener(move |s, _, _, cx| {
-				if is_tree {
+				if is_tree || is_tab {
 					cx.stop_propagation();
 				}
 				action(s, cx);
@@ -378,7 +380,8 @@ impl AgentSurface {
 					.h(gpui::px(26.))
 					.py_0()
 					.px(gpui::px(10.))
-					.max_w(gpui::px(154.))
+					.w_full()
+					.min_w_0()
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
 					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
@@ -421,16 +424,7 @@ impl AgentSurface {
 			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.pr(gpui::px(4.));
 
-		panel = panel.child(self.workspace_action(
-			"agent-home".into(),
-			"Main".into(),
-			|s, cx| {
-				if let Some(id) = s.root_id() {
-					s.open_page(&id, cx);
-				}
-			},
-			cx,
-		));
+		panel = panel.child(self.workspace_tabs(cx));
 		panel = panel.child(self.workspace_projects_header(cx));
 
 		let mut list = gpui::div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
@@ -496,7 +490,11 @@ impl AgentSurface {
 
 		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
 
-		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
+		panel
+			.when(self.workspace.sidebar_visible, |panel| {
+				panel.child(self.sidebar_resize_handle(cx))
+			})
+			.into_any_element()
 	}
 
 	fn workspace_projects_header(&self, cx: &mut Context<Self>) -> Div {
@@ -533,73 +531,86 @@ impl AgentSurface {
 			))
 	}
 
-	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
-		let root = self.root_id();
-		let mut row = gpui::div()
-			.id("agent-pages")
-			.role(Role::TabList)
-			.aria_label("Open conversations")
-			.h(gpui::px(36.0))
-			.min_h(gpui::px(36.0))
-			.min_w_0()
-			.overflow_x_scroll()
-			.flex()
-			.items_center();
-		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
-
+	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
+		let mut pages = vec![(self.root_id().unwrap_or_default(), "Main".into(), false)];
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(self.workspace.pages.iter().filter_map(|id| {
-				if let Some(label) = self.native_page_label(id) {
-					return Some((id.clone(), label, true));
-				}
+				self.native_page_label(id)
+					.or_else(|| {
+						snapshot.work_items.iter().find(|w| &w.id == id).map(|w| self.work_label(w))
+					})
+					.map(|label| (id.clone(), label, true))
+			}));
+		}
+		pages
+	}
+
+	pub(super) fn conversation_status(&self, id: &str) -> String {
+		if let Some((owner, thread)) = self.native_agents.pages.get(id) {
+			return self
+				.native_agents
+				.lists
+				.get(owner)
+				.into_iter()
+				.flatten()
+				.find(|a| &a.thread_id == thread)
+				.map(|a| a.status.clone())
+				.unwrap_or_default();
+		}
+		self.snapshot
+			.as_ref()
+			.and_then(|snapshot| {
 				snapshot
 					.work_items
 					.iter()
-					.find(|w| &w.id == id)
-					.map(|w| (id.clone(), self.work_label(w), true))
-			}));
-		}
+					.find(|w| w.id == id)
+					.map(|w| super::graph::state_in(snapshot, w).0.to_string())
+			})
+			.unwrap_or_default()
+	}
 
-		for (id, label, closable) in pages {
+	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+		let mut list = gpui::div()
+			.id("agent-pages")
+			.role(Role::TabList)
+			.aria_label("Open conversations")
+			.w_full()
+			.min_w_0()
+			.max_h(gpui::px(360.))
+			.overflow_y_scroll()
+			.flex()
+			.flex_col();
+		for (id, label, closable) in self.conversation_pages() {
 			let active = self.conversation_page().as_ref() == Some(&id)
 				|| (!closable && self.selected.is_none());
 			let select = id.clone();
+			let row_select = id.clone();
 			let group = SharedString::from(format!("conversation-tab-{id}"));
 			let mut tab = gpui::div()
 				.id(group.clone())
 				.group(group.clone())
-				.flex_none()
+				.w_full()
+				.min_w_0()
+				.h(gpui::px(34.))
+				.px(gpui::px(4.))
 				.flex()
 				.items_center()
-				.h(gpui::px(36.))
-				.relative()
-				.rounded_t(gpui::px(9.))
-				.bg(gpui::rgba(if active { AGENT_CHAT_OVERLAY } else { 0xffffff00 }))
-				.hover(move |style| {
-					style.bg(gpui::rgba(if active { AGENT_CHAT_OVERLAY } else { 0xffffff07 }))
-				})
-				.when(!active, |tab| {
-					tab.child(
-						gpui::div()
-							.absolute()
-							.right_0()
-							.top(gpui::px(11.))
-							.w(gpui::px(1.))
-							.h(gpui::px(14.))
-							.bg(gpui::rgba(0xffffff18)),
-					)
-				})
-				.child(self.workspace_action(
+				.gap(gpui::px(4.))
+				.rounded(gpui::px(7.))
+				.cursor_pointer()
+				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
+				.hover(move |s| s.bg(gpui::rgba(if active { 0xffffff18 } else { HOVER_FILL })))
+				.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_select, cx)))
+				.child(crate::ui_motion::AgentRailStatus { state: self.conversation_status(&id) })
+				.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
 					format!("page-{id}"),
 					label.clone(),
 					move |s, cx| s.open_page(&select, cx),
 					cx,
-				));
-
+				)));
 			if closable {
 				let close = id.clone();
-				let keyboard = close.clone();
-
+				let keyboard = id.clone();
 				tab = tab.child(
 					gpui::div()
 						.id(SharedString::from(format!("close-{id}")))
@@ -607,36 +618,34 @@ impl AgentSurface {
 						.tab_index(0)
 						.aria_label(format!("Close {label}"))
 						.size(gpui::px(20.))
-						.mr(gpui::px(3.))
+						.flex_none()
 						.rounded(gpui::px(5.))
 						.flex()
 						.items_center()
 						.justify_center()
-						.cursor_pointer()
-						.opacity(if active { 0.65 } else { 0.0 })
-						.group_hover(group, |style| style.opacity(1.))
-						.focus(|style| style.opacity(1.))
-						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
+						.opacity(if active { 0.65 } else { 0. })
+						.group_hover(group, |s| s.opacity(1.))
+						.focus(|s| s.opacity(1.))
+						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 						.child(workspace_symbols::icon_sized(
 							super::super::workspace_symbols::Symbol::Close,
 							12.,
 						))
-						.on_click(cx.listener(move |s, _, _, cx| s.close_page(&close, cx)))
-						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-							if !event.is_held
-								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+						.on_click(cx.listener(move |s, _, _, cx| {
+							cx.stop_propagation();
+							s.close_page(&close, cx);
+						}))
+						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
 							{
-								s.close_page(&keyboard, cx);
 								cx.stop_propagation();
+								s.close_page(&keyboard, cx);
 							}
 						})),
 				);
-			}
-			if closable {
 				let visible = !self.workspace.closing_pages.contains(&id);
 				let surface = cx.entity().downgrade();
-
-				row = row.child(TabReveal {
+				list = list.child(TabReveal {
 					id: SharedString::from(format!("tab-reveal-{id}")).into(),
 					visible,
 					child: tab.into_any_element(),
@@ -650,11 +659,10 @@ impl AgentSurface {
 					}),
 				});
 			} else {
-				row = row.child(tab.mr(gpui::px(4.)));
+				list = list.child(tab.mb(gpui::px(4.)));
 			}
 		}
-
-		row.into_any_element()
+		list.into_any_element()
 	}
 
 	pub(super) fn connection_initializing(&self) -> bool {
@@ -1127,6 +1135,7 @@ impl AgentSurface {
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
+			.children(self.sidebar_peek_overlay(wide, window, cx))
 			.into_any_element()
 	}
 

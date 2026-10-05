@@ -1684,16 +1684,31 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_context(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn work_context(&self, _cx: &mut Context<Self>) -> gpui::AnyElement {
+		let title = self
+			.conversation_page()
+			.and_then(|id| {
+				self.native_page_label(&id).or_else(|| {
+					self.snapshot
+						.as_ref()?
+						.work_items
+						.iter()
+						.find(|w| w.id == id)
+						.map(|w| self.work_label(w))
+				})
+			})
+			.unwrap_or_else(|| "Main".into());
 		gpui::div()
-			.flex_none()
+			.debug_selector(|| "workspace-conversation-header".into())
+			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
 			.max_w_full()
 			.min_w_0()
-			.h(gpui::px(36.))
-			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
 			.items_center()
-			.child(self.workspace_tabs(cx))
+			.px(gpui::px(10.))
+			.text_size(gpui::px(12.))
+			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.child(gpui::div().min_w_0().whitespace_nowrap().text_ellipsis().child(title))
 			.into_any_element()
 	}
 
@@ -2280,6 +2295,8 @@ struct WorkspaceView {
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
+	sidebar_peek: bool,
+	sidebar_leave: Option<Task<()>>,
 	sidebar_width: f32,
 	agent_panel_width: f32,
 	graph_panel_height: f32,
@@ -2308,6 +2325,8 @@ impl Default for WorkspaceView {
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
+			sidebar_peek: false,
+			sidebar_leave: None,
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),
 			graph_panel_height: PanelDefaults::configured().dock.into(),

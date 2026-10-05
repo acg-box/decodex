@@ -36,11 +36,7 @@ impl AgentSurface {
 		}
 
 		let width = f32::from(window.viewport_size().width);
-		let left = if self.workspace.sidebar_visible && width > 1_000.0 {
-			self.workspace.sidebar_width
-		} else {
-			0.0
-		};
+		let left = self.workspace_sidebar_width(window);
 
 		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
 	}

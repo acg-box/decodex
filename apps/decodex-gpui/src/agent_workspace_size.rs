@@ -2,7 +2,7 @@
 
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	Stateful,
+	SharedString, Stateful,
 };
 
 use crate::{
@@ -115,7 +115,7 @@ impl AgentSurface {
 		if self.workspace.sidebar_visible && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
 		} else {
-			0.
+			52.
 		}
 	}
 
@@ -124,17 +124,13 @@ impl AgentSurface {
 		(self.workspace_sidebar_width(window).max(180.), self.agent_tree_width(window).max(140.))
 	}
 
-	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
+	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);
 		}
 
 		let viewport = window.viewport_size();
-		let sidebar = if self.workspace.sidebar_visible && wide {
-			sidebar_width(self.workspace.sidebar_width, viewport.width.into())
-		} else {
-			0.0
-		};
+		let sidebar = self.workspace_sidebar_width(window);
 		let available = (
 			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
@@ -153,32 +149,133 @@ impl AgentSurface {
 		available
 	}
 
+	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+		self.workspace.sidebar_leave = None;
+		if hovered {
+			self.workspace.sidebar_peek = true;
+			cx.notify();
+		} else {
+			self.workspace.sidebar_leave = Some(cx.spawn(async |surface, cx| {
+				cx.background_executor().timer(std::time::Duration::from_millis(220)).await;
+				let _ = surface.update(cx, |s, cx| {
+					s.workspace.sidebar_peek = false;
+					cx.notify();
+				});
+			}));
+		}
+	}
+
 	pub(super) fn sidebar_slot(
 		&self,
 		wide: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let width =
-			sidebar_width(self.workspace.sidebar_width, window.viewport_size().width.into());
-		let fraction = ui_motion::value(
-			"agent-sidebar-visibility",
-			if self.workspace.sidebar_visible && wide { 1.0 } else { 0.0 },
+		let expanded = self.workspace.sidebar_visible && wide;
+		let target = self.workspace_sidebar_width(window);
+		let width = ui_motion::value("agent-sidebar-width", target, window, cx);
+		let mut slot = gpui::div()
+			.id("left-panel-slot")
+			.flex_none()
+			.w(gpui::px(width))
+			.h_full()
+			.overflow_hidden()
+			.capture_any_mouse_down(
+				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
+			);
+		if expanded {
+			slot = slot
+				.child(gpui::div().w(gpui::px(target)).h_full().child(self.workspace_sidebar(cx)));
+		} else {
+			let mut rail = gpui::div()
+				.id("conversation-rail")
+				.w(gpui::px(52.))
+				.h_full()
+				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+				.px(gpui::px(6.))
+				.flex()
+				.flex_col()
+				.gap(gpui::px(6.))
+				.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)));
+			for (id, label, _) in self.conversation_pages() {
+				if self.workspace.closing_pages.contains(&id) {
+					continue;
+				}
+				let active = self.conversation_page().as_ref() == Some(&id);
+				let key_id = id.clone();
+				let status = self.conversation_status(&id);
+				rail = rail.child(
+					gpui::div()
+						.id(SharedString::from(format!("rail-page-{id}")))
+						.role(Role::Tab)
+						.aria_label(label)
+						.aria_selected(active)
+						.tab_index(0)
+						.size(gpui::px(40.))
+						.rounded(gpui::px(10.))
+						.cursor_pointer()
+						.flex()
+						.items_center()
+						.justify_center()
+						.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
+						.hover(|s| s.bg(gpui::rgba(0xffffff16)))
+						.child(crate::ui_motion::AgentRailStatus { state: status })
+						.on_click(cx.listener(move |s, _, _, cx| s.open_page(&id, cx)))
+						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+							if !event.is_held
+								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+							{
+								s.open_page(&key_id, cx);
+								cx.stop_propagation();
+							}
+						})),
+				);
+			}
+			slot = slot.child(rail);
+		}
+		slot.into_any_element()
+	}
+
+	pub(super) fn sidebar_peek_overlay(
+		&self,
+		wide: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		if self.workspace.sidebar_visible && wide {
+			return None;
+		}
+		let presence = ui_motion::value(
+			"agent-sidebar-peek",
+			if self.workspace.sidebar_peek { 1. } else { 0. },
 			window,
 			cx,
 		);
-
-		gpui::div()
-			.flex_none()
-			.w(gpui::px(width * fraction))
-			.h_full()
-			.overflow_hidden()
-			.id("left-panel-slot")
-			.capture_any_mouse_down(
-				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
+		if presence < 0.001 {
+			return None;
+		}
+		let width =
+			sidebar_width(self.workspace.sidebar_width, window.viewport_size().width.into());
+		Some(
+			gpui::deferred(
+				gpui::div()
+					.id("conversation-sidebar-peek")
+					.debug_selector(|| "conversation-sidebar-peek".into())
+					.absolute()
+					.left_0()
+					.top_0()
+					.bottom_0()
+					.w(gpui::px(width))
+					.occlude()
+					.opacity(presence)
+					.bg(gpui::rgb(0x242428))
+					.rounded_r(gpui::px(12.))
+					.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
+					.child(self.workspace_sidebar(cx)),
 			)
-			.child(gpui::div().w(gpui::px(width)).h_full().child(self.workspace_sidebar(cx)))
-			.into_any_element()
+			.with_priority(3)
+			.into_any_element(),
+		)
 	}
 
 	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -235,6 +332,7 @@ impl AgentSurface {
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		gpui::div()
 			.id("agent-workspace")
+			.relative()
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
 				let Some((start, width)) = s.workspace.sidebar_drag else {
 					return;
@@ -277,6 +375,42 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
+	#[gpui::test]
+	fn sidebar_peek_keeps_reading_geometry_and_reentry_cancels_close(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let before = visual.debug_bounds("workspace-transcript").unwrap();
+		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("conversation-sidebar-peek").is_some());
+		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), before);
+		surface.update(visual, |s, cx| {
+			s.sidebar_hover(false, cx);
+			s.sidebar_hover(true, cx);
+		});
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(s.workspace.sidebar_peek));
+		surface.update(visual, |s, cx| s.sidebar_hover(false, cx));
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+	}
+
 	#[gpui::test]
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -386,18 +520,18 @@ mod tests {
 				s.workspace.graph_expanded = false;
 				s.workspace.graph_panel_height = 275.;
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
+				assert_eq!(s.workspace_graph_size(window, true), (1_148., 275.));
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
+				assert_eq!(s.workspace_graph_size(window, true), (1_148., 275.));
 
 				s.workspace.graph_expanded = true;
 
 				assert_eq!(
 					s.workspace_graph_size(window, true),
-					(1_200., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
+					(1_148., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
 				);
 
 				s.workspace.graph_visible = false;
