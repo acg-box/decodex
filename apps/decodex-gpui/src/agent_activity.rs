@@ -753,7 +753,16 @@ impl AgentSurface {
 
 						cx.notify();
 					}))
-					.tooltip(move |_, cx| cx.new(|_| HistoryPreview(tip.clone())).into())
+					// Navigation previews already have their text; do not use the
+					// generic tooltip's 500 ms discovery delay.
+					.tooltip_show_delay(std::time::Duration::ZERO)
+					.tooltip(move |_, cx| {
+						cx.new(|_| HistoryPreview {
+							mark: tip.clone(),
+							opened: std::time::Instant::now(),
+						})
+						.into()
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
@@ -829,10 +838,25 @@ pub(super) struct WheelScroll {
 	motion: crate::ui_scroll::Motion,
 }
 
-struct HistoryPreview(HistoryMark);
+struct HistoryPreview {
+	mark: HistoryMark,
+	opened: std::time::Instant,
+}
 impl Render for HistoryPreview {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let progress = if ui_motion::reduced() {
+			1.0
+		} else {
+			(self.opened.elapsed().as_secs_f32() / 0.08).min(1.0)
+		};
+		if progress < 1.0 {
+			ui_motion::request_frame(window, cx);
+		}
+
+		// Paint the surface and text together, already readable on the first frame.
 		gpui::div()
+			.debug_selector(|| "history-hover-preview".into())
+			.opacity(0.8 + 0.2 * (1.0 - (1.0 - progress).powi(3)))
 			.w(gpui::px(320.0))
 			.p_3()
 			.rounded(gpui::px(10.0))
@@ -848,12 +872,12 @@ impl Render for HistoryPreview {
 				gpui::div()
 					.text_size(gpui::px(10.0))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(self.0.time.clone()),
+					.child(self.mark.time.clone()),
 			)
-			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.0.question.clone()))
-			.when(!self.0.answer.is_empty(), |panel| {
+			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.mark.question.clone()))
+			.when(!self.mark.answer.is_empty(), |panel| {
 				panel.child(
-					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.0.answer.clone()),
+					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.mark.answer.clone()),
 				)
 			})
 	}
@@ -898,6 +922,30 @@ mod tests {
 	};
 	#[cfg(test)] use decodex_protocol::AgentTimelineEntry;
 	#[cfg(test)] use decodex_protocol::AgentTimelinePage;
+
+	#[gpui::test]
+	fn history_hover_shows_without_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let bounds = surface.read_with(visual, |s, _| {
+			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
+		});
+		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
+		// No clock advance: cached content must appear before the default tooltip dwell.
+		visual.run_until_parked();
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("history-hover-preview").is_some());
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(1.), gpui::px(1.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
+		visual.run_until_parked();
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("history-hover-preview").is_none());
+	}
 
 	#[gpui::test]
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
