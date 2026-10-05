@@ -900,11 +900,10 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.items_center()
-				.pt(gpui::px(96.))
-				.gap_3()
-				.child(
-					gpui::div().text_size(gpui::px(24.)).child("What would you like to work on?"),
-				)
+				.justify_center()
+				.pb(gpui::px(self.workspace.composer_overlay_height))
+				.gap_2()
+				.child(gpui::div().text_size(gpui::px(20.)).child("What would you like to do?"))
 				.child(self.workspace_choices(true, cx))
 				.into_any_element();
 		}
@@ -1044,7 +1043,9 @@ impl AgentSurface {
 				.flex_1()
 				.min_h_0()
 				.flex()
-				.child(self.history_rail_slot(window, cx))
+				.when(!self.is_new_conversation(), |row| {
+					row.child(self.history_rail_slot(window, cx))
+				})
 				.relative()
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
