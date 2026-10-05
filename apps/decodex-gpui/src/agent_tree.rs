@@ -1,5 +1,5 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
-use std::f32::consts::FRAC_PI_2;
+use std::{collections::BTreeSet, f32::consts::FRAC_PI_2};
 
 use gpui::{AnyElement, Div, FontWeight, KeyDownEvent, PathBuilder, Stateful};
 use ui_theme::{
@@ -48,6 +48,24 @@ impl AgentSurface {
 		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
 	}
 
+	fn agent_count(&self) -> usize {
+		let mut threads = BTreeSet::new();
+		let mut count = 0;
+		if let Some(snapshot) = &self.snapshot {
+			for work in &snapshot.work_items {
+				if work.codex_thread_id.as_ref().is_none_or(|id| threads.insert(id.clone())) {
+					count += 1;
+				}
+			}
+		}
+		for agent in self.native_agents.lists.values().flatten() {
+			if threads.insert(agent.thread_id.clone()) {
+				count += 1;
+			}
+		}
+		count
+	}
+
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut list =
 			gpui::div().id("agent-structure-list").flex_1().min_h_0().overflow_y_scroll();
@@ -81,7 +99,16 @@ impl AgentSurface {
 							.text_size(gpui::px(13.0))
 							.font_weight(FontWeight::SEMIBOLD)
 							.child("Agents"),
-					),
+					)
+					.when(self.snapshot.is_some(), |header| {
+						header.child(
+							gpui::div()
+								.ml(gpui::px(6.))
+								.text_size(gpui::px(CAPTION_SIZE))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(self.agent_count().to_string()),
+						)
+					}),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
 			.into_any_element()
@@ -167,19 +194,16 @@ impl AgentSurface {
 			} else {
 				toggle.into_any_element()
 			})
-			.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
-				format!("agent-open-{id}"),
-				name,
-				move |s, cx| s.open_page(&id, cx),
-				cx,
-			)))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(CAPTION_SIZE))
-					.flex_none()
-					.text_color(gpui::rgb(color))
-					.child(format!("L{depth} · {status}")),
-			);
+			.child(tree_identity(
+				self.workspace_action(
+					format!("agent-open-{id}"),
+					name,
+					move |s, cx| s.open_page(&id, cx),
+					cx,
+				),
+				status,
+				color,
+			));
 		let mut nested = tree_children(depth);
 		let mut count = 0;
 
@@ -214,6 +238,24 @@ impl AgentSurface {
 			1 + if expanded { count } else { 0 },
 		)
 	}
+}
+
+/// Keep a row's name and state together; indentation alone expresses ancestry.
+pub(super) fn tree_identity(name: AnyElement, status: &str, color: u32) -> Div {
+	gpui::div()
+		.min_w_0()
+		.max_w_full()
+		.flex()
+		.items_center()
+		.gap(gpui::px(8.))
+		.child(gpui::div().min_w_0().flex_shrink(1.).child(name))
+		.child(
+			gpui::div()
+				.flex_none()
+				.text_size(gpui::px(CAPTION_SIZE))
+				.text_color(gpui::rgb(color))
+				.child(if status == "Resolved" { "Done".to_owned() } else { status.to_owned() }),
+		)
 }
 
 pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {
@@ -343,6 +385,22 @@ mod tests {
 					},
 				],
 			);
+			let mut legacy = s.snapshot.as_ref().unwrap().work_items.last().unwrap().clone();
+			legacy.kind = decodex_protocol::AgentWorkKindDto::Task;
+			legacy.parent_goal_id = Some("decodex".into());
+			legacy.id = "decodex-gpui-conversation-review".into();
+			legacy.title = legacy.id.clone();
+			assert_eq!(s.work_label(&legacy), "GPUI conversation review");
+			legacy.title = "Conversation review".into();
+			assert_eq!(s.work_label(&legacy), "Conversation review");
+			let count = s.agent_count();
+			let duplicate = s.native_agents.lists["agent"].clone();
+			s.native_agents.lists.insert("release".into(), duplicate);
+			assert_eq!(
+				s.agent_count(),
+				count,
+				"ancestor lists must not count the same agent twice"
+			);
 			cx.notify();
 		});
 
@@ -363,6 +421,10 @@ mod tests {
 		let arrow = visual.debug_bounds("agent-toggle-agent").unwrap();
 		let child_arrow = visual.debug_bounds("agent-toggle-native:agent:native-child").unwrap();
 
+		assert!(
+			visual.debug_bounds("agent-open-agent").unwrap().size.width < gpui::px(100.),
+			"short names must not stretch into a separate status column"
+		);
 		assert_eq!(root.left(), native.left());
 		assert_eq!(managed.right(), native.right());
 		assert_eq!(arrow.center().y, root.center().y);

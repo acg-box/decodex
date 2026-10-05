@@ -663,7 +663,7 @@ impl AgentSurface {
 			let mut row = gpui::div()
 				.flex_1()
 				.min_w_0()
-				.h(gpui::px(32.))
+				.h(gpui::px(CONTROL_SIZE))
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.));
@@ -716,7 +716,7 @@ impl AgentSurface {
 						)
 						.child(
 							gpui::div()
-								.size(gpui::px(32.))
+								.size(gpui::px(CONTROL_SIZE))
 								.flex()
 								.items_center()
 								.justify_center()
@@ -1419,6 +1419,35 @@ mod tests {
 		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
 		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
 	};
+
+	#[gpui::test]
+	fn native_and_main_composers_keep_the_same_geometry(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1200.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let main = visual.debug_bounds("agent-composer").unwrap();
+		let main_send = visual.debug_bounds("composer-send").unwrap();
+		surface.update(visual, |s, cx| {
+			s.native_agents.selected = Some(("agent".into(), "child".into()));
+			s.native_agents.connection =
+				crate::shell::agent_surface::native_agents::NativeConnection::Ready;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let native = visual.debug_bounds("agent-composer").unwrap();
+		let native_send = visual.debug_bounds("composer-send").unwrap();
+		assert_eq!(main.size, native.size);
+		assert_eq!(main.right() - main_send.right(), native.right() - native_send.right());
+		assert_eq!(main.bottom() - main_send.bottom(), native.bottom() - native_send.bottom());
+	}
 
 	#[gpui::test]
 	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {

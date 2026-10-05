@@ -6,7 +6,7 @@ use std::{
 
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
-use ui_theme::{CAPTION_SIZE, TEXT_MUTED, TREE_ROW_HEIGHT};
+use ui_theme::{TEXT_MUTED, TREE_ROW_HEIGHT};
 
 #[cfg(test)] use crate::shell::agent_surface::{AgentSnapshotResult, ClientProfile};
 use crate::{
@@ -430,7 +430,9 @@ impl AgentSurface {
 			.native_agents
 			.input
 			.get_or_insert_with(|| {
-				let input = cx.new(|cx| ComposerInput::message(35, "Message", "Agent message", cx));
+				let input = cx.new(|cx| {
+					ComposerInput::message(35, super::prompts::next(), "Agent message", cx)
+				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
 				input
 			})
@@ -660,19 +662,16 @@ impl AgentSurface {
 			} else {
 				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
 			})
-			.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
-				format!("native-agent-open-{thread}"),
-				label,
-				move |s, cx| s.open_native_agent(&work, &thread, cx),
-				cx,
-			)))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(CAPTION_SIZE))
-					.flex_none()
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(format!("L{depth} · {}", agent.status)),
-			);
+			.child(agent_tree::tree_identity(
+				self.workspace_action(
+					format!("native-agent-open-{thread}"),
+					label,
+					move |s, cx| s.open_native_agent(&work, &thread, cx),
+					cx,
+				),
+				&agent.status,
+				TEXT_MUTED,
+			));
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
 
 			rows = rows.child(row).child(ui_motion::reveal(
