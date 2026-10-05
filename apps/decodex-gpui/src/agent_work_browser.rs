@@ -316,6 +316,9 @@ mod tests {
             s.open_page("agent", cx);
             s.composer.update(cx, |input, cx| input.set_content("Existing draft", cx));
             let count = s.snapshot.as_ref().unwrap().work_items.len();
+            // Startup can restore the active owner before its root snapshot arrives.
+            s.workspace.pages.push("agent".into());
+            assert_eq!(s.conversation_pages().iter().filter(|(id,_,_)| id == "agent").count(), 1);
             s.new_work_conversation(cx);
             assert!(s.is_new_conversation());
             assert!(!s.sending);

@@ -458,13 +458,19 @@ impl AgentSurface {
 		let mut pages = vec![(self.root_id().unwrap_or_default(), "Main".into(), false)];
 		let open = &self.workspace.pages;
 		if let Some(snapshot) = &self.snapshot {
-			pages.extend(open.iter().filter_map(|id| {
-				self.native_page_label(id)
-					.or_else(|| {
-						snapshot.work_items.iter().find(|w| &w.id == id).map(|w| self.work_label(w))
-					})
-					.map(|label| (id.clone(), label, true))
-			}));
+			pages.extend(open.iter().filter(|id| Some(*id) != self.root_id().as_ref()).filter_map(
+				|id| {
+					self.native_page_label(id)
+						.or_else(|| {
+							snapshot
+								.work_items
+								.iter()
+								.find(|w| &w.id == id)
+								.map(|w| self.work_label(w))
+						})
+						.map(|label| (id.clone(), label, true))
+				},
+			));
 		}
 		pages
 	}

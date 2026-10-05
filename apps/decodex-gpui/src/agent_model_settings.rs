@@ -32,7 +32,8 @@ pub(super) struct Panel {
 
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
-		if self.sending
+		if self.is_new_conversation()
+			|| self.sending
 			|| self.profile.is_none()
 			|| self.model_settings.read_at.is_some_and(|at| at.elapsed().as_secs() < 2)
 		{

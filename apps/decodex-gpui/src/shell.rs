@@ -3267,9 +3267,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
 						.text_color(gpui::rgb(WB_TEXT_FAINT))
-						.child(
-							"This feature is not available in this version.",
-						),
+						.child("This feature is not available in this version."),
 				),
 		)
 		.into_any_element()
