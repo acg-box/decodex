@@ -1,11 +1,11 @@
-//! Native observations only: never promote spawned threads into manager authority.
+//! Native inspection and preparation without promoting spawned threads into manager authority.
 use std::time::Duration;
 
 use serde_json::Value;
 use tokio::time;
 
 use crate::agent::native_subagents;
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_database::SqliteStore;
 use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
@@ -51,6 +51,43 @@ pub(crate) async fn read(
 	result.ok().flatten().unwrap_or(NativeAgentsResult::Unavailable)
 }
 
+/// Prepare a conversation, not a turn. Keep inspection read-only and send no queued input.
+pub(crate) async fn prepare(
+	store: &SqliteStore,
+	client: &AppServerClient,
+	work: &str,
+	thread: &str,
+) -> Result<(), &'static str> {
+	time::timeout(Duration::from_secs(20), async {
+		match read(store, client, work, Some(thread), None).await {
+			NativeAgentsResult::Conversation { can_input: Some(_), .. } => return Ok(()),
+			NativeAgentsResult::Conversation { can_input: None, .. } => {},
+			_ => return Err("Could not connect to this conversation."),
+		}
+		// Use persisted native configuration; do not override parent-owned child settings.
+		let value = client
+			.thread_resume(serde_json::json!({"threadId": thread, "excludeTurns": true}))
+			.await
+			.map_err(|error| match error {
+				ClientError::Remote(ref error) if error.message.contains("archived") =>
+					"This conversation is archived. Restore it in Codex before continuing.",
+				ClientError::Remote(ref error)
+					if error.message.contains("resume the parent first") =>
+					"Open the parent agent to reconnect this conversation.",
+				ClientError::Remote(ref error)
+					if error.message.contains("in use") || error.message.contains("locked") =>
+					"This conversation is in use by another app.",
+				_ => "Could not connect to this conversation.",
+			})?;
+		if value.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return Err("Could not verify this conversation.");
+		}
+		Ok(())
+	})
+	.await
+	.unwrap_or(Err("Connecting took too long. Try again."))
+}
+
 fn clean(text: &str, limit: usize) -> String {
 	if decodex_core::contains_credential_material(text) {
 		return "[Private content omitted]".into();
@@ -67,8 +104,7 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 	let turns = value.pointer("/thread/turns")?.as_array()?;
 	Some(NativeAgentsResult::Conversation {
 		thread_id: thread.into(),
-		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool)
-			== Some(true),
+		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool),
 		active_turn: turns
 			.iter()
 			.rev()
@@ -90,7 +126,7 @@ mod tests {
 			panic!()
 		};
 
-		assert!(!can_input);
+		assert_eq!(can_input, None);
 		assert_eq!(active_turn.as_deref(), Some("t"));
 		assert!(native_agents::conversation(&v, "other").is_none());
 	}

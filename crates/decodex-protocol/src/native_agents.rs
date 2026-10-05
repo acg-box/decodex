@@ -28,8 +28,8 @@ pub enum NativeAgentsResult {
 	Conversation {
 		/// Exact inspected thread.
 		thread_id: String,
-		/// Native capability; false also covers missing capability metadata.
-		can_input: bool,
+		/// Native capability. None means the stored thread has not exposed its capability.
+		can_input: Option<bool>,
 		/// Observed running turn for steering.
 		active_turn: Option<String>,
 	},

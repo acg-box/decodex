@@ -29,6 +29,7 @@ pub(super) struct NativeAgents {
 	pub selected: Option<(String, String)>,
 	pub pages: BTreeMap<String, (String, String)>,
 	pub detail: Option<NativeAgentsResult>,
+	pub connection: NativeConnection,
 	parent_timeline: Option<Box<super::TimelineView>>,
 	pub timelines: BTreeMap<(String, String), super::TimelineView>,
 	task: Option<Task<()>>,
@@ -42,6 +43,20 @@ pub(super) struct NativeAgents {
 	pending: Option<NativeAgentTarget>,
 	uncertain: BTreeSet<NativeAgentTarget>,
 	send_task: Option<Task<()>>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum NativeConnection {
+	Checking { started: Instant, resumed: bool },
+	Ready,
+	// Codex multi-agent v2 children reject direct input; unknown capability is separate.
+	ParentManaged,
+	Failed(String),
+}
+impl Default for NativeConnection {
+	fn default() -> Self {
+		Self::Checking { started: Instant::now(), resumed: false }
+	}
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -134,10 +149,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn native_send_pending(&self) -> bool {
-		self.native_agents.pending.is_some()
-	}
-
 	pub(super) fn native_feedback(&self) -> &str {
 		&self.native_agents.feedback
 	}
@@ -158,7 +169,7 @@ impl AgentSurface {
 			})
 			&& matches!(
 				&self.native_agents.detail,
-				Some(NativeAgentsResult::Conversation { thread_id, can_input: true, .. })
+				Some(NativeAgentsResult::Conversation { thread_id, can_input: Some(true), .. })
 				if self.native_agents.selected.as_ref().is_some_and(|(_, t)| t == thread_id)
 			)
 	}
@@ -183,6 +194,7 @@ impl AgentSurface {
 		self.native_agents.lists.clear();
 
 		self.native_agents.detail = None;
+		self.native_agents.connection = NativeConnection::default();
 		self.native_agents.next = None;
 		self.native_agents.next_detail = None;
 		self.native_agents.send_task = None;
@@ -238,7 +250,23 @@ impl AgentSurface {
 	}
 
 	pub(super) fn poll_native_agents(&mut self, cx: &mut Context<Self>) {
-		if !self.command_connection_ready() {
+		if self.native_agents.selected.is_some() {
+			if !self.command_connection_ready()
+				&& matches!(self.native_agents.connection, NativeConnection::Ready)
+			{
+				self.native_agents.connection = NativeConnection::default();
+				self.native_agents.detail = None;
+			}
+			if matches!(self.native_agents.connection, NativeConnection::Checking { started, .. } if started.elapsed() > Duration::from_secs(45))
+			{
+				self.native_agents.detail_task = None;
+				self.native_agents.detail = None;
+				self.native_agents.connection =
+					NativeConnection::Failed("Connecting took too long. Try again.".into());
+				cx.notify();
+			}
+		}
+		if !self.command_connection_ready() || self.connection_initializing() {
 			return;
 		}
 
@@ -330,6 +358,10 @@ impl AgentSurface {
 			}
 		}
 		if self.native_agents.selected.is_some()
+			&& matches!(
+				self.native_agents.connection,
+				NativeConnection::Checking { .. } | NativeConnection::Ready
+			)
 			&& self.native_agents.detail_task.is_none()
 			&& self.native_agents.next_detail.is_none_or(|t| t <= Instant::now())
 		{
@@ -375,6 +407,7 @@ impl AgentSurface {
 		self.native_agents.parent_timeline =
 			Some(Box::new(std::mem::replace(&mut self.timeline, view)));
 		self.native_agents.selected = Some((owner.into(), thread.into()));
+		self.native_agents.connection = NativeConnection::default();
 		if target.root != thread {
 			let page = format!("native:{owner}:{thread}");
 			self.native_agents.pages.insert(page.clone(), (owner.into(), thread.into()));
@@ -413,19 +446,19 @@ impl AgentSurface {
 	}
 
 	fn read_native_agent(&mut self, cx: &mut Context<Self>) {
-		if !self.command_connection_ready() {
+		if !self.command_connection_ready() || self.connection_initializing() {
 			return;
 		}
-
 		let (Some(profile), Some((owner, thread))) =
 			(self.profile.clone(), self.native_agents.selected.clone())
 		else {
 			return;
 		};
-		let target = (owner.clone(), thread.clone());
+		let Some(target) = self.native_agent_target(&owner, &thread) else {
+			return;
+		};
 		let read = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
-
 			runtime
 				.block_on(AgentClient::new(profile).native_agents(
 					EntityId::new(owner).ok()?,
@@ -434,25 +467,141 @@ impl AgentSurface {
 				))
 				.ok()
 		});
-
 		self.native_agents.detail_task = Some(cx.spawn(async move |surface, cx| {
-			let result = match read.await {
-                Some(result) if matches!(&result, NativeAgentsResult::Conversation { thread_id, .. } if thread_id == &target.1) => result,
-                _ => NativeAgentsResult::Unavailable,
-            };
+            let result = read.await;
+            let _ = surface.update(cx, |s, cx| {
+                let current = s.native_agents.selected.as_ref().and_then(|(owner, thread)| s.native_agent_target(owner, thread));
+                if current.as_ref() != Some(&target) || s.native_agents.editor.as_ref().is_some_and(|editor| editor != &target) {
+                    return;
+                }
+                s.native_agents.detail_task = None;
+                let result = result.filter(|result| matches!(result, NativeAgentsResult::Conversation { thread_id, .. } if thread_id == &target.thread));
+                s.native_agents.next_detail = Some(Instant::now() + Duration::from_secs(3));
+                // A missed background observation does not revoke a confirmed capability.
+                // Actual sending still checks the live native capability in the service.
+                if result.is_none() && matches!(s.native_agents.connection, NativeConnection::Ready) {
+                    return;
+                }
+                let result = result.unwrap_or(NativeAgentsResult::Unavailable);
+                s.native_agents.detail = Some(result.clone());
+                match result {
+                    NativeAgentsResult::Conversation { can_input: Some(true), .. } => {
+                        s.native_agents.connection = NativeConnection::Ready;
+                    },
+                    NativeAgentsResult::Conversation { can_input: Some(false), .. } => {
+                        s.native_agents.connection = NativeConnection::ParentManaged;
+                    },
+                    NativeAgentsResult::Conversation { can_input: None, .. } => {
+                        if matches!(s.native_agents.connection, NativeConnection::Checking { resumed: true, .. }) {
+                            s.native_agents.connection = NativeConnection::Failed("Could not confirm that this conversation is ready.".into());
+                        } else {
+                            s.prepare_native_connection(target, cx);
+                        }
+                    },
+                    _ if matches!(s.native_agents.connection, NativeConnection::Checking { started, .. } if started.elapsed() < Duration::from_secs(2)) => {
+                        s.native_agents.next_detail = Some(Instant::now() + Duration::from_millis(500));
+                    },
+                    _ => {
+                        s.native_agents.connection = NativeConnection::Failed("Could not connect to this conversation.".into());
+                    },
+                }
+                cx.notify();
+            });
+        }));
+	}
+
+	fn prepare_native_connection(&mut self, target: NativeAgentTarget, cx: &mut Context<Self>) {
+		let Some(profile) = self.profile.clone() else {
+			return;
+		};
+		let started = match self.native_agents.connection {
+			NativeConnection::Checking { started, .. } => started,
+			_ => Instant::now(),
+		};
+		self.native_agents.connection = NativeConnection::Checking { started, resumed: true };
+		let request_target = target.clone();
+		let request = cx.background_executor().spawn(async move {
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
+			runtime
+				.block_on(AgentClient::new(profile).execute(
+					AgentActionDto::PrepareNativeAgent {
+						work_id: EntityId::new(request_target.work).ok()?,
+						thread_id: WireText::new(request_target.thread).ok()?,
+					},
+					IdempotencyKey::new(agent_surface::unique_command()).ok()?,
+				))
+				.ok()
+		});
+		self.native_agents.detail_task = Some(cx.spawn(async move |surface, cx| {
+			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.native_agents.selected.as_ref() == Some(&target)
-					&& s.native_agents.detail.as_ref() != Some(&result)
+				if s.native_agents
+					.selected
+					.as_ref()
+					.and_then(|(o, t)| s.native_agent_target(o, t))
+					.as_ref()
+					!= Some(&target)
 				{
-					s.native_agents.detail = Some(result);
-
-					cx.notify();
+					return;
 				}
-
 				s.native_agents.detail_task = None;
-				s.native_agents.next_detail = Some(Instant::now() + Duration::from_secs(3));
+				match result {
+					Some(AgentCommandResponse::Accepted { .. }) => s.read_native_agent(cx),
+					Some(AgentCommandResponse::Rejected {
+						error: decodex_protocol::CommandError::ApplicationUnavailable { message },
+					}) => {
+						s.native_agents.connection =
+							NativeConnection::Failed(message.as_str().into());
+					},
+					_ =>
+						s.native_agents.connection = NativeConnection::Failed(
+							"Could not connect to this conversation.".into(),
+						),
+				}
+				cx.notify();
 			});
 		}));
+	}
+
+	pub(super) fn retry_native_connection(&mut self, cx: &mut Context<Self>) {
+		if self.native_agents.detail_task.is_some() {
+			return;
+		}
+		self.native_agents.detail = None;
+		self.native_agents.connection = NativeConnection::default();
+		self.native_agents.next_detail = None;
+		self.read_native_agent(cx);
+		cx.notify();
+	}
+
+	pub(super) fn open_native_parent(&mut self, cx: &mut Context<Self>) {
+		let Some((owner, thread)) = self.native_agents.selected.clone() else {
+			return;
+		};
+		let Some(work) =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == owner))
+		else {
+			return;
+		};
+		if work.codex_thread_id.as_ref() == Some(&thread) {
+			if let Some(parent) = work.parent_goal_id.clone() {
+				self.open_page(&parent, cx);
+			}
+		} else {
+			let parent = self
+				.native_agents
+				.lists
+				.get(&owner)
+				.into_iter()
+				.flatten()
+				.find(|a| a.thread_id == thread)
+				.map(|a| a.parent_thread_id.clone());
+			if let Some(parent) = parent.filter(|p| work.codex_thread_id.as_ref() != Some(p)) {
+				self.open_native_agent(&owner, &parent, cx);
+			} else {
+				self.open_page(&owner, cx);
+			}
+		}
 	}
 
 	pub(super) fn native_branches(
@@ -534,7 +683,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn send_native_agent(&mut self, cx: &mut Context<Self>) {
-		if self.native_agents.pending.is_some() || !self.command_connection_ready() {
+		if !self.native_input_available() {
 			return;
 		}
 
@@ -544,7 +693,7 @@ impl AgentSurface {
 			Some(input),
 			Some(NativeAgentsResult::Conversation {
 				thread_id: observed,
-				can_input: true,
+				can_input: Some(true),
 				active_turn,
 				..
 			}),
@@ -685,7 +834,7 @@ mod tests {
 	fn conversation(thread: &str) -> NativeAgentsResult {
 		NativeAgentsResult::Conversation {
 			thread_id: thread.into(),
-			can_input: true,
+			can_input: Some(true),
 			active_turn: None,
 		}
 	}
@@ -812,6 +961,133 @@ mod tests {
 			.codex_thread_id = Some("parent".into());
 		s.profile = Some(profile);
 		s.native_agents = Default::default();
+	}
+
+	#[gpui::test]
+	fn native_connection_prepares_once_preserves_draft_and_respects_parent_ownership(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use decodex_protocol::{
+			CommandOutcome, CommandResultEnvelope, EntityRevision, ResultPayload,
+		};
+		for (managed, fail) in [(false, false), (true, false), (false, true)] {
+			let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+				for step in 0..if managed { 1 } else { 3 } {
+					let mut socket = wire_test_support::accept(&listener).await;
+					let request: ClientMessage = serde_json::from_str(
+						socket.next().await.unwrap().unwrap().to_text().unwrap(),
+					)
+					.unwrap();
+					let response = if step == 1 {
+						let ClientMessage::Command(command) = request else {
+							panic!("expected preparation")
+						};
+						assert!(
+							matches!(command.payload, CommandPayload::Agent { action } if matches!(*action, AgentActionDto::PrepareNativeAgent { ref work_id, ref thread_id } if work_id.as_str() == "agent" && thread_id.as_str() == "child"))
+						);
+						let receipt =
+							ServerMessage::CommandReceipt(decodex_protocol::CommandReceipt {
+								version: CURRENT_VERSION,
+								server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+								client_command_id: command.client_command_id.clone(),
+								idempotency_key: command.idempotency_key.clone(),
+								disposition: decodex_protocol::ReceiptDisposition::Executed,
+								original_client_command_id: command.client_command_id.clone(),
+							});
+						socket
+							.send(Message::Text(serde_json::to_string(&receipt).unwrap().into()))
+							.await
+							.unwrap();
+						ServerMessage::CommandResult(CommandResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+							client_command_id: command.client_command_id,
+							idempotency_key: command.idempotency_key,
+							outcome: if fail {
+								CommandOutcome::Rejected
+							} else {
+								CommandOutcome::Succeeded
+							},
+							entity_revision: (!fail).then_some(EntityRevision(0)),
+							payload: (!fail).then_some(ResultPayload::AgentAccepted {
+								work_id: EntityId::new("agent").unwrap(),
+							}),
+							error: fail.then(|| {
+								decodex_protocol::CommandError::ApplicationUnavailable {
+									message: decodex_protocol::WireText::new("Connection failed.")
+										.unwrap(),
+								}
+							}),
+						})
+					} else {
+						let ClientMessage::Query(query) = request else {
+							panic!("expected capability read, never draft submission")
+						};
+						assert!(
+							matches!(query.payload, QueryPayload::GetNativeAgents { thread_id: Some(ref id), .. } if id.as_str() == "child")
+						);
+						ServerMessage::QueryResult(QueryResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+							query_id: query.query_id,
+							payload: QueryResultPayload::NativeAgents(
+								NativeAgentsResult::Conversation {
+									thread_id: "child".into(),
+									can_input: if managed {
+										Some(false)
+									} else if step == 0 {
+										None
+									} else {
+										Some(true)
+									},
+									active_turn: None,
+								},
+							),
+						})
+					};
+					socket
+						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+						.await
+						.unwrap();
+				}
+			});
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				bind_fixture(s, profile, cx);
+				s.native_agents.selected = Some(("agent".into(), "child".into()));
+				s.native_agents.editor = s.native_agent_target("agent", "child");
+				let input = cx.new(|cx| ComposerInput::message(35, "Message", "Agent message", cx));
+				input.update(cx, |i, cx| i.set_content("Keep this draft", cx));
+				s.native_agents.input = Some(input);
+				s.read_native_agent(cx);
+			});
+			cx.run_until_parked();
+			if fail {
+				surface.update(cx, |s, cx| {
+                    assert!(matches!(&s.native_agents.connection, super::NativeConnection::Failed(reason) if reason == "Connection failed."));
+                    assert!(!s.native_input_available());
+                    assert!(s.native_agents.detail_task.is_none());
+                    assert_eq!(s.native_agents.input.as_ref().unwrap().read(cx).content(), "Keep this draft");
+                    s.retry_native_connection(cx);
+                });
+				cx.run_until_parked();
+			}
+			server.join().unwrap();
+			surface.read_with(cx, |s, cx| {
+				assert_eq!(
+					s.native_agents.input.as_ref().unwrap().read(cx).content(),
+					"Keep this draft"
+				);
+				assert!(s.native_agents.pending.is_none());
+				assert!(s.native_agents.detail_task.is_none());
+				assert_eq!(s.native_input_available(), !managed);
+				assert!(if managed {
+					matches!(s.native_agents.connection, super::NativeConnection::ParentManaged)
+				} else {
+					matches!(s.native_agents.connection, super::NativeConnection::Ready)
+				});
+			});
+		}
 	}
 
 	#[gpui::test]

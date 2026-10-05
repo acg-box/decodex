@@ -1136,7 +1136,9 @@ impl AgentHost {
 		let client = self.runtime.agent_client().ok_or("Agent connection unavailable")?;
 		let result = native_agents::read(&self.store, &client, work, Some(thread), None).await;
 		let decodex_protocol::NativeAgentsResult::Conversation {
-			can_input: true, active_turn, ..
+			can_input: Some(true),
+			active_turn,
+			..
 		} = result
 		else {
 			return Err("This native agent does not accept direct input. Ask its parent agent to follow up.".into());
@@ -1414,6 +1416,21 @@ impl AgentHost {
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveReviewer { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
+			AgentActionDto::PrepareNativeAgent { work_id, thread_id } => {
+				let (generation, client) =
+					self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
+				native_agents::prepare(&self.store, &client, work_id.as_str(), thread_id.as_str())
+					.await
+					.map_err(AgentHostError::Rejected)?;
+				if self
+					.runtime
+					.agent_catalog_client()
+					.is_none_or(|(current, _)| current != generation)
+				{
+					return Err("The connection changed. Try again.".into());
+				}
+				Ok(work_id.as_str().into())
+			},
 			AgentActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),

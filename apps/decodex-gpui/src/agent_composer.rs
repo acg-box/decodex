@@ -650,47 +650,99 @@ impl AgentSurface {
 
 	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			return gpui::div()
+			use super::native_agents::NativeConnection;
+			let mut row = gpui::div()
 				.flex_1()
 				.min_w_0()
+				.h(gpui::px(32.))
 				.flex()
 				.items_center()
-				.justify_end()
-				.child(
-					if self.running_turn().is_some()
-						&& self.conversation_composer().read(cx).content().trim().is_empty()
-					{
-						self.composer_control(
-							"stop",
-							"".into(),
-							"Stop",
-							|s, cx| s.interrupt_current(cx),
-							cx,
+				.gap(gpui::px(8.));
+			match &self.native_agents.connection {
+				NativeConnection::ParentManaged => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child("Message this agent through its parent."),
 						)
-						.into_any_element()
-					} else if self.native_input_available() || self.native_send_pending() {
-						self.composer_control(
-							"send",
-							"".into(),
-							"Send · Enter",
-							|s, cx| s.send_native_agent(cx),
+						.child(self.workspace_action(
+							"native-open-parent".into(),
+							"Open parent".into(),
+							|s, cx| s.open_native_parent(cx),
 							cx,
+						));
+				},
+				NativeConnection::Failed(reason) => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(reason.clone()),
 						)
-						.into_any_element()
-					} else {
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(if self.native_agents.detail.is_none() {
-								"Connecting to agent…"
-							} else {
-								"Sending unavailable"
-							})
+						.child(self.workspace_action(
+							"native-connect-retry".into(),
+							"Retry".into(),
+							|s, cx| s.retry_native_connection(cx),
+							cx,
+						));
+				},
+				NativeConnection::Checking { started, .. } => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.when(started.elapsed() >= Duration::from_secs(3), |d| {
+									d.child("Connecting…")
+								}),
+						)
+						.child(
+							gpui::div()
+								.size(gpui::px(32.))
+								.flex()
+								.items_center()
+								.justify_center()
+								.child(crate::ui_loading::loading("")),
+						);
+				},
+				NativeConnection::Ready => {
+					row = row.justify_end().child(
+						if self.running_turn().is_some()
+							&& self.conversation_composer().read(cx).content().trim().is_empty()
+						{
+							self.composer_control(
+								"stop",
+								"".into(),
+								"Stop",
+								|s, cx| s.interrupt_current(cx),
+								cx,
+							)
 							.into_any_element()
-					},
-				)
-				.into_any_element();
+						} else {
+							self.composer_control(
+								"send",
+								"".into(),
+								"Send · Enter",
+								|s, cx| s.send_native_agent(cx),
+								cx,
+							)
+							.into_any_element()
+						},
+					);
+				},
+			}
+			return row.into_any_element();
 		}
+
 		if self.connection_initializing() {
 			return gpui::div()
 				.flex_1()

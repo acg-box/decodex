@@ -106,7 +106,7 @@ async fn native_child_approval_round_trip() {
 
                 let inspected=native_agents::read(&agent.store,&agent.client,"agent",Some(&child),None).await;
 
-                assert!(matches!(inspected,NativeAgentsResult::Conversation{can_input:false,..}), "native v2 input capability was not preserved: {inspected:?}");
+                assert!(matches!(inspected,NativeAgentsResult::Conversation{can_input:Some(false),..}), "native v2 input capability was not preserved: {inspected:?}");
 
 				let pending = agent.pending_requests[&id];
 				let saved = agent.store.get_agent_inbox_event(pending).await.unwrap();

@@ -654,8 +654,8 @@ impl AgentSurface {
 
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
-			return (!self.native_input_available() && self.native_agents.detail.is_some())
-				.then_some("This agent is read-only. Its conversation remains available.");
+			// Native connection feedback stays inside the same composer surface.
+			return None;
 		}
 
 		if self.uncertain {
@@ -834,9 +834,7 @@ impl AgentSurface {
 
 	fn composer_footer(&self, rail_width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		if self.native_agents.selected.is_some() {
-			let available = self.native_input_available() || self.native_send_pending();
 			let feedback = self.native_feedback();
-			let loading = self.native_agents.detail.is_none() || self.connection_initializing();
 			return gpui::div()
 				.flex_none()
 				.w_full()
@@ -851,26 +849,7 @@ impl AgentSurface {
 							.child(feedback.to_owned()),
 					)
 				})
-				.when(available || loading, |d| d.child(self.render_composer(window, cx)))
-				.when(!available && !loading && matches!(feedback, "" | "Sent"), |d| {
-					d.child(
-						gpui::div()
-							.px(gpui::px(ui_theme::CONVERSATION_INSET))
-							.py(gpui::px(12.))
-							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(
-								if matches!(
-									self.native_agents.detail,
-									Some(decodex_protocol::NativeAgentsResult::Unavailable)
-								) {
-									"Connecting to this agent…"
-								} else {
-									"This agent is read-only. Its conversation remains available."
-								},
-							),
-					)
-				});
+				.child(self.render_composer(window, cx));
 		}
 
 		// Reserve real layout space so history can never paint beneath the native input window.

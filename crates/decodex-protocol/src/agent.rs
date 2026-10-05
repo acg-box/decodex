@@ -645,6 +645,13 @@ pub enum AgentActionDto {
 		effort: ConversationReasoningEffort,
 	},
 
+	/// Load an exact owned conversation without sending a message or changing its settings.
+	PrepareNativeAgent {
+		/// Local owner used to verify the native thread.
+		work_id: EntityId,
+		/// Exact conversation to resume.
+		thread_id: WireText,
+	},
 	/// Send explicit user input to a verified native descendant that accepts direct input.
 	NativeAgentInput {
 		/// Exact local owner whose native descendants may be addressed.
