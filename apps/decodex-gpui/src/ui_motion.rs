@@ -623,6 +623,7 @@ mod tests {
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub state: String,
+	pub label: String,
 }
 impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -648,7 +649,13 @@ impl RenderOnce for AgentRailStatus {
 		} else {
 			crate::ui_theme::TEXT_MUTED
 		};
-		gpui::canvas(
+		let initial = self
+			.label
+			.chars()
+			.find(|c| c.is_alphanumeric())
+			.map(|c| c.to_uppercase().collect::<String>())
+			.unwrap_or_else(|| "·".into());
+		let ring = gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let mut path = gpui::PathBuilder::stroke(gpui::px(1.5));
@@ -656,7 +663,7 @@ impl RenderOnce for AgentRailStatus {
 					let angle = phase
 						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.72 } else { 1. };
 					let p = bounds.center()
-						+ gpui::point(gpui::px(angle.cos() * 7.), gpui::px(angle.sin() * 7.));
+						+ gpui::point(gpui::px(angle.cos() * 10.), gpui::px(angle.sin() * 10.));
 					if i == 0 {
 						path.move_to(p);
 					} else {
@@ -666,21 +673,27 @@ impl RenderOnce for AgentRailStatus {
 				if let Ok(path) = path.build() {
 					window.paint_path(
 						path,
-						gpui::rgba((color << 8) | if busy || attention { 230 } else { 100 }),
+						gpui::rgba((color << 8) | if busy || attention { 230 } else { 55 }),
 					);
-				}
-				if attention {
-					window.paint_quad(gpui::fill(
-						gpui::Bounds::new(
-							bounds.center() - gpui::point(gpui::px(1.5), gpui::px(1.5)),
-							gpui::size(gpui::px(3.), gpui::px(3.)),
-						),
-						gpui::rgb(color),
-					));
 				}
 			},
 		)
 		.size(gpui::px(24.))
-		.flex_none()
+		.absolute();
+		gpui::div()
+			.size(gpui::px(24.))
+			.flex_none()
+			.relative()
+			.flex()
+			.items_center()
+			.justify_center()
+			.text_size(gpui::px(11.))
+			.text_color(gpui::rgb(if busy || attention {
+				color
+			} else {
+				crate::ui_theme::TEXT_MUTED
+			}))
+			.child(ring)
+			.child(initial)
 	}
 }

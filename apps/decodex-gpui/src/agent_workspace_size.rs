@@ -112,7 +112,7 @@ impl AgentSurface {
 
 	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
 		let width = f32::from(window.viewport_size().width);
-		if self.workspace.sidebar_visible && width > 1000. {
+		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
 		} else {
 			52.
@@ -151,6 +151,9 @@ impl AgentSurface {
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
 		self.workspace.sidebar_leave = None;
+		if self.workspace.sidebar_visible {
+			return;
+		}
 		if hovered {
 			self.workspace.sidebar_peek = true;
 			cx.notify();
@@ -171,11 +174,12 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let expanded = self.workspace.sidebar_visible && wide;
+		let expanded = (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && wide;
 		let target = self.workspace_sidebar_width(window);
 		let width = ui_motion::value("agent-sidebar-width", target, window, cx);
 		let mut slot = gpui::div()
 			.id("left-panel-slot")
+			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
 			.w(gpui::px(width))
 			.h_full()
@@ -197,8 +201,7 @@ impl AgentSurface {
 				.px(gpui::px(6.))
 				.flex()
 				.flex_col()
-				.gap(gpui::px(6.))
-				.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)));
+				.gap(gpui::px(6.));
 			for (id, label, _) in self.conversation_pages() {
 				if self.workspace.closing_pages.contains(&id) {
 					continue;
@@ -210,7 +213,7 @@ impl AgentSurface {
 					gpui::div()
 						.id(SharedString::from(format!("rail-page-{id}")))
 						.role(Role::Tab)
-						.aria_label(label)
+						.aria_label(label.clone())
 						.aria_selected(active)
 						.tab_index(0)
 						.size(gpui::px(40.))
@@ -222,7 +225,10 @@ impl AgentSurface {
 						.justify_center()
 						.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
 						.hover(|s| s.bg(gpui::rgba(0xffffff16)))
-						.child(crate::ui_motion::AgentRailStatus { state: status })
+						.child(crate::ui_motion::AgentRailStatus {
+							state: status,
+							label: label.clone(),
+						})
 						.on_click(cx.listener(move |s, _, _, cx| s.open_page(&id, cx)))
 						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 							if !event.is_held
@@ -237,52 +243,6 @@ impl AgentSurface {
 			slot = slot.child(rail);
 		}
 		slot.into_any_element()
-	}
-
-	pub(super) fn sidebar_peek_overlay(
-		&self,
-		wide: bool,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) -> Option<AnyElement> {
-		if self.workspace.sidebar_visible && wide {
-			return None;
-		}
-		let presence = ui_motion::value(
-			"agent-sidebar-peek",
-			if self.workspace.sidebar_peek { 1. } else { 0. },
-			window,
-			cx,
-		);
-		if presence < 0.001 {
-			return None;
-		}
-		let width =
-			sidebar_width(self.workspace.sidebar_width, window.viewport_size().width.into());
-		Some(
-			gpui::deferred(
-				gpui::div()
-					.id("conversation-sidebar-peek")
-					.debug_selector(|| "conversation-sidebar-peek".into())
-					.absolute()
-					.left_0()
-					.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-					.bottom(gpui::px(
-						self.workspace_graph_size(window, wide).1
-							+ self.workspace.composer_overlay_height
-							+ 8.,
-					))
-					.w(gpui::px(width))
-					.occlude()
-					.opacity(presence)
-					.bg(gpui::rgb(0x242428))
-					.rounded(gpui::px(12.))
-					.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
-					.child(self.workspace_sidebar(cx)),
-			)
-			.with_priority(3)
-			.into_any_element(),
-		)
 	}
 
 	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -383,9 +343,7 @@ mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
 	#[gpui::test]
-	fn sidebar_peek_keeps_reading_geometry_and_reentry_cancels_close(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn sidebar_hover_uses_pinned_layout_and_reentry_cancels_close(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| {
@@ -396,13 +354,21 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(|w, cx| w.draw(cx).clear());
-		let before = visual.debug_bounds("workspace-transcript").unwrap();
+		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
 		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(|w, cx| w.draw(cx).clear());
-		assert!(visual.debug_bounds("conversation-sidebar-peek").is_some());
-		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), before);
+		let expanded = visual.debug_bounds("workspace-transcript").unwrap();
+		assert!(expanded.origin.x > collapsed.origin.x);
+		surface.update(visual, |s, cx| {
+			s.workspace.sidebar_visible = true;
+			s.workspace.sidebar_peek = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), expanded);
+		surface.update(visual, |s, _| s.workspace.sidebar_visible = false);
 		surface.update(visual, |s, cx| {
 			s.sidebar_hover(false, cx);
 			s.sidebar_hover(true, cx);

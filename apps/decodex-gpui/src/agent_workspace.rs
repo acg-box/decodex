@@ -419,11 +419,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.p(gpui::px(CONTROL_MARGIN))
-			.pt(gpui::px(if self.workspace.sidebar_peek {
-				CONTROL_MARGIN
-			} else {
-				WINDOW_CONTROLS_CLEARANCE
-			}))
+			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
 			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.pr(gpui::px(4.));
@@ -606,7 +602,10 @@ impl AgentSurface {
 				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
 				.hover(move |s| s.bg(gpui::rgba(if active { 0xffffff18 } else { HOVER_FILL })))
 				.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_select, cx)))
-				.child(crate::ui_motion::AgentRailStatus { state: self.conversation_status(&id) })
+				.child(crate::ui_motion::AgentRailStatus {
+					state: self.conversation_status(&id),
+					label: label.clone(),
+				})
 				.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
 					format!("page-{id}"),
 					label.clone(),
@@ -1140,7 +1139,6 @@ impl AgentSurface {
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
-			.children(self.sidebar_peek_overlay(wide, window, cx))
 			.into_any_element()
 	}
 
