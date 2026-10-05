@@ -2731,12 +2731,12 @@ mod tests {
 	struct WorkspaceWithTabs(gpui::Entity<AgentSurface>);
 
 	impl gpui::Render for WorkspaceWithTabs {
-		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			gpui::div()
 				.size_full()
 				.flex()
 				.flex_col()
-				.child(self.0.update(cx, |surface, cx| surface.work_context(cx)))
+				.child(self.0.update(cx, |surface, cx| surface.work_context(window, cx)))
 				.child(self.0.clone())
 		}
 	}

@@ -2731,6 +2731,8 @@ fn topbar_controls(
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_inspector_toggle(inspector_visible, cx))
 		})
+		.child(gpui::div().w(gpui::px(6.)).flex_none())
+		.child(shell.render_status_toggle(_presentation, cx))
 		.child(
 			gpui::div()
 				.id("open-settings")

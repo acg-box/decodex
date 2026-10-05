@@ -93,10 +93,7 @@ impl Shell {
 			let bounds = Bounds::new(
 				gpui::point(
 					viewport.width - gpui::px(328. + CONTROL_MARGIN - 12.),
-					viewport.height
-						- gpui::px(
-							CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN - 12. + height,
-						),
+					gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN - 12.),
 				),
 				gpui::size(gpui::px(328.), gpui::px(height)),
 			);
