@@ -439,7 +439,7 @@ impl AgentSurface {
 			.child(self.work_navigation(
 				"all-work",
 				"All work",
-				workspace_symbols::Symbol::AccountReorder,
+				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
 					s.stop_voice(cx);
 					s.workspace.browsing = true;

@@ -11,8 +11,8 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
-	let sources: [&[u8]; 32] = [
+static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
+	let sources: [&[u8]; 33] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
@@ -45,6 +45,7 @@ static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/reset-cards.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-reorder.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-warning-amber.png"),
+		include_bytes!("../../../assets/workspace-symbols/all-work.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
@@ -83,6 +84,7 @@ pub(super) enum Symbol {
 	ResetCards,
 	AccountReorder,
 	AccountWarningAmber,
+	AllWork,
 }
 
 #[derive(gpui::IntoElement)]
