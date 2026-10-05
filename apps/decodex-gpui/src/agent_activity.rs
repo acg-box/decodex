@@ -654,6 +654,12 @@ impl AgentSurface {
 		// Reserve a stable gutter while histories load or agents change.
 		gpui::div()
 			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
+			.pb(gpui::px(ui_motion::value(
+				"history-rail-bottom",
+				self.workspace.composer_overlay_height,
+				window,
+				cx,
+			)))
 			.flex_none()
 			.overflow_hidden()
 			.child(self.history_rail(window, cx))
@@ -706,7 +712,10 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let spacing = ((f32::from(scroll.bounds().size.height) - 32.0) / positions.len() as f32)
+		let spacing = ((f32::from(scroll.bounds().size.height)
+			- self.workspace.composer_overlay_height
+			- 32.0)
+			/ positions.len() as f32)
 			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
