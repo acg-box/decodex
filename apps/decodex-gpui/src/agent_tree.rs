@@ -146,6 +146,7 @@ impl AgentSurface {
 			.cursor_pointer()
 			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
+				cx.stop_propagation();
 				if !s.workspace.agent_tree_collapsed.remove(&click_id) {
 					s.workspace.agent_tree_collapsed.insert(click_id.clone());
 				}
@@ -188,6 +189,7 @@ impl AgentSurface {
 			});
 		let name = self.work_label(work);
 		let id = work.id.clone();
+		let row_id = id.clone();
 		let (status, _) = graph::state_in(snapshot, work);
 		let toggle = self.tree_toggle(work.id.clone(), &name, expanded, cx);
 		let row = tree_row(
@@ -197,6 +199,7 @@ impl AgentSurface {
 			!descendants.is_empty() || has_native,
 			expanded,
 		)
+		.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_id, cx)))
 		.child(if descendants.is_empty() && !has_native {
 			gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
 		} else {
@@ -275,6 +278,7 @@ pub(super) fn tree_row(
 	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id.clone())
+		.cursor_pointer()
 		.relative()
 		.h(gpui::px(TREE_ROW_HEIGHT))
 		.flex_none()
@@ -458,9 +462,35 @@ mod tests {
 		assert_eq!(arrow.center().y, root.center().y);
 		assert_eq!(child_arrow.center().y, native.center().y);
 
+		visual.simulate_click(
+			gpui::point(managed.right() - gpui::px(2.), managed.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("release")));
+		visual.simulate_click(
+			gpui::point(native.right() - gpui::px(2.), native.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| {
+			// This geometry fixture has no connection profile; opening the native row
+			// still selects its owner before the connection-dependent entry step.
+			assert_eq!(s.selected.as_deref(), Some("agent"))
+		});
+		visual.simulate_click(
+			gpui::point(root.left() + gpui::px(1.), root.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert!(s.native_agents.selected.is_none());
+		});
 		visual.simulate_click(child_arrow.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.workspace.agent_tree_collapsed.contains("native:agent:native-child"));
+			assert!(
+				s.native_agents.selected.is_none(),
+				"disclosure must not open the conversation"
+			);
 			assert_eq!(s.native_branches("agent", "root-native", 1, cx).1, 1);
 		});
 	}

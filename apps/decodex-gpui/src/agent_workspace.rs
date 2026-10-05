@@ -357,7 +357,12 @@ impl AgentSurface {
 				})
 			})
 			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
-			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				if is_tree {
+					cx.stop_propagation();
+				}
+				action(s, cx);
+			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);

@@ -4,7 +4,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{AnyElement, AppContext as _};
+use gpui::{AnyElement, AppContext as _, StatefulInteractiveElement as _};
 use tokio::runtime::Builder;
 use ui_theme::TREE_ROW_HEIGHT;
 
@@ -652,12 +652,17 @@ impl AgentSurface {
 				.selected
 				.as_ref()
 				.is_some_and(|(o, t)| o == owner && t == &agent.thread_id);
+			let row_work = work.clone();
+			let row_thread = thread.clone();
 			let row = agent_tree::tree_row(
 				format!("native-agent-row-{}", agent.thread_id),
 				depth,
 				selected,
 				has_children,
 				expanded,
+			)
+			.on_click(
+				cx.listener(move |s, _, _, cx| s.open_native_agent(&row_work, &row_thread, cx)),
 			)
 			.child(if has_children {
 				self.tree_toggle(key.clone(), &label, expanded, cx)
