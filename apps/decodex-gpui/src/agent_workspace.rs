@@ -132,6 +132,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.keep_edited_preview(cx);
 		self.workspace.browsing = false;
 		self.workspace.closing_pages.remove(id);
 		if let Some((owner, thread)) = self.native_agents.pages.get(id).cloned() {
@@ -279,6 +280,9 @@ impl AgentSurface {
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		if self.workspace.preview_page.as_deref() == Some(id) {
+			self.workspace.preview_page = None;
+		}
 		self.workspace.closing_pages.insert(id.to_owned());
 
 		if self.conversation_page().as_deref() == Some(id)
@@ -526,6 +530,14 @@ impl AgentSurface {
 				.role(Role::Tab)
 				.aria_label(label.clone())
 				.aria_selected(active)
+				.when(self.workspace.preview_page.as_deref() == Some(&id), |tab| {
+					tab.tooltip(|_, cx| {
+						cx.new(|_| {
+							crate::shell::ControlTooltip("Preview · Double-click to keep open")
+						})
+						.into()
+					})
+				})
 				.tab_index(0)
 				.w_full()
 				.min_w_0()
@@ -538,7 +550,14 @@ impl AgentSurface {
 				.cursor_pointer()
 				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
 				.hover(move |s| s.bg(gpui::rgba(if active { 0xffffff18 } else { HOVER_FILL })))
-				.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_select, cx)))
+				.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
+					if event.click_count() == 2
+						&& s.workspace.preview_page.as_deref() == Some(&row_select)
+					{
+						s.workspace.preview_page = None;
+					}
+					s.open_page(&row_select, cx);
+				}))
 				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
 					{

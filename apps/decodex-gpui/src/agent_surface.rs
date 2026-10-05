@@ -1038,6 +1038,9 @@ impl AgentSurface {
 		self.capture_send_preview(&pending);
 
 		if pending.draft.is_some() {
+			if self.workspace.preview_page == self.conversation_page() {
+				self.workspace.preview_page = None;
+			}
 			self.follow_latest_after_send(cx);
 		}
 
@@ -2362,6 +2365,7 @@ struct WorkspaceView {
 	opening_work: Option<String>,
 	composer_overlay_height: f32,
 	pages: Vec<String>,
+	preview_page: Option<String>,
 	closing_pages: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
@@ -2399,6 +2403,7 @@ impl Default for WorkspaceView {
 			opening_work: None,
 			composer_overlay_height: 0.,
 			pages: vec![],
+			preview_page: None,
 			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,

@@ -209,6 +209,57 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn open_work_preview(
+		&mut self,
+		id: &str,
+		native: Option<&(String, String)>,
+		cx: &mut Context<Self>,
+	) {
+		self.keep_edited_preview(cx);
+		let existing = self.workspace.pages.contains(&id.to_owned())
+			&& !self.workspace.closing_pages.contains(id);
+		let before = self.workspace.pages.clone();
+		if let Some((owner, thread)) = native {
+			self.open_native_agent(owner, thread, cx);
+		} else {
+			self.open_page(id, cx);
+		}
+		let Some(page) = self.conversation_page() else { return };
+		if page != id {
+			return;
+		}
+		if existing && self.workspace.preview_page.as_deref() != Some(id) {
+			return;
+		}
+		if let Some(previous) = self.workspace.preview_page.take() {
+			if previous != page {
+				self.workspace.pages.retain(|p| p != &previous);
+				self.workspace.closing_pages.remove(&previous);
+			}
+		}
+		// Opening a native child also selects its owner internally; that is not a second tab.
+		if let Some((owner, _)) = native {
+			if !before.contains(owner) {
+				self.workspace.pages.retain(|p| p != owner);
+			}
+		}
+		if self.root_id().as_deref() != Some(&page) {
+			self.workspace.preview_page = Some(page);
+		}
+		cx.notify();
+	}
+
+	pub(super) fn keep_edited_preview(&mut self, cx: &Context<Self>) {
+		if self.workspace.preview_page.is_some()
+			&& self.workspace.preview_page == self.conversation_page()
+			&& (!self.composer.read(cx).content().is_empty()
+				|| !self.attachments.is_empty()
+				|| !self.task_references.is_empty())
+		{
+			self.workspace.preview_page = None;
+		}
+	}
+
 	pub(super) fn work_navigation(
 		&self,
 		id: &'static str,
@@ -381,11 +432,11 @@ impl AgentSurface {
 							.child(status),
 					)
 					.on_click(cx.listener(move |s, _, _, cx| {
-						if let Some((owner,thread))=&native { s.open_native_agent(owner,thread,cx); } else { s.open_page(&id,cx); }
+						s.open_work_preview(&id, native.as_ref(), cx);
 					}))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							if let Some((owner,thread))=&native_keyboard { s.open_native_agent(owner,thread,cx); } else { s.open_page(&keyboard,cx); }
+							s.open_work_preview(&keyboard, native_keyboard.as_ref(), cx);
 							cx.stop_propagation();
 						}
 					})),
@@ -416,6 +467,25 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn browsing_reuses_preview_but_preserves_edited_conversations(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.pages.clear();
+			s.open_work_preview("verify", None, cx);
+			assert_eq!(s.workspace.preview_page.as_deref(), Some("verify"));
+			s.open_work_preview("release", None, cx);
+			assert!(!s.workspace.pages.iter().any(|id| id == "verify"));
+			assert_eq!(s.workspace.preview_page.as_deref(), Some("release"));
+			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+			s.open_work_preview("verify", None, cx);
+			assert!(s.workspace.pages.iter().any(|id| id == "release"));
+			s.open_page("release", cx);
+			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+		});
+	}
+
 	#[gpui::test]
 	fn new_conversation_is_local_and_keeps_separate_unsent_drafts(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
