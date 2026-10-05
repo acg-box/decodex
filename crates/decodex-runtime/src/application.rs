@@ -7408,6 +7408,11 @@ mod tests {
 	#[tokio::test]
 	async fn saved_misalignment_history_omits_continuation_without_live_native_evidence() {
 		let directory = tempfile::tempdir().unwrap();
+		std::fs::set_permissions(
+			directory.path(),
+			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+		)
+		.unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 
@@ -8275,6 +8280,11 @@ mod tests {
 	#[tokio::test]
 	async fn approval_request_projection_preserves_the_native_executor() {
 		let directory = tempfile::tempdir().unwrap();
+		std::fs::set_permissions(
+			directory.path(),
+			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+		)
+		.unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
