@@ -7,7 +7,7 @@ use crate::{
 	shell::workspace_symbols::{self, Symbol},
 	ui_theme::{HOVER_FILL, TEXT_MUTED},
 };
-use gpui::{AnyElement, AppContext as _, KeyDownEvent};
+use gpui::{AnyElement, AppContext as _, Focusable, KeyDownEvent};
 
 struct WorkRow {
 	id: String,
@@ -135,71 +135,210 @@ impl AgentSurface {
 		} else {
 			&self.workspace.workspace_filter
 		};
-		let mut choices = vec![(None, if draft { "No workspace" } else { "All" }.to_owned())];
-		if let Some(snapshot) = &self.snapshot {
-			choices
-				.extend(snapshot.workspaces.iter().map(|w| (Some(w.id.clone()), w.name.clone())));
-		}
-		let mut row = gpui::div()
-			.id("workspace-folder-choices")
-			.max_w_full()
-			.overflow_x_scroll()
+		let fallback = if draft { "No workspace" } else { "All workspaces" };
+		let workspaces = self.snapshot.as_ref().map(|s| s.workspaces.as_slice()).unwrap_or(&[]);
+		let name = workspaces
+			.iter()
+			.find(|w| Some(&w.id) == selected.as_ref())
+			.map(|w| w.name.as_str())
+			.unwrap_or(fallback)
+			.to_owned();
+		let open = self.workspace.workspace_picker == Some(draft);
+		let trigger_bounds =
+			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let measured_bounds = trigger_bounds.clone();
+		let trigger = gpui::div()
+			.id("workspace-picker-trigger")
+			.relative()
+			.child(
+				gpui::canvas(
+					move |bounds, _, _| measured_bounds.set(Some(bounds)),
+					|_, _, _, _| {},
+				)
+				.absolute()
+				.inset_0(),
+			)
+			.role(Role::Button)
+			.aria_label(format!("Choose workspace: {name}"))
+			.tab_index(0)
+			.w(gpui::px(220.))
+			.h(gpui::px(32.))
+			.px_3()
 			.flex()
 			.items_center()
-			.gap_2();
-		for (id, name) in choices {
-			let active = &id == selected;
-			row = row.child(
-				gpui::div()
-					.id(SharedString::from(format!(
-						"workspace-choice-{}",
-						id.as_deref().unwrap_or("all")
-					)))
-					.role(Role::Button)
-					.aria_label(format!("Workspace: {name}"))
-					.flex_none()
-					.tab_index(0)
-					.px_3()
-					.py_1()
-					.rounded(gpui::px(6.))
-					.text_size(gpui::px(12.))
-					.cursor_pointer()
-					.bg(gpui::rgba(if active { 0xffffff14 } else { 0xffffff00 }))
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-					.child(name)
-					.on_click(cx.listener(move |s, _, _, cx| {
-						if draft {
-							s.workspace.new_conversation_workspace = id.clone();
-							s.save_draft_document(cx);
-						} else {
-							s.workspace.workspace_filter = id.clone();
-						}
+			.gap_2()
+			.rounded(gpui::px(7.))
+			.text_size(gpui::px(13.))
+			.cursor_pointer()
+			.bg(gpui::rgba(0xffffff0a))
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(name))
+			.child(workspace_symbols::icon_sized(Symbol::ChevronDown, 12.))
+			.on_click(
+				cx.listener(move |s, _, window, cx| s.toggle_workspace_picker(draft, window, cx)),
+			)
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
+				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+					s.toggle_workspace_picker(draft, window, cx);
+					cx.stop_propagation();
+				}
+			}));
+		let mut anchor =
+			gpui::div().id("workspace-picker").relative().w(gpui::px(220.)).child(trigger);
+		if open {
+			let search = self.workspace.workspace_search.as_ref().unwrap();
+			let query = search.read(cx).content().trim().to_lowercase();
+			let mut choices = vec![(None, fallback.to_owned(), String::new())];
+			choices.extend(
+				workspaces
+					.iter()
+					.filter(|w| {
+						w.name.to_lowercase().contains(&query)
+							|| w.directory.to_lowercase().contains(&query)
+					})
+					.map(|w| (Some(w.id.clone()), w.name.clone(), w.directory.clone())),
+			);
+			let no_matches = choices.len() == 1 && !query.is_empty();
+			let mut list = gpui::div()
+				.id("workspace-picker-list")
+				.max_h(gpui::px(260.))
+				.overflow_y_scroll()
+				.flex()
+				.flex_col();
+			for (id, name, path) in choices {
+				let active = &id == selected;
+				let keyboard_id = id.clone();
+				list = list.child(
+					gpui::div()
+						.id(SharedString::from(format!(
+							"workspace-choice-{}",
+							id.as_deref().unwrap_or("all")
+						)))
+						.role(Role::Button)
+						.aria_label(format!("Workspace: {name}"))
+						.tab_index(0)
+						.flex_none()
+						.px_2()
+						.py_2()
+						.flex()
+						.items_center()
+						.gap_2()
+						.rounded(gpui::px(6.))
+						.cursor_pointer()
+						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+						.child(gpui::div().w(gpui::px(16.)).flex_none().children(
+							active.then(|| workspace_symbols::icon_sized(Symbol::Confirm, 13.)),
+						))
+						.child(
+							gpui::div()
+								.min_w_0()
+								.flex_1()
+								.flex()
+								.flex_col()
+								.gap_1()
+								.child(
+									gpui::div()
+										.text_size(gpui::px(13.))
+										.text_ellipsis()
+										.child(name),
+								)
+								.children((!path.is_empty()).then(|| {
+									gpui::div()
+										.text_size(gpui::px(11.))
+										.text_color(gpui::rgb(TEXT_MUTED))
+										.text_ellipsis()
+										.child(path)
+								})),
+						)
+						.on_click(
+							cx.listener(move |s, _, _, cx| {
+								s.choose_workspace(draft, id.clone(), cx)
+							}),
+						)
+						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
+							{
+								s.choose_workspace(draft, keyboard_id.clone(), cx);
+								cx.stop_propagation();
+							}
+						})),
+				);
+			}
+			let menu = gpui::div()
+				.id("workspace-picker-menu")
+				.occlude()
+				.on_mouse_down_out(cx.listener(move |s, event: &gpui::MouseDownEvent, _, cx| {
+					if !trigger_bounds.get().is_some_and(|b| b.contains(&event.position)) {
+						s.workspace.workspace_picker = None;
 						cx.notify();
-					})),
+					}
+				}))
+				.p_2()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+					if e.keystroke.key == "escape" {
+						s.workspace.workspace_picker = None;
+						cx.stop_propagation();
+						cx.notify();
+					}
+				}))
+				.child(gpui::div().h(gpui::px(34.)).child(search.clone()))
+				.child(list)
+				.children(no_matches.then(|| {
+					gpui::div()
+						.px_2()
+						.py_2()
+						.text_size(gpui::px(12.))
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child("No matching workspaces")
+				}))
+				.child(
+					gpui::div()
+						.id("add-workspace-folder")
+						.role(Role::Button)
+						.aria_label("Add workspace folder")
+						.tab_index(0)
+						.px_2()
+						.py_2()
+						.rounded(gpui::px(6.))
+						.cursor_pointer()
+						.text_size(gpui::px(13.))
+						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+						.child("+ Add folder")
+						.on_click(cx.listener(|s, _, _, cx| {
+							s.workspace.workspace_picker = None;
+							s.add_workspace_folder(cx);
+							cx.notify();
+						}))
+						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
+							{
+								s.workspace.workspace_picker = None;
+								s.add_workspace_folder(cx);
+								cx.stop_propagation();
+								cx.notify();
+							}
+						})),
+				);
+			anchor = anchor.child(
+				gpui::deferred(
+					gpui::div()
+						.absolute()
+						.top(gpui::px(38.))
+						.left_0()
+						.w(gpui::px(320.))
+						.child(crate::ui_motion::popover(true, menu)),
+				)
+				.priority(3),
 			);
 		}
-		let row = row.child(
-			gpui::div()
-				.id("add-workspace-folder")
-				.role(Role::Button)
-				.aria_label("Add workspace folder")
-				.tab_index(0)
-				.px_2()
-				.py_1()
-				.rounded(gpui::px(6.))
-				.cursor_pointer()
-				.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-				.flex_none()
-				.text_size(gpui::px(12.))
-				.child("+ Add folder")
-				.on_click(cx.listener(|s, _, _, cx| s.add_workspace_folder(cx))),
-		);
 		gpui::div()
-			.max_w_full()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(row)
+			.child(anchor)
 			.children(self.workspace.folder_error.as_ref().map(|error| {
 				gpui::div()
 					.text_size(gpui::px(12.))
@@ -207,6 +346,37 @@ impl AgentSurface {
 					.child(error.clone())
 			}))
 			.into_any_element()
+	}
+
+	fn toggle_workspace_picker(
+		&mut self,
+		draft: bool,
+		window: &mut gpui::Window,
+		cx: &mut Context<Self>,
+	) {
+		if self.workspace.workspace_picker == Some(draft) {
+			self.workspace.workspace_picker = None;
+		} else {
+			let input = cx.new(|cx| {
+				ComposerInput::with_placeholder(47, "Search folders…", "Search workspaces", cx)
+			});
+			cx.observe(&input, |_, _, cx| cx.notify()).detach();
+			window.focus(&input.read(cx).focus_handle(cx), cx);
+			self.workspace.workspace_search = Some(input);
+			self.workspace.workspace_picker = Some(draft);
+		}
+		cx.notify();
+	}
+
+	fn choose_workspace(&mut self, draft: bool, id: Option<String>, cx: &mut Context<Self>) {
+		if draft {
+			self.workspace.new_conversation_workspace = id;
+			self.save_draft_document(cx);
+		} else {
+			self.workspace.workspace_filter = id;
+		}
+		self.workspace.workspace_picker = None;
+		cx.notify();
 	}
 
 	fn open_work_preview(
