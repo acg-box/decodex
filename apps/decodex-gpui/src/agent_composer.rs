@@ -106,7 +106,7 @@ impl AgentSurface {
 
 	fn awaiting_start(&self, cx: &Context<Self>) -> bool {
 		// Steer submits into an existing turn; it must not show new-turn startup UI.
-		(self.sending && self.running_turn().is_none())
+		(self.sending && self.workspace.opening_work.is_none() && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
 				&& (self.feedback == "Message saved · Waiting for agent…"

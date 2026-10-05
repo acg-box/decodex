@@ -110,6 +110,7 @@ impl AgentSurface {
 	) {
 		// Inline tool disclosures do not cover or replace the native composer.
 		let requested = allowed
+			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
 			&& !self.selected_is_archived()
 			&& (self.connection_initializing() || self.composer_unavailable_reason().is_none())

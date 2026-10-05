@@ -274,7 +274,7 @@ impl AgentSurface {
 			return;
 		};
 
-		if self.workspace.agent_tree_visible
+		if (self.workspace.agent_tree_visible || self.workspace.browsing)
 			&& self.native_agents.task.is_none()
 			&& self.native_agents.next.is_none_or(|t| t <= Instant::now())
 		{
@@ -370,6 +370,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_native_agent(&mut self, owner: &str, thread: &str, cx: &mut Context<Self>) {
+		self.workspace.browsing = false;
 		if self.native_agents.pending.is_some() || !self.command_connection_ready() {
 			return;
 		}

@@ -132,6 +132,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.workspace.browsing = false;
 		self.workspace.closing_pages.remove(id);
 		if let Some((owner, thread)) = self.native_agents.pages.get(id).cloned() {
 			self.open_native_agent(&owner, &thread, cx);
@@ -424,122 +425,32 @@ impl AgentSurface {
 			.gap_1()
 			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL));
 
-		panel = panel.child(self.workspace_tabs(cx));
-		panel = panel.child(
-			gpui::div()
-				.ml(gpui::px(46.))
-				.min_w(gpui::px(120.))
-				.child(self.workspace_projects_header(cx)),
-		);
-
-		let mut list = gpui::div()
-			.id("agent-sidebar-work")
-			.ml(gpui::px(46.))
-			.min_w(gpui::px(120.))
-			.flex_1()
-			.min_h_0()
-			.overflow_y_scroll();
-
-		if let Some(snapshot) = &self.snapshot {
-			for work in snapshot.work_items.iter().filter(|w| {
-				snapshot.workspaces.iter().any(|p| p.agent_id == w.id)
-					|| (w.parent_goal_id == self.root_id() && w.kind == AgentWorkKindDto::Manager)
-			}) {
-				let id = work.id.clone();
-				let label = snapshot
-					.workspaces
-					.iter()
-					.find(|p| p.agent_id == id)
-					.map_or_else(|| work.title.clone(), |p| p.name.clone());
-				let waiting = snapshot.work_items.iter().find(|w| {
-					within_project(snapshot, &id, &w.id)
-						&& (w.status == AgentWorkStatusDto::UserDecision
-							|| snapshot.pending_events.iter().any(|e| {
-								e.work_item_id == w.id && e.event_kind.ends_with("_pending")
-							}))
-				});
-				let count = snapshot
-					.work_items
-					.iter()
-					.filter(|w| {
-						within_project(snapshot, &id, &w.id)
-							&& (w.status == AgentWorkStatusDto::UserDecision
-								|| snapshot.pending_events.iter().any(|e| {
-									e.work_item_id == w.id && e.event_kind.ends_with("_pending")
-								}))
-					})
-					.count();
-				let mut row = gpui::div().flex().items_center().child(
-					gpui::div().flex_1().min_w_0().child(self.workspace_action(
-						format!("sidebar-{id}"),
-						label,
-						move |s, cx| s.open_page(&id, cx),
-						cx,
-					)),
-				);
-
-				if let Some(waiting) = waiting {
-					let target = waiting.id.clone();
-
-					row = row.child(self.workspace_action(
-						format!("attention-{}", work.id),
-						format!("{count}"),
-						move |s, cx| {
-							s.open_page(&target, cx);
-
-							if let Some(scroll) = s.timeline.scroll.get(&target) {
-								scroll.scroll_to_bottom();
-							}
-						},
-						cx,
-					));
-				}
-
-				list = list.child(row);
-			}
-		}
-
-		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
-
+		panel = panel
+			.child(self.work_navigation(
+				"new-conversation",
+				"New conversation",
+				workspace_symbols::Symbol::Plus,
+				|s, cx| s.new_work_conversation(cx),
+				cx,
+			))
+			.child(self.workspace_tabs(cx))
+			.child(gpui::div().flex_1())
+			.child(self.work_navigation(
+				"all-work",
+				"All work",
+				workspace_symbols::Symbol::AccountReorder,
+				|s, cx| {
+					s.stop_voice(cx);
+					s.workspace.browsing = true;
+					cx.notify();
+				},
+				cx,
+			));
 		panel
 			.when(self.workspace.sidebar_visible, |panel| {
 				panel.child(self.sidebar_resize_handle(cx))
 			})
 			.into_any_element()
-	}
-
-	fn workspace_projects_header(&self, cx: &mut Context<Self>) -> Div {
-		gpui::div()
-			.mt_5()
-			.px_2()
-			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.flex()
-			.items_center()
-			.justify_between()
-			.child("Projects")
-			.child(self.workspace_action(
-				"new-project".into(),
-				"+".into(),
-				|s, cx| {
-					if let Some(id) = s.root_id() {
-						s.open_page(&id, cx);
-					}
-
-					if s.composer.read(cx).content().trim().is_empty() {
-						s.composer.update(cx, |input, cx| {
-							input.set_content("Create a project workspace for ", cx)
-						});
-					} else {
-						s.feedback =
-							"Your draft is kept. Send or clear it before starting a new project."
-								.into();
-					}
-
-					cx.notify();
-				},
-				cx,
-			))
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
@@ -1076,6 +987,10 @@ impl AgentSurface {
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
 		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
+		if self.workspace.browsing {
+			let browser = self.render_work_browser(cx);
+			return self.workspace_frame(browser, wide, window, cx);
+		}
 		let mut chat = gpui::div()
 			.id("conversation-panel-focus")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
@@ -1110,7 +1025,7 @@ impl AgentSurface {
 				.child(self.latest_button(window, cx)),
 		);
 
-		if floating_composer {
+		if floating_composer && !self.workspace.browsing {
 			let owner = cx.entity();
 			chat = chat.child(
 				gpui::div()
@@ -1145,7 +1060,16 @@ impl AgentSurface {
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
-		let chat = chat.into_any_element();
+		self.workspace_frame(chat.into_any_element(), wide, window, cx)
+	}
+
+	fn workspace_frame(
+		&mut self,
+		chat: AnyElement,
+		wide: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
 		self.update_graph_inset(graph_width, graph_height);
@@ -1231,6 +1155,12 @@ impl AgentSurface {
 	}
 
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if let Some(id) = self.workspace.opening_work.clone()
+			&& self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id))
+		{
+			self.workspace.opening_work = None;
+			self.open_page(&id, cx);
+		}
 		if let Some(current) = self.conversation_page()
 			&& Some(&current) != self.root_id().as_ref()
 			&& !self.workspace.pages.contains(&current)

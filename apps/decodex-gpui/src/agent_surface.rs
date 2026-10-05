@@ -52,6 +52,7 @@ mod native_composer;
 #[path = "agent_voice.rs"] mod voice;
 #[path = "agent_voice_settings.rs"] mod voice_settings;
 #[path = "agent_weather.rs"] mod weather;
+#[path = "agent_work_browser.rs"] mod work_browser;
 #[path = "agent_workspace.rs"] mod workspace;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
 
@@ -189,6 +190,7 @@ pub(crate) struct AgentSurface {
 	attachments: Vec<AgentAttachmentDto>,
 	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
+	work_search: Entity<ComposerInput>,
 	draft_profiles: Profiles,
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
@@ -357,6 +359,7 @@ impl AgentSurface {
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
+			work_search: Self::new_work_search(cx),
 			draft_profiles: Default::default(),
 			composer_manager: None,
 			native_agents: Default::default(),
@@ -1685,19 +1688,22 @@ impl AgentSurface {
 	}
 
 	pub(super) fn work_context(&self, _cx: &mut Context<Self>) -> gpui::AnyElement {
-		let title = self
-			.conversation_page()
-			.and_then(|id| {
-				self.native_page_label(&id).or_else(|| {
-					self.snapshot
-						.as_ref()?
-						.work_items
-						.iter()
-						.find(|w| w.id == id)
-						.map(|w| self.work_label(w))
+		let title = if self.workspace.browsing {
+			"All work".into()
+		} else {
+			self.conversation_page()
+				.and_then(|id| {
+					self.native_page_label(&id).or_else(|| {
+						self.snapshot
+							.as_ref()?
+							.work_items
+							.iter()
+							.find(|w| w.id == id)
+							.map(|w| self.work_label(w))
+					})
 				})
-			})
-			.unwrap_or_else(|| "Main".into());
+				.unwrap_or_else(|| "Main".into())
+		};
 		gpui::div()
 			.debug_selector(|| "workspace-conversation-header".into())
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
@@ -2279,6 +2285,9 @@ impl Render for AgentSurface {
 }
 
 struct WorkspaceView {
+	browsing: bool,
+	project_filter: Option<String>,
+	opening_work: Option<String>,
 	composer_overlay_height: f32,
 	pages: Vec<String>,
 	closing_pages: HashSet<String>,
@@ -2310,6 +2319,9 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			browsing: false,
+			project_filter: None,
+			opening_work: None,
 			composer_overlay_height: 0.,
 			pages: vec![],
 			closing_pages: Default::default(),
