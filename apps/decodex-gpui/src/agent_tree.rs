@@ -2,10 +2,7 @@
 use std::{collections::BTreeSet, f32::consts::FRAC_PI_2};
 
 use gpui::{AnyElement, Div, FontWeight, KeyDownEvent, PathBuilder, Stateful};
-use ui_theme::{
-	CAPTION_SIZE, HOVER_FILL, PANEL_HEADER_HEIGHT, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
-	TREE_ROW_HEIGHT,
-};
+use ui_theme::{CAPTION_SIZE, PANEL_HEADER_HEIGHT, TEXT, TEXT_MUTED, TREE_ROW_HEIGHT};
 
 use crate::{
 	shell::agent_surface::{
@@ -275,8 +272,10 @@ pub(super) fn tree_row(
 	has_children: bool,
 	expanded: bool,
 ) -> Stateful<Div> {
+	let group = SharedString::from(id.clone());
 	gpui::div()
-		.id(SharedString::from(id.clone()))
+		.id(group.clone())
+		.group(group.clone())
 		.debug_selector(move || id.clone())
 		.cursor_pointer()
 		.relative()
@@ -288,11 +287,19 @@ pub(super) fn tree_row(
 		.flex()
 		.items_center()
 		.gap(gpui::px(2.))
-		.rounded(gpui::px(5.))
-		.when(selected, |row| row.bg(gpui::rgba(0xffffff0b)))
-		.hover(move |row| {
-			row.bg(gpui::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-		})
+		.child(
+			gpui::div()
+				.absolute()
+				.left_0()
+				.right_0()
+				.top(gpui::px(2.))
+				.bottom(gpui::px(2.))
+				.rounded(gpui::px(4.))
+				.bg(gpui::rgba(if selected { 0xffffff09 } else { 0xffffff00 }))
+				.group_hover(group, move |background| {
+					background.bg(gpui::rgba(if selected { 0xffffff12 } else { 0xffffff09 }))
+				}),
+		)
 		.when(depth > 0, |row| {
 			row.child(
 				gpui::div()

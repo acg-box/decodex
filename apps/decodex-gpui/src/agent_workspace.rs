@@ -402,6 +402,7 @@ impl AgentSurface {
 					.into_any_element()
 			})
 			.smooth()
+			.enabled(!is_tree)
 			.into_any_element()
 	}
 
