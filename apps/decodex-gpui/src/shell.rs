@@ -2719,9 +2719,8 @@ fn topbar_controls(
 		.when(shell.selected == Destination::Agent, |controls| {
 			// Keep global controls in place while their data is loading.
 			controls
-				.child(agent_panel_control(shell, 2, cx))
 				.child(agent_panel_control(shell, 1, cx))
-				.child(agent_panel_control(shell, 3, cx))
+				.child(agent_panel_control(shell, 2, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
@@ -2798,10 +2797,9 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle work graph · Command-J",
-		(2, true) => "Toggle history rail",
-		(3, _) => "Toggle agent structure · Command-B",
+		(2, _) => "Toggle agent structure · Command-B",
 		(1, false) => "Work graph · no work yet",
-		_ => "History · no messages yet",
+		_ => "Panel unavailable",
 	};
 
 	gpui::div()
@@ -2833,7 +2831,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				s.agent.update(cx, |agent, cx| match index {
 					0 => agent.toggle_workspace_sidebar(cx),
 					1 => agent.toggle_workspace_graph(cx),
-					2 => agent.toggle_workspace_timeline(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 			}
@@ -2853,7 +2850,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				s.agent.update(cx, |agent, cx| match index {
 					0 => agent.toggle_workspace_sidebar(cx),
 					1 => agent.toggle_workspace_graph(cx),
-					2 => agent.toggle_workspace_timeline(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 				cx.stop_propagation();
@@ -7688,23 +7684,23 @@ mod tests {
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels())
 		};
 
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-j");
 
-		assert_eq!(panels(visual), [(true, true), (false, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (false, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-e");
 
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-b");
 
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
+		assert_eq!(panels(visual), [(false, true), (false, true), (false, true)]);
 
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
 	}
 
 	#[gpui::test]

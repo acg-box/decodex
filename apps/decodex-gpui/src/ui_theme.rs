@@ -113,3 +113,6 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.text_color(gpui::rgb(TEXT))
 		.child(title)
 }
+
+/// Stable gutter shared by conversation history and composer alignment.
+pub(crate) const HISTORY_RAIL_WIDTH: f32 = 44.;

@@ -48,7 +48,6 @@ pub(super) struct PageView {
 	pan: (f32, f32),
 	zoom: f32,
 	graph_visible: bool,
-	timeline_visible: bool,
 }
 
 struct PanelTip(String);
@@ -84,29 +83,16 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn panel_glyph(index: usize) -> AnyElement {
-		panel_icon(
-			["workspace-sidebar", "workspace-graph", "workspace-timeline", "workspace-agents"]
-				[index],
-		)
-		.expect("known panel glyph")
+		panel_icon(["workspace-sidebar", "workspace-graph", "workspace-agents"][index])
+			.expect("known panel glyph")
 	}
 
-	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 4] {
+	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 3] {
 		[
 			(self.workspace.sidebar_visible, true),
 			(self.workspace.graph_visible && self.reserve_workspace_panels(), self.has_work()),
-			(
-				self.workspace.timeline_visible && selected_history_available(self),
-				selected_history_available(self),
-			),
 			(self.workspace.agent_tree_visible, self.has_work()),
 		]
-	}
-
-	pub(crate) fn toggle_workspace_timeline(&mut self, cx: &mut Context<Self>) {
-		self.workspace.timeline_visible = !self.workspace.timeline_visible;
-
-		cx.notify();
 	}
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
@@ -184,7 +170,6 @@ impl AgentSurface {
 						pan: self.workspace.graph_pan,
 						zoom: self.workspace.graph_zoom,
 						graph_visible: self.workspace.graph_visible,
-						timeline_visible: self.workspace.timeline_visible,
 					},
 				);
 			}
@@ -205,7 +190,6 @@ impl AgentSurface {
 				pan: (0.0, 0.0),
 				zoom: 0.85,
 				graph_visible: self.workspace.graph_visible,
-				timeline_visible: self.workspace.timeline_visible,
 			});
 
 			self.workspace.graph_scope = saved.scope;
@@ -213,7 +197,6 @@ impl AgentSurface {
 			self.workspace.graph_pan = saved.pan;
 			self.workspace.graph_zoom = saved.zoom;
 			self.workspace.graph_visible = saved.graph_visible;
-			self.workspace.timeline_visible = saved.timeline_visible;
 			self.workspace.graph_expanded = false;
 		}
 
@@ -841,13 +824,13 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_footer(&self, rail_width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
+	fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		if self.native_agents.selected.is_some() {
 			let feedback = self.native_feedback();
 			return gpui::div()
 				.flex_none()
 				.w_full()
-				.pl(gpui::px(rail_width))
+				.pl(gpui::px(ui_theme::HISTORY_RAIL_WIDTH))
 				.when(!feedback.is_empty() && !matches!(feedback, "Sent" | "Sending…"), |d| {
 					d.child(
 						gpui::div()
@@ -866,7 +849,7 @@ impl AgentSurface {
 			.debug_selector(|| "composer-footer".into())
 			.flex_none()
 			.w_full()
-			.pl(gpui::px(rail_width))
+			.pl(gpui::px(ui_theme::HISTORY_RAIL_WIDTH))
 			.child(
 				gpui::div()
 					.w_full()
@@ -1046,26 +1029,20 @@ impl AgentSurface {
 		});
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
-		let rail_width = ui_motion::value(
-			"history-rail-width",
-			if self.workspace.timeline_visible { 44. } else { 0. },
-			window,
-			cx,
-		);
 
 		chat = chat.child(
 			gpui::div()
 				.flex_1()
 				.min_h_0()
 				.flex()
-				.child(self.history_rail_slot(rail_width, window, cx))
+				.child(self.history_rail_slot(window, cx))
 				.relative()
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
 
 		if is_agent && selected.is_some() && !self.selected_is_archived() {
-			chat = chat.child(self.composer_footer(rail_width, window, cx));
+			chat = chat.child(self.composer_footer(window, cx));
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
@@ -1781,7 +1758,6 @@ impl AgentSurface {
 			"expanded" => self.workspace.graph_expanded = true,
 			"in-use" => {
 				self.workspace.graph_visible = false;
-				self.workspace.timeline_visible = false;
 
 				self.snapshot.as_mut().expect("fixture").pending_events.push(
 					decodex_protocol::AgentPendingEventDto {
@@ -1797,11 +1773,9 @@ impl AgentSurface {
 			"compact-graph" => {
 				self.workspace.graph_scope = Some("agent".into());
 				self.workspace.sidebar_width = 280.0;
-				self.workspace.timeline_visible = false;
 			},
 			"markdown" => {
 				self.workspace.graph_visible = false;
-				self.workspace.timeline_visible = false;
 
 				if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) =
 					&mut self.history
@@ -1823,7 +1797,6 @@ impl AgentSurface {
 			"task-references" => self.visual_task_references(),
 			"conversation" => {
 				self.workspace.graph_visible = false;
-				self.workspace.timeline_visible = false;
 			},
 			_ => {},
 		}
@@ -1968,7 +1941,6 @@ impl AgentSurface {
 		self.workspace.pages = vec!["verify".into()];
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
-		self.workspace.timeline_visible = true;
 
 		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
@@ -2202,7 +2174,6 @@ impl AgentSurface {
 impl AgentSurface {
 	fn visual_functional_page(&mut self, page: &str, cx: &mut Context<Self>) {
 		self.workspace.graph_visible = false;
-		self.workspace.timeline_visible = false;
 		self.workspace.sidebar_visible = page == "hierarchy";
 
 		if page == "hierarchy" {
@@ -2296,21 +2267,13 @@ pub(super) fn clock_label(micros: i64) -> String {
 	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
 }
 
-pub(super) fn selected_history_available(surface: &AgentSurface) -> bool {
-	surface.has_work() || surface.history.as_ref().is_some_and(
-		|(_, history)| matches!(history,AgentHistoryResult::Available{entries,..} if !entries.is_empty()),
-	)
-}
-
 fn panel_icon(id: &str) -> Option<AnyElement> {
 	let symbol = match id {
 		"workspace-sidebar" => crate::shell::workspace_symbols::Symbol::Sidebar,
 		"workspace-graph" => crate::shell::workspace_symbols::Symbol::Graph,
-		"workspace-timeline" => crate::shell::workspace_symbols::Symbol::Timeline,
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
 		"graph-expand" => crate::shell::workspace_symbols::Symbol::Expand,
-		"graph-close" | "timeline-close" | "tree-close" =>
-			crate::shell::workspace_symbols::Symbol::Close,
+		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
 		"graph-up" => crate::shell::workspace_symbols::Symbol::Back,
 		"zoom-in" => crate::shell::workspace_symbols::Symbol::Plus,
 		"zoom-out" => crate::shell::workspace_symbols::Symbol::Minus,

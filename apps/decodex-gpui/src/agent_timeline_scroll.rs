@@ -148,7 +148,6 @@ struct Layout {
 	transcript_width: f32,
 	left_visible: bool,
 	right_visible: bool,
-	rail_visible: bool,
 	graph_expanded: bool,
 }
 
@@ -178,7 +177,6 @@ impl AgentSurface {
 			transcript_width: width,
 			left_visible: self.workspace.sidebar_visible,
 			right_visible: self.workspace.agent_tree_visible,
-			rail_visible: self.workspace.timeline_visible,
 			graph_expanded: self.workspace.graph_expanded,
 		});
 	}
@@ -466,7 +464,6 @@ mod tests {
 			transcript_width: 900.,
 			left_visible: true,
 			right_visible: true,
-			rail_visible: true,
 			graph_expanded: false,
 		};
 

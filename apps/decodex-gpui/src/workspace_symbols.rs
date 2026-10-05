@@ -11,11 +11,10 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
-	let sources: [&[u8]; 33] = [
+static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
+	let sources: [&[u8]; 32] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
-		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
 		include_bytes!("../../../assets/workspace-symbols/settings.png"),
 		include_bytes!("../../../assets/workspace-symbols/close.png"),
@@ -54,7 +53,6 @@ static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 pub(super) enum Symbol {
 	Sidebar,
 	Graph,
-	Timeline,
 	Expand,
 	Settings,
 	Close,
@@ -165,7 +163,7 @@ impl RenderOnce for ProcessChevron {
 pub(super) fn icon(symbol: Symbol) -> AnyElement {
 	let size = match symbol {
 		Symbol::ChevronDown => 12.0,
-		Symbol::Sidebar | Symbol::Graph | Symbol::Timeline | Symbol::Agents => 20.0,
+		Symbol::Sidebar | Symbol::Graph | Symbol::Agents => 20.0,
 		_ => 16.0,
 	};
 

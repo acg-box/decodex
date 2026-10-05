@@ -648,14 +648,12 @@ impl AgentSurface {
 
 	pub(super) fn history_rail_slot(
 		&self,
-		width: f32,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		// History nodes are transient while switching agents. Only the explicit
-		// visibility control may resize the rail and move the transcript.
+		// Reserve a stable gutter while histories load or agents change.
 		gpui::div()
-			.w(gpui::px(width))
+			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
 			.flex_none()
 			.overflow_hidden()
 			.child(self.history_rail(window, cx))
@@ -943,23 +941,6 @@ mod tests {
 				assert_eq!(bounds.size.width, original.size.width);
 			}
 		}
-
-		// The explicit toggle still controls the reserved rail width.
-		surface.update(visual, |s, cx| {
-			s.workspace.timeline_visible = false;
-
-			cx.notify();
-		});
-
-		visual.update(|w, cx| w.draw(cx).clear());
-
-		thread::sleep(std::time::Duration::from_millis(240));
-
-		visual.update(|w, cx| w.draw(cx).clear());
-
-		assert!(
-			visual.debug_bounds("workspace-transcript").unwrap().size.width > original.size.width
-		);
 	}
 
 	#[gpui::test]
@@ -1614,29 +1595,21 @@ mod tests {
 		});
 		for width in [1600., 700.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.)));
-			for rail in [true, false] {
-				surface.update(visual, |s, cx| {
-					s.workspace.timeline_visible = rail;
-					cx.notify();
-				});
-				// Check alignment during the transition as well as at rest.
-				for _ in 0..3 {
-					visual.update(|w, cx| w.draw(cx).clear());
-					let content = visual.debug_bounds("conversation-content").unwrap();
-					let composer = visual.debug_bounds("agent-composer").unwrap();
-					let inset = gpui::px(crate::ui_theme::CONVERSATION_INSET);
-					assert!(
-						(content.left() + inset - composer.left()).abs() < gpui::px(1.),
-						"left: {content:?} / {composer:?}"
-					);
-					assert!(
-						(content.right() - inset - composer.right()).abs() < gpui::px(1.),
-						"right: {content:?} / {composer:?}"
-					);
-					assert!(composer.size.width <= gpui::px(crate::ui_theme::CONVERSATION_WIDTH));
-					assert!(composer.left() >= gpui::px(0.) && composer.right() <= gpui::px(width));
-					thread::sleep(std::time::Duration::from_millis(130));
-				}
+			{
+				visual.update(|w, cx| w.draw(cx).clear());
+				let content = visual.debug_bounds("conversation-content").unwrap();
+				let composer = visual.debug_bounds("agent-composer").unwrap();
+				let inset = gpui::px(crate::ui_theme::CONVERSATION_INSET);
+				assert!(
+					(content.left() + inset - composer.left()).abs() < gpui::px(1.),
+					"left: {content:?} / {composer:?}"
+				);
+				assert!(
+					(content.right() - inset - composer.right()).abs() < gpui::px(1.),
+					"right: {content:?} / {composer:?}"
+				);
+				assert!(composer.size.width <= gpui::px(crate::ui_theme::CONVERSATION_WIDTH));
+				assert!(composer.left() >= gpui::px(0.) && composer.right() <= gpui::px(width));
 			}
 		}
 	}
