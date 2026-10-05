@@ -255,8 +255,13 @@ pub(super) fn tree_identity(name: AnyElement, id: String, status: &str) -> Div {
 		.max_w_full()
 		.flex()
 		.items_center()
-		.gap(gpui::px(4.))
-		.child(ui_motion::AgentSignal { id: SharedString::from(id).into(), state: status.into() })
+		.gap(gpui::px(2.))
+		.child(gpui::div().relative().w(gpui::px(6.)).h(gpui::px(16.)).flex_none().child(
+			gpui::div().absolute().left(gpui::px(-2.)).top_0().child(ui_motion::AgentSignal {
+				id: SharedString::from(id).into(),
+				state: status.into(),
+			}),
+		))
 		.child(gpui::div().min_w_0().flex_shrink(1.).child(name))
 }
 
@@ -278,7 +283,7 @@ pub(super) fn tree_row(
 		.pr(gpui::px(ROW_INSET))
 		.flex()
 		.items_center()
-		.gap(gpui::px(4.))
+		.gap(gpui::px(2.))
 		.rounded(gpui::px(5.))
 		.when(selected, |row| row.bg(gpui::rgba(0xffffff0b)))
 		.hover(move |row| {
@@ -293,7 +298,7 @@ pub(super) fn tree_row(
 					.w(gpui::px(if has_children {
 						INDENT - 5.
 					} else {
-						INDENT + DISCLOSURE / 2. + 12.
+						INDENT + DISCLOSURE / 2. + 4.
 					}))
 					.h(gpui::px(1.))
 					.bg(gpui::rgba(0xffffff30)),
