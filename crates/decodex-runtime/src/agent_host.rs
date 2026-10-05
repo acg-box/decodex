@@ -856,11 +856,12 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
+						let local_creation = matches!(&request.action, AgentActionDto::NewConversation { .. });
 						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
 
-						if !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
+						if !local_creation && !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
-						let suppress_wake = history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
+						let suppress_wake = local_creation || history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
 
 						self.recaps.note_input(&request.action);
 
@@ -1387,6 +1388,12 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			AgentActionDto::NewConversation { work_id } => {
+				AgentCoordinator::reserve_conversation(&self.store, work_id.as_str())
+					.await
+					.map_err(|_| "Conversation could not be created")?;
+				Ok(work_id.as_str().into())
+			},
 			action @ AgentActionDto::SendPromptInput { .. } =>
 				self.send_prompt_input(&key, action, active).await,
 			action @ (AgentActionDto::UploadPromptInput { .. }
@@ -2222,6 +2229,32 @@ mod tests {
 	};
 	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_core::DecodexRoot;
+
+	#[tokio::test]
+	async fn empty_conversation_stays_idle_until_explicit_input_and_survives_reopen() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		AgentCoordinator::reserve_root(&store, "main", "Help the user").await.unwrap();
+		let work = AgentCoordinator::reserve_conversation(&store, "new-chat").await.unwrap();
+		assert_eq!(work.parent_goal_id.as_deref(), Some("main"));
+		assert!(work.codex_thread_id.is_none());
+		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
+		assert!(store.agent_workspaces().await.unwrap().is_empty());
+		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+		drop(store);
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let saved = reopened.get_agent_work_item("new-chat".into()).await.unwrap();
+		assert_eq!(saved.title, "Improve sidebar navigation");
+		assert!(saved.codex_thread_id.is_none());
+		assert_eq!(reopened.list_agent_work_items().await.unwrap().len(), 2);
+	}
 
 	#[test]
 	fn directory_references_remain_paths_and_cannot_be_sent_as_images() {

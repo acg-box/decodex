@@ -733,6 +733,40 @@ impl AgentCoordinator {
 		self.create(id, None, prompt, Vec::new(), None).await
 	}
 
+	/// Save an empty user conversation without starting a provider thread or assigning a project.
+	pub(crate) async fn reserve_conversation(
+		store: &SqliteStore,
+		id: &str,
+	) -> Result<AgentWorkItem, AgentError> {
+		let parent = store
+			.list_agent_work_items()
+			.await?
+			.into_iter()
+			.find(|w| w.parent_goal_id.is_none())
+			.ok_or_else(|| AgentError::Invalid("Start Main first".into()))?;
+		let now = now_micros()?;
+		Ok(store
+			.create_agent_manager(
+				AgentWorkItem {
+					id: id.into(),
+					parent_goal_id: Some(parent.id),
+					kind: AgentWorkKind::Goal,
+					title: "New conversation".into(),
+					instructions:
+						"Help the user with their requests. Use other agents when useful.".into(),
+					codex_thread_id: None,
+					status: AgentWorkStatus::Open,
+					dispatch_state: AgentDispatchState::Idle,
+					active_turn_id: None,
+					next_check_at_micros: None,
+					created_at_micros: now,
+					updated_at_micros: now,
+				},
+				None,
+			)
+			.await?)
+	}
+
 	/// Reserve the personal root before the account-bound process is admitted.
 	/// This records intent only and does not create a provider thread or turn.
 	pub async fn reserve_root(

@@ -1026,6 +1026,15 @@ impl SqliteStore {
 					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(error::sqlite_error)?;
 
 			let event_id = transaction.last_insert_rowid();
+            if input.event_kind == "user_message"
+                && let Ok(payload) = serde_json::from_str::<Value>(&input.payload)
+                && let Some(text) = payload["text"].as_str() {
+                let title = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(64).collect::<String>();
+                if !title.is_empty() {
+                    transaction.execute("UPDATE agent_work_items SET title=?2,updated_at_micros=?3 WHERE id=?1 AND title='New conversation' AND codex_thread_id IS NULL", rusqlite::params![input.work_item_id,title,now]).map_err(error::sqlite_error)?;
+                }
+            }
+
 
 			if compact.is_some() {
 				transaction.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",rusqlite::params![event_id,input.payload]).map_err(error::sqlite_error)?;
