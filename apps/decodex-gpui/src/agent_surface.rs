@@ -2264,6 +2264,7 @@ impl Render for AgentSurface {
 }
 
 struct WorkspaceView {
+	composer_overlay_height: f32,
 	pages: Vec<String>,
 	closing_pages: HashSet<String>,
 	graph_visible: bool,
@@ -2291,6 +2292,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			composer_overlay_height: 0.,
 			pages: vec![],
 			closing_pages: Default::default(),
 			graph_visible: true,

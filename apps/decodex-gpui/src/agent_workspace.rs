@@ -830,7 +830,6 @@ impl AgentSurface {
 			return gpui::div()
 				.flex_none()
 				.w_full()
-				.pl(gpui::px(ui_theme::HISTORY_RAIL_WIDTH))
 				.when(!feedback.is_empty() && !matches!(feedback, "Sent" | "Sending…"), |d| {
 					d.child(
 						gpui::div()
@@ -844,53 +843,46 @@ impl AgentSurface {
 				.child(self.render_composer(window, cx));
 		}
 
-		// Reserve real layout space so history can never paint beneath the native input window.
-		gpui::div()
-			.debug_selector(|| "composer-footer".into())
-			.flex_none()
-			.w_full()
-			.pl(gpui::px(ui_theme::HISTORY_RAIL_WIDTH))
-			.child(
-				gpui::div()
-					.w_full()
-					.flex()
-					.flex_col()
-					.child(self.conversation_activity(cx))
-					.child(self.recovered_draft_panel(cx))
-					.when_some(
-						self.composer_unavailable_reason()
-							.filter(|_| !self.connection_initializing()),
-						|d, reason| {
-							d.child(
-								gpui::div()
-									.w_full()
-									.px(gpui::px(ui_theme::CONVERSATION_INSET))
-									.py(gpui::px(12.))
-									.flex()
-									.justify_center()
-									.child(
-										gpui::div()
-											.w_full()
-											.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
-											.min_w_0()
-											.p(gpui::px(14.))
-											.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-											.bg(gpui::rgb(0x27272b))
-											.flex()
-											.flex_col()
-											.gap(gpui::px(12.))
-											.child(self.unavailable_composer(reason, cx))
-											.child(self.recovery_composer(cx)),
-									),
-							)
-						},
-					)
-					.when(
-						self.connection_initializing()
-							|| self.composer_unavailable_reason().is_none(),
-						|d| d.child(self.render_composer(window, cx)),
-					),
-			)
+		// The parent overlays this transparent footer above the scrolling conversation.
+		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
+			gpui::div()
+				.w_full()
+				.flex()
+				.flex_col()
+				.child(self.conversation_activity(cx))
+				.child(self.recovered_draft_panel(cx))
+				.when_some(
+					self.composer_unavailable_reason().filter(|_| !self.connection_initializing()),
+					|d, reason| {
+						d.child(
+							gpui::div()
+								.w_full()
+								.px(gpui::px(ui_theme::CONVERSATION_INSET))
+								.py(gpui::px(12.))
+								.flex()
+								.justify_center()
+								.child(
+									gpui::div()
+										.w_full()
+										.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+										.min_w_0()
+										.p(gpui::px(14.))
+										.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
+										.bg(gpui::rgb(0x27272b))
+										.flex()
+										.flex_col()
+										.gap(gpui::px(12.))
+										.child(self.unavailable_composer(reason, cx))
+										.child(self.recovery_composer(cx)),
+								),
+						)
+					},
+				)
+				.when(
+					self.connection_initializing() || self.composer_unavailable_reason().is_none(),
+					|d| d.child(self.render_composer(window, cx)),
+				),
+		)
 	}
 
 	pub(super) fn selected_is_manager(&self) -> bool {
@@ -936,6 +928,7 @@ impl AgentSurface {
 					gpui::div()
 						.debug_selector(|| "conversation-content".into())
 						.pt(gpui::px(16.))
+						.pb(gpui::px(self.workspace.composer_overlay_height))
 						.px(gpui::px(ui_theme::CONVERSATION_INSET))
 						.w_full()
 						.max_w(gpui::px(
@@ -1028,6 +1021,10 @@ impl AgentSurface {
 			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
 		});
 
+		let floating_composer = is_agent && selected.is_some() && !self.selected_is_archived();
+		if !floating_composer {
+			self.workspace.composer_overlay_height = 0.;
+		}
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
 
 		chat = chat.child(
@@ -1041,8 +1038,33 @@ impl AgentSurface {
 				.child(self.latest_button(window, cx)),
 		);
 
-		if is_agent && selected.is_some() && !self.selected_is_archived() {
-			chat = chat.child(self.composer_footer(window, cx));
+		if floating_composer {
+			let owner = cx.entity();
+			chat = chat.child(
+				gpui::div()
+					.debug_selector(|| "floating-composer".into())
+					.absolute()
+					.left_0()
+					.right_0()
+					.bottom_0()
+					.child(self.composer_footer(window, cx))
+					.child(
+						gpui::canvas(
+							move |bounds, _, cx| {
+								owner.update(cx, |s, cx| {
+									let height = f32::from(bounds.size.height);
+									if (s.workspace.composer_overlay_height - height).abs() > 0.5 {
+										s.workspace.composer_overlay_height = height;
+										cx.notify();
+									}
+								});
+							},
+							|_, _, _, _| {},
+						)
+						.absolute()
+						.inset_0(),
+					),
+			);
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))

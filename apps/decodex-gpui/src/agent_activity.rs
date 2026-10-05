@@ -594,7 +594,7 @@ impl AgentSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(gpui::px(8.))
+			.bottom(gpui::px(self.workspace.composer_overlay_height + 8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					gpui::div()
@@ -1597,16 +1597,11 @@ mod tests {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.)));
 			{
 				visual.update(|w, cx| w.draw(cx).clear());
-				let content = visual.debug_bounds("conversation-content").unwrap();
+				let footer = visual.debug_bounds("floating-composer").unwrap();
 				let composer = visual.debug_bounds("agent-composer").unwrap();
-				let inset = gpui::px(crate::ui_theme::CONVERSATION_INSET);
 				assert!(
-					(content.left() + inset - composer.left()).abs() < gpui::px(1.),
-					"left: {content:?} / {composer:?}"
-				);
-				assert!(
-					(content.right() - inset - composer.right()).abs() < gpui::px(1.),
-					"right: {content:?} / {composer:?}"
+					(composer.center().x - footer.center().x).abs() < gpui::px(1.),
+					"composer must center on the full panel, including the timeline gutter"
 				);
 				assert!(composer.size.width <= gpui::px(crate::ui_theme::CONVERSATION_WIDTH));
 				assert!(composer.left() >= gpui::px(0.) && composer.right() <= gpui::px(width));
@@ -1615,7 +1610,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn composer_growth_never_overlaps_history(cx: &mut gpui::TestAppContext) {
+	fn composer_growth_keeps_history_behind_the_overlay(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
 		surface.update(visual, |s, cx| {
@@ -1636,8 +1631,16 @@ mod tests {
 				visual.update(|w, cx| w.draw(cx).clear());
 			}
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
-			let footer = visual.debug_bounds("composer-footer").unwrap();
-			assert!(transcript.bottom() <= footer.top(), "{text}: {transcript:?} / {footer:?}");
+			let footer = visual.debug_bounds("floating-composer").unwrap();
+			assert!(
+				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
+				"{text}: history must extend behind the floating input"
+			);
+			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
+			assert!(
+				(clearance - f32::from(footer.size.height)).abs() < 1.,
+				"tail clearance follows the growing composer"
+			);
 			assert!(transcript.size.height > gpui::px(0.));
 		}
 	}
@@ -1667,8 +1670,10 @@ mod tests {
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			scroll.bounds().bottom() <= visual.debug_bounds("composer-footer").unwrap().top(),
-			"history must be clipped above the composer"
+			(scroll.bounds().bottom() - visual.debug_bounds("floating-composer").unwrap().bottom())
+				.abs()
+				< gpui::px(1.),
+			"history must continue behind the composer"
 		);
 
 		let position = scroll.bounds().center();
