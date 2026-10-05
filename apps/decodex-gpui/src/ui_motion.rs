@@ -351,20 +351,30 @@ impl RenderOnce for Popover {
 		gpui::div()
 			.w_full()
 			.relative()
-			.when(!self.unframed, |surface| {
-				surface.rounded(gpui::px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![
-					gpui::BoxShadow {
-						inset: false,
-						color: gpui::rgba(0x00000024).into(),
-						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-						blur_radius: gpui::px(12.),
-						spread_radius: gpui::px(-3.),
-					},
-				])
-			})
+			.when(!self.unframed, menu_surface)
 			.child(self.child)
 			.into_any_element()
 	}
+}
+
+/// Shared menu material: opaque enough for text, with a soft light-facing edge.
+pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
+	surface
+		.rounded(gpui::px(10.))
+		.border_1()
+		.border_color(gpui::rgba(0xffffff16))
+		.bg(gpui::linear_gradient(
+			165.,
+			gpui::linear_color_stop(gpui::rgb(0x34353b), 0.),
+			gpui::linear_color_stop(gpui::rgb(0x24252b), 1.),
+		))
+		.shadow(vec![gpui::BoxShadow {
+			inset: false,
+			color: gpui::rgba(0x00000030).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(6.)),
+			blur_radius: gpui::px(18.),
+			spread_radius: gpui::px(-4.),
+		}])
 }
 
 #[derive(Clone)]

@@ -1125,10 +1125,8 @@ impl AgentSurface {
 						.flex_col()
 						.gap(gpui::px(6.))
 						.child(
-							gpui::div()
-								.p(gpui::px(8.))
-								.rounded(gpui::px(14.))
-								.bg(gpui::rgb(0x29292d))
+							ui_motion::menu_surface(gpui::div())
+								.p(gpui::px(5.))
 								.child(self.model_palette(cx))
 								.child(
 									gpui::div()
@@ -1137,11 +1135,10 @@ impl AgentSurface {
 								),
 						)
 						.child(
-							gpui::div()
-								.px(gpui::px(8.))
-								.py(gpui::px(3.))
+							ui_motion::menu_surface(gpui::div())
+								.px(gpui::px(7.))
+								.py(gpui::px(2.))
 								.rounded_full()
-								.bg(gpui::rgb(0x29292d))
 								.flex()
 								.items_center()
 								.child(self.creation_effort_toggle(cx))
