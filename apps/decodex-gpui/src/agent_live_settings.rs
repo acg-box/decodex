@@ -195,7 +195,7 @@ impl AgentSurface {
 					Some(Ok(AgentCommandResponse::Accepted {..}))=>"Published for subsequent steps of this turn. This does not confirm a later inference used the selection.",
 					Some(Ok(AgentCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh and review the current turn.",
 					Some(_)=>"Publication could not be confirmed. No automatic retry was made.",
-					None if saving=>"The operation could not be confirmed. Refresh its receipt before another edit.",
+					None if saving=>"The change could not be confirmed. Check its status before editing again.",
 					None if matches!(state,AgentLiveReviewerState::Unavailable)=>"No editable active turn is available. Refresh the task.",
 					None=>"Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged.",
 				}.into();

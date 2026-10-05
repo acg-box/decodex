@@ -193,7 +193,7 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 		case .applicationUnavailable:
 			return "The account service is unavailable."
 		case .acceptanceUnknown, .potentiallyDispatched:
-			return "The account action may have been accepted. Refresh authoritative state before trying again."
+			return "The account change may have succeeded. Refresh account status before trying again."
 		case .rejected(let rejection, _):
 			return rejection.presentation
 		}

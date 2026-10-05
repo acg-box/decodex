@@ -32,17 +32,17 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 		case .providerUnavailable:
 			return "The reset-card provider is unavailable."
 		case .inventoryIncomplete:
-			return "The daemon could not establish a complete reset-card inventory."
+			return "Reset cards could not be fully loaded."
 		case .inventoryChanged:
 			return "The reset cards changed. Refresh and select the card again."
 		case .requestTimedOut:
 			return "The reset-card provider did not respond in time."
 		case .resourceExhausted:
-			return "The reset-card service reached a bounded resource limit."
+			return "The reset service is busy. Try again later."
 		case .productStateUnavailable:
-			return "Authoritative reset-card state is unavailable."
+			return "The reset status is unavailable."
 		case .effectAmbiguous:
-			return "The reset-card effect needs authoritative reconciliation."
+			return "The reset result is not confirmed yet. Check account status before trying again."
 		}
 	}
 }
@@ -78,7 +78,7 @@ enum ResetCardOperationState: Equatable, Sendable {
 	var presentation: String {
 		switch self {
 		case .notFound:
-			return "No durable reset-card operation was found."
+			return "No saved reset request was found."
 		case .prepared:
 			return "Reset-card use was accepted."
 		case .effectAmbiguous:
@@ -88,7 +88,7 @@ enum ResetCardOperationState: Equatable, Sendable {
 		case .failedBeforeEffect(let error):
 			return error.presentation
 		case .unavailable(let error):
-			return "Authoritative reset-card status is unavailable. \(error.presentation)"
+			return "The reset status is unavailable. \(error.presentation)"
 		}
 	}
 }

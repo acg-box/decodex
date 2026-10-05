@@ -160,7 +160,7 @@ impl AgentSurface {
 						confirmation::readable_local_media(&input)?;
 
 						client.preflight_prompt_input(draft.work_id, draft.thread_id, &input, &execution).await
-							.map_err(|_| "Input or current thread settings could not be qualified. History is unchanged.")?;
+							.map_err(|_| "The message or conversation settings could not be checked. History is unchanged.")?;
 
 						Ok(input)
 					})
@@ -176,7 +176,7 @@ impl AgentSurface {
 			return;
 		}
 
-		self.prompt_edit.feedback = "Checking edited input and current thread settings…".into();
+		self.prompt_edit.feedback = "Checking your edit and conversation settings…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("Input check stopped"));
 			let _ = surface.update(cx, |s, cx| {
@@ -278,7 +278,7 @@ impl AgentSurface {
 			return;
 		}
 
-		self.prompt_edit.feedback = "Reading the history edit receipt…".into();
+		self.prompt_edit.feedback = "Checking edit status…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("History recovery stopped"));
 			let _ = surface.update(cx, |s, cx| {
@@ -287,7 +287,7 @@ impl AgentSurface {
 				s.prompt_edit.task = None;
 
 				if s.prompt_edit.draft.as_ref() != Some(&expected) {
-					s.prompt_edit.feedback = "Draft changed during recovery. Read the receipt again.".into();
+					s.prompt_edit.feedback = "The draft changed during recovery. Check edit status again.".into();
 				} else {
 					match result {
 						Ok((recovered, phase)) => match s.stage_prompt_editor(recovered.clone(), cx) {
@@ -295,8 +295,8 @@ impl AgentSurface {
 								s.prompt_edit.draft = Some(recovered);
 								s.prompt_edit.feedback = match phase {
 									PromptEditPhase::Unchanged => "History is unchanged. Edited input retained; recheck original history before confirming again.",
-								PromptEditPhase::Restored => "History edit receipt recovered. Edited input retained; nothing was sent.",
-									PromptEditPhase::Applied => "History edit applied. Saving the retained draft; handback is still pending.",
+								PromptEditPhase::Restored => "Edit status recovered. Your edited draft is kept; nothing was sent.",
+									PromptEditPhase::Applied => "History updated. Restoring your edited draft…",
 									_ => "History edit remains uncertain. Retain this draft and recover again; do not repeat confirmation.",
 								}.into();
 								s.history_requested_for = None;
@@ -365,7 +365,7 @@ impl AgentSurface {
 			..Default::default()
 		};
 		self.prompt_edit.feedback = match self.install_prompt_editors(draft, cx) {
-			Ok(()) if sending => "Draft reopened. Check the original send receipt; the input will not be sent again automatically.".into(),
+			Ok(()) if sending => "Draft reopened. Check delivery before sending again.".into(),
 			Ok(()) if pending =>
 				"Draft reopened. Read the history edit status before continuing.".into(),
 			Ok(()) =>
@@ -771,7 +771,7 @@ impl AgentSurface {
 
 			panel = panel.child(self.workspace_action(
 				"prompt-send".into(),
-				if checking { "Check send receipt" } else { "Send edited input" }.into(),
+				if checking { "Check delivery" } else { "Send edited input" }.into(),
 				move |s, cx| s.send_prompt_editor(expected.clone(), checking, cx),
 				cx,
 			));
@@ -833,7 +833,7 @@ impl AgentSurface {
 
 		panel = panel.child(self.workspace_action(
 			"prompt-recover".into(),
-			"Read history edit receipt".into(),
+			"Check edit status".into(),
 			move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
 			cx,
 		));

@@ -145,7 +145,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.retrying(
-				detail: "Authoritative reset-card state is unavailable."
+				detail: "The reset status is unavailable."
 			)
 		)
 	}

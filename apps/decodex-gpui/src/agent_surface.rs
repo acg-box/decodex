@@ -1035,7 +1035,7 @@ impl AgentSurface {
 		}
 
 		self.sending = true;
-		self.feedback = "Waiting for durable acceptance…".into();
+		self.feedback = "Sending…".into();
 
 		if pending.steer.is_some() {
 			self.submission.pending = Some(pending.clone());

@@ -641,7 +641,7 @@ impl AgentSurface {
 				AgentGuardianSubmission::Pending =>
 					"Approval submission unconfirmed. No automatic retry.",
 				AgentGuardianSubmission::Submitted =>
-					"User approval submitted. Action execution is not confirmed by this receipt.",
+					"Approval submitted. The action has not been confirmed as complete.",
 				AgentGuardianSubmission::Rejected => "The approval submission was rejected.",
 			});
 		}
