@@ -1,4 +1,6 @@
 //! Interruptible motion shared by native controls and workspace panels.
+#[path = "ui_agent_label.rs"] mod agent_label;
+pub(crate) use agent_label::{AgentLabel, AgentSignal};
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 

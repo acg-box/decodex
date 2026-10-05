@@ -186,7 +186,7 @@ impl AgentSurface {
 			});
 		let name = self.work_label(work);
 		let id = work.id.clone();
-		let (status, color) = graph::state_in(snapshot, work);
+		let (status, _) = graph::state_in(snapshot, work);
 		let toggle = self.tree_toggle(work.id.clone(), &name, expanded, cx);
 		let row = tree_row(format!("agent-row-{}", work.id), depth, selected)
 			.child(if descendants.is_empty() && !has_native {
@@ -201,8 +201,8 @@ impl AgentSurface {
 					move |s, cx| s.open_page(&id, cx),
 					cx,
 				),
+				format!("agent-signal-{}", work.id),
 				status,
-				color,
 			));
 		let mut nested = tree_children(depth);
 		let mut count = 0;
@@ -241,21 +241,15 @@ impl AgentSurface {
 }
 
 /// Keep a row's name and state together; indentation alone expresses ancestry.
-pub(super) fn tree_identity(name: AnyElement, status: &str, color: u32) -> Div {
+pub(super) fn tree_identity(name: AnyElement, id: String, status: &str) -> Div {
 	gpui::div()
 		.min_w_0()
 		.max_w_full()
 		.flex()
 		.items_center()
-		.gap(gpui::px(8.))
+		.gap(gpui::px(4.))
+		.child(ui_motion::AgentSignal { id: SharedString::from(id).into(), state: status.into() })
 		.child(gpui::div().min_w_0().flex_shrink(1.).child(name))
-		.child(
-			gpui::div()
-				.flex_none()
-				.text_size(gpui::px(CAPTION_SIZE))
-				.text_color(gpui::rgb(color))
-				.child(if status == "Resolved" { "Done".to_owned() } else { status.to_owned() }),
-		)
 }
 
 pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {

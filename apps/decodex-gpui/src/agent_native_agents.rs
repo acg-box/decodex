@@ -6,7 +6,7 @@ use std::{
 
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
-use ui_theme::{TEXT_MUTED, TREE_ROW_HEIGHT};
+use ui_theme::TREE_ROW_HEIGHT;
 
 #[cfg(test)] use crate::shell::agent_surface::{AgentSnapshotResult, ClientProfile};
 use crate::{
@@ -669,8 +669,8 @@ impl AgentSurface {
 					move |s, cx| s.open_native_agent(&work, &thread, cx),
 					cx,
 				),
+				format!("native-agent-signal-{}", agent.thread_id),
 				&agent.status,
-				TEXT_MUTED,
 			));
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
 

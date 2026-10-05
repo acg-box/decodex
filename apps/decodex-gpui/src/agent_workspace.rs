@@ -346,6 +346,7 @@ impl AgentSurface {
 		let action = Rc::new(action);
 		let keyboard = action.clone();
 		let debug_id = id.clone();
+		let label_id = format!("overflow-{id}");
 
 		gpui::div()
 			.debug_selector(move || debug_id)
@@ -398,6 +399,12 @@ impl AgentSurface {
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
+			} else if is_tree || is_tab {
+				crate::ui_motion::AgentLabel {
+					id: SharedString::from(label_id).into(),
+					text: label.into(),
+				}
+				.into_any_element()
 			} else {
 				gpui::div()
 					.min_w_0()
@@ -1635,7 +1642,7 @@ impl AgentSurface {
 		);
 		let id = work.id.clone();
 		let key = id.clone();
-		let (status, color) = self
+		let (status, _) = self
 			.snapshot
 			.as_ref()
 			.map_or_else(|| graph::state(work), |snapshot| graph::state_in(snapshot, work));
@@ -1659,7 +1666,9 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!("{}: {status}. Open conversation.", self.work_label(work)))
-			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			.when(!blocked_by.is_empty(), |node| {
+				node.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			})
 			.absolute()
 			.left(gpui::px(node.x * zoom + pan.0))
 			.top(gpui::px(node.y * zoom + pan.1))
@@ -1690,10 +1699,17 @@ impl AgentSurface {
 					s.open_page(&key, cx);
 				}
 			}))
-			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
-			.child(
-				gpui::div().text_size(gpui::px(10.0)).text_color(gpui::rgb(color)).child(status),
-			);
+			.flex()
+			.items_center()
+			.gap(gpui::px(4.))
+			.child(crate::ui_motion::AgentSignal {
+				id: SharedString::from(format!("graph-signal-{}", work.id)).into(),
+				state: status.into(),
+			})
+			.child(crate::ui_motion::AgentLabel {
+				id: SharedString::from(format!("graph-label-{}", work.id)).into(),
+				text: self.work_label(work).into(),
+			});
 
 		element.into_any_element()
 	}
