@@ -12,7 +12,7 @@ use gpui::{AnyElement, AppContext as _, KeyDownEvent};
 struct WorkRow {
 	id: String,
 	title: String,
-	project: String,
+	workspace: String,
 	status: String,
 	color: u32,
 	native: Option<(String, String)>,
@@ -34,6 +34,9 @@ impl AgentSurface {
 	pub(super) fn new_work_conversation(&mut self, cx: &mut Context<Self>) {
 		if self.sending || self.uncertain {
 			return;
+		}
+		if self.workspace.new_conversation.is_none() {
+			self.workspace.new_conversation_workspace = self.workspace.workspace_filter.clone();
 		}
 		self.workspace.browsing = false;
 		if self.root_id().is_none() {
@@ -58,6 +61,152 @@ impl AgentSurface {
 		self.feedback.clear();
 		self.workspace.details_visible = false;
 		cx.notify();
+	}
+
+	fn add_workspace_folder(&mut self, cx: &mut Context<Self>) {
+		let Some(profile) = self.profile.clone() else { return };
+		self.workspace.folder_error = None;
+		let selected = cx.prompt_for_paths(gpui::PathPromptOptions {
+			files: false,
+			directories: true,
+			multiple: false,
+			prompt: Some("Add workspace".into()),
+		});
+		cx.spawn(async move |surface, cx| {
+			let Ok(Ok(Some(paths))) = selected.await else { return };
+			let Some(path) = paths.into_iter().next() else { return };
+			let request_profile = profile.clone();
+			let result = cx
+				.background_executor()
+				.spawn(async move {
+					let directory =
+						decodex_protocol::WireText::new(path.to_string_lossy().into_owned())
+							.map_err(|_| "Folder path is too long".to_owned())?;
+					let action = super::AgentActionDto::AddWorkspace {
+						workspace_id: decodex_protocol::EntityId::new(format!(
+							"workspace-{}",
+							super::unique_command()
+						))
+						.unwrap(),
+						directory,
+					};
+					let runtime = tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()
+						.map_err(|e| e.to_string())?;
+					runtime
+						.block_on(decodex_protocol::AgentClient::new(request_profile).execute(
+							action,
+							decodex_protocol::IdempotencyKey::new(super::unique_command()).unwrap(),
+						))
+						.map_err(|e| format!("Could not add folder: {e:?}"))
+				})
+				.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.profile.as_ref() != Some(&profile) {
+					return;
+				}
+				match result {
+					Ok(decodex_protocol::AgentCommandResponse::Accepted { work_id }) => {
+						let id = work_id.as_str().to_owned();
+						if s.is_new_conversation() {
+							s.workspace.new_conversation_workspace = Some(id.clone());
+							s.save_draft_document(cx);
+						}
+						s.workspace.workspace_filter = Some(id);
+						s.refresh(cx);
+					},
+					_ => {
+						s.workspace.folder_error = Some(
+							"Could not add this folder. Check that it is available and try again."
+								.into(),
+						);
+						cx.notify();
+					},
+				}
+			});
+		})
+		.detach();
+	}
+
+	pub(super) fn workspace_choices(&self, draft: bool, cx: &mut Context<Self>) -> AnyElement {
+		let selected = if draft {
+			&self.workspace.new_conversation_workspace
+		} else {
+			&self.workspace.workspace_filter
+		};
+		let mut choices = vec![(None, if draft { "No workspace" } else { "All" }.to_owned())];
+		if let Some(snapshot) = &self.snapshot {
+			choices
+				.extend(snapshot.workspaces.iter().map(|w| (Some(w.id.clone()), w.name.clone())));
+		}
+		let mut row = gpui::div()
+			.id("workspace-folder-choices")
+			.max_w_full()
+			.overflow_x_scroll()
+			.flex()
+			.items_center()
+			.gap_2();
+		for (id, name) in choices {
+			let active = &id == selected;
+			row = row.child(
+				gpui::div()
+					.id(SharedString::from(format!(
+						"workspace-choice-{}",
+						id.as_deref().unwrap_or("all")
+					)))
+					.role(Role::Button)
+					.aria_label(format!("Workspace: {name}"))
+					.flex_none()
+					.tab_index(0)
+					.px_3()
+					.py_1()
+					.rounded(gpui::px(6.))
+					.text_size(gpui::px(12.))
+					.cursor_pointer()
+					.bg(gpui::rgba(if active { 0xffffff14 } else { 0xffffff00 }))
+					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.child(name)
+					.on_click(cx.listener(move |s, _, _, cx| {
+						if draft {
+							s.workspace.new_conversation_workspace = id.clone();
+							s.save_draft_document(cx);
+						} else {
+							s.workspace.workspace_filter = id.clone();
+						}
+						cx.notify();
+					})),
+			);
+		}
+		let row = row.child(
+			gpui::div()
+				.id("add-workspace-folder")
+				.role(Role::Button)
+				.aria_label("Add workspace folder")
+				.tab_index(0)
+				.px_2()
+				.py_1()
+				.rounded(gpui::px(6.))
+				.cursor_pointer()
+				.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+				.flex_none()
+				.text_size(gpui::px(12.))
+				.child("+ Add folder")
+				.on_click(cx.listener(|s, _, _, cx| s.add_workspace_folder(cx))),
+		);
+		gpui::div()
+			.max_w_full()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(row)
+			.children(self.workspace.folder_error.as_ref().map(|error| {
+				gpui::div()
+					.text_size(gpui::px(12.))
+					.text_color(gpui::rgb(crate::ui_theme::ERROR))
+					.child(error.clone())
+			}))
+			.into_any_element()
 	}
 
 	pub(super) fn work_navigation(
@@ -113,7 +262,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn browsable_work(&self, query: &str, selected_project: Option<&str>) -> Vec<WorkRow> {
+	fn browsable_work(&self, query: &str, selected_workspace: Option<&str>) -> Vec<WorkRow> {
 		let Some(snapshot) = &self.snapshot else {
 			return Vec::new();
 		};
@@ -121,16 +270,13 @@ impl AgentSurface {
 		let mut seen = std::collections::BTreeSet::new();
 		let mut work = snapshot.work_items.iter().collect::<Vec<_>>();
 		work.sort_by_key(|w| std::cmp::Reverse(w.updated_at_micros));
-		let project_for = |id: &str| {
-			snapshot
-				.workspaces
-				.iter()
-				.find(|p| super::workspace::within_project(snapshot, &p.agent_id, id))
+		let workspace_for = |id: &str| {
+			snapshot.workspaces.iter().find(|p| p.work_ids.iter().any(|work| work == id))
 		};
-		let matches = |title: &str, project: Option<&decodex_protocol::AgentWorkspaceDto>| {
-			!selected_project.is_some_and(|id| project.is_none_or(|p| p.agent_id != id))
+		let matches = |title: &str, workspace: Option<&decodex_protocol::WorkspaceDto>| {
+			!selected_workspace.is_some_and(|id| workspace.is_none_or(|p| p.id != id))
 				&& (query.is_empty()
-					|| format!("{title} {}", project.map(|p| p.name.as_str()).unwrap_or(""))
+					|| format!("{title} {}", workspace.map(|p| p.name.as_str()).unwrap_or(""))
 						.to_lowercase()
 						.contains(query))
 		};
@@ -138,16 +284,16 @@ impl AgentSurface {
 			if let Some(thread) = &item.codex_thread_id {
 				seen.insert(thread.clone());
 			}
-			let project = project_for(&item.id);
+			let workspace = workspace_for(&item.id);
 			let title = self.work_label(item);
-			if !matches(&title, project) {
+			if !matches(&title, workspace) {
 				continue;
 			}
 			let (status, color) = super::graph::state_in(snapshot, item);
 			rows.push(WorkRow {
 				id: item.id.clone(),
 				title,
-				project: project.map(|p| p.name.clone()).unwrap_or_default(),
+				workspace: workspace.map(|p| p.name.clone()).unwrap_or_default(),
 				status: status.to_owned(),
 				color,
 				native: None,
@@ -158,14 +304,14 @@ impl AgentSurface {
 				if !seen.insert(agent.thread_id.clone()) {
 					continue;
 				}
-				let project = project_for(owner);
-				if !matches(&agent.title, project) {
+				let workspace = workspace_for(owner);
+				if !matches(&agent.title, workspace) {
 					continue;
 				}
 				rows.push(WorkRow {
 					id: format!("native:{owner}:{}", agent.thread_id),
 					title: agent.title.clone(),
-					project: project.map(|p| p.name.clone()).unwrap_or_default(),
+					workspace: workspace.map(|p| p.name.clone()).unwrap_or_default(),
 					status: agent.status.clone(),
 					color: TEXT_MUTED,
 					native: Some((owner.clone(), agent.thread_id.clone())),
@@ -177,38 +323,8 @@ impl AgentSurface {
 
 	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
 		let query = self.work_search.read(cx).content().trim().to_lowercase();
-		let selected_project = self.workspace.project_filter.as_deref();
-		let mut filters = gpui::div().flex().flex_wrap().gap_2();
-		let mut projects = vec![(None, "All".to_owned())];
-		if let Some(snapshot) = &self.snapshot {
-			projects.extend(
-				snapshot.workspaces.iter().map(|p| (Some(p.agent_id.clone()), p.name.clone())),
-			);
-		}
-		for (id, name) in projects {
-			let active = id.as_deref() == selected_project;
-			filters = filters.child(
-				gpui::div()
-					.id(SharedString::from(format!(
-						"work-filter-{}",
-						id.as_deref().unwrap_or("all")
-					)))
-					.role(Role::Button)
-					.aria_label(format!("Filter work: {name}"))
-					.tab_index(0)
-					.px_3()
-					.py_1()
-					.rounded(gpui::px(6.))
-					.cursor_pointer()
-					.bg(gpui::rgba(if active { 0xffffff14 } else { 0xffffff00 }))
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-					.child(name)
-					.on_click(cx.listener(move |s, _, _, cx| {
-						s.workspace.project_filter = id.clone();
-						cx.notify();
-					})),
-			);
-		}
+		let selected_workspace = self.workspace.workspace_filter.as_deref();
+		let filters = self.workspace_choices(false, cx);
 		let mut list = gpui::div()
 			.id("all-work-list")
 			.flex_1()
@@ -217,8 +333,8 @@ impl AgentSurface {
 			.flex()
 			.flex_col();
 		let mut count = 0;
-		for WorkRow { id, title, project: project_name, status, color, native } in
-			self.browsable_work(&query, selected_project)
+		for WorkRow { id, title, workspace: workspace_name, status, color, native } in
+			self.browsable_work(&query, selected_workspace)
 		{
 			let keyboard = id.clone();
 			let native_keyboard = native.clone();
@@ -255,7 +371,7 @@ impl AgentSurface {
 							.text_ellipsis()
 							.text_size(gpui::px(11.))
 							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(project_name.to_owned()),
+							.child(workspace_name.to_owned()),
 					)
 					.child(
 						gpui::div()
@@ -265,19 +381,11 @@ impl AgentSurface {
 							.child(status),
 					)
 					.on_click(cx.listener(move |s, _, _, cx| {
-						if let Some((owner, thread)) = &native {
-							s.open_native_agent(owner, thread, cx);
-						} else {
-							s.open_page(&id, cx);
-						}
+						if let Some((owner,thread))=&native { s.open_native_agent(owner,thread,cx); } else { s.open_page(&id,cx); }
 					}))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							if let Some((owner, thread)) = &native_keyboard {
-								s.open_native_agent(owner, thread, cx);
-							} else {
-								s.open_page(&keyboard, cx);
-							}
+							if let Some((owner,thread))=&native_keyboard { s.open_native_agent(owner,thread,cx); } else { s.open_page(&keyboard,cx); }
 							cx.stop_propagation();
 						}
 					})),

@@ -886,6 +886,7 @@ impl AgentSurface {
 				.child(
 					gpui::div().text_size(gpui::px(24.)).child("What would you like to work on?"),
 				)
+				.child(self.workspace_choices(true, cx))
 				.into_any_element();
 		}
 
@@ -1322,39 +1323,33 @@ impl AgentSurface {
 			return "Main".into();
 		}
 
-		if let Some(snapshot) = &self.snapshot {
-			if let Some(project) = snapshot.workspaces.iter().find(|p| p.agent_id == work.id) {
-				return project.name.clone();
-			}
-
-			if work.title == work.id && work.kind == AgentWorkKindDto::Task {
-				// Older records used readable work slugs as titles. Preserve their meaning
-				// instead of replacing it with a position-dependent Agent 1/2 label.
-				let title = work
-					.parent_goal_id
-					.as_ref()
-					.and_then(|parent| work.title.strip_prefix(&format!("{parent}-")))
-					.unwrap_or(&work.title);
-				return title
-					.split(['-', '_'])
-					.filter(|word| !word.is_empty())
-					.enumerate()
-					.map(|(index, word)| match word {
-						"gpui" => "GPUI".into(),
-						"ui" => "UI".into(),
-						"chief" => "Agent".into(),
-						_ if index == 0 => {
-							let mut chars = word.chars();
-							chars
-								.next()
-								.map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
-								.unwrap_or_default()
-						},
-						_ => word.to_owned(),
-					})
-					.collect::<Vec<_>>()
-					.join(" ");
-			}
+		if work.title == work.id && work.kind == AgentWorkKindDto::Task {
+			// Older records used readable work slugs as titles. Preserve their meaning
+			// instead of replacing it with a position-dependent Agent 1/2 label.
+			let title = work
+				.parent_goal_id
+				.as_ref()
+				.and_then(|parent| work.title.strip_prefix(&format!("{parent}-")))
+				.unwrap_or(&work.title);
+			return title
+				.split(['-', '_'])
+				.filter(|word| !word.is_empty())
+				.enumerate()
+				.map(|(index, word)| match word {
+					"gpui" => "GPUI".into(),
+					"ui" => "UI".into(),
+					"chief" => "Agent".into(),
+					_ if index == 0 => {
+						let mut chars = word.chars();
+						chars
+							.next()
+							.map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
+							.unwrap_or_default()
+					},
+					_ => word.to_owned(),
+				})
+				.collect::<Vec<_>>()
+				.join(" ");
 		}
 
 		work.title.clone()
@@ -2226,8 +2221,9 @@ impl AgentSurface {
 
 			project.kind = AgentWorkKindDto::Manager;
 
-			snapshot.workspaces.push(decodex_protocol::AgentWorkspaceDto {
-				agent_id: "release".into(),
+			snapshot.workspaces.push(decodex_protocol::WorkspaceDto {
+				id: "release-folder".into(),
+				work_ids: vec!["release".into()],
 				name: "September release".into(),
 				directory: "/Users/demo/projects/release".into(),
 			});
@@ -2280,28 +2276,6 @@ impl AgentSurface {
 
 		self.timeline.scroll.entry("agent".into()).or_default().scroll_to_bottom();
 	}
-}
-
-pub(super) fn within_project(snapshot: &AgentSnapshotDto, project: &str, work: &str) -> bool {
-	let mut current = Some(work);
-
-	for _ in 0..=snapshot.work_items.len() {
-		let Some(id) = current else {
-			return false;
-		};
-
-		if id == project {
-			return true;
-		}
-
-		current = snapshot
-			.work_items
-			.iter()
-			.find(|w| w.id == id)
-			.and_then(|w| w.parent_goal_id.as_deref());
-	}
-
-	false
 }
 
 pub(super) fn clock_label(micros: i64) -> String {

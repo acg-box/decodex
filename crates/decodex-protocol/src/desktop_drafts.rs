@@ -142,6 +142,9 @@ pub struct DesktopProfileDraft {
 	/// Local new-conversation editor; no server work exists until the first send.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation: Option<EntityId>,
+	/// Folder selected for the unsent conversation.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub new_conversation_workspace: Option<EntityId>,
 	/// Canonical history editors, retained separately from an occupied main composer.
 	/// Keyed by service review identity so competing edits remain distinct.
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

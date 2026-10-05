@@ -793,6 +793,13 @@ impl AgentSurface {
 
 		if self.is_new_conversation() {
 			return Ok(AgentActionDto::NewConversation {
+				workspace_id: self
+					.workspace
+					.new_conversation_workspace
+					.as_deref()
+					.map(EntityId::new)
+					.transpose()
+					.map_err(|_| "Invalid workspace")?,
 				work_id: EntityId::new(self.selected.clone().expect("draft identity"))
 					.map_err(|_| "Invalid conversation identity")?,
 				text: prompt,
@@ -2349,7 +2356,9 @@ impl Render for AgentSurface {
 struct WorkspaceView {
 	new_conversation: Option<String>,
 	browsing: bool,
-	project_filter: Option<String>,
+	workspace_filter: Option<String>,
+	new_conversation_workspace: Option<String>,
+	folder_error: Option<String>,
 	opening_work: Option<String>,
 	composer_overlay_height: f32,
 	pages: Vec<String>,
@@ -2384,7 +2393,9 @@ impl Default for WorkspaceView {
 		Self {
 			new_conversation: None,
 			browsing: false,
-			project_filter: None,
+			workspace_filter: None,
+			new_conversation_workspace: None,
+			folder_error: None,
 			opening_work: None,
 			composer_overlay_height: 0.,
 			pages: vec![],

@@ -54,6 +54,7 @@ pub(super) struct Profiles {
 #[derive(Default)]
 struct Drafts {
 	new_conversation: Option<String>,
+	new_conversation_workspace: Option<String>,
 	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
@@ -152,6 +153,7 @@ impl AgentSurface {
 		self.submission.previews.clear();
 		Drafts {
 			new_conversation: self.workspace.new_conversation.take(),
+			new_conversation_workspace: self.workspace.new_conversation_workspace.take(),
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
 			threads: mem::take(&mut self.draft_profiles.threads),
@@ -184,6 +186,7 @@ impl AgentSurface {
 		self.async_question_threads = restored.question_threads;
 		self.collapsed_async_questions = restored.collapsed_questions;
 		self.workspace.new_conversation = restored.new_conversation;
+		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
 		self.composer_manager = restored.manager;
 		if self.workspace.new_conversation.is_some()
 			&& self.workspace.new_conversation == self.composer_manager
