@@ -80,7 +80,7 @@ impl AgentSurface {
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(gpui::px(32.))
+						.h(gpui::px(ui_theme::CONTROL_SIZE))
 						.px(gpui::px(7.))
 						.rounded(gpui::px(6.))
 						.bg(if selected { gpui::rgba(0xffffff0c) } else { gpui::rgba(0x00000000) })

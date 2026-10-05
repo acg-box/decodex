@@ -7,7 +7,7 @@ use crate::{
 	shell::workspace_symbols::{self, Symbol},
 	ui_theme::{HOVER_FILL, TEXT_MUTED},
 };
-use gpui::{AnyElement, AppContext as _, Focusable, KeyDownEvent};
+use gpui::{AnyElement, AppContext as _, Focusable, KeyDownEvent, prelude::FluentBuilder};
 
 struct WorkRow {
 	id: String,
@@ -161,18 +161,26 @@ impl AgentSurface {
 			.role(Role::Button)
 			.aria_label(format!("Choose workspace: {name}"))
 			.tab_index(0)
-			.w(gpui::px(220.))
-			.h(gpui::px(32.))
+			.w(gpui::px(176.))
+			.when(draft, |d| d.w_auto())
+			.h(gpui::px(crate::ui_theme::CONTROL_SIZE))
 			.px_3()
 			.flex()
 			.items_center()
 			.gap_2()
 			.rounded(gpui::px(7.))
-			.text_size(gpui::px(13.))
+			.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
 			.cursor_pointer()
-			.bg(gpui::rgba(0xffffff0a))
+			.bg(gpui::rgba(if draft { 0x00000000 } else { 0xffffff08 }))
 			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-			.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(name))
+			.child(
+				gpui::div()
+					.when(!draft, |d| d.flex_1())
+					.min_w_0()
+					.max_w(gpui::px(160.))
+					.text_ellipsis()
+					.child(name),
+			)
 			.child(workspace_symbols::icon_sized(Symbol::ChevronDown, 12.))
 			.on_click(
 				cx.listener(move |s, _, window, cx| s.toggle_workspace_picker(draft, window, cx)),
@@ -183,8 +191,12 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}));
-		let mut anchor =
-			gpui::div().id("workspace-picker").relative().w(gpui::px(220.)).child(trigger);
+		let mut anchor = gpui::div()
+			.id("workspace-picker")
+			.relative()
+			.w(gpui::px(176.))
+			.when(draft, |d| d.w_auto())
+			.child(trigger);
 		if open {
 			let search = self.workspace.workspace_search.as_ref().unwrap();
 			let query = search.read(cx).content().trim().to_lowercase();
@@ -219,7 +231,7 @@ impl AgentSurface {
 						.tab_index(0)
 						.flex_none()
 						.px_2()
-						.py_2()
+						.py_1()
 						.flex()
 						.items_center()
 						.gap_2()
@@ -238,7 +250,7 @@ impl AgentSurface {
 								.gap_1()
 								.child(
 									gpui::div()
-										.text_size(gpui::px(13.))
+										.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
 										.text_ellipsis()
 										.child(name),
 								)
@@ -284,12 +296,12 @@ impl AgentSurface {
 						cx.notify();
 					}
 				}))
-				.child(gpui::div().h(gpui::px(34.)).child(search.clone()))
+				.child(gpui::div().h(gpui::px(crate::ui_theme::CONTROL_SIZE)).child(search.clone()))
 				.child(list)
 				.children(no_matches.then(|| {
 					gpui::div()
 						.px_2()
-						.py_2()
+						.py_1()
 						.text_size(gpui::px(12.))
 						.text_color(gpui::rgb(TEXT_MUTED))
 						.child("No matching workspaces")
@@ -301,10 +313,10 @@ impl AgentSurface {
 						.aria_label("Add workspace folder")
 						.tab_index(0)
 						.px_2()
-						.py_2()
+						.py_1()
 						.rounded(gpui::px(6.))
 						.cursor_pointer()
-						.text_size(gpui::px(13.))
+						.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
 						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 						.child("+ Add folder")
 						.on_click(cx.listener(|s, _, _, cx| {
@@ -326,9 +338,10 @@ impl AgentSurface {
 				gpui::deferred(
 					gpui::div()
 						.absolute()
-						.top(gpui::px(38.))
+						.top(gpui::px(32.))
 						.left_0()
-						.w(gpui::px(320.))
+						.when(draft, |d| d.left(gpui::relative(0.5)).ml(gpui::px(-140.)))
+						.w(gpui::px(280.))
 						.child(crate::ui_motion::popover(true, menu)),
 				)
 				.priority(3),
@@ -568,7 +581,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.w_full()
 					.min_w_0()
-					.h(gpui::px(48.))
+					.h(gpui::px(36.))
 					.flex_none()
 					.px_3()
 					.flex()
@@ -625,10 +638,23 @@ impl AgentSurface {
 			.min_w_0()
 			.flex()
 			.flex_col()
-			.p_6()
-			.gap_4()
-			.child(gpui::div().h(gpui::px(38.)).flex_none().child(self.work_search.clone()))
-			.child(filters)
+			.p_4()
+			.gap_3()
+			.child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.flex_none()
+					.child(
+						gpui::div()
+							.w(gpui::px(260.))
+							.max_w_full()
+							.h(gpui::px(crate::ui_theme::CONTROL_SIZE))
+							.child(self.work_search.clone()),
+					)
+					.child(filters),
+			)
 			.child(list)
 			.into_any_element()
 	}
