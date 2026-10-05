@@ -419,7 +419,11 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.p(gpui::px(CONTROL_MARGIN))
-			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+			.pt(gpui::px(if self.workspace.sidebar_peek {
+				CONTROL_MARGIN
+			} else {
+				WINDOW_CONTROLS_CLEARANCE
+			}))
 			.gap_1()
 			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.pr(gpui::px(4.));
@@ -533,8 +537,16 @@ impl AgentSurface {
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
 		let mut pages = vec![(self.root_id().unwrap_or_default(), "Main".into(), false)];
+		let mut open = self.workspace.pages.clone();
+		if let Some(current) = self.conversation_page()
+			&& Some(&current) != self.root_id().as_ref()
+			&& !open.contains(&current)
+			&& !self.workspace.closing_pages.contains(&current)
+		{
+			open.push(current);
+		}
 		if let Some(snapshot) = &self.snapshot {
-			pages.extend(self.workspace.pages.iter().filter_map(|id| {
+			pages.extend(open.iter().filter_map(|id| {
 				self.native_page_label(id)
 					.or_else(|| {
 						snapshot.work_items.iter().find(|w| &w.id == id).map(|w| self.work_label(w))

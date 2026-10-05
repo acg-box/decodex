@@ -189,6 +189,7 @@ impl AgentSurface {
 		} else {
 			let mut rail = gpui::div()
 				.id("conversation-rail")
+				.bg(gpui::rgba(crate::ui_theme::AGENT_SIDEBAR_MATERIAL))
 				.w(gpui::px(52.))
 				.h_full()
 				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
@@ -263,13 +264,17 @@ impl AgentSurface {
 					.debug_selector(|| "conversation-sidebar-peek".into())
 					.absolute()
 					.left_0()
-					.top_0()
-					.bottom_0()
+					.top(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+					.bottom(gpui::px(
+						self.workspace_graph_size(window, wide).1
+							+ self.workspace.composer_overlay_height
+							+ 8.,
+					))
 					.w(gpui::px(width))
 					.occlude()
 					.opacity(presence)
 					.bg(gpui::rgb(0x242428))
-					.rounded_r(gpui::px(12.))
+					.rounded(gpui::px(12.))
 					.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 					.child(self.workspace_sidebar(cx)),
 			)
