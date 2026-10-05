@@ -1221,7 +1221,7 @@ final class ResetCardStore {
 			clearStaleControlError()
 			setPendingStatus(
 				.checking(
-					detail: "This saved Reset Card request is already being checked automatically."
+					detail: "Checking the previous reset request…"
 				),
 				for: pendingAttempt
 			)
@@ -1360,7 +1360,7 @@ final class ResetCardStore {
 		let idempotencyKey = Self.newCanonicalUUID()
 		await performAccountControl(
 			isEnrollment: true,
-			successMessage: "Account login imported.",
+			successMessage: "Account sign-in imported.",
 			operation: {
 				try await accountControlClient.enrollFromSharedCodex(
 					authority: establishedAuthority,
@@ -3263,7 +3263,7 @@ final class ResetCardStore {
 		case .reauthentication:
 			message = ResetCardStoreMessage(
 				tone: .success,
-				text: "Account login refreshed."
+				text: "Account sign-in refreshed."
 			)
 			await refreshReauthenticatedAccountAuthority(
 				resolvedAccountID,
@@ -3698,14 +3698,14 @@ final class ResetCardStore {
 	) -> ResetCardPendingStatus {
 		switch state {
 		case .prepared:
-			return .checking(detail: "The service accepted this Reset Card request.")
+			return .checking(detail: "Reset request accepted.")
 		case .effectAmbiguous:
 			return .checking(
-				detail: "The service is reconciling authoritative Reset Card state."
+				detail: "Checking the reset result…"
 			)
 		case .notFound:
 			return .checking(
-				detail: "No durable Reset Card operation was found yet."
+				detail: "The reset request has not been confirmed yet."
 			)
 		case .unavailable(let error):
 			return .retrying(detail: error.presentation)
@@ -3720,11 +3720,11 @@ final class ResetCardStore {
 	)
 
 	private static let pendingDispatchUnavailableDetail =
-		"Another app instance changed or is checking this saved Reset Card request."
+		"Another Decodex window is checking this reset request."
 
 	private static let pendingTerminalRemovalFailedMessage = ResetCardStoreMessage(
 		tone: .error,
-		text: "The Reset Card operation finished, but the recovery journal could not be updated. Preserve the journal and refresh before starting another request."
+		text: "The reset card operation finished, but the recovery journal could not be updated. Preserve the journal and refresh before starting another request."
 	)
 }
 

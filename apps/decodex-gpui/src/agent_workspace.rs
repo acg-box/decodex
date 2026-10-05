@@ -1291,7 +1291,7 @@ impl AgentSurface {
 		let title = work.title.clone();
 		let footer = gpui::div().p_3().child(self.workspace_action(
 			"discuss-with-agent".into(),
-			"Discuss this work with Agent →".into(),
+			"Discuss this work →".into(),
 			move |s, cx| {
 				if let Some(root) = s.root_id() {
 					s.open_page(&root, cx);

@@ -1642,7 +1642,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
 		XCTAssertEqual(store.accounts.first?.account.observedState, .available)
 		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
-		XCTAssertEqual(store.message?.text, "Account login refreshed.")
+		XCTAssertEqual(store.message?.text, "Account sign-in refreshed.")
 		let recordedRequest = await client.reauthenticationStartRequest()
 		let request = try XCTUnwrap(recordedRequest)
 		XCTAssertEqual(request.accountID, accountID)
@@ -1823,7 +1823,7 @@ final class AccountControlStoreTests: XCTestCase {
 			store.accountReauthentication?.failureText,
 			AccountReauthenticationFailure.outcomeUnknown.presentation
 		)
-		XCTAssertNotEqual(store.message?.text, "Account login refreshed.")
+		XCTAssertNotEqual(store.message?.text, "Account sign-in refreshed.")
 		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
 		XCTAssertEqual(store.accounts.first?.account.observedState, .available)
 		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)

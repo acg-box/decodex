@@ -24,7 +24,7 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 		case .accountNotFound:
 			return "The account no longer exists."
 		case .accountStateRejected:
-			return "The account cannot use a Reset Card in its current state."
+			return "The account cannot use a reset card in its current state."
 		case .vaultUnavailable:
 			return "The daemon credential vault is unavailable."
 		case .schemaUnsupported:

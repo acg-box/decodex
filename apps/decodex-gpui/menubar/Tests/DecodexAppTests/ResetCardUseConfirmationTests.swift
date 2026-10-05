@@ -7,7 +7,7 @@ final class ResetCardUseConfirmationTests: XCTestCase {
 		let encoded = try JSONEncoder().encode(descriptor)
 		XCTAssertEqual(try JSONDecoder().decode(ResetCardDescriptor.self, from: encoded), descriptor)
 		XCTAssertEqual(ResetCardAccountRow.cardExpiryText(nil), "No expiry")
-		XCTAssertEqual(ResetCardAccountRow.cardAccessibilityLabel(expiresAtUnixSeconds: nil), "Reset Card, no expiry")
+		XCTAssertEqual(ResetCardAccountRow.cardAccessibilityLabel(expiresAtUnixSeconds: nil), "Reset card, no expiry")
 		let target = try makeTarget(expiresAt: nil)
 		var confirmation = ResetCardUseConfirmation()
 		XCTAssertNil(confirmation.tap(target, makeIdempotencyKey: { "stable-key" }))

@@ -812,7 +812,7 @@ impl AgentSurface {
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
 				{
-					"Start Live"
+					"Start voice chat"
 				} else {
 					"Send · Enter"
 				},

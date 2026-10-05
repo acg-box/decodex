@@ -294,7 +294,7 @@ impl Shell {
 						inventory: None,
 						blocked: true,
 						pending_key: failure_pending,
-						message: "Reset Cards are temporarily unavailable.".into(),
+						message: "Reset cards are temporarily unavailable.".into(),
 					},
 				};
 				let _ = sender.send((account, result));
@@ -495,11 +495,11 @@ pub(super) fn row(
 		let tip = if state.blocked {
 			state.message.clone()
 		} else {
-			format!("Reset Card · {}. Click twice within five seconds to use it.", title)
+			format!("Reset card · {}. Click twice within five seconds to use it.", title)
 		};
 
 		strip = strip.child(
-			shell::account_row_action("reset-card", index, "Use Reset Card", "", enabled)
+			shell::account_row_action("reset-card", index, "Use reset card", "", enabled)
 				.border_1()
 				.border_color(gpui::rgba(0xffffff26))
 				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))

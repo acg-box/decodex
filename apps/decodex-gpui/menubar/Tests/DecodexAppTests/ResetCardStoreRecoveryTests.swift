@@ -120,7 +120,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.checking(
-				detail: "The service is reconciling authoritative Reset Card state."
+				detail: "Checking the reset result…"
 			)
 		)
 		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
@@ -195,7 +195,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.checking(
-				detail: "No durable Reset Card operation was found yet."
+				detail: "The reset request has not been confirmed yet."
 			)
 		)
 		let invocations = try fixture.invocations()
@@ -271,7 +271,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.checking(
-				detail: "This saved Reset Card request is already being checked automatically."
+				detail: "Checking the previous reset request…"
 			)
 		)
 	}
@@ -489,7 +489,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			checkingStore.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.retrying(
-				detail: "Another app instance changed or is checking this saved Reset Card request."
+				detail: "Another Decodex window is checking this reset request."
 			)
 		)
 

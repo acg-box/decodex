@@ -109,7 +109,7 @@ impl AgentSurface {
 							let mut input = ComposerInput::with_placeholder(
 								40,
 								"Your answer",
-								"Answer to Agent",
+								"Reply to agent",
 								cx,
 							);
 

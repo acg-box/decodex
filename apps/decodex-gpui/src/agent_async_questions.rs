@@ -62,7 +62,7 @@ impl AgentSurface {
 			self.async_question_inputs.entry((work.into(), question.id.clone())).or_insert_with(
 				|| {
 					let input = cx.new(|cx| {
-						ComposerInput::with_placeholder(40, "Your answer", "Answer to Agent", cx)
+						ComposerInput::with_placeholder(40, "Your answer", "Reply to agent", cx)
 					});
 
 					if let Some(option) = question.options.first() {
@@ -144,7 +144,7 @@ impl AgentSurface {
 					let mut input = ComposerInput::with_placeholder(
 						40,
 						"Write an answer",
-						"Answer to Agent",
+						"Reply to agent",
 						cx,
 					);
 
@@ -208,9 +208,8 @@ impl AgentSurface {
 		}
 
 		let input = if let Some(option) = option {
-			let input = cx.new(|cx| {
-				ComposerInput::with_placeholder(40, "Your answer", "Answer to Agent", cx)
-			});
+			let input = cx
+				.new(|cx| ComposerInput::with_placeholder(40, "Your answer", "Reply to agent", cx));
 
 			input.update(cx, |input, cx| input.set_content(option, cx));
 
@@ -220,12 +219,7 @@ impl AgentSurface {
 				.custom
 				.get_or_insert_with(|| {
 					cx.new(|cx| {
-						ComposerInput::with_placeholder(
-							40,
-							"Write an answer",
-							"Answer to Agent",
-							cx,
-						)
+						ComposerInput::with_placeholder(40, "Write an answer", "Reply to agent", cx)
 					})
 				})
 				.clone()

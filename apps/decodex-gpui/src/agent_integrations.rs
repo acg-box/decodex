@@ -360,9 +360,9 @@ fn integration_button(
 fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 	match inventory {
 		AgentAppInventory::Available { apps } if apps.is_empty() =>
-			"No installed Apps were reported in the runtime snapshot.".into(),
+			"No installed apps were reported.".into(),
 		AgentAppInventory::Available { apps } => {
-			let mut lines = vec!["Installed Apps (runtime snapshot):".to_owned()];
+			let mut lines = vec!["Installed apps:".to_owned()];
 
 			for app in apps {
 				let name = app.runtime_name.as_deref().unwrap_or(&app.id);
@@ -379,11 +379,10 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 
 			lines.join("\n")
 		},
-		AgentAppInventory::Unsupported =>
-			"This provider does not support installed Apps status.".into(),
-		AgentAppInventory::Unavailable => "Installed Apps status could not be read.".into(),
+		AgentAppInventory::Unsupported => "This provider does not report installed apps.".into(),
+		AgentAppInventory::Unavailable => "Installed apps could not be loaded.".into(),
 		AgentAppInventory::CapacityExceeded =>
-			"Installed Apps inventory exceeds the display limit.".into(),
+			"There are too many installed apps to display.".into(),
 	}
 }
 
@@ -441,8 +440,8 @@ mod tests {
 		assert!(text.contains("Plugin discovery incomplete"));
 		assert!(!text.contains("Reported tools: 0"));
 		assert!(!text.contains("No installed plugins"));
-		assert!(text.contains("Installed Apps status could not be read"));
-		assert!(!text.contains("No installed Apps"));
+		assert!(text.contains("Installed apps could not be loaded"));
+		assert!(!text.contains("No installed apps"));
 	}
 
 	#[test]
@@ -467,7 +466,7 @@ mod tests {
 			AgentAppInventory::Unavailable,
 			AgentAppInventory::CapacityExceeded,
 		] {
-			assert!(!integrations::app_inventory_text(&state).contains("No installed Apps"));
+			assert!(!integrations::app_inventory_text(&state).contains("No installed apps"));
 		}
 	}
 

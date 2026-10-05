@@ -289,10 +289,10 @@ impl Shell {
 		}
 
 		if let Some(detail) = &self.account_login_error {
-			if detail.as_ref() != "Cancelling account login…" {
-				let notice = Notice::new("Account login", detail.to_string(), Recovery::Accounts);
+			if detail.as_ref() != "Cancelling sign-in…" {
+				let notice = Notice::new("Account sign-in", detail.to_string(), Recovery::Accounts);
 
-				notices.push(if detail.as_ref() == "Login code copied." {
+				notices.push(if detail.as_ref() == "Sign-in code copied." {
 					notice.info()
 				} else {
 					notice
@@ -302,7 +302,7 @@ impl Shell {
 			match status.state {
 				AccountLoginState::Failed => notices.push(
 					Notice::new(
-						"Account login",
+						"Account sign-in",
 						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)
@@ -310,7 +310,7 @@ impl Shell {
 				),
 				AccountLoginState::Completed | AccountLoginState::Cancelled => notices.push(
 					Notice::new(
-						"Account login",
+						"Account sign-in",
 						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)

@@ -289,7 +289,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertFalse(presentation.canCloseWithoutCancellation)
 		XCTAssertEqual(presentation.title, "Sign in again")
 		XCTAssertEqual(presentation.headerAccountLabel, "Val")
-		XCTAssertEqual(presentation.statusText, "Saving login")
+		XCTAssertEqual(presentation.statusText, "Saving sign-in…")
 		XCTAssertTrue(presentation.showsStatusText)
 	}
 
@@ -567,7 +567,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 				expiresAtUnixSeconds: 0,
 				timeZone: utc
 			),
-			"Reset Card, expires Jan 1 at 00:00 GMT"
+			"Reset card, expires Jan 1 at 00:00 GMT"
 		)
 	}
 

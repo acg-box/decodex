@@ -1,3 +1,7 @@
+// UI copy: use sentence case for labels, headings, tooltips and accessibility names.
+// Keep product names, abbreviations and native macOS menu names in their official case.
+// Use “sign in” / “sign out”, “reset card”, “conversation” and “All work” consistently.
+// Describe actions and outcomes; keep transport and storage details in diagnostics.
 //! Shared visual tokens for the native Decodex operating shell.
 //!
 //! Page owners keep their domain-specific layout. This module owns only the

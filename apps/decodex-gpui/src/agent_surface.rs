@@ -820,18 +820,18 @@ impl AgentSurface {
 				.or_else(|| snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none()))
 		}) {
 			return Ok(AgentActionDto::Send {
-				root_id: EntityId::new(root.id.clone()).map_err(|_| "Invalid Agent identity")?,
+				root_id: EntityId::new(root.id.clone()).map_err(|_| "Invalid agent identity")?,
 				text: prompt,
 			});
 		}
 
 		if self.state != LoadState::Ready {
-			return Err("Refresh to confirm whether a Agent already exists.".into());
+			return Err("Wait for conversations to load before sending.".into());
 		}
 
 		Ok(AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new(format!("agent-{}", unique_command()))
-				.map_err(|_| "Invalid Agent identity")?,
+				.map_err(|_| "Invalid agent identity")?,
 			prompt,
 			model: ConversationModel::new(self.model.read(cx).content().trim())
 				.map_err(|_| "Enter an exact model ID.")?,
@@ -1682,18 +1682,18 @@ impl AgentSurface {
 
 	fn status_text(&self) -> String {
 		match self.displayed_load_state() {
-			LoadState::Idle => "Refresh to read Agent work from the local service.".into(),
+			LoadState::Idle => "Refresh to load your work.".into(),
 			LoadState::Loading => if self.snapshot.is_some() {
 				"Refreshing · showing the previous snapshot"
 			} else {
-				"Loading Agent work…"
+				"Loading work…"
 			}
 			.into(),
 			LoadState::Ready => "Saved conversation and work status".into(),
 			LoadState::Unavailable => if self.profile.is_none() {
 				"No local service profile is configured for this view."
 			} else {
-				"Reconnecting to Agent. Work may still be running. Connection details are in Settings → Diagnostics."
+				"Reconnecting… Your work may still be running. See Settings → Diagnostics for details."
 			}
 			.into(),
 			LoadState::Stale =>

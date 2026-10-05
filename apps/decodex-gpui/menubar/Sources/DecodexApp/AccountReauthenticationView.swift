@@ -42,7 +42,7 @@ struct AccountReauthenticationView: View {
 		.controlSize(.small)
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel(
-			store.accountReauthentication?.accessibilityLabel ?? "Account login"
+			store.accountReauthentication?.accessibilityLabel ?? "Account sign-in"
 		)
 		.animation(
 			phaseTransitionAnimation,
@@ -226,7 +226,7 @@ struct AccountReauthenticationView: View {
 		.focused($focusedAction, equals: .codeCard)
 		.contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 		.help("Copy the code and open the sign-in page")
-		.accessibilityLabel("One-time login code \(prompt.userCode)")
+		.accessibilityLabel("One-time sign-in code \(prompt.userCode)")
 		.accessibilityHint("Activation copies the code and opens the sign-in page")
 		.accessibilityAction(named: Text("Copy code and open sign-in page")) {
 			activate(prompt)
