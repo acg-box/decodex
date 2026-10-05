@@ -691,7 +691,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn history_rail(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-		if self.timeline.marks.is_empty() {
+		if self.timeline.marks.len() < 2 {
 			return gpui::div().into_any_element();
 		}
 
