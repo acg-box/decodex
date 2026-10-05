@@ -981,7 +981,7 @@ impl AgentSurface {
 			.min_w_0()
 			.relative()
 			.flex()
-			.child(transcript)
+			.child(self.anchored_native_viewport(transcript.into_any_element(), scroll.clone()))
 			.child(crate::ui_scroll::Scrollbar {
 				id: SharedString::from(format!("history-scrollbar-{key}")).into(),
 				scroll,

@@ -97,6 +97,9 @@ impl Viewport {
 
 #[derive(Default)]
 struct Geometry {
+	#[cfg(test)]
+	painted_rows: BTreeMap<RowKey, Vec<f32>>,
+	pending_layout: Option<gpui::LayoutId>,
 	rows: BTreeMap<RowKey, (f32, f32)>,
 	folded: BTreeSet<RowKey>,
 	layout: Option<Layout>,
@@ -158,7 +161,109 @@ struct Anchor {
 	scheduled: bool,
 }
 
+/// Resolve pagination against the new layout before GPUI paints or registers hitboxes.
+struct PaginationLayout {
+	child: AnyElement,
+	geometry: Rc<RefCell<Geometry>>,
+	scroll: gpui::ScrollHandle,
+	row: Option<RowKey>,
+}
+impl IntoElement for PaginationLayout {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
+	}
+}
+impl gpui::Element for PaginationLayout {
+	type PrepaintState = ();
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<gpui::ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		window: &mut Window,
+		cx: &mut gpui::App,
+	) -> (gpui::LayoutId, ()) {
+		if self.row.is_none() {
+			self.geometry.borrow_mut().pending_layout = None;
+		}
+		let layout = self.child.request_layout(window, cx);
+		let mut geometry = self.geometry.borrow_mut();
+		if self
+			.row
+			.as_ref()
+			.is_some_and(|key| geometry.pending.as_ref().is_some_and(|anchor| &anchor.key == key))
+		{
+			geometry.pending_layout = Some(layout);
+		}
+		(layout, ())
+	}
+
+	fn prepaint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut gpui::App,
+	) {
+		if self.row.is_none() {
+			let mut geometry = self.geometry.borrow_mut();
+			if geometry.process_motion_until.is_none()
+				&& let Some(layout) = geometry.pending_layout.take()
+				&& let Some(anchor) = geometry.pending.take()
+			{
+				let top = f32::from(window.layout_bounds(layout).origin.y - bounds.origin.y);
+				// The scroll container clamps against its new content size in its own prepaint.
+				self.scroll.set_offset(gpui::point(
+					self.scroll.offset().x,
+					gpui::px(anchor.viewport_top - top),
+				));
+			}
+		}
+		self.child.prepaint(window, cx);
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		_: gpui::Bounds<gpui::Pixels>,
+		_: &mut (),
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut gpui::App,
+	) {
+		self.child.paint(window, cx);
+	}
+}
+
 impl AgentSurface {
+	pub(in super::super) fn anchored_native_viewport(
+		&self,
+		child: AnyElement,
+		scroll: gpui::ScrollHandle,
+	) -> AnyElement {
+		PaginationLayout {
+			child,
+			geometry: self.timeline.native.viewport.0.clone(),
+			scroll,
+			row: None,
+		}
+		.into_any_element()
+	}
+
 	pub(super) fn native_pagination_settling(&self) -> bool {
 		self.timeline.native.viewport.0.borrow().pending.is_some()
 	}
@@ -332,6 +437,13 @@ impl AgentSurface {
 		let selection = geometry.clone();
 		let selected_key = key.clone();
 
+		let row = PaginationLayout {
+			child: row,
+			geometry: geometry.clone(),
+			scroll: scroll.clone(),
+			row: Some(key.clone()),
+		};
+
 		gpui::div()
 			.w_full()
 			.min_w_0()
@@ -345,6 +457,13 @@ impl AgentSurface {
 				let Some(bounds) = bounds.first() else {
 					return;
 				};
+				#[cfg(test)]
+				geometry
+					.borrow_mut()
+					.painted_rows
+					.entry(key.clone())
+					.or_default()
+					.push(f32::from(bounds.origin.y - scroll.bounds().origin.y));
 				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
 				let Some(revision) =
 					geometry.borrow_mut().measure(key.clone(), top, bounds.size.height.into())
@@ -810,6 +929,7 @@ mod tests {
 			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
+			s.timeline.native.viewport.0.borrow_mut().painted_rows.clear();
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
@@ -829,9 +949,20 @@ mod tests {
 			before
 		});
 
-		for _ in 0..3 {
+		for frame in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
+				let s = surface.read(cx);
+				let geometry = s.timeline.native.viewport.0.borrow();
+				let painted = geometry.painted_rows[&key]
+					.iter()
+					.copied()
+					.find(|p| (*p - before).abs() >= 1.)
+					.unwrap_or(before);
+				assert!(
+					(painted - before).abs() < 1.,
+					"frame {frame} moved visible history from {before} to {painted}"
+				);
 			});
 			visual.run_until_parked();
 		}
@@ -919,6 +1050,7 @@ mod tests {
 			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
+			s.timeline.native.viewport.0.borrow_mut().painted_rows.clear();
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
@@ -937,9 +1069,20 @@ mod tests {
 			before
 		});
 
-		for _ in 0..3 {
+		for frame in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
+				let s = surface.read(cx);
+				let geometry = s.timeline.native.viewport.0.borrow();
+				let painted = geometry.painted_rows[&key]
+					.iter()
+					.copied()
+					.find(|p| (*p - before).abs() >= 1.)
+					.unwrap_or(before);
+				assert!(
+					(painted - before).abs() < 1.,
+					"frame {frame} moved visible history from {before} to {painted}"
+				);
 			});
 			visual.run_until_parked();
 		}
