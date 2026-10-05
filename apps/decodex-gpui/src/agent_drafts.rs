@@ -220,6 +220,7 @@ pub(super) mod tests {
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
+		fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 
 		fs::create_dir(path.join("server")).unwrap();
 		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();

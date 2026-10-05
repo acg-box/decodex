@@ -97,6 +97,7 @@ fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(cx: &mut T
 fn profile() -> (TempDir, ClientProfile, JoinHandle<AgentActionDto>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
+	fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 
 	fs::create_dir(path.join("server")).unwrap();
 	fs::set_permissions(path.join("server"), Permissions::from_mode(0o700)).unwrap();
