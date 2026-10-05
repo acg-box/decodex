@@ -550,8 +550,13 @@ impl AgentSurface {
 					Some(AgentCommandResponse::Rejected {
 						error: decodex_protocol::CommandError::ApplicationUnavailable { message },
 					}) => {
-						s.native_agents.connection =
-							NativeConnection::Failed(message.as_str().into());
+						s.native_agents.connection = if message.as_str()
+							== "Open the parent agent to reconnect this conversation."
+						{
+							NativeConnection::ParentManaged
+						} else {
+							NativeConnection::Failed(message.as_str().into())
+						};
 					},
 					_ =>
 						s.native_agents.connection = NativeConnection::Failed(

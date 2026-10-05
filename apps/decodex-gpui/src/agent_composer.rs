@@ -477,7 +477,16 @@ impl AgentSurface {
 				if self.voice.is_some() {
 					capsule.child(controls.child(editor).child(self.composer_toolbar(cx)))
 				} else {
-					capsule.child(editor).child(controls.child(self.composer_toolbar(cx)))
+					capsule
+						.when(
+							!(self.native_agents.selected.is_some()
+								&& matches!(
+									self.native_agents.connection,
+									super::native_agents::NativeConnection::ParentManaged
+								)),
+							|capsule| capsule.child(editor),
+						)
+						.child(controls.child(self.composer_toolbar(cx)))
 				}
 			})
 	}
@@ -943,7 +952,9 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.dictation.is_some() {
+				mode: if self.native_agents.selected.is_some() {
+					PrimaryMode::Send
+				} else if self.dictation.is_some() {
 					PrimaryMode::Done
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop
