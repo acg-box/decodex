@@ -1689,7 +1689,7 @@ impl AgentSurface {
 			.flex_none()
 			.max_w_full()
 			.min_w_0()
-			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+			.h(gpui::px(36.))
 			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
 			.items_center()

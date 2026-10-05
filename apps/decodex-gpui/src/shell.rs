@@ -2626,9 +2626,10 @@ fn floating_window_controls(
 			let (left, right) = agent.topbar_insets(_window);
 			gpui::div()
 				.absolute()
+				.top_0()
 				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
 				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
-				.h_full()
+				.h(gpui::px(36.))
 				.flex()
 				.items_center()
 				.min_w_0()

@@ -82,7 +82,7 @@ impl RenderOnce for TabReveal {
 		gpui::div()
 			.flex_none()
 			.w(gpui::px((width + 4.0) * progress))
-			.h(gpui::px(30.0))
+			.h(gpui::px(36.0))
 			.overflow_hidden()
 			.flex()
 			.items_center()

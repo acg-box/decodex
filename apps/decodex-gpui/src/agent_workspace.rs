@@ -529,14 +529,12 @@ impl AgentSurface {
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
 		let root = self.root_id();
-		let mut row = ui_theme::floating_group()
-			.gap_0()
-			.px(gpui::px(3.))
+		let mut row = gpui::div()
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
-			.h(gpui::px(30.0))
-			.min_h(gpui::px(30.0))
+			.h(gpui::px(36.0))
+			.min_h(gpui::px(36.0))
 			.min_w_0()
 			.overflow_x_scroll()
 			.flex()
@@ -567,14 +565,23 @@ impl AgentSurface {
 				.flex_none()
 				.flex()
 				.items_center()
-				.h(gpui::px(28.))
+				.h(gpui::px(36.))
 				.relative()
-				.rounded(gpui::px(7.))
-				.border_1()
-				.border_color(gpui::rgba(if active { 0xffffff1a } else { 0xffffff00 }))
-				.bg(gpui::rgba(if active { 0xffffff16 } else { 0xffffff00 }))
+				.rounded_t(gpui::px(9.))
+				.bg(gpui::rgba(if active { AGENT_CHAT_OVERLAY } else { 0xffffff00 }))
 				.hover(move |style| {
-					style.bg(gpui::rgba(if active { 0xffffff20 } else { 0xffffff09 }))
+					style.bg(gpui::rgba(if active { AGENT_CHAT_OVERLAY } else { 0xffffff07 }))
+				})
+				.when(!active, |tab| {
+					tab.child(
+						gpui::div()
+							.absolute()
+							.right_0()
+							.top(gpui::px(11.))
+							.w(gpui::px(1.))
+							.h(gpui::px(14.))
+							.bg(gpui::rgba(0xffffff18)),
+					)
 				})
 				.child(self.workspace_action(
 					format!("page-{id}"),
@@ -600,7 +607,7 @@ impl AgentSurface {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.opacity(if active { 0.65 } else { 0.3 })
+						.opacity(if active { 0.65 } else { 0.0 })
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
 						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
