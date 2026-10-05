@@ -529,12 +529,11 @@ impl AgentSurface {
 				.tab_index(0)
 				.w_full()
 				.min_w_0()
-				.h(gpui::px(34.))
+				.h(gpui::px(ui_theme::CONVERSATION_TAB_SIZE))
 				.flex_none()
 				.overflow_hidden()
 				.flex()
 				.items_center()
-				.gap(gpui::px(6.))
 				.rounded(gpui::px(7.))
 				.cursor_pointer()
 				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
@@ -547,32 +546,12 @@ impl AgentSurface {
 						cx.stop_propagation();
 					}
 				}))
-				.child(
-					gpui::div()
-						.debug_selector({
-							let id = id.clone();
-							move || format!("conversation-mark-{id}")
-						})
-						.w(gpui::px(40.))
-						.h_full()
-						.flex_none()
-						.flex()
-						.items_center()
-						.justify_center()
-						.child(crate::ui_motion::AgentRailStatus {
-							state: self.conversation_status(&id),
-							label: label.clone(),
-						}),
-				)
-				.child(
-					gpui::div()
-						.flex_1()
-						.min_w(gpui::px(80.))
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.text_ellipsis()
-						.child(label.clone()),
-				);
+				.child(crate::ui_motion::AgentRailStatus {
+					id: id.clone(),
+					state: self.conversation_status(&id),
+					label: label.clone(),
+					expanded: self.workspace.sidebar_visible || self.workspace.sidebar_peek,
+				});
 			if closable {
 				let close = id.clone();
 				let keyboard = id.clone();
@@ -625,7 +604,7 @@ impl AgentSurface {
 					}),
 				});
 			} else {
-				list = list.child(tab.mb(gpui::px(4.)));
+				list = list.child(tab.mb(gpui::px(ui_theme::CONVERSATION_TAB_GAP)));
 			}
 		}
 		list.into_any_element()

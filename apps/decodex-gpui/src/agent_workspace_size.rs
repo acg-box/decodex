@@ -115,7 +115,7 @@ impl AgentSurface {
 		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
 		} else {
-			52.
+			crate::ui_theme::CONVERSATION_TAB_SIZE + 2. * crate::ui_theme::SIDEBAR_INSET
 		}
 	}
 
@@ -324,6 +324,8 @@ mod tests {
 		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
 		let mark = "conversation-mark-agent";
 		let collapsed_mark = visual.debug_bounds(mark).unwrap();
+		let row = visual.debug_bounds("page-agent").unwrap();
+		assert_eq!(row.size.width, row.size.height, "collapsed conversation targets are square");
 		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(250));

@@ -67,7 +67,14 @@ impl RenderOnce for TabReveal {
 		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
-			s.target(if self.visible { 38. } else { 0. }, now);
+			s.target(
+				if self.visible {
+					crate::ui_theme::CONVERSATION_TAB_SIZE + crate::ui_theme::CONVERSATION_TAB_GAP
+				} else {
+					0.
+				},
+				now,
+			);
 			(s.sample(now), s.moving(now))
 		});
 		if moving {
@@ -622,8 +629,10 @@ mod tests {
 /// A status indicator, not a fabricated completion percentage.
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
+	pub id: String,
 	pub state: String,
 	pub label: String,
+	pub expanded: bool,
 }
 impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -635,13 +644,7 @@ impl RenderOnce for AgentRailStatus {
 			self.state.as_str(),
 			"Needs you" | "Needs attention" | "Blocked" | "failed" | "systemError"
 		);
-		let clock = window.use_keyed_state("agent-rail-clock", cx, |_, _| Instant::now());
-		let phase = if busy && !reduced() {
-			request_frame(window, cx);
-			clock.read(cx).elapsed().as_secs_f32() * 2.2
-		} else {
-			0.
-		};
+
 		let color = if attention {
 			crate::ui_theme::AMBER
 		} else if busy {
@@ -649,12 +652,37 @@ impl RenderOnce for AgentRailStatus {
 		} else {
 			crate::ui_theme::TEXT_MUTED
 		};
-		let initial = self
-			.label
-			.chars()
-			.find(|c| c.is_alphanumeric())
-			.map(|c| c.to_uppercase().collect::<String>())
-			.unwrap_or_else(|| "·".into());
+
+		use unicode_segmentation::UnicodeSegmentation as _;
+		let label = self.label.replace(['\n', '\r'], " ");
+		let initial = label.graphemes(true).next().unwrap_or("·").to_owned();
+		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
+		let mut font = window.text_style().font();
+		font.weight = gpui::FontWeight::SEMIBOLD;
+		let run = gpui::TextRun {
+			len: initial.len(),
+			font,
+			color: gpui::rgb(color).into(),
+			background_color: None,
+			underline: None,
+			strikethrough: None,
+		};
+		let initial_width = f32::from(
+			window
+				.text_system()
+				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
+				.width,
+		);
+		let inset = ((crate::ui_theme::CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
+		let ring_opacity =
+			1. - value("rail-label-expansion", if self.expanded { 1. } else { 0. }, window, cx);
+		let clock = window.use_keyed_state("agent-rail-clock", cx, |_, _| Instant::now());
+		let phase = if busy && ring_opacity > 0.01 && !reduced() {
+			request_frame(window, cx);
+			clock.read(cx).elapsed().as_secs_f32() * 2.2
+		} else {
+			0.
+		};
 		let ring = gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
@@ -682,21 +710,43 @@ impl RenderOnce for AgentRailStatus {
 			},
 		)
 		.size(gpui::px(24.))
-		.absolute();
+		.absolute()
+		.left(gpui::px(2.))
+		.top(gpui::px(2.))
+		.opacity(ring_opacity);
 		gpui::div()
-			.size(gpui::px(24.))
-			.flex_none()
+			.debug_selector(|| "conversation-name".into())
+			.min_w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
+			.h_full()
+			.flex_1()
 			.relative()
 			.flex()
 			.items_center()
-			.justify_center()
-			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(if busy || attention {
-				color
-			} else {
-				crate::ui_theme::TEXT_MUTED
-			}))
+			.pl(gpui::px(inset))
+			.pr(gpui::px(inset))
+			.text_size(gpui::px(12.5))
 			.child(ring)
-			.child(initial)
+			.child(
+				gpui::div()
+					.debug_selector(move || format!("conversation-mark-{}", self.id))
+					.w(gpui::px(initial_width))
+					.flex_none()
+					.font_weight(gpui::FontWeight::SEMIBOLD)
+					.text_color(gpui::rgb(if busy || attention {
+						color
+					} else {
+						crate::ui_theme::TEXT
+					}))
+					.child(initial),
+			)
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.overflow_hidden()
+					.whitespace_nowrap()
+					.text_ellipsis()
+					.child(rest),
+			)
 	}
 }
