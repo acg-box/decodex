@@ -6,6 +6,7 @@ use std::time::Instant;
 #[derive(Default)]
 struct ScrollState {
 	width: f32,
+	natural_width: Option<f32>,
 	hovered: Option<Instant>,
 	returning: Option<(Instant, f32)>,
 	offset: f32,
@@ -47,6 +48,7 @@ impl RenderOnce for AgentLabel {
 		let width =
 			f32::from(window.text_system().shape_line(text.clone(), font_size, &[run], None).width);
 		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| ScrollState::default());
+		let width = state.read(cx).natural_width.unwrap_or(width);
 		let reduced = ui_motion::reduced();
 		let (x, moving) = state.update(cx, |s, _| {
 			let distance = (width - s.width).max(0.);
@@ -71,6 +73,7 @@ impl RenderOnce for AgentLabel {
 			ui_motion::request_frame(window, cx);
 		}
 		let measure = state.clone();
+		let measure_text = text.clone();
 		gpui::div()
 			.id(self.id)
 			.relative()
@@ -88,11 +91,32 @@ impl RenderOnce for AgentLabel {
 			})
 			.child(
 				gpui::canvas(
-					move |bounds, _, cx| {
-						let width = f32::from(bounds.size.width);
+					move |bounds, window, cx| {
+						let style = window.text_style();
+						let font_size = style.font_size.to_pixels(window.rem_size());
+						let run = TextRun {
+							len: measure_text.len(),
+							font: style.font(),
+							color: style.color,
+							background_color: None,
+							underline: None,
+							strikethrough: None,
+						};
+						let natural_width = f32::from(
+							window
+								.text_system()
+								.shape_line(measure_text.clone(), font_size, &[run], None)
+								.width,
+						);
+						let width =
+							f32::from(bounds.intersect(&window.content_mask().bounds).size.width);
 						measure.update(cx, |s, cx| {
-							if (s.width - width).abs() > 0.5 {
+							if (s.width - width).abs() > 0.5
+								|| s.natural_width
+									.is_none_or(|old| (old - natural_width).abs() > 0.5)
+							{
 								s.width = width;
+								s.natural_width = Some(natural_width);
 								cx.notify();
 							}
 						});
