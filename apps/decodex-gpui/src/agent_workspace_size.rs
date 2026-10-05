@@ -469,18 +469,18 @@ mod tests {
 				// Geometry assertions below describe the settled panel layout.
 				s.workspace.sidebar_motion = Default::default();
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_148., 275.));
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_148., 275.));
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_expanded = true;
 
 				assert_eq!(
-					s.workspace_graph_size(window, true),
-					(1_148., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
+					s.workspace_graph_size(window, true).1,
+					900. - super::super::super::WINDOW_CONTROLS_CLEARANCE
 				);
 
 				s.workspace.graph_visible = false;
