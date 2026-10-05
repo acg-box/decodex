@@ -658,7 +658,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 		return Err("workspace projection missing".into());
 	}
 
-	println!("Nested workspace -> manager -> worker results returned through their owners.");
+	println!("Nested Agent results returned through their direct owners.");
 
 	send(client,"stream-probe","Without tools, write 40 numbered lines. Each line must contain the sentence 'Live conversation output is visible while this reply is still being written.' End with STREAM_DONE.").await?;
 
