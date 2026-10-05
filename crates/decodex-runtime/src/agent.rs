@@ -755,7 +755,8 @@ impl AgentCoordinator {
 					instructions:
 						"Help the user with their requests. Use other agents when useful.".into(),
 					codex_thread_id: None,
-					status: AgentWorkStatus::Open,
+					// Empty conversations wait for explicit input, not dependency release.
+					status: AgentWorkStatus::Wait,
 					dispatch_state: AgentDispatchState::Idle,
 					active_turn_id: None,
 					next_check_at_micros: None,

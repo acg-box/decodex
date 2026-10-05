@@ -365,7 +365,8 @@ impl SqliteStore {
 			bounded(directory, 4_096)?;
 		}
 
-		if item.status != AgentWorkStatus::Open
+		if !(item.status == AgentWorkStatus::Open
+			|| (manager && item.status == AgentWorkStatus::Wait))
 			|| item.codex_thread_id.is_some()
 			|| item.dispatch_state != AgentDispatchState::Idle
 			|| item.active_turn_id.is_some()
@@ -374,7 +375,7 @@ impl SqliteStore {
 			|| item.next_check_at_micros.is_some_and(|time| time < 0)
 		{
 			return Err(StoreError::InvalidInput(
-				"new Agent work must be open and unbound with valid timestamps",
+				"new Agent work must be open (or a waiting manager) and unbound with valid timestamps",
 			));
 		}
 
@@ -399,7 +400,7 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO agent_work_items (id, parent_goal_id, kind, title, instructions,
 				codex_thread_id, status, next_check_at_micros, created_at_micros, updated_at_micros)
-				VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'open', ?6, ?7, ?8)",
+				VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?9, ?6, ?7, ?8)",
 					rusqlite::params![
 						item.id,
 						item.parent_goal_id,
@@ -408,7 +409,8 @@ impl SqliteStore {
 						item.instructions,
 						item.next_check_at_micros,
 						item.created_at_micros,
-						item.updated_at_micros
+						item.updated_at_micros,
+						item.status.as_str()
 					],
 				)
 				.map_err(error::sqlite_error)?;
