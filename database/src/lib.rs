@@ -7,6 +7,8 @@ mod account_profiles;
 mod account_usage;
 mod accounts;
 mod agent;
+mod workspaces;
+pub use workspaces::Workspace;
 mod agent_app_settings;
 mod agent_app_ui_calls;
 mod agent_config_journal;

@@ -134,7 +134,7 @@ pub struct AgentInboxEvent {
 pub enum AgentStoreSnapshot {
 	Complete {
 		managers: Vec<String>,
-		workspaces: Vec<(String, String, String)>,
+		workspaces: Vec<crate::Workspace>,
 		work_items: Vec<AgentWorkItem>,
 		dependencies: Vec<AgentDependency>,
 		pending_events: Vec<AgentInboxEvent>,
@@ -264,20 +264,6 @@ impl SqliteStore {
             .query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())).await
 	}
 
-	/// Read persisted project scopes owned by managers.
-	pub async fn agent_workspaces(&self) -> Result<Vec<(String, String, String)>, StoreError> {
-		self.run(|connection| {
-			connection
-				.prepare("SELECT agent_id,name,directory FROM agent_workspaces ORDER BY agent_id")
-				.map_err(error::sqlite_error)?
-				.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-				.map_err(error::sqlite_error)?
-				.collect::<Result<Vec<_>, _>>()
-				.map_err(|error| error::sqlite_error(error).into())
-		})
-		.await
-	}
-
 	/// Read one exact inbox record for a source-bound detail request.
 	pub async fn get_agent_inbox_event(&self, id: i64) -> Result<AgentInboxEvent, StoreError> {
 		self.run(move |connection| read_event(connection, id)).await
@@ -312,7 +298,7 @@ impl SqliteStore {
 			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(error::sqlite_error)?.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
 			let pending_events = transaction.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(error::sqlite_error)?.query_map([], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
             let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(error::sqlite_error)?;
-            let workspaces=transaction.prepare("SELECT agent_id,name,directory FROM agent_workspaces ORDER BY agent_id").map_err(error::sqlite_error)?.query_map([],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(error::sqlite_error)?.collect::<Result<Vec<(String,String,String)>,_>>().map_err(error::sqlite_error)?;
+            let workspaces=crate::workspaces::read_workspaces(&transaction)?;
 
             transaction.commit().map_err(error::sqlite_error)?;
 
@@ -336,17 +322,16 @@ impl SqliteStore {
 		self.create_agent_work_record(item, false, None, depends_on, None).await
 	}
 
-	/// Atomically create an executable manager and its optional workspace scope.
+	/// Create an executable manager in its parent conversation workspace.
 	pub async fn create_agent_manager(
 		&self,
 		item: AgentWorkItem,
-		workspace: Option<(String, String)>,
 	) -> Result<AgentWorkItem, StoreError> {
 		if item.kind != AgentWorkKind::Goal {
 			return Err(StoreError::InvalidInput("manager must be a goal"));
 		}
 
-		self.create_agent_work_record(item, true, workspace, Vec::new(), None).await
+		self.create_agent_work_record(item, true, None, Vec::new(), None).await
 	}
 
 	/// Publish a user conversation and its first message in one transaction.
@@ -354,6 +339,7 @@ impl SqliteStore {
 		&self,
 		item: AgentWorkItem,
 		input: EnqueueAgentEvent,
+		workspace: Option<String>,
 	) -> Result<AgentWorkItem, StoreError> {
 		if item.kind != AgentWorkKind::Goal
 			|| input.work_item_id != item.id
@@ -361,25 +347,20 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("conversation requires its first user message"));
 		}
-		self.create_agent_work_record(item, true, None, Vec::new(), Some(input)).await
+		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
 	}
 
 	async fn create_agent_work_record(
 		&self,
 		item: AgentWorkItem,
 		manager: bool,
-		workspace: Option<(String, String)>,
+		workspace: Option<String>,
 		depends_on: Vec<String>,
 		initial_input: Option<EnqueueAgentEvent>,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1_024)?;
 		bounded(&item.instructions, 65_536)?;
-
-		if let Some((name, directory)) = &workspace {
-			bounded(name, 256)?;
-			bounded(directory, 4_096)?;
-		}
 
 		if !(item.status == AgentWorkStatus::Open
 			|| (manager && item.status == AgentWorkStatus::Wait))
@@ -444,15 +425,12 @@ impl SqliteStore {
 					.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [&item.id])
 					.map_err(error::sqlite_error)?;
 
-				if let Some((name, directory)) = workspace {
-					transaction
-						.execute(
-							"INSERT INTO agent_workspaces(agent_id,name,directory) VALUES(?1,?2,?3)",
-							rusqlite::params![item.id, name, directory],
-						)
-						.map_err(error::sqlite_error)?;
-				}
 			}
+            if let Some(workspace) = workspace {
+                transaction.execute("INSERT INTO work_workspace(work_id,workspace_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;
+            } else if initial_input.is_none() {
+                transaction.execute("INSERT INTO work_workspace(work_id,workspace_id) SELECT ?1,workspace_id FROM work_workspace WHERE work_id=?2",rusqlite::params![item.id,item.parent_goal_id]).map_err(error::sqlite_error)?;
+            }
 
 			for dependency in depends_on {
 				insert_dependency(&transaction, &item.id, &dependency)?;
@@ -2383,7 +2361,7 @@ mod tests {
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
-		store.create_agent_manager(item("manager", Some("agent")), None).await.unwrap();
+		store.create_agent_manager(item("manager", Some("agent"))).await.unwrap();
 		store.bind_agent_thread("manager".into(), "manager-thread".into()).await.unwrap();
 		store
 			.set_agent_work_status("manager".into(), AgentWorkStatus::Resolved, None)

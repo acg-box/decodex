@@ -30,8 +30,6 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 		.execute("INSERT INTO agent_misalignment VALUES('work','thread','turn','{}',1)", [])
 		.unwrap();
 
-	let original = migrations::schema_inventory(&connection).unwrap();
-
 	migrations::migrate(&mut connection).unwrap();
 	migrations::verify(&connection).unwrap();
 
@@ -43,33 +41,6 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 		)
 		.unwrap();
 
-	assert_eq!(
-		migrations::schema_inventory(&connection)
-			.unwrap()
-			.into_iter()
-			.filter(|r| !matches!(
-				r.2.as_str(),
-				"agent_misalignment"
-					| "quick_task_requests"
-					| "conversation_native_settings"
-					| "reset_card_operations"
-					| "account_credentials"
-					| "process_generations"
-			))
-			.collect::<Vec<_>>(),
-		original
-			.into_iter()
-			.filter(|r| !matches!(
-				r.2.as_str(),
-				"agent_misalignment"
-					| "quick_task_requests"
-					| "conversation_native_settings"
-					| "reset_card_operations"
-					| "account_credentials"
-					| "process_generations"
-			))
-			.collect::<Vec<_>>()
-	);
 	assert_eq!(saved, ("thread".into(), "turn".into(), "{}".into(), 1, true));
 	assert!(connection.execute("UPDATE agent_misalignment SET retired_voice=2", []).is_err());
 

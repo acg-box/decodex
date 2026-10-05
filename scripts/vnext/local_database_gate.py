@@ -22,6 +22,7 @@ MIGRATIONS = (
     (50, "unique_account_names", ROOT / "database/migrations/0050_unique_account_names.sql"),
     (51, "nullable_reset_credit_expiry", ROOT / "database/migrations/0051_nullable_reset_credit_expiry.sql"),
     (52, "personal_access_token_credentials", ROOT / "database/migrations/0052_personal_access_token_credentials.sql"),
+    (53, "independent_workspaces", ROOT / "database/migrations/0053_independent_workspaces.sql"),
 )
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
@@ -89,7 +90,8 @@ REQUIRED_TABLES = frozenset(
         "agent_capacity_retries",
         "agent_live_output",
         "agent_managers",
-        "agent_workspaces",
+        "workspaces",
+        "work_workspace",
         "agent_tool_versions",
         "agent_thread_revisions",
         "agent_usage",

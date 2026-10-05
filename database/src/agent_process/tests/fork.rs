@@ -78,7 +78,7 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 	other.id = "unrelated-manager".into();
 	other.codex_thread_id = None;
 
-	store.create_agent_manager(other, None).await.unwrap();
+	store.create_agent_manager(other).await.unwrap();
 	store.bind_agent_thread("unrelated-manager".into(), "unrelated-native".into()).await.unwrap();
 
 	assert!(
