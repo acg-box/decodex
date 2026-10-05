@@ -373,7 +373,7 @@ impl AgentSurface {
 					.h(gpui::px(26.))
 					.py_0()
 					.px(gpui::px(10.))
-					.max_w(gpui::px(170.))
+					.max_w(gpui::px(154.))
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
 					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
@@ -529,7 +529,9 @@ impl AgentSurface {
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
 		let root = self.root_id();
-		let mut row = gpui::div()
+		let mut row = ui_theme::floating_group()
+			.gap_0()
+			.px(gpui::px(3.))
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
@@ -567,23 +569,12 @@ impl AgentSurface {
 				.items_center()
 				.h(gpui::px(28.))
 				.relative()
-				.rounded_t(gpui::px(7.))
-				.rounded_b(gpui::px(3.))
-				.bg(gpui::rgba(if active { 0xb4caff20 } else { 0xffffff07 }))
+				.rounded(gpui::px(7.))
+				.border_1()
+				.border_color(gpui::rgba(if active { 0xffffff1a } else { 0xffffff00 }))
+				.bg(gpui::rgba(if active { 0xffffff16 } else { 0xffffff00 }))
 				.hover(move |style| {
-					style.bg(gpui::rgba(if active { 0xb4caff28 } else { 0xffffff12 }))
-				})
-				.when(active, |tab| {
-					tab.child(
-						gpui::div()
-							.absolute()
-							.bottom_0()
-							.left(gpui::px(8.))
-							.right(gpui::px(8.))
-							.h(gpui::px(2.))
-							.rounded_full()
-							.bg(gpui::rgba(0xb4caffaa)),
-					)
+					style.bg(gpui::rgba(if active { 0xffffff20 } else { 0xffffff09 }))
 				})
 				.child(self.workspace_action(
 					format!("page-{id}"),
@@ -609,12 +600,13 @@ impl AgentSurface {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.opacity(if active { 0.7 } else { 0.4 })
+						.opacity(if active { 0.65 } else { 0.3 })
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
 						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
-						.child(workspace_symbols::icon(
+						.child(workspace_symbols::icon_sized(
 							super::super::workspace_symbols::Symbol::Close,
+							12.,
 						))
 						.on_click(cx.listener(move |s, _, _, cx| s.close_page(&close, cx)))
 						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {

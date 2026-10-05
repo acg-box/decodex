@@ -167,6 +167,10 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 		_ => 16.0,
 	};
 
+	icon_sized(symbol, size)
+}
+
+pub(super) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
 	gpui::img(IMAGES[symbol as usize].clone()).size(gpui::px(size)).flex_none().into_any_element()
 }
 
