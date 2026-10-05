@@ -467,6 +467,9 @@ impl AgentSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		if self.is_new_conversation() {
+			return;
+		}
 		if self.native_agents.selected.is_none()
 			&& self.command_connection_ready()
 			&& let Some(work) =
@@ -788,6 +791,17 @@ impl AgentSurface {
 		})
 		.map_err(|_| "Message is too long")?;
 
+		if self.is_new_conversation() {
+			return Ok(AgentActionDto::NewConversation {
+				work_id: EntityId::new(self.selected.clone().expect("draft identity"))
+					.map_err(|_| "Invalid conversation identity")?,
+				text: prompt,
+				execution: self.draft_profiles.execution.choice(self.selected.as_deref().unwrap()),
+				attachments: self.attachments.clone(),
+				task_references: self.task_references.clone(),
+			});
+		}
+
 		if !self.draft_owner_available() {
 			return Err(
 				"This draft's conversation is unavailable. Select a conversation before sending."
@@ -905,6 +919,9 @@ impl AgentSurface {
 					action => action,
 				};
 
+				if matches!(&action, AgentActionDto::NewConversation { .. }) {
+					self.workspace.opening_work = self.selected.clone();
+				}
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -1505,10 +1522,11 @@ impl AgentSurface {
 				{
 					self.timeline.native.reset();
 				}
-				if !self
-					.selected
-					.as_ref()
-					.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+				if !self.is_new_conversation()
+					&& !self
+						.selected
+						.as_ref()
+						.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
 				{
 					self.selected = snapshot
 						.work_items
@@ -1690,6 +1708,8 @@ impl AgentSurface {
 	pub(super) fn work_context(&self, _cx: &mut Context<Self>) -> gpui::AnyElement {
 		let title = if self.workspace.browsing {
 			"All work".into()
+		} else if self.is_new_conversation() {
+			"New conversation".into()
 		} else {
 			self.conversation_page()
 				.and_then(|id| {
@@ -2285,6 +2305,7 @@ impl Render for AgentSurface {
 }
 
 struct WorkspaceView {
+	new_conversation: Option<String>,
 	browsing: bool,
 	project_filter: Option<String>,
 	opening_work: Option<String>,
@@ -2319,6 +2340,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			new_conversation: None,
 			browsing: false,
 			project_filter: None,
 			opening_work: None,

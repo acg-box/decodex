@@ -856,12 +856,12 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let local_creation = matches!(&request.action, AgentActionDto::NewConversation { .. });
+
 						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
 
-						if !local_creation && !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
+						if !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
-						let suppress_wake = local_creation || history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
+						let suppress_wake = history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
 
 						self.recaps.note_input(&request.action);
 
@@ -1388,10 +1388,25 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			AgentActionDto::NewConversation { work_id } => {
-				AgentCoordinator::reserve_conversation(&self.store, work_id.as_str())
-					.await
-					.map_err(|_| "Conversation could not be created")?;
+			AgentActionDto::NewConversation {
+				work_id,
+				text,
+				execution,
+				attachments,
+				task_references,
+			} => {
+				validate_attachments(&attachments)?;
+				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
+				AgentCoordinator::create_conversation(
+					&self.store,
+					work_id.as_str(),
+					user_input(work_id.as_str(), &key, text.as_str(), Some(&options)),
+				)
+				.await
+				.map_err(|_| "Conversation could not be created")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
 				Ok(work_id.as_str().into())
 			},
 			action @ AgentActionDto::SendPromptInput { .. } =>
@@ -2182,6 +2197,14 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
 	}
 }
 
+fn user_input(work: &str, key: &str, text: &str, options: Option<&Value>) -> EnqueueAgentEvent {
+	EnqueueAgentEvent {
+        source_event_id: serde_json::json!(["user_message",work,key]).to_string(),
+        work_item_id: work.into(), event_kind: "user_message".into(),
+        payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
+    }
+}
+
 async fn persist_input(
 	store: &SqliteStore,
 	root: &str,
@@ -2189,19 +2212,13 @@ async fn persist_input(
 	text: &str,
 	options: Option<&Value>,
 ) -> Result<(), &'static str> {
-	store
-  .enqueue_agent_event(EnqueueAgentEvent {
-			source_event_id: serde_json::json!(["user_message", root, key]).to_string(),
-			work_item_id: root.into(),
-			event_kind: "user_message".into(),
-			payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
-		})
-		.await
-		.map_err(|error| match error {
+	store.enqueue_agent_event(user_input(root, key, text, options)).await.map_err(|error| {
+		match error {
 			StoreError::AgentThreadInUse =>
 				"This conversation is in use in another app. No message was queued.",
 			_ => "Agent input could not be accepted",
-		})?;
+		}
+	})?;
 
 	Ok(())
 }
@@ -2231,12 +2248,18 @@ mod tests {
 	use decodex_core::DecodexRoot;
 
 	#[tokio::test]
-	async fn empty_conversation_stays_idle_until_explicit_input_and_survives_reopen() {
+	async fn first_message_creates_conversation_and_survives_reopen() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		AgentCoordinator::reserve_root(&store, "main", "Help the user").await.unwrap();
-		let work = AgentCoordinator::reserve_conversation(&store, "new-chat").await.unwrap();
+		let work = AgentCoordinator::create_conversation(
+			&store,
+			"new-chat",
+			super::user_input("new-chat", "first-input", "Improve sidebar navigation", None),
+		)
+		.await
+		.unwrap();
 		assert_eq!(work.parent_goal_id.as_deref(), Some("main"));
 		assert!(work.codex_thread_id.is_none());
 		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);

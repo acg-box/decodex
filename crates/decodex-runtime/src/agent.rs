@@ -733,10 +733,11 @@ impl AgentCoordinator {
 		self.create(id, None, prompt, Vec::new(), None).await
 	}
 
-	/// Save an empty user conversation without starting a provider thread or assigning a project.
-	pub(crate) async fn reserve_conversation(
+	/// Save a user conversation and its first input before starting a provider thread.
+	pub(crate) async fn create_conversation(
 		store: &SqliteStore,
 		id: &str,
+		input: EnqueueAgentEvent,
 	) -> Result<AgentWorkItem, AgentError> {
 		let parent = store
 			.list_agent_work_items()
@@ -746,7 +747,7 @@ impl AgentCoordinator {
 			.ok_or_else(|| AgentError::Invalid("Start Main first".into()))?;
 		let now = now_micros()?;
 		Ok(store
-			.create_agent_manager(
+			.create_agent_conversation(
 				AgentWorkItem {
 					id: id.into(),
 					parent_goal_id: Some(parent.id),
@@ -763,7 +764,7 @@ impl AgentCoordinator {
 					created_at_micros: now,
 					updated_at_micros: now,
 				},
-				None,
+				input,
 			)
 			.await?)
 	}

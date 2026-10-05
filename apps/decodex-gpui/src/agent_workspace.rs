@@ -235,13 +235,14 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	fn restore_manager_composer(&mut self, id: &str, cx: &mut Context<Self>) {
-		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				work.id == id
-					&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
-			})
-		});
+	pub(super) fn restore_manager_composer(&mut self, id: &str, cx: &mut Context<Self>) {
+		let is_manager = self.workspace.new_conversation.as_deref() == Some(id)
+			|| self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.work_items.iter().any(|work| {
+					work.id == id
+						&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
+				})
+			});
 
 		if is_manager {
 			let previous = self.composer_manager.clone().or_else(|| self.root_id());
@@ -869,7 +870,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn selected_is_manager(&self) -> bool {
-		self.selected.is_none()
+		self.is_new_conversation()
+			|| self.selected.is_none()
 			|| self.selected == self.root_id()
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
 				snapshot.work_items.iter().any(|work| {
@@ -886,6 +888,21 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		if self.is_new_conversation() {
+			return gpui::div()
+				.flex_1()
+				.h_full()
+				.flex()
+				.flex_col()
+				.items_center()
+				.pt(gpui::px(96.))
+				.gap_3()
+				.child(
+					gpui::div().text_size(gpui::px(24.)).child("What would you like to work on?"),
+				)
+				.into_any_element();
+		}
+
 		let scroll = self
 			.timeline
 			.scroll
@@ -1008,7 +1025,9 @@ impl AgentSurface {
 			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
 		});
 
-		let floating_composer = is_agent && selected.is_some() && !self.selected_is_archived();
+		let floating_composer = is_agent
+			&& (selected.is_some() || self.is_new_conversation())
+			&& !self.selected_is_archived();
 		if !floating_composer {
 			self.workspace.composer_overlay_height = 0.;
 		}
@@ -1159,9 +1178,11 @@ impl AgentSurface {
 			&& self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id))
 		{
 			self.workspace.opening_work = None;
+			self.workspace.new_conversation = None;
 			self.open_page(&id, cx);
 		}
 		if let Some(current) = self.conversation_page()
+			&& !self.is_new_conversation()
 			&& Some(&current) != self.root_id().as_ref()
 			&& !self.workspace.pages.contains(&current)
 			&& !self.workspace.closing_pages.contains(&current)
@@ -1172,6 +1193,10 @@ impl AgentSurface {
 		self.workspace.graph_display_zoom =
 			ui_motion::value("agent-graph-zoom", self.workspace.graph_zoom, window, cx);
 
+		if self.is_new_conversation() {
+			self.timeline.marks.clear();
+			return;
+		}
 		if self.timeline.older_scroll_anchor.is_none() {
 			self.prefetch_older_history(cx);
 		}

@@ -661,6 +661,13 @@ impl AgentSurface {
 			.transpose_option()?;
 
 		Some(DesktopProfileDraft {
+			new_conversation: self
+				.workspace
+				.new_conversation
+				.as_deref()
+				.map(EntityId::new)
+				.transpose()
+				.ok()?,
 			prompt_edits: self
 				.draft_profiles
 				.active
@@ -792,6 +799,7 @@ impl AgentSurface {
 impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
+			new_conversation: saved.new_conversation.map(|id| id.as_str().into()),
 			creation: saved.composer.creation,
 			unconfirmed: saved.unconfirmed_commands,
 			text: saved.composer.text,

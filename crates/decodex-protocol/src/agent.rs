@@ -380,10 +380,18 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
-	/// Create an empty user conversation. This does not start a model turn or create a project.
+	/// Create a user conversation with its first submitted message.
 	NewConversation {
 		/// Stable local identity supplied by the desktop.
 		work_id: EntityId,
+		/// First submitted input.
+		text: HistoryText,
+		/// Model settings captured at send time.
+		execution: AgentExecutionOverrides,
+		/// Attached context.
+		attachments: Vec<AgentAttachmentDto>,
+		/// Referenced tasks.
+		task_references: Vec<AgentTaskReferenceDto>,
 	},
 	/// Send retained canonical input through the existing user-message queue.
 	SendPromptInput {

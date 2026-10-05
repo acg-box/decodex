@@ -324,7 +324,7 @@ impl SqliteStore {
 		&self,
 		item: AgentWorkItem,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, Vec::new()).await
+		self.create_agent_work_record(item, false, None, Vec::new(), None).await
 	}
 
 	/// Publish new work and all its dispatch prerequisites in one transaction.
@@ -333,7 +333,7 @@ impl SqliteStore {
 		item: AgentWorkItem,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None, depends_on).await
+		self.create_agent_work_record(item, false, None, depends_on, None).await
 	}
 
 	/// Atomically create an executable manager and its optional workspace scope.
@@ -346,7 +346,22 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("manager must be a goal"));
 		}
 
-		self.create_agent_work_record(item, true, workspace, Vec::new()).await
+		self.create_agent_work_record(item, true, workspace, Vec::new(), None).await
+	}
+
+	/// Publish a user conversation and its first message in one transaction.
+	pub async fn create_agent_conversation(
+		&self,
+		item: AgentWorkItem,
+		input: EnqueueAgentEvent,
+	) -> Result<AgentWorkItem, StoreError> {
+		if item.kind != AgentWorkKind::Goal
+			|| input.work_item_id != item.id
+			|| input.event_kind != "user_message"
+		{
+			return Err(StoreError::InvalidInput("conversation requires its first user message"));
+		}
+		self.create_agent_work_record(item, true, None, Vec::new(), Some(input)).await
 	}
 
 	async fn create_agent_work_record(
@@ -355,6 +370,7 @@ impl SqliteStore {
 		manager: bool,
 		workspace: Option<(String, String)>,
 		depends_on: Vec<String>,
+		initial_input: Option<EnqueueAgentEvent>,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1_024)?;
@@ -440,6 +456,10 @@ impl SqliteStore {
 
 			for dependency in depends_on {
 				insert_dependency(&transaction, &item.id, &dependency)?;
+			}
+
+			if let Some(input) = initial_input {
+				insert_event(&transaction, input, false)?;
 			}
 
 			transaction.commit().map_err(error::sqlite_error)?;
@@ -996,60 +1016,15 @@ impl SqliteStore {
 		input: EnqueueAgentEvent,
 		observation: bool,
 	) -> Result<AgentInboxEvent, StoreError> {
-		bounded(&input.source_event_id, 2_048)?;
-		bounded(&input.event_kind, 128)?;
-
-		let compact = agent_request_payload::compact(&input)?;
-
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
-			let previous = transaction.query_row("SELECT * FROM agent_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(error::sqlite_error)?;
-
-			if let Some(event) = previous {
-				let event = agent_request_payload::hydrate(&transaction, event)?;
-
-				return if event.work_item_id == input.work_item_id && event.event_kind == input.event_kind && event.payload == input.payload {
-					Ok(event)
-				} else { Err(StoreError::IdempotencyConflict) };
-			}
-
-			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
-			if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_in_use_needs_attention' AND disposition IS NULL)", [&input.work_item_id], |row| row.get::<_, bool>(0)).map_err(error::sqlite_error)? {
-				return Err(StoreError::AgentThreadInUse);
-			}
-			if matches!(input.event_kind.as_str(), "user_message" | "async_question_answer" | "steer_pending") && agent_prompt_edit::pending(&transaction, &input.work_item_id)? { return Err(DatabaseError::Conflict.into()); }
-			if input.event_kind == "user_message" { agent_task_references::validate_references(&transaction, &input.payload)?; agent_prompt_inputs::validate_queued_input(&transaction, &input.work_item_id, &input.payload)?; }
-            if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment m JOIN agent_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
-
-			let now = crate::unix_micros()?;
-
-			transaction.execute("INSERT INTO agent_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-				rusqlite::params![input.source_event_id, input.work_item_id, input.event_kind, compact.as_ref().unwrap_or(&input.payload), now,
-					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(error::sqlite_error)?;
-
-			let event_id = transaction.last_insert_rowid();
-            if input.event_kind == "user_message"
-                && let Ok(payload) = serde_json::from_str::<Value>(&input.payload)
-                && let Some(text) = payload["text"].as_str() {
-                let title = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(64).collect::<String>();
-                if !title.is_empty() {
-                    transaction.execute("UPDATE agent_work_items SET title=?2,updated_at_micros=?3 WHERE id=?1 AND title='New conversation' AND codex_thread_id IS NULL", rusqlite::params![input.work_item_id,title,now]).map_err(error::sqlite_error)?;
-                }
-            }
-
-
-			if compact.is_some() {
-				transaction.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",rusqlite::params![event_id,input.payload]).map_err(error::sqlite_error)?;
-			}
-
-			let event = read_event(&transaction, event_id)?;
-
-            if input.event_kind == "user_message" { agent_questions::retire_for_prompt(&transaction, &input.work_item_id, &input.payload)?; }
-
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(error::sqlite_error)?;
+			let event = insert_event(&transaction, input, observation)?;
 			transaction.commit().map_err(error::sqlite_error)?;
-
 			Ok(event)
-		}).await
+		})
+		.await
 	}
 
 	/// Record one active connection failure. Repeated probes do not duplicate it.
@@ -2989,4 +2964,99 @@ mod tests {
 
 		reopened.revalidate().await.unwrap();
 	}
+}
+
+fn insert_event(
+	transaction: &rusqlite::Transaction<'_>,
+	input: EnqueueAgentEvent,
+	observation: bool,
+) -> Result<AgentInboxEvent, StoreError> {
+	bounded(&input.source_event_id, 2_048)?;
+	bounded(&input.event_kind, 128)?;
+	let compact = agent_request_payload::compact(&input)?;
+
+	let previous = transaction
+		.query_row(
+			"SELECT * FROM agent_inbox_events WHERE source_event_id = ?1",
+			[&input.source_event_id],
+			event_row,
+		)
+		.optional()
+		.map_err(error::sqlite_error)?;
+
+	if let Some(event) = previous {
+		let event = agent_request_payload::hydrate(transaction, event)?;
+
+		return if event.work_item_id == input.work_item_id
+			&& event.event_kind == input.event_kind
+			&& event.payload == input.payload
+		{
+			Ok(event)
+		} else {
+			Err(StoreError::IdempotencyConflict)
+		};
+	}
+
+	if !work_exists(transaction, &input.work_item_id)? {
+		return Err(DatabaseError::NotFound.into());
+	}
+	if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_in_use_needs_attention' AND disposition IS NULL)", [&input.work_item_id], |row| row.get::<_, bool>(0)).map_err(error::sqlite_error)? {
+				return Err(StoreError::AgentThreadInUse);
+			}
+	if matches!(
+		input.event_kind.as_str(),
+		"user_message" | "async_question_answer" | "steer_pending"
+	) && agent_prompt_edit::pending(transaction, &input.work_item_id)?
+	{
+		return Err(DatabaseError::Conflict.into());
+	}
+	if input.event_kind == "user_message" {
+		agent_task_references::validate_references(transaction, &input.payload)?;
+		agent_prompt_inputs::validate_queued_input(
+			transaction,
+			&input.work_item_id,
+			&input.payload,
+		)?;
+	}
+	if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment m JOIN agent_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
+
+	let now = crate::unix_micros()?;
+
+	transaction.execute("INSERT INTO agent_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+				rusqlite::params![input.source_event_id, input.work_item_id, input.event_kind, compact.as_ref().unwrap_or(&input.payload), now,
+					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(error::sqlite_error)?;
+
+	let event_id = transaction.last_insert_rowid();
+	if input.event_kind == "user_message"
+		&& let Ok(payload) = serde_json::from_str::<Value>(&input.payload)
+		&& let Some(text) = payload["text"].as_str()
+	{
+		let title = text
+			.split_whitespace()
+			.collect::<Vec<_>>()
+			.join(" ")
+			.chars()
+			.take(64)
+			.collect::<String>();
+		if !title.is_empty() {
+			transaction.execute("UPDATE agent_work_items SET title=?2,updated_at_micros=?3 WHERE id=?1 AND title='New conversation' AND codex_thread_id IS NULL", rusqlite::params![input.work_item_id,title,now]).map_err(error::sqlite_error)?;
+		}
+	}
+
+	if compact.is_some() {
+		transaction
+			.execute(
+				"INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",
+				rusqlite::params![event_id, input.payload],
+			)
+			.map_err(error::sqlite_error)?;
+	}
+
+	let event = read_event(transaction, event_id)?;
+
+	if input.event_kind == "user_message" {
+		agent_questions::retire_for_prompt(transaction, &input.work_item_id, &input.payload)?;
+	}
+
+	Ok(event)
 }

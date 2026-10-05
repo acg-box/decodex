@@ -297,7 +297,10 @@ impl AgentSurface {
 			cx.spawn(async move |surface, cx| {
 				if fetch.await {
 					let _ = surface.update(cx, |s, cx| {
-						if s.composer.read(cx).content().is_empty() && !s.sending {
+						if s.composer.read(cx).content().is_empty()
+							&& !s.sending
+							&& !s.is_new_conversation()
+						{
 							s.composer
 								.update(cx, |input, cx| input.set_placeholder(prompts::next(), cx));
 						}

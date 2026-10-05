@@ -1,7 +1,7 @@
 //! Work discovery is separate from the list of open conversations.
 use super::{
-	AgentSurface, ComposerInput, Context, Entity, EntityId, InteractiveElement, IntoElement,
-	ParentElement, Role, SharedString, StatefulInteractiveElement, Styled,
+	AgentSurface, ComposerInput, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+	Role, SharedString, StatefulInteractiveElement, Styled,
 };
 use crate::{
 	shell::workspace_symbols::{self, Symbol},
@@ -26,6 +26,11 @@ impl AgentSurface {
 		input
 	}
 
+	pub(super) fn is_new_conversation(&self) -> bool {
+		self.workspace.new_conversation.is_some()
+			&& self.workspace.new_conversation == self.selected
+	}
+
 	pub(super) fn new_work_conversation(&mut self, cx: &mut Context<Self>) {
 		if self.sending || self.uncertain {
 			return;
@@ -35,18 +40,24 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		}
-		let id = format!("conversation-{}", super::unique_command());
-		self.workspace.opening_work = Some(id.clone());
-		self.execute(
-			super::AgentActionDto::NewConversation {
-				work_id: EntityId::new(id).expect("generated identity"),
-			},
-			None,
-			cx,
-		);
-		if !self.sending {
-			self.workspace.opening_work = None;
-		}
+		self.close_native_agent(cx);
+		self.stop_voice(cx);
+		let id = self
+			.workspace
+			.new_conversation
+			.get_or_insert_with(|| format!("conversation-{}", super::unique_command()))
+			.clone();
+		self.restore_manager_composer(&id, cx);
+		self.selected = Some(id);
+		self.composer.update(cx, |input, cx| {
+			input.set_placeholder("Describe your goal, or explore an idea…", cx)
+		});
+		self.history = None;
+		self.timeline.native.reset();
+		self.timeline.marks.clear();
+		self.feedback.clear();
+		self.workspace.details_visible = false;
+		cx.notify();
 	}
 
 	pub(super) fn work_navigation(
@@ -297,6 +308,30 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn new_conversation_is_local_and_keeps_separate_unsent_drafts(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+            s.visual_workspace_fixture(cx);
+            s.open_page("agent", cx);
+            s.composer.update(cx, |input, cx| input.set_content("Existing draft", cx));
+            let count = s.snapshot.as_ref().unwrap().work_items.len();
+            s.new_work_conversation(cx);
+            assert!(s.is_new_conversation());
+            assert!(!s.sending);
+            assert!(s.submission.waiting.is_none());
+            assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
+            assert!(!s.conversation_pages().iter().any(|(id,_,_)| Some(id) == s.selected.as_ref()));
+            s.composer.update(cx, |input, cx| input.set_content("New draft", cx));
+            let action = s.build_submission("New draft", cx).unwrap();
+            assert!(matches!(action, super::super::AgentActionDto::NewConversation { text, .. } if text.as_str() == "New draft"));
+            s.open_page("agent", cx);
+            assert_eq!(s.composer.read(cx).content(), "Existing draft");
+            s.new_work_conversation(cx);
+            assert_eq!(s.composer.read(cx).content(), "New draft");
+            assert_eq!(s.snapshot.as_ref().unwrap().work_items.len(), count);
+        });
+	}
 	#[gpui::test]
 	fn browser_finds_closed_work_and_opening_it_preserves_other_drafts(
 		cx: &mut gpui::TestAppContext,

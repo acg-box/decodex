@@ -4232,32 +4232,28 @@ async fn live_plan_finality_and_kind_survive_restart() {
 }
 
 #[tokio::test]
-async fn empty_user_conversation_is_not_released_as_assigned_work() {
+async fn first_message_creates_conversation_and_starts_exactly_once() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	AgentCoordinator::reserve_root(&coordinator.store, "main", "Help the user").await.unwrap();
-	AgentCoordinator::reserve_conversation(&coordinator.store, "new-chat").await.unwrap();
 	coordinator.wake_pending().await.unwrap();
-	coordinator.wake_pending().await.unwrap();
-	assert!(sent.try_recv().is_err(), "an empty conversation must not call the provider");
-	let saved = coordinator.store.get_agent_work_item("new-chat".into()).await.unwrap();
-	assert_eq!(saved.status, AgentWorkStatus::Wait);
-	assert!(saved.codex_thread_id.is_none());
-	coordinator
-		.store
-		.enqueue_agent_event(EnqueueAgentEvent {
+	assert!(sent.try_recv().is_err());
+	AgentCoordinator::create_conversation(
+		&coordinator.store,
+		"new-chat",
+		EnqueueAgentEvent {
 			source_event_id: "first-input".into(),
 			work_item_id: "new-chat".into(),
 			event_kind: "user_message".into(),
 			payload: serde_json::json!({"text":"Improve sidebar navigation","source":"user"})
 				.to_string(),
-		})
-		.await
-		.unwrap();
+		},
+	)
+	.await
+	.unwrap();
 	coordinator.wake_pending().await.unwrap();
 	coordinator.wake_pending().await.unwrap();
-	let starts: Vec<_> = iter::from_fn(|| sent.try_recv().ok())
-		.filter(|request| request["method"] == "turn/start")
-		.collect();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|r| r["method"] == "turn/start").collect();
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["input"][0]["text"], "Improve sidebar navigation");
 }
