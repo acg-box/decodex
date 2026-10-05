@@ -1535,6 +1535,17 @@ impl AgentSurface {
 						.map(|work| work.id.clone());
 				}
 
+				// A saved first message promotes the local editor to a real conversation,
+				// including when acceptance was recovered after restarting the app.
+				if self
+					.workspace
+					.new_conversation
+					.as_ref()
+					.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+				{
+					self.workspace.new_conversation = None;
+				}
+
 				self.snapshot = Some(snapshot);
 				self.state = LoadState::Ready;
 			},
