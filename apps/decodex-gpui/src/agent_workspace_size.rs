@@ -189,6 +189,7 @@ impl AgentSurface {
 		} else {
 			let mut rail = gpui::div()
 				.id("conversation-rail")
+				.overflow_y_scroll()
 				.bg(gpui::rgba(crate::ui_theme::AGENT_SIDEBAR_MATERIAL))
 				.w(gpui::px(52.))
 				.h_full()
@@ -213,6 +214,7 @@ impl AgentSurface {
 						.aria_selected(active)
 						.tab_index(0)
 						.size(gpui::px(40.))
+						.flex_none()
 						.rounded(gpui::px(10.))
 						.cursor_pointer()
 						.flex()

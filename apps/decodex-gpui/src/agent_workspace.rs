@@ -537,14 +537,7 @@ impl AgentSurface {
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
 		let mut pages = vec![(self.root_id().unwrap_or_default(), "Main".into(), false)];
-		let mut open = self.workspace.pages.clone();
-		if let Some(current) = self.conversation_page()
-			&& Some(&current) != self.root_id().as_ref()
-			&& !open.contains(&current)
-			&& !self.workspace.closing_pages.contains(&current)
-		{
-			open.push(current);
-		}
+		let open = &self.workspace.pages;
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(open.iter().filter_map(|id| {
 				self.native_page_label(id)
@@ -1197,6 +1190,14 @@ impl AgentSurface {
 	}
 
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if let Some(current) = self.conversation_page()
+			&& Some(&current) != self.root_id().as_ref()
+			&& !self.workspace.pages.contains(&current)
+			&& !self.workspace.closing_pages.contains(&current)
+		{
+			self.workspace.pages.push(current);
+		}
+
 		self.workspace.graph_display_zoom =
 			ui_motion::value("agent-graph-zoom", self.workspace.graph_zoom, window, cx);
 
