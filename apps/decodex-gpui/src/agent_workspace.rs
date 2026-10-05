@@ -373,7 +373,7 @@ impl AgentSurface {
 					.h(gpui::px(26.))
 					.py_0()
 					.px(gpui::px(10.))
-					.max_w(gpui::px(190.))
+					.max_w(gpui::px(170.))
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
 					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
@@ -566,12 +566,24 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.h(gpui::px(28.))
-				.rounded(gpui::px(9.))
-				.border_1()
-				.border_color(gpui::rgba(if active { 0xffffff14 } else { 0xffffff00 }))
-				.when(active, |tab| tab.bg(gpui::rgba(0xffffff12)))
+				.relative()
+				.rounded_t(gpui::px(7.))
+				.rounded_b(gpui::px(3.))
+				.bg(gpui::rgba(if active { 0xb4caff20 } else { 0xffffff07 }))
 				.hover(move |style| {
-					style.bg(gpui::rgba(if active { 0xffffff18 } else { 0xffffff07 }))
+					style.bg(gpui::rgba(if active { 0xb4caff28 } else { 0xffffff12 }))
+				})
+				.when(active, |tab| {
+					tab.child(
+						gpui::div()
+							.absolute()
+							.bottom_0()
+							.left(gpui::px(8.))
+							.right(gpui::px(8.))
+							.h(gpui::px(2.))
+							.rounded_full()
+							.bg(gpui::rgba(0xb4caffaa)),
+					)
 				})
 				.child(self.workspace_action(
 					format!("page-{id}"),
@@ -597,7 +609,7 @@ impl AgentSurface {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.opacity(0.0)
+						.opacity(if active { 0.7 } else { 0.4 })
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
 						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
