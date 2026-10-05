@@ -2707,7 +2707,7 @@ fn tooltip_surface(text: SharedString, color: u32) -> Div {
 
 fn topbar_controls(
 	shell: &Shell,
-	_presentation: &ConnectionPresentation,
+	presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let left_sidebar_visible = shell.left_sidebar_visible;
@@ -2718,6 +2718,7 @@ fn topbar_controls(
 		.expect("Settings destination");
 
 	ui_theme::floating_group()
+		.gap(gpui::px(2.))
 		.text_size(gpui::px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
 			// Keep global controls in place while their data is loading.
@@ -2731,8 +2732,20 @@ fn topbar_controls(
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_inspector_toggle(inspector_visible, cx))
 		})
-		.child(gpui::div().w(gpui::px(6.)).flex_none())
-		.child(shell.render_status_toggle(_presentation, cx))
+		.when(
+			matches!(shell.selected, Destination::Agent | Destination::Conversations),
+			|controls| {
+				controls.child(
+					gpui::div()
+						.w(gpui::px(1.))
+						.h(gpui::px(12.))
+						.mx(gpui::px(4.))
+						.flex_none()
+						.bg(gpui::rgba(0xffffff30)),
+				)
+			},
+		)
+		.child(shell.render_status_toggle(presentation, cx))
 		.child(
 			gpui::div()
 				.id("open-settings")
@@ -2819,7 +2832,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.flex()
 		.items_center()
 		.justify_center()
-		.when(active, |el| el.bg(gpui::rgba(0xffffff0c)))
+		.when(active && index == 0, |el| el.bg(gpui::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
 			el.cursor_pointer().hover(|el| el.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
@@ -2860,7 +2873,12 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				cx.stop_propagation();
 			}
 		}))
-		.child(AgentSurface::panel_glyph(index))
+		.child(
+			gpui::div()
+				.flex()
+				.opacity(if active { 1. } else { 0.55 })
+				.child(AgentSurface::panel_glyph(index)),
+		)
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()

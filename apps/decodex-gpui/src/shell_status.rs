@@ -339,6 +339,11 @@ impl Shell {
 			.text_color(gpui::rgb(WB_TEXT_MUTED))
 			.cursor_pointer()
 			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.occlude()
+			.on_mouse_down(gpui::MouseButton::Left, |_, window, cx| {
+				window.prevent_default();
+				cx.stop_propagation();
+			})
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.status_open = !open;
 
