@@ -656,6 +656,8 @@ impl AgentSurface {
 				format!("native-agent-row-{}", agent.thread_id),
 				depth,
 				selected,
+				has_children,
+				expanded,
 			)
 			.child(if has_children {
 				self.tree_toggle(key.clone(), &label, expanded, cx)

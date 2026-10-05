@@ -1,16 +1,7 @@
-//! Quiet agent state and hover-only overflow motion shared by navigation surfaces.
+//! Quiet agent state and automatic overflow motion shared by navigation surfaces.
 use crate::{ui_motion, ui_theme};
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, TextRun, Window, prelude::*};
 use std::time::Instant;
-
-#[derive(Default)]
-struct ScrollState {
-	width: f32,
-	natural_width: Option<f32>,
-	hovered: Option<Instant>,
-	returning: Option<(Instant, f32)>,
-	offset: f32,
-}
 
 fn offset(elapsed: f32, distance: f32) -> f32 {
 	let travel = (distance / 28.).max(0.7);
@@ -47,32 +38,8 @@ impl RenderOnce for AgentLabel {
 		};
 		let width =
 			f32::from(window.text_system().shape_line(text.clone(), font_size, &[run], None).width);
-		let state = window.use_keyed_state(self.id.clone(), cx, |_, _| ScrollState::default());
-		let width = state.read(cx).natural_width.unwrap_or(width);
+		let start = window.use_keyed_state(self.id.clone(), cx, |_, _| Instant::now());
 		let reduced = ui_motion::reduced();
-		let (x, moving) = state.update(cx, |s, _| {
-			let distance = (width - s.width).max(0.);
-			let moving = !reduced && distance > 1. && s.hovered.is_some();
-			s.offset = if reduced || distance <= 1. {
-				s.returning = None;
-				0.
-			} else if let Some(start) = s.hovered {
-				offset(start.elapsed().as_secs_f32(), distance)
-			} else if let Some((start, from)) = s.returning {
-				let t = (start.elapsed().as_secs_f32() / 0.22).min(1.);
-				if t >= 1. {
-					s.returning = None;
-				}
-				from * (1. - t).powi(3)
-			} else {
-				0.
-			};
-			(s.offset, moving || s.returning.is_some())
-		});
-		if moving {
-			ui_motion::request_frame(window, cx);
-		}
-		let measure = state.clone();
 		let measure_text = text.clone();
 		gpui::div()
 			.id(self.id)
@@ -82,18 +49,11 @@ impl RenderOnce for AgentLabel {
 			.max_w_full()
 			.h(window.line_height())
 			.overflow_hidden()
-			.on_hover(move |hovered, _, cx| {
-				state.update(cx, |s, cx| {
-					s.hovered = hovered.then(Instant::now);
-					s.returning = (!hovered && s.offset > 0.).then(|| (Instant::now(), s.offset));
-					cx.notify();
-				})
-			})
+			.child(gpui::div().w_full().whitespace_nowrap().text_ellipsis().opacity(0.).child(text))
 			.child(
 				gpui::canvas(
-					move |bounds, window, cx| {
+					move |_, window, _| {
 						let style = window.text_style();
-						let font_size = style.font_size.to_pixels(window.rem_size());
 						let run = TextRun {
 							len: measure_text.len(),
 							font: style.font(),
@@ -102,40 +62,40 @@ impl RenderOnce for AgentLabel {
 							underline: None,
 							strikethrough: None,
 						};
-						let natural_width = f32::from(
-							window
-								.text_system()
-								.shape_line(measure_text.clone(), font_size, &[run], None)
-								.width,
-						);
-						let width =
-							f32::from(bounds.intersect(&window.content_mask().bounds).size.width);
-						measure.update(cx, |s, cx| {
-							if (s.width - width).abs() > 0.5
-								|| s.natural_width
-									.is_none_or(|old| (old - natural_width).abs() > 0.5)
-							{
-								s.width = width;
-								s.natural_width = Some(natural_width);
-								cx.notify();
-							}
-						});
+						window.text_system().shape_line(
+							measure_text.clone(),
+							style.font_size.to_pixels(window.rem_size()),
+							&[run],
+							None,
+						)
 					},
-					|_, _, _, _| {},
+					move |bounds, line, window, cx| {
+						let visible = bounds.intersect(&window.content_mask().bounds);
+						if visible.size.width <= gpui::px(0.) || visible.size.height <= gpui::px(0.)
+						{
+							return;
+						}
+						let distance =
+							(f32::from(line.width) - f32::from(visible.size.width)).max(0.);
+						let x = if !reduced && distance > 1. {
+							ui_motion::request_frame(window, cx);
+							offset(start.read(cx).elapsed().as_secs_f32(), distance)
+						} else {
+							0.
+						};
+						let _ = line.paint(
+							bounds.origin - gpui::point(gpui::px(x), gpui::px(0.)),
+							window.line_height(),
+							gpui::TextAlign::Left,
+							None,
+							window,
+							cx,
+						);
+					},
 				)
 				.absolute()
 				.size_full(),
 			)
-			.child(if x > 0.01 {
-				gpui::div()
-					.absolute()
-					.left(gpui::px(-x))
-					.w(gpui::px(width))
-					.whitespace_nowrap()
-					.child(text)
-			} else {
-				gpui::div().w_full().whitespace_nowrap().text_ellipsis().child(text)
-			})
 	}
 }
 

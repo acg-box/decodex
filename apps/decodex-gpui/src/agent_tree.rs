@@ -188,22 +188,28 @@ impl AgentSurface {
 		let id = work.id.clone();
 		let (status, _) = graph::state_in(snapshot, work);
 		let toggle = self.tree_toggle(work.id.clone(), &name, expanded, cx);
-		let row = tree_row(format!("agent-row-{}", work.id), depth, selected)
-			.child(if descendants.is_empty() && !has_native {
-				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
-			} else {
-				toggle.into_any_element()
-			})
-			.child(tree_identity(
-				self.workspace_action(
-					format!("agent-open-{id}"),
-					name,
-					move |s, cx| s.open_page(&id, cx),
-					cx,
-				),
-				format!("agent-signal-{}", work.id),
-				status,
-			));
+		let row = tree_row(
+			format!("agent-row-{}", work.id),
+			depth,
+			selected,
+			!descendants.is_empty() || has_native,
+			expanded,
+		)
+		.child(if descendants.is_empty() && !has_native {
+			gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
+		} else {
+			toggle.into_any_element()
+		})
+		.child(tree_identity(
+			self.workspace_action(
+				format!("agent-open-{id}"),
+				name,
+				move |s, cx| s.open_page(&id, cx),
+				cx,
+			),
+			format!("agent-signal-{}", work.id),
+			status,
+		));
 		let mut nested = tree_children(depth);
 		let mut count = 0;
 
@@ -252,7 +258,13 @@ pub(super) fn tree_identity(name: AnyElement, id: String, status: &str) -> Div {
 		.child(gpui::div().min_w_0().flex_shrink(1.).child(name))
 }
 
-pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {
+pub(super) fn tree_row(
+	id: String,
+	depth: usize,
+	selected: bool,
+	has_children: bool,
+	expanded: bool,
+) -> Stateful<Div> {
 	gpui::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id.clone())
@@ -276,9 +288,24 @@ pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div
 					.absolute()
 					.left(gpui::px(ROW_INSET + (depth - 1) as f32 * INDENT + DISCLOSURE / 2.))
 					.top(gpui::px(TREE_ROW_HEIGHT / 2.))
-					.w(gpui::px(5.))
+					.w(gpui::px(if has_children {
+						INDENT - 5.
+					} else {
+						INDENT + DISCLOSURE / 2. + 12.
+					}))
 					.h(gpui::px(1.))
-					.bg(gpui::rgba(0xffffff18)),
+					.bg(gpui::rgba(0xffffff30)),
+			)
+		})
+		.when(has_children && expanded, |row| {
+			row.child(
+				gpui::div()
+					.absolute()
+					.left(gpui::px(ROW_INSET + depth as f32 * INDENT + DISCLOSURE / 2.))
+					.top(gpui::px(TREE_ROW_HEIGHT / 2. + 6.))
+					.bottom_0()
+					.w(gpui::px(1.))
+					.bg(gpui::rgba(0xffffff30)),
 			)
 		})
 }
@@ -291,7 +318,7 @@ pub(super) fn tree_children(depth: usize) -> Div {
 			.top_0()
 			.bottom(gpui::px(TREE_ROW_HEIGHT / 2.))
 			.w(gpui::px(1.))
-			.bg(gpui::rgba(0xffffff18)),
+			.bg(gpui::rgba(0xffffff30)),
 	)
 }
 
