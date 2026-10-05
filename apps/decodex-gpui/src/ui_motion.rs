@@ -361,14 +361,14 @@ impl RenderOnce for Popover {
 }
 
 #[derive(Clone)]
-struct Tween {
+pub(crate) struct Tween {
 	from: f32,
 	to: f32,
 	started: Instant,
 	duration: Duration,
 }
 impl Tween {
-	fn new(value: f32) -> Self {
+	pub(crate) fn new(value: f32) -> Self {
 		Self {
 			from: value,
 			to: value,
@@ -377,7 +377,7 @@ impl Tween {
 		}
 	}
 
-	fn sample(&self, now: Instant) -> f32 {
+	pub(crate) fn sample(&self, now: Instant) -> f32 {
 		self.sample_with_motion(now, reduced())
 	}
 
@@ -393,7 +393,7 @@ impl Tween {
 		self.from + (self.to - self.from) * eased
 	}
 
-	fn target(&mut self, value: f32, now: Instant) {
+	pub(crate) fn target(&mut self, value: f32, now: Instant) {
 		if self.to != value {
 			self.from = self.sample(now);
 			self.to = value;
@@ -401,7 +401,7 @@ impl Tween {
 		}
 	}
 
-	fn moving(&self, now: Instant) -> bool {
+	pub(crate) fn moving(&self, now: Instant) -> bool {
 		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
 	}
 }
@@ -658,10 +658,13 @@ impl RenderOnce for AgentRailStatus {
 		let ring = gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
-				let mut path = gpui::PathBuilder::stroke(gpui::px(1.5));
+				if !busy && !attention {
+					return;
+				}
+				let mut path = gpui::PathBuilder::stroke(gpui::px(2.2));
 				for i in 0..=32 {
 					let angle = phase
-						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.72 } else { 1. };
+						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.64 } else { 0.82 };
 					let p = bounds.center()
 						+ gpui::point(gpui::px(angle.cos() * 10.), gpui::px(angle.sin() * 10.));
 					if i == 0 {

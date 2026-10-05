@@ -2,7 +2,7 @@
 
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	SharedString, Stateful,
+	Stateful,
 };
 
 use crate::{
@@ -110,13 +110,26 @@ impl AgentSurface {
 		layout
 	}
 
-	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
+	fn sidebar_target_width(&self, window: &Window) -> f32 {
 		let width = f32::from(window.viewport_size().width);
 		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
 		} else {
 			52.
 		}
+	}
+
+	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
+		let target = self.sidebar_target_width(window);
+		let now = std::time::Instant::now();
+		let mut motion = self.workspace.sidebar_motion.borrow_mut();
+		let tween = motion.get_or_insert_with(|| ui_motion::Tween::new(target));
+		if self.workspace.sidebar_drag.is_some() {
+			*tween = ui_motion::Tween::new(target);
+		} else {
+			tween.target(target, now);
+		}
+		tween.sample(now)
 	}
 
 	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
@@ -170,15 +183,23 @@ impl AgentSurface {
 
 	pub(super) fn sidebar_slot(
 		&self,
-		wide: bool,
+		_wide: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let expanded = (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && wide;
-		let target = self.workspace_sidebar_width(window);
-		let width = ui_motion::value("agent-sidebar-width", target, window, cx);
-		let mut slot = gpui::div()
+		let width = self.workspace_sidebar_width(window);
+		if self
+			.workspace
+			.sidebar_motion
+			.borrow()
+			.as_ref()
+			.is_some_and(|tween| tween.moving(std::time::Instant::now()))
+		{
+			ui_motion::request_frame(window, cx);
+		}
+		gpui::div()
 			.id("left-panel-slot")
+			.debug_selector(|| "left-panel-slot".into())
 			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
 			.w(gpui::px(width))
@@ -186,63 +207,9 @@ impl AgentSurface {
 			.overflow_hidden()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
-			);
-		if expanded {
-			slot = slot
-				.child(gpui::div().w(gpui::px(target)).h_full().child(self.workspace_sidebar(cx)));
-		} else {
-			let mut rail = gpui::div()
-				.id("conversation-rail")
-				.overflow_y_scroll()
-				.bg(gpui::rgba(crate::ui_theme::AGENT_SIDEBAR_MATERIAL))
-				.w(gpui::px(52.))
-				.h_full()
-				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-				.px(gpui::px(6.))
-				.flex()
-				.flex_col()
-				.gap(gpui::px(6.));
-			for (id, label, _) in self.conversation_pages() {
-				if self.workspace.closing_pages.contains(&id) {
-					continue;
-				}
-				let active = self.conversation_page().as_ref() == Some(&id);
-				let key_id = id.clone();
-				let status = self.conversation_status(&id);
-				rail = rail.child(
-					gpui::div()
-						.id(SharedString::from(format!("rail-page-{id}")))
-						.role(Role::Tab)
-						.aria_label(label.clone())
-						.aria_selected(active)
-						.tab_index(0)
-						.size(gpui::px(40.))
-						.flex_none()
-						.rounded(gpui::px(10.))
-						.cursor_pointer()
-						.flex()
-						.items_center()
-						.justify_center()
-						.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
-						.hover(|s| s.bg(gpui::rgba(0xffffff16)))
-						.child(crate::ui_motion::AgentRailStatus {
-							state: status,
-							label: label.clone(),
-						})
-						.on_click(cx.listener(move |s, _, _, cx| s.open_page(&id, cx)))
-						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-							if !event.is_held
-								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
-							{
-								s.open_page(&key_id, cx);
-								cx.stop_propagation();
-							}
-						})),
-				);
-			}
-			slot = slot.child(rail);
-		}
-		slot.into_any_element()
+			)
+			.child(self.workspace_sidebar(cx))
+			.into_any_element()
 	}
 
 	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -355,12 +322,15 @@ mod tests {
 		std::thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(|w, cx| w.draw(cx).clear());
 		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
+		let mark = "conversation-mark-agent";
+		let collapsed_mark = visual.debug_bounds(mark).unwrap();
 		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(250));
 		visual.update(|w, cx| w.draw(cx).clear());
 		let expanded = visual.debug_bounds("workspace-transcript").unwrap();
 		assert!(expanded.origin.x > collapsed.origin.x);
+		assert_eq!(visual.debug_bounds(mark).unwrap(), collapsed_mark);
 		surface.update(visual, |s, cx| {
 			s.workspace.sidebar_visible = true;
 			s.workspace.sidebar_peek = false;
@@ -394,6 +364,8 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 
 			s.workspace.sidebar_width = 192.0;
+			// Start the drag fixture at its settled width.
+			s.workspace.sidebar_motion = Default::default();
 		});
 
 		visual.update(|window, cx| {
@@ -492,6 +464,8 @@ mod tests {
 				s.workspace.graph_visible = true;
 				s.workspace.graph_expanded = false;
 				s.workspace.graph_panel_height = 275.;
+				// Geometry assertions below describe the settled panel layout.
+				s.workspace.sidebar_motion = Default::default();
 
 				assert_eq!(s.workspace_graph_size(window, true), (1_148., 275.));
 

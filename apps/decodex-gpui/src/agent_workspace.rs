@@ -418,16 +418,27 @@ impl AgentSurface {
 			.h_full()
 			.flex()
 			.flex_col()
-			.p(gpui::px(CONTROL_MARGIN))
+			.px(gpui::px(6.))
+			.pb(gpui::px(CONTROL_MARGIN))
 			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 			.gap_1()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
-			.pr(gpui::px(4.));
+			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL));
 
 		panel = panel.child(self.workspace_tabs(cx));
-		panel = panel.child(self.workspace_projects_header(cx));
+		panel = panel.child(
+			gpui::div()
+				.ml(gpui::px(46.))
+				.min_w(gpui::px(120.))
+				.child(self.workspace_projects_header(cx)),
+		);
 
-		let mut list = gpui::div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
+		let mut list = gpui::div()
+			.id("agent-sidebar-work")
+			.ml(gpui::px(46.))
+			.min_w(gpui::px(120.))
+			.flex_1()
+			.min_h_0()
+			.overflow_y_scroll();
 
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot.work_items.iter().filter(|w| {
@@ -584,34 +595,66 @@ impl AgentSurface {
 		for (id, label, closable) in self.conversation_pages() {
 			let active = self.conversation_page().as_ref() == Some(&id)
 				|| (!closable && self.selected.is_none());
-			let select = id.clone();
+			let keyboard_select = id.clone();
 			let row_select = id.clone();
 			let group = SharedString::from(format!("conversation-tab-{id}"));
 			let mut tab = gpui::div()
 				.id(group.clone())
 				.group(group.clone())
+				.debug_selector({
+					let id = id.clone();
+					move || format!("page-{id}")
+				})
+				.role(Role::Tab)
+				.aria_label(label.clone())
+				.aria_selected(active)
+				.tab_index(0)
 				.w_full()
 				.min_w_0()
 				.h(gpui::px(34.))
-				.px(gpui::px(4.))
+				.flex_none()
+				.overflow_hidden()
 				.flex()
 				.items_center()
-				.gap(gpui::px(4.))
+				.gap(gpui::px(6.))
 				.rounded(gpui::px(7.))
 				.cursor_pointer()
 				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
 				.hover(move |s| s.bg(gpui::rgba(if active { 0xffffff18 } else { HOVER_FILL })))
 				.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_select, cx)))
-				.child(crate::ui_motion::AgentRailStatus {
-					state: self.conversation_status(&id),
-					label: label.clone(),
-				})
-				.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
-					format!("page-{id}"),
-					label.clone(),
-					move |s, cx| s.open_page(&select, cx),
-					cx,
-				)));
+				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
+					{
+						s.open_page(&keyboard_select, cx);
+						cx.stop_propagation();
+					}
+				}))
+				.child(
+					gpui::div()
+						.debug_selector({
+							let id = id.clone();
+							move || format!("conversation-mark-{id}")
+						})
+						.w(gpui::px(40.))
+						.h_full()
+						.flex_none()
+						.flex()
+						.items_center()
+						.justify_center()
+						.child(crate::ui_motion::AgentRailStatus {
+							state: self.conversation_status(&id),
+							label: label.clone(),
+						}),
+				)
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w(gpui::px(80.))
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.text_ellipsis()
+						.child(label.clone()),
+				);
 			if closable {
 				let close = id.clone();
 				let keyboard = id.clone();
