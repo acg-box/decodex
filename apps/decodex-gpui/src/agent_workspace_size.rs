@@ -133,8 +133,8 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
-		// Keep room for the fixed global controls when either sidebar is hidden.
-		(self.workspace_sidebar_width(window).max(180.), self.agent_tree_width(window).max(140.))
+		// Match the actual conversation column, including animated sidebar widths.
+		(self.workspace_sidebar_width(window), self.agent_tree_width(window))
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {

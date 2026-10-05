@@ -2632,16 +2632,18 @@ fn floating_window_controls(
 				.h_full()
 				.flex()
 				.items_center()
+				.justify_center()
 				.min_w_0()
 				.child(
 					gpui::div()
 						.id("conversation-topbar-controls")
-						.max_w_full()
+						.max_w(gpui::px(360.))
+						.w_full()
 						.min_w_0()
 						.occlude()
 						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 						.on_click(|_, _, cx| cx.stop_propagation())
-						.child(agent.work_context(cx)),
+						.child(agent.work_context(_window, cx)),
 				)
 		})
 	});

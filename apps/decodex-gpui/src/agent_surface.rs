@@ -1716,11 +1716,16 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_context(&self, _cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn work_context(
+		&self,
+		window: &Window,
+		_cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		if self.is_new_conversation() && !self.workspace.browsing {
+			return gpui::div().into_any_element();
+		}
 		let title = if self.workspace.browsing {
 			"All work".into()
-		} else if self.is_new_conversation() {
-			"New conversation".into()
 		} else {
 			self.conversation_page()
 				.and_then(|id| {
@@ -1735,13 +1740,39 @@ impl AgentSurface {
 				})
 				.unwrap_or_else(|| "Main".into())
 		};
+		let tip = title.clone();
+		let (left, right) = self.topbar_insets(window);
+		let available = (f32::from(window.viewport_size().width) - left - right).min(360.) - 20.;
+		let run = gpui::TextRun {
+			len: title.len(),
+			font: window.text_style().font(),
+			color: gpui::rgb(ui_theme::TEXT_MUTED).into(),
+			background_color: None,
+			underline: None,
+			strikethrough: None,
+		};
+		let truncated = f32::from(
+			window
+				.text_system()
+				.shape_line(title.clone().into(), gpui::px(12.), &[run], None)
+				.width,
+		) > available;
 		gpui::div()
+			.id("current-conversation-title")
+			.when(truncated, |title| {
+				title.tooltip(move |_, cx| {
+					cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into()
+				})
+			})
 			.debug_selector(|| "workspace-conversation-header".into())
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+			.w_full()
 			.max_w_full()
 			.min_w_0()
 			.flex()
 			.items_center()
+			.justify_center()
+			.text_center()
 			.px(gpui::px(10.))
 			.text_size(gpui::px(12.))
 			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
