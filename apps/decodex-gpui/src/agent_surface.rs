@@ -1685,61 +1685,51 @@ impl AgentSurface {
 	}
 
 	pub(super) fn work_context(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let target = cx.entity();
 		gpui::div()
 			.flex_none()
 			.max_w_full()
 			.min_w_0()
-			.px(gpui::px(3.))
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
-			.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
-			.bg(gpui::rgba(ui_theme::TOPBAR_MATERIAL))
-			.justify_center()
 			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
-			.flex_col()
+			.items_center()
+			.child(self.workspace_tabs(cx))
+			.into_any_element()
+	}
+
+	pub(super) fn work_details_button(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let target = cx.entity();
+		gpui::div()
+			.relative()
+			.flex_none()
+			.child(self.workspace_action(
+				"inspect-work".into(),
+				"⋯".into(),
+				|s, cx| {
+					s.workspace.details_visible = !s.workspace.details_visible;
+
+					if s.workspace.details_visible
+						&& let Some(work) = s.selected.clone()
+						&& s.resources.as_ref().is_none_or(|(owner, _)| owner != &work)
+					{
+						s.toggle_resources(&work, cx);
+					}
+
+					cx.notify();
+				},
+				cx,
+			))
 			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap(gpui::px(12.))
-					.child(gpui::div().flex_1().min_w_0().child(self.workspace_tabs(cx)))
-					.child(
-						gpui::div()
-							.child(self.workspace_action(
-								"inspect-work".into(),
-								"⋯".into(),
-								|s, cx| {
-									s.workspace.details_visible = !s.workspace.details_visible;
-
-									if s.workspace.details_visible
-										&& let Some(work) = s.selected.clone()
-										&& s.resources
-											.as_ref()
-											.is_none_or(|(owner, _)| owner != &work)
-									{
-										s.toggle_resources(&work, cx);
-									}
-
-									cx.notify();
-								},
-								cx,
-							))
-							.relative()
-							.child(
-								gpui::canvas(
-									move |bounds, _, cx| {
-										target.update(cx, |s, _| {
-											s.menu_trigger_bounds.insert("inspect-work", bounds);
-										});
-									},
-									|_, _, _, _| {},
-								)
-								.absolute()
-								.inset_0(),
-							),
-					),
+				gpui::canvas(
+					move |bounds, _, cx| {
+						target.update(cx, |s, _| {
+							s.menu_trigger_bounds.insert("inspect-work", bounds);
+						});
+					},
+					|_, _, _, _| {},
+				)
+				.absolute()
+				.inset_0(),
 			)
 			.into_any_element()
 	}

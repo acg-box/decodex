@@ -341,7 +341,7 @@ impl AgentSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip = icon_only || id.starts_with("attention-") || id == "inspect-work";
+		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
@@ -390,7 +390,7 @@ impl AgentSurface {
 					.h(gpui::px(26.))
 					.py_0()
 					.px(gpui::px(10.))
-					.max_w(gpui::px(160.))
+					.max_w(gpui::px(190.))
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
 					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
@@ -550,8 +550,8 @@ impl AgentSurface {
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
-			.h(gpui::px(28.0))
-			.min_h(gpui::px(28.0))
+			.h(gpui::px(30.0))
+			.min_h(gpui::px(30.0))
 			.min_w_0()
 			.overflow_x_scroll()
 			.flex()
@@ -582,11 +582,13 @@ impl AgentSurface {
 				.flex_none()
 				.flex()
 				.items_center()
-				.h(gpui::px(26.))
-				.rounded(gpui::px(7.))
-				.when(active, |tab| tab.bg(gpui::rgba(0xffffff0b)))
+				.h(gpui::px(28.))
+				.rounded(gpui::px(9.))
+				.border_1()
+				.border_color(gpui::rgba(if active { 0xffffff14 } else { 0xffffff00 }))
+				.when(active, |tab| tab.bg(gpui::rgba(0xffffff12)))
 				.hover(move |style| {
-					style.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff06 }))
+					style.bg(gpui::rgba(if active { 0xffffff18 } else { 0xffffff07 }))
 				})
 				.child(self.workspace_action(
 					format!("page-{id}"),
@@ -612,7 +614,7 @@ impl AgentSurface {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.opacity(if active { 0.65 } else { 0.0 })
+						.opacity(0.0)
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
 						.hover(|style| style.bg(gpui::rgba(0xffffff10)))
