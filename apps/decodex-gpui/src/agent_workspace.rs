@@ -583,15 +583,16 @@ impl AgentSurface {
 						.tab_index(0)
 						.aria_label(format!("Close {label}"))
 						.size(gpui::px(20.))
+						.mr(gpui::px(6.))
 						.flex_none()
-						.rounded(gpui::px(5.))
 						.flex()
 						.items_center()
 						.justify_center()
 						.opacity(if active { 0.65 } else { 0. })
-						.group_hover(group, |s| s.opacity(1.))
+						.group_hover(group, |s| s.opacity(0.65))
 						.focus(|s| s.opacity(1.))
-						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+						.hover(|s| s.opacity(1.))
+						.active(|s| s.opacity(0.45))
 						.child(workspace_symbols::icon_sized(
 							super::super::workspace_symbols::Symbol::Close,
 							12.,
