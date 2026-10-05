@@ -3243,7 +3243,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
 						.text_color(gpui::rgb(WB_ACCENT))
-						.child("PLANNED SURFACE"),
+						.child("Not available yet"),
 				)
 				.child(
 					gpui::div()
@@ -3268,7 +3268,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.text_size(gpui::px(11.0))
 						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(
-							"No speculative controls are exposed before this projection has an authority owner.",
+							"This feature is not available in this version.",
 						),
 				),
 		)
@@ -4151,14 +4151,14 @@ fn account_row_action(
 
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
 	match readiness {
-		AccountLifecycleReadinessDto::Ready => "READY",
-		AccountLifecycleReadinessDto::CredentialAbsent => "NO CREDENTIAL",
-		AccountLifecycleReadinessDto::StoreUnavailable => "STORE UNAVAILABLE",
-		AccountLifecycleReadinessDto::StoreMismatch => "STORE MISMATCH",
-		AccountLifecycleReadinessDto::ProviderMismatch => "PROVIDER MISMATCH",
-		AccountLifecycleReadinessDto::OperationUnsettled => "OPERATION PENDING",
-		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "CALLBACK UNREADY",
-		AccountLifecycleReadinessDto::Tombstoned => "LOGGED OUT",
+		AccountLifecycleReadinessDto::Ready => "Ready",
+		AccountLifecycleReadinessDto::CredentialAbsent => "Sign-in required",
+		AccountLifecycleReadinessDto::StoreUnavailable => "Sign-in unavailable",
+		AccountLifecycleReadinessDto::StoreMismatch => "Saved account mismatch",
+		AccountLifecycleReadinessDto::ProviderMismatch => "Provider mismatch",
+		AccountLifecycleReadinessDto::OperationUnsettled => "Update in progress",
+		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "Sign-in not ready",
+		AccountLifecycleReadinessDto::Tombstoned => "Signed out",
 	}
 }
 
@@ -4620,7 +4620,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.text_color(gpui::rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
-				.child("OPEN IN CODEX")
+				.child("Open in Codex")
 				.smooth(),
 		);
 	} else {
