@@ -153,8 +153,10 @@ impl AgentSurface {
 		});
 		let descendants = if depth < 24 { children(snapshot, &work.id) } else { Vec::new() };
 		let expanded = !self.workspace.agent_tree_collapsed.contains(&work.id);
-		let selected =
-			self.native_agents.selected.is_none() && self.selected.as_ref() == Some(&work.id);
+		let selected = self.selected.as_ref() == Some(&work.id)
+			&& self.native_agents.selected.as_ref().is_none_or(|(owner, thread)| {
+				owner == &work.id && work.codex_thread_id.as_ref() == Some(thread)
+			});
 		let name = self.work_label(work);
 		let id = work.id.clone();
 		let (status, color) = graph::state_in(snapshot, work);

@@ -53,11 +53,7 @@ impl Display for HistoryKey {
 
 impl AgentSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
-		let native = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				Some(&work.id) == self.selected.as_ref() && self.native_history_active(work)
-			})
-		});
+		let native = self.conversation_work().is_some_and(|work| self.native_history_active(&work));
 		let work = self.selected.clone().map(|work| (work, native));
 
 		if self.timeline.marks_work != work {
@@ -190,8 +186,19 @@ impl AgentSurface {
 			} else {
 				match &entry.content {
 					AgentTimelineContent::Item { kind, text, .. }
-						if kind == "userMessage" || kind == "agentMessage" =>
-						(kind == "userMessage", text, "Conversation message"),
+						if matches!(
+							kind.as_str(),
+							"userMessage" | "agentInput" | "agentMessage"
+						) =>
+						(
+							kind != "agentMessage",
+							text,
+							if kind == "agentInput" {
+								"Task input"
+							} else {
+								"Conversation message"
+							},
+						),
 					AgentTimelineContent::Speech { role, text, .. } =>
 						(role == "user", text, "Voice message"),
 					_ => continue,
@@ -562,18 +569,12 @@ impl AgentSurface {
 			.as_ref()
 			.and_then(|id| self.timeline.scroll.get(id))
 			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.));
-		let working = self
-			.snapshot
-			.as_ref()
-			.and_then(|snapshot| {
-				snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
-			})
-			.is_some_and(|work| {
-				matches!(
-					work.dispatch_state,
-					AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
-				) && !self.thread_in_use(&work.id)
-			});
+		let working = self.conversation_work().is_some_and(|work| {
+			matches!(
+				work.dispatch_state,
+				AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
+			) && !self.thread_in_use(&work.id)
+		});
 		let width =
 			ui_motion::value("jump-latest-width", if working { 56. } else { 28. }, window, cx);
 		let clock =
@@ -693,12 +694,9 @@ impl AgentSurface {
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
 		let positions: Vec<_> =
 			self.timeline.marks.values().map(|mark| mark.position.clone()).collect();
-		let working = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				Some(&work.id) == self.selected.as_ref()
-					&& work.dispatch_state == AgentDispatchStateDto::Running
-			})
-		});
+		let working = self
+			.conversation_work()
+			.is_some_and(|work| work.dispatch_state == AgentDispatchStateDto::Running);
 		let last = positions.len() - 1;
 		let current = self.active_history_index(&scroll);
 		let active_position = ui_motion::value(
@@ -1163,7 +1161,7 @@ mod tests {
 						app_ui: false,
 						turn_id: "turn".into(),
 						item_id: "same-id".into(),
-						kind: "userMessage".into(),
+						kind: "agentInput".into(),
 						text: text.clone(),
 						truncated: false,
 						activity: None,

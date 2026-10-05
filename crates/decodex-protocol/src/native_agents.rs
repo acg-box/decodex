@@ -1,4 +1,4 @@
-//! Read-only native agent observations and source-bound conversation previews.
+//! Read-only native agent observations and source-bound input capability.
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -14,17 +14,6 @@ pub struct NativeAgentDto {
 	pub status: String,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-/// One bounded public message from the exact native conversation.
-pub struct NativeAgentMessage {
-	/// Exact native item identity.
-	pub id: String,
-	/// Public message role.
-	pub role: String,
-	/// Credential-filtered readable content.
-	pub text: String,
-}
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 /// Native inspection result; missing observations are not an empty list.
 pub enum NativeAgentsResult {
@@ -35,7 +24,7 @@ pub enum NativeAgentsResult {
 		/// Exact cursor for the next page.
 		next_cursor: Option<String>,
 	},
-	/// Recent conversation with explicit input capability.
+	/// Conversation identity with explicit input capability.
 	Conversation {
 		/// Exact inspected thread.
 		thread_id: String,
@@ -43,10 +32,6 @@ pub enum NativeAgentsResult {
 		can_input: bool,
 		/// Observed running turn for steering.
 		active_turn: Option<String>,
-		/// Bounded messages in chronological order.
-		messages: Vec<NativeAgentMessage>,
-		/// Older or oversized content was omitted.
-		truncated: bool,
 	},
 	/// Current native state could not be verified.
 	Unavailable,

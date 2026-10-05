@@ -464,6 +464,19 @@ impl AgentSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		if self.native_agents.selected.is_none()
+			&& self.command_connection_ready()
+			&& let Some(work) =
+				self.conversation_work().filter(|w| w.kind == AgentWorkKindDto::Task)
+			&& let Some(thread) = work.codex_thread_id
+		{
+			self.enter_native_conversation(&work.id, &thread, cx);
+			return;
+		}
+		if self.native_agents.selected.is_some() {
+			self.refresh_open_native_history(cx);
+			return;
+		}
 		self.refresh_open_native_history(cx);
 		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
@@ -821,6 +834,10 @@ impl AgentSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.native_agents.selected.is_some() {
+			self.send_native_agent(cx);
+			return;
+		}
 		// Live uses this slot for the microphone. Do not send a hidden draft.
 		if self.voice.is_some() {
 			return;
@@ -1246,6 +1263,8 @@ impl AgentSurface {
 		self.snapshot = None;
 
 		self.workspace.pages.clear();
+		self.native_agents.pages.clear();
+		self.native_agents.timelines.clear();
 		self.workspace.closing_pages.clear();
 		self.workspace.page_views.clear();
 
@@ -1877,6 +1896,12 @@ impl AgentSurface {
 	}
 
 	fn history_panel(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
+		if self.native_agents.selected.is_some() {
+			return self.history_activity(
+				gpui::div().w_full().min_w_0().child(self.native_timeline_panel(work, cx)),
+				work,
+			);
+		}
 		let panel = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -1977,16 +2002,24 @@ impl AgentSurface {
 		let active = matches!(
 			work.dispatch_state,
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
-		) || (self.selected.as_ref() == Some(&work.id)
+		) || (self.native_agents.selected.is_none()
+			&& self.selected.as_ref() == Some(&work.id)
 			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
 
-		if !self.native_history_active(work) {
+		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
 		panel = panel.child(Working {
-			key: format!("working-{}", work.id),
-			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
+			key: format!(
+				"working-{}-{}",
+				work.id,
+				work.codex_thread_id.as_deref().unwrap_or_default()
+			),
+			turn: (active
+				&& (self.native_agents.selected.is_some()
+					|| self.composer_unavailable_reason().is_none()))
+			.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
 		});
 
 		if active
@@ -2002,7 +2035,9 @@ impl AgentSurface {
 			);
 		}
 
-		panel.children(self.live_chat_caption(&work.id))
+		panel.when(self.native_agents.selected.is_none(), |p| {
+			p.children(self.live_chat_caption(&work.id))
+		})
 	}
 
 	fn capacity_retry_control(
@@ -2524,7 +2559,7 @@ fn history_entry_presented(
 			text,
 		});
 	}
-	let user = entry.kind == "user";
+	let user = matches!(entry.kind.as_str(), "user" | "instruction");
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
 	} else {
@@ -2564,12 +2599,7 @@ fn history_entry_presented(
 						.bg(gpui::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
-				.when(entry.kind == "instruction", |body| {
-					body.pl_3()
-						.border_l_2()
-						.border_color(gpui::rgb(BLUE))
-						.child(muted("Agent instructions"))
-				})
+				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))
 				.child(streamed_body.unwrap_or_else(|| {
 					markdown::render(&visible_text, &format!("message-{identity}"))
 				}))

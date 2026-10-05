@@ -3,9 +3,7 @@ use std::time::Instant;
 
 use gpui::{
 	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
-	prelude::{
-		InteractiveElement as _, ParentElement as _, StatefulInteractiveElement as _, Styled as _,
-	},
+	prelude::{InteractiveElement as _, StatefulInteractiveElement as _, Styled as _},
 };
 
 use crate::{ui_motion, ui_preferences, ui_theme::BODY_LINE_HEIGHT};
@@ -70,13 +68,6 @@ impl Motion {
 pub(crate) struct ScrollArea {
 	id: ElementId,
 	content: Stateful<Div>,
-	scrollbar: bool,
-}
-impl ScrollArea {
-	pub(crate) fn with_scrollbar(mut self) -> Self {
-		self.scrollbar = true;
-		self
-	}
 }
 impl RenderOnce for ScrollArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -140,29 +131,7 @@ impl RenderOnce for ScrollArea {
 				cx.notify(owner);
 			},
 		);
-		if !self.scrollbar {
-			return content.into_any_element();
-		}
-		gpui::div()
-			.flex_1()
-			.min_h_0()
-			.min_w_0()
-			.relative()
-			.flex()
-			.flex_col()
-			.child(content)
-			.child(Scrollbar {
-				id: (self.id, "scrollbar").into(),
-				scroll,
-				changed: std::rc::Rc::new(move |offset, _, cx| {
-					state.update(cx, |s, _| {
-						s.motion = None;
-						s.scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
-					});
-					cx.notify(owner);
-				}),
-			})
-			.into_any_element()
+		content.into_any_element()
 	}
 }
 
@@ -174,7 +143,7 @@ struct AreaState {
 
 impl SmoothScrollArea for Stateful<Div> {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea {
-		ScrollArea { id: id.into(), content: self, scrollbar: false }
+		ScrollArea { id: id.into(), content: self }
 	}
 }
 

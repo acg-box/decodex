@@ -67,11 +67,12 @@ impl Render for PanelTip {
 
 impl AgentSurface {
 	pub(crate) fn navigation_work(&self) -> Option<String> {
-		self.selected.clone().filter(|id| Some(id) != self.root_id().as_ref())
+		self.conversation_page().filter(|id| Some(id) != self.root_id().as_ref())
 	}
 
 	pub(crate) fn can_restore_work(&self, work: Option<&str>) -> bool {
 		work.is_none_or(|id| {
+			let id = self.native_agents.pages.get(id).map_or(id, |(owner, _)| owner.as_str());
 			self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id))
 		})
 	}
@@ -130,6 +131,7 @@ impl AgentSurface {
 		self.snapshot
 			.as_ref()
 			.is_some_and(|s| s.work_items.iter().any(|w| w.parent_goal_id.is_some()))
+			|| self.native_agents.lists.values().any(|agents| !agents.is_empty())
 	}
 
 	pub(super) fn root_id(&self) -> Option<String> {
@@ -143,6 +145,10 @@ impl AgentSurface {
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.workspace.closing_pages.remove(id);
+		if let Some((owner, thread)) = self.native_agents.pages.get(id).cloned() {
+			self.open_native_agent(&owner, &thread, cx);
+			return;
+		}
 		self.close_native_agent(cx);
 
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
@@ -228,8 +234,18 @@ impl AgentSurface {
 		self.request = None;
 		self.request_task = None;
 
-		self.load_history(cx);
-		self.sync_request(cx);
+		let task_thread = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|w| w.id == id))
+			.filter(|w| w.kind == AgentWorkKindDto::Task)
+			.and_then(|w| w.codex_thread_id.clone());
+		if let Some(thread) = task_thread {
+			self.enter_native_conversation(id, &thread, cx);
+		} else {
+			self.load_history(cx);
+			self.sync_request(cx);
+		}
 		cx.notify();
 	}
 
@@ -278,7 +294,7 @@ impl AgentSurface {
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.workspace.closing_pages.insert(id.to_owned());
 
-		if self.selected.as_deref() == Some(id)
+		if self.conversation_page().as_deref() == Some(id)
 			&& let Some(root) = self.root_id()
 		{
 			self.open_page(&root, cx);
@@ -301,7 +317,7 @@ impl AgentSurface {
 			|| id.starts_with("saved-prompt-")
 			|| id.starts_with("discard-prompt-");
 		let active = if is_tab {
-			self.selected.as_deref() == id.strip_prefix("page-")
+			self.conversation_page().as_deref() == id.strip_prefix("page-")
 		} else if let Some(work) = id.strip_prefix("sidebar-") {
 			self.selected.as_deref() == Some(work)
 		} else if id == "agent-home" {
@@ -537,6 +553,9 @@ impl AgentSurface {
 
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(self.workspace.pages.iter().filter_map(|id| {
+				if let Some(label) = self.native_page_label(id) {
+					return Some((id.clone(), label, true));
+				}
 				snapshot
 					.work_items
 					.iter()
@@ -546,8 +565,8 @@ impl AgentSurface {
 		}
 
 		for (id, label, closable) in pages {
-			let active =
-				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
+			let active = self.conversation_page().as_ref() == Some(&id)
+				|| (!closable && self.selected.is_none());
 			let select = id.clone();
 			let group = SharedString::from(format!("conversation-tab-{id}"));
 			let mut tab = gpui::div()
@@ -634,6 +653,11 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
+		if self.native_agents.selected.is_some() {
+			return (!self.native_input_available() && self.native_agents.detail.is_some())
+				.then_some("This agent is read-only. Its conversation remains available.");
+		}
+
 		if self.uncertain {
 			return Some(
 				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
@@ -809,6 +833,46 @@ impl AgentSurface {
 	}
 
 	fn composer_footer(&self, rail_width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
+		if self.native_agents.selected.is_some() {
+			let available = self.native_input_available() || self.native_send_pending();
+			let feedback = self.native_feedback();
+			let loading = self.native_agents.detail.is_none() || self.connection_initializing();
+			return gpui::div()
+				.flex_none()
+				.w_full()
+				.pl(gpui::px(rail_width))
+				.when(!feedback.is_empty() && !matches!(feedback, "Sent" | "Sending…"), |d| {
+					d.child(
+						gpui::div()
+							.px(gpui::px(ui_theme::CONVERSATION_INSET))
+							.py(gpui::px(6.))
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(feedback.to_owned()),
+					)
+				})
+				.when(available || loading, |d| d.child(self.render_composer(window, cx)))
+				.when(!available && !loading && matches!(feedback, "" | "Sent"), |d| {
+					d.child(
+						gpui::div()
+							.px(gpui::px(ui_theme::CONVERSATION_INSET))
+							.py(gpui::px(12.))
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(
+								if matches!(
+									self.native_agents.detail,
+									Some(decodex_protocol::NativeAgentsResult::Unavailable)
+								) {
+									"Connecting to this agent…"
+								} else {
+									"This agent is read-only. Its conversation remains available."
+								},
+							),
+					)
+				});
+		}
+
 		// Reserve real layout space so history can never paint beneath the native input window.
 		gpui::div()
 			.debug_selector(|| "composer-footer".into())
@@ -910,16 +974,20 @@ impl AgentSurface {
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))
 						.child(self.history_panel(work, cx))
-						.when(
-							snapshot.pending_events.iter().any(|e| {
-								e.work_item_id == work.id && e.event_kind.ends_with("_pending")
-							}) && self.request.is_none(),
-							|row| row.child(self.pending_panel(snapshot, work, cx)),
-						)
-						.child(self.misalignment_panel(work, cx))
-						.child(self.guardian_panel(work, cx))
-						.child(self.request_panel(snapshot, work, cx))
-						.child(self.async_question_panel(work, cx))
+						.when(self.native_agents.selected.is_none(), |content| {
+							content
+								.when(
+									snapshot.pending_events.iter().any(|e| {
+										e.work_item_id == work.id
+											&& e.event_kind.ends_with("_pending")
+									}) && self.request.is_none(),
+									|row| row.child(self.pending_panel(snapshot, work, cx)),
+								)
+								.child(self.misalignment_panel(work, cx))
+								.child(self.guardian_panel(work, cx))
+								.child(self.request_panel(snapshot, work, cx))
+								.child(self.async_question_panel(work, cx))
+						})
 						.into_any_element()
 				} else {
 					self.details(snapshot, work, cx).into_any_element()
@@ -969,12 +1037,8 @@ impl AgentSurface {
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 
-		let is_agent = self.selected_is_manager();
-		let selected = self
-			.snapshot
-			.as_ref()
-			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == self.selected.as_ref()))
-			.cloned();
+		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
+		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
 		let mut chat = gpui::div()
 			.id("conversation-panel-focus")
@@ -989,8 +1053,9 @@ impl AgentSurface {
 			.rounded(gpui::px(10.))
 			.bg(gpui::rgba(AGENT_CHAT_OVERLAY));
 
-		chat = chat
-			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
+		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
+			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
+		});
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
 		let rail_width = ui_motion::value(
@@ -1011,11 +1076,7 @@ impl AgentSurface {
 				.child(self.latest_button(window, cx)),
 		);
 
-		if self.native_agents.selected.is_none()
-			&& is_agent
-			&& selected.is_some()
-			&& !self.selected_is_archived()
-		{
+		if is_agent && selected.is_some() && !self.selected_is_archived() {
 			chat = chat.child(self.composer_footer(rail_width, window, cx));
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
@@ -1025,11 +1086,7 @@ impl AgentSurface {
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
-		let chat = if self.native_agents.selected.is_some() {
-			self.native_agent_view(cx)
-		} else {
-			chat.into_any_element()
-		};
+		let chat = chat.into_any_element();
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
 		self.update_graph_inset(graph_width, graph_height);
@@ -1701,6 +1758,7 @@ impl AgentSurface {
 				self.history = None;
 
 				self.workspace.pages.clear();
+				self.native_agents.pages.clear();
 				self.workspace.closing_pages.clear();
 			},
 			"expanded" => self.workspace.graph_expanded = true,

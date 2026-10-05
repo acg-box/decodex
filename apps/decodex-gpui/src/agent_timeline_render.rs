@@ -95,7 +95,7 @@ impl AgentSurface {
 		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, cx);
 		let process = matches!(&entry.content, AgentTimelineContent::Item { kind, phase, activity, attachments, app_ui: false, .. }
-            if attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
+            if kind != "agentInput" && attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
                 || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
 		let content = if process { process_indent(content) } else { content };
 		let content = self.anchored_native_history_entry(work, entry, content);
@@ -204,7 +204,12 @@ impl AgentSurface {
 			saved.cloned().unwrap_or_else(|| decodex_protocol::AgentHistoryEntryDto {
 				native_source: None,
 				id: 0,
-				kind: if kind == "userMessage" { "user" } else { "assistant" }.into(),
+				kind: match kind {
+					"userMessage" => "user",
+					"agentInput" => "instruction",
+					_ => "assistant",
+				}
+				.into(),
 				text: text.into(),
 				created_at_micros: 0,
 				duration_ms: None,
@@ -363,7 +368,7 @@ impl AgentSurface {
 				body
 			};
 		}
-		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
+		if matches!(kind.as_str(), "userMessage" | "agentInput" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
 			let mut body = gpui::div().debug_selector(|| "native-promotion-content".into());
 
@@ -499,6 +504,9 @@ impl AgentSurface {
 		body: Div,
 		cx: &mut Context<Self>,
 	) -> Div {
+		if self.native_agents.selected.is_some() {
+			return body;
+		}
 		let AgentTimelineContent::Item { turn_id, item_id, .. } = content else {
 			unreachable!("prompt renderer")
 		};

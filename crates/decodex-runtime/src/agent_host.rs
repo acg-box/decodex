@@ -614,7 +614,10 @@ impl AgentHost {
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
-		if owner.codex_thread_id.as_deref() != Some(thread) {
+		if owner.codex_thread_id.as_deref() != Some(thread)
+			&& native_subagents::request_owner(&self.store, &client, thread).await.ok()?.id
+				!= owner.id
+		{
 			return None;
 		}
 

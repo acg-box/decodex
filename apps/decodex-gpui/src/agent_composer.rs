@@ -55,6 +55,14 @@ impl Render for ComposerTip {
 
 impl AgentSurface {
 	pub(super) fn running_turn(&self) -> Option<(EntityId, crate::shell::agent_surface::WireText)> {
+		if self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
+			self.snapshot
+				.as_ref()
+				.and_then(|s| s.work_items.iter().find(|w| &w.id == owner))
+				.is_none_or(|w| w.codex_thread_id.as_ref() != Some(thread))
+		}) {
+			return None;
+		}
 		let snapshot = self.snapshot.as_ref()?;
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
@@ -309,8 +317,9 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.children(self.attachment_row(cx))
-			.children(self.task_reference_row(cx))
+			.when(self.native_agents.selected.is_none(), |d| {
+				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
+			})
 			.child(
 				gpui::div()
 					.flex()
@@ -402,7 +411,7 @@ impl AgentSurface {
 				if let Some(waveform) = self.voice_controls(window, cx) {
 					editor.child(waveform)
 				} else {
-					editor.child(self.composer.clone())
+					editor.child(self.conversation_composer().clone())
 				}
 			});
 
@@ -439,11 +448,14 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.on_drop(
-				cx.listener(|s, paths: &ExternalPaths, _, cx| s.attach_paths(paths.0.to_vec(), cx)),
-			)
-			.children(self.attachment_row(cx))
-			.children(self.task_reference_row(cx))
+			.on_drop(cx.listener(|s, paths: &ExternalPaths, _, cx| {
+				if s.native_agents.selected.is_none() {
+					s.attach_paths(paths.0.to_vec(), cx);
+				}
+			}))
+			.when(self.native_agents.selected.is_none(), |d| {
+				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
+			})
 			.map(|capsule| {
 				let controls = gpui::div()
 					.id("composer-action-row")
@@ -453,13 +465,15 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.gap(gpui::px(4.))
-					.child(self.composer_control(
-						"attach",
-						"+".into(),
-						"Attachments, skills and microphone",
-						|s, cx| s.toggle_composer_menu("attachments", cx),
-						cx,
-					));
+					.when(self.native_agents.selected.is_none(), |d| {
+						d.child(self.composer_control(
+							"attach",
+							"+".into(),
+							"Attachments, skills and microphone",
+							|s, cx| s.toggle_composer_menu("attachments", cx),
+							cx,
+						))
+					});
 				if self.voice.is_some() {
 					capsule.child(controls.child(editor).child(self.composer_toolbar(cx)))
 				} else {
@@ -635,6 +649,48 @@ impl AgentSurface {
 	}
 
 	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.native_agents.selected.is_some() {
+			return gpui::div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.justify_end()
+				.child(
+					if self.running_turn().is_some()
+						&& self.conversation_composer().read(cx).content().trim().is_empty()
+					{
+						self.composer_control(
+							"stop",
+							"".into(),
+							"Stop",
+							|s, cx| s.interrupt_current(cx),
+							cx,
+						)
+						.into_any_element()
+					} else if self.native_input_available() || self.native_send_pending() {
+						self.composer_control(
+							"send",
+							"".into(),
+							"Send · Enter",
+							|s, cx| s.send_native_agent(cx),
+							cx,
+						)
+						.into_any_element()
+					} else {
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(if self.native_agents.detail.is_none() {
+								"Connecting to agent…"
+							} else {
+								"Sending unavailable"
+							})
+							.into_any_element()
+					},
+				)
+				.into_any_element();
+		}
 		if self.connection_initializing() {
 			return gpui::div()
 				.flex_1()

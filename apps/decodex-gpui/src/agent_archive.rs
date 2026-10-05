@@ -235,7 +235,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn selected_is_archived(&self) -> bool {
-		self.archive.owner == self.selected
+		self.native_agents.selected.is_none()
+			&& self.archive.owner == self.selected
 			&& (matches!(self.archive.result, Some(AgentArchiveResult::Archived { .. }))
 				|| self.archive.mutation.is_some())
 	}

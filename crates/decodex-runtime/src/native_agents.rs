@@ -7,7 +7,7 @@ use tokio::time;
 use crate::agent::native_subagents;
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_database::SqliteStore;
-use decodex_protocol::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
+use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -21,8 +21,6 @@ pub(crate) async fn read(
         let root = owner.codex_thread_id?;
 
         if let Some(thread) = thread {
-            if thread == root { return None; }
-
             let verified = native_subagents::request_owner(store,client,thread).await.ok()?;
 
             if verified.id != work { return None; }
@@ -67,81 +65,6 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 	}
 
 	let turns = value.pointer("/thread/turns")?.as_array()?;
-	let mut messages = Vec::new();
-	let mut truncated = turns.len() > 12;
-	let mut remaining = 48_000_usize;
-
-	for turn in turns.iter().skip(turns.len().saturating_sub(12)) {
-		for item in turn["items"].as_array().into_iter().flatten() {
-			let (role, text) = match item["type"].as_str()? {
-				"agentMessage" => ("assistant", item["text"].as_str().unwrap_or("").to_owned()),
-				"userMessage" => (
-					"user",
-					item["content"]
-						.as_array()
-						.into_iter()
-						.flatten()
-						.filter_map(|c| c["text"].as_str())
-						.collect::<Vec<_>>()
-						.join("\n"),
-				),
-				"commandExecution" => (
-					"activity",
-					format!(
-						"Command · {}\n\n{}\n\n{}",
-						item["status"].as_str().unwrap_or("observed"),
-						item["command"].as_str().unwrap_or(""),
-						item["aggregatedOutput"].as_str().unwrap_or("")
-					),
-				),
-				"mcpToolCall" | "dynamicToolCall" => (
-					"activity",
-					format!(
-						"Tool · {} · {}",
-						item["tool"].as_str().unwrap_or("Tool"),
-						item["status"].as_str().unwrap_or("observed")
-					),
-				),
-				"fileChange" => (
-					"activity",
-					format!(
-						"Files · {}",
-						item["changes"]
-							.as_array()
-							.into_iter()
-							.flatten()
-							.filter_map(|c| c["path"].as_str())
-							.take(20)
-							.collect::<Vec<_>>()
-							.join(", ")
-					),
-				),
-				_ => continue,
-			};
-
-			if text.is_empty() {
-				continue;
-			}
-			if remaining == 0 || messages.len() >= 128 {
-				truncated = true;
-
-				break;
-			}
-
-			let bounded =
-				clean(&text, remaining.min(if role == "activity" { 4_000 } else { 12_000 }));
-
-			truncated |= bounded.chars().count() < text.chars().count();
-			remaining = remaining.saturating_sub(bounded.chars().count());
-
-			messages.push(NativeAgentMessage {
-				id: item["id"].as_str()?.into(),
-				role: role.into(),
-				text: bounded,
-			});
-		}
-	}
-
 	Some(NativeAgentsResult::Conversation {
 		thread_id: thread.into(),
 		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool)
@@ -152,8 +75,6 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 			.find(|t| t["status"] == "inProgress")
 			.and_then(|t| t["id"].as_str())
 			.map(str::to_owned),
-		messages,
-		truncated,
 	})
 }
 #[cfg(test)]
@@ -161,9 +82,9 @@ mod tests {
 	use crate::native_agents::{self, NativeAgentsResult};
 
 	#[test]
-	fn native_preview_keeps_roles_and_does_not_guess_input_capability() {
+	fn native_input_metadata_keeps_turn_identity_and_does_not_guess_capability() {
 		let v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
-		let Some(NativeAgentsResult::Conversation { can_input, active_turn, messages, .. }) =
+		let Some(NativeAgentsResult::Conversation { can_input, active_turn, .. }) =
 			native_agents::conversation(&v, "child")
 		else {
 			panic!()
@@ -171,8 +92,6 @@ mod tests {
 
 		assert!(!can_input);
 		assert_eq!(active_turn.as_deref(), Some("t"));
-		assert_eq!(messages[0].role, "user");
-		assert_eq!(messages[1].text, "Result");
 		assert!(native_agents::conversation(&v, "other").is_none());
 	}
 }

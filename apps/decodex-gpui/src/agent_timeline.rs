@@ -134,13 +134,9 @@ impl AgentSurface {
 		if self.connection_initializing() {
 			return;
 		}
-		let Some((work, thread)) = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot
-				.work_items
-				.iter()
-				.find(|work| Some(&work.id) == self.selected.as_ref())
-				.and_then(|work| Some((work.id.clone(), work.codex_thread_id.clone()?)))
-		}) else {
+		let Some((work, thread)) =
+			self.conversation_work().and_then(|work| Some((work.id, work.codex_thread_id?)))
+		else {
 			self.timeline.native.reset();
 
 			return;
@@ -151,9 +147,8 @@ impl AgentSurface {
 			self.timeline.native.viewport.request_latest();
 		}
 
-		let turn = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.as_deref()
-		});
+		let selected = self.conversation_work();
+		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
 
 		self.timeline.native.retry_after_turn_change(turn);
 
@@ -209,13 +204,10 @@ impl AgentSurface {
 			),
 		);
 
-		if self
-			.timeline
-			.native
-			.binding
-			.as_ref()
-			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
-		{
+		if self.native_agents.selected.is_none()
+			&& self.timeline.native.binding.as_ref().is_some_and(|b| {
+				b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref()
+			}) {
 			controls = controls.child(
 				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
 					self.workspace_action(
@@ -618,9 +610,8 @@ impl AgentSurface {
 		let epoch = self.timeline.native.epoch;
 
 		self.timeline.native.requested = Some((work.clone(), thread.clone()));
-		self.timeline.native.requested_turn = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.clone()
-		});
+		self.timeline.native.requested_turn =
+			self.conversation_work().and_then(|work| work.active_turn_id);
 
 		let sent_cursor = cursor.clone();
 		let request = cx.background_executor().spawn(async move {
@@ -642,16 +633,10 @@ impl AgentSurface {
 					return;
 				}
 
-				s.timeline.native.task = None;
-
-				if s.selected.as_deref() != Some(&work)
-					|| !s.snapshot.as_ref().is_some_and(|v| {
-						v.work_items
-							.iter()
-							.any(|w| w.id == work && w.codex_thread_id.as_deref() == Some(&thread))
-					}) {
+				if s.selected.as_deref() != Some(&work) || !s.conversation_matches(&work, &thread) {
 					return;
 				}
+				s.timeline.native.task = None;
 
 				if let Some(decodex_protocol::AgentTimelineResult::Summary {
 					work_id,

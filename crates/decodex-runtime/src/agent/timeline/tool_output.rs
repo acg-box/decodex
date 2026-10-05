@@ -46,9 +46,9 @@ mod tests {
 			panic!("item")
 		};
 
-		assert_eq!(kind, "functionCallOutput");
+		assert_eq!(kind, "agentInput");
 		assert_eq!(activity.unwrap().kind, "functionCallOutput");
-		assert_eq!(text, "decodex/work_instruction\nInspect the delegated task.");
+		assert_eq!(text, "Inspect the delegated task.");
 
 		for namespace in [serde_json::json!(null), serde_json::json!("")] {
 			let mut unnamed = row.clone();
@@ -72,7 +72,7 @@ mod tests {
 			panic!("item")
 		};
 
-		assert_eq!(text, "decodex/work_instruction\nVisible");
+		assert_eq!(text, "Visible");
 		assert_eq!(attachments.iter().map(|a| a.index).collect::<Vec<_>>(), vec![1, 2, 3]);
 		assert_eq!(attachments[0].kind, "inputImage");
 		assert_eq!(attachments[1].kind, "inputAudio");

@@ -207,7 +207,7 @@ pub use self::{
 		InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelDefaults,
 		InitialModelSource, ModelCatalogPurpose,
 	},
-	native_agents::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult},
+	native_agents::{NativeAgentDto, NativeAgentsResult},
 	program_cycle::{
 		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
 		ProgramCycleContractError, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto,
@@ -262,7 +262,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 110 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 111 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
