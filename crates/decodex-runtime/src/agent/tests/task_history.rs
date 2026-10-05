@@ -66,7 +66,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 async fn task_history_denies_foreign_scope_stale_binding_and_worker_authority() {
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
-	let child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	let child = agent.create_manager("agent", "child", "Manage").await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
 
 	while sent.try_recv().is_ok() {}
@@ -144,7 +144,7 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	agent.create_manager("agent", "child", "Manage").await.unwrap();
 
 	let target = agent.create_worker("child", "target", "Investigate").await.unwrap();
 	let args = serde_json::json!({"id":"target","threadId":target.codex_thread_id});
@@ -216,7 +216,7 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	agent.create_manager("agent", "child", "Manage").await.unwrap();
 
 	let target = agent.create_worker("child", "target", "Work").await.unwrap();
 	let references = vec![decodex_protocol::AgentTaskReferenceDto {
@@ -401,7 +401,7 @@ async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors()
 async fn native_occurrence_search_rejects_foreign_scope_before_rpc() {
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
-	let _child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	let _child = agent.create_manager("agent", "child", "Manage").await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
 
 	while sent.try_recv().is_ok() {}

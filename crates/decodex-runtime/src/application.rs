@@ -96,8 +96,8 @@ use decodex_protocol::{
 	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
 	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
 	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AgentWorkspaceDto, CausationId,
-	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
@@ -119,6 +119,7 @@ use decodex_protocol::{
 	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
 	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
 	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	WorkspaceDto,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -6105,7 +6106,12 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
-			.map(|(agent_id, name, directory)| AgentWorkspaceDto { agent_id, name, directory })
+			.map(|w| WorkspaceDto {
+				id: w.id,
+				name: w.name,
+				directory: w.directory,
+				work_ids: w.work_ids,
+			})
 			.collect(),
 		work_items: work_items
 			.into_iter()

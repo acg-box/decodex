@@ -171,7 +171,7 @@ async fn native_task_reference_round_trip() {
 
 		drain_work(&mut agent,&mut events,"root").await;
 
-		agent.create_manager("root","child","CHILD_READY",None).await.unwrap();
+		agent.create_manager("root","child","CHILD_READY").await.unwrap();
 
 		drain_work(&mut agent,&mut events,"child").await;
 

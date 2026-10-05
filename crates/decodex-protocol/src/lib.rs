@@ -79,9 +79,8 @@ pub use self::{
 		AgentRequestResult, AgentRequestText, AgentResourceDto, AgentResourcesResult,
 		AgentSandboxDto, AgentServiceTierDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
 		AgentTaskReferenceDto, AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto,
-		AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AgentWorkspaceDto,
-		MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES,
-		MAX_AGENT_WORK_ITEMS,
+		AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES,
+		MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, WorkspaceDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_settings::{
@@ -262,7 +261,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 113 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 114 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

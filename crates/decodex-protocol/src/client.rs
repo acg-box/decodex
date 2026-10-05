@@ -2172,7 +2172,9 @@ impl AgentClient {
 							Some(_),
 							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
-						) if &work_id == agent_action_work_id(&action) => AgentCommandResponse::Accepted { work_id },
+						) if matches!(action, AgentActionDto::AddWorkspace { .. })
+							|| &work_id == agent_action_work_id(&action) =>
+							AgentCommandResponse::Accepted { work_id },
 						(CommandOutcome::Rejected, None, None, Some(error))
 							if !matches!(error, CommandError::AcceptanceUnknown) =>
 							AgentCommandResponse::Rejected { error },
@@ -3520,6 +3522,7 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
+		AgentActionDto::AddWorkspace { workspace_id, .. } => workspace_id,
 		AgentActionDto::NewConversation { work_id, .. } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
 		AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,

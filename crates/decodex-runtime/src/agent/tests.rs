@@ -2041,17 +2041,30 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	let manager = coordinator
-		.create_manager(
-			"agent",
-			"project",
-			"Manage project",
-			Some(("Project".into(), directory.path().display().to_string())),
-		)
-		.await
-		.unwrap();
+	AgentCoordinator::register_workspace(
+		&coordinator.store,
+		"folder",
+		directory.path().to_str().unwrap(),
+	)
+	.await
+	.unwrap();
+	AgentCoordinator::create_conversation(
+		&coordinator.store,
+		"folder-chat",
+		EnqueueAgentEvent {
+			source_event_id: "workspace-test".into(),
+			work_item_id: "folder-chat".into(),
+			event_kind: "user_message".into(),
+			payload: "{\"text\":\"Start\"}".into(),
+		},
+		Some("folder".into()),
+	)
+	.await
+	.unwrap();
+	let manager =
+		coordinator.create_manager("folder-chat", "project", "Manage project").await.unwrap();
 
-	coordinator.create_manager("project", "team", "Manage team", None).await.unwrap();
+	coordinator.create_manager("project", "team", "Manage team").await.unwrap();
 	coordinator.create_worker("team", "worker", "Do work").await.unwrap();
 
 	let root = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
@@ -2090,10 +2103,16 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	let starts: Vec<_> =
 		requests.iter().filter(|request| request["method"] == "thread/start").collect();
 
-	assert_eq!(starts.len(), 4);
+	assert_eq!(starts.len(), 5);
 	assert_eq!(starts[0]["params"]["threadSource"], "user");
 	assert!(starts[1..].iter().all(|start| start["params"].get("threadSource").is_none()));
-	assert!(starts[1]["params"]["dynamicTools"].is_array());
+	assert!(
+		starts[1]["params"]["dynamicTools"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.all(|tool| tool["name"] != "agent_create_workspace")
+	);
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());
 	assert_eq!(
@@ -4247,6 +4266,7 @@ async fn first_message_creates_conversation_and_starts_exactly_once() {
 			payload: serde_json::json!({"text":"Improve sidebar navigation","source":"user"})
 				.to_string(),
 		},
+		None,
 	)
 	.await
 	.unwrap();

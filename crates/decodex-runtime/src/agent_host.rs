@@ -1388,7 +1388,20 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			AgentActionDto::AddWorkspace { workspace_id, directory } =>
+				AgentCoordinator::register_workspace(
+					&self.store,
+					workspace_id.as_str(),
+					directory.as_str(),
+				)
+				.await
+				.map_err(|_| {
+					AgentHostError::Rejected(
+						"Workspace folder could not be added. Check that the folder is available.",
+					)
+				}),
 			AgentActionDto::NewConversation {
+				workspace_id,
 				work_id,
 				text,
 				execution,
@@ -1401,6 +1414,7 @@ impl AgentHost {
 					&self.store,
 					work_id.as_str(),
 					user_input(work_id.as_str(), &key, text.as_str(), Some(&options)),
+					workspace_id.map(|id| id.as_str().to_owned()),
 				)
 				.await
 				.map_err(|_| "Conversation could not be created")?;
@@ -2248,6 +2262,59 @@ mod tests {
 	use decodex_core::DecodexRoot;
 
 	#[tokio::test]
+	async fn folders_do_not_create_agents_and_conversations_share_explicit_scope() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let path = directory.path().to_str().unwrap();
+		let workspace = AgentCoordinator::register_workspace(&store, "folder", path).await.unwrap();
+		assert_eq!(
+			AgentCoordinator::register_workspace(&store, "same-folder", path).await.unwrap(),
+			workspace
+		);
+		assert!(store.list_agent_work_items().await.unwrap().is_empty());
+		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
+		AgentCoordinator::reserve_root(&store, "main", "Help").await.unwrap();
+		for id in ["one", "two"] {
+			AgentCoordinator::create_conversation(
+				&store,
+				id,
+				super::user_input(id, id, "Hello", None),
+				Some(workspace.clone()),
+			)
+			.await
+			.unwrap();
+			assert_eq!(
+				store.work_directory(id.into()).await.unwrap(),
+				Some(directory.path().canonicalize().unwrap().display().to_string())
+			);
+		}
+		AgentCoordinator::create_conversation(
+			&store,
+			"personal",
+			super::user_input("personal", "personal", "Hello", None),
+			None,
+		)
+		.await
+		.unwrap();
+		assert_eq!(store.work_directory("personal".into()).await.unwrap(), None);
+		assert!(
+			AgentCoordinator::create_conversation(
+				&store,
+				"invalid",
+				super::user_input("invalid", "invalid", "Hello", None),
+				Some("missing".into())
+			)
+			.await
+			.is_err()
+		);
+		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
+		let folders = store.workspaces().await.unwrap();
+		assert_eq!(folders.len(), 1);
+		assert_eq!(folders[0].work_ids, vec!["one", "two"]);
+	}
+
+	#[tokio::test]
 	async fn first_message_creates_conversation_and_survives_reopen() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
@@ -2257,13 +2324,14 @@ mod tests {
 			&store,
 			"new-chat",
 			super::user_input("new-chat", "first-input", "Improve sidebar navigation", None),
+			None,
 		)
 		.await
 		.unwrap();
 		assert_eq!(work.parent_goal_id.as_deref(), Some("main"));
 		assert!(work.codex_thread_id.is_none());
 		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
-		assert!(store.agent_workspaces().await.unwrap().is_empty());
+		assert!(store.workspaces().await.unwrap().is_empty());
 		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
 		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
 			.await
