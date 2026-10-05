@@ -1122,6 +1122,30 @@ async fn failed_dependency_write_cannot_leave_dispatchable_work() {
 }
 
 #[tokio::test]
+async fn task_titles_survive_dispatch_without_changing_identity_or_legacy_names() {
+	let (mut coordinator, _sent, _directory) = fixture().await;
+	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+	let work = coordinator
+		.create(
+			"inspect-ui",
+			Some("agent"),
+			"Inspect the interface",
+			vec![],
+			Some("Review interface"),
+		)
+		.await
+		.unwrap();
+	assert_eq!(work.id, "inspect-ui");
+	assert_eq!(work.title, "Review interface");
+	assert!(work.codex_thread_id.is_some());
+	let saved = coordinator.store.get_agent_work_item(work.id).await.unwrap();
+	assert_eq!(saved.title, "Review interface");
+	assert_eq!(saved.instructions, "Inspect the interface");
+	let legacy = coordinator.create_worker("agent", "legacy-task", "Inspect").await.unwrap();
+	assert_eq!(legacy.title, "legacy-task");
+}
+
+#[tokio::test]
 async fn dependencies_block_turns_until_explicit_resolution() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 

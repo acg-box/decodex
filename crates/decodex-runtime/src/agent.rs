@@ -730,7 +730,7 @@ impl AgentCoordinator {
 			));
 		}
 
-		self.create(id, None, prompt, Vec::new()).await
+		self.create(id, None, prompt, Vec::new(), None).await
 	}
 
 	/// Reserve the personal root before the account-bound process is admitted.
@@ -828,7 +828,7 @@ impl AgentCoordinator {
 		id: &str,
 		prompt: &str,
 	) -> Result<AgentWorkItem, AgentError> {
-		self.create(id, Some(parent), prompt, Vec::new()).await
+		self.create(id, Some(parent), prompt, Vec::new(), None).await
 	}
 
 	/// Create a worker whose first turn waits until the declared work is resolved.
@@ -839,7 +839,7 @@ impl AgentCoordinator {
 		prompt: &str,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, AgentError> {
-		self.create(id, Some(parent), prompt, depends_on).await
+		self.create(id, Some(parent), prompt, depends_on, None).await
 	}
 
 	async fn create(
@@ -848,7 +848,16 @@ impl AgentCoordinator {
 		parent: Option<&str>,
 		prompt: &str,
 		depends_on: Vec<String>,
+		title: Option<&str>,
 	) -> Result<AgentWorkItem, AgentError> {
+		let title = title.map(str::trim);
+		if title.is_some_and(|title| {
+			title.is_empty() || title.chars().count() > 120 || title.contains(['\n', '\r'])
+		}) {
+			return Err(AgentError::Invalid("title must be a short, single-line name".into()));
+		}
+		let title = title.unwrap_or(id);
+
 		let now = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
@@ -861,7 +870,7 @@ impl AgentCoordinator {
 					id: id.into(),
 					parent_goal_id: parent.map(str::to_owned),
 					kind: if agent { AgentWorkKind::Goal } else { AgentWorkKind::Task },
-					title: id.into(),
+					title: title.into(),
 					instructions: prompt.into(),
 					codex_thread_id: None,
 					status: AgentWorkStatus::Open,
@@ -1978,12 +1987,14 @@ impl AgentCoordinator {
 					));
 				}
 
+				let title = args.get("title").map(|_| exact(args, "/title")).transpose()?;
 				Ok(serde_json::json!(
-					self.create_worker_with_dependencies(
-						parent,
+					self.create(
 						&exact(args, "/id")?,
+						Some(parent),
 						&exact(args, "/prompt")?,
-						dependencies
+						dependencies,
+						title.as_deref()
 					)
 					.await?
 				))
@@ -2623,7 +2634,7 @@ fn belongs_to(
 
 fn tools() -> Value {
 	let mut specs = serde_json::json!([
-		{"name":"agent_create_work","description":"Create independent work for a concrete outcome; unresolved dependsOn work delays dispatch.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
+		{"name":"agent_create_work","description":"Create independent work for a concrete outcome; unresolved dependsOn work delays dispatch. Include a stable, concise title (usually 2-5 words) describing its purpose, without status or a repeated project prefix.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":120},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
 		{"name":"agent_list_work","description":"Inspect work, results and unresolved obligations.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
 		{"name":"agent_continue_worker","description":"Continue the original worker with follow-up or repair instructions.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
 		{"name":"agent_disposition","description":"Record an evidence-based disposition or user decision.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["resolved","follow_up","wait","user_decision"]},"summary":{"type":"string"}},"required":["id","status","summary"],"additionalProperties":false}}
