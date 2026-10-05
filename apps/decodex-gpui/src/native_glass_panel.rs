@@ -70,6 +70,9 @@ impl GlassPanel {
 			let _: () = objc2::msg_send![&*glass, setAutoresizingMask: 18_usize];
 
 			gpu.removeFromSuperview();
+			// GPUI owns Metal drawable sizing. Keep AppKit autoresizing off this
+			// view; otherwise a parent resize can scale it a second time.
+			let _: () = objc2::msg_send![&*gpu, setAutoresizingMask: 0_usize];
 			// This child often stays non-key while history owns keyboard focus. Match
 			// GPUI's popup tracking so hover, cursor and tooltips still receive movement.
 			let tracking: Retained<AnyObject> = objc2::msg_send![
@@ -83,7 +86,13 @@ impl GlassPanel {
 
 			if let Some(radius) = radius {
 				let _: () = objc2::msg_send![&*glass, setCornerRadius: radius];
-				let _: () = objc2::msg_send![&*glass, setContentView: &*gpu];
+				// Glass may lay out its content view itself. Give it a plain host,
+				// so its layout never changes the Metal view behind GPUI's back.
+				let host: Retained<NSView> = objc2::msg_send![AnyClass::get(c"NSView")?, new];
+				host.setFrame(content.bounds());
+				let _: () = objc2::msg_send![&*host, setAutoresizingMask: 18_usize];
+				host.addSubview(&gpu);
+				let _: () = objc2::msg_send![&*glass, setContentView: &*host];
 			} else {
 				glass.addSubview(&gpu);
 
@@ -153,13 +162,13 @@ impl GlassPanel {
 		));
 
 		if self.frame != Some(frame) {
-			self.native.setFrame_display(frame, true);
-
-			// AppKit does not guarantee autoresizing a reparented Metal view.
-			// Explicit sizing also delivers GPUI's setFrameSize resize callback.
+			self.native.setFrame_display(frame, false);
 			if let Some(content) = self.native.contentView() {
 				self.glass.setFrame(content.bounds());
-				self.foreground.setFrame(NSRect::new(NSPoint::new(0., 0.), content.bounds().size));
+				// Call the resize hook, not setFrame:, so the drawable and GPUI
+				// viewport use the same size. The foreground has one layout owner.
+				self.foreground.setFrameSize(content.bounds().size);
+				self.foreground.setFrameOrigin(NSPoint::new(0., 0.));
 			}
 
 			self.frame = Some(frame);
