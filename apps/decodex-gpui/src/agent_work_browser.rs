@@ -195,7 +195,7 @@ impl AgentSurface {
 			.id("workspace-picker")
 			.relative()
 			.w(gpui::px(176.))
-			.when(draft, |d| d.w_auto())
+			.when(draft, |d| d.w(gpui::px(280.)).flex().flex_col().items_center())
 			.child(trigger);
 		if open {
 			let search = self.workspace.workspace_search.as_ref().unwrap();
@@ -340,7 +340,6 @@ impl AgentSurface {
 						.absolute()
 						.top(gpui::px(32.))
 						.left_0()
-						.when(draft, |d| d.left(gpui::relative(0.5)).ml(gpui::px(-140.)))
 						.w(gpui::px(280.))
 						.child(crate::ui_motion::popover(true, menu)),
 				)
