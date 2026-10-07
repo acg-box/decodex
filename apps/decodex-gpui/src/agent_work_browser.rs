@@ -87,7 +87,7 @@ impl AgentSurface {
 							"workspace-{}",
 							super::unique_command()
 						))
-						.unwrap(),
+						.expect("generated workspace identity is valid"),
 						directory,
 					};
 					let runtime = tokio::runtime::Builder::new_current_thread()
@@ -95,10 +95,13 @@ impl AgentSurface {
 						.build()
 						.map_err(|e| e.to_string())?;
 					runtime
-						.block_on(decodex_protocol::AgentClient::new(request_profile).execute(
-							action,
-							decodex_protocol::IdempotencyKey::new(super::unique_command()).unwrap(),
-						))
+						.block_on(
+							decodex_protocol::AgentClient::new(request_profile).execute(
+								action,
+								decodex_protocol::IdempotencyKey::new(super::unique_command())
+									.expect("generated command identity is valid"),
+							),
+						)
 						.map_err(|e| format!("Could not add folder: {e:?}"))
 				})
 				.await;
@@ -129,12 +132,16 @@ impl AgentSurface {
 		.detach();
 	}
 
-	pub(super) fn workspace_choices(&self, draft: bool, cx: &mut Context<Self>) -> AnyElement {
-		let selected = if draft {
+	fn workspace_selection(&self, draft: bool) -> &Option<String> {
+		if draft {
 			&self.workspace.new_conversation_workspace
 		} else {
 			&self.workspace.workspace_filter
-		};
+		}
+	}
+
+	pub(super) fn workspace_choices(&self, draft: bool, cx: &mut Context<Self>) -> AnyElement {
+		let selected = self.workspace_selection(draft);
 		let fallback = if draft { "No workspace" } else { "All workspaces" };
 		let workspaces = self.snapshot.as_ref().map(|s| s.workspaces.as_slice()).unwrap_or(&[]);
 		let name = workspaces
@@ -197,85 +204,8 @@ impl AgentSurface {
 			.w(gpui::px(176.))
 			.when(draft, |d| d.w(gpui::px(280.)).flex().flex_col().items_center())
 			.child(trigger);
-		if open {
-			let search = self.workspace.workspace_search.as_ref().unwrap();
-			let query = search.read(cx).content().trim().to_lowercase();
-			let mut choices = vec![(None, fallback.to_owned(), String::new())];
-			choices.extend(
-				workspaces
-					.iter()
-					.filter(|w| {
-						w.name.to_lowercase().contains(&query)
-							|| w.directory.to_lowercase().contains(&query)
-					})
-					.map(|w| (Some(w.id.clone()), w.name.clone(), w.directory.clone())),
-			);
-			let no_matches = choices.len() == 1 && !query.is_empty();
-			let mut list = gpui::div()
-				.id("workspace-picker-list")
-				.max_h(gpui::px(260.))
-				.overflow_y_scroll()
-				.flex()
-				.flex_col();
-			for (id, name, path) in choices {
-				let active = &id == selected;
-				let keyboard_id = id.clone();
-				list = list.child(
-					gpui::div()
-						.id(SharedString::from(format!(
-							"workspace-choice-{}",
-							id.as_deref().unwrap_or("all")
-						)))
-						.role(Role::Button)
-						.aria_label(format!("Workspace: {name}"))
-						.tab_index(0)
-						.flex_none()
-						.px_2()
-						.py_1()
-						.flex()
-						.items_center()
-						.gap_2()
-						.rounded(gpui::px(6.))
-						.cursor_pointer()
-						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-						.child(gpui::div().w(gpui::px(16.)).flex_none().children(
-							active.then(|| workspace_symbols::icon_sized(Symbol::Confirm, 13.)),
-						))
-						.child(
-							gpui::div()
-								.min_w_0()
-								.flex_1()
-								.flex()
-								.flex_col()
-								.gap_1()
-								.child(
-									gpui::div()
-										.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
-										.text_ellipsis()
-										.child(name),
-								)
-								.children((!path.is_empty()).then(|| {
-									gpui::div()
-										.text_size(gpui::px(11.))
-										.text_color(gpui::rgb(TEXT_MUTED))
-										.text_ellipsis()
-										.child(path)
-								})),
-						)
-						.on_click(
-							cx.listener(move |s, _, _, cx| {
-								s.choose_workspace(draft, id.clone(), cx)
-							}),
-						)
-						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
-							{
-								s.choose_workspace(draft, keyboard_id.clone(), cx);
-								cx.stop_propagation();
-							}
-						})),
-				);
-			}
+		if let Some(search) = &self.workspace.workspace_search {
+			let (list, no_matches) = self.workspace_picker_items(draft, search, cx);
 			let menu = gpui::div()
 				.id("workspace-picker-menu")
 				.occlude()
@@ -306,45 +236,16 @@ impl AgentSurface {
 						.text_color(gpui::rgb(TEXT_MUTED))
 						.child("No matching workspaces")
 				}))
-				.child(
-					gpui::div()
-						.id("add-workspace-folder")
-						.role(Role::Button)
-						.aria_label("Add workspace folder")
-						.tab_index(0)
-						.px_2()
-						.py_1()
-						.rounded(gpui::px(6.))
-						.cursor_pointer()
-						.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
-						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-						.child("+ Add folder")
-						.on_click(cx.listener(|s, _, _, cx| {
-							s.workspace.workspace_picker = None;
-							s.add_workspace_folder(cx);
-							cx.notify();
-						}))
-						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
-							{
-								s.workspace.workspace_picker = None;
-								s.add_workspace_folder(cx);
-								cx.stop_propagation();
-								cx.notify();
-							}
-						})),
+				.child(self.add_workspace_button(cx));
+			anchor =
+				anchor.child(
+					gpui::deferred(
+						gpui::div().absolute().top(gpui::px(32.)).left_0().w(gpui::px(280.)).child(
+							crate::ui_motion::popover("workspace-popover-motion", open, menu),
+						),
+					)
+					.priority(3),
 				);
-			anchor = anchor.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.top(gpui::px(32.))
-						.left_0()
-						.w(gpui::px(280.))
-						.child(crate::ui_motion::popover(true, menu)),
-				)
-				.priority(3),
-			);
 		}
 		gpui::div()
 			.flex()
@@ -358,6 +259,120 @@ impl AgentSurface {
 					.child(error.clone())
 			}))
 			.into_any_element()
+	}
+
+	fn workspace_picker_items(
+		&self,
+		draft: bool,
+		search: &Entity<ComposerInput>,
+		cx: &mut Context<Self>,
+	) -> (gpui::Stateful<gpui::Div>, bool) {
+		let selected = self.workspace_selection(draft);
+		let fallback = if draft { "No workspace" } else { "All workspaces" };
+		let workspaces = self.snapshot.as_ref().map(|s| s.workspaces.as_slice()).unwrap_or(&[]);
+		let query = search.read(cx).content().trim().to_lowercase();
+		let mut choices = vec![(None, fallback.to_owned(), String::new())];
+		choices.extend(
+			workspaces
+				.iter()
+				.filter(|w| {
+					w.name.to_lowercase().contains(&query)
+						|| w.directory.to_lowercase().contains(&query)
+				})
+				.map(|w| (Some(w.id.clone()), w.name.clone(), w.directory.clone())),
+		);
+		let no_matches = choices.len() == 1 && !query.is_empty();
+		let mut list = gpui::div()
+			.id("workspace-picker-list")
+			.max_h(gpui::px(260.))
+			.overflow_y_scroll()
+			.flex()
+			.flex_col();
+		for (id, name, path) in choices {
+			let active = &id == selected;
+			let keyboard_id = id.clone();
+			list = list.child(
+				gpui::div()
+					.id(SharedString::from(format!(
+						"workspace-choice-{}",
+						id.as_deref().unwrap_or("all")
+					)))
+					.role(Role::Button)
+					.aria_label(format!("Workspace: {name}"))
+					.tab_index(0)
+					.flex_none()
+					.px_2()
+					.py_1()
+					.flex()
+					.items_center()
+					.gap_2()
+					.rounded(gpui::px(6.))
+					.cursor_pointer()
+					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.child(gpui::div().w(gpui::px(16.)).flex_none().children(
+						active.then(|| workspace_symbols::icon_sized(Symbol::Confirm, 13.)),
+					))
+					.child(
+						gpui::div()
+							.min_w_0()
+							.flex_1()
+							.flex()
+							.flex_col()
+							.gap_1()
+							.child(
+								gpui::div()
+									.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
+									.text_ellipsis()
+									.child(name),
+							)
+							.children((!path.is_empty()).then(|| {
+								gpui::div()
+									.text_size(gpui::px(11.))
+									.text_color(gpui::rgb(TEXT_MUTED))
+									.text_ellipsis()
+									.child(path)
+							})),
+					)
+					.on_click(
+						cx.listener(move |s, _, _, cx| s.choose_workspace(draft, id.clone(), cx)),
+					)
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+							s.choose_workspace(draft, keyboard_id.clone(), cx);
+							cx.stop_propagation();
+						}
+					})),
+			);
+		}
+		(list, no_matches)
+	}
+
+	fn add_workspace_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.id("add-workspace-folder")
+			.role(Role::Button)
+			.aria_label("Add workspace folder")
+			.tab_index(0)
+			.px_2()
+			.py_1()
+			.rounded(gpui::px(6.))
+			.cursor_pointer()
+			.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.child("+ Add folder")
+			.on_click(cx.listener(|s, _, _, cx| {
+				s.workspace.workspace_picker = None;
+				s.add_workspace_folder(cx);
+				cx.notify();
+			}))
+			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+					s.workspace.workspace_picker = None;
+					s.add_workspace_folder(cx);
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
 	}
 
 	fn toggle_workspace_picker(
@@ -413,17 +428,17 @@ impl AgentSurface {
 		if existing && self.workspace.preview_page.as_deref() != Some(id) {
 			return;
 		}
-		if let Some(previous) = self.workspace.preview_page.take() {
-			if previous != page {
-				self.workspace.pages.retain(|p| p != &previous);
-				self.workspace.closing_pages.remove(&previous);
-			}
+		if let Some(previous) = self.workspace.preview_page.take()
+			&& previous != page
+		{
+			self.workspace.pages.retain(|p| p != &previous);
+			self.workspace.closing_pages.remove(&previous);
 		}
 		// Opening a native child also selects its owner internally; that is not a second tab.
-		if let Some((owner, _)) = native {
-			if !before.contains(owner) {
-				self.workspace.pages.retain(|p| p != owner);
-			}
+		if let Some((owner, _)) = native
+			&& !before.contains(owner)
+		{
+			self.workspace.pages.retain(|p| p != owner);
 		}
 		if self.root_id().as_deref() != Some(&page) {
 			self.workspace.preview_page = Some(page);

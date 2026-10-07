@@ -523,6 +523,7 @@ impl AgentSurface {
 						}))
 						.child(
 							ui_motion::popover(
+								"composer-popover-motion",
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
 									.unwrap_or_else(|| gpui::div().into_any_element()),

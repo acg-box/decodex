@@ -326,10 +326,10 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// Fixed-anchor fallback until a whole-surface composited transition is available.
-/// Do not use per-primitive opacity or translate an already opaque card.
+/// Reveal the material and its content through one clip, without primitive fades.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
+	id: ElementId,
 	unframed: bool,
 	visible: bool,
 	child: AnyElement,
@@ -337,23 +337,22 @@ pub(crate) struct Popover {
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
 		self.unframed = unframed;
-
 		self
 	}
 }
-
 impl RenderOnce for Popover {
 	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-		if !self.visible {
-			return gpui::div().w_full().into_any_element();
-		}
-
-		gpui::div()
-			.w_full()
-			.relative()
-			.when(!self.unframed, menu_surface)
-			.child(self.child)
-			.into_any_element()
+		disclosure(
+			self.id,
+			self.visible,
+			gpui::div().w_full().p_2().child(
+				gpui::div()
+					.w_full()
+					.relative()
+					.when(!self.unframed, menu_surface)
+					.child(self.child),
+			),
+		)
 	}
 }
 
@@ -584,8 +583,8 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 	Arrival { route, child: child.into_any_element() }
 }
 
-pub(crate) fn popover(visible: bool, child: impl IntoElement) -> Popover {
-	Popover { visible, child: child.into_any_element(), unframed: false }
+pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {
+	Popover { id: id.into(), visible, child: child.into_any_element(), unframed: false }
 }
 
 #[cfg(test)]

@@ -368,8 +368,10 @@ fn animate_panel_motion(
 
 // Sample dismissal over the real composer, including its Live button.
 fn capture_status_dismissal(cx: &mut VisualTestAppContext, window: AnyWindowHandle) -> Result<()> {
-	let Some(delay) =
-		env::var("DECODEX_VISUAL_STATUS_CLOSE_MS").ok().and_then(|value| value.parse::<u64>().ok())
+	let Some(delay) = env::var("DECODEX_VISUAL_POPOVER_CLOSE_MS")
+		.or_else(|_| env::var("DECODEX_VISUAL_STATUS_CLOSE_MS"))
+		.ok()
+		.and_then(|value| value.parse::<u64>().ok())
 	else {
 		return Ok(());
 	};

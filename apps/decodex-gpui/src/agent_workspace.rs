@@ -18,7 +18,7 @@ use crate::{
 		WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentRequestResult, AgentSnapshotDto,
-			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, Context,
+			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, Context,
 			ConversationReasoningEffort, FluentBuilder, FontWeight, InteractiveElement,
 			IntoElement, LoadState, ParentElement, Render, Role, SharedString,
 			StatefulInteractiveElement, Styled, SubmitComposer, Window,
@@ -29,7 +29,6 @@ use crate::{
 	},
 	ui_loading,
 	ui_motion::{self, SmoothControl, TabReveal},
-	ui_scroll::SmoothScrollArea,
 };
 #[cfg(any(test, feature = "visual-capture"))]
 use decodex_protocol::{
@@ -322,7 +321,7 @@ impl AgentSurface {
 			match id.as_str() {
 				"new-project" => "New project",
 				"graph-up" => "Parent work scope",
-				"graph-close" => "Close graph",
+				"graph-close" => "Close work overview",
 				"zoom-in" => "Zoom in",
 				"zoom-out" => "Zoom out",
 				"inspect-work" => "Work details",
@@ -531,12 +530,7 @@ impl AgentSurface {
 				.aria_label(label.clone())
 				.aria_selected(active)
 				.when(self.workspace.preview_page.as_deref() == Some(&id), |tab| {
-					tab.tooltip(|_, cx| {
-						cx.new(|_| {
-							crate::shell::ControlTooltip("Preview · Double-click to keep open")
-						})
-						.into()
-					})
+					tab.tooltip(preview_tip)
 				})
 				.tab_index(0)
 				.w_full()
@@ -1389,6 +1383,9 @@ impl AgentSurface {
 		let Some(snapshot) = &self.snapshot else {
 			return panel.into_any_element();
 		};
+		if !self.workspace.dock_relations {
+			return panel.child(self.work_overview(cx)).into_any_element();
+		}
 		let layout = self.workspace_graph_layout();
 		let zoom = self.workspace.graph_zoom;
 		let mut area = self.graph_canvas(&layout, cx);
@@ -1501,13 +1498,22 @@ impl AgentSurface {
 						.text_ellipsis()
 						.child(title),
 				)
+				.child(self.workspace_action(
+					"dock-relations".into(),
+					if self.workspace.dock_relations { "Overview" } else { "Relations" }.into(),
+					|s, cx| {
+						s.workspace.dock_relations = !s.workspace.dock_relations;
+						cx.notify();
+					},
+					cx,
+				))
 				.child(
 					self.workspace_action(
 						"graph-expand".into(),
 						if self.workspace.graph_expanded {
 							"Restore conversation"
 						} else {
-							"Expand graph"
+							"Expand work overview"
 						}
 						.into(),
 						|s, cx| {
@@ -1895,6 +1901,7 @@ impl AgentSurface {
 
 		if matches!(page, "composer-menu" | "composer-effort") {
 			self.composer_menu = Some("model");
+			self.composer_menu_content = Some("model");
 		}
 	}
 
@@ -2319,6 +2326,10 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 	};
 
 	Some(workspace_symbols::icon(symbol))
+}
+
+fn preview_tip(_: &mut Window, cx: &mut gpui::App) -> gpui::AnyView {
+	cx.new(|_| crate::shell::ControlTooltip("Preview · Double-click to keep open")).into()
 }
 
 #[cfg(test)]

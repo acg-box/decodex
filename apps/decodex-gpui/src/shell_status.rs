@@ -108,7 +108,9 @@ impl Shell {
 					.on_children_prepainted(move |bounds, _, _| {
 						popup_bounds.set(bounds.first().copied())
 					})
-					.when(!native, |d| d.child(ui_motion::popover(open, panel))),
+					.when(!native, |d| {
+						d.child(ui_motion::popover("status-popover-motion", open, panel))
+					}),
 			)
 			.into_any_element()
 	}

@@ -11,6 +11,7 @@
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
+#[path = "agent_dock.rs"] mod dock;
 #[path = "agent_drafts.rs"] mod drafts;
 #[path = "agent_execution_intent.rs"] mod execution_intent;
 #[path = "agent_graph.rs"] mod graph;
@@ -803,7 +804,9 @@ impl AgentSurface {
 				work_id: EntityId::new(self.selected.clone().expect("draft identity"))
 					.map_err(|_| "Invalid conversation identity")?,
 				text: prompt,
-				execution: self.draft_profiles.execution.choice(self.selected.as_deref().unwrap()),
+				execution: self.draft_profiles.execution.choice(
+					self.selected.as_deref().expect("new conversation has a draft identity"),
+				),
 				attachments: self.attachments.clone(),
 				task_references: self.task_references.clone(),
 			});
@@ -2371,6 +2374,8 @@ struct WorkspaceView {
 	closing_pages: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
+	dock_relations: bool,
+	dock_record: Option<String>,
 	page_views: std::collections::BTreeMap<String, PageView>,
 	graph_scope: Option<String>,
 	graph_selected: Option<String>,
@@ -2411,6 +2416,8 @@ impl Default for WorkspaceView {
 			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,
+			dock_relations: false,
+			dock_record: None,
 			page_views: Default::default(),
 			graph_scope: None,
 			graph_selected: None,
