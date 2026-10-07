@@ -150,7 +150,7 @@ impl AgentSurface {
 					))
 					.child(gpui::div().text_color(gpui::rgb(state.color)).child(state.label)),
 			);
-		if state.group != 1 {
+		if state.group == 0 || state.group == 2 {
 			record = record
 				.child(gpui::div().pl_2().text_color(gpui::rgb(TEXT_MUTED)).child(state.reason));
 		}
@@ -414,7 +414,8 @@ fn progress_state(snapshot: &AgentSnapshotDto, work: &AgentWorkItemDto) -> Progr
 }
 
 fn report_excerpt(text: &str) -> String {
-	let plain = text.split_whitespace().collect::<Vec<_>>().join(" ");
+	let paragraph = text.split("\n\n").find(|part| !part.trim().is_empty()).unwrap_or("");
+	let plain = paragraph.split_whitespace().collect::<Vec<_>>().join(" ");
 	let mut chars = plain.chars();
 	let excerpt: String = chars.by_ref().take(240).collect();
 	if chars.next().is_some() { format!("{excerpt}…") } else { excerpt }
