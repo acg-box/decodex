@@ -83,7 +83,8 @@ struct ResetCardAccountRow: View {
 						.accessibilityLabel(identityAccessibilityLabel)
 						.accessibilityValue((detailsExpanded ?? detailsBinding.wrappedValue) ? "Expanded" : "Collapsed")
 					HStack(spacing: PanelSpacing.micro) {
-						if store.canReorderAccounts { reorderHandle }
+						// Keep the title width stable while account controls suspend dragging.
+						reorderHandle
 						if let feedback = accountFeedback {
 							InlineAccountFeedback(text: feedback.text, isDestructive: feedback.isDestructive)
 						}

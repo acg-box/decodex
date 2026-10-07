@@ -1,4 +1,6 @@
 @testable import DecodexApp
+import AppKit
+import SwiftUI
 import Foundation
 import XCTest
 
@@ -108,6 +110,61 @@ final class AccountControlStoreTests: XCTestCase {
 		let completedRouteRequest = await client.routeRequest()
 		XCTAssertNotNil(completedRouteRequest)
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+	}
+
+	func testRoutingKeepsEveryAccountHeaderStable() async throws {
+		let client = AccountControlStoreClient(
+			account: accountRecord(),
+			secondaryAccount: accountRecord(
+				accountID: "22222222-2222-4222-8222-222222222222",
+				alias: "Account 00000-00002"
+			),
+			authority: authority,
+			suspendsRoute: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(client: client, pendingStore: fixture.store, startupRetryDelays: [])
+		await store.refresh()
+		XCTAssertTrue(store.canReorderAccounts)
+		let hosts = store.accounts.map { state in
+			NSHostingView(rootView: ResetCardAccountRow(state: state, store: store)
+				.transaction { $0.disablesAnimations = true }
+				.frame(width: AccountPanelLayout.panelWidth - 2))
+		}
+		let windows = hosts.map { host in
+			let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: AccountPanelLayout.panelWidth - 2, height: 150), styleMask: [.borderless], backing: .buffered, defer: false)
+			window.contentView = host
+			window.orderFrontRegardless()
+			return window
+		}
+		defer { for window in windows { window.orderOut(nil); window.contentView = nil } }
+		func headerImages() throws -> [Data] {
+			try hosts.map { host in
+				host.layoutSubtreeIfNeeded()
+				// Capture the title area, excluding the route button's busy indicator.
+				let rect = CGRect(x: 0, y: 0, width: 200, height: 40)
+				let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: rect))
+				host.cacheDisplay(in: rect, to: bitmap)
+				return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+			}
+		}
+		try await Task.sleep(for: .milliseconds(100))
+		let before = try headerImages()
+		let route = Task { await store.routeAccount(accountID) }
+		for _ in 0..<200 {
+			if await client.routeIsPending() { break }
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.isAccountControlInProgress)
+		XCTAssertFalse(store.canReorderAccounts)
+		try await Task.sleep(for: .milliseconds(100))
+		let during = try? headerImages()
+		await client.releaseRoute()
+		await route.value
+		try await Task.sleep(for: .milliseconds(100))
+		XCTAssertEqual(during, before, "Routing must not remove the handle and resize every account title.")
+		XCTAssertEqual(try headerImages(), before)
 	}
 
 	func testRefreshDoesNotStartWhileRoutingControlIsInProgress() async throws {
