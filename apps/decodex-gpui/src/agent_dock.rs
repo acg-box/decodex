@@ -234,9 +234,9 @@ impl AgentSurface {
 	fn overview_evidence(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
 		let id = work.id.clone();
 		let state = self.snapshot.as_ref().map(|snapshot| progress_state(snapshot, work));
-		let source_label = match state.as_ref().map(|s| s.group) {
-			Some(0) => "Open task to respond",
-			Some(3) => "Review result in conversation",
+		let source_label = match state.as_ref().map(|s| s.label) {
+			Some("Needs you") => "Open task to respond",
+			Some("Marked complete") => "Review result in conversation",
 			_ => "Open source conversation",
 		};
 		let source = self.workspace_action(
