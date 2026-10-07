@@ -654,8 +654,8 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 		}
 	}
 
-	if graph.workspaces.len() != 1 || graph.workspaces[0].agent_id != "project" {
-		return Err("workspace projection missing".into());
+	if !graph.workspaces.is_empty() {
+		return Err("manager creation unexpectedly created a folder workspace".into());
 	}
 
 	println!("Nested Agent results returned through their direct owners.");
