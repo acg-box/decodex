@@ -2814,9 +2814,9 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	};
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
-		(1, true) => "Toggle work overview · Command-J",
+		(1, true) => "Toggle Dock · Command-J",
 		(2, _) => "Toggle agent structure · Command-B",
-		(1, false) => "Work overview · no work yet",
+		(1, false) => "Dock · no work yet",
 		_ => "Panel unavailable",
 	};
 
@@ -7831,7 +7831,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-shift-=");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
 
 		visual.simulate_keystrokes("ctrl-alt-_");
 
@@ -7839,7 +7839,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-+");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
 
 		visual.simulate_keystrokes("ctrl-alt-)");
 

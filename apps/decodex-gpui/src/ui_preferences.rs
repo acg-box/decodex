@@ -57,6 +57,29 @@ fn stored_boolean(_: &str, value: Option<bool>, default: bool) -> bool {
 	value.unwrap_or(default)
 }
 
+// Small host-local presentation receipts, separate from service dispositions.
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn string(key: &str, value: Option<&str>) -> Option<String> {
+	unsafe {
+		let defaults: Retained<AnyObject> = objc2::msg_send![
+			AnyClass::get(c"NSUserDefaults").expect("Foundation"),
+			standardUserDefaults
+		];
+		let key = objc2_foundation::NSString::from_str(key);
+		if let Some(value) = value {
+			let value = objc2_foundation::NSString::from_str(value);
+			let _: () = objc2::msg_send![&*defaults, setObject: &*value, forKey: &*key];
+		}
+		let stored: Option<Retained<objc2_foundation::NSString>> =
+			objc2::msg_send![&*defaults, stringForKey: &*key];
+		stored.map(|value| value.to_string())
+	}
+}
+#[cfg(not(all(target_os = "macos", not(test))))]
+pub(crate) fn string(_: &str, value: Option<&str>) -> Option<String> {
+	value.map(str::to_owned)
+}
+
 #[cfg(test)]
 mod tests {
 	#[test]

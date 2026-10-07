@@ -1,17 +1,16 @@
-//! Work facts and source records in the resizable bottom dock.
-use crate::ui_scroll::SmoothScrollArea;
-use gpui::{AnyElement, Div};
+//! Source records for global handoff previews.
+use gpui::Div;
 
 use crate::shell::agent_surface::{
 	AgentHistoryResult, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context,
-	InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, graph,
-	ui_theme::TEXT_MUTED,
+	InteractiveElement, ParentElement, Styled, graph, ui_theme::TEXT_MUTED,
 };
 
 #[derive(Default)]
 pub(super) struct Evidence {
 	key: Option<String>,
 	history: Option<AgentHistoryResult>,
+	request: Option<super::AgentRequestResult>,
 	task: Option<gpui::Task<()>>,
 }
 
@@ -19,22 +18,38 @@ impl AgentSurface {
 	#[cfg(any(test, feature = "visual-capture"))]
 	pub(super) fn visual_dock_page(&mut self, page: &str, cx: &mut Context<Self>) {
 		self.selected = Some("release".into());
-		self.workspace.dock_compact = page == "dock-compact";
-		self.workspace.graph_panel_height = 300.;
+		self.handoffs.fixture();
 		self.history = self.timeline.cache.get("agent").cloned().map(|h| ("release".into(), h));
-		if page == "dock-result" {
-			self.workspace.dock_record = Some("verify".into());
+		let snapshot = self.snapshot.as_mut().expect("fixture snapshot");
+		let mut ready =
+			snapshot.work_items.iter().find(|w| w.id == "flow").expect("fixture work").clone();
+		ready.id = "website".into();
+		ready.title = "Documentation update".into();
+		ready.parent_goal_id = Some("agent".into());
+		snapshot.work_items.push(ready);
+		if let Some(mut history) = self.timeline.cache.get("verify").cloned() {
+			if let AgentHistoryResult::Available { entries, .. } = &mut history {
+				entries[0].text =
+					"The setup guide now includes the new sign-in flow and recovery steps.".into();
+			}
+			self.timeline.cache.insert("website".into(), history);
 		}
+		self.workspace.dock_record = match page {
+			"dock-result" => Some("website".into()),
+			"dock-running" | "dock-dependencies" => Some("release".into()),
+			_ => None,
+		};
 		if page == "dock-completed" {
-			for work in &mut self.snapshot.as_mut().expect("fixture snapshot").work_items {
-				work.status = super::AgentWorkStatusDto::Resolved;
+			self.handoffs.observe("fixture-baseline".into(), snapshot);
+			for work in &mut snapshot.work_items {
 				work.dispatch_state = super::AgentDispatchStateDto::Idle;
 			}
 		}
 		if page == "dock-dependencies" {
-			self.workspace.dock_relations = true;
-			self.workspace.graph_scope = Some("release".into());
+			self.handoffs.relations = true;
+			self.workspace.dock_completed = true;
 		}
+
 		cx.notify();
 	}
 
@@ -45,131 +60,18 @@ impl AgentSurface {
 		self.selected.clone().or_else(|| self.root_id())
 	}
 
-	pub(super) fn dock_has_dependencies(&self) -> bool {
-		self.snapshot.as_ref().is_some_and(|snapshot| {
-			let work = scoped_work(snapshot, self.dock_scope().as_deref());
-			snapshot.dependencies.iter().any(|edge| work.iter().any(|w| w.id == edge.work_item_id))
-		})
-	}
-
-	pub(super) fn dock_summary(&self) -> String {
-		let Some(snapshot) = &self.snapshot else {
-			return "Connecting…".into();
-		};
-		let work = scoped_work(snapshot, self.dock_scope().as_deref());
-		if work.is_empty() {
-			return "No task started".into();
-		}
-		let mut counts = [0; 4];
-		for item in &work {
-			counts[progress_state(snapshot, item).group as usize] += 1;
-		}
-		if counts[0] + counts[1] + counts[2] == 0 {
-			return format!("{} marked complete", counts[3]);
-		}
-		format!("{} need attention · {} running · {} waiting", counts[0], counts[1], counts[2])
-	}
-
-	pub(super) fn work_overview(&self, cx: &mut Context<Self>) -> AnyElement {
-		let Some(snapshot) = &self.snapshot else { return gpui::div().into_any_element() };
-		let mut work = scoped_work(snapshot, self.dock_scope().as_deref());
-		// Keep rows stable as updates arrive; only a change of work state moves a row.
-		work.sort_by_key(|w| {
-			(progress_state(snapshot, w).group, w.created_at_micros, w.id.as_str())
-		});
-		let mut body = gpui::div()
-			.id("work-overview")
-			.debug_selector(|| "work-overview".into())
-			.flex()
-			.flex_col()
-			.flex_1()
-			.h_0()
-			.min_h_0()
-			.overflow_y_scroll()
-			.px_2()
-			.pb_2()
-			.text_size(gpui::px(12.));
-		let active = work.iter().filter(|w| progress_state(snapshot, w).group == 1).count();
-		let attention = work.iter().filter(|w| progress_state(snapshot, w).group == 0).count();
-		let waiting = work.iter().filter(|w| progress_state(snapshot, w).group == 2).count();
-		let complete = work.iter().filter(|w| progress_state(snapshot, w).group == 3).count();
-		let summary = if work.is_empty() {
-			"Work will appear here when this conversation starts a task.".into()
-		} else if active + attention + waiting == 0 {
-			"No work is running. Completed work is available below.".into()
-		} else {
-			format!("{active} running · {waiting} waiting · {attention} need attention")
-		};
-		body = body
-			.child(gpui::div().flex_none().py_2().text_color(gpui::rgb(TEXT_MUTED)).child(summary));
-		for item in work.iter().filter(|w| progress_state(snapshot, w).group != 3) {
-			body = body.child(self.overview_record(snapshot, item, cx));
-		}
-		if complete > 0 {
-			body = body.child(gpui::div().flex_none().flex().pt_2().child(self.workspace_action(
-				"dock-completed".into(),
-				format!(
-					"{} completed work ({complete})",
-					if self.workspace.dock_completed { "Hide" } else { "Show" }
-				),
-				|s, cx| {
-					s.workspace.dock_completed = !s.workspace.dock_completed;
-					cx.notify();
-				},
-				cx,
-			)));
-			if self.workspace.dock_completed {
-				for item in work.iter().filter(|w| progress_state(snapshot, w).group == 3) {
-					body = body.child(self.overview_record(snapshot, item, cx));
-				}
-			}
-		}
-		body.smooth_scroll("work-overview-scroll").into_any_element()
-	}
-
-	fn overview_record(
-		&self,
-		snapshot: &AgentSnapshotDto,
-		work: &AgentWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> Div {
-		let state = progress_state(snapshot, work);
-		let id = work.id.clone();
-		let open = self.workspace.dock_record.as_ref() == Some(&id);
-		let mut record =
-			gpui::div().flex_none().min_w_0().w_full().flex().flex_col().py_1().gap_1().child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(self.workspace_action(
-						format!("dock-record-{id}"),
-						format!("{} {}", if open { "▾" } else { "▸" }, self.work_label(work)),
-						move |s, cx| s.toggle_dock_record(&id, cx),
-						cx,
-					))
-					.child(gpui::div().text_color(gpui::rgb(state.color)).child(state.label)),
-			);
-		if state.group == 0 || state.group == 2 {
-			record = record
-				.child(gpui::div().pl_2().text_color(gpui::rgb(TEXT_MUTED)).child(state.reason));
-		}
-		if open {
-			record = record.child(self.overview_evidence(work, cx));
-		}
-		record
-	}
-
 	fn dock_evidence_key(&self, work: &AgentWorkItemDto) -> String {
 		serde_json::json!([
 			work.id,
 			work.codex_thread_id,
-			self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+			self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()),
+			work.updated_at_micros,
+			self.handoff_items().iter().find(|h| h.work == work.id).map(|h| &h.key)
 		])
 		.to_string()
 	}
 
-	fn toggle_dock_record(&mut self, id: &str, cx: &mut Context<Self>) {
+	pub(super) fn toggle_dock_record(&mut self, id: &str, cx: &mut Context<Self>) {
 		if self.workspace.dock_record.as_deref() == Some(id) {
 			self.workspace.dock_record = None;
 			self.dock_evidence = Evidence::default();
@@ -191,13 +93,31 @@ impl AgentSurface {
 		let key = self.dock_evidence_key(work);
 		let Ok(owner) = super::EntityId::new(id) else { return };
 		self.dock_evidence.key = Some(key.clone());
+		let event = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| {
+				s.pending_events.iter().find(|e| {
+					e.work_item_id == id
+						&& ["permission_pending", "user_input_pending", "server_request_pending"]
+							.contains(&e.event_kind.as_str())
+				})
+			})
+			.map(|e| e.id);
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-			runtime.block_on(super::AgentClient::new(profile).history(owner)).ok()
+			runtime.block_on(async move {
+				let client = super::AgentClient::new(profile);
+				let request =
+					if let Some(event) = event { client.request(event).await.ok() } else { None };
+				let history = client.history(owner).await.ok()?;
+				Some((history, request))
+			})
 		});
 		self.dock_evidence.task = Some(cx.spawn(async move |surface, cx| {
-			let history = request.await.unwrap_or(AgentHistoryResult::Unavailable);
+			let (history, request) =
+				request.await.unwrap_or((AgentHistoryResult::Unavailable, None));
 			let _ = surface.update(cx, |s, cx| {
 				if s.dock_evidence.key.as_ref() != Some(&key) {
 					return;
@@ -212,6 +132,7 @@ impl AgentSurface {
 					return;
 				}
 				s.dock_evidence.history = Some(history);
+				s.dock_evidence.request = request;
 				s.dock_evidence.task = None;
 				cx.notify();
 			});
@@ -231,7 +152,50 @@ impl AgentSurface {
 			.or_else(|| self.timeline.cache.get(&work.id))
 	}
 
-	fn overview_evidence(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
+	pub(super) fn handoff_decision_excerpt(&self, work: &AgentWorkItemDto) -> Option<String> {
+		if work.status != super::AgentWorkStatusDto::UserDecision {
+			return None;
+		}
+		let AgentHistoryResult::Available { entries, .. } = self.overview_history(work)? else {
+			return None;
+		};
+		entries
+			.iter()
+			.rev()
+			.find(|entry| {
+				source_matches(work, entry) && entry.kind == "assistant" && entry.activity.is_none()
+			})
+			.map(|entry| {
+				format!(
+					"From the conversation: {}",
+					report_excerpt(entry.text.rsplit("\n\n").next().unwrap_or(&entry.text))
+				)
+			})
+	}
+
+	pub(super) fn handoff_request_excerpt(&self, work: &AgentWorkItemDto) -> Option<String> {
+		if self.dock_evidence.key.as_ref() != Some(&self.dock_evidence_key(work)) {
+			return None;
+		}
+		let super::AgentRequestResult::Available { work_id, request_json, .. } =
+			self.dock_evidence.request.as_ref()?
+		else {
+			return None;
+		};
+		if work_id != &work.id {
+			return None;
+		}
+		let value: serde_json::Value = serde_json::from_str(request_json.as_str()).ok()?;
+		let text = value["questions"]
+			.as_array()
+			.and_then(|q| q.first())
+			.and_then(|q| q["question"].as_str())
+			.or_else(|| value["reason"].as_str())
+			.or_else(|| value["command"].as_str());
+		text.map(report_excerpt)
+	}
+
+	pub(super) fn overview_evidence(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
 		let id = work.id.clone();
 		let state = self.snapshot.as_ref().map(|snapshot| progress_state(snapshot, work));
 		let source_label = match state.as_ref().map(|s| s.label) {
@@ -245,6 +209,9 @@ impl AgentSurface {
 			move |s, cx| {
 				s.open_page(&id, cx);
 				s.workspace.graph_expanded = false;
+				s.workspace.dock_record = None;
+				s.handoffs.relations = false;
+				s.sync_request(cx);
 				cx.notify();
 			},
 			cx,
@@ -276,7 +243,7 @@ impl AgentSurface {
 				.child(
 					gpui::div()
 						.text_color(gpui::rgb(TEXT_MUTED))
-						.child(format!("Latest report · {date}")),
+						.child(format!("Saved report · {date}")),
 				)
 				.child(
 					gpui::div()
@@ -294,35 +261,21 @@ impl AgentSurface {
 				"No saved report is available for this task."
 			}));
 		}
-		if let Some(AgentHistoryResult::Available { entries, .. }) = history
-			&& let Some(activity) = entries
-				.iter()
-				.rev()
-				.filter(|e| source_matches(work, e))
-				.find_map(|e| e.activity.as_ref())
-		{
-			body = body.child(self.detail_row(
-				work,
-				activity,
-				gpui::div().child(format!(
-					"Last recorded action: {} · {}",
-					activity.label, activity.status
-				)),
-				cx,
-			));
-		}
 		body
 	}
 }
 
-struct ProgressState {
-	label: &'static str,
-	reason: String,
-	color: u32,
-	group: u8,
+pub(super) struct ProgressState {
+	pub(super) label: &'static str,
+	pub(super) reason: String,
+	pub(super) color: u32,
+	pub(super) group: u8,
 }
 
-fn progress_state(snapshot: &AgentSnapshotDto, work: &AgentWorkItemDto) -> ProgressState {
+pub(super) fn progress_state(
+	snapshot: &AgentSnapshotDto,
+	work: &AgentWorkItemDto,
+) -> ProgressState {
 	use super::{AgentDispatchStateDto as Dispatch, AgentWorkStatusDto as Status};
 	use crate::ui_theme::{AMBER, BLUE, GREEN};
 	let request = snapshot.pending_events.iter().find(|e| {
@@ -428,54 +381,11 @@ fn source_matches(work: &AgentWorkItemDto, entry: &super::AgentHistoryEntryDto) 
 		.is_none_or(|source| work.codex_thread_id.as_ref() == Some(&source.thread_id))
 }
 
-fn scoped_work<'a>(
-	snapshot: &'a AgentSnapshotDto,
-	scope: Option<&str>,
-) -> Vec<&'a AgentWorkItemDto> {
-	let Some(scope) = scope else { return Vec::new() };
-	let mut ids = std::collections::BTreeSet::from([scope]);
-	loop {
-		let count = ids.len();
-		for work in &snapshot.work_items {
-			if work.parent_goal_id.as_deref().is_some_and(|parent| ids.contains(parent)) {
-				ids.insert(work.id.as_str());
-			}
-		}
-		if ids.len() == count {
-			break;
-		}
-	}
-	snapshot.work_items.iter().filter(|w| ids.contains(w.id.as_str())).collect()
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use gpui::AppContext;
 
-	#[gpui::test]
-	fn dock_scope_keeps_nested_work_and_excludes_other_roots(cx: &mut gpui::TestAppContext) {
-		let surface = cx.new(AgentSurface::new);
-		surface.update(cx, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			let snapshot = s.snapshot.as_mut().unwrap();
-			let mut nested = snapshot.work_items.iter().find(|w| w.id == "verify").unwrap().clone();
-			nested.id = "nested".into();
-			nested.parent_goal_id = Some("verify".into());
-			snapshot.work_items.push(nested.clone());
-			nested.id = "unrelated".into();
-			nested.parent_goal_id = None;
-			snapshot.work_items.push(nested);
-			let ids = scoped_work(snapshot, Some("release"))
-				.iter()
-				.map(|w| w.id.as_str())
-				.collect::<Vec<_>>();
-			assert!(ids.contains(&"nested"));
-			assert!(!ids.contains(&"unrelated"));
-			assert!(!ids.contains(&"agent"));
-			assert!(scoped_work(snapshot, None).is_empty());
-		});
-	}
 	#[gpui::test]
 	fn dock_expands_in_place_and_source_navigation_follows_conversation(
 		cx: &mut gpui::TestAppContext,
@@ -483,6 +393,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
+			surface.workspace.graph_panel_height = 400.;
 			surface
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
@@ -493,7 +404,7 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
-		let row = visual.debug_bounds("dock-record-release").expect("overview row");
+		let row = visual.debug_bounds("handoff-release").expect("handoff chip");
 		visual.simulate_click(row.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
@@ -506,7 +417,7 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
-		let source = visual.debug_bounds("dock-source-release").expect("source link");
+		let source = visual.debug_bounds("handoff-open-request").expect("source link");
 		visual.simulate_click(source.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("release"));
@@ -532,21 +443,17 @@ mod tests {
 		});
 	}
 	#[gpui::test]
-	fn long_report_stays_bounded_and_work_scrolls_inside_the_panel(cx: &mut gpui::TestAppContext) {
+	fn long_report_preview_stays_bounded_above_the_strip(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
+			surface.visual_dock_page("dock-result", cx);
+			if let Some(AgentHistoryResult::Available { entries, .. }) =
+				surface.timeline.cache.get_mut("website")
+			{
+				entries[0].text = "A long source report with substantial detail. ".repeat(200);
+			}
 			surface
-		});
-		surface.update(visual, |s, _| {
-			s.workspace.dock_record = Some("verify".into());
-			let Some(AgentHistoryResult::Available { entries, .. }) =
-				s.timeline.cache.get_mut("verify")
-			else {
-				panic!("fixture history")
-			};
-			entries[0].text = format!("{}\n1. **原生下属草稿丢失。** 输入未发送文字后返回 Chief，再打开下属，草稿被空串或旧内容覆盖。\n2. **全局后退不能恢复原生下属对话。** 连续进入同一 owner 的下属，历史只记录 owner。\n\n{}", "Saved evidence line.\n\n".repeat(100), "Saved evidence line.\n\n".repeat(100));
-			entries[0].id = 999;
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		for _ in 0..3 {
@@ -556,27 +463,23 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
-
-		let bounds = visual.debug_bounds("work-overview").unwrap();
-		let excerpt = visual.debug_bounds("dock-report-excerpt").expect("bounded report excerpt");
-		assert!(excerpt.size.height < gpui::px(180.), "report must not become a second transcript");
-		let before = visual.debug_bounds("dock-record-release").unwrap();
-		assert!(bounds.size.height < gpui::px(400.));
-		visual.simulate_event(gpui::ScrollWheelEvent {
-			position: bounds.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-100.))),
-			..Default::default()
-		});
-		visual.update(|w, cx| {
-			w.refresh();
-			w.draw(cx).clear();
-		});
-		let after = visual.debug_bounds("dock-record-release").unwrap();
-		let after_bounds = visual.debug_bounds("work-overview").unwrap();
-		assert_eq!(
-			(before.top() - bounds.top()) - (after.top() - after_bounds.top()),
-			gpui::px(100.)
-		);
+		let detail = visual.debug_bounds("handoff-preview").expect("handoff preview");
+		assert!(detail.size.height <= gpui::px(680.));
+		let excerpt = visual.debug_bounds("dock-report-excerpt").expect("bounded report");
+		assert!(excerpt.size.height < gpui::px(100.));
+		let strip = visual.debug_bounds("handoff-strip").expect("handoff strip");
+		assert!(detail.bottom() <= strip.top());
+		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("release")));
+		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(840.)));
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		let preview = visual.debug_bounds("handoff-preview").unwrap();
+		assert!(preview.right() <= gpui::px(900.));
 	}
 	#[gpui::test]
 	fn progress_distinguishes_waiting_requests_and_reported_completion(
@@ -617,33 +520,63 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn progress_scope_follows_selection_and_drafts_have_no_unrelated_work(
+	fn handoffs_remain_global_across_navigation_and_drafts(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_dock_page("dock-result", cx);
+			let before = s.handoff_items();
+			assert!(!before.is_empty());
+			s.open_page("verify", cx);
+			assert_eq!(s.handoff_items(), before);
+			assert_eq!(s.workspace.dock_record.as_deref(), Some("website"));
+			s.workspace.new_conversation = Some("draft".into());
+			s.selected = Some("draft".into());
+			assert_eq!(s.handoff_items(), before);
+		});
+	}
+
+	#[gpui::test]
+	fn graph_keeps_completed_prerequisites_and_hides_finished_branches(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
-			s.open_page("verify", cx);
-			assert_eq!(s.dock_scope().as_deref(), Some("verify"));
+			s.selected = Some("release".into());
 			assert_eq!(
-				scoped_work(s.snapshot.as_ref().unwrap(), s.dock_scope().as_deref()).len(),
-				1
+				s.collapse_graph_completed(&mut s.workspace_graph_full_layout()),
+				0,
+				"required completed prerequisites are not hidden"
 			);
-			s.workspace.new_conversation = Some("draft".into());
-			assert_eq!(s.dock_scope().as_deref(), Some("verify"));
-			s.selected = Some("draft".into());
-			assert!(s.dock_scope().is_none());
+			let snapshot = s.snapshot.as_mut().unwrap();
+			let mut isolated = snapshot.work_items.iter().find(|w| w.id == "flow").unwrap().clone();
+			isolated.id = "finished-branch".into();
+			snapshot.work_items.push(isolated);
+			assert_eq!(s.collapse_graph_completed(&mut s.workspace_graph_full_layout()), 1);
+			let layout = s.workspace_graph_layout();
+			assert!(layout.nodes.iter().any(|n| n.id == "flow"));
+			assert!(!layout.nodes.iter().any(|n| n.id == "finished-branch"));
+			assert!(
+				layout
+					.edges
+					.iter()
+					.any(|(a, b)| layout.nodes[*a].id == "flow" && layout.nodes[*b].id == "verify")
+			);
+			assert!(layout.reports.is_empty());
+			s.workspace.dock_completed = true;
+			assert!(s.workspace_graph_layout().nodes.iter().any(|n| n.id == "finished-branch"));
+			s.selected = Some("verify".into());
+			assert!(s.workspace_graph_layout().nodes.iter().any(|n| n.id == "flow"));
 		});
 	}
 
 	#[gpui::test]
-	fn completed_work_is_hidden_until_requested_and_compact_bar_keeps_conversation(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn marking_a_result_viewed_keeps_the_current_conversation(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
-			surface.visual_dock_page("dock-completed", cx);
+			surface.visual_dock_page("dock-result", cx);
 			surface
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
@@ -654,25 +587,13 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
-		assert!(visual.debug_bounds("dock-record-verify").is_none());
-		let button = visual.debug_bounds("dock-completed").unwrap();
+		let button = visual.debug_bounds("handoff-viewed").expect("viewed action");
 		visual.simulate_click(button.center(), Default::default());
 		surface.update(visual, |s, _| {
-			assert!(s.workspace.dock_completed, "completion disclosure click at {button:?}")
-		});
-		for _ in 0..3 {
-			visual.update(|w, cx| {
-				w.refresh();
-				w.draw(cx).clear();
-			});
-			visual.run_until_parked();
-		}
-		assert!(visual.debug_bounds("dock-record-flow").is_some());
-		let button = visual.debug_bounds("dock-toggle").unwrap();
-		visual.simulate_click(button.center(), Default::default());
-		surface.update(visual, |s, _| {
-			assert!(s.workspace.dock_compact);
-			assert!(!s.workspace.graph_expanded);
+			assert_eq!(s.selected.as_deref(), Some("release"));
+			assert!(!s.handoff_items().iter().any(|h| h.work == "website"));
+			assert!(s.handoff_items().iter().any(|h| h.work == "release"));
+			assert!(s.workspace.dock_record.is_none());
 		});
 	}
 }
