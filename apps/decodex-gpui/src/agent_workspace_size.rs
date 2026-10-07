@@ -79,7 +79,8 @@ impl AgentSurface {
 		let (right, bottom) = layout
 			.nodes
 			.iter()
-			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 160.0), y.max(node.y + 52.0)));
+			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 190.0), y.max(node.y + 66.0)));
+		self.workspace.graph_display_zoom *= ((width - 20.0) / (right + 20.0)).clamp(0.1, 1.0);
 		let zoom = self.workspace.graph_display_zoom;
 
 		self.workspace.graph_inset = (
@@ -93,16 +94,34 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_layout(&self) -> graph::Layout {
+		let mut layout = self.workspace_graph_full_layout();
+		if !self.workspace.dock_completed {
+			self.collapse_graph_completed(&mut layout);
+		}
+		layout
+	}
+
+	pub(super) fn collapse_graph_completed(&self, layout: &mut graph::Layout) -> usize {
+		let Some(snapshot) = &self.snapshot else { return 0 };
+		layout.retain_prerequisites(|id| {
+			snapshot
+				.work_items
+				.iter()
+				.any(|w| w.id == id && super::dock::progress_state(snapshot, w).group != 3)
+		})
+	}
+
+	pub(super) fn workspace_graph_full_layout(&self) -> graph::Layout {
 		let Some(snapshot) = &self.snapshot else {
 			return graph::Layout::default();
 		};
-		let scope = self.workspace.graph_scope.clone().or_else(|| self.root_id());
+		let scope = self.dock_scope();
 		let mut layout = graph::Layout::new(snapshot, scope.as_deref());
 
 		if layout.nodes.is_empty()
 			&& let Some(work) = snapshot.work_items.iter().find(|w| Some(&w.id) == scope.as_ref())
 		{
-			layout = graph::Layout::new(snapshot, work.parent_goal_id.as_deref());
+			layout.nodes.push(graph::Node { id: work.id.clone(), x: 20., y: 32. });
 		}
 
 		// Ownership belongs in the agent tree; this view shows prerequisites only.
@@ -117,8 +136,8 @@ impl AgentSurface {
 		for node in &mut layout.nodes {
 			let (x, y) = (node.x, node.y);
 
-			node.x = 32.0 + (y - 32.0) / 112.0 * 212.0;
-			node.y = 20.0 + (x - 20.0) / 188.0 * 92.0;
+			node.x = 32.0 + (y - 32.0) / 112.0 * 224.0;
+			node.y = 20.0 + (x - 20.0) / 188.0 * 96.0;
 		}
 
 		layout

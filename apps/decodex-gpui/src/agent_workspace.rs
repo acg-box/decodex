@@ -204,7 +204,6 @@ impl AgentSurface {
 			self.workspace.graph_zoom = saved.zoom;
 			self.workspace.graph_visible = saved.graph_visible;
 			self.workspace.graph_expanded = false;
-			self.workspace.dock_relations = false;
 			self.workspace.dock_record = None;
 			self.workspace.dock_completed = false;
 		}
@@ -1386,11 +1385,7 @@ impl AgentSurface {
 	}
 
 	fn workspace_graph(&self, cx: &mut Context<Self>) -> AnyElement {
-		let scope = if self.workspace.dock_relations {
-			self.workspace.graph_scope.clone()
-		} else {
-			self.dock_scope()
-		};
+		let scope = self.dock_scope();
 		let title = self
 			.snapshot
 			.as_ref()
@@ -1411,12 +1406,19 @@ impl AgentSurface {
 		if self.workspace.dock_compact && !self.workspace.graph_expanded {
 			return panel.into_any_element();
 		}
-		if !self.workspace.dock_relations {
-			return panel.child(self.work_overview(cx)).into_any_element();
-		}
 		let layout = self.workspace_graph_layout();
-		let zoom = self.workspace.graph_zoom;
 		let mut area = self.graph_canvas(&layout, cx);
+		if layout.nodes.is_empty() {
+			area = area.child(
+				gpui::div().p_3().text_size(gpui::px(12.)).text_color(gpui::rgb(TEXT_MUTED)).child(
+					if self.is_new_conversation() {
+						"The work graph appears when this conversation starts a task."
+					} else {
+						"No active work. Show completed tasks to review their results."
+					},
+				),
+			);
+		}
 
 		for node in &layout.nodes {
 			let Some(work) = snapshot.work_items.iter().find(|w| w.id == node.id) else {
@@ -1426,17 +1428,8 @@ impl AgentSurface {
 			area = area.child(self.graph_node(node, work, cx));
 		}
 
-		panel = panel.child(area);
+		panel = panel.child(area).child(self.dock_graph_details(cx));
 
-		if !layout.edges.is_empty() {
-			panel = panel.child(
-				gpui::div()
-					.px_2()
-					.text_size(gpui::px(10.0))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child("Arrows show prerequisites · click a task to open its conversation"),
-			);
-		}
 		if layout.cyclic {
 			panel = panel.child(
 				gpui::div()
@@ -1466,9 +1459,9 @@ impl AgentSurface {
 					))
 					.child(self.workspace_action(
 						"zoom-reset".into(),
-						format!("{}%", (zoom * 100.0).round()),
+						"Fit".into(),
 						|s, cx| {
-							s.workspace.graph_zoom = 0.85;
+							s.workspace.graph_zoom = 1.0;
 							s.workspace.graph_pan = (0.0, 0.0);
 
 							cx.notify();
@@ -1529,43 +1522,36 @@ impl AgentSurface {
 					self.workspace_action(
 						"dock-toggle".into(),
 						if self.workspace.dock_compact && !self.workspace.graph_expanded {
-							"Show work"
+							"Show graph"
 						} else {
-							"Hide details"
+							"Collapse graph"
 						}
 						.into(),
 						|s, cx| {
 							s.workspace.dock_compact = !s.workspace.dock_compact;
+							s.workspace.graph_panel_height =
+								s.workspace.graph_panel_height.max(320.);
 							s.workspace.graph_expanded = false;
 							cx.notify();
 						},
 						cx,
 					),
 				)
-				.when(
-					!self.workspace.dock_compact
-						&& (self.workspace.dock_relations || self.dock_has_dependencies()),
-					|row| {
-						row.child(
-							self.workspace_action(
-								"dock-relations".into(),
-								if self.workspace.dock_relations {
-									"Work progress"
-								} else {
-									"Dependencies"
-								}
-								.into(),
-								|s, cx| {
-									s.workspace.dock_relations = !s.workspace.dock_relations;
-									s.workspace.graph_scope = s.dock_scope();
-									s.workspace.graph_pan = (0., 0.);
-									cx.notify();
-								},
-								cx,
-							),
-						)
-					},
-				)
+				.when(!self.workspace.dock_compact && self.dock_completed_count() > 0, |row| {
+					row.child(self.workspace_action(
+						"dock-completed".into(),
+						format!(
+							"{} completed ({})",
+							if self.workspace.dock_completed { "Hide" } else { "Show" },
+							self.dock_completed_count()
+						),
+						|s, cx| {
+							s.workspace.dock_completed = !s.workspace.dock_completed;
+							cx.notify();
+						},
+						cx,
+					))
+				})
 				.when(!self.workspace.dock_compact, |row| {
 					row.child(
 						self.workspace_action(
@@ -1616,13 +1602,19 @@ impl AgentSurface {
 				let a = &layout.nodes[*a];
 				let b = &layout.nodes[*b];
 
-				((a.x + 160.0, a.y + 26.0), (b.x, b.y + 26.0), report)
+				let blocked = self.snapshot.as_ref().is_some_and(|snapshot| {
+					snapshot.work_items.iter().find(|w| w.id == b.id).is_some_and(|work| {
+						graph::blockers(snapshot, work).iter().any(|w| w.id == a.id)
+					})
+				});
+				((a.x + 190.0, a.y + 33.0), (b.x, b.y + 33.0), report, blocked)
 			})
 			.collect();
 
 		gpui::div()
 			.h_0()
 			.id("work-graph-canvas")
+			.debug_selector(|| "work-graph-canvas".into())
 			.tab_index(0)
 			.role(Role::Group)
 			.aria_label("Work graph. Drag or scroll to pan. Control-scroll to zoom.")
@@ -1678,7 +1670,7 @@ impl AgentSurface {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						for (a, b, report) in edges {
+						for (a, b, report, blocked) in edges {
 							let start = bounds.origin
 								+ gpui::point(
 									gpui::px(a.0 * zoom + pan.0),
@@ -1689,7 +1681,8 @@ impl AgentSurface {
 									gpui::px(b.0 * zoom + pan.0),
 									gpui::px(b.1 * zoom + pan.1),
 								);
-							let mut path = PathBuilder::stroke(gpui::px(1.0));
+							let mut path =
+								PathBuilder::stroke(gpui::px(if blocked { 2.0 } else { 1.0 }));
 
 							path.move_to(start);
 							path.cubic_bezier_to(
@@ -1707,7 +1700,13 @@ impl AgentSurface {
 							if let Ok(path) = path.build() {
 								window.paint_path(
 									path,
-									gpui::rgb(if report { BLUE } else { TEXT_MUTED }),
+									gpui::rgb(if blocked {
+										AMBER
+									} else if report {
+										BLUE
+									} else {
+										TEXT_MUTED
+									}),
 								);
 							}
 						}
@@ -1747,42 +1746,40 @@ impl AgentSurface {
 		);
 		let id = work.id.clone();
 		let key = id.clone();
-		let (status, _) = self
-			.snapshot
-			.as_ref()
-			.map_or_else(|| graph::state(work), |snapshot| graph::state_in(snapshot, work));
-		let blocked_by = self
-			.snapshot
-			.as_ref()
-			.map(|snapshot| {
-				graph::blockers(snapshot, work)
-					.into_iter()
-					.map(|item| self.work_label(item))
-					.collect::<Vec<_>>()
-			})
-			.unwrap_or_default();
-		let tip = if blocked_by.is_empty() {
-			format!("{} · {status}", self.work_label(work))
-		} else {
-			format!("Waiting for: {}", blocked_by.join(", "))
-		};
+		let state =
+			super::dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
+		let status = state.label;
+		let color = state.color;
+		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
+
 		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
 			.tab_index(0)
-			.aria_label(format!("{}: {status}. Open conversation.", self.work_label(work)))
-			.when(!blocked_by.is_empty(), |node| {
-				node.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
+			.aria_label(format!("{}: {status}. Show task details.", self.work_label(work)))
+			.debug_selector({
+				let key = work.id.clone();
+				move || format!("graph-node-{key}")
 			})
+			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
 			.absolute()
 			.left(gpui::px(node.x * zoom + pan.0))
 			.top(gpui::px(node.y * zoom + pan.1))
-			.w(gpui::px(160.0 * zoom))
-			.h(gpui::px(52.0 * zoom))
+			.w(gpui::px(190.0 * zoom))
+			.h(gpui::px(66.0 * zoom))
+			.border_1()
+			.border_color(
+				gpui::rgb(if self.workspace.dock_record.as_ref() == Some(&id) {
+					TEXT
+				} else {
+					color
+				})
+				.opacity(if state.group == 3 { 0.25 } else { 0.7 }),
+			)
 			.px_2()
 			.py_1()
 			.rounded(gpui::px(9.0))
-			.bg(if self.workspace.graph_selected.as_ref() == Some(&id) {
+			.bg(if self.workspace.dock_record.as_ref() == Some(&id) {
 				gpui::rgba(0x35353ce8)
 			} else {
 				gpui::rgba(0x242427db)
@@ -1791,32 +1788,23 @@ impl AgentSurface {
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(gpui::px((12.0 * zoom).max(10.0)))
-			.on_click(cx.listener(move |s, _, _, cx| {
-				s.open_page(&id, cx);
-
-				s.workspace.graph_visible = true;
-				s.workspace.graph_selected = Some(id.clone());
-
-				cx.notify();
-			}))
+			.on_click(cx.listener(move |s, _, _, cx| s.toggle_dock_record(&id, cx)))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-				if event.keystroke.key == "enter" {
-					s.open_page(&key, cx);
+				if event.keystroke.key == "enter" || event.keystroke.key == "space" {
+					s.toggle_dock_record(&key, cx);
+					cx.stop_propagation();
 				}
 			}))
 			.flex()
-			.items_center()
-			.gap(gpui::px(4.))
-			.child(crate::ui_motion::AgentSignal {
-				id: SharedString::from(format!("graph-signal-{}", work.id)).into(),
-				state: status.into(),
-			})
+			.flex_col()
+			.justify_center()
+			.gap_1()
+			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
 			.child(
 				gpui::div()
-					.min_w_0()
-					.whitespace_nowrap()
-					.text_ellipsis()
-					.child(self.work_label(work)),
+					.text_size(gpui::px((11.0 * zoom).max(10.0)))
+					.text_color(gpui::rgb(color))
+					.child(status),
 			);
 
 		element.into_any_element()

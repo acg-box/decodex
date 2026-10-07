@@ -21,6 +21,46 @@ pub(super) struct Layout {
 	pub cyclic: bool,
 }
 impl Layout {
+	pub fn retain_prerequisites(&mut self, keep: impl Fn(&str) -> bool) -> usize {
+		let before = self.nodes.len();
+		let mut visible: BTreeSet<_> = self
+			.nodes
+			.iter()
+			.enumerate()
+			.filter(|(_, node)| keep(&node.id))
+			.map(|(index, _)| index)
+			.collect();
+		loop {
+			let count = visible.len();
+			for (from, to) in &self.edges {
+				if visible.contains(to) {
+					visible.insert(*from);
+				}
+			}
+			if visible.len() == count {
+				break;
+			}
+		}
+		let indices: BTreeMap<_, _> =
+			visible.iter().enumerate().map(|(new, old)| (*old, new)).collect();
+		self.edges = self
+			.edges
+			.iter()
+			.filter_map(|(a, b)| Some((*indices.get(a)?, *indices.get(b)?)))
+			.collect();
+		self.reports = self
+			.reports
+			.iter()
+			.filter_map(|(a, b)| Some((*indices.get(a)?, *indices.get(b)?)))
+			.collect();
+		self.nodes = std::mem::take(&mut self.nodes)
+			.into_iter()
+			.enumerate()
+			.filter_map(|(i, node)| visible.contains(&i).then_some(node))
+			.collect();
+		before - self.nodes.len()
+	}
+
 	pub fn new(snapshot: &AgentSnapshotDto, scope: Option<&str>) -> Self {
 		let items: Vec<_> = snapshot
 			.work_items
