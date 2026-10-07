@@ -1,12 +1,21 @@
 //! Sole service coordinator for durable account state and credential effects.
 
+mod oauth;
 mod personal_access_token;
+pub(crate) use oauth::OpenAiCredentialRefresher;
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+use oauth::process_test_refresh_endpoint_is_safe;
+#[cfg(test)]
+use oauth::{
+	MAX_REFRESH_ERROR_BODY_BYTES, RefreshResponse, classify_refresh_http_failure,
+	classify_refresh_http_response, credential_refresh_result,
+};
+#[cfg(all(test, not(all(feature = "process-acceptance-fixture", debug_assertions))))]
+use oauth::{REFRESH_ENDPOINT, refresh_endpoint};
 
 use std::{
 	collections::HashMap,
 	fmt::{Debug, Display, Formatter, Write as _},
-	io::Read as _,
-	mem,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -14,8 +23,6 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reqwest::blocking::Response;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use tokio::{sync::OwnedMutexGuard, task};
@@ -47,13 +54,9 @@ use decodex_database::{
 #[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str = "DECODEX_PROCESS_TEST_REFRESH_ENDPOINT";
 
-#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
-const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
 const ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
-const MAX_REFRESH_ERROR_BODY_BYTES: u64 = 4_096;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
@@ -79,58 +82,6 @@ pub(crate) struct AccountRouteCommit {
 	pub(crate) account: AccountRecord,
 	pub(crate) routing: AccountRoutingControl,
 	pub(crate) projection_digest: String,
-}
-
-/// Exact OpenAI OAuth refresh adapter used by the Mac daemon.
-pub(crate) struct OpenAiCredentialRefresher {
-	client: reqwest::blocking::Client,
-}
-impl OpenAiCredentialRefresher {
-	/// Construct a bounded client without ambient credential configuration.
-	pub(crate) fn new() -> Result<Self, CredentialRefreshError> {
-		let client = reqwest::blocking::Client::builder()
-			.timeout(Duration::from_secs(10))
-			.user_agent("decodex")
-			.build()
-			.map_err(|_| CredentialRefreshError::Unavailable)?;
-
-		Ok(Self { client })
-	}
-}
-
-impl CredentialRefreshPort for OpenAiCredentialRefresher {
-	fn refresh(
-		&self,
-		current: &CredentialSecretBundle,
-	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-		let request = RefreshRequest {
-			client_id: CHATGPT_OAUTH_CLIENT_ID,
-			grant_type: "refresh_token",
-			refresh_token: current.refresh_token().ok_or(CredentialRefreshError::Rejected)?,
-		};
-		let endpoint = refresh_endpoint()?;
-		let response = self
-			.client
-			.post(endpoint)
-			.json(&request)
-			.send()
-			.map_err(|error| classify_refresh_transport_failure(&error))?;
-		let status = response.status();
-
-		if !status.is_success() {
-			return Err(classify_refresh_http_response(response));
-		}
-
-		let refreshed: RefreshResponse =
-			response.json().map_err(|_| CredentialRefreshError::Ambiguous)?;
-		let observed_at = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.map_err(|_| CredentialRefreshError::Ambiguous)?;
-		let observed_at_micros = i64::try_from(observed_at.as_micros())
-			.map_err(|_| CredentialRefreshError::Ambiguous)?;
-
-		credential_refresh_result(current, refreshed, observed_at_micros)
-	}
 }
 
 /// Short-lived credential projection for the direct provider backend API.
@@ -1503,14 +1454,14 @@ impl AccountService {
 		}
 	}
 
-	/// Refresh one exact account through either proactive or exact generation-bound authority.
-	pub async fn refresh(
+	/// Refresh a live process using its immutable launch evidence and latest supplied credential.
+	pub(crate) async fn refresh_for_process(
 		&self,
 		operation_id: AccountOperationId,
 		account_id: &AccountId,
-		expected_account_revision: Option<i64>,
-		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
+		callback_generation: (&ProcessGenerationId, &ProcessGenerationAccountBinding),
 		previous_provider_account_id: Option<&str>,
+		last_projected: &CredentialBinding,
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -1518,10 +1469,13 @@ impl AccountService {
 		self.refresh_while_locked(
 			operation_id,
 			account_id,
-			expected_account_revision,
-			callback_generation,
+			None,
+			Some(callback_generation),
 			previous_provider_account_id,
-			RefreshPlan::ADMISSION,
+			RefreshPlan {
+				consumer_credential: Some(last_projected.clone()),
+				..RefreshPlan::ADMISSION
+			},
 		)
 		.await
 	}
@@ -1726,13 +1680,15 @@ impl AccountService {
 
 		match result {
 			Ok(refreshed) => Ok(RefreshResolution::Rotate { refreshed, projected_source }),
-			Err(CredentialRefreshError::Rejected) => recover_rejected_refresh_from_shared(
-				current,
-				stored.bundle(),
-				current_unix_micros().map_err(|_| CredentialRefreshError::Rejected)?,
-				self.exact_shared_auth_credential(),
-			)
-			.map(|refreshed| RefreshResolution::Rotate { refreshed, projected_source: None }),
+			Err(error @ (CredentialRefreshError::Rejected | CredentialRefreshError::Ambiguous)) =>
+				recover_failed_refresh_from_shared(
+					error,
+					current,
+					stored.bundle(),
+					current_unix_micros().map_err(|_| error)?,
+					self.exact_shared_auth_credential(),
+				)
+				.map(|refreshed| RefreshResolution::Rotate { refreshed, projected_source: None }),
 			Err(error) => Err(error),
 		}
 	}
@@ -1817,7 +1773,8 @@ impl AccountService {
 		previous_provider_account_id: Option<&str>,
 		plan: RefreshPlan,
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
-		let RefreshPlan { allow_disabled, shared_family, supplied_refresh } = plan;
+		let RefreshPlan { allow_disabled, shared_family, supplied_refresh, consumer_credential } =
+			plan;
 
 		if let Some((generation_id, process_binding)) = callback_generation {
 			self.require_active_callback_generation(account_id, generation_id, process_binding)
@@ -1838,9 +1795,20 @@ impl AccountService {
 		}
 
 		if let Some((_, process_binding)) = callback_generation
-			&& callback_uses_current_successor(account.revision, process_binding, current)?
-		{
-			return self.project_refresh_result(account_id, current, callback_generation).await;
+			&& callback_uses_current_successor(
+				account.revision,
+				process_binding,
+				consumer_credential.as_ref().unwrap_or(&process_binding.credential),
+				current,
+			)? {
+			let stored = self.read_exact_for_bound_callback(&account).await?;
+			if !access_token_needs_refresh(
+				stored.bundle().access_token_expires_at_unix_micros(),
+				current_unix_micros()?,
+				Duration::ZERO,
+			)? {
+				return self.project_refresh_result(account_id, current, callback_generation).await;
+			}
 		}
 		if let Some(operation) = self.store.read_account_operation(&operation_id).await? {
 			self.require_operation_identity(&operation, account_id, AccountOperationKind::Refresh)?;
@@ -5039,22 +5007,26 @@ struct RefreshPlan {
 	allow_disabled: bool,
 	shared_family: SharedFamilyRefreshPolicy,
 	supplied_refresh: Option<CredentialRefreshResult>,
+	consumer_credential: Option<CredentialBinding>,
 }
 impl RefreshPlan {
 	const ADMISSION: Self = Self {
 		allow_disabled: false,
 		shared_family: SharedFamilyRefreshPolicy::Guard,
 		supplied_refresh: None,
+		consumer_credential: None,
 	};
 	const OBSERVATION: Self = Self {
 		allow_disabled: true,
 		shared_family: SharedFamilyRefreshPolicy::Observation,
 		supplied_refresh: None,
+		consumer_credential: None,
 	};
 	const ROUTE_TARGET: Self = Self {
 		allow_disabled: false,
 		shared_family: SharedFamilyRefreshPolicy::ProvedInactive,
 		supplied_refresh: None,
+		consumer_credential: None,
 	};
 
 	fn route_source(supplied_refresh: CredentialRefreshResult) -> Self {
@@ -5062,6 +5034,7 @@ impl RefreshPlan {
 			allow_disabled: true,
 			shared_family: SharedFamilyRefreshPolicy::Guard,
 			supplied_refresh: Some(supplied_refresh),
+			consumer_credential: None,
 		}
 	}
 }
@@ -5082,23 +5055,6 @@ struct RouteSharedAuthSource {
 struct RouteSharedAuthSnapshot {
 	version: SharedCodexAuthVersion,
 	source: Option<RouteSharedAuthSource>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-struct RefreshRequest<'a> {
-	client_id: &'static str,
-	grant_type: &'static str,
-	refresh_token: &'a str,
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct RefreshResponse {
-	id_token: Option<String>,
-	access_token: Option<String>,
-	refresh_token: Option<String>,
-	token_type: Option<String>,
-	expires_in: Option<u64>,
 }
 
 struct ReauthenticationCommandInput<'a> {
@@ -5415,137 +5371,6 @@ fn operation_id_from_digest(digest: &[u8]) -> Result<AccountOperationId, Account
 	.map_err(|_| AccountLifecycleError::InvalidOperation)
 }
 
-fn classify_refresh_http_response(response: Response) -> CredentialRefreshError {
-	let status = response.status();
-	let mut body = Zeroizing::new(Vec::new());
-	let _ = response.take(MAX_REFRESH_ERROR_BODY_BYTES + 1).read_to_end(&mut body);
-
-	classify_refresh_http_failure(status, &body)
-}
-
-fn classify_refresh_http_failure(
-	status: reqwest::StatusCode,
-	body: &[u8],
-) -> CredentialRefreshError {
-	if status == reqwest::StatusCode::UNAUTHORIZED {
-		return CredentialRefreshError::Rejected;
-	}
-	if body.len() <= usize::try_from(MAX_REFRESH_ERROR_BODY_BYTES).unwrap_or(usize::MAX)
-		&& let Ok(value) = serde_json::from_slice::<Value>(body)
-	{
-		// Match native OAuth code precedence, never diagnostic prose. Keep the error
-		// body private and preserve the existing uncertain-response boundary.
-		let text = |value: &Value| {
-			value.as_str().filter(|text| !text.trim().is_empty()).map(str::to_owned)
-		};
-		let code = text(&value["error"])
-			.or_else(|| text(&value["error"]["code"]))
-			.or_else(|| text(&value["code"]));
-
-		if code.as_deref().is_some_and(|code| {
-			(status == reqwest::StatusCode::BAD_REQUEST
-				&& code.eq_ignore_ascii_case("invalid_grant"))
-				|| ["refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"]
-					.iter()
-					.any(|terminal| code.eq_ignore_ascii_case(terminal))
-		}) {
-			return CredentialRefreshError::Rejected;
-		}
-	}
-	if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_client_error() {
-		CredentialRefreshError::Unavailable
-	} else {
-		CredentialRefreshError::Ambiguous
-	}
-}
-
-fn classify_refresh_transport_failure(error: &reqwest::Error) -> CredentialRefreshError {
-	if error.is_builder() || error.is_connect() {
-		CredentialRefreshError::Unavailable
-	} else {
-		CredentialRefreshError::Ambiguous
-	}
-}
-
-fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
-	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-	{
-		process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable)
-	}
-	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-	{
-		Ok(REFRESH_ENDPOINT.to_owned())
-	}
-}
-
-#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-fn process_test_refresh_endpoint_is_safe(value: &str) -> bool {
-	let Ok(endpoint) = reqwest::Url::parse(value) else {
-		return false;
-	};
-
-	endpoint.scheme() == "http"
-		&& endpoint.host_str() == Some("127.0.0.1")
-		&& endpoint.port().is_some()
-		&& endpoint.path() == "/oauth/token"
-		&& endpoint.query().is_none()
-		&& endpoint.fragment().is_none()
-		&& endpoint.username().is_empty()
-		&& endpoint.password().is_none()
-}
-
-fn credential_refresh_result(
-	current: &CredentialSecretBundle,
-	mut refreshed: RefreshResponse,
-	observed_at_micros: i64,
-) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-	let mut access_token = refreshed
-		.access_token
-		.take()
-		.filter(|value| !value.is_empty())
-		.map(Zeroizing::new)
-		.ok_or(CredentialRefreshError::Ambiguous)?;
-	let mut refresh_token = refreshed
-		.refresh_token
-		.take()
-		.or_else(|| current.refresh_token().map(str::to_owned))
-		.map(Zeroizing::new)
-		.ok_or(CredentialRefreshError::Rejected)?;
-	let mut id_token = refreshed
-		.id_token
-		.take()
-		.filter(|value| !value.is_empty())
-		.map(Zeroizing::new)
-		.ok_or(CredentialRefreshError::Ambiguous)?;
-	let identity = account_import::decode_chatgpt_identity(&id_token)
-		.map_err(|_| CredentialRefreshError::Ambiguous)?;
-	let token_type = refreshed.token_type.take().ok_or(CredentialRefreshError::Ambiguous)?;
-
-	if refreshed.expires_in.is_none_or(|expires_in| expires_in == 0) {
-		return Err(CredentialRefreshError::Ambiguous);
-	}
-
-	let expires_at_micros = account_import::decode_expiry_micros(&access_token)
-		.map_err(|_| CredentialRefreshError::Ambiguous)?;
-
-	if expires_at_micros <= observed_at_micros {
-		return Err(CredentialRefreshError::Ambiguous);
-	}
-
-	let bundle = CredentialSecretBundle::chatgpt(
-		mem::take(&mut *access_token),
-		mem::take(&mut *refresh_token),
-		Some(mem::take(&mut *id_token)),
-		identity.plan_type,
-		identity.provider_email,
-		token_type,
-		expires_at_micros,
-	)
-	.map_err(|_| CredentialRefreshError::Ambiguous)?;
-
-	Ok(CredentialRefreshResult { returned_provider: identity.provider, bundle })
-}
-
 fn quota_selection_score(
 	account: &AccountRecord,
 	now: i64,
@@ -5650,21 +5475,22 @@ fn projection(
 fn callback_uses_current_successor(
 	account_revision: i64,
 	initial: &ProcessGenerationAccountBinding,
+	last_projected: &CredentialBinding,
 	current: &CredentialBinding,
 ) -> Result<bool, AccountLifecycleError> {
-	if &initial.credential == current {
-		return Ok(false);
-	}
-	if initial.credential.provider != current.provider {
+	if initial.credential.provider != current.provider
+		|| last_projected.provider != current.provider
+	{
 		return Err(AccountLifecycleError::ProviderMismatch);
 	}
-	if current.version.get() <= initial.credential.version.get()
-		|| account_revision < initial.account_revision
+	if account_revision < initial.account_revision
+		|| last_projected.version.get() < initial.credential.version.get()
+		|| current.version.get() < last_projected.version.get()
+		|| (current.version == last_projected.version && current != last_projected)
 	{
 		return Err(AccountLifecycleError::StaleAccount);
 	}
-
-	Ok(true)
+	Ok(current != last_projected)
 }
 
 fn current_unix_micros() -> Result<i64, AccountLifecycleError> {
@@ -5824,14 +5650,14 @@ fn matching_shared_refresh(
 	}
 }
 
-fn recover_rejected_refresh_from_shared(
+fn recover_failed_refresh_from_shared(
+	error: CredentialRefreshError,
 	current: &CredentialBinding,
 	current_bundle: &CredentialSecretBundle,
 	now_unix_micros: i64,
 	shared: Result<ImportedCredential, CredentialImportError>,
 ) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-	matching_shared_refresh(current, current_bundle, now_unix_micros, shared)
-		.ok_or(CredentialRefreshError::Rejected)
+	matching_shared_refresh(current, current_bundle, now_unix_micros, shared).ok_or(error)
 }
 
 fn same_refresh_bundle(first: &CredentialSecretBundle, second: &CredentialSecretBundle) -> bool {
@@ -6326,7 +6152,7 @@ mod tests {
 				reqwest::StatusCode::BAD_GATEWAY,
 				br#"{"error":"invalid_grant"}"#
 			),
-			CredentialRefreshError::Ambiguous
+			CredentialRefreshError::Unavailable
 		);
 
 		let oversized = format!(
@@ -6373,7 +6199,7 @@ mod tests {
 		] {
 			assert_eq!(
 				account_service::classify_refresh_http_failure(status, b"upstream outcome unknown"),
-				CredentialRefreshError::Ambiguous
+				CredentialRefreshError::Unavailable
 			);
 		}
 	}
@@ -6424,49 +6250,7 @@ mod tests {
 				"504 Gateway Timeout",
 				"upstream timeout"
 			)),
-			CredentialRefreshError::Ambiguous
-		);
-	}
-
-	#[test]
-	fn refresh_transport_distinguishes_refused_connect_from_response_loss() {
-		let refused = TcpListener::bind("127.0.0.1:0").expect("reserve refused port");
-		let refused_address = refused.local_addr().expect("refused address");
-
-		drop(refused);
-
-		let client = reqwest::blocking::Client::builder()
-			.timeout(Duration::from_secs(2))
-			.build()
-			.expect("test client");
-		let refused_error = client
-			.post(format!("http://{refused_address}/oauth/token"))
-			.send()
-			.expect_err("connection is refused before dispatch");
-
-		assert_eq!(
-			account_service::classify_refresh_transport_failure(&refused_error),
 			CredentialRefreshError::Unavailable
-		);
-
-		let dropped = TcpListener::bind("127.0.0.1:0").expect("response-loss listener");
-		let dropped_address = dropped.local_addr().expect("response-loss address");
-		let server = thread::spawn(move || {
-			let (mut stream, _) = dropped.accept().expect("accept dispatched request");
-			let mut request = [0_u8; 1_024];
-			let _ = stream.read(&mut request).expect("read dispatched request");
-		});
-		let dropped_error = client
-			.post(format!("http://{dropped_address}/oauth/token"))
-			.body("refresh request")
-			.send()
-			.expect_err("server drops response after dispatch");
-
-		server.join().expect("response-loss server");
-
-		assert_eq!(
-			account_service::classify_refresh_transport_failure(&dropped_error),
-			CredentialRefreshError::Ambiguous
 		);
 	}
 
@@ -6688,28 +6472,71 @@ mod tests {
 	}
 
 	#[test]
+	fn repeated_process_refresh_compares_last_projection_instead_of_launch_version() {
+		let initial = binding("process-account", 1);
+		let process =
+			ProcessGenerationAccountBinding::new(1, initial.clone(), "a".repeat(64)).unwrap();
+		let second = binding("process-account", 2);
+		let third = binding("process-account", 3);
+		assert!(
+			account_service::callback_uses_current_successor(2, &process, &initial, &second)
+				.unwrap()
+		);
+		assert!(
+			!account_service::callback_uses_current_successor(2, &process, &second, &second)
+				.unwrap(),
+			"a new 401 after projection must reach the provider again"
+		);
+		assert!(
+			account_service::callback_uses_current_successor(3, &process, &second, &third).unwrap(),
+			"reuse another consumer's newer refresh"
+		);
+		assert!(
+			!account_service::callback_uses_current_successor(3, &process, &third, &third).unwrap()
+		);
+		assert!(
+			account_service::callback_uses_current_successor(3, &process, &third, &second).is_err()
+		);
+		assert!(
+			account_service::callback_uses_current_successor(
+				3,
+				&process,
+				&second,
+				&binding("other-account", 3)
+			)
+			.is_err()
+		);
+	}
+
+	#[test]
 	fn conversation_callback_accepts_only_a_newer_same_provider_sqlite_successor() {
 		let initial = binding("callback-provider", 3);
 		let process = ProcessGenerationAccountBinding::new(7, initial.clone(), "a".repeat(64))
 			.expect("process binding");
 
-		assert!(!account_service::callback_uses_current_successor(7, &process, &initial).unwrap());
+		assert!(
+			!account_service::callback_uses_current_successor(7, &process, &initial, &initial)
+				.unwrap()
+		);
 
 		let mut successor = binding("callback-provider", 4);
 
 		successor.writer_operation_id =
 			AccountOperationId::new("10000000-0000-4000-8000-000000000004").unwrap();
 
-		assert!(account_service::callback_uses_current_successor(8, &process, &successor).unwrap());
+		assert!(
+			account_service::callback_uses_current_successor(8, &process, &initial, &successor)
+				.unwrap()
+		);
 		assert!(matches!(
-			account_service::callback_uses_current_successor(6, &process, &successor),
+			account_service::callback_uses_current_successor(6, &process, &initial, &successor),
 			Err(AccountLifecycleError::StaleAccount)
 		));
 
 		let switched = binding("different-callback-provider", 4);
 
 		assert!(matches!(
-			account_service::callback_uses_current_successor(8, &process, &switched),
+			account_service::callback_uses_current_successor(8, &process, &initial, &switched),
 			Err(AccountLifecycleError::ProviderMismatch)
 		));
 	}
@@ -6802,7 +6629,6 @@ mod tests {
 			access_token: Some(format!("header.{access_payload}.signature")),
 			refresh_token: None,
 			token_type: Some("bearer".to_owned()),
-			expires_in: Some(60),
 		}
 	}
 
@@ -7136,11 +6962,43 @@ mod tests {
 	}
 
 	#[test]
+	fn uncertain_refresh_adopts_a_shared_successor_but_keeps_uncertainty_without_one() {
+		let current = binding("expected-provider-account", 7);
+		let bundle = shared_bundle("expected-provider-account", "current", 2_000_000);
+		let recovered = account_service::recover_failed_refresh_from_shared(
+			CredentialRefreshError::Ambiguous,
+			&current,
+			&bundle,
+			OBSERVED_AT_MICROS,
+			Ok(imported("expected-provider-account", "new", 3_000_000)),
+		)
+		.unwrap();
+		assert_eq!(recovered.bundle.access_token(), "new");
+		for shared in [
+			Err(CredentialImportError::Unavailable),
+			Ok(imported("other-account", "new", 3_000_000)),
+			Ok(imported("expected-provider-account", "old", 1_500_000)),
+		] {
+			assert!(matches!(
+				account_service::recover_failed_refresh_from_shared(
+					CredentialRefreshError::Ambiguous,
+					&current,
+					&bundle,
+					OBSERVED_AT_MICROS,
+					shared,
+				),
+				Err(CredentialRefreshError::Ambiguous)
+			));
+		}
+	}
+
+	#[test]
 	fn rejected_provider_refresh_recovers_only_from_a_non_older_matching_shared_bundle() {
 		let provider_account_id = "expected-provider-account";
 		let current = binding(provider_account_id, 7);
 		let current_bundle = shared_bundle(provider_account_id, "current-access", 2_000_000);
-		let recovered = account_service::recover_rejected_refresh_from_shared(
+		let recovered = account_service::recover_failed_refresh_from_shared(
+			CredentialRefreshError::Rejected,
 			&current,
 			&current_bundle,
 			OBSERVED_AT_MICROS,
@@ -7150,7 +7008,8 @@ mod tests {
 
 		assert_eq!(recovered.returned_provider, current.provider);
 		assert!(matches!(
-			account_service::recover_rejected_refresh_from_shared(
+			account_service::recover_failed_refresh_from_shared(
+				CredentialRefreshError::Rejected,
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -7159,7 +7018,8 @@ mod tests {
 			Err(CredentialRefreshError::Rejected)
 		));
 		assert!(matches!(
-			account_service::recover_rejected_refresh_from_shared(
+			account_service::recover_failed_refresh_from_shared(
+				CredentialRefreshError::Rejected,
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -7282,7 +7142,22 @@ mod tests {
 	}
 
 	#[test]
-	fn missing_empty_or_malformed_fresh_id_token_is_ambiguous_without_fallback() {
+	fn refresh_accepts_omitted_identity_and_metadata_without_losing_the_account() {
+		let current = current_bundle();
+		let mut reply = response(None);
+		reply.token_type = None;
+		reply.refresh_token = Some("rotated-refresh".to_owned());
+		let refreshed =
+			account_service::credential_refresh_result(&current, reply, OBSERVED_AT_MICROS)
+				.expect("upstream-compatible refresh response");
+		assert_eq!(refreshed.returned_provider.account_id(), "old-provider-account");
+		assert_eq!(refreshed.bundle.id_token(), current.id_token());
+		assert_eq!(refreshed.bundle.refresh_token(), Some("rotated-refresh"));
+		assert_eq!(refreshed.bundle.access_token_expires_at_unix_micros(), Some(61_000_000));
+	}
+
+	#[test]
+	fn explicit_empty_or_malformed_fresh_id_token_is_ambiguous_without_fallback() {
 		let malformed_claims = {
 			let payload = URL_SAFE_NO_PAD.encode(
 				serde_json::to_vec(&serde_json::json!({
@@ -7295,8 +7170,7 @@ mod tests {
 			format!("header.{payload}.signature")
 		};
 
-		for id_token in
-			[None, Some(String::new()), Some("not-a-jwt".to_owned()), Some(malformed_claims)]
+		for id_token in [Some(String::new()), Some("not-a-jwt".to_owned()), Some(malformed_claims)]
 		{
 			assert!(matches!(
 				account_service::credential_refresh_result(
@@ -7857,6 +7731,172 @@ mod tests {
 			AccountRecoveryPreparation::Unavailable
 		));
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+	}
+
+	async fn prepare_refresh_process(
+		store: &SqliteStore,
+		account: &AccountRecord,
+	) -> (decodex_core::ProcessGenerationId, ProcessGenerationAccountBinding) {
+		use decodex_core::{
+			ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
+			ProcessExecutionEpochId, ProcessGenerationId, ProcessGenerationIntent,
+			ProcessIsolationKind, ProcessRunnerIdentity,
+		};
+		use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+		let profile = "a".repeat(64);
+		store
+			.attest_codex_account_capability(&super::CodexAccountCapabilityAttestation {
+				build_identity: "refresh-fixture".into(),
+				executable_sha256: profile.clone(),
+				schema_sha256: profile.clone(),
+				callback_profile_sha256: profile.clone(),
+				login_chatgpt_auth_tokens: true,
+				refresh_callback: true,
+			})
+			.await
+			.unwrap();
+		store
+			.create_agent_work_item(AgentWorkItem {
+				id: "refresh-root".into(),
+				parent_goal_id: None,
+				kind: AgentWorkKind::Goal,
+				title: "Refresh fixture".into(),
+				instructions: "No provider work".into(),
+				codex_thread_id: None,
+				dispatch_state: AgentDispatchState::Idle,
+				active_turn_id: None,
+				status: AgentWorkStatus::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			})
+			.await
+			.unwrap();
+		let generation = ProcessGenerationId::new("81000000-0000-4000-8000-000000000001").unwrap();
+		let initial = ProcessGenerationAccountBinding::new(
+			account.revision,
+			account.credential.clone().unwrap(),
+			profile.clone(),
+		)
+		.unwrap();
+		let intent = ProcessGenerationIntent {
+			generation_id: generation.clone(),
+			account_id: account.account_id.clone(),
+			runner_identity: ProcessRunnerIdentity::new(format!("sha256:{profile}")).unwrap(),
+			intended_boot_id: ProcessBootIdentity::new("fixture-boot").unwrap(),
+			control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
+			isolation_kind: ProcessIsolationKind::Session,
+			execution_authorization: ProcessExecutionAuthorization::new(
+				ProcessExecutionEpochId::new("82000000-0000-4000-8000-000000000001").unwrap(),
+				profile,
+			)
+			.unwrap(),
+		};
+		assert!(matches!(
+			store
+				.prepare_agent_bound_process_generation(
+					&intent,
+					&initial,
+					"refresh-root",
+					"refresh-process"
+				)
+				.await
+				.unwrap(),
+			decodex_database::PrepareProcessGenerationOutcome::Fresh(_)
+		));
+		(generation, initial)
+	}
+
+	#[tokio::test]
+	async fn live_process_rotates_twice_and_other_consumers_reuse_the_committed_successor() {
+		struct Rotating(std::sync::atomic::AtomicUsize);
+		impl CredentialRefreshPort for Rotating {
+			fn refresh(
+				&self,
+				_: &CredentialSecretBundle,
+			) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+				let n = self.0.fetch_add(1, Ordering::SeqCst) + 1;
+				Ok(CredentialRefreshResult {
+					returned_provider: ProviderIdentity::new(
+						AccountProvider::Chatgpt,
+						"observed-account",
+					)
+					.unwrap(),
+					bundle: shared_bundle("observed-account", &format!("rotated-{n}"), i64::MAX),
+				})
+			}
+		}
+		let (_directory, store, mut service, account_id, _) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let rotating = Arc::new(Rotating(std::sync::atomic::AtomicUsize::new(0)));
+		service.refresher = rotating.clone();
+		service = service.with_shared_auth_coordinator(test_coordinator(
+			Arc::new(UnmanagedSharedAuthFile),
+			CodexLiveness::Quiescent,
+		));
+		let account = service.inspect(&account_id).await.unwrap().account;
+		let (generation, initial) = prepare_refresh_process(&store, &account).await;
+		let first = service
+			.refresh_for_process(
+				AccountOperationId::generate().unwrap(),
+				&account_id,
+				(&generation, &initial),
+				Some("observed-account"),
+				&initial.credential,
+			)
+			.await
+			.unwrap();
+		let second = service
+			.refresh_for_process(
+				AccountOperationId::generate().unwrap(),
+				&account_id,
+				(&generation, &initial),
+				Some("observed-account"),
+				first.binding(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(second.binding().version.get(), 3);
+		assert_eq!(second.access_token(), "rotated-2");
+		assert_eq!(rotating.0.load(Ordering::SeqCst), 2);
+		let (a, b) = tokio::join!(
+			service.refresh_for_process(
+				AccountOperationId::generate().unwrap(),
+				&account_id,
+				(&generation, &initial),
+				None,
+				&initial.credential
+			),
+			service.refresh_for_process(
+				AccountOperationId::generate().unwrap(),
+				&account_id,
+				(&generation, &initial),
+				None,
+				first.binding()
+			),
+		);
+		assert_eq!(a.unwrap().binding(), second.binding());
+		assert_eq!(b.unwrap().binding(), second.binding());
+		assert_eq!(rotating.0.load(Ordering::SeqCst), 2);
+		assert!(matches!(
+			service
+				.refresh_for_process(
+					AccountOperationId::generate().unwrap(),
+					&account_id,
+					(&generation, &initial),
+					Some("other-account"),
+					second.binding()
+				)
+				.await,
+			Err(AccountLifecycleError::ProviderMismatch)
+		));
+		let persisted =
+			store.read_bound_process_generations(Some(&account_id), false, 1).await.unwrap();
+		assert_eq!(
+			persisted[0].account_binding.as_ref(),
+			Some(&initial),
+			"refresh must not rewrite launch evidence"
+		);
 	}
 
 	#[tokio::test]
