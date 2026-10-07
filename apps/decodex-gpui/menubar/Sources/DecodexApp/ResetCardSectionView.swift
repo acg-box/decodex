@@ -331,7 +331,7 @@ struct ResetCardAccountRow: View {
 			// error here.
 			break
 		case .tombstoned:
-			return "This account is logged out."
+			return "This account is signed out."
 		case .ready:
 			break
 		}
@@ -531,26 +531,26 @@ struct ResetCardAccountRow: View {
 
 	private func accessibilityHint(_ target: ResetCardUseTarget) -> String {
 		if isUsed(target) { return "Reset confirmed." }
-		if isUsing(target) { return "Using this Reset Card. Waiting for server confirmation." }
+		if isUsing(target) { return "Applying reset card…" }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
 				? "The request is in progress."
-				: "Wait until the current Reset Card request finishes."
+				: "Wait for the current reset to finish."
 		}
 
 		return confirmation.isArmed(target)
-			? "Activate again to submit the same descriptor and operation key."
-			: "Activate once to confirm use. Confirmation cancels after five seconds."
+			? "Click again to use this reset card."
+			: "Click to confirm, then click again within five seconds to use this card."
 	}
 
 	private func help(_ target: ResetCardUseTarget) -> String {
 		let label = accessibilityLabel(target)
 		if isUsed(target) { return "Reset confirmed." }
-		if isUsing(target) { return "Using this Reset Card. Waiting for server confirmation." }
+		if isUsing(target) { return "Applying reset card…" }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
 				? "\(label). The request is in progress."
-				: "Wait until the current Reset Card request finishes."
+				: "Wait for the current reset to finish."
 		}
 		if confirmation.isArmed(target) {
 			return "\(label). Click again within five seconds to use it."
@@ -654,7 +654,7 @@ struct ResetCardAccountRow: View {
 		expiresAtUnixSeconds: Int64?,
 		timeZone: TimeZone = .current
 	) -> String {
-		guard let expiresAtUnixSeconds else { return "Reset Card, no expiry" }
+		guard let expiresAtUnixSeconds else { return "Reset card, no expiry" }
 		let expiry = cardExpiryText(
 			expiresAtUnixSeconds,
 			timeZone: timeZone
@@ -670,7 +670,7 @@ struct ResetCardAccountRow: View {
 		let zone =
 			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
-		return "Reset Card, expires \(spokenExpiry) \(zone)"
+		return "Reset card, expires \(spokenExpiry) \(zone)"
 	}
 }
 

@@ -64,7 +64,7 @@ impl AgentSurface {
 
 				s.prompt_edit.task = None;
 
-				if s.prompt_edit.draft.as_ref() != Some(&expected) { s.prompt_edit.feedback = "Draft changed. Read the branch receipt again.".into(); cx.notify(); return }
+				if s.prompt_edit.draft.as_ref() != Some(&expected) { s.prompt_edit.feedback = "The draft changed. Check the new conversation’s status again.".into(); cx.notify(); return }
 
 				match result {
 					Ok((retained, target)) => {
@@ -73,9 +73,8 @@ impl AgentSurface {
 						match target {
 							None => { s.prompt_edit.draft = Some(retained); s.prompt_edit.feedback = "Branch was rejected. Original conversation and edited draft retained.".into(); },
 							Some((work, thread, boundary, snapshot)) => {
-                                if boundary == PromptForkBoundary::AfterTurn {
-                                    if let Err(message) = s.discard_prompt_editor(&retained, cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
-                                }
+                                if boundary == PromptForkBoundary::AfterTurn
+                                    && let Err(message) = s.discard_prompt_editor(&retained, cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
 
@@ -111,9 +110,11 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 	let result = client
 		.prompt_fork(original.work_id.clone(), original.review_token.clone())
 		.await
-		.map_err(|_| "Branch receipt is unavailable")?;
+		.map_err(|_| "New conversation status is unavailable")?;
 	let PromptForkResult::Available(Some(status)) = result else {
-		return Err("Branch receipt is unavailable. Keep this draft and read the receipt again.");
+		return Err(
+			"The new conversation’s status is unavailable. Keep your draft and check again.",
+		);
 	};
 	let intent = original.fork.as_ref().ok_or("Branch intent is missing")?;
 
@@ -121,7 +122,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		|| status.target_work_id != intent.target_work_id
 		|| status.boundary != intent.boundary
 	{
-		return Err("Branch receipt does not match this draft");
+		return Err("The saved branch does not match this draft");
 	}
 
 	match status.phase {
@@ -131,7 +132,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 			),
 		PromptForkPhase::Acknowledged =>
 			return Err(
-				"Branch identity is saved. Read the receipt again to finish history recovery.",
+				"The new conversation is saved. Check its status again to finish restoring history.",
 			),
 		PromptForkPhase::Rejected => {
 			let mut retained = original;
@@ -156,7 +157,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		let (edit, content) = client
 			.prompt_edit(status.target_work_id.clone(), target_thread.clone())
 			.await
-			.map_err(|_| "Branch input receipt is unavailable")?;
+			.map_err(|_| "The copied message’s status is unavailable")?;
 		let input = PromptDraft::new(content.ok_or("Branch input is unavailable")?)?;
 
 		retained.work_id = status.target_work_id.clone();
@@ -164,7 +165,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		retained = retained.recover_receipt(&edit, &input)?;
 
 		if retained.receipt_id != status.edit_receipt_id {
-			return Err("Branch draft receipt changed");
+			return Err("The copied draft changed");
 		}
 	}
 

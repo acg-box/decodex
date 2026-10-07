@@ -1,11 +1,8 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
-use std::f32::consts::FRAC_PI_2;
+use std::{collections::BTreeSet, f32::consts::FRAC_PI_2};
 
 use gpui::{AnyElement, Div, FontWeight, KeyDownEvent, PathBuilder, Stateful};
-use ui_theme::{
-	CAPTION_SIZE, HOVER_FILL, PANEL_HEADER_HEIGHT, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
-	TREE_ROW_HEIGHT,
-};
+use ui_theme::{CAPTION_SIZE, PANEL_HEADER_HEIGHT, TEXT, TEXT_MUTED, TREE_ROW_HEIGHT};
 
 use crate::{
 	shell::agent_surface::{
@@ -39,13 +36,27 @@ impl AgentSurface {
 		}
 
 		let width = f32::from(window.viewport_size().width);
-		let left = if self.workspace.sidebar_visible && width > 1_000.0 {
-			self.workspace.sidebar_width
-		} else {
-			0.0
-		};
+		let left = self.workspace_sidebar_width(window);
 
 		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
+	}
+
+	fn agent_count(&self) -> usize {
+		let mut threads = BTreeSet::new();
+		let mut count = 0;
+		if let Some(snapshot) = &self.snapshot {
+			for work in &snapshot.work_items {
+				if work.codex_thread_id.as_ref().is_none_or(|id| threads.insert(id.clone())) {
+					count += 1;
+				}
+			}
+		}
+		for agent in self.native_agents.lists.values().flatten() {
+			if threads.insert(agent.thread_id.clone()) {
+				count += 1;
+			}
+		}
+		count
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -81,7 +92,18 @@ impl AgentSurface {
 							.text_size(gpui::px(13.0))
 							.font_weight(FontWeight::SEMIBOLD)
 							.child("Agents"),
-					),
+					)
+					.when(self.snapshot.is_some(), |header| {
+						header.child(
+							gpui::div()
+								.ml(gpui::px(6.))
+								.text_size(gpui::px(CAPTION_SIZE))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(self.agent_count().to_string()),
+						)
+					})
+					.child(gpui::div().flex_1())
+					.child(self.work_details_button(cx)),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
 			.into_any_element()
@@ -117,6 +139,7 @@ impl AgentSurface {
 			.cursor_pointer()
 			.hover(|s| s.text_color(gpui::rgb(TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
+				cx.stop_propagation();
 				if !s.workspace.agent_tree_collapsed.remove(&click_id) {
 					s.workspace.agent_tree_collapsed.insert(click_id.clone());
 				}
@@ -153,31 +176,38 @@ impl AgentSurface {
 		});
 		let descendants = if depth < 24 { children(snapshot, &work.id) } else { Vec::new() };
 		let expanded = !self.workspace.agent_tree_collapsed.contains(&work.id);
-		let selected =
-			self.native_agents.selected.is_none() && self.selected.as_ref() == Some(&work.id);
+		let selected = self.selected.as_ref() == Some(&work.id)
+			&& self.native_agents.selected.as_ref().is_none_or(|(owner, thread)| {
+				owner == &work.id && work.codex_thread_id.as_ref() == Some(thread)
+			});
 		let name = self.work_label(work);
 		let id = work.id.clone();
-		let (status, color) = graph::state_in(snapshot, work);
+		let row_id = id.clone();
+		let (status, _) = graph::state_in(snapshot, work);
 		let toggle = self.tree_toggle(work.id.clone(), &name, expanded, cx);
-		let row = tree_row(format!("agent-row-{}", work.id), depth, selected)
-			.child(if descendants.is_empty() && !has_native {
-				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
-			} else {
-				toggle.into_any_element()
-			})
-			.child(gpui::div().flex_1().min_w_0().child(self.workspace_action(
+		let row = tree_row(
+			format!("agent-row-{}", work.id),
+			depth,
+			selected,
+			!descendants.is_empty() || has_native,
+			expanded,
+		)
+		.on_click(cx.listener(move |s, _, _, cx| s.open_page(&row_id, cx)))
+		.child(if descendants.is_empty() && !has_native {
+			gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
+		} else {
+			toggle.into_any_element()
+		})
+		.child(tree_identity(
+			self.workspace_action(
 				format!("agent-open-{id}"),
 				name,
 				move |s, cx| s.open_page(&id, cx),
 				cx,
-			)))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(CAPTION_SIZE))
-					.flex_none()
-					.text_color(gpui::rgb(color))
-					.child(format!("L{depth} · {status}")),
-			);
+			),
+			format!("agent-signal-{}", work.id),
+			status,
+		));
 		let mut nested = tree_children(depth);
 		let mut count = 0;
 
@@ -214,10 +244,36 @@ impl AgentSurface {
 	}
 }
 
-pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div> {
+/// Keep a row's name and state together; indentation alone expresses ancestry.
+pub(super) fn tree_identity(name: AnyElement, id: String, status: &str) -> Div {
 	gpui::div()
-		.id(SharedString::from(id.clone()))
+		.min_w_0()
+		.max_w_full()
+		.flex()
+		.items_center()
+		.gap(gpui::px(2.))
+		.child(gpui::div().relative().w(gpui::px(6.)).h(gpui::px(16.)).flex_none().child(
+			gpui::div().absolute().left(gpui::px(-2.)).top_0().child(ui_motion::AgentSignal {
+				id: SharedString::from(id).into(),
+				state: status.into(),
+			}),
+		))
+		.child(gpui::div().min_w_0().flex_shrink(1.).child(name))
+}
+
+pub(super) fn tree_row(
+	id: String,
+	depth: usize,
+	selected: bool,
+	has_children: bool,
+	expanded: bool,
+) -> Stateful<Div> {
+	let group = SharedString::from(id.clone());
+	gpui::div()
+		.id(group.clone())
+		.group(group.clone())
 		.debug_selector(move || id.clone())
+		.cursor_pointer()
 		.relative()
 		.h(gpui::px(TREE_ROW_HEIGHT))
 		.flex_none()
@@ -226,21 +282,44 @@ pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> Stateful<Div
 		.pr(gpui::px(ROW_INSET))
 		.flex()
 		.items_center()
-		.gap(gpui::px(4.))
-		.rounded(gpui::px(5.))
-		.when(selected, |row| row.bg(gpui::rgba(0xffffff0b)))
-		.hover(move |row| {
-			row.bg(gpui::rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-		})
+		.gap(gpui::px(2.))
+		.child(
+			gpui::div()
+				.absolute()
+				.left_0()
+				.right_0()
+				.top(gpui::px(2.))
+				.bottom(gpui::px(2.))
+				.rounded(gpui::px(4.))
+				.bg(gpui::rgba(if selected { 0xffffff09 } else { 0xffffff00 }))
+				.group_hover(group, move |background| {
+					background.bg(gpui::rgba(if selected { 0xffffff12 } else { 0xffffff09 }))
+				}),
+		)
 		.when(depth > 0, |row| {
 			row.child(
 				gpui::div()
 					.absolute()
 					.left(gpui::px(ROW_INSET + (depth - 1) as f32 * INDENT + DISCLOSURE / 2.))
 					.top(gpui::px(TREE_ROW_HEIGHT / 2.))
-					.w(gpui::px(5.))
+					.w(gpui::px(if has_children {
+						INDENT - 5.
+					} else {
+						INDENT + DISCLOSURE / 2. + 4.
+					}))
 					.h(gpui::px(1.))
-					.bg(gpui::rgba(0xffffff18)),
+					.bg(gpui::rgba(0xffffff30)),
+			)
+		})
+		.when(has_children && expanded, |row| {
+			row.child(
+				gpui::div()
+					.absolute()
+					.left(gpui::px(ROW_INSET + depth as f32 * INDENT + DISCLOSURE / 2.))
+					.top(gpui::px(TREE_ROW_HEIGHT / 2. + 6.))
+					.bottom_0()
+					.w(gpui::px(1.))
+					.bg(gpui::rgba(0xffffff30)),
 			)
 		})
 }
@@ -253,7 +332,7 @@ pub(super) fn tree_children(depth: usize) -> Div {
 			.top_0()
 			.bottom(gpui::px(TREE_ROW_HEIGHT / 2.))
 			.w(gpui::px(1.))
-			.bg(gpui::rgba(0xffffff18)),
+			.bg(gpui::rgba(0xffffff30)),
 	)
 }
 
@@ -341,6 +420,22 @@ mod tests {
 					},
 				],
 			);
+			let mut legacy = s.snapshot.as_ref().unwrap().work_items.last().unwrap().clone();
+			legacy.kind = decodex_protocol::AgentWorkKindDto::Task;
+			legacy.parent_goal_id = Some("decodex".into());
+			legacy.id = "decodex-gpui-conversation-review".into();
+			legacy.title = legacy.id.clone();
+			assert_eq!(s.work_label(&legacy), "GPUI conversation review");
+			legacy.title = "Conversation review".into();
+			assert_eq!(s.work_label(&legacy), "Conversation review");
+			let count = s.agent_count();
+			let duplicate = s.native_agents.lists["agent"].clone();
+			s.native_agents.lists.insert("release".into(), duplicate);
+			assert_eq!(
+				s.agent_count(),
+				count,
+				"ancestor lists must not count the same agent twice"
+			);
 			cx.notify();
 		});
 
@@ -361,14 +456,44 @@ mod tests {
 		let arrow = visual.debug_bounds("agent-toggle-agent").unwrap();
 		let child_arrow = visual.debug_bounds("agent-toggle-native:agent:native-child").unwrap();
 
+		assert!(
+			visual.debug_bounds("agent-open-agent").unwrap().size.width < gpui::px(100.),
+			"short names must not stretch into a separate status column"
+		);
 		assert_eq!(root.left(), native.left());
 		assert_eq!(managed.right(), native.right());
 		assert_eq!(arrow.center().y, root.center().y);
 		assert_eq!(child_arrow.center().y, native.center().y);
 
+		visual.simulate_click(
+			gpui::point(managed.right() - gpui::px(2.), managed.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("release")));
+		visual.simulate_click(
+			gpui::point(native.right() - gpui::px(2.), native.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| {
+			// This geometry fixture has no connection profile; opening the native row
+			// still selects its owner before the connection-dependent entry step.
+			assert_eq!(s.selected.as_deref(), Some("agent"))
+		});
+		visual.simulate_click(
+			gpui::point(root.left() + gpui::px(1.), root.center().y),
+			Default::default(),
+		);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert!(s.native_agents.selected.is_none());
+		});
 		visual.simulate_click(child_arrow.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.workspace.agent_tree_collapsed.contains("native:agent:native-child"));
+			assert!(
+				s.native_agents.selected.is_none(),
+				"disclosure must not open the conversation"
+			);
 			assert_eq!(s.native_branches("agent", "root-native", 1, cx).1, 1);
 		});
 	}

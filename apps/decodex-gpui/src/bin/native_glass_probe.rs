@@ -4,6 +4,9 @@
 #[cfg(target_os = "macos")]
 #[path = "../native_quit.rs"]
 mod native_quit;
+#[allow(unused_imports)]
+#[path = "../ui_motion.rs"]
+mod ui_motion;
 #[path = "../ui_theme.rs"] mod ui_theme;
 #[cfg(target_os = "macos")]
 mod probe {
@@ -439,7 +442,9 @@ mod probe {
 }
 
 // This probe shares the application's package dependency set.
+use base64 as _;
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
+
 use libc as _;
 use pulldown_cmark as _;
 use reqwest as _;

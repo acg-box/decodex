@@ -1,13 +1,13 @@
-//! Native observations only: never promote spawned threads into manager authority.
+//! Native inspection and preparation without promoting spawned threads into manager authority.
 use std::time::Duration;
 
 use serde_json::Value;
 use tokio::time;
 
 use crate::agent::native_subagents;
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_database::SqliteStore;
-use decodex_protocol::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
+use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -21,8 +21,6 @@ pub(crate) async fn read(
         let root = owner.codex_thread_id?;
 
         if let Some(thread) = thread {
-            if thread == root { return None; }
-
             let verified = native_subagents::request_owner(store,client,thread).await.ok()?;
 
             if verified.id != work { return None; }
@@ -53,6 +51,43 @@ pub(crate) async fn read(
 	result.ok().flatten().unwrap_or(NativeAgentsResult::Unavailable)
 }
 
+/// Prepare a conversation, not a turn. Keep inspection read-only and send no queued input.
+pub(crate) async fn prepare(
+	store: &SqliteStore,
+	client: &AppServerClient,
+	work: &str,
+	thread: &str,
+) -> Result<(), &'static str> {
+	time::timeout(Duration::from_secs(20), async {
+		match read(store, client, work, Some(thread), None).await {
+			NativeAgentsResult::Conversation { can_input: Some(_), .. } => return Ok(()),
+			NativeAgentsResult::Conversation { can_input: None, .. } => {},
+			_ => return Err("Could not connect to this conversation."),
+		}
+		// Use persisted native configuration; do not override parent-owned child settings.
+		let value = client
+			.thread_resume(serde_json::json!({"threadId": thread, "excludeTurns": true}))
+			.await
+			.map_err(|error| match error {
+				ClientError::Remote(ref error) if error.message.contains("archived") =>
+					"This conversation is archived. Restore it in Codex before continuing.",
+				ClientError::Remote(ref error)
+					if error.message.contains("resume the parent first") =>
+					"Open the parent agent to reconnect this conversation.",
+				ClientError::Remote(ref error)
+					if error.message.contains("in use") || error.message.contains("locked") =>
+					"This conversation is in use by another app.",
+				_ => "Could not connect to this conversation.",
+			})?;
+		if value.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+			return Err("Could not verify this conversation.");
+		}
+		Ok(())
+	})
+	.await
+	.unwrap_or(Err("Connecting took too long. Try again."))
+}
+
 fn clean(text: &str, limit: usize) -> String {
 	if decodex_core::contains_credential_material(text) {
 		return "[Private content omitted]".into();
@@ -67,93 +102,15 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 	}
 
 	let turns = value.pointer("/thread/turns")?.as_array()?;
-	let mut messages = Vec::new();
-	let mut truncated = turns.len() > 12;
-	let mut remaining = 48_000_usize;
-
-	for turn in turns.iter().skip(turns.len().saturating_sub(12)) {
-		for item in turn["items"].as_array().into_iter().flatten() {
-			let (role, text) = match item["type"].as_str()? {
-				"agentMessage" => ("assistant", item["text"].as_str().unwrap_or("").to_owned()),
-				"userMessage" => (
-					"user",
-					item["content"]
-						.as_array()
-						.into_iter()
-						.flatten()
-						.filter_map(|c| c["text"].as_str())
-						.collect::<Vec<_>>()
-						.join("\n"),
-				),
-				"commandExecution" => (
-					"activity",
-					format!(
-						"Command · {}\n\n{}\n\n{}",
-						item["status"].as_str().unwrap_or("observed"),
-						item["command"].as_str().unwrap_or(""),
-						item["aggregatedOutput"].as_str().unwrap_or("")
-					),
-				),
-				"mcpToolCall" | "dynamicToolCall" => (
-					"activity",
-					format!(
-						"Tool · {} · {}",
-						item["tool"].as_str().unwrap_or("Tool"),
-						item["status"].as_str().unwrap_or("observed")
-					),
-				),
-				"fileChange" => (
-					"activity",
-					format!(
-						"Files · {}",
-						item["changes"]
-							.as_array()
-							.into_iter()
-							.flatten()
-							.filter_map(|c| c["path"].as_str())
-							.take(20)
-							.collect::<Vec<_>>()
-							.join(", ")
-					),
-				),
-				_ => continue,
-			};
-
-			if text.is_empty() {
-				continue;
-			}
-			if remaining == 0 || messages.len() >= 128 {
-				truncated = true;
-
-				break;
-			}
-
-			let bounded =
-				clean(&text, remaining.min(if role == "activity" { 4_000 } else { 12_000 }));
-
-			truncated |= bounded.chars().count() < text.chars().count();
-			remaining = remaining.saturating_sub(bounded.chars().count());
-
-			messages.push(NativeAgentMessage {
-				id: item["id"].as_str()?.into(),
-				role: role.into(),
-				text: bounded,
-			});
-		}
-	}
-
 	Some(NativeAgentsResult::Conversation {
 		thread_id: thread.into(),
-		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool)
-			== Some(true),
+		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool),
 		active_turn: turns
 			.iter()
 			.rev()
 			.find(|t| t["status"] == "inProgress")
 			.and_then(|t| t["id"].as_str())
 			.map(str::to_owned),
-		messages,
-		truncated,
 	})
 }
 #[cfg(test)]
@@ -161,18 +118,16 @@ mod tests {
 	use crate::native_agents::{self, NativeAgentsResult};
 
 	#[test]
-	fn native_preview_keeps_roles_and_does_not_guess_input_capability() {
+	fn native_input_metadata_keeps_turn_identity_and_does_not_guess_capability() {
 		let v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
-		let Some(NativeAgentsResult::Conversation { can_input, active_turn, messages, .. }) =
+		let Some(NativeAgentsResult::Conversation { can_input, active_turn, .. }) =
 			native_agents::conversation(&v, "child")
 		else {
 			panic!()
 		};
 
-		assert!(!can_input);
+		assert_eq!(can_input, None);
 		assert_eq!(active_turn.as_deref(), Some("t"));
-		assert_eq!(messages[0].role, "user");
-		assert_eq!(messages[1].text, "Result");
 		assert!(native_agents::conversation(&v, "other").is_none());
 	}
 }

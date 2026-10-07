@@ -46,7 +46,7 @@ async fn background_commands_reject_foreign_worker_and_stale_thread_before_rpc()
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	agent.create_manager("agent", "child", "Manage").await.unwrap();
 
 	let worker = agent.create_worker("child", "worker", "Work").await.unwrap();
 	let reference = agent.store.begin_agent_steer("agent".into(),manager.active_turn_id.clone().unwrap(),"read-reference".into(),

@@ -1,4 +1,6 @@
 //! Interruptible motion shared by native controls and workspace panels.
+#[path = "ui_agent_label.rs"] mod agent_label;
+pub(crate) use agent_label::{AgentLabel, AgentSignal};
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 
@@ -62,49 +64,26 @@ pub(crate) struct TabReveal {
 }
 impl RenderOnce for TabReveal {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| (0.0_f32, Tween::new(0.0)));
+		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
 		let now = Instant::now();
-		let (width, progress, moving) = state.update(cx, |s, _| {
-			s.1.target(if self.visible { 1.0 } else { 0.0 }, now);
-
-			(s.0, s.1.sample(now), s.1.moving(now))
+		let (height, moving) = state.update(cx, |s, _| {
+			s.target(
+				if self.visible {
+					crate::ui_theme::CONVERSATION_TAB_SIZE + crate::ui_theme::CONVERSATION_TAB_GAP
+				} else {
+					0.
+				},
+				now,
+			);
+			(s.sample(now), s.moving(now))
 		});
-
 		if moving {
 			request_frame(window, cx);
 		}
 		if !self.visible && !moving {
 			cx.defer(self.closed);
 		}
-
-		gpui::div()
-			.flex_none()
-			.w(gpui::px((width + 4.0) * progress))
-			.h(gpui::px(28.0))
-			.overflow_hidden()
-			.flex()
-			.items_center()
-			.child(
-				gpui::div()
-					.flex_none()
-					.flex()
-					.items_center()
-					.opacity(progress)
-					.on_children_prepainted(move |bounds, _, cx| {
-						if let Some(bounds) = bounds.first() {
-							let measured = f32::from(bounds.size.width);
-
-							state.update(cx, |s, cx| {
-								if (s.0 - measured).abs() > 0.5 {
-									s.0 = measured;
-
-									cx.notify();
-								}
-							});
-						}
-					})
-					.child(self.child),
-			)
+		gpui::div().w_full().h(gpui::px(height)).flex_none().overflow_hidden().child(self.child)
 	}
 }
 
@@ -347,10 +326,10 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// Fixed-anchor fallback until a whole-surface composited transition is available.
-/// Do not use per-primitive opacity or translate an already opaque card.
+/// Reveal the material and its content through one clip, without primitive fades.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
+	id: ElementId,
 	unframed: bool,
 	visible: bool,
 	child: AnyElement,
@@ -358,45 +337,54 @@ pub(crate) struct Popover {
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
 		self.unframed = unframed;
-
 		self
 	}
 }
-
 impl RenderOnce for Popover {
 	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-		if !self.visible {
-			return gpui::div().w_full().into_any_element();
-		}
-
-		gpui::div()
-			.w_full()
-			.relative()
-			.when(!self.unframed, |surface| {
-				surface.rounded(gpui::px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![
-					gpui::BoxShadow {
-						inset: false,
-						color: gpui::rgba(0x00000024).into(),
-						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-						blur_radius: gpui::px(12.),
-						spread_radius: gpui::px(-3.),
-					},
-				])
-			})
-			.child(self.child)
-			.into_any_element()
+		disclosure(
+			self.id,
+			self.visible,
+			gpui::div().w_full().p_2().child(
+				gpui::div()
+					.w_full()
+					.relative()
+					.when(!self.unframed, menu_surface)
+					.child(self.child),
+			),
+		)
 	}
 }
 
+/// Shared menu material: opaque enough for text, with a soft light-facing edge.
+pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
+	surface
+		.rounded(gpui::px(10.))
+		.border_1()
+		.border_color(gpui::rgba(0xffffff16))
+		.bg(gpui::linear_gradient(
+			165.,
+			gpui::linear_color_stop(gpui::rgb(0x34353b), 0.),
+			gpui::linear_color_stop(gpui::rgb(0x24252b), 1.),
+		))
+		.shadow(vec![gpui::BoxShadow {
+			inset: false,
+			color: gpui::rgba(0x00000030).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(6.)),
+			blur_radius: gpui::px(18.),
+			spread_radius: gpui::px(-4.),
+		}])
+}
+
 #[derive(Clone)]
-struct Tween {
+pub(crate) struct Tween {
 	from: f32,
 	to: f32,
 	started: Instant,
 	duration: Duration,
 }
 impl Tween {
-	fn new(value: f32) -> Self {
+	pub(crate) fn new(value: f32) -> Self {
 		Self {
 			from: value,
 			to: value,
@@ -405,7 +393,7 @@ impl Tween {
 		}
 	}
 
-	fn sample(&self, now: Instant) -> f32 {
+	pub(crate) fn sample(&self, now: Instant) -> f32 {
 		self.sample_with_motion(now, reduced())
 	}
 
@@ -421,7 +409,7 @@ impl Tween {
 		self.from + (self.to - self.from) * eased
 	}
 
-	fn target(&mut self, value: f32, now: Instant) {
+	pub(crate) fn target(&mut self, value: f32, now: Instant) {
 		if self.to != value {
 			self.from = self.sample(now);
 			self.to = value;
@@ -429,7 +417,7 @@ impl Tween {
 		}
 	}
 
-	fn moving(&self, now: Instant) -> bool {
+	pub(crate) fn moving(&self, now: Instant) -> bool {
 		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
 	}
 }
@@ -595,8 +583,8 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 	Arrival { route, child: child.into_any_element() }
 }
 
-pub(crate) fn popover(visible: bool, child: impl IntoElement) -> Popover {
-	Popover { visible, child: child.into_any_element(), unframed: false }
+pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {
+	Popover { id: id.into(), visible, child: child.into_any_element(), unframed: false }
 }
 
 #[cfg(test)]
@@ -644,5 +632,130 @@ mod tests {
 
 		assert_eq!(tween.sample(end), 0.0);
 		assert!(!tween.moving(end));
+	}
+}
+
+/// A status indicator, not a fabricated completion percentage.
+#[derive(IntoElement)]
+pub(crate) struct AgentRailStatus {
+	pub id: String,
+	pub state: String,
+	pub label: String,
+	pub expanded: bool,
+}
+impl RenderOnce for AgentRailStatus {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let busy = matches!(
+			self.state.as_str(),
+			"Running" | "Starting" | "running" | "working" | "active"
+		);
+		let attention = matches!(
+			self.state.as_str(),
+			"Needs you" | "Needs attention" | "Blocked" | "failed" | "systemError"
+		);
+
+		let color = if attention {
+			crate::ui_theme::AMBER
+		} else if busy {
+			crate::ui_theme::BLUE
+		} else {
+			crate::ui_theme::TEXT_MUTED
+		};
+
+		use unicode_segmentation::UnicodeSegmentation as _;
+		let label = self.label.replace(['\n', '\r'], " ");
+		let initial = label.graphemes(true).next().unwrap_or("·").to_owned();
+		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
+		let mut font = window.text_style().font();
+		font.weight = gpui::FontWeight::SEMIBOLD;
+		let run = gpui::TextRun {
+			len: initial.len(),
+			font,
+			color: gpui::rgb(color).into(),
+			background_color: None,
+			underline: None,
+			strikethrough: None,
+		};
+		let initial_width = f32::from(
+			window
+				.text_system()
+				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
+				.width,
+		);
+		let inset = ((crate::ui_theme::CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
+		let ring_opacity =
+			1. - value("rail-label-expansion", if self.expanded { 1. } else { 0. }, window, cx);
+		let clock = window.use_keyed_state("agent-rail-clock", cx, |_, _| Instant::now());
+		let phase = if busy && ring_opacity > 0.01 && !reduced() {
+			request_frame(window, cx);
+			clock.read(cx).elapsed().as_secs_f32() * 2.2
+		} else {
+			0.
+		};
+		let ring = gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				if !busy && !attention {
+					return;
+				}
+				let mut path = gpui::PathBuilder::stroke(gpui::px(2.2));
+				for i in 0..=32 {
+					let angle = phase
+						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.64 } else { 0.82 };
+					let p = bounds.center()
+						+ gpui::point(gpui::px(angle.cos() * 10.), gpui::px(angle.sin() * 10.));
+					if i == 0 {
+						path.move_to(p);
+					} else {
+						path.line_to(p);
+					}
+				}
+				if let Ok(path) = path.build() {
+					window.paint_path(
+						path,
+						gpui::rgba((color << 8) | if busy || attention { 230 } else { 55 }),
+					);
+				}
+			},
+		)
+		.size(gpui::px(24.))
+		.absolute()
+		.left(gpui::px(2.))
+		.top(gpui::px(2.))
+		.opacity(ring_opacity);
+		gpui::div()
+			.debug_selector(|| "conversation-name".into())
+			.min_w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
+			.h_full()
+			.flex_1()
+			.relative()
+			.flex()
+			.items_center()
+			.pl(gpui::px(inset))
+			.pr(gpui::px(inset))
+			.text_size(gpui::px(12.5))
+			.child(ring)
+			.child(
+				gpui::div()
+					.debug_selector(move || format!("conversation-mark-{}", self.id))
+					.w(gpui::px(initial_width))
+					.flex_none()
+					.font_weight(gpui::FontWeight::SEMIBOLD)
+					.text_color(gpui::rgb(if busy || attention {
+						color
+					} else {
+						crate::ui_theme::TEXT
+					}))
+					.child(initial),
+			)
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.overflow_hidden()
+					.whitespace_nowrap()
+					.text_ellipsis()
+					.child(rest),
+			)
 	}
 }

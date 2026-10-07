@@ -8,7 +8,7 @@ use crate::{
 		agent_surface,
 		agent_surface::native_timeline::{
 			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
-			IntoElement, ParentElement, Styled, Task, markdown,
+			IntoElement, ParentElement, Task, markdown,
 		},
 	},
 	ui_loading,

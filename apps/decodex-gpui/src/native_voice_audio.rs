@@ -1,4 +1,5 @@
 //! Apple voice processing with a direct, bounded PCM path to the native transport.
+#![cfg_attr(test, allow(dead_code))]
 use std::{
 	ptr::NonNull,
 	rc::Rc,

@@ -96,8 +96,8 @@ use decodex_protocol::{
 	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
 	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
 	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AgentWorkspaceDto, CausationId,
-	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
@@ -119,6 +119,7 @@ use decodex_protocol::{
 	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
 	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
 	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	WorkspaceDto,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -496,6 +497,7 @@ impl ServiceApplication {
 	}
 
 	async fn query_agent_snapshot(&self) -> QueryResultPayload {
+		let initializing = self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 		let before = match &self.agent {
 			Some(agent) => agent.runtime_source().await,
 			None => None,
@@ -509,6 +511,8 @@ impl ServiceApplication {
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			snapshot.runtime_source = if before == after { after } else { None };
+			snapshot.connection_initializing = initializing
+				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 
 			if !snapshot.is_valid() {
 				result = decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -6098,10 +6102,16 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let snapshot = AgentSnapshotDto {
+		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
-			.map(|(agent_id, name, directory)| AgentWorkspaceDto { agent_id, name, directory })
+			.map(|w| WorkspaceDto {
+				id: w.id,
+				name: w.name,
+				directory: w.directory,
+				work_ids: w.work_ids,
+			})
 			.collect(),
 		work_items: work_items
 			.into_iter()
@@ -7404,6 +7414,11 @@ mod tests {
 	#[tokio::test]
 	async fn saved_misalignment_history_omits_continuation_without_live_native_evidence() {
 		let directory = tempfile::tempdir().unwrap();
+		std::fs::set_permissions(
+			directory.path(),
+			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+		)
+		.unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 
@@ -8271,6 +8286,11 @@ mod tests {
 	#[tokio::test]
 	async fn approval_request_projection_preserves_the_native_executor() {
 		let directory = tempfile::tempdir().unwrap();
+		std::fs::set_permissions(
+			directory.path(),
+			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+		)
+		.unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());

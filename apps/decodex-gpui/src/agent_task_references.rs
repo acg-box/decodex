@@ -15,7 +15,6 @@ use decodex_protocol::{AgentTaskReferenceDto, WireText};
 impl AgentSurface {
 	pub(crate) fn visual_task_references(&mut self) {
 		self.workspace.graph_visible = false;
-		self.workspace.timeline_visible = false;
 
 		if let Some(snapshot) = &mut self.snapshot {
 			for work in &mut snapshot.work_items {

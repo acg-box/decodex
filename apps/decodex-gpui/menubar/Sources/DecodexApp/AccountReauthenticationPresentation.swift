@@ -27,7 +27,7 @@ enum AccountLoginMode: Equatable {
 		case .enrollment:
 			return "Cancel adding account"
 		case .reauthentication:
-			return "Cancel login"
+			return "Cancel sign-in"
 		}
 	}
 
@@ -36,7 +36,7 @@ enum AccountLoginMode: Equatable {
 		case .enrollment:
 			return "Close add account"
 		case .reauthentication:
-			return "Close login"
+			return "Close sign-in"
 		}
 	}
 
@@ -45,7 +45,7 @@ enum AccountLoginMode: Equatable {
 		case .enrollment:
 			return "Adding account"
 		case .reauthentication:
-			return "Saving login"
+			return "Saving sign-in…"
 		}
 	}
 }
@@ -88,9 +88,9 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		case .installing:
 			return mode.installingLabel
 		case .failed:
-			return "Login failed"
+			return "Sign-in failed"
 		case .cancellationFailed:
-			return "Could not cancel login"
+			return "Could not cancel sign-in"
 		}
 	}
 

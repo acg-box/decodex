@@ -380,6 +380,28 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Register a folder without starting a conversation or agent.
+	AddWorkspace {
+		/// Stable folder identity supplied by the desktop.
+		workspace_id: EntityId,
+		/// Existing directory selected by the user.
+		directory: WireText,
+	},
+	/// Create a user conversation with its first submitted message.
+	NewConversation {
+		/// Optional directory scope, independent of parent ownership.
+		workspace_id: Option<EntityId>,
+		/// Stable local identity supplied by the desktop.
+		work_id: EntityId,
+		/// First submitted input.
+		text: HistoryText,
+		/// Model settings captured at send time.
+		execution: AgentExecutionOverrides,
+		/// Attached context.
+		attachments: Vec<AgentAttachmentDto>,
+		/// Referenced tasks.
+		task_references: Vec<AgentTaskReferenceDto>,
+	},
 	/// Send retained canonical input through the existing user-message queue.
 	SendPromptInput {
 		/// Exact task owner.
@@ -645,6 +667,13 @@ pub enum AgentActionDto {
 		effort: ConversationReasoningEffort,
 	},
 
+	/// Load an exact owned conversation without sending a message or changing its settings.
+	PrepareNativeAgent {
+		/// Local owner used to verify the native thread.
+		work_id: EntityId,
+		/// Exact conversation to resume.
+		thread_id: WireText,
+	},
 	/// Send explicit user input to a verified native descendant that accepts direct input.
 	NativeAgentInput {
 		/// Exact local owner whose native descendants may be addressed.
@@ -922,13 +951,15 @@ pub struct AgentPendingEventDto {
 	pub delivery_claimed: bool,
 }
 
-/// A project directory owned by one executable Agent.
+/// A saved folder shared by independent conversations.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct AgentWorkspaceDto {
-	/// Manager identity, also the workspace identity.
-	pub agent_id: String,
-	/// User-facing project name.
+pub struct WorkspaceDto {
+	/// Stable workspace identity.
+	pub id: String,
+	/// Explicit conversation membership, including delegated work.
+	pub work_ids: Vec<String>,
+	/// User-facing folder name.
 	pub name: String,
 	/// Canonical existing execution directory inherited by descendants.
 	pub directory: String,
@@ -938,10 +969,13 @@ pub struct AgentWorkspaceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// The service is still checking its persisted connection after startup.
+	#[serde(default)]
+	pub connection_initializing: bool,
 	/// Opaque current account revision and process identity; absent while unavailable.
 	pub runtime_source: Option<EntityId>,
-	/// Persisted project scopes.
-	pub workspaces: Vec<AgentWorkspaceDto>,
+	/// Saved folders with explicit conversation membership.
+	pub workspaces: Vec<WorkspaceDto>,
 	/// All work records.
 	pub work_items: Vec<AgentWorkItemDto>,
 	/// All explicit dependency edges.
@@ -961,9 +995,8 @@ impl AgentSnapshotDto {
 			&& self.workspaces.iter().all(|workspace| {
 				text(&workspace.name, 256)
 					&& text(&workspace.directory, 4_096)
-					&& self.work_items.iter().any(|work| {
-						work.id == workspace.agent_id && work.kind == AgentWorkKindDto::Manager
-					})
+					&& text(&workspace.id, 512)
+					&& workspace.work_ids.iter().all(|id| ids.contains(id.as_str()))
 			})
 			&& self.work_items.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.dependencies.len() <= MAX_AGENT_DEPENDENCIES
@@ -1221,6 +1254,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -1241,6 +1275,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],

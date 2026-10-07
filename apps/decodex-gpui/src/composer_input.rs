@@ -740,7 +740,7 @@ impl Render for ComposerInput {
 			.w_full()
 			.when(!workbench, |d| d.h_full())
 			.px_2()
-			.py(gpui::px(if workbench { 4.0 } else { 8.0 }))
+			.py(gpui::px(if workbench { 4.0 } else { 3.5 }))
 			.flex()
 			.items_start()
 			.overflow_hidden()

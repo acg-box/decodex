@@ -1,4 +1,5 @@
 //! One native WebRTC call. PCM runs independently of GPUI and service signaling.
+#![cfg_attr(test, allow(dead_code))]
 use std::{
 	future,
 	sync::{

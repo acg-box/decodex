@@ -210,7 +210,7 @@ async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work()
 	let result =
 		native_agents::read(&agent.store, &agent.client, "agent", Some("child"), None).await;
 
-	assert!(matches!(result, NativeAgentsResult::Conversation { can_input: false, .. }));
+	assert!(matches!(result, NativeAgentsResult::Conversation { can_input: Some(false), .. }));
 	assert!(matches!(
 		native_agents::read(&agent.store, &agent.client, "agent", Some("foreign"), None).await,
 		decodex_protocol::NativeAgentsResult::Unavailable
@@ -220,5 +220,44 @@ async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work()
 		assert_eq!(request["method"], "thread/read");
 	}
 
+	assert_eq!(agent.store.list_agent_work_items().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_input() {
+	let mut history = serde_json::json!({});
+	for (id, capability) in [
+		("cold", serde_json::Value::Null),
+		("ready", true.into()),
+		("managed", false.into()),
+		("foreign", serde_json::Value::Null),
+	] {
+		let mut value = child(id, if id == "foreign" { "unrelated" } else { "opaque thread/1" });
+		value["thread"]["turns"] = serde_json::json!([]);
+		value["thread"]["canAcceptDirectInput"] = capability;
+		history[id] = value;
+	}
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	for id in ["cold", "ready", "managed"] {
+		native_agents::prepare(&agent.store, &agent.client, "agent", id).await.unwrap();
+	}
+	assert!(native_agents::prepare(&agent.store, &agent.client, "agent", "foreign").await.is_err());
+	let mut resumed = 0;
+	while let Ok(request) = sent.try_recv() {
+		match request["method"].as_str().unwrap() {
+			"thread/read" => {},
+			"thread/resume" => {
+				resumed += 1;
+				assert_eq!(
+					request["params"],
+					serde_json::json!({"threadId":"cold", "excludeTurns":true})
+				);
+			},
+			other => panic!("preparation must not start a turn or change settings: {other}"),
+		}
+	}
+	assert_eq!(resumed, 1);
 	assert_eq!(agent.store.list_agent_work_items().await.unwrap().len(), 1);
 }

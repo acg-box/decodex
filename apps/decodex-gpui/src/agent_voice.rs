@@ -154,7 +154,7 @@ impl Media {
 				return accepted;
 			},
 			Some("finish") if self.capture.is_some() => {
-				self.capture.as_ref().unwrap().finish();
+				self.capture.as_ref().expect("finish matched an active capture").finish();
 				return true;
 			},
 			Some("start" | "dictate" | "stop") => {
@@ -224,10 +224,10 @@ impl Media {
 					),
 			}
 		}
-		if let Some(capture) = &self.capture {
-			if let Some(event) = capture.poll() {
-				return Some(event);
-			}
+		if let Some(capture) = &self.capture
+			&& let Some(event) = capture.poll()
+		{
+			return Some(event);
 		}
 		if let Some(transport) = &self.transport {
 			if let Some(event) = transport.poll() {
@@ -401,7 +401,7 @@ impl AgentSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = "Start an Agent conversation before opening Live voice.".into();
+			self.feedback = "Send a message before starting voice chat.".into();
 
 			cx.notify();
 
@@ -420,7 +420,7 @@ impl AgentSurface {
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
-				self.feedback = "Live voice requires the current signed Decodex.app build.".into();
+				self.feedback = "Voice chat requires the latest signed Decodex app.".into();
 
 				cx.notify();
 

@@ -159,8 +159,10 @@ impl SqliteStore {
 
 			if manager {
 				tx.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [&attempt.target_work]).map_err(error::sqlite_error)?;
-				tx.execute("INSERT INTO agent_workspaces(agent_id,name,directory) SELECT ?1,name,directory FROM agent_workspaces WHERE agent_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;
+
 			}
+
+            tx.execute("INSERT INTO work_workspace(work_id,workspace_id) SELECT ?1,workspace_id FROM work_workspace WHERE work_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;
 
 			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_attempt',?3,?4,'resolved','reserved',?4)", rusqlite::params![attempt.key(),a.work,serde_json::json!(attempt).to_string(),now]).map_err(error::sqlite_error)?;
 

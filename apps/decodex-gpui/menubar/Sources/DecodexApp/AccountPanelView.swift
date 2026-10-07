@@ -219,7 +219,7 @@ struct AccountPanelView: View {
 						await fastMode.toggle()
 					}
 				},
-				help: fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on"
+				help: fastMode.isEnabled ? "Turn fast mode off" : "Turn fast mode on"
 			)
 
 			PanelIconButtonView(
@@ -555,7 +555,7 @@ struct AccountPanelView: View {
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 					Text(
 						store.hasLoaded
-							? "Add a Codex login to get started."
+							? "Add an account to get started."
 							: "The account service has not returned a complete list."
 				)
 				.font(PanelFont.emptyBody)

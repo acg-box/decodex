@@ -167,7 +167,7 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 	tests::complete(&mut agent, "worker").await;
 
 	agent.continue_worker("worker", "Repair the evidence").await.unwrap();
-	agent.create_manager("agent", "manager", "Manage this delegated outcome", None).await.unwrap();
+	agent.create_manager("agent", "manager", "Manage this delegated outcome").await.unwrap();
 
 	let starts: Vec<_> =
 		iter::from_fn(|| sent.try_recv().ok()).filter(|v| v["method"] == "turn/start").collect();

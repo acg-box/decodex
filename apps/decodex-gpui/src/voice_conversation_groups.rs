@@ -171,10 +171,9 @@ mod tests {
 			AgentSurface,
 			native_timeline::{Binding, Timeline},
 		};
-		use gpui::AppContext as _;
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
-		let mut entries = vec![
+		let mut entries = [
 			boundary("start", true),
 			speech("user", "Hi"),
 			speech("assistant", "Hello"),

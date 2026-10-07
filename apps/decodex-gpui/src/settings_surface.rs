@@ -90,7 +90,7 @@ impl SettingsSurface {
 			category: SettingsCategory::General,
 			snapshot,
 			runtime: MenuBarRuntimeState::Waiting,
-			detail: "Loading preferences…".into(),
+			detail: "Loading settings…".into(),
 			controller,
 			menu_bar,
 			launch_at_login,
@@ -879,21 +879,20 @@ const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 
 const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 	match snapshot.load {
-		DesktopSettingsLoadState::NeverRequested => "Waiting for the Decodex settings query.",
-		DesktopSettingsLoadState::Loading => "Loading your preferences.",
+		DesktopSettingsLoadState::NeverRequested => "Settings have not loaded yet.",
+		DesktopSettingsLoadState::Loading => "Loading settings…",
 		DesktopSettingsLoadState::Ready => match snapshot.command {
 			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult =>
-				"Saving preference…",
+				"Saving settings…",
 			DesktopSettingsCommandState::OutcomeUnknown =>
-				"Reading back preferences after an uncertain response.",
-			DesktopSettingsCommandState::Refused =>
-				"The Decodex service refused the preference change.",
+				"Checking whether your changes were saved…",
+			DesktopSettingsCommandState::Refused => "This setting could not be changed.",
 			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted =>
-				"Your preferences are saved.",
+				"Settings saved.",
 		},
 		DesktopSettingsLoadState::Offline =>
 			"Connect to the Decodex service to read desktop settings.",
-		DesktopSettingsLoadState::Unavailable => "Daemon-owned desktop settings are unavailable.",
+		DesktopSettingsLoadState::Unavailable => "Settings are temporarily unavailable.",
 		DesktopSettingsLoadState::Refused => "The desktop settings response was invalid.",
 	}
 }
@@ -903,9 +902,8 @@ const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 		DesktopSettingsInputError::Offline =>
 			"Connect to the Decodex service before changing this setting.",
 		DesktopSettingsInputError::Busy => "Wait for the current settings request to finish.",
-		DesktopSettingsInputError::NotLoaded => "Wait for preferences to load.",
-		DesktopSettingsInputError::IdentityUnavailable =>
-			"Decodex could not create a bounded settings command identity.",
+		DesktopSettingsInputError::NotLoaded => "Wait for settings to load.",
+		DesktopSettingsInputError::IdentityUnavailable => "Could not save this setting. Try again.",
 	}
 }
 
@@ -915,7 +913,7 @@ fn quote_attribution() -> impl IntoElement {
 		.debug_selector(|| "quote-source".into())
 		.role(Role::Link)
 		.tab_index(0)
-		.aria_label("Quotes provided by ZenQuotes. Open source website.")
+		.aria_label("Quotes from ZenQuotes. Visit the website.")
 		.text_size(gpui::px(11.))
 		.text_color(gpui::rgb(TEXT_MUTED))
 		.cursor_pointer()
@@ -1055,7 +1053,7 @@ mod tests {
 			settings.update(visual, |s, cx| {
 				s.snapshot.command = command;
 				s.runtime = MenuBarRuntimeState::Waiting;
-				s.detail = "Saving preference…".into();
+				s.detail = "Saving settings…".into();
 
 				cx.notify();
 			});

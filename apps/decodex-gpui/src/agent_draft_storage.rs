@@ -661,6 +661,20 @@ impl AgentSurface {
 			.transpose_option()?;
 
 		Some(DesktopProfileDraft {
+			new_conversation_workspace: self
+				.workspace
+				.new_conversation_workspace
+				.as_deref()
+				.map(EntityId::new)
+				.transpose()
+				.ok()?,
+			new_conversation: self
+				.workspace
+				.new_conversation
+				.as_deref()
+				.map(EntityId::new)
+				.transpose()
+				.ok()?,
 			prompt_edits: self
 				.draft_profiles
 				.active
@@ -792,6 +806,10 @@ impl AgentSurface {
 impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
+			new_conversation: saved.new_conversation.map(|id| id.as_str().into()),
+			new_conversation_workspace: saved
+				.new_conversation_workspace
+				.map(|id| id.as_str().into()),
 			creation: saved.composer.creation,
 			unconfirmed: saved.unconfirmed_commands,
 			text: saved.composer.text,
@@ -898,6 +916,28 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
+	#[gpui::test]
+	fn new_conversation_draft_restores_without_creating_work(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.new_work_conversation(cx);
+			s.workspace.new_conversation_workspace = Some("folder".into());
+			s.composer.update(cx, |input, cx| input.set_content("Unsent idea", cx));
+			let saved = s.capture_draft_document(cx).unwrap();
+			let restored = Drafts::from_document(saved, s.command_epoch);
+			s.workspace.new_conversation = None;
+			s.workspace.new_conversation_workspace = None;
+			s.selected = s.root_id();
+			s.apply_drafts(restored, cx);
+			assert!(s.is_new_conversation());
+			assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("folder"));
+			assert_eq!(s.composer.read(cx).content(), "Unsent idea");
+			assert!(s.conversation_work().is_none());
+			assert!(s.submission.waiting.is_none());
+		});
+	}
+
 	use std::os::unix::fs::OpenOptionsExt as _;
 
 	#[cfg(test)] use gpui::AppContext as _;

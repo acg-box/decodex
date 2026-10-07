@@ -89,6 +89,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		connection_initializing: false,
 		runtime_source: Some(EntityId::new("native-source").unwrap()),
 		workspaces: vec![],
 		dependencies: vec![],

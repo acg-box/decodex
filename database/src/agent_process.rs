@@ -920,7 +920,7 @@ mod tests {
 		manager.id = "manager".into();
 		manager.parent_goal_id = Some("root".into());
 
-		store.create_agent_manager(manager, None).await.unwrap();
+		store.create_agent_manager(manager).await.unwrap();
 
 		for work in ["root", "second-root", "manager"] {
 			store.bind_agent_thread(work.into(), format!("thread-{work}")).await.unwrap();

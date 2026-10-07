@@ -109,7 +109,7 @@ impl AgentSurface {
 							let mut input = ComposerInput::with_placeholder(
 								40,
 								"Your answer",
-								"Answer to Agent",
+								"Reply to agent",
 								cx,
 							);
 
@@ -851,6 +851,7 @@ mod timing_tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
+                connection_initializing: false,
                 runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![requests::AgentWorkItemDto {

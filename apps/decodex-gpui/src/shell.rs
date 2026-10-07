@@ -1080,7 +1080,7 @@ impl Shell {
 		if self.pending_account_logout.as_ref() != Some(account_id) {
 			self.pending_account_logout = Some(account_id.clone());
 			self.account_status =
-				Some("Select Log out again to confirm credential deletion.".into());
+				Some("Select Sign out again to remove this account’s saved sign-in.".into());
 
 			cx.notify();
 
@@ -1283,7 +1283,7 @@ impl Shell {
 		if let Some(cancellation) = &self.account_login_cancellation {
 			cancellation.store(true, Ordering::Release);
 
-			self.account_login_error = Some("Cancelling account login…".into());
+			self.account_login_error = Some("Cancelling sign-in…".into());
 
 			cx.notify();
 		}
@@ -1353,7 +1353,7 @@ impl Shell {
 		{
 			cx.write_to_clipboard(ClipboardItem::new_string(code));
 
-			self.account_login_error = Some("Login code copied.".into());
+			self.account_login_error = Some("Sign-in code copied.".into());
 
 			cx.notify();
 		}
@@ -2099,7 +2099,7 @@ impl Destination {
 
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Agent => "Open Agent",
+			Self::Agent => "Open conversation",
 			Self::Advisor => "Review guidance and bounded decisions.",
 			Self::Projects => "Own repositories and product context.",
 			Self::Conversations =>
@@ -2480,13 +2480,13 @@ const fn input_error_label(error: ConversationInputError) -> &'static str {
 		ConversationInputError::Offline => "Conversations are offline.",
 		ConversationInputError::Busy => "Wait for the current command result.",
 		ConversationInputError::InvalidMessage => "Enter a message within the supported limit.",
-		ConversationInputError::NoSelection => "Select a Conversation first.",
+		ConversationInputError::NoSelection => "Select a conversation first.",
 		ConversationInputError::NotReady =>
-			"The selected Conversation is not ready for this command.",
+			"This conversation is not ready. Wait for it to reconnect.",
 		ConversationInputError::NotInterruptible => "The selected turn is not running.",
 		ConversationInputError::IdentityUnavailable => "A command identity could not be created.",
 		ConversationInputError::WorkingDirectoryUnavailable =>
-			"The local Conversation working directory is unavailable.",
+			"The conversation’s working directory is unavailable.",
 	}
 }
 
@@ -2621,6 +2621,32 @@ fn floating_window_controls(
 	_window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	let conversation_header = (shell.selected == Destination::Agent).then(|| {
+		shell.agent.update(cx, |agent, cx| {
+			let (left, right) = agent.topbar_insets(_window);
+			gpui::div()
+				.absolute()
+				.top_0()
+				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
+				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
+				.h_full()
+				.flex()
+				.items_center()
+				.justify_center()
+				.min_w_0()
+				.child(
+					gpui::div()
+						.id("conversation-topbar-controls")
+						.max_w(gpui::px(360.))
+						.w_full()
+						.min_w_0()
+						.occlude()
+						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+						.on_click(|_, _, cx| cx.stop_propagation())
+						.child(agent.work_context(_window, cx)),
+				)
+		})
+	});
 	gpui::div()
 		.id("floating-window-controls")
 		.role(Role::Navigation)
@@ -2662,6 +2688,7 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
+		.children(conversation_header)
 		.into_any_element()
 }
 
@@ -2680,7 +2707,7 @@ fn tooltip_surface(text: SharedString, color: u32) -> Div {
 
 fn topbar_controls(
 	shell: &Shell,
-	_presentation: &ConnectionPresentation,
+	presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let left_sidebar_visible = shell.left_sidebar_visible;
@@ -2691,13 +2718,13 @@ fn topbar_controls(
 		.expect("Settings destination");
 
 	ui_theme::floating_group()
+		.gap(gpui::px(2.))
 		.text_size(gpui::px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
 			// Keep global controls in place while their data is loading.
 			controls
-				.child(agent_panel_control(shell, 2, cx))
 				.child(agent_panel_control(shell, 1, cx))
-				.child(agent_panel_control(shell, 3, cx))
+				.child(agent_panel_control(shell, 2, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
@@ -2705,6 +2732,20 @@ fn topbar_controls(
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_inspector_toggle(inspector_visible, cx))
 		})
+		.when(
+			matches!(shell.selected, Destination::Agent | Destination::Conversations),
+			|controls| {
+				controls.child(
+					gpui::div()
+						.w(gpui::px(1.))
+						.h(gpui::px(12.))
+						.mx(gpui::px(4.))
+						.flex_none()
+						.bg(gpui::rgba(0xffffff30)),
+				)
+			},
+		)
+		.child(shell.render_status_toggle(presentation, cx))
 		.child(
 			gpui::div()
 				.id("open-settings")
@@ -2773,11 +2814,10 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	};
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
-		(1, true) => "Toggle work graph · Command-J",
-		(2, true) => "Toggle history rail",
-		(3, _) => "Toggle agent structure · Command-B",
-		(1, false) => "Work graph · no work yet",
-		_ => "History · no messages yet",
+		(1, true) => "Toggle work overview · Command-J",
+		(2, _) => "Toggle agent structure · Command-B",
+		(1, false) => "Work overview · no work yet",
+		_ => "Panel unavailable",
 	};
 
 	gpui::div()
@@ -2792,7 +2832,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.flex()
 		.items_center()
 		.justify_center()
-		.when(active, |el| el.bg(gpui::rgba(0xffffff0c)))
+		.when(active && index == 0, |el| el.bg(gpui::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
 			el.cursor_pointer().hover(|el| el.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
@@ -2809,7 +2849,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				s.agent.update(cx, |agent, cx| match index {
 					0 => agent.toggle_workspace_sidebar(cx),
 					1 => agent.toggle_workspace_graph(cx),
-					2 => agent.toggle_workspace_timeline(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 			}
@@ -2829,13 +2868,17 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				s.agent.update(cx, |agent, cx| match index {
 					0 => agent.toggle_workspace_sidebar(cx),
 					1 => agent.toggle_workspace_graph(cx),
-					2 => agent.toggle_workspace_timeline(cx),
 					_ => agent.toggle_agent_tree(cx),
 				});
 				cx.stop_propagation();
 			}
 		}))
-		.child(AgentSurface::panel_glyph(index))
+		.child(
+			gpui::div()
+				.flex()
+				.opacity(if active { 1. } else { 0.55 })
+				.child(AgentSurface::panel_glyph(index)),
+		)
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()
@@ -3222,7 +3265,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
 						.text_color(gpui::rgb(WB_ACCENT))
-						.child("PLANNED SURFACE"),
+						.child("Not available yet"),
 				)
 				.child(
 					gpui::div()
@@ -3246,9 +3289,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
 						.text_color(gpui::rgb(WB_TEXT_FAINT))
-						.child(
-							"No speculative controls are exposed before this projection has an authority owner.",
-						),
+						.child("This feature is not available in this version."),
 				),
 		)
 		.into_any_element()
@@ -3662,21 +3703,21 @@ fn account_login_button(
 
 fn account_login_status_label(status: &AccountLoginStatus) -> String {
 	match status.state {
-		AccountLoginState::OpeningBrowser => "Preparing browser login…".into(),
+		AccountLoginState::OpeningBrowser => "Opening browser sign-in…".into(),
 		AccountLoginState::RequestingCode => "Requesting a device code…".into(),
 		AccountLoginState::WaitingForBrowser =>
 			"Complete sign-in in the browser, then return to Decodex.".into(),
 		AccountLoginState::Installing =>
 			"Installing the verified account through the Decodex service…".into(),
 		AccountLoginState::Completed => status.resolved_account_id.as_ref().map_or_else(
-			|| "Account login completed.".into(),
+			|| "Account sign-in completed.".into(),
 			|account_id| format!("Account {} is ready.", account_id.as_str()),
 		),
 		AccountLoginState::Failed => status.failure.map_or_else(
-			|| "Account login failed.".into(),
-			|failure| format!("Account login failed: {failure:?}."),
+			|| "Could not sign in. Try again.".into(),
+			|failure| format!("Account sign-in failed: {failure:?}."),
 		),
-		AccountLoginState::Cancelled => "Account login was cancelled.".into(),
+		AccountLoginState::Cancelled => "Sign-in cancelled.".into(),
 	}
 }
 
@@ -3687,7 +3728,9 @@ fn account_login_start(
 	let next_entity = || {
 		accounts::canonical_uuid_v4()
 			.map_err(account_input_error_label)
-			.and_then(|value| EntityId::new(value).map_err(|_| "Login identity is invalid."))
+			.and_then(|value| {
+				EntityId::new(value).map_err(|_| "The sign-in session is invalid. Try again.")
+			})
 			.map_err(SharedString::from)
 	};
 	let session_id = next_entity()?;
@@ -3696,7 +3739,7 @@ fn account_login_start(
 		.map_err(account_input_error_label)
 		.map_err(SharedString::from)?;
 	let idempotency_key = IdempotencyKey::new(format!("account-login/{command_identity}"))
-		.map_err(|_| SharedString::from("Login command identity is invalid."))?;
+		.map_err(|_| SharedString::from("Could not start sign-in. Try again."))?;
 	let install_mode =
 		if let Some((account_id, expected_revision, recovery_operation_id)) = existing {
 			AccountLoginInstallMode::Reauthenticate {
@@ -3716,7 +3759,7 @@ fn account_login_start(
 		};
 	let start = AccountLoginStart { session_id, method, install_mode };
 
-	start.validate().map_err(|_| SharedString::from("Login request is invalid."))?;
+	start.validate().map_err(|_| SharedString::from("Could not start sign-in. Try again."))?;
 
 	Ok(start)
 }
@@ -4042,7 +4085,7 @@ fn account_management_actions(
 					account_icon_action(
 						"account-logout",
 						index,
-						"Log out account",
+						"Sign out of this account",
 						if presentation.logout_pending {
 							workspace_symbols::Symbol::Confirm
 						} else {
@@ -4128,25 +4171,25 @@ fn account_row_action(
 
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
 	match readiness {
-		AccountLifecycleReadinessDto::Ready => "READY",
-		AccountLifecycleReadinessDto::CredentialAbsent => "NO CREDENTIAL",
-		AccountLifecycleReadinessDto::StoreUnavailable => "STORE UNAVAILABLE",
-		AccountLifecycleReadinessDto::StoreMismatch => "STORE MISMATCH",
-		AccountLifecycleReadinessDto::ProviderMismatch => "PROVIDER MISMATCH",
-		AccountLifecycleReadinessDto::OperationUnsettled => "OPERATION PENDING",
-		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "CALLBACK UNREADY",
-		AccountLifecycleReadinessDto::Tombstoned => "LOGGED OUT",
+		AccountLifecycleReadinessDto::Ready => "Ready",
+		AccountLifecycleReadinessDto::CredentialAbsent => "Sign-in required",
+		AccountLifecycleReadinessDto::StoreUnavailable => "Sign-in unavailable",
+		AccountLifecycleReadinessDto::StoreMismatch => "Saved account mismatch",
+		AccountLifecycleReadinessDto::ProviderMismatch => "Provider mismatch",
+		AccountLifecycleReadinessDto::OperationUnsettled => "Update in progress",
+		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "Sign-in not ready",
+		AccountLifecycleReadinessDto::Tombstoned => "Signed out",
 	}
 }
 
 fn accounts_load_label(load: AccountsLoadState) -> &'static str {
 	match load {
-		AccountsLoadState::NeverRequested => "Open Accounts to load the daemon-owned pool.",
-		AccountsLoadState::Loading => "Loading account pool…",
-		AccountsLoadState::Ready => "Account pool is synchronized.",
-		AccountsLoadState::Offline => "Account authority is offline.",
+		AccountsLoadState::NeverRequested => "Open Accounts to view your accounts.",
+		AccountsLoadState::Loading => "Loading accounts…",
+		AccountsLoadState::Ready => "Accounts are up to date.",
+		AccountsLoadState::Offline => "The account service is offline.",
 		AccountsLoadState::Stale => "Showing retained account state; refresh after reconnect.",
-		AccountsLoadState::Unavailable => "The daemon could not return a safe account snapshot.",
+		AccountsLoadState::Unavailable => "Account status could not be loaded. Try refreshing.",
 		AccountsLoadState::Refused => "The account response did not match this request.",
 	}
 }
@@ -4193,7 +4236,7 @@ fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static st
 
 fn account_input_error_label(error: AccountInputError) -> &'static str {
 	match error {
-		AccountInputError::Offline => "Account authority is offline.",
+		AccountInputError::Offline => "The account service is offline.",
 		AccountInputError::Busy => "Wait for the current account change to finish.",
 		AccountInputError::AccountMissing => "That account is no longer in the current pool.",
 		AccountInputError::RoutingUnavailable => "Routing controls are unavailable. Refresh first.",
@@ -4234,7 +4277,7 @@ fn command_status(command: ConversationCommandState) -> Option<&'static str> {
 	match command {
 		ConversationCommandState::Idle => None,
 		ConversationCommandState::Sending => Some("Sending command"),
-		ConversationCommandState::AwaitingResult => Some("Waiting for durable result"),
+		ConversationCommandState::AwaitingResult => Some("Waiting for confirmation…"),
 		ConversationCommandState::Accepted => Some("Command accepted"),
 		ConversationCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
 		ConversationCommandState::OutcomeUnknown =>
@@ -4294,7 +4337,7 @@ fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 fn conversation_load_status(load: ConversationsLoadState) -> &'static str {
 	match load {
 		ConversationsLoadState::NeverRequested => "Conversations have not loaded.",
-		ConversationsLoadState::Loading => "Loading Conversations",
+		ConversationsLoadState::Loading => "Loading conversations…",
 		ConversationsLoadState::Ready =>
 			"Local task list loaded. Open or refresh a task for latest Codex state.",
 		ConversationsLoadState::Offline => "Offline. Retained conversation state remains visible.",
@@ -4526,7 +4569,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			.text_center()
 			.text_size(gpui::px(11.0))
 			.text_color(gpui::rgb(WB_TEXT_FAINT))
-			.child("Select a Conversation to inspect its durable context.")
+			.child("Select a conversation to view its context.")
 			.into_any_element();
 	};
 	let runtime = task
@@ -4597,7 +4640,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.text_color(gpui::rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
-				.child("OPEN IN CODEX")
+				.child("Open in Codex")
 				.smooth(),
 		);
 	} else {
@@ -4810,7 +4853,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 					gpui::div()
 						.id("open-agent")
 						.role(Role::Button)
-						.aria_label("Open Agent")
+						.aria_label("Open conversation")
 						.h(gpui::px(26.0))
 						.px_2()
 						.flex()
@@ -4831,7 +4874,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Agent, cx);
 						}))
-						.child("Open Agent")
+						.child("Open conversation")
 						.smooth(),
 				),
 		)
@@ -5463,7 +5506,7 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 	match value {
 		None => "No native process sample yet.".into(),
 		Some(NativeProcessDiagnostics::Inactive) =>
-			"No active Agent process. Refresh does not start one.".into(),
+			"No agent is running. Refreshing does not start one.".into(),
 		Some(NativeProcessDiagnostics::Unsupported) =>
 			"This Codex version does not provide process diagnostics.".into(),
 		Some(NativeProcessDiagnostics::Unavailable) =>
@@ -5540,7 +5583,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 							gpui::div()
 								.text_size(gpui::px(12.))
 								.font_weight(FontWeight::SEMIBOLD)
-								.child("Active Agent process"),
+								.child("Active agent process"),
 						)
 						.child(
 							gpui::div()
@@ -7664,23 +7707,23 @@ mod tests {
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels())
 		};
 
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-j");
 
-		assert_eq!(panels(visual), [(true, true), (false, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (false, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-e");
 
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true)]);
 
 		visual.simulate_keystrokes("cmd-b");
 
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
+		assert_eq!(panels(visual), [(false, true), (false, true), (false, true)]);
 
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
 	}
 
 	#[gpui::test]

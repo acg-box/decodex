@@ -1,3 +1,7 @@
+// UI copy: use sentence case for labels, headings, tooltips and accessibility names.
+// Keep product names, abbreviations and native macOS menu names in their official case.
+// Use “sign in” / “sign out”, “reset card”, “conversation” and “All work” consistently.
+// Describe actions and outcomes; keep transport and storage details in diagnostics.
 //! Shared visual tokens for the native Decodex operating shell.
 //!
 //! Page owners keep their domain-specific layout. This module owns only the
@@ -22,6 +26,9 @@ pub(crate) const HEADING_SIZE: f32 = 15.0;
 pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const PANEL_HEADER_HEIGHT: f32 = 30.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
+pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
+pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
+pub(crate) const SIDEBAR_INSET: f32 = 6.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
@@ -113,3 +120,6 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.text_color(gpui::rgb(TEXT))
 		.child(title)
 }
+
+/// Stable gutter shared by conversation history and composer alignment.
+pub(crate) const HISTORY_RAIL_WIDTH: f32 = 44.;

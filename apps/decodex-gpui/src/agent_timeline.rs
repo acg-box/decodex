@@ -131,13 +131,12 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_open_native_history(&mut self, cx: &mut Context<Self>) {
-		let Some((work, thread)) = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot
-				.work_items
-				.iter()
-				.find(|work| Some(&work.id) == self.selected.as_ref())
-				.and_then(|work| Some((work.id.clone(), work.codex_thread_id.clone()?)))
-		}) else {
+		if self.connection_initializing() {
+			return;
+		}
+		let Some((work, thread)) =
+			self.conversation_work().and_then(|work| Some((work.id, work.codex_thread_id?)))
+		else {
 			self.timeline.native.reset();
 
 			return;
@@ -148,9 +147,8 @@ impl AgentSurface {
 			self.timeline.native.viewport.request_latest();
 		}
 
-		let turn = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.as_deref()
-		});
+		let selected = self.conversation_work();
+		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
 
 		self.timeline.native.retry_after_turn_change(turn);
 
@@ -206,13 +204,10 @@ impl AgentSurface {
 			),
 		);
 
-		if self
-			.timeline
-			.native
-			.binding
-			.as_ref()
-			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
-		{
+		if self.native_agents.selected.is_none()
+			&& self.timeline.native.binding.as_ref().is_some_and(|b| {
+				b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref()
+			}) {
 			controls = controls.child(
 				gpui::div().debug_selector(|| "native-history-source-toggle".into()).child(
 					self.workspace_action(
@@ -330,6 +325,54 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
+	fn process_history_body(
+		&self,
+		work: &AgentWorkItemDto,
+		group: &groups::Group,
+		entry: &AgentTimelineEntry,
+		first: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let owner = cx.entity();
+		let indices = group.indices.clone();
+		let source_work = work.clone();
+		let header = first.then(|| self.turn_process_header(work, group, entry, cx));
+		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).children(header).child(
+			ui_motion::disclosure_lazy(
+				SharedString::from(format!(
+					"turn-process-body-{}-{}-{}",
+					work.id,
+					group.turn,
+					serde_json::json!(key(entry))
+				)),
+				group.expanded,
+				move |cx| {
+					owner.update(cx, |s, cx| {
+						render::process_indent(
+							gpui::div().w_full().flex().flex_col().gap(gpui::px(8.)).children(
+								indices
+									.iter()
+									.filter_map(|index| s.timeline.native.entries.get(*index))
+									.map(|entry| {
+										s.native_timeline_content(
+											&source_work,
+											entry,
+											&format!(
+												"process-{}-{}",
+												source_work.id,
+												serde_json::json!(key(entry))
+											),
+											cx,
+										)
+									}),
+							),
+						)
+					})
+				},
+			),
+		)
+	}
+
 	fn append_native_history_rows(
 		&self,
 		mut panel: Div,
@@ -354,6 +397,17 @@ impl AgentSurface {
 		let voice_hidden: BTreeSet<_> =
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let empty_reasoning = groups::empty_completed_reasoning(&self.timeline.native.entries);
+		let replied_turns: BTreeSet<_> = self
+			.timeline
+			.native
+			.entries
+			.iter()
+			.filter_map(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, kind, .. } if kind == "agentMessage" =>
+					Some(turn_id),
+				_ => None,
+			})
+			.collect();
 		let mut hidden = Vec::new();
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
@@ -403,6 +457,13 @@ impl AgentSurface {
 			if voice_hidden.contains(&index) {
 				continue;
 			}
+			if matches!(&entry.content,
+				AgentTimelineContent::TurnBoundary { completed: true, turn_id, status, error: None, .. }
+				if replied_turns.contains(turn_id)
+					&& !matches!(status.as_deref(), Some("interrupted" | "failed")))
+			{
+				continue;
+			}
 			if empty_reasoning.contains(&index) {
 				continue;
 			}
@@ -412,54 +473,8 @@ impl AgentSurface {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
-				let owner = cx.entity();
-				let indices = group.indices.clone();
-				let source_work = work.clone();
-				let header = (index == group.first_index)
-					.then(|| self.turn_process_header(work, group, entry, cx));
-				let body = gpui::div()
-					.w_full()
-					.debug_selector(|| "turn-process-block".into())
-					.children(header)
-					.child(ui_motion::disclosure_lazy(
-						SharedString::from(format!(
-							"turn-process-body-{}-{}-{}",
-							work.id,
-							group.turn,
-							serde_json::json!(key(entry))
-						)),
-						group.expanded,
-						move |cx| {
-							owner.update(cx, |s, cx| {
-								render::process_indent(
-									gpui::div()
-										.w_full()
-										.flex()
-										.flex_col()
-										.gap(gpui::px(8.))
-										.children(
-											indices
-												.iter()
-												.filter_map(|index| {
-													s.timeline.native.entries.get(*index)
-												})
-												.map(|entry| {
-													s.native_timeline_content(
-														&source_work,
-														entry,
-														&format!(
-															"process-{}-{}",
-															source_work.id,
-															serde_json::json!(key(entry))
-														),
-														cx,
-													)
-												}),
-										),
-								)
-							})
-						},
-					));
+				let body =
+					self.process_history_body(work, group, entry, index == group.first_index, cx);
 
 				panel =
 					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));
@@ -597,9 +612,8 @@ impl AgentSurface {
 		let epoch = self.timeline.native.epoch;
 
 		self.timeline.native.requested = Some((work.clone(), thread.clone()));
-		self.timeline.native.requested_turn = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot.work_items.iter().find(|item| item.id == work)?.active_turn_id.clone()
-		});
+		self.timeline.native.requested_turn =
+			self.conversation_work().and_then(|work| work.active_turn_id);
 
 		let sent_cursor = cursor.clone();
 		let request = cx.background_executor().spawn(async move {
@@ -621,16 +635,10 @@ impl AgentSurface {
 					return;
 				}
 
-				s.timeline.native.task = None;
-
-				if s.selected.as_deref() != Some(&work)
-					|| !s.snapshot.as_ref().is_some_and(|v| {
-						v.work_items
-							.iter()
-							.any(|w| w.id == work && w.codex_thread_id.as_deref() == Some(&thread))
-					}) {
+				if s.selected.as_deref() != Some(&work) || !s.conversation_matches(&work, &thread) {
 					return;
 				}
+				s.timeline.native.task = None;
 
 				if let Some(decodex_protocol::AgentTimelineResult::Summary {
 					work_id,

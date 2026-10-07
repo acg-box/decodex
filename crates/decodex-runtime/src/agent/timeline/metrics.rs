@@ -291,6 +291,11 @@ mod tests {
 	#[tokio::test]
 	async fn native_page_reads_enrich_exact_turns_and_recheck_source_after_saved_usage() {
 		let directory = tempfile::tempdir().unwrap();
+		std::fs::set_permissions(
+			directory.path(),
+			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+		)
+		.unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 

@@ -168,6 +168,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			&& finished.contains(turn_id.as_str())
 			&& finals.contains(turn_id.as_str())
 			&& attachments.is_empty()
+			&& kind != "agentInput"
 			&& (matches!(kind.as_str(), "reasoning" | "plan")
 				|| (kind == "agentMessage" && phase.as_deref() == Some("commentary"))
 				|| activity.as_ref().is_some_and(|a| {
@@ -333,27 +334,29 @@ mod tests {
 	}
 	#[test]
 	fn interleaved_user_input_splits_process_segments_without_reordering() {
-		let entries = vec![
-			message(0, "userMessage", None),
-			message(1, "reasoning", None),
-			message(2, "userMessage", None),
-			message(3, "reasoning", None),
-			message(4, "agentMessage", Some("final_answer")),
-			completed("completed"),
-		];
-		let result = groups::groups(&entries, &BTreeSet::new());
+		for input_kind in ["userMessage", "agentInput"] {
+			let entries = vec![
+				message(0, "userMessage", None),
+				message(1, "reasoning", None),
+				message(2, input_kind, None),
+				message(3, "reasoning", None),
+				message(4, "agentMessage", Some("final_answer")),
+				completed("completed"),
+			];
+			let result = groups::groups(&entries, &BTreeSet::new());
 
-		assert_eq!(
-			result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
-			BTreeSet::from([1])
-		);
-		assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
-		assert_eq!(groups::earlier_messages_label(result[0].count), "2 earlier messages");
-		assert_eq!(groups::earlier_messages_label(1), "1 earlier message");
-		assert_eq!(
-			result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
-			vec![vec![1], vec![3]]
-		);
+			assert_eq!(
+				result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
+				BTreeSet::from([1])
+			);
+			assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
+			assert_eq!(groups::earlier_messages_label(result[0].count), "2 earlier messages");
+			assert_eq!(groups::earlier_messages_label(1), "1 earlier message");
+			assert_eq!(
+				result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
+				vec![vec![1], vec![3]]
+			);
+		}
 	}
 
 	#[gpui::test]

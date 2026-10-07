@@ -108,11 +108,11 @@ struct AccountUtilityActionsView: View {
 
 	var body: some View {
 		CompactAccountActionButton(
-			title: "Log out", symbol: "rectangle.portrait.and.arrow.right",
+			title: "Sign out", symbol: "rectangle.portrait.and.arrow.right",
 			isActive: false, isDisabled: lifecycleActionIsDisabled,
 			isVisuallyDisabled: !store.canPerformDirectAccountControl,
 			usesDisabledEnvironment: !store.canPerformDirectAccountControl,
-			isBusy: false, help: "Log out"
+			isBusy: false, help: "Sign out"
 		) { isLogoutArmed = true }
 		.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) { logoutConfirmation }
 		.onChange(of: state.account.accountRevision) { isLogoutArmed = false }
@@ -120,10 +120,10 @@ struct AccountUtilityActionsView: View {
 
 	private var logoutConfirmation: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
-			Text("Log out this account?")
+			Text("Sign out of this account?")
 				.font(PanelFont.transientTitle)
 
-			Text("The account and its saved credential binding will be removed from Decodex.")
+			Text("This account and its saved sign-in will be removed from Decodex.")
 				.font(PanelFont.transientBody)
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
@@ -136,7 +136,7 @@ struct AccountUtilityActionsView: View {
 
 				Spacer()
 
-				Button("Log out", role: .destructive) {
+				Button("Sign out", role: .destructive) {
 					Task {
 						await store.logoutAccount(state.account.accountID)
 						isLogoutArmed = false
@@ -174,8 +174,8 @@ struct AccountRefreshLoginButton: View {
 				activity: .loginRefresh
 			),
 			help: state.loginRefreshRecoveryOperationID == nil
-				? "Sign in to this account with the official Codex device login."
-				: "Sign in again to safely replace an uncertain account update."
+				? "Sign in to this account with a one-time code."
+				: "Sign in again to reconnect this account."
 		) {
 			store.beginAccountReauthentication(for: state.account.accountID)
 		}

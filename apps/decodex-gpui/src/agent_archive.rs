@@ -62,6 +62,9 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn load_archive_state(&mut self, force: bool, cx: &mut Context<Self>) {
+		if self.connection_initializing() {
+			return;
+		}
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
@@ -232,7 +235,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn selected_is_archived(&self) -> bool {
-		self.archive.owner == self.selected
+		self.native_agents.selected.is_none()
+			&& self.archive.owner == self.selected
 			&& (matches!(self.archive.result, Some(AgentArchiveResult::Archived { .. }))
 				|| self.archive.mutation.is_some())
 	}
@@ -430,6 +434,7 @@ mod tests {
 
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				dependencies: vec![],

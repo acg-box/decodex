@@ -15,7 +15,6 @@ static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 	let sources: [&[u8]; 33] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
-		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
 		include_bytes!("../../../assets/workspace-symbols/settings.png"),
 		include_bytes!("../../../assets/workspace-symbols/close.png"),
@@ -46,6 +45,7 @@ static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/reset-cards.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-reorder.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-warning-amber.png"),
+		include_bytes!("../../../assets/workspace-symbols/all-work.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
@@ -54,7 +54,6 @@ static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 pub(super) enum Symbol {
 	Sidebar,
 	Graph,
-	Timeline,
 	Expand,
 	Settings,
 	Close,
@@ -85,6 +84,7 @@ pub(super) enum Symbol {
 	ResetCards,
 	AccountReorder,
 	AccountWarningAmber,
+	AllWork,
 }
 
 #[derive(gpui::IntoElement)]
@@ -165,10 +165,14 @@ impl RenderOnce for ProcessChevron {
 pub(super) fn icon(symbol: Symbol) -> AnyElement {
 	let size = match symbol {
 		Symbol::ChevronDown => 12.0,
-		Symbol::Sidebar | Symbol::Graph | Symbol::Timeline | Symbol::Agents => 20.0,
+		Symbol::Sidebar | Symbol::Graph | Symbol::Agents => 20.0,
 		_ => 16.0,
 	};
 
+	icon_sized(symbol, size)
+}
+
+pub(super) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
 	gpui::img(IMAGES[symbol as usize].clone()).size(gpui::px(size)).flex_none().into_any_element()
 }
 

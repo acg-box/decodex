@@ -8,7 +8,6 @@ GPUI embeds the images in the executable; no asset lookup depends on the checkou
 | --- | --- | --- |
 | sidebar.png | sidebar.left | Toggle the left sidebar |
 | graph.png | sidebar.right | Toggle the work graph panel |
-| timeline.png | rectangle.bottomthird.inset.filled | Toggle the bottom timeline |
 | expand.png | arrow.up.left.and.arrow.down.right | Expand or restore the graph |
 | settings.png | gearshape | Open settings |
 | close.png | xmark | Close a panel or work tab |

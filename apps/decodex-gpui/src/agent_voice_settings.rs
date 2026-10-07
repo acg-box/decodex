@@ -130,8 +130,8 @@ impl AgentSurface {
 		if active && let Some(next) = &self.voice_settings.next {
 			panel=panel.child("Applies when you start a call. Blank fields use configured defaults. Changes do not affect an active call.")
                 .child("Realtime model").child(next.model.clone())
-                .child("Instructions for the Agent when voice starts").child(gpui::div().h(gpui::px(90.)).child(next.start.clone()))
-                .child("Instructions for the Agent when voice ends").child(gpui::div().h(gpui::px(90.)).child(next.end.clone()));
+                .child("Instructions for the agent when voice starts").child(gpui::div().h(gpui::px(90.)).child(next.start.clone()))
+                .child("Instructions for the agent when voice ends").child(gpui::div().h(gpui::px(90.)).child(next.end.clone()));
 		}
 
 		panel.into_any_element()

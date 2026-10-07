@@ -53,6 +53,8 @@ pub(super) struct Profiles {
 
 #[derive(Default)]
 struct Drafts {
+	new_conversation: Option<String>,
+	new_conversation_workspace: Option<String>,
 	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
@@ -76,19 +78,21 @@ struct Drafts {
 
 impl AgentSurface {
 	pub(super) fn draft_owner_available(&self) -> bool {
-		self.composer_manager.as_ref().is_none_or(|owner| {
-			self.snapshot.as_ref().is_some_and(|snapshot| {
-				snapshot.work_items.iter().any(|work| {
-					&work.id == owner
-						&& self
-							.draft_profiles
-							.threads
-							.get(owner)
-							.is_none_or(|thread| work.codex_thread_id.as_ref() == Some(thread))
-						&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
+		self.is_new_conversation()
+			|| self.composer_manager.as_ref().is_none_or(|owner| {
+				self.snapshot.as_ref().is_some_and(|snapshot| {
+					snapshot.work_items.iter().any(|work| {
+						&work.id == owner
+							&& self
+								.draft_profiles
+								.threads
+								.get(owner)
+								.is_none_or(|thread| work.codex_thread_id.as_ref() == Some(thread))
+							&& (work.parent_goal_id.is_none()
+								|| work.kind == AgentWorkKindDto::Manager)
+					})
 				})
 			})
-		})
 	}
 
 	pub(super) fn bind_drafts(&mut self, profile: Option<&ClientProfile>, cx: &mut Context<Self>) {
@@ -148,6 +152,8 @@ impl AgentSurface {
 	fn take_drafts(&mut self, cx: &Context<Self>) -> Drafts {
 		self.submission.previews.clear();
 		Drafts {
+			new_conversation: self.workspace.new_conversation.take(),
+			new_conversation_workspace: self.workspace.new_conversation_workspace.take(),
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
 			threads: mem::take(&mut self.draft_profiles.threads),
@@ -179,7 +185,14 @@ impl AgentSurface {
 		self.async_question_choices = restored.question_choices;
 		self.async_question_threads = restored.question_threads;
 		self.collapsed_async_questions = restored.collapsed_questions;
+		self.workspace.new_conversation = restored.new_conversation;
+		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
 		self.composer_manager = restored.manager;
+		if self.workspace.new_conversation.is_some()
+			&& self.workspace.new_conversation == self.composer_manager
+		{
+			self.selected = self.composer_manager.clone();
+		}
 
 		if self.composer_manager.is_none() {
 			self.restore_creation_setup(restored.creation.as_ref(), cx);
@@ -220,6 +233,7 @@ pub(super) mod tests {
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
+		fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 
 		fs::create_dir(path.join("server")).unwrap();
 		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();

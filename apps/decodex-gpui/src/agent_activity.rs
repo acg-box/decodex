@@ -53,11 +53,7 @@ impl Display for HistoryKey {
 
 impl AgentSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
-		let native = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				Some(&work.id) == self.selected.as_ref() && self.native_history_active(work)
-			})
-		});
+		let native = self.conversation_work().is_some_and(|work| self.native_history_active(&work));
 		let work = self.selected.clone().map(|work| (work, native));
 
 		if self.timeline.marks_work != work {
@@ -190,8 +186,19 @@ impl AgentSurface {
 			} else {
 				match &entry.content {
 					AgentTimelineContent::Item { kind, text, .. }
-						if kind == "userMessage" || kind == "agentMessage" =>
-						(kind == "userMessage", text, "Conversation message"),
+						if matches!(
+							kind.as_str(),
+							"userMessage" | "agentInput" | "agentMessage"
+						) =>
+						(
+							kind != "agentMessage",
+							text,
+							if kind == "agentInput" {
+								"Task input"
+							} else {
+								"Conversation message"
+							},
+						),
 					AgentTimelineContent::Speech { role, text, .. } =>
 						(role == "user", text, "Voice message"),
 					_ => continue,
@@ -300,6 +307,34 @@ impl AgentSurface {
 				started: std::time::Instant::now(),
 			});
 
+			cx.notify();
+		}
+	}
+
+	pub(super) fn drag_history_scrollbar(&mut self, offset: f32, cx: &mut Context<Self>) {
+		self.timeline.latest_follow_work = None;
+		self.cancel_native_scroll_anchor();
+		self.timeline.navigation = None;
+		self.timeline.selected = None;
+		self.timeline.wheel_scroll = None;
+		if let Some(id) = self.selected.clone()
+			&& let Some(scroll) = self.timeline.scroll.get(&id)
+		{
+			let previous = f32::from(scroll.offset().y);
+			let maximum = f32::from(scroll.max_offset().y).max(0.);
+			let offset = offset.clamp(-maximum, 0.);
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
+			let following = (offset + maximum).abs() < 1.;
+			if following {
+				self.timeline.follow_paused.remove(&id);
+			} else {
+				self.timeline.follow_paused.insert(id);
+			}
+			self.set_voice_follow(following);
+			if offset > previous {
+				self.timeline.native.prefetch_requested = true;
+				self.prefetch_older_history(cx);
+			}
 			cx.notify();
 		}
 	}
@@ -534,18 +569,12 @@ impl AgentSurface {
 			.as_ref()
 			.and_then(|id| self.timeline.scroll.get(id))
 			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.));
-		let working = self
-			.snapshot
-			.as_ref()
-			.and_then(|snapshot| {
-				snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
-			})
-			.is_some_and(|work| {
-				matches!(
-					work.dispatch_state,
-					AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
-				) && !self.thread_in_use(&work.id)
-			});
+		let working = self.conversation_work().is_some_and(|work| {
+			matches!(
+				work.dispatch_state,
+				AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
+			) && !self.thread_in_use(&work.id)
+		});
 		let width =
 			ui_motion::value("jump-latest-width", if working { 56. } else { 28. }, window, cx);
 		let clock =
@@ -565,7 +594,7 @@ impl AgentSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(gpui::px(8.))
+			.bottom(gpui::px(self.workspace.composer_overlay_height + 8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					gpui::div()
@@ -619,14 +648,18 @@ impl AgentSurface {
 
 	pub(super) fn history_rail_slot(
 		&self,
-		width: f32,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		// History nodes are transient while switching agents. Only the explicit
-		// visibility control may resize the rail and move the transcript.
+		// Reserve a stable gutter while histories load or agents change.
 		gpui::div()
-			.w(gpui::px(width))
+			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
+			.pb(gpui::px(ui_motion::value(
+				"history-rail-bottom",
+				self.workspace.composer_overlay_height,
+				window,
+				cx,
+			)))
 			.flex_none()
 			.overflow_hidden()
 			.child(self.history_rail(window, cx))
@@ -658,19 +691,16 @@ impl AgentSurface {
 	}
 
 	pub(super) fn history_rail(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-		if self.timeline.marks.is_empty() {
+		if self.timeline.marks.len() < 2 {
 			return gpui::div().into_any_element();
 		}
 
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
 		let positions: Vec<_> =
 			self.timeline.marks.values().map(|mark| mark.position.clone()).collect();
-		let working = self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|work| {
-				Some(&work.id) == self.selected.as_ref()
-					&& work.dispatch_state == AgentDispatchStateDto::Running
-			})
-		});
+		let working = self
+			.conversation_work()
+			.is_some_and(|work| work.dispatch_state == AgentDispatchStateDto::Running);
 		let last = positions.len() - 1;
 		let current = self.active_history_index(&scroll);
 		let active_position = ui_motion::value(
@@ -682,7 +712,10 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let spacing = ((f32::from(scroll.bounds().size.height) - 32.0) / positions.len() as f32)
+		let spacing = ((f32::from(scroll.bounds().size.height)
+			- self.workspace.composer_overlay_height
+			- 32.0)
+			/ positions.len() as f32)
 			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
@@ -729,7 +762,16 @@ impl AgentSurface {
 
 						cx.notify();
 					}))
-					.tooltip(move |_, cx| cx.new(|_| HistoryPreview(tip.clone())).into())
+					// Navigation previews already have their text; do not use the
+					// generic tooltip's 500 ms discovery delay.
+					.tooltip_show_delay(std::time::Duration::ZERO)
+					.tooltip(move |_, cx| {
+						cx.new(|_| HistoryPreview {
+							mark: tip.clone(),
+							opened: std::time::Instant::now(),
+						})
+						.into()
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
@@ -805,10 +847,25 @@ pub(super) struct WheelScroll {
 	motion: crate::ui_scroll::Motion,
 }
 
-struct HistoryPreview(HistoryMark);
+struct HistoryPreview {
+	mark: HistoryMark,
+	opened: std::time::Instant,
+}
 impl Render for HistoryPreview {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let progress = if ui_motion::reduced() {
+			1.0
+		} else {
+			(self.opened.elapsed().as_secs_f32() / 0.08).min(1.0)
+		};
+		if progress < 1.0 {
+			ui_motion::request_frame(window, cx);
+		}
+
+		// Paint the surface and text together, already readable on the first frame.
 		gpui::div()
+			.debug_selector(|| "history-hover-preview".into())
+			.opacity(0.8 + 0.2 * (1.0 - (1.0 - progress).powi(3)))
 			.w(gpui::px(320.0))
 			.p_3()
 			.rounded(gpui::px(10.0))
@@ -824,12 +881,12 @@ impl Render for HistoryPreview {
 				gpui::div()
 					.text_size(gpui::px(10.0))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(self.0.time.clone()),
+					.child(self.mark.time.clone()),
 			)
-			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.0.question.clone()))
-			.when(!self.0.answer.is_empty(), |panel| {
+			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.mark.question.clone()))
+			.when(!self.mark.answer.is_empty(), |panel| {
 				panel.child(
-					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.0.answer.clone()),
+					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.mark.answer.clone()),
 				)
 			})
 	}
@@ -876,6 +933,30 @@ mod tests {
 	#[cfg(test)] use decodex_protocol::AgentTimelinePage;
 
 	#[gpui::test]
+	fn history_hover_shows_without_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let bounds = surface.read_with(visual, |s, _| {
+			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
+		});
+		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
+		// No clock advance: cached content must appear before the default tooltip dwell.
+		visual.run_until_parked();
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("history-hover-preview").is_some());
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(1.), gpui::px(1.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
+		visual.run_until_parked();
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("history-hover-preview").is_none());
+	}
+
+	#[gpui::test]
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -917,23 +998,6 @@ mod tests {
 				assert_eq!(bounds.size.width, original.size.width);
 			}
 		}
-
-		// The explicit toggle still controls the reserved rail width.
-		surface.update(visual, |s, cx| {
-			s.workspace.timeline_visible = false;
-
-			cx.notify();
-		});
-
-		visual.update(|w, cx| w.draw(cx).clear());
-
-		thread::sleep(std::time::Duration::from_millis(240));
-
-		visual.update(|w, cx| w.draw(cx).clear());
-
-		assert!(
-			visual.debug_bounds("workspace-transcript").unwrap().size.width > original.size.width
-		);
 	}
 
 	#[gpui::test]
@@ -1135,7 +1199,7 @@ mod tests {
 						app_ui: false,
 						turn_id: "turn".into(),
 						item_id: "same-id".into(),
-						kind: "userMessage".into(),
+						kind: "agentInput".into(),
 						text: text.clone(),
 						truncated: false,
 						activity: None,
@@ -1588,35 +1652,22 @@ mod tests {
 		});
 		for width in [1600., 700.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.)));
-			for rail in [true, false] {
-				surface.update(visual, |s, cx| {
-					s.workspace.timeline_visible = rail;
-					cx.notify();
-				});
-				// Check alignment during the transition as well as at rest.
-				for _ in 0..3 {
-					visual.update(|w, cx| w.draw(cx).clear());
-					let content = visual.debug_bounds("conversation-content").unwrap();
-					let composer = visual.debug_bounds("agent-composer").unwrap();
-					let inset = gpui::px(crate::ui_theme::CONVERSATION_INSET);
-					assert!(
-						(content.left() + inset - composer.left()).abs() < gpui::px(1.),
-						"left: {content:?} / {composer:?}"
-					);
-					assert!(
-						(content.right() - inset - composer.right()).abs() < gpui::px(1.),
-						"right: {content:?} / {composer:?}"
-					);
-					assert!(composer.size.width <= gpui::px(crate::ui_theme::CONVERSATION_WIDTH));
-					assert!(composer.left() >= gpui::px(0.) && composer.right() <= gpui::px(width));
-					thread::sleep(std::time::Duration::from_millis(130));
-				}
+			{
+				visual.update(|w, cx| w.draw(cx).clear());
+				let footer = visual.debug_bounds("floating-composer").unwrap();
+				let composer = visual.debug_bounds("agent-composer").unwrap();
+				assert!(
+					(composer.center().x - footer.center().x).abs() < gpui::px(1.),
+					"composer must center on the full panel, including the timeline gutter"
+				);
+				assert!(composer.size.width <= gpui::px(crate::ui_theme::CONVERSATION_WIDTH));
+				assert!(composer.left() >= gpui::px(0.) && composer.right() <= gpui::px(width));
 			}
 		}
 	}
 
 	#[gpui::test]
-	fn composer_growth_never_overlaps_history(cx: &mut gpui::TestAppContext) {
+	fn composer_growth_keeps_history_behind_the_overlay(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
 		surface.update(visual, |s, cx| {
@@ -1637,8 +1688,16 @@ mod tests {
 				visual.update(|w, cx| w.draw(cx).clear());
 			}
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
-			let footer = visual.debug_bounds("composer-footer").unwrap();
-			assert!(transcript.bottom() <= footer.top(), "{text}: {transcript:?} / {footer:?}");
+			let footer = visual.debug_bounds("floating-composer").unwrap();
+			assert!(
+				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
+				"{text}: history must extend behind the floating input"
+			);
+			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
+			assert!(
+				(clearance - f32::from(footer.size.height)).abs() < 1.,
+				"tail clearance follows the growing composer"
+			);
 			assert!(transcript.size.height > gpui::px(0.));
 		}
 	}
@@ -1668,8 +1727,10 @@ mod tests {
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			scroll.bounds().bottom() <= visual.debug_bounds("composer-footer").unwrap().top(),
-			"history must be clipped above the composer"
+			(scroll.bounds().bottom() - visual.debug_bounds("floating-composer").unwrap().bottom())
+				.abs()
+				< gpui::px(1.),
+			"history must continue behind the composer"
 		);
 
 		let position = scroll.bounds().center();

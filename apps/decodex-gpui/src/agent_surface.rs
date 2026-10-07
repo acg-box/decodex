@@ -11,6 +11,7 @@
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
+#[path = "agent_dock.rs"] mod dock;
 #[path = "agent_drafts.rs"] mod drafts;
 #[path = "agent_execution_intent.rs"] mod execution_intent;
 #[path = "agent_graph.rs"] mod graph;
@@ -52,6 +53,7 @@ mod native_composer;
 #[path = "agent_voice.rs"] mod voice;
 #[path = "agent_voice_settings.rs"] mod voice_settings;
 #[path = "agent_weather.rs"] mod weather;
+#[path = "agent_work_browser.rs"] mod work_browser;
 #[path = "agent_workspace.rs"] mod workspace;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
 
@@ -142,6 +144,7 @@ pub(crate) struct AgentSurface {
 	dictation: Option<DictationUi>,
 	dictation_task: Option<Task<()>>,
 	activity_detail: ActivityDetailState,
+	dock_evidence: dock::Evidence,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
@@ -189,6 +192,7 @@ pub(crate) struct AgentSurface {
 	attachments: Vec<AgentAttachmentDto>,
 	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
+	work_search: Entity<ComposerInput>,
 	draft_profiles: Profiles,
 	composer_manager: Option<String>,
 	model_settings: model_settings::Panel,
@@ -321,6 +325,7 @@ impl AgentSurface {
 			dictation: None,
 			dictation_task: None,
 			activity_detail: Default::default(),
+			dock_evidence: Default::default(),
 			resources: None,
 			resources_task: None,
 			usage_estimate: None,
@@ -357,6 +362,7 @@ impl AgentSurface {
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
+			work_search: Self::new_work_search(cx),
 			draft_profiles: Default::default(),
 			composer_manager: None,
 			native_agents: Default::default(),
@@ -464,6 +470,22 @@ impl AgentSurface {
 	}
 
 	fn load_history(&mut self, cx: &mut Context<Self>) {
+		if self.is_new_conversation() {
+			return;
+		}
+		if self.native_agents.selected.is_none()
+			&& self.command_connection_ready()
+			&& let Some(work) =
+				self.conversation_work().filter(|w| w.kind == AgentWorkKindDto::Task)
+			&& let Some(thread) = work.codex_thread_id
+		{
+			self.enter_native_conversation(&work.id, &thread, cx);
+			return;
+		}
+		if self.native_agents.selected.is_some() {
+			self.refresh_open_native_history(cx);
+			return;
+		}
 		self.refresh_open_native_history(cx);
 		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
@@ -772,6 +794,26 @@ impl AgentSurface {
 		})
 		.map_err(|_| "Message is too long")?;
 
+		if self.is_new_conversation() {
+			return Ok(AgentActionDto::NewConversation {
+				workspace_id: self
+					.workspace
+					.new_conversation_workspace
+					.as_deref()
+					.map(EntityId::new)
+					.transpose()
+					.map_err(|_| "Invalid workspace")?,
+				work_id: EntityId::new(self.selected.clone().expect("draft identity"))
+					.map_err(|_| "Invalid conversation identity")?,
+				text: prompt,
+				execution: self.draft_profiles.execution.choice(
+					self.selected.as_deref().expect("new conversation has a draft identity"),
+				),
+				attachments: self.attachments.clone(),
+				task_references: self.task_references.clone(),
+			});
+		}
+
 		if !self.draft_owner_available() {
 			return Err(
 				"This draft's conversation is unavailable. Select a conversation before sending."
@@ -790,18 +832,18 @@ impl AgentSurface {
 				.or_else(|| snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none()))
 		}) {
 			return Ok(AgentActionDto::Send {
-				root_id: EntityId::new(root.id.clone()).map_err(|_| "Invalid Agent identity")?,
+				root_id: EntityId::new(root.id.clone()).map_err(|_| "Invalid agent identity")?,
 				text: prompt,
 			});
 		}
 
 		if self.state != LoadState::Ready {
-			return Err("Refresh to confirm whether a Agent already exists.".into());
+			return Err("Wait for conversations to load before sending.".into());
 		}
 
 		Ok(AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new(format!("agent-{}", unique_command()))
-				.map_err(|_| "Invalid Agent identity")?,
+				.map_err(|_| "Invalid agent identity")?,
 			prompt,
 			model: ConversationModel::new(self.model.read(cx).content().trim())
 				.map_err(|_| "Enter an exact model ID.")?,
@@ -821,6 +863,10 @@ impl AgentSurface {
 	}
 
 	fn submit(&mut self, cx: &mut Context<Self>) {
+		if self.native_agents.selected.is_some() {
+			self.send_native_agent(cx);
+			return;
+		}
 		// Live uses this slot for the microphone. Do not send a hidden draft.
 		if self.voice.is_some() {
 			return;
@@ -885,6 +931,9 @@ impl AgentSurface {
 					action => action,
 				};
 
+				if matches!(&action, AgentActionDto::NewConversation { .. }) {
+					self.workspace.opening_work = self.selected.clone();
+				}
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -994,11 +1043,14 @@ impl AgentSurface {
 		self.capture_send_preview(&pending);
 
 		if pending.draft.is_some() {
+			if self.workspace.preview_page == self.conversation_page() {
+				self.workspace.preview_page = None;
+			}
 			self.follow_latest_after_send(cx);
 		}
 
 		self.sending = true;
-		self.feedback = "Waiting for durable acceptance…".into();
+		self.feedback = "Sending…".into();
 
 		if pending.steer.is_some() {
 			self.submission.pending = Some(pending.clone());
@@ -1246,6 +1298,8 @@ impl AgentSurface {
 		self.snapshot = None;
 
 		self.workspace.pages.clear();
+		self.native_agents.pages.clear();
+		self.native_agents.timelines.clear();
 		self.workspace.closing_pages.clear();
 		self.workspace.page_views.clear();
 
@@ -1396,8 +1450,11 @@ impl AgentSurface {
 				surface.apply_result(result);
 				surface.refresh_native_goal(cx);
 
-				if surface.current_model_catalog(cx).is_none()
-					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
+				if !surface.connection_initializing()
+					&& (surface.current_model_catalog(cx).is_none()
+						|| surface
+							.capabilities_checked
+							.is_none_or(|at| at.elapsed().as_secs() >= 60))
 				{
 					surface.load_capabilities(cx);
 				}
@@ -1480,16 +1537,28 @@ impl AgentSurface {
 				{
 					self.timeline.native.reset();
 				}
-				if !self
-					.selected
-					.as_ref()
-					.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+				if !self.is_new_conversation()
+					&& !self
+						.selected
+						.as_ref()
+						.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
 				{
 					self.selected = snapshot
 						.work_items
 						.iter()
 						.find(|work| work.parent_goal_id.is_none())
 						.map(|work| work.id.clone());
+				}
+
+				// A saved first message promotes the local editor to a real conversation,
+				// including when acceptance was recovered after restarting the app.
+				if self
+					.workspace
+					.new_conversation
+					.as_ref()
+					.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+				{
+					self.workspace.new_conversation = None;
 				}
 
 				self.snapshot = Some(snapshot);
@@ -1576,6 +1645,9 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
+		if self.connection_initializing() {
+			return None;
+		}
 		if !self.sending
 			&& !self.feedback.is_empty()
 			&& self.feedback != "Message saved · Waiting for agent…"
@@ -1636,18 +1708,18 @@ impl AgentSurface {
 
 	fn status_text(&self) -> String {
 		match self.displayed_load_state() {
-			LoadState::Idle => "Refresh to read Agent work from the local service.".into(),
+			LoadState::Idle => "Refresh to load your work.".into(),
 			LoadState::Loading => if self.snapshot.is_some() {
 				"Refreshing · showing the previous snapshot"
 			} else {
-				"Loading Agent work…"
+				"Loading work…"
 			}
 			.into(),
 			LoadState::Ready => "Saved conversation and work status".into(),
 			LoadState::Unavailable => if self.profile.is_none() {
 				"No local service profile is configured for this view."
 			} else {
-				"Reconnecting to Agent. Work may still be running. Connection details are in Settings → Diagnostics."
+				"Reconnecting… Your work may still be running. See Settings → Diagnostics for details."
 			}
 			.into(),
 			LoadState::Stale =>
@@ -1661,73 +1733,101 @@ impl AgentSurface {
 
 	pub(super) fn work_context(
 		&self,
-		snapshot: &AgentSnapshotDto,
-		work: &AgentWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let target = cx.entity();
-		let status = graph::state_in(snapshot, work).0;
-
+		window: &Window,
+		_cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		if self.is_new_conversation() && !self.workspace.browsing {
+			return gpui::div().into_any_element();
+		}
+		let title = if self.workspace.browsing {
+			"All work".into()
+		} else {
+			self.conversation_page()
+				.and_then(|id| {
+					self.native_page_label(&id).or_else(|| {
+						self.snapshot
+							.as_ref()?
+							.work_items
+							.iter()
+							.find(|w| w.id == id)
+							.map(|w| self.work_label(w))
+					})
+				})
+				.unwrap_or_else(|| "Main".into())
+		};
+		let tip = title.clone();
+		let (left, right) = self.topbar_insets(window);
+		let available = (f32::from(window.viewport_size().width) - left - right).min(360.) - 20.;
+		let run = gpui::TextRun {
+			len: title.len(),
+			font: window.text_style().font(),
+			color: gpui::rgb(ui_theme::TEXT_MUTED).into(),
+			background_color: None,
+			underline: None,
+			strikethrough: None,
+		};
+		let truncated = f32::from(
+			window
+				.text_system()
+				.shape_line(title.clone().into(), gpui::px(12.), &[run], None)
+				.width,
+		) > available;
 		gpui::div()
-			.flex_none()
-			.px_4()
-			.h(gpui::px(36.))
-			.justify_center()
+			.id("current-conversation-title")
+			.when(truncated, |title| {
+				title.tooltip(move |_, cx| {
+					cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into()
+				})
+			})
 			.debug_selector(|| "workspace-conversation-header".into())
+			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+			.w_full()
+			.max_w_full()
+			.min_w_0()
 			.flex()
-			.flex_col()
+			.items_center()
+			.justify_center()
+			.text_center()
+			.px(gpui::px(10.))
+			.text_size(gpui::px(12.))
+			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.child(gpui::div().min_w_0().whitespace_nowrap().text_ellipsis().child(title))
+			.into_any_element()
+	}
+
+	pub(super) fn work_details_button(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let target = cx.entity();
+		gpui::div()
+			.relative()
+			.flex_none()
+			.child(self.workspace_action(
+				"inspect-work".into(),
+				"⋯".into(),
+				|s, cx| {
+					s.workspace.details_visible = !s.workspace.details_visible;
+
+					if s.workspace.details_visible
+						&& let Some(work) = s.selected.clone()
+						&& s.resources.as_ref().is_none_or(|(owner, _)| owner != &work)
+					{
+						s.toggle_resources(&work, cx);
+					}
+
+					cx.notify();
+				},
+				cx,
+			))
 			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap(gpui::px(12.))
-					.child(gpui::div().flex_1().min_w_0().child(
-						if self.workspace.pages.is_empty() {
-							gpui::div()
-								.text_size(gpui::px(12.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(format!("{} · {status}", self.work_label(work)))
-								.into_any_element()
-						} else {
-							self.workspace_tabs(cx)
-						},
-					))
-					.child(
-						gpui::div()
-							.child(self.workspace_action(
-								"inspect-work".into(),
-								"Details".into(),
-								|s, cx| {
-									s.workspace.details_visible = !s.workspace.details_visible;
-
-									if s.workspace.details_visible
-										&& let Some(work) = s.selected.clone()
-										&& s.resources
-											.as_ref()
-											.is_none_or(|(owner, _)| owner != &work)
-									{
-										s.toggle_resources(&work, cx);
-									}
-
-									cx.notify();
-								},
-								cx,
-							))
-							.relative()
-							.child(
-								gpui::canvas(
-									move |bounds, _, cx| {
-										target.update(cx, |s, _| {
-											s.menu_trigger_bounds.insert("inspect-work", bounds);
-										});
-									},
-									|_, _, _, _| {},
-								)
-								.absolute()
-								.inset_0(),
-							),
-					),
+				gpui::canvas(
+					move |bounds, _, cx| {
+						target.update(cx, |s, _| {
+							s.menu_trigger_bounds.insert("inspect-work", bounds);
+						});
+					},
+					|_, _, _, _| {},
+				)
+				.absolute()
+				.inset_0(),
 			)
 			.into_any_element()
 	}
@@ -1884,6 +1984,12 @@ impl AgentSurface {
 	}
 
 	fn history_panel(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
+		if self.native_agents.selected.is_some() {
+			return self.history_activity(
+				gpui::div().w_full().min_w_0().child(self.native_timeline_panel(work, cx)),
+				work,
+			);
+		}
 		let panel = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -1984,16 +2090,24 @@ impl AgentSurface {
 		let active = matches!(
 			work.dispatch_state,
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
-		) || (self.selected.as_ref() == Some(&work.id)
+		) || (self.native_agents.selected.is_none()
+			&& self.selected.as_ref() == Some(&work.id)
 			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
 
-		if !self.native_history_active(work) {
+		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
 		panel = panel.child(Working {
-			key: format!("working-{}", work.id),
-			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
+			key: format!(
+				"working-{}-{}",
+				work.id,
+				work.codex_thread_id.as_deref().unwrap_or_default()
+			),
+			turn: (active
+				&& (self.native_agents.selected.is_some()
+					|| self.composer_unavailable_reason().is_none()))
+			.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
 		});
 
 		if active
@@ -2009,7 +2123,9 @@ impl AgentSurface {
 			);
 		}
 
-		panel.children(self.live_chat_caption(&work.id))
+		panel.when(self.native_agents.selected.is_none(), |p| {
+			p.children(self.live_chat_caption(&work.id))
+		})
 	}
 
 	fn capacity_retry_control(
@@ -2246,12 +2362,23 @@ impl Render for AgentSurface {
 }
 
 struct WorkspaceView {
+	new_conversation: Option<String>,
+	browsing: bool,
+	workspace_filter: Option<String>,
+	new_conversation_workspace: Option<String>,
+	folder_error: Option<String>,
+	workspace_picker: Option<bool>,
+	workspace_search: Option<Entity<ComposerInput>>,
+	opening_work: Option<String>,
+	composer_overlay_height: f32,
 	pages: Vec<String>,
+	preview_page: Option<String>,
 	closing_pages: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
+	dock_relations: bool,
+	dock_record: Option<String>,
 	page_views: std::collections::BTreeMap<String, PageView>,
-	timeline_visible: bool,
 	graph_scope: Option<String>,
 	graph_selected: Option<String>,
 	graph_zoom: f32,
@@ -2262,7 +2389,10 @@ struct WorkspaceView {
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
+	sidebar_peek: bool,
+	sidebar_leave: Option<Task<()>>,
 	sidebar_width: f32,
+	sidebar_motion: std::cell::RefCell<Option<crate::ui_motion::Tween>>,
 	agent_panel_width: f32,
 	graph_panel_height: f32,
 	focused_panel: Option<workspace_size::Panel>,
@@ -2274,12 +2404,23 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			new_conversation: None,
+			browsing: false,
+			workspace_filter: None,
+			new_conversation_workspace: None,
+			folder_error: None,
+			workspace_picker: None,
+			workspace_search: None,
+			opening_work: None,
+			composer_overlay_height: 0.,
 			pages: vec![],
+			preview_page: None,
 			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,
+			dock_relations: false,
+			dock_record: None,
 			page_views: Default::default(),
-			timeline_visible: true,
 			graph_scope: None,
 			graph_selected: None,
 			graph_zoom: 0.85,
@@ -2290,7 +2431,10 @@ impl Default for WorkspaceView {
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
+			sidebar_peek: false,
+			sidebar_leave: None,
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
+			sidebar_motion: Default::default(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),
 			graph_panel_height: PanelDefaults::configured().dock.into(),
 			focused_panel: None,
@@ -2531,7 +2675,7 @@ fn history_entry_presented(
 			text,
 		});
 	}
-	let user = entry.kind == "user";
+	let user = matches!(entry.kind.as_str(), "user" | "instruction");
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
 	} else {
@@ -2571,12 +2715,7 @@ fn history_entry_presented(
 						.bg(gpui::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
-				.when(entry.kind == "instruction", |body| {
-					body.pl_3()
-						.border_l_2()
-						.border_color(gpui::rgb(BLUE))
-						.child(muted("Agent instructions"))
-				})
+				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))
 				.child(streamed_body.unwrap_or_else(|| {
 					markdown::render(&visible_text, &format!("message-{identity}"))
 				}))
@@ -2843,6 +2982,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3016,6 +3156,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![AgentWorkItemDto {
@@ -3084,6 +3225,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![AgentWorkItemDto {
@@ -3219,6 +3361,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3343,6 +3486,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],
@@ -3432,6 +3576,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![],

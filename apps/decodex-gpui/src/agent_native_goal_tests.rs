@@ -40,6 +40,7 @@ impl Render for GoalView {
 fn fixture() -> (TempDir, ClientProfile, JoinHandle<()>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
+	fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 	let server = path.join("server");
 
 	fs::create_dir(&server).unwrap();
@@ -90,6 +91,7 @@ fn work() -> AgentWorkItemDto {
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").expect("source")),
 		workspaces: vec![],
 		work_items: vec![work()],

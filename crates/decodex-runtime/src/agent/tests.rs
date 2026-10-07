@@ -1122,6 +1122,30 @@ async fn failed_dependency_write_cannot_leave_dispatchable_work() {
 }
 
 #[tokio::test]
+async fn task_titles_survive_dispatch_without_changing_identity_or_legacy_names() {
+	let (mut coordinator, _sent, _directory) = fixture().await;
+	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+	let work = coordinator
+		.create(
+			"inspect-ui",
+			Some("agent"),
+			"Inspect the interface",
+			vec![],
+			Some("Review interface"),
+		)
+		.await
+		.unwrap();
+	assert_eq!(work.id, "inspect-ui");
+	assert_eq!(work.title, "Review interface");
+	assert!(work.codex_thread_id.is_some());
+	let saved = coordinator.store.get_agent_work_item(work.id).await.unwrap();
+	assert_eq!(saved.title, "Review interface");
+	assert_eq!(saved.instructions, "Inspect the interface");
+	let legacy = coordinator.create_worker("agent", "legacy-task", "Inspect").await.unwrap();
+	assert_eq!(legacy.title, "legacy-task");
+}
+
+#[tokio::test]
 async fn dependencies_block_turns_until_explicit_resolution() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 
@@ -2017,17 +2041,30 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	let manager = coordinator
-		.create_manager(
-			"agent",
-			"project",
-			"Manage project",
-			Some(("Project".into(), directory.path().display().to_string())),
-		)
-		.await
-		.unwrap();
+	AgentCoordinator::register_workspace(
+		&coordinator.store,
+		"folder",
+		directory.path().to_str().unwrap(),
+	)
+	.await
+	.unwrap();
+	AgentCoordinator::create_conversation(
+		&coordinator.store,
+		"folder-chat",
+		EnqueueAgentEvent {
+			source_event_id: "workspace-test".into(),
+			work_item_id: "folder-chat".into(),
+			event_kind: "user_message".into(),
+			payload: "{\"text\":\"Start\"}".into(),
+		},
+		Some("folder".into()),
+	)
+	.await
+	.unwrap();
+	let manager =
+		coordinator.create_manager("folder-chat", "project", "Manage project").await.unwrap();
 
-	coordinator.create_manager("project", "team", "Manage team", None).await.unwrap();
+	coordinator.create_manager("project", "team", "Manage team").await.unwrap();
 	coordinator.create_worker("team", "worker", "Do work").await.unwrap();
 
 	let root = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
@@ -2066,10 +2103,16 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	let starts: Vec<_> =
 		requests.iter().filter(|request| request["method"] == "thread/start").collect();
 
-	assert_eq!(starts.len(), 4);
+	assert_eq!(starts.len(), 5);
 	assert_eq!(starts[0]["params"]["threadSource"], "user");
 	assert!(starts[1..].iter().all(|start| start["params"].get("threadSource").is_none()));
-	assert!(starts[1]["params"]["dynamicTools"].is_array());
+	assert!(
+		starts[1]["params"]["dynamicTools"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.all(|tool| tool["name"] != "agent_create_workspace")
+	);
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());
 	assert_eq!(
@@ -4205,4 +4248,32 @@ async fn live_plan_finality_and_kind_survive_restart() {
 	assert_eq!(saved[0].text, "Final plan");
 	assert_eq!(saved[0].kind, "plan");
 	assert!(!saved[0].truncated);
+}
+
+#[tokio::test]
+async fn first_message_creates_conversation_and_starts_exactly_once() {
+	let (mut coordinator, mut sent, _directory) = fixture().await;
+	AgentCoordinator::reserve_root(&coordinator.store, "main", "Help the user").await.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	assert!(sent.try_recv().is_err());
+	AgentCoordinator::create_conversation(
+		&coordinator.store,
+		"new-chat",
+		EnqueueAgentEvent {
+			source_event_id: "first-input".into(),
+			work_item_id: "new-chat".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Improve sidebar navigation","source":"user"})
+				.to_string(),
+		},
+		None,
+	)
+	.await
+	.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let starts: Vec<_> =
+		iter::from_fn(|| sent.try_recv().ok()).filter(|r| r["method"] == "turn/start").collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["input"][0]["text"], "Improve sidebar navigation");
 }

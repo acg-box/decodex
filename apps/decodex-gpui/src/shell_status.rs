@@ -17,8 +17,7 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_preferences,
 	ui_theme::{
-		self, AMBER, BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR,
-		HOVER_FILL,
+		AMBER, BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL,
 	},
 };
 use decodex_protocol::{AccountLoginState, AccountProfileResult};
@@ -64,13 +63,6 @@ impl Shell {
 		connection: &ConnectionPresentation,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let notices = self.notifications(connection, cx);
-		let color = notice_color(&notices);
-		let label = if notices.is_empty() {
-			"Status".to_owned()
-		} else {
-			format!("Notifications · {}", notices.len())
-		};
 		let open = self.status_open;
 		let panel = self.render_status_panel(connection, cx);
 		#[cfg(not(all(target_os = "macos", not(test))))]
@@ -84,7 +76,7 @@ impl Shell {
 			.id("status-center")
 			.w(gpui::px(304.))
 			.absolute()
-			.bottom(gpui::px(CONTROL_MARGIN))
+			.top(gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN))
 			.right(gpui::px(CONTROL_MARGIN))
 			.flex()
 			.flex_col()
@@ -110,71 +102,15 @@ impl Shell {
 			.child(
 				gpui::div()
 					.absolute()
-					.bottom(gpui::px(CONTROL_GROUP_HEIGHT + CONTROL_MARGIN))
+					.top_0()
 					.right_0()
 					.w_full()
 					.on_children_prepainted(move |bounds, _, _| {
 						popup_bounds.set(bounds.first().copied())
 					})
-					.when(!native, |d| d.child(ui_motion::popover(open, panel))),
-			)
-			.child(
-				ui_theme::floating_group().child(
-					gpui::div()
-						.id("status-toggle")
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_label(label.clone())
-						.aria_expanded(open)
-						.size(gpui::px(CHROME_CONTROL_SIZE))
-						.relative()
-						.rounded(gpui::px(6.))
-						.flex()
-						.items_center()
-						.justify_center()
-						.text_size(gpui::px(11.))
-						.text_color(gpui::rgb(WB_TEXT_MUTED))
-						.cursor_pointer()
-						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-						.on_click(cx.listener(move |s, _, _, cx| {
-							s.status_open = !open;
-
-							cx.notify();
-						}))
-						.child(workspace_symbols::icon(if notices.is_empty() {
-							Symbol::Bell
-						} else if color == ERROR {
-							Symbol::BellError
-						} else if color == AMBER {
-							Symbol::BellAttention
-						} else {
-							Symbol::BellInfo
-						}))
-						.when(count_preference(None) && !notices.is_empty(), |d| {
-							d.child(
-								gpui::div()
-									.absolute()
-									.top(gpui::px(-4.))
-									.right(gpui::px(-5.))
-									.min_w(gpui::px(14.))
-									.h(gpui::px(14.))
-									.px(gpui::px(3.))
-									.rounded_full()
-									.bg(gpui::rgb(color))
-									.text_color(gpui::rgb(0x17171a))
-									.text_size(gpui::px(9.))
-									.flex()
-									.items_center()
-									.justify_center()
-									.child(if notices.len() > 99 {
-										"99+".into()
-									} else {
-										notices.len().to_string()
-									}),
-							)
-						})
-						.smooth(),
-				),
+					.when(!native, |d| {
+						d.child(ui_motion::popover("status-popover-motion", open, panel))
+					}),
 			)
 			.into_any_element()
 	}
@@ -289,10 +225,10 @@ impl Shell {
 		}
 
 		if let Some(detail) = &self.account_login_error {
-			if detail.as_ref() != "Cancelling account login…" {
-				let notice = Notice::new("Account login", detail.to_string(), Recovery::Accounts);
+			if detail.as_ref() != "Cancelling sign-in…" {
+				let notice = Notice::new("Account sign-in", detail.to_string(), Recovery::Accounts);
 
-				notices.push(if detail.as_ref() == "Login code copied." {
+				notices.push(if detail.as_ref() == "Sign-in code copied." {
 					notice.info()
 				} else {
 					notice
@@ -302,7 +238,7 @@ impl Shell {
 			match status.state {
 				AccountLoginState::Failed => notices.push(
 					Notice::new(
-						"Account login",
+						"Account sign-in",
 						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)
@@ -310,7 +246,7 @@ impl Shell {
 				),
 				AccountLoginState::Completed | AccountLoginState::Cancelled => notices.push(
 					Notice::new(
-						"Account login",
+						"Account sign-in",
 						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)
@@ -374,6 +310,81 @@ impl Shell {
 
 			notices.push(if requires_login { notice.error() } else { notice });
 		}
+	}
+
+	pub(super) fn render_status_toggle(
+		&self,
+		connection: &ConnectionPresentation,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let notices = self.notifications(connection, cx);
+		let color = notice_color(&notices);
+		let label = if notices.is_empty() {
+			"Status".to_owned()
+		} else {
+			format!("Notifications · {}", notices.len())
+		};
+		let open = self.status_open;
+		gpui::div()
+			.id("status-toggle")
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(label.clone())
+			.aria_expanded(open)
+			.size(gpui::px(CHROME_CONTROL_SIZE))
+			.relative()
+			.rounded(gpui::px(6.))
+			.flex()
+			.items_center()
+			.justify_center()
+			.text_size(gpui::px(11.))
+			.text_color(gpui::rgb(WB_TEXT_MUTED))
+			.cursor_pointer()
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.occlude()
+			.on_mouse_down(gpui::MouseButton::Left, |_, window, cx| {
+				window.prevent_default();
+				cx.stop_propagation();
+			})
+			.on_click(cx.listener(move |s, _, _, cx| {
+				s.status_open = !open;
+
+				cx.notify();
+			}))
+			.child(workspace_symbols::icon(if notices.is_empty() {
+				Symbol::Bell
+			} else if color == ERROR {
+				Symbol::BellError
+			} else if color == AMBER {
+				Symbol::BellAttention
+			} else {
+				Symbol::BellInfo
+			}))
+			.when(count_preference(None) && !notices.is_empty(), |d| {
+				d.child(
+					gpui::div()
+						.absolute()
+						.top(gpui::px(-4.))
+						.right(gpui::px(-5.))
+						.min_w(gpui::px(14.))
+						.h(gpui::px(14.))
+						.px(gpui::px(3.))
+						.rounded_full()
+						.bg(gpui::rgb(color))
+						.text_color(gpui::rgb(0x17171a))
+						.text_size(gpui::px(9.))
+						.flex()
+						.items_center()
+						.justify_center()
+						.child(if notices.len() > 99 {
+							"99+".into()
+						} else {
+							notices.len().to_string()
+						}),
+				)
+			})
+			.smooth()
+			.into_any_element()
 	}
 
 	pub(super) fn render_status_panel(

@@ -55,6 +55,14 @@ impl Render for ComposerTip {
 
 impl AgentSurface {
 	pub(super) fn running_turn(&self) -> Option<(EntityId, crate::shell::agent_surface::WireText)> {
+		if self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
+			self.snapshot
+				.as_ref()
+				.and_then(|s| s.work_items.iter().find(|w| &w.id == owner))
+				.is_none_or(|w| w.codex_thread_id.as_ref() != Some(thread))
+		}) {
+			return None;
+		}
 		let snapshot = self.snapshot.as_ref()?;
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
@@ -98,7 +106,7 @@ impl AgentSurface {
 
 	fn awaiting_start(&self, cx: &Context<Self>) -> bool {
 		// Steer submits into an existing turn; it must not show new-turn startup UI.
-		(self.sending && self.running_turn().is_none())
+		(self.sending && self.workspace.opening_work.is_none() && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
 				&& (self.feedback == "Message saved · Waiting for agent…"
@@ -289,7 +297,10 @@ impl AgentSurface {
 			cx.spawn(async move |surface, cx| {
 				if fetch.await {
 					let _ = surface.update(cx, |s, cx| {
-						if s.composer.read(cx).content().is_empty() && !s.sending {
+						if s.composer.read(cx).content().is_empty()
+							&& !s.sending
+							&& !s.is_new_conversation()
+						{
 							s.composer
 								.update(cx, |input, cx| input.set_placeholder(prompts::next(), cx));
 						}
@@ -305,16 +316,13 @@ impl AgentSurface {
 
 	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
 		gpui::div()
-			.mx_4()
-			.mb_3()
-			.p_3()
-			.rounded(gpui::px(14.))
-			.bg(gpui::rgb(0x27272b))
+			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap_2()
-			.children(self.attachment_row(cx))
-			.children(self.task_reference_row(cx))
+			.when(self.native_agents.selected.is_none(), |d| {
+				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
+			})
 			.child(
 				gpui::div()
 					.flex()
@@ -324,7 +332,7 @@ impl AgentSurface {
 						gpui::div()
 							.text_size(gpui::px(11.))
 							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("Draft only · Sending paused"),
+							.child("Draft"),
 					)
 					.child(self.composer_control(
 						"copy-draft",
@@ -406,7 +414,7 @@ impl AgentSurface {
 				if let Some(waveform) = self.voice_controls(window, cx) {
 					editor.child(waveform)
 				} else {
-					editor.child(self.composer.clone())
+					editor.child(self.conversation_composer().clone())
 				}
 			});
 
@@ -443,11 +451,14 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.on_drop(
-				cx.listener(|s, paths: &ExternalPaths, _, cx| s.attach_paths(paths.0.to_vec(), cx)),
-			)
-			.children(self.attachment_row(cx))
-			.children(self.task_reference_row(cx))
+			.on_drop(cx.listener(|s, paths: &ExternalPaths, _, cx| {
+				if s.native_agents.selected.is_none() {
+					s.attach_paths(paths.0.to_vec(), cx);
+				}
+			}))
+			.when(self.native_agents.selected.is_none(), |d| {
+				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
+			})
 			.map(|capsule| {
 				let controls = gpui::div()
 					.id("composer-action-row")
@@ -457,17 +468,28 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.gap(gpui::px(4.))
-					.child(self.composer_control(
-						"attach",
-						"+".into(),
-						"Attachments, skills and microphone",
-						|s, cx| s.toggle_composer_menu("attachments", cx),
-						cx,
-					));
+					.when(self.native_agents.selected.is_none(), |d| {
+						d.child(self.composer_control(
+							"attach",
+							"+".into(),
+							"Attachments, skills and microphone",
+							|s, cx| s.toggle_composer_menu("attachments", cx),
+							cx,
+						))
+					});
 				if self.voice.is_some() {
 					capsule.child(controls.child(editor).child(self.composer_toolbar(cx)))
 				} else {
-					capsule.child(editor).child(controls.child(self.composer_toolbar(cx)))
+					capsule
+						.when(
+							!(self.native_agents.selected.is_some()
+								&& matches!(
+									self.native_agents.connection,
+									super::native_agents::NativeConnection::ParentManaged
+								)),
+							|capsule| capsule.child(editor),
+						)
+						.child(controls.child(self.composer_toolbar(cx)))
 				}
 			})
 	}
@@ -501,6 +523,7 @@ impl AgentSurface {
 						}))
 						.child(
 							ui_motion::popover(
+								"composer-popover-motion",
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
 									.unwrap_or_else(|| gpui::div().into_any_element()),
@@ -639,6 +662,109 @@ impl AgentSurface {
 	}
 
 	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.native_agents.selected.is_some() {
+			use super::native_agents::NativeConnection;
+			let mut row = gpui::div()
+				.flex_1()
+				.min_w_0()
+				.h(gpui::px(CONTROL_SIZE))
+				.flex()
+				.items_center()
+				.gap(gpui::px(8.));
+			match &self.native_agents.connection {
+				NativeConnection::ParentManaged => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child("Message this agent through its parent."),
+						)
+						.child(self.workspace_action(
+							"native-open-parent".into(),
+							"Open parent".into(),
+							|s, cx| s.open_native_parent(cx),
+							cx,
+						));
+				},
+				NativeConnection::Failed(reason) => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(reason.clone()),
+						)
+						.child(self.workspace_action(
+							"native-connect-retry".into(),
+							"Retry".into(),
+							|s, cx| s.retry_native_connection(cx),
+							cx,
+						));
+				},
+				NativeConnection::Checking { started, .. } => {
+					row = row
+						.child(
+							gpui::div()
+								.flex_1()
+								.min_w_0()
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.when(started.elapsed() >= Duration::from_secs(3), |d| {
+									d.child("Connecting…")
+								}),
+						)
+						.child(
+							gpui::div()
+								.size(gpui::px(CONTROL_SIZE))
+								.flex()
+								.items_center()
+								.justify_center()
+								.child(crate::ui_loading::loading("")),
+						);
+				},
+				NativeConnection::Ready => {
+					row = row.justify_end().child(
+						if self.running_turn().is_some()
+							&& self.conversation_composer().read(cx).content().trim().is_empty()
+						{
+							self.composer_control(
+								"stop",
+								"".into(),
+								"Stop",
+								|s, cx| s.interrupt_current(cx),
+								cx,
+							)
+							.into_any_element()
+						} else {
+							self.composer_control(
+								"send",
+								"".into(),
+								"Send · Enter",
+								|s, cx| s.send_native_agent(cx),
+								cx,
+							)
+							.into_any_element()
+						},
+					);
+				},
+			}
+			return row.into_any_element();
+		}
+
+		if self.connection_initializing() {
+			return gpui::div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.justify_end()
+				.child(crate::ui_loading::loading("Connecting to Codex…"))
+				.into_any_element();
+		}
 		if let Some(controls) = self.dictation_controls(cx) {
 			return controls;
 		}
@@ -687,7 +813,7 @@ impl AgentSurface {
 					&& self.attachments.is_empty()
 					&& self.task_references.is_empty()
 				{
-					"Start Live"
+					"Start voice chat"
 				} else {
 					"Send · Enter"
 				},
@@ -830,7 +956,9 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.dictation.is_some() {
+				mode: if self.native_agents.selected.is_some() {
+					PrimaryMode::Send
+				} else if self.dictation.is_some() {
 					PrimaryMode::Done
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop
@@ -998,10 +1126,8 @@ impl AgentSurface {
 						.flex_col()
 						.gap(gpui::px(6.))
 						.child(
-							gpui::div()
-								.p(gpui::px(8.))
-								.rounded(gpui::px(14.))
-								.bg(gpui::rgb(0x29292d))
+							ui_motion::menu_surface(gpui::div())
+								.p(gpui::px(5.))
 								.child(self.model_palette(cx))
 								.child(
 									gpui::div()
@@ -1010,11 +1136,10 @@ impl AgentSurface {
 								),
 						)
 						.child(
-							gpui::div()
-								.px(gpui::px(8.))
-								.py(gpui::px(3.))
+							ui_motion::menu_surface(gpui::div())
+								.px(gpui::px(7.))
+								.py(gpui::px(2.))
 								.rounded_full()
-								.bg(gpui::rgb(0x29292d))
 								.flex()
 								.items_center()
 								.child(self.creation_effort_toggle(cx))
@@ -1295,6 +1420,35 @@ mod tests {
 		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
 		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
 	};
+
+	#[gpui::test]
+	fn native_and_main_composers_keep_the_same_geometry(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1200.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let main = visual.debug_bounds("agent-composer").unwrap();
+		let main_send = visual.debug_bounds("composer-send").unwrap();
+		surface.update(visual, |s, cx| {
+			s.native_agents.selected = Some(("agent".into(), "child".into()));
+			s.native_agents.connection =
+				crate::shell::agent_surface::native_agents::NativeConnection::Ready;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let native = visual.debug_bounds("agent-composer").unwrap();
+		let native_send = visual.debug_bounds("composer-send").unwrap();
+		assert_eq!(main.size, native.size);
+		assert_eq!(main.right() - main_send.right(), native.right() - native_send.right());
+		assert_eq!(main.bottom() - main_send.bottom(), native.bottom() - native_send.bottom());
+	}
 
 	#[gpui::test]
 	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {

@@ -137,8 +137,8 @@ final class CardScrollerView<Content: View>: NSView {
 		scroll.verticalScrollElasticity = .none
 		scroll.documentView = host
 		addSubview(scroll)
-		configure(previous, symbol: "chevron.left", label: "Previous Reset Cards", action: #selector(back))
-		configure(next, symbol: "chevron.right", label: "Next Reset Cards", action: #selector(forward))
+		configure(previous, symbol: "chevron.left", label: "Previous reset cards", action: #selector(back))
+		configure(next, symbol: "chevron.right", label: "Next reset cards", action: #selector(forward))
 		scroll.didScroll = { [weak self] in self?.updateButtons() }
 	}
 

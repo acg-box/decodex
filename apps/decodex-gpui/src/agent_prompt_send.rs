@@ -70,7 +70,7 @@ impl AgentSurface {
 		}
 
 		self.prompt_edit.feedback = if checking {
-			"Reading the original send receipt…"
+			"Checking delivery…"
 		} else {
 			"Preparing the complete edited input…"
 		}
@@ -248,7 +248,9 @@ impl AgentSurface {
 			return;
 		}
 		if matches!(outcome, Outcome::Unknown) {
-			self.prompt_edit.feedback = "Send result is unknown. Input retained; check its receipt. It will not be sent again automatically.".into();
+			self.prompt_edit.feedback =
+				"Delivery is unconfirmed. Your draft is kept. Check delivery before sending again."
+					.into();
 
 			cx.notify();
 
@@ -299,9 +301,9 @@ async fn send_worker(
 				&execution,
 			)
 			.await
-			.map_err(|_| "Edited input could not be qualified. Nothing was sent.")?;
+			.map_err(|_| "Your edited message could not be checked. Nothing was sent.")?;
 
-		let receipt = worker_draft.receipt_id.ok_or("Missing edit receipt")?;
+		let receipt = worker_draft.receipt_id.ok_or("Edit status is missing")?;
 		let hash = worker_draft.input.fingerprint()?;
 		let upload = PromptInputUpload {
 			work_id: worker_draft.work_id.clone(),

@@ -288,7 +288,7 @@ async fn voice_start_rejects_independent_manager_before_native_requests() {
 	manager.dispatch_state = AgentDispatchState::Idle;
 	manager.active_turn_id = None;
 
-	agent.store.create_agent_manager(manager, None).await.unwrap();
+	agent.store.create_agent_manager(manager).await.unwrap();
 	agent.store.bind_agent_thread("independent".into(), "other-thread".into()).await.unwrap();
 
 	let result = agent

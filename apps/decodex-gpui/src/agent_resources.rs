@@ -512,6 +512,7 @@ mod tests {
 			};
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
 				work_items: vec![work("root"), work("other")],

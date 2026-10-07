@@ -224,7 +224,6 @@ impl AgentSurface {
 impl AgentSurface {
 	pub(super) fn visual_progress_fixture(&mut self, expanded: bool, cx: &mut Context<Self>) {
 		self.workspace.graph_visible = false;
-		self.workspace.timeline_visible = false;
 
 		let Some((id, AgentHistoryResult::Available { entries, .. })) = &mut self.history else {
 			return;

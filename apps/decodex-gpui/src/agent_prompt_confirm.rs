@@ -81,8 +81,7 @@ impl AgentSurface {
 		self.prompt_edit.confirmation = None;
 		self.prompt_edit.feedback = "Checking edited input before changing history…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
-			let checked =
-				check.await.unwrap_or(Err("History confirmation stopped before dispatch"));
+			let checked = check.await.unwrap_or(Err("The edit was not submitted"));
 			let staged = surface
 				.update(cx, |s, cx| {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
@@ -138,7 +137,7 @@ impl AgentSurface {
 					s.cancel_unsent_prompt_confirmation(
 						&pending,
 						resuming,
-						"Confirmation worker stopped before dispatch.",
+						"The edit stopped before it was submitted.",
 						cx,
 					)
 				});
@@ -173,13 +172,13 @@ impl AgentSurface {
 				.cancel_unsent_prompt_confirmation(
 					pending,
 					resuming,
-					"Confirmation was rejected. Draft retained; read any saved receipt before reviewing again.",
+					"The edit was rejected. Your draft is kept. Check edit status before trying again.",
 					cx,
 				),
 			Ok(Err(_)) if !resuming => self.cancel_unsent_prompt_confirmation(
 				pending,
 				false,
-				"Confirmation failed before dispatch. Draft retained.",
+				"The edit could not be submitted. Your draft is kept.",
 				cx,
 			),
 			_ => {
@@ -218,7 +217,7 @@ impl AgentSurface {
 			self.cancel_unsent_prompt_confirmation(
 				pending,
 				resuming,
-				"Confirmation stopped before dispatch. Draft retained.",
+				"The edit was not submitted. Your draft is kept.",
 				cx,
 			);
 
@@ -403,7 +402,7 @@ async fn confirm_worker(
 				)
 				.await
 				.map_err(
-					|_| "Input or thread settings could not be checked. History was not changed.",
+					|_| "The message or conversation settings could not be checked. History was not changed.",
 				),
 		}
 	};

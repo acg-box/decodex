@@ -9,7 +9,10 @@ use std::{
 	fmt::{Display, Formatter},
 	future::{self, Future},
 	path::Path,
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -85,6 +88,7 @@ impl From<&'static str> for AgentHostError {
 
 #[derive(Clone)]
 pub(crate) struct AgentHost {
+	initializing: Arc<AtomicBool>,
 	skill_roots: Result<crate::agent_skill_roots::RuntimeSkillRoots, &'static str>,
 	observations: Option<AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
@@ -105,6 +109,7 @@ impl AgentHost {
 		let (sender, receiver) = mpsc::channel(32);
 
 		Self {
+			initializing: Arc::new(AtomicBool::new(true)),
 			observations: None,
 			skill_roots: crate::agent_skill_roots::RuntimeSkillRoots::from_environment(),
 			recovery_cursor: Default::default(),
@@ -331,6 +336,10 @@ impl AgentHost {
 
 	pub(crate) async fn process_diagnostics(&self) -> NativeProcessDiagnostics {
 		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
+	}
+
+	pub(crate) fn connection_initializing(&self) -> bool {
+		self.initializing.load(Ordering::Acquire)
 	}
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
@@ -605,7 +614,10 @@ impl AgentHost {
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
-		if owner.codex_thread_id.as_deref() != Some(thread) {
+		if owner.codex_thread_id.as_deref() != Some(thread)
+			&& native_subagents::request_owner(&self.store, &client, thread).await.ok()?.id
+				!= owner.id
+		{
 			return None;
 		}
 
@@ -830,6 +842,7 @@ impl AgentHost {
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
+			self.initializing.store(false, Ordering::Release);
 
 			let mut recovery = RecoverySchedule::new();
 			let mut tick = time::interval(Duration::from_secs(15));
@@ -843,6 +856,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
+
 						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
 
 						if !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
@@ -1123,7 +1137,9 @@ impl AgentHost {
 		let client = self.runtime.agent_client().ok_or("Agent connection unavailable")?;
 		let result = native_agents::read(&self.store, &client, work, Some(thread), None).await;
 		let decodex_protocol::NativeAgentsResult::Conversation {
-			can_input: true, active_turn, ..
+			can_input: Some(true),
+			active_turn,
+			..
 		} = result
 		else {
 			return Err("This native agent does not accept direct input. Ask its parent agent to follow up.".into());
@@ -1372,6 +1388,9 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			action @ (AgentActionDto::AddWorkspace { .. }
+			| AgentActionDto::NewConversation { .. }) =>
+				self.handle_workspace_action(&key, action, active).await,
 			action @ AgentActionDto::SendPromptInput { .. } =>
 				self.send_prompt_input(&key, action, active).await,
 			action @ (AgentActionDto::UploadPromptInput { .. }
@@ -1401,6 +1420,8 @@ impl AgentHost {
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveReviewer { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
+			AgentActionDto::PrepareNativeAgent { work_id, thread_id } =>
+				self.prepare_native_agent(work_id.as_str(), thread_id.as_str()).await,
 			AgentActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
@@ -1482,6 +1503,68 @@ impl AgentHost {
 			},
 			AgentActionDto::AutomationResult { work_id, source_event_id, payload } =>
 				self.accept_automation_result(work_id, source_event_id, payload, active).await,
+		}
+	}
+
+	async fn prepare_native_agent(
+		&self,
+		work_id: &str,
+		thread_id: &str,
+	) -> Result<String, AgentHostError> {
+		let (generation, client) =
+			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
+		native_agents::prepare(&self.store, &client, work_id, thread_id)
+			.await
+			.map_err(AgentHostError::Rejected)?;
+		if self.runtime.agent_catalog_client().is_none_or(|(current, _)| current != generation) {
+			return Err("The connection changed. Try again.".into());
+		}
+		Ok(work_id.into())
+	}
+
+	async fn handle_workspace_action(
+		&self,
+		key: &str,
+		action: AgentActionDto,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		match action {
+			AgentActionDto::AddWorkspace { workspace_id, directory } =>
+				AgentCoordinator::register_workspace(
+					&self.store,
+					workspace_id.as_str(),
+					directory.as_str(),
+				)
+				.await
+				.map_err(|_| {
+					AgentHostError::Rejected(
+						"Workspace folder could not be added. Check that the folder is available.",
+					)
+				}),
+			AgentActionDto::NewConversation {
+				workspace_id,
+				work_id,
+				text,
+				execution,
+				attachments,
+				task_references,
+			} => {
+				validate_attachments(&attachments)?;
+				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
+				AgentCoordinator::create_conversation(
+					&self.store,
+					work_id.as_str(),
+					user_input(work_id.as_str(), key, text.as_str(), Some(&options)),
+					workspace_id.map(|id| id.as_str().to_owned()),
+				)
+				.await
+				.map_err(|_| "Conversation could not be created")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(work_id.as_str().into())
+			},
+			_ => unreachable!("workspace action dispatch"),
 		}
 	}
 
@@ -2145,6 +2228,14 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
 	}
 }
 
+fn user_input(work: &str, key: &str, text: &str, options: Option<&Value>) -> EnqueueAgentEvent {
+	EnqueueAgentEvent {
+        source_event_id: serde_json::json!(["user_message",work,key]).to_string(),
+        work_item_id: work.into(), event_kind: "user_message".into(),
+        payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
+    }
+}
+
 async fn persist_input(
 	store: &SqliteStore,
 	root: &str,
@@ -2152,19 +2243,13 @@ async fn persist_input(
 	text: &str,
 	options: Option<&Value>,
 ) -> Result<(), &'static str> {
-	store
-  .enqueue_agent_event(EnqueueAgentEvent {
-			source_event_id: serde_json::json!(["user_message", root, key]).to_string(),
-			work_item_id: root.into(),
-			event_kind: "user_message".into(),
-			payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
-		})
-		.await
-		.map_err(|error| match error {
+	store.enqueue_agent_event(user_input(root, key, text, options)).await.map_err(|error| {
+		match error {
 			StoreError::AgentThreadInUse =>
 				"This conversation is in use in another app. No message was queued.",
 			_ => "Agent input could not be accepted",
-		})?;
+		}
+	})?;
 
 	Ok(())
 }
@@ -2192,6 +2277,92 @@ mod tests {
 	};
 	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_core::DecodexRoot;
+
+	#[tokio::test]
+	async fn folders_do_not_create_agents_and_conversations_share_explicit_scope() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let path = directory.path().to_str().unwrap();
+		let workspace = AgentCoordinator::register_workspace(&store, "folder", path).await.unwrap();
+		assert_eq!(
+			AgentCoordinator::register_workspace(&store, "same-folder", path).await.unwrap(),
+			workspace
+		);
+		assert!(store.list_agent_work_items().await.unwrap().is_empty());
+		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
+		AgentCoordinator::reserve_root(&store, "main", "Help").await.unwrap();
+		for id in ["one", "two"] {
+			AgentCoordinator::create_conversation(
+				&store,
+				id,
+				super::user_input(id, id, "Hello", None),
+				Some(workspace.clone()),
+			)
+			.await
+			.unwrap();
+			assert_eq!(
+				store.work_directory(id.into()).await.unwrap(),
+				Some(directory.path().canonicalize().unwrap().display().to_string())
+			);
+		}
+		AgentCoordinator::create_conversation(
+			&store,
+			"personal",
+			super::user_input("personal", "personal", "Hello", None),
+			None,
+		)
+		.await
+		.unwrap();
+		assert_eq!(store.work_directory("personal".into()).await.unwrap(), None);
+		assert!(
+			AgentCoordinator::create_conversation(
+				&store,
+				"invalid",
+				super::user_input("invalid", "invalid", "Hello", None),
+				Some("missing".into())
+			)
+			.await
+			.is_err()
+		);
+		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
+		let folders = store.workspaces().await.unwrap();
+		assert_eq!(folders.len(), 1);
+		assert_eq!(folders[0].work_ids, vec!["one", "two"]);
+	}
+
+	#[tokio::test]
+	async fn first_message_creates_conversation_and_survives_reopen() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		AgentCoordinator::reserve_root(&store, "main", "Help the user").await.unwrap();
+		let work = AgentCoordinator::create_conversation(
+			&store,
+			"new-chat",
+			super::user_input("new-chat", "first-input", "Improve sidebar navigation", None),
+			None,
+		)
+		.await
+		.unwrap();
+		assert_eq!(work.parent_goal_id.as_deref(), Some("main"));
+		assert!(work.codex_thread_id.is_none());
+		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
+		assert!(store.workspaces().await.unwrap().is_empty());
+		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+		drop(store);
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let saved = reopened.get_agent_work_item("new-chat".into()).await.unwrap();
+		assert_eq!(saved.title, "Improve sidebar navigation");
+		assert!(saved.codex_thread_id.is_none());
+		assert_eq!(reopened.list_agent_work_items().await.unwrap().len(), 2);
+	}
 
 	#[test]
 	fn directory_references_remain_paths_and_cannot_be_sent_as_images() {

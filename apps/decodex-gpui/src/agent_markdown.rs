@@ -257,6 +257,8 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 
 	gpui::div()
+		.w_full()
+		.min_w_0()
 		.flex()
 		.flex_col()
 		.gap_1()
@@ -572,6 +574,8 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			)
 			.into_any_element(),
 		Kind::Item => gpui::div()
+			.w_full()
+			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -596,11 +600,14 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 
 fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement {
 	gpui::div()
+		.w_full()
+		.min_w_0()
 		.flex()
 		.flex_col()
 		.gap_2()
 		.children(children.iter().enumerate().map(|(index, child)| {
 			gpui::div()
+				.w_full()
 				.flex()
 				.gap_2()
 				.child(
@@ -615,6 +622,10 @@ fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement 
 				)
 				.child(
 					gpui::div()
+						.debug_selector({
+							let key = format!("markdown-list-content-{key}-{index}");
+							move || key.clone()
+						})
 						.flex_1()
 						.min_w_0()
 						.child(render_node(child, &format!("{key}-{index}"))),

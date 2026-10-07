@@ -110,11 +110,11 @@ impl AgentSurface {
 	) {
 		// Inline tool disclosures do not cover or replace the native composer.
 		let requested = allowed
+			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
-			&& self.native_agents.selected.is_none()
 			&& !self.selected_is_archived()
-			&& self.composer_unavailable_reason().is_none()
-			&& self.selected_is_manager()
+			&& (self.connection_initializing() || self.composer_unavailable_reason().is_none())
+			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
 			&& self.integrations.is_none()
@@ -136,12 +136,12 @@ impl AgentSurface {
 
 		if enabled
 			&& !self.native_composer.enabled
-			&& self.composer.focus_handle(cx).is_focused(window)
+			&& self.conversation_composer().focus_handle(cx).is_focused(window)
 			&& let Some(child) = self.native_composer.child
 		{
 			cx.defer(move |cx| {
 				let _ = child.update(cx, |panel, window, cx| {
-					let focus = panel.owner.read(cx).composer.focus_handle(cx);
+					let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
 
 					window.focus(&focus, cx);
 

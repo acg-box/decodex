@@ -110,17 +110,40 @@ impl AgentSurface {
 		layout
 	}
 
-	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
+	fn sidebar_target_width(&self, window: &Window) -> f32 {
+		let width = f32::from(window.viewport_size().width);
+		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
+			sidebar_width(self.workspace.sidebar_width, width)
+		} else {
+			crate::ui_theme::CONVERSATION_TAB_SIZE + 2. * crate::ui_theme::SIDEBAR_INSET
+		}
+	}
+
+	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
+		let target = self.sidebar_target_width(window);
+		let now = std::time::Instant::now();
+		let mut motion = self.workspace.sidebar_motion.borrow_mut();
+		let tween = motion.get_or_insert_with(|| ui_motion::Tween::new(target));
+		if self.workspace.sidebar_drag.is_some() {
+			*tween = ui_motion::Tween::new(target);
+		} else {
+			tween.target(target, now);
+		}
+		tween.sample(now)
+	}
+
+	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
+		// Match the actual conversation column, including animated sidebar widths.
+		(self.workspace_sidebar_width(window), self.agent_tree_width(window))
+	}
+
+	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);
 		}
 
 		let viewport = window.viewport_size();
-		let sidebar = if self.workspace.sidebar_visible && wide {
-			sidebar_width(self.workspace.sidebar_width, viewport.width.into())
-		} else {
-			0.0
-		};
+		let sidebar = self.workspace_sidebar_width(window);
 		let available = (
 			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
@@ -139,31 +162,53 @@ impl AgentSurface {
 		available
 	}
 
+	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+		self.workspace.sidebar_leave = None;
+		if self.workspace.sidebar_visible {
+			return;
+		}
+		if hovered {
+			self.workspace.sidebar_peek = true;
+			cx.notify();
+		} else {
+			self.workspace.sidebar_leave = Some(cx.spawn(async |surface, cx| {
+				cx.background_executor().timer(std::time::Duration::from_millis(220)).await;
+				let _ = surface.update(cx, |s, cx| {
+					s.workspace.sidebar_peek = false;
+					cx.notify();
+				});
+			}));
+		}
+	}
+
 	pub(super) fn sidebar_slot(
 		&self,
-		wide: bool,
+		_wide: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let width =
-			sidebar_width(self.workspace.sidebar_width, window.viewport_size().width.into());
-		let fraction = ui_motion::value(
-			"agent-sidebar-visibility",
-			if self.workspace.sidebar_visible && wide { 1.0 } else { 0.0 },
-			window,
-			cx,
-		);
-
+		let width = self.workspace_sidebar_width(window);
+		if self
+			.workspace
+			.sidebar_motion
+			.borrow()
+			.as_ref()
+			.is_some_and(|tween| tween.moving(std::time::Instant::now()))
+		{
+			ui_motion::request_frame(window, cx);
+		}
 		gpui::div()
+			.id("left-panel-slot")
+			.debug_selector(|| "left-panel-slot".into())
+			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
-			.w(gpui::px(width * fraction))
+			.w(gpui::px(width))
 			.h_full()
 			.overflow_hidden()
-			.id("left-panel-slot")
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
-			.child(gpui::div().w(gpui::px(width)).h_full().child(self.workspace_sidebar(cx)))
+			.child(self.workspace_sidebar(cx))
 			.into_any_element()
 	}
 
@@ -221,6 +266,7 @@ impl AgentSurface {
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		gpui::div()
 			.id("agent-workspace")
+			.relative()
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
 				let Some((start, width)) = s.workspace.sidebar_drag else {
 					return;
@@ -264,6 +310,53 @@ mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
 	#[gpui::test]
+	fn sidebar_hover_uses_pinned_layout_and_reentry_cancels_close(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
+		let mark = "conversation-mark-agent";
+		let collapsed_mark = visual.debug_bounds(mark).unwrap();
+		let row = visual.debug_bounds("page-agent").unwrap();
+		assert_eq!(row.size.width, row.size.height, "collapsed conversation targets are square");
+		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let expanded = visual.debug_bounds("workspace-transcript").unwrap();
+		assert!(expanded.origin.x > collapsed.origin.x);
+		assert_eq!(visual.debug_bounds(mark).unwrap(), collapsed_mark);
+		surface.update(visual, |s, cx| {
+			s.workspace.sidebar_visible = true;
+			s.workspace.sidebar_peek = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), expanded);
+		surface.update(visual, |s, _| s.workspace.sidebar_visible = false);
+		surface.update(visual, |s, cx| {
+			s.sidebar_hover(false, cx);
+			s.sidebar_hover(true, cx);
+		});
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(s.workspace.sidebar_peek));
+		surface.update(visual, |s, cx| s.sidebar_hover(false, cx));
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(250));
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| assert!(!s.workspace.sidebar_peek));
+	}
+
+	#[gpui::test]
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -273,6 +366,8 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 
 			s.workspace.sidebar_width = 192.0;
+			// Start the drag fixture at its settled width.
+			s.workspace.sidebar_motion = Default::default();
 		});
 
 		visual.update(|window, cx| {
@@ -371,19 +466,21 @@ mod tests {
 				s.workspace.graph_visible = true;
 				s.workspace.graph_expanded = false;
 				s.workspace.graph_panel_height = 275.;
+				// Geometry assertions below describe the settled panel layout.
+				s.workspace.sidebar_motion = Default::default();
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true), (1_200., 275.));
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_expanded = true;
 
 				assert_eq!(
-					s.workspace_graph_size(window, true),
-					(1_200., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
+					s.workspace_graph_size(window, true).1,
+					900. - super::super::super::WINDOW_CONTROLS_CLEARANCE
 				);
 
 				s.workspace.graph_visible = false;
