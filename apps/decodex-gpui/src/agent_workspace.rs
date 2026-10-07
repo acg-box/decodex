@@ -1462,7 +1462,15 @@ impl AgentSurface {
 	}
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> Div {
-		let mut panel = gpui::div().w_full().min_w_0().h_full().flex().flex_col().pt(gpui::px(8.));
+		let mut panel = gpui::div()
+			.w_full()
+			.min_w_0()
+			.h_full()
+			.min_h_0()
+			.overflow_hidden()
+			.flex()
+			.flex_col()
+			.pt(gpui::px(8.));
 
 		panel = panel.child(
 			gpui::div()

@@ -39,6 +39,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.flex_1()
+			.h_0()
 			.min_h_0()
 			.overflow_y_scroll()
 			.px_2()
