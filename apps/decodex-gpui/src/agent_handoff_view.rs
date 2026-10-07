@@ -10,7 +10,7 @@ impl AgentSurface {
 		self.snapshot.as_ref().map_or_else(Vec::new, |snapshot| self.handoffs.items(snapshot))
 	}
 
-	fn dock_items(&self) -> Vec<Handoff> {
+	pub(super) fn dock_items(&self) -> Vec<Handoff> {
 		self.snapshot.as_ref().map_or_else(Vec::new, |snapshot| self.handoffs.dock_items(snapshot))
 	}
 
@@ -42,7 +42,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.px_2()
-			.child(gpui::div().flex_1().text_size(gpui::px(12.)).child("Work graph"))
+			.child(self.dock_status(cx))
 			.child(self.workspace_action(
 				"dock-toggle".into(),
 				if compact { "Show graph" } else { "Collapse graph" }.into(),
@@ -133,32 +133,100 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
-	fn handoff_source(&self, work: &super::AgentWorkItemDto) -> String {
-		let Some(snapshot) = &self.snapshot else { return "Your work".into() };
-		snapshot
-			.workspaces
-			.iter()
-			.find(|w| w.work_ids.contains(&work.id))
-			.map(|w| w.name.clone())
-			.or_else(|| {
-				work.parent_goal_id
-					.as_ref()
-					.and_then(|id| snapshot.work_items.iter().find(|w| &w.id == id))
-					.map(|w| self.work_label(w))
-			})
-			.unwrap_or_else(|| "Your work".into())
+	fn dock_status(&self, cx: &mut Context<Self>) -> AnyElement {
+		let items = self.dock_items();
+		let requests = items.iter().filter(|item| item.attention).count();
+		let running = self.snapshot.as_ref().map_or(0, |snapshot| {
+			snapshot
+				.work_items
+				.iter()
+				.filter(|work| {
+					matches!(
+						work.dispatch_state,
+						super::AgentDispatchStateDto::Running
+							| super::AgentDispatchStateDto::Dispatching
+					)
+				})
+				.count()
+		});
+		let results = items.iter().filter(|item| item.result).count();
+		let mut facts = Vec::new();
+		if requests > 0 {
+			facts.push(format!("{requests} need{} you", if requests == 1 { "s" } else { "" }));
+		}
+		if running > 0 {
+			facts.push(format!("{running} running"));
+		}
+		if results > 0 {
+			facts.push(format!("{results} recent result{}", if results == 1 { "" } else { "s" }));
+		}
+		let mut row = gpui::div()
+			.flex_1()
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap_2()
+			.text_size(gpui::px(12.))
+			.child(gpui::div().overflow_hidden().whitespace_nowrap().text_ellipsis().child(
+				if facts.is_empty() {
+					if self
+						.snapshot
+						.as_ref()
+						.is_none_or(|snapshot| snapshot.connection_initializing)
+					{
+						"Loading work…".into()
+					} else {
+						"Work · No active tasks".into()
+					}
+				} else {
+					facts.join(" · ")
+				},
+			));
+		if let Some(item) = items.first() {
+			let id = item.work.clone();
+			let label = if item.attention {
+				"Review request"
+			} else if item.result {
+				"Review result"
+			} else {
+				"View progress"
+			};
+			row = row.child(
+				gpui::div().flex_none().rounded(gpui::px(5.)).bg(gpui::rgba(0x6b9fff20)).child(
+					self.workspace_action(
+						"dock-next-action".into(),
+						label.into(),
+						move |s, cx| {
+							let scope = s.snapshot.as_ref().and_then(|snapshot| {
+								let work = snapshot.work_items.iter().find(|w| w.id == id)?;
+								if snapshot
+									.work_items
+									.iter()
+									.any(|w| w.parent_goal_id.as_deref() == Some(&id))
+								{
+									Some(id.clone())
+								} else {
+									work.parent_goal_id.clone()
+								}
+							});
+							s.workspace.dock_record = scope;
+							s.workspace.dock_compact = false;
+							s.activate_graph_node(&id, cx);
+						},
+						cx,
+					),
+				),
+			);
+		}
+		row.into_any_element()
 	}
 
 	fn handoff_header(&self, work: &super::AgentWorkItemDto, cx: &mut Context<Self>) -> gpui::Div {
-		let source = self.handoff_source(work);
-		let mut header = gpui::div().flex().items_center().gap_2().child(
-			gpui::div().flex_1().min_w_0().child(self.work_label(work)).child(
-				gpui::div()
-					.text_size(gpui::px(11.))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(source),
-			),
-		);
+		let mut header = gpui::div()
+			.flex()
+			.items_center()
+			.gap_2()
+			.child(gpui::div().flex_1().min_w_0().child(self.work_label(work)));
 
 		header = header.child(self.workspace_action(
 			"handoff-close".into(),
@@ -169,9 +237,10 @@ impl AgentSurface {
 			},
 			cx,
 		));
-		if self.snapshot.as_ref().is_some_and(|snapshot| {
-			snapshot.work_items.iter().any(|w| w.parent_goal_id.as_deref() == Some(&work.id))
-		}) {
+		if self.workspace.dock_record.as_deref() != Some(&work.id)
+			&& self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.work_items.iter().any(|w| w.parent_goal_id.as_deref() == Some(&work.id))
+			}) {
 			let id = work.id.clone();
 			header = header.child(self.workspace_action(
 				"dock-subtasks".into(),

@@ -134,6 +134,16 @@ impl AgentSurface {
 			}
 		}
 
+		// Dependency chains already explain the flow. Keep the owner in the heading,
+		// rather than drawing a second set of ownership lines across those chains.
+		if !layout.edges.is_empty() && !layout.reports.is_empty() {
+			layout.nodes.pop();
+			layout.reports.clear();
+			for node in &mut layout.nodes {
+				node.y -= 112.;
+			}
+		}
+
 		for node in &mut layout.nodes {
 			let (x, y) = (node.x, node.y);
 

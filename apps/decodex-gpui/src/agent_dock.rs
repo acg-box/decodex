@@ -77,6 +77,28 @@ impl AgentSurface {
 			return "Status unavailable".into();
 		};
 		let state = progress_state(snapshot, work);
+		if state.group > 0 && work.dispatch_state == super::AgentDispatchStateDto::Idle {
+			let children: Vec<_> = snapshot
+				.work_items
+				.iter()
+				.filter(|child| child.parent_goal_id.as_deref() == Some(&work.id))
+				.collect();
+			let running =
+				children.iter().filter(|child| progress_state(snapshot, child).group == 1).count();
+			let waiting = children
+				.iter()
+				.filter(|child| !graph::blockers(snapshot, child).is_empty())
+				.count();
+			if running > 0 || waiting > 0 {
+				return format!("{running} working · {waiting} waiting");
+			}
+			if !children.is_empty()
+				&& children.iter().all(|child| child.status == super::AgentWorkStatusDto::Resolved)
+			{
+				return format!("View {} results", children.len());
+			}
+		}
+
 		if state.group == 3 {
 			return "View result".into();
 		}
@@ -108,7 +130,10 @@ impl AgentSurface {
 			.filter(|w| w.parent_goal_id == scope && scope.is_some())
 			.collect();
 		if !layout.edges.is_empty() {
-			return "Arrows show which task must finish before the next can proceed".into();
+			return format!(
+				"{} · Arrows show what must finish first",
+				owner.map(|work| self.work_label(work)).unwrap_or_else(|| "Work".into())
+			);
 		}
 		if let Some(owner) = owner.filter(|_| !children.is_empty()) {
 			let complete =
@@ -476,7 +501,13 @@ fn final_response(
 }
 
 fn report_excerpt(text: &str) -> String {
-	let plain = text.split_whitespace().collect::<Vec<_>>().join(" ");
+	let plain = super::markdown::plain_text(text).replace(" 。", "。").replace(" .", ".");
+	let end = plain
+		.find('。')
+		.map(|i| i + '。'.len_utf8())
+		.or_else(|| plain.find(". ").map(|i| i + 1))
+		.unwrap_or(plain.len());
+	let plain = &plain[..end];
 	let mut chars = plain.chars();
 	let excerpt: String = chars.by_ref().take(240).collect();
 	if chars.next().is_some() { format!("{excerpt}…") } else { excerpt }
@@ -493,6 +524,46 @@ fn source_matches(work: &AgentWorkItemDto, entry: &super::AgentHistoryEntryDto) 
 mod tests {
 	use super::*;
 	use gpui::AppContext;
+
+	#[test]
+	fn result_excerpt_keeps_the_conclusion_without_report_metadata() {
+		assert_eq!(
+			report_excerpt("确认 **两项缺陷**。 正式 work ID: `internal-task-id`"),
+			"确认 两项缺陷。"
+		);
+		assert_eq!(
+			report_excerpt("Found **two defects**. Task ID: `internal-task-id`"),
+			"Found two defects."
+		);
+	}
+
+	#[gpui::test]
+	fn dock_primary_action_opens_the_request_without_switching_conversations(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = AgentSurface::new(cx);
+			s.visual_workspace_fixture(cx);
+			s.visual_dock_page("dock-running", cx);
+			s.selected = Some("agent".into());
+			s.workspace.dock_record = None;
+			s.handoffs.focus = None;
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		visual.update(|w, cx| {
+			w.refresh();
+			w.draw(cx).clear();
+		});
+		visual.run_until_parked();
+		let action = visual.debug_bounds("dock-next-action").expect("primary action");
+		visual.simulate_click(action.center(), Default::default());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.handoffs.focus.as_deref(), Some("release"));
+			assert_eq!(s.workspace.dock_record.as_deref(), Some("release"));
+		});
+	}
 
 	#[test]
 	fn dock_results_use_native_final_answers_instead_of_later_commentary() {
@@ -839,11 +910,19 @@ mod tests {
 					.iter()
 					.any(|(a, b)| layout.nodes[*a].id == "flow" && layout.nodes[*b].id == "verify")
 			);
-			assert!(!layout.reports.is_empty(), "retain actual delegation lines");
+			assert!(
+				layout.reports.is_empty(),
+				"dependency chains must not be crossed by ownership lines"
+			);
 			s.workspace.dock_completed = true;
 			assert!(s.workspace_graph_layout().nodes.iter().any(|n| n.id == "finished-branch"));
 			s.selected = Some("verify".into());
 			assert!(s.workspace_graph_layout().nodes.iter().any(|n| n.id == "flow"));
+			s.snapshot.as_mut().unwrap().dependencies.clear();
+			assert!(
+				!s.workspace_graph_full_layout().reports.is_empty(),
+				"without dependencies retain the simple parent-child graph"
+			);
 		});
 	}
 
