@@ -3,7 +3,7 @@ use super::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
 	StatefulInteractiveElement, Styled,
 	handoffs::Handoff,
-	ui_theme::{AMBER, BLUE, CANVAS, GREEN, TEXT_MUTED},
+	ui_theme::{AMBER, BLUE, GREEN, TEXT_MUTED},
 };
 use gpui::{AnyElement, KeyDownEvent};
 
@@ -48,9 +48,9 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
-			.bg(gpui::rgb(CANVAS))
+			.bg(gpui::rgba(0xffffff03))
 			.border_t_1()
-			.border_color(gpui::rgba(0xffffff30))
+			.border_color(gpui::rgba(0xffffff18))
 			.child(gpui::div().h(gpui::px(72.)).flex_none().child(self.handoff_bar(cx)));
 		if let Some(details) = self.handoff_details(cx) {
 			let graph = !self.workspace_graph_full_layout().edges.is_empty();
