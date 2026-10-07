@@ -595,5 +595,24 @@ mod tests {
 			assert!(s.handoff_items().iter().any(|h| h.work == "release"));
 			assert!(s.workspace.dock_record.is_none());
 		});
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		let result =
+			visual.debug_bounds("handoff-website").expect("read result remains accessible");
+		visual.simulate_click(result.center(), Default::default());
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		assert!(visual.debug_bounds("handoff-preview").is_some());
+		assert!(visual.debug_bounds("handoff-viewed").is_none());
 	}
 }

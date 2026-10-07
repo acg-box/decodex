@@ -3,13 +3,17 @@ use super::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
 	StatefulInteractiveElement, Styled,
 	handoffs::Handoff,
-	ui_theme::{AMBER, CANVAS, TEXT_MUTED},
+	ui_theme::{AMBER, BLUE, CANVAS, GREEN, TEXT_MUTED},
 };
 use gpui::{AnyElement, KeyDownEvent};
 
 impl AgentSurface {
 	pub(super) fn handoff_items(&self) -> Vec<Handoff> {
 		self.snapshot.as_ref().map_or_else(Vec::new, |snapshot| self.handoffs.items(snapshot))
+	}
+
+	fn dock_items(&self) -> Vec<Handoff> {
+		self.snapshot.as_ref().map_or_else(Vec::new, |snapshot| self.handoffs.dock_items(snapshot))
 	}
 
 	pub(super) fn acknowledge_open_handoff(&mut self, work: &str) {
@@ -33,7 +37,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn handoff_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-		let items = self.handoff_items();
+		let items = self.dock_items();
 		let running = self.snapshot.as_ref().map_or(0, |snapshot| {
 			snapshot
 				.work_items
@@ -57,13 +61,16 @@ impl AgentSurface {
 			.min_w_0()
 			.overflow_x_scroll();
 		if items.is_empty() {
-			strip = strip.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(
-				if self.snapshot.as_ref().is_none_or(|s| s.connection_initializing) {
-					"Connecting to your work…"
-				} else {
-					"Nothing needs your attention"
-				},
-			));
+			strip = if self.snapshot.as_ref().is_none_or(|s| s.connection_initializing) {
+				strip.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("Connecting…"))
+			} else {
+				strip.child(self.workspace_action(
+					"dock-start-work".into(),
+					"Start work  +".into(),
+					|s, cx| s.new_work_conversation(cx),
+					cx,
+				))
+			};
 		}
 		for item in items {
 			strip = strip.child(self.handoff_chip(&item, cx));
@@ -76,7 +83,7 @@ impl AgentSurface {
 			.gap_2()
 			.px_2()
 			.text_size(gpui::px(12.))
-			.child(gpui::div().flex_none().text_color(gpui::rgb(TEXT_MUTED)).child("For you"))
+			.child(gpui::div().flex_none().text_color(gpui::rgb(TEXT_MUTED)).child("Work"))
 			.child(strip)
 			.child(
 				gpui::div().flex_none().text_color(gpui::rgb(TEXT_MUTED)).child(if running > 0 {
@@ -98,6 +105,20 @@ impl AgentSurface {
 		let keyboard = id.clone();
 		let title = self.work_label(work);
 		let selector = format!("handoff-{id}");
+		let color = if item.attention {
+			AMBER
+		} else if item.result {
+			GREEN
+		} else {
+			BLUE
+		};
+		let symbol = if item.attention {
+			"●"
+		} else if item.result {
+			"✓"
+		} else {
+			"◌"
+		};
 		gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
@@ -106,11 +127,13 @@ impl AgentSurface {
 			.aria_label(format!("{title}: {}. Preview handoff.", item.label))
 			.aria_expanded(self.workspace.dock_record.as_ref() == Some(&id))
 			.flex_none()
-			.w(gpui::px(184.))
+			.w(gpui::px(216.))
 			.px_2()
 			.py_1()
 			.rounded(gpui::px(8.))
 			.cursor_pointer()
+			.border_1()
+			.border_color(gpui::rgba(0xffffff18))
 			.bg(gpui::rgba(if self.workspace.dock_record.as_ref() == Some(&id) {
 				0xffffff18
 			} else {
@@ -128,12 +151,15 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(title))
 			.child(
 				gpui::div()
-					.text_color(gpui::rgb(if item.result { TEXT_MUTED } else { AMBER }))
-					.child(item.label),
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(gpui::div().text_color(gpui::rgb(color)).child(symbol))
+					.child(gpui::div().min_w_0().whitespace_nowrap().text_ellipsis().child(title)),
 			)
+			.child(gpui::div().text_color(gpui::rgb(color)).child(item.label))
 			.into_any_element()
 	}
 
@@ -198,7 +224,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let item = self
-			.handoff_items()
+			.dock_items()
 			.into_iter()
 			.find(|h| Some(&h.work) == self.workspace.dock_record.as_ref())?;
 		let snapshot = self.snapshot.as_ref()?;
@@ -240,7 +266,7 @@ impl AgentSurface {
 				.child(gpui::div().h(gpui::px(280.)).child(self.workspace_dependency_graph(cx)));
 		} else {
 			body = body.child(item.reason);
-			if item.result {
+			if item.result || !item.attention {
 				body = body.child(self.overview_evidence(work, cx));
 			} else {
 				if let Some(text) = self
@@ -272,7 +298,7 @@ impl AgentSurface {
 					),
 				);
 			}
-			if item.result {
+			if item.result && item.attention {
 				body = body.child(gpui::div().flex().child(self.workspace_action(
 					"handoff-viewed".into(),
 					"Mark viewed".into(),
