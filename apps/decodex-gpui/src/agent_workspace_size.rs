@@ -48,6 +48,7 @@ impl AgentSurface {
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
 			self.workspace.graph_visible
+				&& self.workspace.dock_record.is_some()
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
 		];
@@ -115,13 +116,22 @@ impl AgentSurface {
 		let Some(snapshot) = &self.snapshot else {
 			return graph::Layout::default();
 		};
-		let scope = self.dock_scope();
+		let scope = self.workspace.dock_record.clone().or_else(|| self.dock_scope());
 		let mut layout = graph::Layout::new(snapshot, scope.as_deref());
 
 		if layout.nodes.is_empty()
 			&& let Some(work) = snapshot.work_items.iter().find(|w| Some(&w.id) == scope.as_ref())
 		{
-			layout.nodes.push(graph::Node { id: work.id.clone(), x: 20., y: 32. });
+			if snapshot
+				.dependencies
+				.iter()
+				.any(|e| e.work_item_id == work.id || e.depends_on_id == work.id)
+			{
+				layout = graph::Layout::new(snapshot, work.parent_goal_id.as_deref());
+			}
+			if layout.nodes.is_empty() {
+				layout.nodes.push(graph::Node { id: work.id.clone(), x: 20., y: 32. });
+			}
 		}
 
 		// Ownership belongs in the agent tree; this view shows prerequisites only.
@@ -182,20 +192,7 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
-		if self.workspace.dock_compact && !self.workspace.graph_expanded {
-			return (available.0, 46.0_f32.min(available.1));
-		}
-		if !self.workspace.graph_expanded {
-			return (
-				available.0,
-				self.workspace
-					.graph_panel_height
-					.clamp(120.0, 640.0)
-					.min((available.1 - 240.0).max(0.0)),
-			);
-		}
-
-		available
+		(available.0, 72.0_f32.min(available.1))
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
@@ -443,6 +440,7 @@ mod tests {
 				s.workspace.graph_visible = true;
 				s.workspace.graph_expanded = false;
 				s.workspace.focused_panel = Some(Panel::Right);
+				s.workspace.dock_record = Some("release".into());
 
 				s.resize_panel(24.0, false, false, window, cx);
 
@@ -488,7 +486,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn graph_panel_respects_manual_height_and_available_space(cx: &mut gpui::TestAppContext) {
+	fn handoff_strip_keeps_conversation_space_when_preview_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_200.), gpui::px(900.)));
@@ -505,19 +503,16 @@ mod tests {
 				// Geometry assertions below describe the settled panel layout.
 				s.workspace.sidebar_motion = Default::default();
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
 
 				s.workspace.graph_expanded = true;
 
-				assert_eq!(
-					s.workspace_graph_size(window, true).1,
-					900. - super::super::super::WINDOW_CONTROLS_CLEARANCE
-				);
+				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
 
 				s.workspace.graph_visible = false;
 
@@ -534,10 +529,7 @@ mod tests {
 			surface.update(cx, |s, _| {
 				let (_, height) = s.workspace_graph_size(window, true);
 
-				assert_eq!(
-					height,
-					(300. - super::super::super::WINDOW_CONTROLS_CLEARANCE - 240.).max(0.)
-				);
+				assert_eq!(height, 72.);
 				assert_eq!(
 					s.workspace.graph_panel_height, 275.,
 					"small windows retain the requested height"

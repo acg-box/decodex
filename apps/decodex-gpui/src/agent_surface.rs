@@ -16,6 +16,8 @@
 #[path = "agent_execution_intent.rs"] mod execution_intent;
 #[path = "agent_graph.rs"] mod graph;
 #[path = "agent_guardian.rs"] mod guardian;
+#[path = "agent_handoff_view.rs"] mod handoff_view;
+#[path = "agent_handoffs.rs"] mod handoffs;
 #[path = "agent_hooks.rs"] mod hooks;
 #[path = "agent_inspection.rs"] mod inspection;
 #[path = "agent_install.rs"] mod install;
@@ -145,6 +147,7 @@ pub(crate) struct AgentSurface {
 	dictation_task: Option<Task<()>>,
 	activity_detail: ActivityDetailState,
 	dock_evidence: dock::Evidence,
+	handoffs: handoffs::Handoffs,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
@@ -326,6 +329,7 @@ impl AgentSurface {
 			dictation_task: None,
 			activity_detail: Default::default(),
 			dock_evidence: Default::default(),
+			handoffs: Default::default(),
 			resources: None,
 			resources_task: None,
 			usage_estimate: None,
@@ -533,6 +537,9 @@ impl AgentSurface {
 				}
 				if surface.selected.as_ref() == Some(&id) {
 					surface.observe_question_notices(&history);
+					if matches!(history, AgentHistoryResult::Available { .. }) {
+						surface.acknowledge_open_handoff(&id);
+					}
 					cx.notify();
 
 					if surface
@@ -1561,6 +1568,9 @@ impl AgentSurface {
 					self.workspace.new_conversation = None;
 				}
 
+				if let Some(profile) = &self.profile {
+					self.handoffs.observe(profile.draft_scope_key(), &snapshot);
+				}
 				self.snapshot = Some(snapshot);
 				self.state = LoadState::Ready;
 			},
