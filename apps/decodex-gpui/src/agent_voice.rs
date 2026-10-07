@@ -154,7 +154,7 @@ impl Media {
 				return accepted;
 			},
 			Some("finish") if self.capture.is_some() => {
-				self.capture.as_ref().unwrap().finish();
+				self.capture.as_ref().expect("finish matched an active capture").finish();
 				return true;
 			},
 			Some("start" | "dictate" | "stop") => {
@@ -224,10 +224,10 @@ impl Media {
 					),
 			}
 		}
-		if let Some(capture) = &self.capture {
-			if let Some(event) = capture.poll() {
-				return Some(event);
-			}
+		if let Some(capture) = &self.capture
+			&& let Some(event) = capture.poll()
+		{
+			return Some(event);
 		}
 		if let Some(transport) = &self.transport {
 			if let Some(event) = transport.poll() {

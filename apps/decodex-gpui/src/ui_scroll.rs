@@ -1,6 +1,8 @@
 //! Display-paced wheel motion. Precise trackpad deltas retain native momentum.
 use std::time::Instant;
 
+type ScrollChange = std::rc::Rc<dyn Fn(f32, &mut Window, &mut App)>;
+
 use gpui::{
 	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
 	prelude::{InteractiveElement as _, StatefulInteractiveElement as _, Styled as _},
@@ -235,7 +237,7 @@ mod tests {
 pub(crate) struct Scrollbar {
 	pub id: ElementId,
 	pub scroll: ScrollHandle,
-	pub changed: std::rc::Rc<dyn Fn(f32, &mut Window, &mut App)>,
+	pub changed: ScrollChange,
 }
 #[derive(Default)]
 struct BarState {

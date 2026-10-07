@@ -1,6 +1,8 @@
 //! Native component preview using an actual saved tool response, not live weather.
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
+use base64 as _;
+
 use futures_util as _;
 use gpui::{
 	AppContext as _, Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window,

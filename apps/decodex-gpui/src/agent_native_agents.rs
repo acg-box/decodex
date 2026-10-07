@@ -1090,8 +1090,7 @@ mod tests {
 					s.native_agents.input.as_ref().unwrap().read(cx).content(),
 					"Keep this draft"
 				);
-				assert!(s.native_agents.pending.is_none());
-				assert!(s.native_agents.detail_task.is_none());
+				assert!(s.native_agents.pending.is_none() && s.native_agents.detail_task.is_none());
 				assert_eq!(s.native_input_available(), !managed);
 				assert!(if managed {
 					matches!(s.native_agents.connection, super::NativeConnection::ParentManaged)

@@ -1,4 +1,5 @@
 //! Dictation uses the same Apple voice-processing sink as Live, on one audio owner thread.
+#![cfg_attr(test, allow(dead_code))]
 use super::audio::{Device, Pcm};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
@@ -85,9 +86,8 @@ fn owner() -> Result<&'static Sender<Command>, ()> {
             let mut prepared: Option<(u32, Device, Pcm)> = None;
             while let Ok(command) = rx.recv() {
                 let device = match &command { Command::Prepare(id) | Command::Start { device: id, .. } => *id };
-                if let Command::Start { stopped, .. } = &command {
-                    if stopped.load(Ordering::Acquire) { continue; }
-                }
+                if let Command::Start { stopped, .. } = &command
+                    && stopped.load(Ordering::Acquire) { continue; }
                 if prepared.as_ref().is_none_or(|(id, _, _)| *id != device) {
                     prepared = Device::prepare(device, 24_000.0).ok().map(|(engine, pcm)| (device, engine, pcm));
                 }

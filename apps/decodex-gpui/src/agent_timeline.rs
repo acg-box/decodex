@@ -325,6 +325,54 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
+	fn process_history_body(
+		&self,
+		work: &AgentWorkItemDto,
+		group: &groups::Group,
+		entry: &AgentTimelineEntry,
+		first: bool,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let owner = cx.entity();
+		let indices = group.indices.clone();
+		let source_work = work.clone();
+		let header = first.then(|| self.turn_process_header(work, group, entry, cx));
+		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).children(header).child(
+			ui_motion::disclosure_lazy(
+				SharedString::from(format!(
+					"turn-process-body-{}-{}-{}",
+					work.id,
+					group.turn,
+					serde_json::json!(key(entry))
+				)),
+				group.expanded,
+				move |cx| {
+					owner.update(cx, |s, cx| {
+						render::process_indent(
+							gpui::div().w_full().flex().flex_col().gap(gpui::px(8.)).children(
+								indices
+									.iter()
+									.filter_map(|index| s.timeline.native.entries.get(*index))
+									.map(|entry| {
+										s.native_timeline_content(
+											&source_work,
+											entry,
+											&format!(
+												"process-{}-{}",
+												source_work.id,
+												serde_json::json!(key(entry))
+											),
+											cx,
+										)
+									}),
+							),
+						)
+					})
+				},
+			),
+		)
+	}
+
 	fn append_native_history_rows(
 		&self,
 		mut panel: Div,
@@ -425,54 +473,8 @@ impl AgentSurface {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
-				let owner = cx.entity();
-				let indices = group.indices.clone();
-				let source_work = work.clone();
-				let header = (index == group.first_index)
-					.then(|| self.turn_process_header(work, group, entry, cx));
-				let body = gpui::div()
-					.w_full()
-					.debug_selector(|| "turn-process-block".into())
-					.children(header)
-					.child(ui_motion::disclosure_lazy(
-						SharedString::from(format!(
-							"turn-process-body-{}-{}-{}",
-							work.id,
-							group.turn,
-							serde_json::json!(key(entry))
-						)),
-						group.expanded,
-						move |cx| {
-							owner.update(cx, |s, cx| {
-								render::process_indent(
-									gpui::div()
-										.w_full()
-										.flex()
-										.flex_col()
-										.gap(gpui::px(8.))
-										.children(
-											indices
-												.iter()
-												.filter_map(|index| {
-													s.timeline.native.entries.get(*index)
-												})
-												.map(|entry| {
-													s.native_timeline_content(
-														&source_work,
-														entry,
-														&format!(
-															"process-{}-{}",
-															source_work.id,
-															serde_json::json!(key(entry))
-														),
-														cx,
-													)
-												}),
-										),
-								)
-							})
-						},
-					));
+				let body =
+					self.process_history_body(work, group, entry, index == group.first_index, cx);
 
 				panel =
 					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));

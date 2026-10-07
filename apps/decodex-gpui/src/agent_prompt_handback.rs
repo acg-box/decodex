@@ -13,6 +13,51 @@ use crate::shell::{
 use decodex_protocol::AgentTimelineResult;
 
 impl AgentSurface {
+	fn apply_handback_history(
+		&mut self,
+		expected: &DesktopPromptEditDraft,
+		result: Result<
+			(DesktopPromptEditDraft, AgentHistoryResult, AgentTimelineResult),
+			&'static str,
+		>,
+		cx: &mut Context<Self>,
+	) -> Option<DesktopPromptEditDraft> {
+		let result = result.and_then(|(draft, history, timeline)| {
+			if self.prompt_edit.draft.as_ref() != Some(expected) {
+				return Err("Draft changed during restoration. Try again with the current edit.");
+			}
+
+			self.stage_prompt_editor(draft.clone(), cx)?;
+
+			self.prompt_edit.draft = Some(draft.clone());
+
+			self.restore_prompt_presentation(
+				draft.work_id.as_str(),
+				draft.thread_id.as_str(),
+				history,
+				timeline,
+				cx,
+			)?;
+
+			Ok(draft)
+		});
+
+		match result {
+			Ok(draft) => {
+				self.prompt_edit.feedback =
+					"History refreshed. Waiting for the edited draft to be saved…".into();
+				cx.notify();
+				Some(draft)
+			},
+			Err(message) => {
+				self.prompt_edit.task = None;
+				self.prompt_edit.feedback = message.into();
+				cx.notify();
+				None
+			},
+		}
+	}
+
 	pub(super) fn handback_prompt_editor(
 		&mut self,
 		expected: DesktopPromptEditDraft,
@@ -77,43 +122,7 @@ impl AgentSurface {
 						return None;
 					}
 
-					let result = result.and_then(|(draft, history, timeline)| {
-						if s.prompt_edit.draft.as_ref() != Some(&expected) {
-							return Err(
-								"Draft changed during restoration. Try again with the current edit.",
-							);
-						}
-
-						s.stage_prompt_editor(draft.clone(), cx)?;
-
-						s.prompt_edit.draft = Some(draft.clone());
-
-						s.restore_prompt_presentation(
-							draft.work_id.as_str(),
-							draft.thread_id.as_str(),
-							history,
-							timeline,
-							cx,
-						)?;
-
-						Ok(draft)
-					});
-
-					match result {
-						Ok(draft) => {
-							s.prompt_edit.feedback =
-								"History refreshed. Waiting for the edited draft to be saved…"
-									.into();
-							cx.notify();
-							Some(draft)
-						},
-						Err(message) => {
-							s.prompt_edit.task = None;
-							s.prompt_edit.feedback = message.into();
-							cx.notify();
-							None
-						},
-					}
+					s.apply_handback_history(&expected, result, cx)
 				})
 				.ok()
 				.flatten();
