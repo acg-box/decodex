@@ -5,7 +5,8 @@
 #[path = "../native_quit.rs"]
 mod native_quit;
 #[allow(unused_imports)]
-#[path = "../ui_motion.rs"] mod ui_motion;
+#[path = "../ui_motion.rs"]
+mod ui_motion;
 #[path = "../ui_theme.rs"] mod ui_theme;
 #[cfg(target_os = "macos")]
 mod probe {
