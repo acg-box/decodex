@@ -48,7 +48,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
-			.bg(gpui::rgba(0xffffff03))
 			.border_t_1()
 			.border_color(gpui::rgba(0xffffff18))
 			.child(gpui::div().h(gpui::px(72.)).flex_none().child(self.handoff_bar(cx)));
