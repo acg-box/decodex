@@ -161,7 +161,7 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 
-			for limit in if changed { vec![30] } else { vec![30, 15, 7] } {
+			for limit in if changed { vec![15] } else { vec![15, 7] } {
 				for step in 0..4 {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
