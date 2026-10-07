@@ -240,7 +240,15 @@ impl AgentSurface {
 			},
 			cx,
 		);
-		let mut body = gpui::div().min_w_0().pl_2().py_1().flex().flex_col().gap_2().child(source);
+		let mut body = gpui::div()
+			.w_full()
+			.min_w_0()
+			.pl_2()
+			.py_1()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(gpui::div().flex().child(source));
 		let mut found = false;
 		if let Some(AgentHistoryResult::Available { entries, .. }) = history {
 			// Saved text is evidence of what was reported, never a verification verdict.
@@ -408,12 +416,17 @@ mod tests {
 			else {
 				panic!("fixture history")
 			};
-			entries[0].text = "Saved evidence line.\n\n".repeat(100);
+			entries[0].text = format!("{}\n1. **原生下属草稿丢失。** 输入未发送文字后返回 Chief，再打开下属，草稿被空串或旧内容覆盖。\n2. **全局后退不能恢复原生下属对话。** 连续进入同一 owner 的下属，历史只记录 owner。\n\n{}", "Saved evidence line.\n\n".repeat(100), "Saved evidence line.\n\n".repeat(100));
+			entries[0].id = 999;
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		visual.update(|w, cx| w.draw(cx).clear());
 
 		let bounds = visual.debug_bounds("work-overview").unwrap();
+		let list = visual
+			.debug_bounds("markdown-list-content-dock-response-verify-999-100-0")
+			.expect("evidence list content");
+		assert!(list.size.width > gpui::px(200.), "list width: {:?}", list.size.width);
 		let before = visual.debug_bounds("dock-record-release").unwrap();
 		assert!(bounds.size.height < gpui::px(400.));
 		visual.simulate_event(gpui::ScrollWheelEvent {
