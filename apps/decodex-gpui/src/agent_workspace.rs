@@ -1100,19 +1100,18 @@ impl AgentSurface {
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
-		let canvas_width = if graph_width >= 860. { graph_width - 300. } else { graph_width };
-		let canvas_height =
-			if graph_width >= 860. { graph_height - 72. } else { (graph_height - 72.) * 0.55 };
-		self.update_graph_inset(canvas_width - 24., canvas_height.max(0.));
-		let center =
-			gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(
-				ui_motion::reveal(
-					"agent-graph-dock",
-					graph_height,
-					false,
-					self.handoff_canvas(graph_width, graph_height, cx),
-				),
-			);
+		let details_height = if self.dock_open() { 180. } else { 0. };
+		self.update_graph_inset(graph_width - 24., (graph_height - 54. - details_height).max(0.));
+		let mut center = gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col();
+		if !self.workspace.graph_expanded {
+			center = center.child(chat);
+		}
+		let center = center.child(ui_motion::reveal(
+			"agent-graph-dock",
+			graph_height,
+			false,
+			self.handoff_canvas(cx),
+		));
 
 		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
 			ui_motion::reveal(
@@ -1563,11 +1562,22 @@ impl AgentSurface {
 								PathBuilder::stroke(gpui::px(if blocked { 2.0 } else { 1.0 }));
 
 							path.move_to(start);
-							path.cubic_bezier_to(
-								end,
-								gpui::point((start.x + end.x) * 0.5, start.y),
-								gpui::point((start.x + end.x) * 0.5, end.y),
-							);
+							if report {
+								let lane = bounds.origin.y + gpui::px(6. * zoom + pan.1);
+								let from = start.x + gpui::px(12. * zoom);
+								let to = end.x - gpui::px(12. * zoom);
+								path.line_to(gpui::point(from, start.y));
+								path.line_to(gpui::point(from, lane));
+								path.line_to(gpui::point(to, lane));
+								path.line_to(gpui::point(to, end.y));
+								path.line_to(end);
+							} else {
+								path.cubic_bezier_to(
+									end,
+									gpui::point((start.x + end.x) * 0.5, start.y),
+									gpui::point((start.x + end.x) * 0.5, end.y),
+								);
+							}
 
 							if !report {
 								path.move_to(end + gpui::point(gpui::px(-5.0), gpui::px(-3.0)));
@@ -2454,7 +2464,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-			s.workspace.dock_compact = true;
+			s.workspace.dock_compact = false;
 
 			s.state = LoadState::Loading;
 

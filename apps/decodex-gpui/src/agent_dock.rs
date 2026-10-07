@@ -52,6 +52,8 @@ impl AgentSurface {
 			"dock-running" | "dock-dependencies" => Some("release".into()),
 			_ => None,
 		};
+		self.handoffs.focus = self.workspace.dock_record.clone();
+		self.workspace.dock_compact = false;
 		self.workspace.graph_panel_height = if page == "dock-result" { 280. } else { 460. };
 		if page == "dock-completed" {
 			self.handoffs.observe("fixture-baseline".into(), snapshot);
@@ -70,10 +72,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn dock_scope(&self) -> Option<String> {
-		if self.is_new_conversation() {
-			return None;
-		}
-		self.selected.clone().or_else(|| self.root_id())
+		self.root_id()
 	}
 
 	fn dock_evidence_key(&self, work: &AgentWorkItemDto) -> String {
@@ -405,6 +404,39 @@ mod tests {
 	use gpui::AppContext;
 
 	#[gpui::test]
+	fn graph_controls_expand_restore_and_close(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = AgentSurface::new(cx);
+			s.visual_workspace_fixture(cx);
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		for (control, expanded, visible) in [
+			("graph-expand", true, true),
+			("graph-expand", false, true),
+			("graph-close", false, false),
+		] {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+			std::thread::sleep(std::time::Duration::from_millis(240));
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			let bounds = visual.debug_bounds(control).expect("graph control");
+			visual.simulate_click(bounds.center(), Default::default());
+			surface.update(visual, |s, _| {
+				assert_eq!(s.workspace.graph_expanded, expanded);
+				assert_eq!(s.workspace.graph_visible, visible);
+				assert_eq!(s.selected.as_deref(), Some("agent"));
+			});
+		}
+	}
+
+	#[gpui::test]
 	fn dock_expands_in_place_and_source_navigation_follows_conversation(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -422,11 +454,11 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
-		let row = visual.debug_bounds("handoff-release").expect("handoff chip");
+		let row = visual.debug_bounds("graph-node-release").expect("work node");
 		visual.simulate_click(row.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
-			assert_eq!(s.workspace.dock_record.as_deref(), Some("release"));
+			assert_eq!(s.handoffs.focus.as_deref(), Some("release"));
 		});
 		for _ in 0..3 {
 			visual.update(|w, cx| {
@@ -444,7 +476,7 @@ mod tests {
 		visual.simulate_click(source.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("release"));
-			assert_eq!(s.dock_scope().as_deref(), Some("release"));
+			assert_eq!(s.dock_scope().as_deref(), Some("agent"));
 			assert!(s.workspace.dock_record.is_none());
 		});
 	}
@@ -499,7 +531,10 @@ mod tests {
 			w.refresh();
 			w.draw(cx).clear();
 		});
-		assert!(visual.debug_bounds("work-dock").unwrap().size.height <= gpui::px(72.));
+		assert!(
+			visual.debug_bounds("work-graph-canvas").is_some(),
+			"closing details preserves the graph"
+		);
 	}
 
 	#[gpui::test]
@@ -545,8 +580,8 @@ mod tests {
 		assert!(detail.size.height <= gpui::px(680.));
 		let excerpt = visual.debug_bounds("dock-report-excerpt").expect("bounded report");
 		assert!(excerpt.size.height < gpui::px(100.));
-		let strip = visual.debug_bounds("handoff-strip").expect("handoff strip");
-		assert!(detail.top() >= strip.bottom());
+		let strip = visual.debug_bounds("work-dock").expect("Dock");
+		assert!(detail.top() >= strip.top());
 		let composer = visual.debug_bounds("floating-composer").expect("floating composer");
 		assert!(composer.bottom() <= strip.top(), "composer stays above the whole Dock");
 		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("agent")));
@@ -624,6 +659,8 @@ mod tests {
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.selected = Some("release".into());
+			s.workspace.dock_record = Some("release".into());
+			s.workspace.dock_completed = false;
 			assert_eq!(
 				s.collapse_graph_completed(&mut s.workspace_graph_full_layout()),
 				0,
@@ -643,7 +680,7 @@ mod tests {
 					.iter()
 					.any(|(a, b)| layout.nodes[*a].id == "flow" && layout.nodes[*b].id == "verify")
 			);
-			assert!(layout.reports.is_empty());
+			assert!(!layout.reports.is_empty(), "retain actual delegation lines");
 			s.workspace.dock_completed = true;
 			assert!(s.workspace_graph_layout().nodes.iter().any(|n| n.id == "finished-branch"));
 			s.selected = Some("verify".into());
@@ -683,7 +720,7 @@ mod tests {
 			visual.run_until_parked();
 		}
 		let result =
-			visual.debug_bounds("handoff-website").expect("read result remains accessible");
+			visual.debug_bounds("graph-node-website").expect("read result remains accessible");
 		visual.simulate_click(result.center(), Default::default());
 		for _ in 0..3 {
 			visual.update(|w, cx| {

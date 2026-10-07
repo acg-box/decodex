@@ -7831,7 +7831,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-shift-=");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
 
 		visual.simulate_keystrokes("ctrl-alt-_");
 
@@ -7839,7 +7839,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-+");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
 
 		visual.simulate_keystrokes("ctrl-alt-)");
 

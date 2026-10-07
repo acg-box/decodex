@@ -1,9 +1,7 @@
 //! A global Dock that expands into one bounded work canvas.
 use super::{
-	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-	StatefulInteractiveElement, Styled,
-	handoffs::Handoff,
-	ui_theme::{AMBER, BLUE, GREEN, TEXT_MUTED},
+	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement,
+	StatefulInteractiveElement, Styled, handoffs::Handoff, ui_theme::TEXT_MUTED,
 };
 use gpui::{AnyElement, KeyDownEvent};
 
@@ -27,20 +25,77 @@ impl AgentSurface {
 
 	pub(super) fn activate_graph_node(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.handoffs.focus = Some(id.into());
+		self.workspace.graph_panel_height = self.workspace.graph_panel_height.max(460.);
 		self.load_dock_evidence(id, cx);
 		cx.notify();
 	}
 
 	pub(super) fn dock_open(&self) -> bool {
-		self.dock_items().iter().any(|h| Some(&h.work) == self.workspace.dock_record.as_ref())
+		self.handoffs.focus.is_some()
 	}
 
-	pub(super) fn handoff_canvas(
-		&self,
-		width: f32,
-		height: f32,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
+	pub(super) fn handoff_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
+		let compact = self.workspace.dock_compact && !self.workspace.graph_expanded;
+		let mut header = gpui::div()
+			.h(gpui::px(38.))
+			.flex_none()
+			.flex()
+			.items_center()
+			.px_2()
+			.child(gpui::div().flex_1().text_size(gpui::px(12.)).child("Work graph"))
+			.child(self.workspace_action(
+				"dock-toggle".into(),
+				if compact { "Show graph" } else { "Collapse graph" }.into(),
+				|s, cx| {
+					s.workspace.dock_compact = !s.workspace.dock_compact;
+					s.workspace.graph_expanded = false;
+					s.workspace.graph_panel_height = s.workspace.graph_panel_height.max(320.);
+					cx.notify();
+				},
+				cx,
+			))
+			.child(
+				self.workspace_action(
+					"graph-expand".into(),
+					if self.workspace.graph_expanded {
+						"Restore conversation"
+					} else {
+						"Expand work overview"
+					}
+					.into(),
+					|s, cx| {
+						s.workspace.graph_expanded = !s.workspace.graph_expanded;
+						s.workspace.dock_compact = false;
+						cx.notify();
+					},
+					cx,
+				),
+			);
+		if self.workspace.dock_record.is_some() {
+			header = header.child(self.workspace_action(
+				"graph-home".into(),
+				"All work".into(),
+				|s, cx| {
+					s.workspace.dock_record = None;
+					s.handoffs.focus = None;
+					s.workspace.graph_pan = (0., 0.);
+					s.workspace.graph_zoom = 1.;
+					cx.notify();
+				},
+				cx,
+			));
+		}
+		header = header.child(self.workspace_action(
+			"graph-close".into(),
+			"Close Dock".into(),
+			|s, cx| {
+				s.workspace.graph_visible = false;
+				s.workspace.graph_expanded = false;
+				cx.notify();
+			},
+			cx,
+		));
+
 		let mut panel = gpui::div()
 			.id("work-dock")
 			.debug_selector(|| "work-dock".into())
@@ -50,200 +105,32 @@ impl AgentSurface {
 			.overflow_hidden()
 			.border_t_1()
 			.border_color(gpui::rgba(0xffffff18))
-			.child(gpui::div().h(gpui::px(72.)).flex_none().child(self.handoff_bar(cx)));
-		if let Some(details) = self.handoff_details(cx) {
-			let graph = !self.workspace_graph_full_layout().edges.is_empty();
-			let mut content = gpui::div()
-				.id("dock-content")
-				.overflow_y_scroll()
-				.flex_1()
-				.min_h_0()
-				.flex()
-				.border_t_1()
-				.border_color(gpui::rgba(0xffffff12));
-			if graph {
-				let graph_view = gpui::div()
-					.min_h_0()
-					.flex()
-					.flex_col()
-					.child(
-						gpui::div()
-							.px_3()
-							.py_1()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("Dependencies · arrows point to the work they unblock"),
-					)
-					.child(self.workspace_dependency_graph(cx));
-				if width >= 860. {
-					content = content.child(graph_view.flex_1().min_w_0()).child(
-						gpui::div()
-							.w(gpui::px(300.))
-							.h_full()
-							.border_l_1()
-							.border_color(gpui::rgba(0xffffff12))
-							.child(details),
-					);
-				} else {
-					content = content
-						.flex_col()
-						.child(
-							graph_view.h(gpui::px(((height - 72.) * 0.55).max(100.))).flex_none(),
-						)
-						.child(
-							gpui::div()
-								.flex_1()
-								.min_h(gpui::px(160.))
-								.border_t_1()
-								.border_color(gpui::rgba(0xffffff12))
-								.child(details),
-						);
-				}
-			} else {
-				content = content.child(details);
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
+				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom)
+			}))
+			.child(header);
+		if !compact {
+			panel = panel
+				.child(
+					gpui::div()
+						.px_3()
+						.text_size(gpui::px(11.))
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child("Blue: delegated work · Arrows: prerequisite → next task"),
+				)
+				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
+			if let Some(details) = self.handoff_details(cx) {
+				panel = panel.child(
+					gpui::div()
+						.h(gpui::px(180.))
+						.flex_none()
+						.border_t_1()
+						.border_color(gpui::rgba(0xffffff12))
+						.child(details),
+				);
 			}
-			panel = panel.child(content);
 		}
 		panel.into_any_element()
-	}
-
-	pub(super) fn handoff_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-		let items = self.dock_items();
-		let running = self.snapshot.as_ref().map_or(0, |snapshot| {
-			snapshot
-				.work_items
-				.iter()
-				.filter(|w| {
-					matches!(
-						w.dispatch_state,
-						super::AgentDispatchStateDto::Running
-							| super::AgentDispatchStateDto::Dispatching
-					)
-				})
-				.count()
-		});
-		let mut strip = gpui::div()
-			.id("handoff-strip")
-			.debug_selector(|| "handoff-strip".into())
-			.flex()
-			.items_center()
-			.gap_2()
-			.flex_1()
-			.min_w_0()
-			.overflow_x_scroll();
-		if items.is_empty() {
-			strip = if self.snapshot.as_ref().is_none_or(|s| s.connection_initializing) {
-				strip.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("Connecting…"))
-			} else {
-				strip.child(self.workspace_action(
-					"dock-start-work".into(),
-					"Start work  +".into(),
-					|s, cx| s.new_work_conversation(cx),
-					cx,
-				))
-			};
-		}
-		for item in items {
-			strip = strip.child(self.handoff_chip(&item, cx));
-		}
-		gpui::div()
-			.h_full()
-			.w_full()
-			.flex()
-			.items_center()
-			.gap_2()
-			.px_2()
-			.text_size(gpui::px(12.))
-			.child(gpui::div().flex_none().text_color(gpui::rgb(TEXT_MUTED)).child("Work canvas"))
-			.child(strip)
-			.child(
-				gpui::div().flex_none().text_color(gpui::rgb(TEXT_MUTED)).child(if running > 0 {
-					format!("{running} running")
-				} else {
-					String::new()
-				}),
-			)
-			.into_any_element()
-	}
-
-	fn handoff_chip(&self, item: &Handoff, cx: &mut Context<Self>) -> AnyElement {
-		let Some(work) =
-			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == item.work))
-		else {
-			return gpui::div().into_any_element();
-		};
-		let id = work.id.clone();
-		let keyboard = id.clone();
-		let title = self.work_label(work);
-		let selector = format!("handoff-{id}");
-		let color = if item.attention {
-			AMBER
-		} else if item.result {
-			GREEN
-		} else {
-			BLUE
-		};
-		let symbol = if item.attention {
-			"●"
-		} else if item.result {
-			"✓"
-		} else {
-			"◌"
-		};
-		gpui::div()
-			.id(SharedString::from(selector.clone()))
-			.debug_selector(move || selector.clone())
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_label(format!("{title}: {}. Preview handoff.", item.label))
-			.aria_expanded(self.workspace.dock_record.as_ref() == Some(&id))
-			.flex_none()
-			.w(gpui::px(184.))
-			.px_2()
-			.py_1()
-			.rounded(gpui::px(8.))
-			.cursor_pointer()
-			.border_1()
-			.border_color(gpui::rgba(0xffffff18))
-			.bg(gpui::rgba(if self.workspace.dock_record.as_ref() == Some(&id) {
-				0xffffff18
-			} else {
-				0xffffff08
-			}))
-			.hover(|s| s.bg(gpui::rgba(0xffffff20)))
-			.on_click(cx.listener(move |s, _, _, cx| {
-				s.handoffs.focus = None;
-				s.toggle_dock_record(&id, cx);
-			}))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "enter" || e.keystroke.key == "space" {
-					s.handoffs.focus = None;
-					s.toggle_dock_record(&keyboard, cx);
-					cx.stop_propagation();
-				}
-			}))
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(gpui::div().text_color(gpui::rgb(color)).child(symbol))
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.whitespace_nowrap()
-							.text_ellipsis()
-							.child(title),
-					)
-					.child(if self.workspace.dock_record.as_deref() == Some(item.work.as_str()) {
-						"▴"
-					} else {
-						"▾"
-					}),
-			)
-			.child(gpui::div().text_color(gpui::rgb(color)).child(item.label))
-			.into_any_element()
 	}
 
 	fn handoff_source(&self, work: &super::AgentWorkItemDto) -> String {
@@ -275,14 +162,28 @@ impl AgentSurface {
 
 		header = header.child(self.workspace_action(
 			"handoff-close".into(),
-			"Collapse".into(),
+			"Close details".into(),
 			|s, cx| {
-				s.workspace.dock_record = None;
 				s.handoffs.focus = None;
 				cx.notify();
 			},
 			cx,
 		));
+		if self.snapshot.as_ref().is_some_and(|snapshot| {
+			snapshot.work_items.iter().any(|w| w.parent_goal_id.as_deref() == Some(&work.id))
+		}) {
+			let id = work.id.clone();
+			header = header.child(self.workspace_action(
+				"dock-subtasks".into(),
+				"Show subtasks".into(),
+				move |s, cx| {
+					s.toggle_dock_record(&id, cx);
+					s.handoffs.focus = None;
+				},
+				cx,
+			));
+		}
+
 		header
 	}
 

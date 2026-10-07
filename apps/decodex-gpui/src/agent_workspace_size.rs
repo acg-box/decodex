@@ -48,7 +48,7 @@ impl AgentSurface {
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
 			self.workspace.graph_visible
-				&& self.workspace.dock_record.is_some()
+				&& !self.workspace.dock_compact
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
 		];
@@ -136,15 +136,6 @@ impl AgentSurface {
 			}
 		}
 
-		// Ownership belongs in the agent tree; this view shows prerequisites only.
-		if !layout.reports.is_empty() {
-			layout.nodes.pop();
-			layout.reports.clear();
-			for node in &mut layout.nodes {
-				node.y -= 112.;
-			}
-		}
-
 		for node in &mut layout.nodes {
 			let (x, y) = (node.x, node.y);
 
@@ -194,10 +185,13 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
-		let height = if self.dock_open() {
-			self.workspace.graph_panel_height.clamp(200., 640.).min((available.1 - 240.).max(72.))
+		if self.workspace.graph_expanded {
+			return available;
+		}
+		let height = if self.workspace.dock_compact {
+			38.
 		} else {
-			72.
+			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.))
 		};
 		(available.0, height.min(available.1))
 	}
@@ -493,7 +487,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn handoff_strip_keeps_conversation_space_when_preview_changes(cx: &mut gpui::TestAppContext) {
+	fn graph_expands_restores_and_preserves_conversation_space(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_200.), gpui::px(900.)));
@@ -510,16 +504,19 @@ mod tests {
 				// Geometry assertions below describe the settled panel layout.
 				s.workspace.sidebar_motion = Default::default();
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_expanded = true;
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(
+					s.workspace_graph_size(window, true).1,
+					900. - super::WINDOW_CONTROLS_CLEARANCE
+				);
 
 				s.workspace.graph_visible = false;
 
@@ -536,7 +533,7 @@ mod tests {
 			surface.update(cx, |s, _| {
 				let (_, height) = s.workspace_graph_size(window, true);
 
-				assert_eq!(height, 72.);
+				assert_eq!(height, 38.);
 				assert_eq!(
 					s.workspace.graph_panel_height, 275.,
 					"small windows retain the requested height"
