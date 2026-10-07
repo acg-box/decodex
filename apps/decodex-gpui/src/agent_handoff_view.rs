@@ -116,7 +116,7 @@ impl AgentSurface {
 						.px_3()
 						.text_size(gpui::px(11.))
 						.text_color(gpui::rgb(TEXT_MUTED))
-						.child("Blue: delegated work · Arrows: prerequisite → next task"),
+						.child(self.graph_context()),
 				)
 				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
 			if let Some(details) = self.handoff_details(cx) {

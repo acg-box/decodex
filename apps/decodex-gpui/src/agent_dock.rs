@@ -71,6 +71,61 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(super) fn graph_node_caption(&self, work: &AgentWorkItemDto) -> String {
+		let Some(snapshot) = &self.snapshot else {
+			return "Status unavailable".into();
+		};
+		let state = progress_state(snapshot, work);
+		if state.group == 3 {
+			return "Completed · View result".into();
+		}
+		if state.group == 0 {
+			return format!("{} · View task", state.label);
+		}
+		let blockers = graph::blockers(snapshot, work);
+		if let Some(first) = blockers.first() {
+			return if blockers.len() == 1 {
+				format!("Waiting for {}", self.work_label(first))
+			} else {
+				format!("Waiting for {} tasks", blockers.len())
+			};
+		}
+		if state.group == 1 {
+			format!("{} · View activity", state.label)
+		} else {
+			state.label.into()
+		}
+	}
+
+	pub(super) fn graph_context(&self) -> String {
+		let layout = self.workspace_graph_full_layout();
+		let Some(snapshot) = &self.snapshot else {
+			return "Loading work…".into();
+		};
+		let scope = self.workspace.dock_record.clone().or_else(|| self.root_id());
+		let owner = snapshot.work_items.iter().find(|w| Some(&w.id) == scope.as_ref());
+		let children: Vec<_> = snapshot
+			.work_items
+			.iter()
+			.filter(|w| w.parent_goal_id == scope && scope.is_some())
+			.collect();
+		if !layout.edges.is_empty() {
+			return "Arrows show which task must finish before the next can proceed".into();
+		}
+		if let Some(owner) = owner.filter(|_| !children.is_empty()) {
+			let complete =
+				children.iter().filter(|w| w.status == super::AgentWorkStatusDto::Resolved).count();
+			format!(
+				"{} · {} tasks · {} completed",
+				self.work_label(owner),
+				children.len(),
+				complete
+			)
+		} else {
+			"Select a task to view its activity or result".into()
+		}
+	}
+
 	pub(super) fn dock_scope(&self) -> Option<String> {
 		self.root_id()
 	}

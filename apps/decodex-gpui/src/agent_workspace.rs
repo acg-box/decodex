@@ -1559,14 +1559,7 @@ impl AgentSurface {
 									gpui::px(b.1 * zoom + pan.1),
 								);
 
-							let path = graph_edge_path(
-								start,
-								end,
-								report,
-								blocked,
-								bounds.origin.y + gpui::px(6. * zoom + pan.1),
-								gpui::px(12. * zoom),
-							);
+							let path = graph_edge_path(start, end, report, blocked);
 
 							if let Ok(path) = path.build() {
 								window.paint_path(
@@ -1619,7 +1612,7 @@ impl AgentSurface {
 		let key = id.clone();
 		let state =
 			super::dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
-		let status = state.label;
+		let status = self.graph_node_caption(work);
 		let color = state.color;
 		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
 
@@ -1697,25 +1690,15 @@ fn graph_edge_path(
 	end: gpui::Point<gpui::Pixels>,
 	report: bool,
 	blocked: bool,
-	lane: gpui::Pixels,
-	spacing: gpui::Pixels,
 ) -> PathBuilder {
 	let mut path = PathBuilder::stroke(gpui::px(if blocked { 2. } else { 1. }));
 	path.move_to(start);
-	if report {
-		let from = start.x + spacing;
-		let to = end.x - spacing;
-		path.line_to(gpui::point(from, start.y));
-		path.line_to(gpui::point(from, lane));
-		path.line_to(gpui::point(to, lane));
-		path.line_to(gpui::point(to, end.y));
-		path.line_to(end);
-	} else {
-		path.cubic_bezier_to(
-			end,
-			gpui::point((start.x + end.x) * 0.5, start.y),
-			gpui::point((start.x + end.x) * 0.5, end.y),
-		);
+	path.cubic_bezier_to(
+		end,
+		gpui::point((start.x + end.x) * 0.5, start.y),
+		gpui::point((start.x + end.x) * 0.5, end.y),
+	);
+	if !report {
 		path.move_to(end + gpui::point(gpui::px(-5.), gpui::px(-3.)));
 		path.line_to(end);
 		path.line_to(end + gpui::point(gpui::px(-5.), gpui::px(3.)));
