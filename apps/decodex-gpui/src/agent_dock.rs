@@ -39,7 +39,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn dock_scope(&self) -> Option<String> {
-		if self.workspace.new_conversation.is_some() {
+		if self.is_new_conversation() {
 			return None;
 		}
 		self.selected.clone().or_else(|| self.root_id())
@@ -629,6 +629,8 @@ mod tests {
 				1
 			);
 			s.workspace.new_conversation = Some("draft".into());
+			assert_eq!(s.dock_scope().as_deref(), Some("verify"));
+			s.selected = Some("draft".into());
 			assert!(s.dock_scope().is_none());
 		});
 	}
