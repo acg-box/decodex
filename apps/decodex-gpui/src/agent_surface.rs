@@ -2448,7 +2448,7 @@ impl Default for WorkspaceView {
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
 			sidebar_motion: Default::default(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),
-			graph_panel_height: PanelDefaults::configured().dock.into(),
+			graph_panel_height: f32::from(PanelDefaults::configured().dock).max(320.),
 			focused_panel: None,
 			sidebar_drag: None,
 			connection_details_expanded: false,

@@ -77,24 +77,21 @@ impl AgentSurface {
 		};
 		let state = progress_state(snapshot, work);
 		if state.group == 3 {
-			return "Completed · View result".into();
+			return "View result".into();
 		}
-		if state.group == 0 {
-			return format!("{} · View task", state.label);
+		if state.group <= 1 {
+			return state.label.into();
 		}
 		let blockers = graph::blockers(snapshot, work);
-		if let Some(first) = blockers.first() {
-			return if blockers.len() == 1 {
-				format!("Waiting for {}", self.work_label(first))
-			} else {
-				format!("Waiting for {} tasks", blockers.len())
-			};
+
+		if !blockers.is_empty() {
+			return format!(
+				"Waiting on {} task{}",
+				blockers.len(),
+				if blockers.len() == 1 { "" } else { "s" }
+			);
 		}
-		if state.group == 1 {
-			format!("{} · View activity", state.label)
-		} else {
-			state.label.into()
-		}
+		state.label.into()
 	}
 
 	pub(super) fn graph_context(&self) -> String {

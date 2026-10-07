@@ -81,9 +81,7 @@ impl AgentSurface {
 			.nodes
 			.iter()
 			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 190.0), y.max(node.y + 66.0)));
-		self.workspace.graph_display_zoom *= ((width - 20.0) / (right + 20.0))
-			.min((height - 48.).max(32.) / (bottom + 12.))
-			.clamp(0.1, 1.0);
+
 		let zoom = self.workspace.graph_display_zoom;
 
 		self.workspace.graph_inset = (
