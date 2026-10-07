@@ -89,7 +89,10 @@ impl AgentSurface {
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 3] {
 		[
 			(self.workspace.sidebar_visible, true),
-			(self.workspace.graph_visible && self.reserve_workspace_panels(), self.has_work()),
+			(
+				self.workspace.graph_visible && self.reserve_workspace_panels(),
+				self.reserve_workspace_panels(),
+			),
 			(self.workspace.agent_tree_visible, self.has_work()),
 		]
 	}
@@ -111,7 +114,7 @@ impl AgentSurface {
 
 	// Unknown data must not collapse panels that the workspace intends to show.
 	pub(super) fn reserve_workspace_panels(&self) -> bool {
-		self.snapshot.is_none() || self.has_work()
+		self.snapshot.as_ref().is_none_or(|snapshot| !snapshot.work_items.is_empty())
 	}
 
 	pub(super) fn has_work(&self) -> bool {
@@ -201,6 +204,9 @@ impl AgentSurface {
 			self.workspace.graph_zoom = saved.zoom;
 			self.workspace.graph_visible = saved.graph_visible;
 			self.workspace.graph_expanded = false;
+			self.workspace.dock_relations = false;
+			self.workspace.dock_record = None;
+			self.workspace.dock_completed = false;
 		}
 
 		self.reset_model_settings();
@@ -335,6 +341,15 @@ impl AgentSurface {
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
+		let expanded = if let Some(work) = id.strip_prefix("dock-record-") {
+			Some(self.workspace.dock_record.as_deref() == Some(work))
+		} else if id == "dock-completed" {
+			Some(self.workspace.dock_completed)
+		} else if id == "dock-toggle" {
+			Some(!self.workspace.dock_compact)
+		} else {
+			None
+		};
 		let debug_id = id.clone();
 		let label_id = format!("overflow-{id}");
 
@@ -346,6 +361,7 @@ impl AgentSurface {
 			.when(active && !is_tab, |row| row.bg(gpui::rgba(0xffffff0d)))
 			.tab_index(0)
 			.aria_label(accessible)
+			.when_some(expanded, |button, value| button.aria_expanded(value))
 			.when(show_tip, |button| {
 				button.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
 			})
@@ -1370,19 +1386,31 @@ impl AgentSurface {
 	}
 
 	fn workspace_graph(&self, cx: &mut Context<Self>) -> AnyElement {
-		let scope = self.workspace.graph_scope.clone().or_else(|| self.root_id());
+		let scope = if self.workspace.dock_relations {
+			self.workspace.graph_scope.clone()
+		} else {
+			self.dock_scope()
+		};
 		let title = self
 			.snapshot
 			.as_ref()
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == scope.as_ref()))
 			.map(|w| self.work_label(w))
 			.unwrap_or_else(|| "Work".into());
+		let title = format!(
+			"Progress · {title}{}",
+			if self.native_agents.selected.is_some() { " · parent task" } else { "" }
+		);
+
 		let mut panel = self.graph_frame(title, cx).id("graph-panel-focus").capture_any_mouse_down(
 			cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Bottom)),
 		);
 		let Some(snapshot) = &self.snapshot else {
 			return panel.into_any_element();
 		};
+		if self.workspace.dock_compact && !self.workspace.graph_expanded {
+			return panel.into_any_element();
+		}
 		if !self.workspace.dock_relations {
 			return panel.child(self.work_overview(cx)).into_any_element();
 		}
@@ -1406,7 +1434,7 @@ impl AgentSurface {
 					.px_2()
 					.text_size(gpui::px(10.0))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child("Blue: reporting · arrows: prerequisites"),
+					.child("Arrows show prerequisites · click a task to open its conversation"),
 			);
 		}
 		if layout.cyclic {
@@ -1479,25 +1507,6 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.px_2()
-				.child(self.workspace_action(
-					"graph-up".into(),
-					"←".into(),
-					|s, cx| {
-						s.workspace.graph_scope = s
-							.snapshot
-							.as_ref()
-							.and_then(|snap| {
-								snap.work_items
-									.iter()
-									.find(|w| Some(&w.id) == s.workspace.graph_scope.as_ref())
-							})
-							.and_then(|w| w.parent_goal_id.clone());
-						s.workspace.graph_pan = (0.0, 0.0);
-
-						cx.notify();
-					},
-					cx,
-				))
 				.child(
 					gpui::div()
 						.flex_1()
@@ -1506,32 +1515,76 @@ impl AgentSurface {
 						.text_ellipsis()
 						.child(title),
 				)
-				.child(self.workspace_action(
-					"dock-relations".into(),
-					if self.workspace.dock_relations { "Overview" } else { "Relations" }.into(),
-					|s, cx| {
-						s.workspace.dock_relations = !s.workspace.dock_relations;
-						cx.notify();
-					},
-					cx,
-				))
+				.when(self.workspace.dock_compact, |row| {
+					row.child(
+						gpui::div()
+							.flex_none()
+							.px_2()
+							.text_size(gpui::px(12.))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(self.dock_summary()),
+					)
+				})
 				.child(
 					self.workspace_action(
-						"graph-expand".into(),
-						if self.workspace.graph_expanded {
-							"Restore conversation"
+						"dock-toggle".into(),
+						if self.workspace.dock_compact && !self.workspace.graph_expanded {
+							"Show work"
 						} else {
-							"Expand work overview"
+							"Hide details"
 						}
 						.into(),
 						|s, cx| {
-							s.workspace.graph_expanded = !s.workspace.graph_expanded;
-
+							s.workspace.dock_compact = !s.workspace.dock_compact;
+							s.workspace.graph_expanded = false;
 							cx.notify();
 						},
 						cx,
 					),
 				)
+				.when(
+					!self.workspace.dock_compact
+						&& (self.workspace.dock_relations || self.dock_has_dependencies()),
+					|row| {
+						row.child(
+							self.workspace_action(
+								"dock-relations".into(),
+								if self.workspace.dock_relations {
+									"Work progress"
+								} else {
+									"Dependencies"
+								}
+								.into(),
+								|s, cx| {
+									s.workspace.dock_relations = !s.workspace.dock_relations;
+									s.workspace.graph_scope = s.dock_scope();
+									s.workspace.graph_pan = (0., 0.);
+									cx.notify();
+								},
+								cx,
+							),
+						)
+					},
+				)
+				.when(!self.workspace.dock_compact, |row| {
+					row.child(
+						self.workspace_action(
+							"graph-expand".into(),
+							if self.workspace.graph_expanded {
+								"Restore conversation"
+							} else {
+								"Expand work overview"
+							}
+							.into(),
+							|s, cx| {
+								s.workspace.graph_expanded = !s.workspace.graph_expanded;
+
+								cx.notify();
+							},
+							cx,
+						),
+					)
+				})
 				.child(self.workspace_action(
 					"graph-close".into(),
 					"×".into(),
@@ -1568,6 +1621,7 @@ impl AgentSurface {
 			.collect();
 
 		gpui::div()
+			.h_0()
 			.id("work-graph-canvas")
 			.tab_index(0)
 			.role(Role::Group)
@@ -1827,6 +1881,8 @@ impl AgentSurface {
 				self.native_agents.pages.clear();
 				self.workspace.closing_pages.clear();
 			},
+			"dock-compact" | "dock-running" | "dock-result" | "dock-completed"
+			| "dock-dependencies" => self.visual_dock_page(page, cx),
 			"expanded" => self.workspace.graph_expanded = true,
 			"in-use" => {
 				self.workspace.graph_visible = false;
@@ -2012,6 +2068,7 @@ impl AgentSurface {
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
 		self.workspace.pages = vec!["verify".into()];
+		self.workspace.dock_compact = false;
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
@@ -2520,6 +2577,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.workspace.dock_compact = true;
 
 			s.state = LoadState::Loading;
 

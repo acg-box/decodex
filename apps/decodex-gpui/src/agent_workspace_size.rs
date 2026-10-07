@@ -47,7 +47,9 @@ impl AgentSurface {
 		let visible = [
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
-			self.workspace.graph_visible && self.has_work() && !self.workspace.graph_expanded,
+			self.workspace.graph_visible
+				&& self.reserve_workspace_panels()
+				&& !self.workspace.graph_expanded,
 		];
 
 		for (index, panel) in [Panel::Left, Panel::Right, Panel::Bottom].into_iter().enumerate() {
@@ -55,6 +57,9 @@ impl AgentSurface {
 				continue;
 			}
 
+			if panel == Panel::Bottom {
+				self.workspace.dock_compact = false;
+			}
 			let (value, default, min, max) = match panel {
 				Panel::Left => (&mut self.workspace.sidebar_width, defaults.sidebar, 160.0, 480.0),
 				Panel::Right =>
@@ -98,6 +103,15 @@ impl AgentSurface {
 			&& let Some(work) = snapshot.work_items.iter().find(|w| Some(&w.id) == scope.as_ref())
 		{
 			layout = graph::Layout::new(snapshot, work.parent_goal_id.as_deref());
+		}
+
+		// Ownership belongs in the agent tree; this view shows prerequisites only.
+		if !layout.reports.is_empty() {
+			layout.nodes.pop();
+			layout.reports.clear();
+			for node in &mut layout.nodes {
+				node.y -= 112.;
+			}
 		}
 
 		for node in &mut layout.nodes {
@@ -149,6 +163,9 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
+		if self.workspace.dock_compact && !self.workspace.graph_expanded {
+			return (available.0, 46.0_f32.min(available.1));
+		}
 		if !self.workspace.graph_expanded {
 			return (
 				available.0,
