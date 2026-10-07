@@ -34,6 +34,10 @@ impl AgentSurface {
 		});
 		let mut body = gpui::div()
 			.id("work-overview")
+			.debug_selector(|| "work-overview".into())
+			.track_scroll(&self.workspace.dock_scroll)
+			.flex()
+			.flex_col()
 			.flex_1()
 			.min_h_0()
 			.overflow_y_scroll()
@@ -96,19 +100,20 @@ impl AgentSurface {
 		let blockers =
 			graph::blockers(snapshot, work).iter().map(|w| self.work_label(w)).collect::<Vec<_>>();
 		let label = self.work_label(work);
-		let mut record = gpui::div().flex().flex_col().py_1().gap_1().child(
-			gpui::div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(gpui::div().text_color(gpui::rgb(color)).child(status))
-				.child(self.workspace_action(
-					format!("dock-record-{id}"),
-					label,
-					move |s, cx| s.toggle_dock_record(&id, cx),
-					cx,
-				)),
-		);
+		let mut record =
+			gpui::div().flex_none().min_w_0().w_full().flex().flex_col().py_1().gap_1().child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(gpui::div().text_color(gpui::rgb(color)).child(status))
+					.child(self.workspace_action(
+						format!("dock-record-{id}"),
+						label,
+						move |s, cx| s.toggle_dock_record(&id, cx),
+						cx,
+					)),
+			);
 		if !blockers.is_empty() {
 			record = record.child(
 				gpui::div()
@@ -221,7 +226,20 @@ impl AgentSurface {
 
 	fn overview_evidence(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
 		let history = self.overview_history(work);
-		let mut body = gpui::div().pl_2().py_1().flex().flex_col().gap_2();
+		let id = work.id.clone();
+		let source = self.workspace_action(
+			format!("dock-source-{id}"),
+			"Open conversation".into(),
+			move |s, cx| {
+				let scope = s.workspace.graph_scope.clone();
+				s.open_page(&id, cx);
+				s.workspace.graph_scope = scope;
+				s.workspace.dock_record = Some(id.clone());
+				cx.notify();
+			},
+			cx,
+		);
+		let mut body = gpui::div().min_w_0().pl_2().py_1().flex().flex_col().gap_2().child(source);
 		let mut found = false;
 		if let Some(AgentHistoryResult::Available { entries, .. }) = history {
 			// Saved text is evidence of what was reported, never a verification verdict.
@@ -270,19 +288,7 @@ impl AgentSurface {
 				},
 			));
 		}
-		let id = work.id.clone();
-		body.child(self.workspace_action(
-			format!("dock-source-{id}"),
-			"Open conversation".into(),
-			move |s, cx| {
-				let scope = s.workspace.graph_scope.clone();
-				s.open_page(&id, cx);
-				s.workspace.graph_scope = scope;
-				s.workspace.dock_record = Some(id.clone());
-				cx.notify();
-			},
-			cx,
-		))
+		body
 	}
 }
 
@@ -389,5 +395,31 @@ mod tests {
 				Some(AgentHistoryResult::Available { .. })
 			));
 		});
+	}
+	#[gpui::test]
+	fn long_dock_evidence_scrolls_inside_the_reserved_panel(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.dock_record = Some("verify".into());
+			let Some(AgentHistoryResult::Available { entries, .. }) =
+				s.timeline.cache.get_mut("verify")
+			else {
+				panic!("fixture history")
+			};
+			entries[0].text = "Saved evidence line.\n\n".repeat(100);
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let scroll = surface.read_with(visual, |s, _| s.workspace.dock_scroll.clone());
+		assert!(scroll.bounds().size.height < gpui::px(400.));
+		assert!(scroll.max_offset().y > gpui::px(1000.));
+		visual.simulate_event(gpui::ScrollWheelEvent {
+			position: scroll.bounds().center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-100.))),
+			..Default::default()
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(scroll.offset().y, gpui::px(-100.));
 	}
 }
