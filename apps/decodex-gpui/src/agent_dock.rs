@@ -7,6 +7,13 @@ use crate::shell::agent_surface::{
 	markdown, ui_theme::TEXT_MUTED,
 };
 
+#[derive(Default)]
+pub(super) struct Evidence {
+	key: Option<String>,
+	history: Option<AgentHistoryResult>,
+	task: Option<gpui::Task<()>>,
+}
+
 impl AgentSurface {
 	pub(super) fn work_overview(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(snapshot) = &self.snapshot else { return gpui::div().into_any_element() };
@@ -98,14 +105,7 @@ impl AgentSurface {
 				.child(self.workspace_action(
 					format!("dock-record-{id}"),
 					label,
-					move |s, cx| {
-						s.workspace.dock_record = if s.workspace.dock_record.as_ref() == Some(&id) {
-							None
-						} else {
-							Some(id.clone())
-						};
-						cx.notify();
-					},
+					move |s, cx| s.toggle_dock_record(&id, cx),
 					cx,
 				)),
 		);
@@ -148,7 +148,70 @@ impl AgentSurface {
 		record
 	}
 
+	fn dock_evidence_key(&self, work: &AgentWorkItemDto) -> String {
+		serde_json::json!([
+			work.id,
+			work.codex_thread_id,
+			self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+		])
+		.to_string()
+	}
+
+	fn toggle_dock_record(&mut self, id: &str, cx: &mut Context<Self>) {
+		if self.workspace.dock_record.as_deref() == Some(id) {
+			self.workspace.dock_record = None;
+			self.dock_evidence = Evidence::default();
+			cx.notify();
+			return;
+		}
+		self.workspace.dock_record = Some(id.into());
+		self.dock_evidence = Evidence::default();
+		cx.notify();
+		let Some(work) =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == id))
+		else {
+			return;
+		};
+		if !self.command_connection_ready() || work.codex_thread_id.is_none() {
+			return;
+		}
+		let Some(profile) = self.profile.clone() else { return };
+		let key = self.dock_evidence_key(work);
+		let Ok(owner) = super::EntityId::new(id) else { return };
+		self.dock_evidence.key = Some(key.clone());
+		let request = cx.background_executor().spawn(async move {
+			let runtime =
+				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			runtime.block_on(super::AgentClient::new(profile).history(owner)).ok()
+		});
+		self.dock_evidence.task = Some(cx.spawn(async move |surface, cx| {
+			let history = request.await.unwrap_or(AgentHistoryResult::Unavailable);
+			let _ = surface.update(cx, |s, cx| {
+				if s.dock_evidence.key.as_ref() != Some(&key) {
+					return;
+				}
+				let current = s.snapshot.as_ref().and_then(|snapshot| {
+					snapshot
+						.work_items
+						.iter()
+						.find(|w| Some(&w.id) == s.workspace.dock_record.as_ref())
+				});
+				if current.is_none_or(|work| s.dock_evidence_key(work) != key) {
+					return;
+				}
+				s.dock_evidence.history = Some(history);
+				s.dock_evidence.task = None;
+				cx.notify();
+			});
+		}));
+	}
+
 	fn overview_history(&self, work: &AgentWorkItemDto) -> Option<&AgentHistoryResult> {
+		if self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work))
+			&& self.dock_evidence.history.is_some()
+		{
+			return self.dock_evidence.history.as_ref();
+		}
 		self.history
 			.as_ref()
 			.filter(|(id, _)| id == &work.id && self.native_agents.selected.is_none())
@@ -197,11 +260,15 @@ impl AgentSurface {
 			}
 		}
 		if !found {
-			body = body.child(
-				gpui::div()
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child("Open the conversation to load its source records."),
-			);
+			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(
+				if self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work))
+					&& self.dock_evidence.task.is_some()
+				{
+					"Loading source records…"
+				} else {
+					"No source records are available here. Open the conversation to inspect it."
+				},
+			));
 		}
 		let id = work.id.clone();
 		body.child(self.workspace_action(
@@ -304,6 +371,23 @@ mod tests {
 			assert_eq!(s.selected.as_deref(), Some("release"));
 			assert_eq!(s.workspace.graph_scope.as_deref(), Some("release"));
 			assert_eq!(s.workspace.dock_record.as_deref(), Some("release"));
+		});
+	}
+	#[gpui::test]
+	fn dock_does_not_reuse_fetched_history_after_thread_rebinding(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s.snapshot.as_ref().unwrap().work_items[0].clone();
+			s.dock_evidence.key = Some(s.dock_evidence_key(&work));
+			s.dock_evidence.history = Some(AgentHistoryResult::Unavailable);
+			assert!(matches!(s.overview_history(&work), Some(AgentHistoryResult::Unavailable)));
+			let mut rebound = work;
+			rebound.codex_thread_id = Some("another-thread".into());
+			assert!(matches!(
+				s.overview_history(&rebound),
+				Some(AgentHistoryResult::Available { .. })
+			));
 		});
 	}
 }
