@@ -448,6 +448,7 @@ mod tests {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
 			surface.visual_dock_page("dock-result", cx);
+			surface.selected = Some("agent".into());
 			if let Some(AgentHistoryResult::Available { entries, .. }) =
 				surface.timeline.cache.get_mut("website")
 			{
@@ -469,7 +470,9 @@ mod tests {
 		assert!(excerpt.size.height < gpui::px(100.));
 		let strip = visual.debug_bounds("handoff-strip").expect("handoff strip");
 		assert!(detail.bottom() <= strip.top());
-		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("release")));
+		let composer = visual.debug_bounds("floating-composer").expect("floating composer");
+		assert!(detail.bottom() <= composer.top(), "native composer must not obscure the preview");
+		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("agent")));
 		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(840.)));
 		for _ in 0..3 {
 			visual.update(|w, cx| {

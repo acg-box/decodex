@@ -1105,15 +1105,19 @@ impl AgentSurface {
 				ui_motion::reveal("agent-graph-dock", graph_height, false, self.handoff_bar(cx)),
 			);
 		if self.workspace.graph_visible
-			&& let Some(popup) =
-				self.handoff_popup(graph_width, f32::from(window.viewport_size().height), cx)
-		{
+			&& let Some(popup) = self.handoff_popup(
+				graph_width,
+				f32::from(window.viewport_size().height) - self.workspace.composer_overlay_height,
+				cx,
+			) {
 			center = center.child(
 				gpui::deferred(
 					gpui::div()
 						.absolute()
 						.left(gpui::px(8.))
-						.bottom(gpui::px(graph_height + 8.))
+						.bottom(gpui::px(
+							graph_height + self.workspace.composer_overlay_height + 8.,
+						))
 						.child(popup),
 				)
 				.with_priority(3),
