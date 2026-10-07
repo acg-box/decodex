@@ -199,10 +199,12 @@ impl AgentSurface {
 				zoom: 0.85,
 			});
 
-			self.workspace.graph_scope = saved.scope;
-			self.workspace.graph_selected = saved.selected;
-			self.workspace.graph_pan = saved.pan;
-			self.workspace.graph_zoom = saved.zoom;
+			if !self.dock_open() {
+				self.workspace.graph_scope = saved.scope;
+				self.workspace.graph_selected = saved.selected;
+				self.workspace.graph_pan = saved.pan;
+				self.workspace.graph_zoom = saved.zoom;
+			}
 			// Dock visibility is global; conversation navigation only restores graph inspection.
 			self.workspace.graph_expanded = false;
 		}
@@ -339,7 +341,7 @@ impl AgentSurface {
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
-		let expanded = (id == "handoff-relations").then_some(self.handoffs.relations);
+		let expanded = None::<bool>;
 		let debug_id = id.clone();
 		let label_id = format!("overflow-{id}");
 
@@ -1098,31 +1100,19 @@ impl AgentSurface {
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
-		self.update_graph_inset((graph_width - 16.).clamp(240., 640.) - 24., 280.);
-
-		let mut center =
+		let canvas_width = if graph_width >= 860. { graph_width - 300. } else { graph_width };
+		let canvas_height =
+			if graph_width >= 860. { graph_height - 72. } else { (graph_height - 72.) * 0.55 };
+		self.update_graph_inset(canvas_width - 24., canvas_height.max(0.));
+		let center =
 			gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(
-				ui_motion::reveal("agent-graph-dock", graph_height, false, self.handoff_bar(cx)),
+				ui_motion::reveal(
+					"agent-graph-dock",
+					graph_height,
+					false,
+					self.handoff_canvas(graph_width, graph_height, cx),
+				),
 			);
-		if self.workspace.graph_visible
-			&& let Some(popup) = self.handoff_popup(
-				graph_width,
-				f32::from(window.viewport_size().height) - self.workspace.composer_overlay_height,
-				cx,
-			) {
-			center = center.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.left(gpui::px(8.))
-						.bottom(gpui::px(
-							graph_height + self.workspace.composer_overlay_height + 8.,
-						))
-						.child(popup),
-				)
-				.with_priority(3),
-			);
-		}
 
 		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
 			ui_motion::reveal(
@@ -1654,28 +1644,36 @@ impl AgentSurface {
 			.left(gpui::px(node.x * zoom + pan.0))
 			.top(gpui::px(node.y * zoom + pan.1))
 			.w(gpui::px(190.0 * zoom))
-			.h(gpui::px(66.0 * zoom))
+			.h(gpui::px((66.0 * zoom).max(42.)))
 			.border_1()
 			.border_color(
-				gpui::rgb(if self.workspace.dock_record.as_ref() == Some(&id) {
-					TEXT
-				} else {
-					color
-				})
+				gpui::rgb(
+					if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref())
+						== Some(&id)
+					{
+						TEXT
+					} else {
+						color
+					},
+				)
 				.opacity(if state.group == 3 { 0.25 } else { 0.7 }),
 			)
 			.px_2()
-			.py_1()
+			.py(gpui::px(3.))
 			.rounded(gpui::px(9.0))
-			.bg(if self.workspace.dock_record.as_ref() == Some(&id) {
-				gpui::rgba(0x35353ce8)
-			} else {
-				gpui::rgba(0x242427db)
-			})
+			.bg(
+				if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref()) == Some(&id)
+				{
+					gpui::rgba(0x35353ce8)
+				} else {
+					gpui::rgba(0x242427db)
+				},
+			)
 			.hover(|style| style.bg(gpui::rgba(0x3a3a40eb)))
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(gpui::px((12.0 * zoom).max(10.0)))
+			.line_height(gpui::px(14.))
 			.on_click(cx.listener(move |s, _, _, cx| s.activate_graph_node(&id, cx)))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if event.keystroke.key == "enter" || event.keystroke.key == "space" {
@@ -1686,12 +1684,14 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.justify_center()
-			.gap_1()
+			.gap(gpui::px(2.))
 			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
 			.child(
 				gpui::div()
 					.text_size(gpui::px((11.0 * zoom).max(10.0)))
 					.text_color(gpui::rgb(color))
+					.whitespace_nowrap()
+					.text_ellipsis()
 					.child(status),
 			);
 
@@ -2060,7 +2060,7 @@ impl AgentSurface {
 					gpui::div()
 						.flex()
 						.flex_col()
-						.gap_1()
+						.gap(gpui::px(2.))
 						.child(summary)
 						.child(format!("Preview: {preview}"))
 						.when_some(ordinary_preview, |element, preview| element.child(preview))
@@ -2085,7 +2085,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label("Keep both draft copies")
 			.px_2()
-			.py_1()
+			.py(gpui::px(3.))
 			.cursor_pointer()
 			.on_click(cx.listener(|s, _, _, cx| s.keep_both_drafts(cx)))
 			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
@@ -2164,7 +2164,7 @@ impl AgentSurface {
 			.aria_label(label.to_owned())
 			.w_full()
 			.px_4()
-			.py_1()
+			.py(gpui::px(3.))
 			.flex()
 			.items_center()
 			.justify_center()

@@ -20,7 +20,7 @@ pub(super) struct Handoff {
 pub(super) struct Handoffs {
 	scope: Option<String>,
 	seen: BTreeMap<String, String>,
-	pub relations: bool,
+	pub focus: Option<String>,
 	pub read_on_open: Option<(String, String)>,
 }
 
@@ -79,7 +79,7 @@ impl Handoffs {
 				.collect()
 		});
 		self.scope = Some(scope);
-		self.relations = false;
+		self.focus = None;
 		self.read_on_open = None;
 		self.save();
 	}
@@ -240,7 +240,7 @@ mod tests {
 			handoffs.observe("dock-more".into(), &snapshot);
 			let items = handoffs.dock_items(&snapshot);
 			assert_eq!(items.iter().filter(|h| h.result).count(), 3);
-			assert_eq!(items[1].work, "recent-4");
+			assert_eq!(items.iter().find(|h| h.result).unwrap().work, "recent-4");
 		});
 	}
 

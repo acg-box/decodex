@@ -81,7 +81,9 @@ impl AgentSurface {
 			.nodes
 			.iter()
 			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 190.0), y.max(node.y + 66.0)));
-		self.workspace.graph_display_zoom *= ((width - 20.0) / (right + 20.0)).clamp(0.1, 1.0);
+		self.workspace.graph_display_zoom *= ((width - 20.0) / (right + 20.0))
+			.min((height - 48.).max(32.) / (bottom + 12.))
+			.clamp(0.1, 1.0);
 		let zoom = self.workspace.graph_display_zoom;
 
 		self.workspace.graph_inset = (
@@ -192,7 +194,12 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
-		(available.0, 72.0_f32.min(available.1))
+		let height = if self.dock_open() {
+			self.workspace.graph_panel_height.clamp(200., 640.).min((available.1 - 240.).max(72.))
+		} else {
+			72.
+		};
+		(available.0, height.min(available.1))
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {

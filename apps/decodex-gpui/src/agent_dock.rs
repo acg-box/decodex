@@ -19,6 +19,9 @@ impl AgentSurface {
 	pub(super) fn visual_dock_page(&mut self, page: &str, cx: &mut Context<Self>) {
 		self.selected = Some("release".into());
 		self.handoffs.fixture();
+		if let Some(history) = self.timeline.cache.get("agent").cloned() {
+			self.timeline.cache.insert("release".into(), history);
+		}
 		self.history = self.timeline.cache.get("agent").cloned().map(|h| ("release".into(), h));
 		let snapshot = self.snapshot.as_mut().expect("fixture snapshot");
 		let mut ready =
@@ -27,6 +30,16 @@ impl AgentSurface {
 		ready.title = "Documentation update".into();
 		ready.parent_goal_id = Some("agent".into());
 		snapshot.work_items.push(ready);
+		let mut parallel = snapshot
+			.work_items
+			.iter()
+			.find(|w| w.id == "improve")
+			.expect("running fixture")
+			.clone();
+		parallel.id = "search".into();
+		parallel.title = "Search indexing".into();
+		parallel.parent_goal_id = Some("agent".into());
+		snapshot.work_items.push(parallel);
 		if let Some(mut history) = self.timeline.cache.get("verify").cloned() {
 			if let AgentHistoryResult::Available { entries, .. } = &mut history {
 				entries[0].text =
@@ -39,6 +52,7 @@ impl AgentSurface {
 			"dock-running" | "dock-dependencies" => Some("release".into()),
 			_ => None,
 		};
+		self.workspace.graph_panel_height = if page == "dock-result" { 280. } else { 460. };
 		if page == "dock-completed" {
 			self.handoffs.observe("fixture-baseline".into(), snapshot);
 			for work in &mut snapshot.work_items {
@@ -46,7 +60,9 @@ impl AgentSurface {
 			}
 		}
 		if page == "dock-dependencies" {
-			self.handoffs.relations = true;
+			self.selected = Some("agent".into());
+			self.history = self.timeline.cache.get("agent").cloned().map(|h| ("agent".into(), h));
+			self.handoffs.focus = Some("release".into());
 			self.workspace.dock_completed = true;
 		}
 
@@ -79,6 +95,16 @@ impl AgentSurface {
 			return;
 		}
 		self.workspace.dock_record = Some(id.into());
+		self.handoffs.focus = Some(id.into());
+		self.workspace.dock_completed = true;
+		self.workspace.graph_pan = (0., 0.);
+		self.workspace.graph_zoom = 1.;
+		self.workspace.graph_panel_height =
+			if self.workspace_graph_full_layout().edges.is_empty() { 280. } else { 460. };
+		self.load_dock_evidence(id, cx);
+	}
+
+	pub(super) fn load_dock_evidence(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.dock_evidence = Evidence::default();
 		cx.notify();
 		let Some(work) =
@@ -123,10 +149,10 @@ impl AgentSurface {
 					return;
 				}
 				let current = s.snapshot.as_ref().and_then(|snapshot| {
-					snapshot
-						.work_items
-						.iter()
-						.find(|w| Some(&w.id) == s.workspace.dock_record.as_ref())
+					snapshot.work_items.iter().find(|w| {
+						Some(&w.id)
+							== s.handoffs.focus.as_ref().or(s.workspace.dock_record.as_ref())
+					})
 				});
 				if current.is_none_or(|work| s.dock_evidence_key(work) != key) {
 					return;
@@ -210,21 +236,13 @@ impl AgentSurface {
 				s.open_page(&id, cx);
 				s.workspace.graph_expanded = false;
 				s.workspace.dock_record = None;
-				s.handoffs.relations = false;
+				s.handoffs.focus = None;
 				s.sync_request(cx);
 				cx.notify();
 			},
 			cx,
 		);
-		let mut body = gpui::div()
-			.w_full()
-			.min_w_0()
-			.pl_2()
-			.py_1()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(gpui::div().flex().child(source));
+		let mut body = gpui::div().w_full().min_w_0().pl_2().py_1().flex().flex_col().gap_2();
 		let history = self.overview_history(work);
 		let latest = if let Some(AgentHistoryResult::Available { entries, .. }) = history {
 			entries.iter().rev().find(|entry| {
@@ -261,7 +279,7 @@ impl AgentSurface {
 				"No saved report is available for this task."
 			}));
 		}
-		body
+		body.child(gpui::div().flex().child(source))
 	}
 }
 
@@ -417,6 +435,11 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| {
+			w.refresh();
+			w.draw(cx).clear();
+		});
 		let source = visual.debug_bounds("handoff-open-request").expect("source link");
 		visual.simulate_click(source.center(), Default::default());
 		surface.update(visual, |s, _| {
@@ -425,6 +448,60 @@ mod tests {
 			assert!(s.workspace.dock_record.is_none());
 		});
 	}
+	#[gpui::test]
+	fn canvas_node_selection_keeps_the_parent_graph_and_conversation(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = AgentSurface::new(cx);
+			s.visual_workspace_fixture(cx);
+			s.visual_dock_page("dock-running", cx);
+			s.selected = Some("agent".into());
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		let graph = visual.debug_bounds("work-graph-canvas").unwrap();
+		let node = visual.debug_bounds("graph-node-verify").expect("visible dependency node");
+		assert!(node.bottom() <= graph.bottom());
+		visual.simulate_click(node.center(), Default::default());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.workspace.dock_record.as_deref(), Some("release"));
+			assert_eq!(s.handoffs.focus.as_deref(), Some("verify"));
+		});
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		assert!(visual.debug_bounds("graph-node-flow").is_some());
+		let close = visual.debug_bounds("handoff-close").unwrap();
+		visual.simulate_click(close.center(), Default::default());
+		for _ in 0..3 {
+			visual.update(|w, cx| {
+				w.refresh();
+				w.draw(cx).clear();
+			});
+			visual.run_until_parked();
+		}
+		assert!(visual.debug_bounds("handoff-preview").is_none());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| {
+			w.refresh();
+			w.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("work-dock").unwrap().size.height <= gpui::px(72.));
+	}
+
 	#[gpui::test]
 	fn dock_does_not_reuse_fetched_history_after_thread_rebinding(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
@@ -443,7 +520,7 @@ mod tests {
 		});
 	}
 	#[gpui::test]
-	fn long_report_preview_stays_bounded_above_the_strip(cx: &mut gpui::TestAppContext) {
+	fn canvas_keeps_long_reports_bounded_below_the_composer(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
@@ -469,9 +546,9 @@ mod tests {
 		let excerpt = visual.debug_bounds("dock-report-excerpt").expect("bounded report");
 		assert!(excerpt.size.height < gpui::px(100.));
 		let strip = visual.debug_bounds("handoff-strip").expect("handoff strip");
-		assert!(detail.bottom() <= strip.top());
+		assert!(detail.top() >= strip.bottom());
 		let composer = visual.debug_bounds("floating-composer").expect("floating composer");
-		assert!(detail.bottom() <= composer.top(), "native composer must not obscure the preview");
+		assert!(composer.bottom() <= strip.top(), "composer stays above the whole Dock");
 		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("agent")));
 		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(840.)));
 		for _ in 0..3 {
