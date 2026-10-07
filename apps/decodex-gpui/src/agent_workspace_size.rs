@@ -75,12 +75,16 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(super) fn graph_node_size(&self, id: &str) -> (f32, f32) {
+		if self.handoffs.focus.as_deref() == Some(id) { (360., 180.) } else { (190., 66.) }
+	}
+
 	pub(super) fn update_graph_inset(&mut self, width: f32, height: f32) {
 		let layout = self.workspace_graph_layout();
-		let (right, bottom) = layout
-			.nodes
-			.iter()
-			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 190.0), y.max(node.y + 66.0)));
+		let (right, bottom) = layout.nodes.iter().fold((0.0_f32, 0.0_f32), |(x, y), node| {
+			let (width, height) = self.graph_node_size(&node.id);
+			(x.max(node.x + width), y.max(node.y + height))
+		});
 
 		let zoom = self.workspace.graph_display_zoom;
 
@@ -149,6 +153,31 @@ impl AgentSurface {
 
 			node.x = 32.0 + (y - 32.0) / 112.0 * 224.0;
 			node.y = 20.0 + (x - 20.0) / 188.0 * 96.0;
+		}
+
+		if let Some(focus) = self.handoffs.focus.as_ref() {
+			if !layout.nodes.iter().any(|node| &node.id == focus)
+				&& snapshot.work_items.iter().any(|work| &work.id == focus)
+			{
+				for node in &mut layout.nodes {
+					node.x += 394.;
+				}
+				layout.nodes.push(graph::Node { id: focus.clone(), x: 32., y: 20. });
+			} else if let Some(column) =
+				layout.nodes.iter().find(|node| &node.id == focus).map(|node| node.x)
+			{
+				let mut row = 230.;
+				for node in &mut layout.nodes {
+					if &node.id == focus {
+						node.y = 20.;
+					} else if node.x == column {
+						node.y = row;
+						row += 96.;
+					} else if node.x > column {
+						node.x += 170.;
+					}
+				}
+			}
 		}
 
 		layout

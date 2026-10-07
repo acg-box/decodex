@@ -328,6 +328,7 @@ impl AgentSurface {
 				"new-project" => "New project",
 				"graph-up" => "Parent work scope",
 				"graph-close" => "Close Dock",
+				"handoff-close" => "Collapse task details",
 				"zoom-in" => "Zoom in",
 				"zoom-out" => "Zoom out",
 				"inspect-work" => "Work details",
@@ -1100,8 +1101,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
-		let details_height = if self.dock_open() { 180. } else { 0. };
-		self.update_graph_inset(graph_width - 24., (graph_height - 54. - details_height).max(0.));
+		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
 		let mut center = gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col();
 		if !self.workspace.graph_expanded {
 			center = center.child(chat);
@@ -1484,7 +1484,9 @@ impl AgentSurface {
 						graph::blockers(snapshot, work).iter().any(|w| w.id == a.id)
 					})
 				});
-				((a.x + 190.0, a.y + 33.0), (b.x, b.y + 33.0), report, blocked)
+				let (width, height) = self.graph_node_size(&a.id);
+				let (_, target_height) = self.graph_node_size(&b.id);
+				((a.x + width, a.y + height / 2.), (b.x, b.y + target_height / 2.), report, blocked)
 			})
 			.collect();
 
@@ -1603,6 +1605,10 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		if self.handoffs.focus.as_deref() == Some(&node.id) {
+			return self.expanded_graph_node(node, work, cx);
+		}
+
 		let zoom = self.workspace.graph_display_zoom;
 		let pan = (
 			self.workspace.graph_pan.0 + self.workspace.graph_inset.0,

@@ -25,7 +25,6 @@ impl AgentSurface {
 
 	pub(super) fn activate_graph_node(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.handoffs.focus = Some(id.into());
-		self.workspace.graph_panel_height = self.workspace.graph_panel_height.max(460.);
 		self.load_dock_evidence(id, cx);
 		cx.notify();
 	}
@@ -119,23 +118,46 @@ impl AgentSurface {
 						.child(self.graph_context()),
 				)
 				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
-			if let Some(details) = self.handoff_details(cx) {
-				panel = panel.child(
-					gpui::div()
-						.h(gpui::px(180.))
-						.flex_none()
-						.border_t_1()
-						.border_color(gpui::rgba(0xffffff12))
-						.child(details),
-				);
-			}
 		}
 		panel.into_any_element()
 	}
 
+	pub(super) fn expanded_graph_node(
+		&self,
+		node: &super::graph::Node,
+		work: &super::AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let zoom = self.workspace.graph_display_zoom;
+		let (width, height) = self.graph_node_size(&node.id);
+		let key = format!("graph-node-{}", node.id);
+		gpui::div()
+			.id(super::SharedString::from(key.clone()))
+			.debug_selector(move || key.clone())
+			.role(super::Role::Group)
+			.aria_label(format!("{}: task details", self.work_label(work)))
+			.tab_index(0)
+			.absolute()
+			.left(gpui::px(
+				node.x * zoom + self.workspace.graph_pan.0 + self.workspace.graph_inset.0,
+			))
+			.top(gpui::px(
+				node.y * zoom + self.workspace.graph_pan.1 + self.workspace.graph_inset.1,
+			))
+			.w(gpui::px(width * zoom))
+			.h(gpui::px(height * zoom))
+			.overflow_hidden()
+			.rounded(gpui::px(9.))
+			.border_1()
+			.border_color(gpui::rgba(0xffffff40))
+			.bg(gpui::rgba(0x35353ce8))
+			.children(self.handoff_details(cx))
+			.into_any_element()
+	}
+
 	fn dock_status(&self, cx: &mut Context<Self>) -> AnyElement {
 		let items = self.dock_items();
-		let requests = items.iter().filter(|item| item.attention).count();
+		let requests = items.iter().filter(|item| item.attention && !item.result).count();
 		let running = self.snapshot.as_ref().map_or(0, |snapshot| {
 			snapshot
 				.work_items
@@ -184,10 +206,10 @@ impl AgentSurface {
 			));
 		if let Some(item) = items.first() {
 			let id = item.work.clone();
-			let label = if item.attention {
-				"Review request"
-			} else if item.result {
+			let label = if item.result {
 				"Review result"
+			} else if item.attention {
+				"Review request"
 			} else {
 				"View progress"
 			};
@@ -230,7 +252,7 @@ impl AgentSurface {
 
 		header = header.child(self.workspace_action(
 			"handoff-close".into(),
-			"Close details".into(),
+			"×".into(),
 			|s, cx| {
 				s.handoffs.focus = None;
 				cx.notify();
@@ -256,7 +278,7 @@ impl AgentSurface {
 		header
 	}
 
-	fn handoff_details(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn handoff_details(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		if !self.dock_open() {
 			return None;
 		}
@@ -270,7 +292,23 @@ impl AgentSurface {
 		let attention = item.as_ref().is_some_and(|h| h.attention);
 		let result = item.as_ref().is_some_and(|h| h.result);
 
-		let header = self.handoff_header(work, cx);
+		let mut header = self.handoff_header(work, cx);
+		if result && attention {
+			let item = item.clone().expect("unread result");
+			header = header.child(gpui::div().flex().child(self.workspace_action(
+				"handoff-viewed".into(),
+				"Mark viewed".into(),
+				move |s, cx| {
+					if let Some(snapshot) = &s.snapshot {
+						s.handoffs.acknowledge(&item.work, &item.key, snapshot);
+					}
+					s.workspace.dock_record = None;
+					s.handoffs.focus = None;
+					cx.notify();
+				},
+				cx,
+			)));
+		}
 		let mut body = gpui::div()
 			.id("handoff-preview")
 			.occlude()
@@ -278,7 +316,7 @@ impl AgentSurface {
 			.w_full()
 			.h_full()
 			.min_h_0()
-			.p_3()
+			.p_2()
 			.overflow_y_scroll()
 			.text_size(gpui::px(12.))
 			.flex()
@@ -289,7 +327,6 @@ impl AgentSurface {
 			}))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
-					s.workspace.dock_record = None;
 					s.handoffs.focus = None;
 					cx.stop_propagation();
 					cx.notify();
@@ -330,21 +367,6 @@ impl AgentSurface {
 						),
 					),
 				);
-			}
-			if result && attention {
-				let item = item.expect("unread result");
-				body = body.child(gpui::div().flex().child(self.workspace_action(
-					"handoff-viewed".into(),
-					"Mark viewed".into(),
-					move |s, cx| {
-						if let Some(snapshot) = &s.snapshot {
-							s.handoffs.acknowledge(&item.work, &item.key, snapshot);
-						}
-						s.workspace.dock_record = None;
-						cx.notify();
-					},
-					cx,
-				)));
 			}
 		}
 		Some(body.into_any_element())

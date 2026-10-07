@@ -176,8 +176,6 @@ impl AgentSurface {
 		self.workspace.dock_completed = true;
 		self.workspace.graph_pan = (0., 0.);
 		self.workspace.graph_zoom = 1.;
-		self.workspace.graph_panel_height =
-			if self.workspace_graph_full_layout().edges.is_empty() { 280. } else { 460. };
 		self.load_dock_evidence(id, cx);
 	}
 
@@ -354,7 +352,10 @@ impl AgentSurface {
 			None
 		};
 		if let Some((text, label)) = excerpt {
-			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label)).child(
+			if label != "Final response" {
+				body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label));
+			}
+			body = body.child(
 				gpui::div()
 					.w_full()
 					.min_w_0()
@@ -744,6 +745,15 @@ mod tests {
 			});
 			visual.run_until_parked();
 		}
+		assert_eq!(
+			visual.debug_bounds("work-graph-canvas").unwrap(),
+			graph,
+			"opening details must not resize the graph or create a second panel"
+		);
+		let expanded = visual.debug_bounds("graph-node-verify").unwrap();
+		let details = visual.debug_bounds("handoff-preview").unwrap();
+		assert!(details.left() >= expanded.left() && details.right() <= expanded.right());
+		assert!(details.top() >= expanded.top() && details.bottom() <= expanded.bottom());
 		assert!(visual.debug_bounds("graph-node-flow").is_some());
 		let close = visual.debug_bounds("handoff-close").unwrap();
 		visual.simulate_click(close.center(), Default::default());
@@ -808,7 +818,7 @@ mod tests {
 		let detail = visual.debug_bounds("handoff-preview").expect("handoff preview");
 		assert!(detail.size.height <= gpui::px(680.));
 		let excerpt = visual.debug_bounds("dock-report-excerpt").expect("bounded report");
-		assert!(excerpt.size.height < gpui::px(100.));
+		assert!(excerpt.size.height < gpui::px(240.));
 		let strip = visual.debug_bounds("work-dock").expect("Dock");
 		assert!(detail.top() >= strip.top());
 		let composer = visual.debug_bounds("floating-composer").expect("floating composer");
