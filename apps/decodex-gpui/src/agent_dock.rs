@@ -10,6 +10,7 @@ use crate::shell::agent_surface::{
 pub(super) struct Evidence {
 	key: Option<String>,
 	history: Option<AgentHistoryResult>,
+	final_response: Option<String>,
 	request: Option<super::AgentRequestResult>,
 	task: Option<gpui::Task<()>>,
 }
@@ -169,6 +170,11 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else { return };
 		let key = self.dock_evidence_key(work);
 		let Ok(owner) = super::EntityId::new(id) else { return };
+		let Some(thread) =
+			work.codex_thread_id.as_deref().and_then(|id| super::EntityId::new(id).ok())
+		else {
+			return;
+		};
 		self.dock_evidence.key = Some(key.clone());
 		let event = self
 			.snapshot
@@ -188,13 +194,19 @@ impl AgentSurface {
 				let client = super::AgentClient::new(profile);
 				let request =
 					if let Some(event) = event { client.request(event).await.ok() } else { None };
-				let history = client.history(owner).await.ok()?;
-				Some((history, request))
+				let (history, timeline) = tokio::join!(
+					client.history(owner.clone()),
+					client.timeline(owner.clone(), thread.clone(), None)
+				);
+				let report = timeline
+					.ok()
+					.and_then(|result| final_response(&result, owner.as_str(), thread.as_str()));
+				Some((history.unwrap_or(AgentHistoryResult::Unavailable), request, report))
 			})
 		});
 		self.dock_evidence.task = Some(cx.spawn(async move |surface, cx| {
-			let (history, request) =
-				request.await.unwrap_or((AgentHistoryResult::Unavailable, None));
+			let (history, request, report) =
+				request.await.unwrap_or((AgentHistoryResult::Unavailable, None, None));
 			let _ = surface.update(cx, |s, cx| {
 				if s.dock_evidence.key.as_ref() != Some(&key) {
 					return;
@@ -209,6 +221,7 @@ impl AgentSurface {
 					return;
 				}
 				s.dock_evidence.history = Some(history);
+				s.dock_evidence.final_response = report;
 				s.dock_evidence.request = request;
 				s.dock_evidence.task = None;
 				cx.notify();
@@ -294,40 +307,42 @@ impl AgentSurface {
 			cx,
 		);
 		let mut body = gpui::div().w_full().min_w_0().pl_2().py_1().flex().flex_col().gap_2();
-		let history = self.overview_history(work);
-		let latest = if let Some(AgentHistoryResult::Available { entries, .. }) = history {
-			entries.iter().rev().find(|entry| {
-				source_matches(work, entry) && entry.kind == "assistant" && entry.activity.is_none()
-			})
+		let fetched = self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work));
+		let excerpt = if fetched {
+			self.dock_evidence
+				.final_response
+				.as_deref()
+				.map(|text| (text.to_owned(), "Final response"))
+		} else if let Some(AgentHistoryResult::Available { entries, .. }) =
+			self.overview_history(work)
+		{
+			entries
+				.iter()
+				.rev()
+				.find(|entry| {
+					source_matches(work, entry)
+						&& entry.kind == "assistant"
+						&& entry.activity.is_none()
+				})
+				.map(|entry| (report_excerpt(&entry.text), "Saved message"))
 		} else {
 			None
 		};
-		if let Some(entry) = latest {
-			let date =
-				time::OffsetDateTime::from_unix_timestamp(entry.created_at_micros / 1_000_000)
-					.ok()
-					.map(|d| format!("{} {:02}:{:02} UTC", d.date(), d.hour(), d.minute()))
-					.unwrap_or_default();
-			body = body
-				.child(
-					gpui::div()
-						.text_color(gpui::rgb(TEXT_MUTED))
-						.child(format!("Saved report · {date}")),
-				)
-				.child(
-					gpui::div()
-						.w_full()
-						.min_w_0()
-						.debug_selector(|| "dock-report-excerpt".into())
-						.child(report_excerpt(&entry.text)),
-				);
+		if let Some((text, label)) = excerpt {
+			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label)).child(
+				gpui::div()
+					.w_full()
+					.min_w_0()
+					.debug_selector(|| "dock-report-excerpt".into())
+					.child(text),
+			);
 		} else {
 			let loading = self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work))
 				&& self.dock_evidence.task.is_some();
 			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(if loading {
 				"Loading latest report…"
 			} else {
-				"No saved report is available for this task."
+				"No final response is available here. Open the conversation to review its history."
 			}));
 		}
 		body.child(gpui::div().flex().child(source))
@@ -435,9 +450,33 @@ pub(super) fn progress_state(
 	ProgressState { label, reason, color, group }
 }
 
+fn final_response(
+	result: &decodex_protocol::AgentTimelineResult,
+	work: &str,
+	thread: &str,
+) -> Option<String> {
+	use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
+	let contents: Vec<_> = match result {
+		AgentTimelineResult::Available { work_id, page, .. }
+			if work_id.as_str() == work && page.thread_id == thread =>
+			page.entries.iter().map(|entry| &entry.content).collect(),
+		AgentTimelineResult::Summary { work_id, thread_id, items, .. }
+			if work_id.as_str() == work && thread_id == thread =>
+			items.iter().collect(),
+		_ => return None,
+	};
+	contents.into_iter().rev().find_map(|content| match content {
+		AgentTimelineContent::Item { kind, phase, text, .. }
+			if kind == "agentMessage"
+				&& phase.as_deref() == Some("final_answer")
+				&& !text.trim().is_empty() =>
+			Some(report_excerpt(text)),
+		_ => None,
+	})
+}
+
 fn report_excerpt(text: &str) -> String {
-	let paragraph = text.split("\n\n").find(|part| !part.trim().is_empty()).unwrap_or("");
-	let plain = paragraph.split_whitespace().collect::<Vec<_>>().join(" ");
+	let plain = text.split_whitespace().collect::<Vec<_>>().join(" ");
 	let mut chars = plain.chars();
 	let excerpt: String = chars.by_ref().take(240).collect();
 	if chars.next().is_some() { format!("{excerpt}…") } else { excerpt }
@@ -454,6 +493,74 @@ fn source_matches(work: &AgentWorkItemDto, entry: &super::AgentHistoryEntryDto) 
 mod tests {
 	use super::*;
 	use gpui::AppContext;
+
+	#[test]
+	fn dock_results_use_native_final_answers_instead_of_later_commentary() {
+		use decodex_protocol::{
+			AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage, AgentTimelineResult,
+			EntityId,
+		};
+		let message = |phase: Option<&str>, text: &str| AgentTimelineContent::Item {
+			turn_id: "turn".into(),
+			item_id: text.into(),
+			kind: "agentMessage".into(),
+			phase: phase.map(str::to_owned),
+			text: text.into(),
+			truncated: false,
+			activity: None,
+			app_ui: false,
+			attachments: vec![],
+		};
+		let items = vec![
+			message(Some("final_answer"), "Found two confirmed defects."),
+			message(Some("commentary"), "I will revise the report."),
+		];
+		let results = [
+			AgentTimelineResult::Summary {
+				work_id: EntityId::new("work").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				thread_id: "thread".into(),
+				items: items.clone(),
+			},
+			AgentTimelineResult::Available {
+				work_id: EntityId::new("work").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				page: AgentTimelinePage {
+					safety_buffering_turn_id: None,
+					thread_id: "thread".into(),
+					entries: items
+						.into_iter()
+						.enumerate()
+						.map(|(position, content)| AgentTimelineEntry {
+							position: position as u64,
+							content,
+						})
+						.collect(),
+					next_cursor: None,
+					weather: Default::default(),
+					active_realtime_session_at_page_start: None,
+				},
+			},
+		];
+		for result in results {
+			assert_eq!(
+				final_response(&result, "work", "thread").as_deref(),
+				Some("Found two confirmed defects.")
+			);
+			assert_eq!(final_response(&result, "other-work", "thread"), None);
+			assert_eq!(final_response(&result, "work", "other-thread"), None);
+		}
+		let unknown = AgentTimelineResult::Summary {
+			work_id: EntityId::new("work").unwrap(),
+			account_id: EntityId::new("account").unwrap(),
+			thread_id: "thread".into(),
+			items: vec![
+				message(None, "I will check."),
+				message(Some("commentary"), "Checking now."),
+			],
+		};
+		assert_eq!(final_response(&unknown, "work", "thread"), None);
+	}
 
 	#[gpui::test]
 	fn graph_controls_expand_restore_and_close(cx: &mut gpui::TestAppContext) {
