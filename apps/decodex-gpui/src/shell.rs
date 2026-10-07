@@ -2814,9 +2814,9 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	};
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
-		(1, true) => "Toggle work graph · Command-J",
+		(1, true) => "Toggle work overview · Command-J",
 		(2, _) => "Toggle agent structure · Command-B",
-		(1, false) => "Work graph · no work yet",
+		(1, false) => "Work overview · no work yet",
 		_ => "Panel unavailable",
 	};
 
