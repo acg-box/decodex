@@ -501,13 +501,8 @@ fn final_response(
 }
 
 fn report_excerpt(text: &str) -> String {
-	let plain = super::markdown::plain_text(text).replace(" 。", "。").replace(" .", ".");
-	let end = plain
-		.find('。')
-		.map(|i| i + '。'.len_utf8())
-		.or_else(|| plain.find(". ").map(|i| i + 1))
-		.unwrap_or(plain.len());
-	let plain = &plain[..end];
+	let paragraph = text.split("\n\n").find(|part| !part.trim().is_empty()).unwrap_or("");
+	let plain = super::markdown::plain_text(paragraph).replace(" 。", "。").replace(" .", ".");
 	let mut chars = plain.chars();
 	let excerpt: String = chars.by_ref().take(240).collect();
 	if chars.next().is_some() { format!("{excerpt}…") } else { excerpt }
@@ -528,12 +523,16 @@ mod tests {
 	#[test]
 	fn result_excerpt_keeps_the_conclusion_without_report_metadata() {
 		assert_eq!(
-			report_excerpt("确认 **两项缺陷**。 正式 work ID: `internal-task-id`"),
+			report_excerpt("确认 **两项缺陷**。\n\n正式 work ID: `internal-task-id`"),
 			"确认 两项缺陷。"
 		);
 		assert_eq!(
-			report_excerpt("Found **two defects**. Task ID: `internal-task-id`"),
+			report_excerpt("Found **two defects**.\n\nTask ID: `internal-task-id`"),
 			"Found two defects."
+		);
+		assert_eq!(
+			report_excerpt("检查已完成。确认三项问题。\n\n记录 ID: 123"),
+			"检查已完成。确认三项问题。"
 		);
 	}
 
