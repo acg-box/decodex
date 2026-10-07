@@ -381,7 +381,12 @@ pub struct AgentTaskReferenceDto {
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
 	/// Register a folder without starting a conversation or agent.
-	AddWorkspace { workspace_id: EntityId, directory: WireText },
+	AddWorkspace {
+		/// Stable folder identity supplied by the desktop.
+		workspace_id: EntityId,
+		/// Existing directory selected by the user.
+		directory: WireText,
+	},
 	/// Create a user conversation with its first submitted message.
 	NewConversation {
 		/// Optional directory scope, independent of parent ownership.

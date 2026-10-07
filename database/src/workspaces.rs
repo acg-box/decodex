@@ -23,7 +23,11 @@ pub(crate) fn read_workspaces(connection: &Connection) -> Result<Vec<Workspace>,
 			});
 		}
 		if let Some(work) = row.get::<_, Option<String>>(3).map_err(sqlite_error)? {
-			result.last_mut().unwrap().work_ids.push(work);
+			result
+				.last_mut()
+				.expect("current workspace was inserted before its members")
+				.work_ids
+				.push(work);
 		}
 	}
 

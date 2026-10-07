@@ -1388,41 +1388,9 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			AgentActionDto::AddWorkspace { workspace_id, directory } =>
-				AgentCoordinator::register_workspace(
-					&self.store,
-					workspace_id.as_str(),
-					directory.as_str(),
-				)
-				.await
-				.map_err(|_| {
-					AgentHostError::Rejected(
-						"Workspace folder could not be added. Check that the folder is available.",
-					)
-				}),
-			AgentActionDto::NewConversation {
-				workspace_id,
-				work_id,
-				text,
-				execution,
-				attachments,
-				task_references,
-			} => {
-				validate_attachments(&attachments)?;
-				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
-				AgentCoordinator::create_conversation(
-					&self.store,
-					work_id.as_str(),
-					user_input(work_id.as_str(), &key, text.as_str(), Some(&options)),
-					workspace_id.map(|id| id.as_str().to_owned()),
-				)
-				.await
-				.map_err(|_| "Conversation could not be created")?;
-				if active.is_none() {
-					*active = self.restore().await;
-				}
-				Ok(work_id.as_str().into())
-			},
+			action @ (AgentActionDto::AddWorkspace { .. }
+			| AgentActionDto::NewConversation { .. }) =>
+				self.handle_workspace_action(&key, action, active).await,
 			action @ AgentActionDto::SendPromptInput { .. } =>
 				self.send_prompt_input(&key, action, active).await,
 			action @ (AgentActionDto::UploadPromptInput { .. }
@@ -1452,21 +1420,8 @@ impl AgentHost {
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveReviewer { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
-			AgentActionDto::PrepareNativeAgent { work_id, thread_id } => {
-				let (generation, client) =
-					self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
-				native_agents::prepare(&self.store, &client, work_id.as_str(), thread_id.as_str())
-					.await
-					.map_err(AgentHostError::Rejected)?;
-				if self
-					.runtime
-					.agent_catalog_client()
-					.is_none_or(|(current, _)| current != generation)
-				{
-					return Err("The connection changed. Try again.".into());
-				}
-				Ok(work_id.as_str().into())
-			},
+			AgentActionDto::PrepareNativeAgent { work_id, thread_id } =>
+				self.prepare_native_agent(work_id.as_str(), thread_id.as_str()).await,
 			AgentActionDto::NativeAgentInput { work_id, thread_id, text, expected_turn } =>
 				self.native_agent_input(
 					(work_id.as_str(), thread_id.as_str()),
@@ -1548,6 +1503,68 @@ impl AgentHost {
 			},
 			AgentActionDto::AutomationResult { work_id, source_event_id, payload } =>
 				self.accept_automation_result(work_id, source_event_id, payload, active).await,
+		}
+	}
+
+	async fn prepare_native_agent(
+		&self,
+		work_id: &str,
+		thread_id: &str,
+	) -> Result<String, AgentHostError> {
+		let (generation, client) =
+			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
+		native_agents::prepare(&self.store, &client, work_id, thread_id)
+			.await
+			.map_err(AgentHostError::Rejected)?;
+		if self.runtime.agent_catalog_client().is_none_or(|(current, _)| current != generation) {
+			return Err("The connection changed. Try again.".into());
+		}
+		Ok(work_id.into())
+	}
+
+	async fn handle_workspace_action(
+		&self,
+		key: &str,
+		action: AgentActionDto,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		match action {
+			AgentActionDto::AddWorkspace { workspace_id, directory } =>
+				AgentCoordinator::register_workspace(
+					&self.store,
+					workspace_id.as_str(),
+					directory.as_str(),
+				)
+				.await
+				.map_err(|_| {
+					AgentHostError::Rejected(
+						"Workspace folder could not be added. Check that the folder is available.",
+					)
+				}),
+			AgentActionDto::NewConversation {
+				workspace_id,
+				work_id,
+				text,
+				execution,
+				attachments,
+				task_references,
+			} => {
+				validate_attachments(&attachments)?;
+				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
+				AgentCoordinator::create_conversation(
+					&self.store,
+					work_id.as_str(),
+					user_input(work_id.as_str(), key, text.as_str(), Some(&options)),
+					workspace_id.map(|id| id.as_str().to_owned()),
+				)
+				.await
+				.map_err(|_| "Conversation could not be created")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(work_id.as_str().into())
+			},
+			_ => unreachable!("workspace action dispatch"),
 		}
 	}
 
