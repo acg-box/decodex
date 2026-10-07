@@ -1,4 +1,5 @@
 //! Work facts and source records in the resizable bottom dock.
+use crate::ui_scroll::SmoothScrollArea;
 use gpui::{AnyElement, Div};
 
 use crate::shell::agent_surface::{
@@ -35,7 +36,6 @@ impl AgentSurface {
 		let mut body = gpui::div()
 			.id("work-overview")
 			.debug_selector(|| "work-overview".into())
-			.track_scroll(&self.workspace.dock_scroll)
 			.flex()
 			.flex_col()
 			.flex_1()
@@ -84,7 +84,7 @@ impl AgentSurface {
 				)));
 			}
 		}
-		body.into_any_element()
+		body.smooth_scroll("work-overview-scroll").into_any_element()
 	}
 
 	fn overview_record(
@@ -411,15 +411,17 @@ mod tests {
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		visual.update(|w, cx| w.draw(cx).clear());
-		let scroll = surface.read_with(visual, |s, _| s.workspace.dock_scroll.clone());
-		assert!(scroll.bounds().size.height < gpui::px(400.));
-		assert!(scroll.max_offset().y > gpui::px(1000.));
+
+		let bounds = visual.debug_bounds("work-overview").unwrap();
+		let before = visual.debug_bounds("dock-record-release").unwrap();
+		assert!(bounds.size.height < gpui::px(400.));
 		visual.simulate_event(gpui::ScrollWheelEvent {
-			position: scroll.bounds().center(),
+			position: bounds.center(),
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-100.))),
 			..Default::default()
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
-		assert_eq!(scroll.offset().y, gpui::px(-100.));
+		let after = visual.debug_bounds("dock-record-release").unwrap();
+		assert_eq!(before.top() - after.top(), gpui::px(100.));
 	}
 }
