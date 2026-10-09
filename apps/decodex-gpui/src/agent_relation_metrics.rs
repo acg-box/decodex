@@ -1,4 +1,4 @@
-//! Compare exact completed turns, never conversation age or inferred spending.
+//! Compare recorded native thread totals; duration describes the latest completed turn.
 use super::*;
 
 const TOKENS: u32 = 0xa99aef;
@@ -11,33 +11,29 @@ pub(in super::super) struct Metrics {
 }
 impl Metrics {
 	pub(in super::super) fn from_entries(entries: &[decodex_protocol::AgentTimelineEntry]) -> Self {
-		entries
+		let tokens = entries.iter().rev().find_map(|entry| match &entry.content {
+			decodex_protocol::AgentTimelineContent::TurnBoundary { usage: Some(usage), .. } =>
+				usage.details.as_ref().and_then(|details| details.thread_total),
+			_ => None,
+		});
+		let duration = entries
 			.iter()
 			.rev()
-			.find_map(|entry| {
-				if let decodex_protocol::AgentTimelineContent::TurnBoundary {
+			.find_map(|entry| match &entry.content {
+				decodex_protocol::AgentTimelineContent::TurnBoundary {
 					completed: true,
 					duration_ms,
-					usage,
 					..
-				} = &entry.content
-				{
-					Some(Self {
-						tokens: usage
-							.as_ref()
-							.map(|u| u.input_tokens.saturating_add(u.output_tokens)),
-						duration: *duration_ms,
-					})
-				} else {
-					None
-				}
+				} => Some(*duration_ms),
+				_ => None,
 			})
-			.unwrap_or_default()
+			.flatten();
+		Self { tokens, duration }
 	}
 
 	fn label(self) -> String {
 		format!(
-			"{} tokens · {}",
+			"Recorded total: {} tokens\nLatest completed turn: {}",
 			self.tokens.map(super::super::super::compact_tokens).unwrap_or_else(|| "—".into()),
 			time_label(self.duration)
 		)
@@ -117,19 +113,19 @@ impl AgentSurface {
 					.map(super::super::super::compact_tokens)
 					.map(|n| format!("{n} tok"))
 					.unwrap_or_else(|| "— tok".into()),
-				"Share of reported tokens",
+				"Share of recorded conversation tokens",
 			),
 			(
 				metrics.duration,
 				baselines.1,
 				TIME,
 				time_label(metrics.duration),
-				"Relative to the longest reported turn",
+				"Latest completed turn, relative to the longest reported turn",
 			),
 		] {
 			let part = fraction(value, baseline);
 			let tip = format!(
-				"{meaning}: {}\nLatest completed turn per agent. Missing values are excluded.\nThese bars compare usage, not task completion or a budget.",
+				"{meaning}: {}\nToken counters are cumulative native conversation totals. Duration is the latest completed turn. Missing values are excluded.\nThese bars compare usage, not task completion or a budget.",
 				percentage(part)
 			);
 			body = body.child(
@@ -169,162 +165,156 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let nodes: Vec<_> = graph.nodes.iter().filter(|n| n.row.is_some()).collect();
-		let running = nodes.iter().filter(|n| n.running()).count();
-		let waiting = nodes
-			.iter()
-			.filter(|n| {
-				matches!(
-					n.status.as_str(),
-					"Approval" | "Input needed" | "Needs you" | "Waiting on work" | "Waiting"
-				)
-			})
-			.count();
-		let unknown = nodes
-			.iter()
-			.filter(|n| matches!(n.status.as_str(), "Unknown" | "Status unavailable"))
-			.count();
-
-		let mut panels = gpui::div().flex().gap(gpui::px(24.)).w_full();
-		for (is_tokens, title, color) in
-			[(true, "Token share", TOKENS), (false, "Time · vs longest turn", TIME)]
-		{
-			let mut ranked: Vec<_> = nodes
-				.iter()
-				.filter_map(|n| {
-					let m = self.metrics_for(n);
-					(if is_tokens { m.tokens } else { m.duration }).map(|v| (*n, v))
-				})
-				.collect();
-			ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
-			let coverage = ranked.len();
-			let baseline = if is_tokens {
-				ranked.iter().map(|(_, v)| u128::from(*v)).sum()
-			} else {
-				ranked.first().map(|(_, v)| u128::from(*v)).unwrap_or(0)
-			};
-			let mut panel =
-				gpui::div().flex_1().min_w_0().flex().flex_col().gap(gpui::px(4.)).child(
-					gpui::div()
-						.flex()
-						.justify_between()
-						.text_size(gpui::px(11.))
-						.child(gpui::div().text_color(gpui::rgb(color)).child(title))
-						.child(
-							gpui::div()
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(format!("{coverage}/{} reported", nodes.len())),
-						),
-				);
-			if ranked.is_empty() {
-				panel = panel.child(
-					gpui::div()
-						.text_size(gpui::px(11.))
-						.text_color(gpui::rgb(TEXT_MUTED))
-						.child("No completed-turn data"),
-				);
-			}
-			for (node, value) in ranked.into_iter().take(3) {
-				let row = node.row.clone().expect("agent node");
-				let keyrow = row.clone();
-				let label = if is_tokens {
-					format!(
-						"{} tok · {}",
-						super::super::super::compact_tokens(value),
-						percentage(fraction(Some(value), baseline))
-					)
-				} else {
-					format!(
-						"{} · {}",
-						time_label(Some(value)),
-						percentage(fraction(Some(value), baseline))
-					)
-				};
-				let tip = format!(
-					"{}\nLatest completed turn: {}\nNot cumulative. Cached input is included. Missing observations are excluded.",
-					node.title,
-					self.metrics_for(node).label()
-				);
-				panel = panel.child(
-					gpui::div()
-						.id(SharedString::from(format!("rank-{is_tokens}-{}", node.key)))
-						.role(Role::Button)
-						.aria_label(format!("{}: {label}", node.title))
-						.tab_index(0)
-						.flex()
-						.items_center()
-						.gap(gpui::px(8.))
-						.h(gpui::px(18.))
-						.cursor_pointer()
-						.hover(|d| d.bg(gpui::rgba(0xffffff08)))
-						.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-						.child(
-							gpui::div()
-								.w(gpui::px(128.))
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_ellipsis()
-								.whitespace_nowrap()
-								.child(node.title.clone()),
-						)
-						.child(
-							gpui::div()
-								.flex_1()
-								.h(gpui::px(4.))
-								.rounded_full()
-								.bg(gpui::rgba(0xffffff08))
-								.child(
+		let mut ranked: Vec<_> =
+			nodes.iter().filter_map(|n| self.metrics_for(n).tokens.map(|v| (*n, v))).collect();
+		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
+		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
+		let mut distribution =
+			gpui::div().flex().w_full().h(gpui::px(28.)).rounded(gpui::px(4.)).overflow_hidden();
+		for (node, value) in ranked.iter().filter(|(_, v)| *v > 0) {
+			let share = fraction(Some(*value), total).unwrap_or(0.);
+			let row = node.row.clone().expect("agent node");
+			let keyrow = row.clone();
+			let tip = format!(
+				"{}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
+				node.title,
+				self.metrics_for(node).label(),
+				percentage(Some(share))
+			);
+			distribution = distribution.child(
+				gpui::div()
+					.id(SharedString::from(format!("usage-share-{}", node.key)))
+					.role(Role::Button)
+					.aria_label(tip.clone())
+					.tab_index(0)
+					.w(gpui::relative(share))
+					.h_full()
+					.flex_none()
+					.min_w_0()
+					.overflow_hidden()
+					.flex()
+					.items_center()
+					.relative()
+					.cursor_pointer()
+					.hover(|d| d.bg(gpui::rgba(0xffffff08)))
+					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
+					.child(
+						gpui::div()
+							.w_full()
+							.min_w_0()
+							.flex()
+							.items_center()
+							.gap_1()
+							.px_2()
+							.pb_1()
+							.text_size(gpui::px(11.))
+							.when(share >= 0.12, |d| {
+								d.child(
 									gpui::div()
-										.h_full()
-										.w(gpui::relative(
-											fraction(Some(value), baseline).unwrap_or(0.),
-										))
-										.rounded_full()
-										.bg(gpui::rgba((color << 8) | 0xb0)),
-								),
-						)
-						.child(
-							gpui::div()
-								.w(gpui::px(108.))
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(label),
-						)
-						.on_click(cx.listener(move |s, _, _, cx| s.inspect_station(&row, cx)))
-						.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
-							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-								s.inspect_station(&keyrow, cx);
-								cx.stop_propagation();
-							}
-						})),
-				);
-			}
-			panels = panels.child(panel);
+										.flex_1()
+										.min_w_0()
+										.text_ellipsis()
+										.whitespace_nowrap()
+										.child(node.title.clone()),
+								)
+							})
+							.when(share >= 0.04, |d| {
+								d.child(
+									gpui::div()
+										.flex_none()
+										.whitespace_nowrap()
+										.child(percentage(Some(share))),
+								)
+							}),
+					)
+					.child(
+						gpui::div()
+							.absolute()
+							.bottom_0()
+							.left(gpui::px(2.))
+							.right(gpui::px(2.))
+							.h(gpui::px(2.))
+							.rounded_full()
+							.bg(gpui::rgba((TOKENS << 8) | 0x90)),
+					)
+					.on_click(cx.listener(move |s, _, _, cx| s.inspect_station(&row, cx)))
+					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+							s.inspect_station(&keyrow, cx);
+							cx.stop_propagation();
+						}
+					})),
+			);
 		}
-		let status = if self.command_connection_ready() {
-			format!("{running} running · {waiting} waiting · {unknown} unknown")
+		let amount = if ranked.is_empty() {
+			"—".into()
 		} else {
-			"Connection unavailable · status may be stale".into()
+			match u64::try_from(total) {
+				Ok(value) => super::super::super::compact_tokens(value),
+				Err(_) => format!("{:.1}B", total as f64 / 1_000_000_000.),
+			}
 		};
-		gpui::div()
+		let tip = "Recorded cumulative conversation tokens, including cached input. Missing totals are excluded. The segments show each agent's share, not task progress.";
+		let summary = gpui::div()
+			.id("graph-usage-total")
+			.flex_none()
+			.w(gpui::px(138.))
+			.flex()
+			.flex_col()
+			.gap(gpui::px(3.))
+			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.into())).into())
+			.child(
+				gpui::div()
+					.flex()
+					.items_baseline()
+					.gap(gpui::px(5.))
+					.child(
+						gpui::div()
+							.text_size(gpui::px(17.))
+							.line_height(gpui::px(20.))
+							.font_weight(gpui::FontWeight::MEDIUM)
+							.child(amount),
+					)
+					.child(
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child("tokens"),
+					),
+			)
+			.child(
+				gpui::div()
+					.text_size(gpui::px(10.))
+					.line_height(gpui::px(14.))
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.child(format!("{} agents · {} links", graph.agent_count(), graph.edges.len())),
+			);
+		let mut body = gpui::div()
 			.flex_none()
 			.w_full()
 			.min_w_0()
-			.px_2()
-			.py_1()
+			.px(gpui::px(12.))
+			.py(gpui::px(8.))
 			.border_t_1()
 			.border_color(gpui::rgba(0xffffff0c))
 			.child(
 				gpui::div()
 					.flex()
-					.justify_between()
-					.mb_1()
+					.items_center()
+					.gap(gpui::px(16.))
+					.child(summary)
+					.child(gpui::div().flex_1().min_w_0().child(distribution)),
+			);
+
+		if !self.command_connection_ready() {
+			body = body.child(
+				gpui::div()
 					.text_size(gpui::px(11.))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child("Latest completed turn · top 3")
-					.child(status),
-			)
-			.child(panels)
-			.into_any_element()
+					.text_color(gpui::rgb(AMBER))
+					.child("Disconnected · last known state"),
+			);
+		}
+		body.into_any_element()
 	}
 }
 
@@ -372,7 +362,28 @@ mod tests {
 		assert_eq!(result.duration, Some(200));
 		assert_eq!(result.tokens, None);
 		let result = Metrics::from_entries(&[turn("new", Some(200), Some(500))]);
-		assert_eq!(result.tokens, Some(510));
+		assert_eq!(result.tokens, None);
 		assert_eq!(fraction(None, 510), None);
+	}
+	#[test]
+	fn cumulative_tokens_use_latest_native_counter_without_summing_snapshots() {
+		let mut first = turn("first", Some(100), Some(50));
+		let mut second = turn("second", Some(200), Some(20));
+		for (entry, total) in [(&mut first, 1000), (&mut second, 1250)] {
+			if let decodex_protocol::AgentTimelineContent::TurnBoundary {
+				usage: Some(usage), ..
+			} = &mut entry.content
+			{
+				usage.details = Some(decodex_protocol::AgentUsageDetailsDto {
+					thread_total: Some(total),
+					..Default::default()
+				});
+			}
+		}
+		let latest = turn("third", None, Some(500));
+		let result = Metrics::from_entries(&[first, second, latest]);
+		assert_eq!(result.tokens, Some(1250));
+		assert_eq!(result.duration, None);
+		assert_eq!(Metrics::from_entries(&[turn("only-delta", Some(200), Some(500))]).tokens, None);
 	}
 }

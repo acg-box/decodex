@@ -3,7 +3,7 @@ use super::*;
 
 impl AgentSurface {
 	pub(in super::super) fn relation_legend(&self) -> AnyElement {
-		let mut links = gpui::div().flex().items_center().gap(gpui::px(14.));
+		let mut links = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(14.));
 		for (kind, label) in [
 			(Kind::Message, "Collaboration"),
 			(Kind::Resource, "Reference"),
@@ -13,6 +13,8 @@ impl AgentSurface {
 				gpui::div()
 					.flex()
 					.items_center()
+					.flex_none()
+					.whitespace_nowrap()
 					.gap(gpui::px(5.))
 					.child(
 						gpui::canvas(
@@ -38,18 +40,20 @@ impl AgentSurface {
 					.child(label),
 			);
 		}
-		let mut lights = gpui::div().flex().items_center().gap(gpui::px(12.));
+		let mut lights = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(12.));
 		for (color, label) in [
-			(crate::ui_theme::BLUE, "Run / start"),
+			(crate::ui_theme::BLUE, "Active"),
 			(GREEN, "Complete"),
-			(AMBER, "Wait / review"),
+			(AMBER, "Waiting"),
 			(crate::ui_theme::ERROR, "Error"),
-			(TEXT_MUTED, "Idle / unknown"),
+			(TEXT_MUTED, "Inactive / unknown"),
 		] {
 			lights = lights.child(
 				gpui::div()
 					.flex()
 					.items_center()
+					.flex_none()
+					.whitespace_nowrap()
 					.gap(gpui::px(5.))
 					.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(gpui::rgb(color)))
 					.child(label),
@@ -58,17 +62,13 @@ impl AgentSurface {
 		gpui::div()
 			.flex_none()
 			.flex()
-			.flex_wrap()
-			.items_center()
-			.justify_between()
-			.gap(gpui::px(12.))
-			.px(gpui::px(8.))
-			.py(gpui::px(6.))
-			.text_size(gpui::px(11.))
+			.flex_col()
+			.items_end()
+			.gap(gpui::px(5.))
+			.text_size(gpui::px(10.))
 			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(links)
 			.child(lights)
-			.child("Pulse: running")
 			.into_any_element()
 	}
 }

@@ -38,6 +38,7 @@ impl AgentSurface {
 
 	pub(super) fn handoff_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
 		let compact = self.workspace.dock_compact && !self.workspace.graph_expanded;
+		let floating = !compact && !self.work_board.graph;
 		let mut header = gpui::div()
 			.h(gpui::px(38.))
 			.flex_none()
@@ -50,7 +51,7 @@ impl AgentSurface {
 				gpui::div()
 					.flex_1()
 					.text_size(gpui::px(12.))
-					.child(self.factory_summary())
+					.child(if compact { self.factory_summary() } else { String::new() })
 					.into_any_element()
 			})
 			.child(self.workspace_action(
@@ -119,6 +120,7 @@ impl AgentSurface {
 
 		let mut panel = gpui::div()
 			.id("work-dock")
+			.relative()
 			.debug_selector(|| "work-dock".into())
 			.size_full()
 			.flex()
@@ -127,8 +129,14 @@ impl AgentSurface {
 			.when(self.workspace.panel_drag.is_none(), |panel| panel.occlude())
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
 				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom)
-			}))
-			.child(header);
+			}));
+		if floating {
+			return panel
+				.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)))
+				.child(header.absolute().top_0().right_0())
+				.into_any_element();
+		}
+		panel = panel.child(header);
 		if !compact && !self.work_board.graph {
 			panel = panel.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)));
 		} else if !compact {

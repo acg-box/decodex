@@ -578,16 +578,23 @@ impl AgentSurface {
 				.bg(gpui::rgba(0x00000016))
 		};
 		gpui::div()
-			.h(gpui::px(36.))
+			.absolute()
+			.top(gpui::px(36.))
+			.left(gpui::px(8.))
+			.right(gpui::px(8.))
+			.min_h(gpui::px(48.))
+			.py_1()
 			.px_2()
 			.flex_none()
 			.flex()
+			.flex_wrap()
 			.items_center()
 			.gap_2()
 			.text_size(gpui::px(11.))
+			.child(gpui::div().flex_1())
 			.child(
 				gpui::div()
-					.flex_1()
+					.max_w(gpui::px(120.))
 					.min_w_0()
 					.flex()
 					.items_center()
@@ -691,6 +698,8 @@ impl AgentSurface {
 			.id(SharedString::from(format!("relations-{id}")))
 			.role(Role::Button)
 			.aria_label(description.to_owned())
+			.occlude()
+			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.tab_index(0)
 			.h(gpui::px(24.))
 			.min_w(gpui::px(24.))
@@ -1175,7 +1184,19 @@ impl AgentSurface {
 				}));
 			canvas = canvas.child(view);
 		}
-		canvas.into_any_element()
+		canvas
+			.child(self.relation_controls(cx))
+			.child(
+				gpui::div()
+					.absolute()
+					.bottom(gpui::px(12.))
+					.left(gpui::px(12.))
+					.right(gpui::px(12.))
+					.flex()
+					.justify_end()
+					.child(self.relation_legend()),
+			)
+			.into_any_element()
 	}
 }
 
@@ -1318,10 +1339,14 @@ impl AgentSurface {
 		let width = max_x - min_x;
 		let height = max_y - min_y;
 		// A fixed screen-space margin, independent of node count and zoom.
-		let scale = ((w - 48.) / width).min((h - 48.) / height).min(1.);
+		let top = 88.;
+		let usable_height = (h - top - 40.).max(48.);
+		let scale = ((w - 48.) / width).min((usable_height - 24.) / height).min(1.);
 		self.work_board.view.zoom = Some(scale);
-		self.work_board.view.pan =
-			((w - width * scale) / 2. - min_x * scale, (h - height * scale) / 2. - min_y * scale);
+		self.work_board.view.pan = (
+			(w - width * scale) / 2. - min_x * scale,
+			top + (usable_height - height * scale) / 2. - min_y * scale,
+		);
 	}
 }
 

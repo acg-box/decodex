@@ -183,10 +183,8 @@ impl AgentSurface {
 			.size_full()
 			.flex()
 			.flex_col()
-			.child(self.relation_controls(cx))
 			.child(content)
 			.child(self.relation_metrics(&graph, cx))
-			.child(self.relation_legend())
 			.into_any_element()
 	}
 }
