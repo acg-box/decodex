@@ -1122,19 +1122,21 @@ impl AgentSurface {
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
 		Some(
 			gpui::div()
+				.id("composer-context-detail")
 				.debug_selector(|| "composer-context-detail".into())
+				.aria_label(format!("Context: {} of {} tokens", usage.context_tokens, capacity))
 				.flex_none()
 				.px(gpui::px(6.))
 				.flex()
 				.justify_end()
 				.items_center()
-				.gap(gpui::px(6.))
+				.gap(gpui::px(4.))
 				.text_size(gpui::px(11.))
 				.line_height(gpui::px(16.))
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
 				.child(format!(
-					"Context {} / {} · {percent:.0}%",
+					"{} / {}",
 					agent_surface::compact_tokens(usage.context_tokens),
 					agent_surface::compact_tokens(capacity),
 				))
@@ -1309,12 +1311,17 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 }
 
 fn context_ring(fraction: f32) -> impl IntoElement {
+	let fill = gpui::rgb(if fraction >= 0.9 {
+		ui_theme::ERROR
+	} else if fraction >= 0.7 {
+		ui_theme::AMBER
+	} else {
+		ui_theme::TEXT_MUTED
+	});
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
-			for (portion, color) in
-				[(1.0, gpui::rgba(0xffffff24)), (fraction, gpui::rgba(0xc2becbe0))]
-			{
+			for (portion, color) in [(1.0, gpui::rgba(0xffffff24)), (fraction, fill)] {
 				if portion <= 0.0 {
 					continue;
 				}
