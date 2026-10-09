@@ -266,7 +266,10 @@ impl AgentSurface {
 				}))
 				.into_any_element(),
 			AgentTimelineContent::TurnBoundary { completed, turn_id, status, error, .. } => {
-				let has_reply = self.timeline.native.entries.iter().any(|entry| matches!(&entry.content, AgentTimelineContent::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
+				let has_reply = self.timeline.native.entries.iter().any(|entry| {
+					matches!(&entry.content, AgentTimelineContent::Item {
+turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
+				});
 
 				row.when(*completed && !has_reply, |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
@@ -1033,10 +1036,10 @@ mod tests {
 		AgentTimelineEntry {
 			position: 6,
 			content: AgentTimelineContent::Item {
+				collaboration: None,
 				phase: None,
 				app_ui: false,
 				turn_id: "plan-turn".into(),
-				collaboration: None,
 				item_id: "plan-item".into(),
 				kind: "plan".into(),
 				text: "## Proposed work\n1. Inspect source\n2. Verify changes".into(),
@@ -1051,7 +1054,8 @@ mod tests {
 		vec![
 			AgentTimelineEntry {
 				position: 0,
-				content: AgentTimelineContent::Item { phase: None, app_ui: false,
+				content: AgentTimelineContent::Item { collaboration: None,
+phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -1068,7 +1072,8 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 1,
-				content: AgentTimelineContent::Item { phase: None, app_ui: false,
+				content: AgentTimelineContent::Item { collaboration: None,
+phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -1268,12 +1273,12 @@ mod tests {
 		entries.push(AgentTimelineEntry {
 			position: 100,
 			content: AgentTimelineContent::Item {
+				collaboration: None,
 				phase: None,
 				app_ui: false,
 				turn_id: "summary-turn".into(),
 				item_id: "summary-item".into(),
 				kind: "reasoning".into(),
-				collaboration: None,
 				text: "Checking the request.".into(),
 				truncated: false,
 				activity: None,

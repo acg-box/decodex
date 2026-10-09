@@ -21,7 +21,7 @@ let symbols = [
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",
     "sidebar": "sidebar.left",
-    "graph": "rectangle.bottomthird.inset.filled",
+    "graph": "rectangle.topthird.inset.filled",
     "timeline": "clock",
     "agents": "sidebar.right",
     "expand": "arrow.up.left.and.arrow.down.right",

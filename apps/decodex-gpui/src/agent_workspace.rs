@@ -12,6 +12,15 @@ use ui_theme::{
 	TEXT_MUTED, TREE_ROW_HEIGHT,
 };
 
+// The close control is removed in the next frame. Keep subsequent keyboard actions
+// on the persistent shell instead of its now-detached focus node.
+fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
+	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
+		let focus = shell.read(cx).root_focus.clone();
+		window.focus(&focus, cx);
+	}
+}
+
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 use crate::{
 	shell::{
@@ -104,7 +113,8 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
-		self.workspace.graph_visible = !self.workspace.graph_visible;
+		self.workspace.graph_visible = !self.workspace.graph_visible || self.workspace.dock_compact;
+		self.workspace.dock_compact = false;
 		self.workspace.graph_expanded = false;
 
 		cx.notify();
@@ -336,7 +346,18 @@ impl AgentSurface {
 			}
 			.to_owned()
 		};
-		let icon = panel_icon(&id);
+		let icon = if id == "dock-toggle" {
+			Some(
+				workspace_symbols::disclosure_chevron(
+					"execution-panel-chevron",
+					!self.workspace.dock_compact || self.workspace.graph_expanded,
+				)
+				.into_any_element(),
+			)
+		} else {
+			panel_icon(&id)
+		};
+		let closes_dock = id == "graph-close";
 		let icon_only = icon.is_some();
 		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
 		let tip = accessible.clone();
@@ -373,15 +394,21 @@ impl AgentSurface {
 				})
 			})
 			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
-			.on_click(cx.listener(move |s, _, _, cx| {
+			.on_click(cx.listener(move |s, _, window, cx| {
 				if is_tree || is_tab {
 					cx.stop_propagation();
 				}
 				action(s, cx);
+				if closes_dock {
+					restore_shell_focus(window, cx);
+				}
 			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
+					if closes_dock {
+						restore_shell_focus(window, cx);
+					}
 
 					cx.stop_propagation();
 				}
@@ -405,7 +432,7 @@ impl AgentSurface {
 			.child(if let Some(icon) = icon {
 				icon
 			} else if is_tree {
-				crate::ui_motion::AgentLabel {
+				crate::ui_motion::OverflowLabel {
 					id: SharedString::from(label_id).into(),
 					text: label.into(),
 				}
@@ -461,7 +488,7 @@ impl AgentSurface {
 			));
 		panel
 			.when(self.workspace.sidebar_visible, |panel| {
-				panel.child(self.sidebar_resize_handle(cx))
+				panel.child(self.sidebar_resize_handle(super::workspace_size::Panel::Left, cx))
 			})
 			.into_any_element()
 	}
@@ -981,9 +1008,34 @@ impl AgentSurface {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
 
+		let fill_owner = cx.entity().downgrade();
+		let fill_key = self.selected.clone();
+		// Measure after layout, including folded process rows and the composer inset.
+		let fill_viewport =
+			move |_: Vec<gpui::Bounds<gpui::Pixels>>, _: &mut Window, cx: &mut gpui::App| {
+				let Some(entity) = fill_owner.upgrade() else {
+					return;
+				};
+				let state = entity.read(cx);
+				if state.selected != fill_key || !state.history_viewport_fill_ready() {
+					return;
+				}
+				let owner = fill_owner.clone();
+				let key = fill_key.clone();
+				cx.defer(move |cx| {
+					let _ = owner.update(cx, |s, cx| {
+						if s.selected == key
+							&& key.as_ref().is_some_and(|key| s.history_viewport_underfilled(key))
+						{
+							s.prefetch_older_history(cx);
+						}
+					});
+				});
+			};
 		let owner = cx.entity();
 		let key = self.selected.clone().unwrap_or_default();
 		gpui::div()
+			.on_children_prepainted(fill_viewport)
 			.flex_1()
 			.min_h_0()
 			.min_w_0()
@@ -1102,24 +1154,38 @@ impl AgentSurface {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
 		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
-		let mut center = gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col();
-		if !self.workspace.graph_expanded {
-			center = center.child(chat);
-		}
-		let center = center.child(ui_motion::reveal(
-			"agent-graph-dock",
-			graph_height,
-			false,
-			self.handoff_canvas(cx),
-		));
+		// The top panel owns its space. Chat follows it in normal layout flow.
+		let center = gpui::div()
+			.relative()
+			.flex_1()
+			.min_w_0()
+			.h_full()
+			.flex()
+			.flex_col()
+			.child(ui_motion::reveal(
+				"execution-surface-height",
+				graph_height,
+				false,
+				self.handoff_canvas(cx),
+			))
+			.when(!self.workspace.graph_expanded, |center| center.child(chat));
 
+		let right_width = ui_motion::direct_value(
+			"agent-tree-panel",
+			self.agent_tree_width(window),
+			self.workspace
+				.panel_drag
+				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Right),
+			window,
+			cx,
+		);
 		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
-			ui_motion::reveal(
-				"agent-tree-panel",
-				self.agent_tree_width(window),
-				true,
-				self.agent_tree(cx),
-			),
+			gpui::div()
+				.flex_none()
+				.w(gpui::px(right_width))
+				.h_full()
+				.overflow_hidden()
+				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(cx))),
 		);
 		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
 		let main = gpui::div()
@@ -1443,7 +1509,7 @@ impl AgentSurface {
 						"zoom-reset".into(),
 						"Fit".into(),
 						|s, cx| {
-							s.workspace.graph_zoom = 1.0;
+							s.workspace.graph_zoom = s.workspace.graph_fit_zoom;
 							s.workspace.graph_pan = (0.0, 0.0);
 
 							cx.notify();
@@ -1532,7 +1598,7 @@ impl AgentSurface {
 			)
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
 				if event.pressed_button == Some(MouseButton::Left)
-					&& s.workspace.sidebar_drag.is_none()
+					&& s.workspace.panel_drag.is_none()
 				{
 					if let Some(previous) = s.workspace.graph_drag {
 						s.workspace.graph_pan.0 += f32::from(event.position.x - previous.x);
@@ -1742,6 +1808,16 @@ impl AgentSurface {
 		}
 
 		match page {
+			"factory" | "relations" | "relations-resource" => {
+				self.work_board.graph = false;
+				self.workspace.graph_expanded = true;
+				if page.starts_with("relations") {
+					self.visual_relation_evidence();
+					if page == "relations-resource" {
+						self.visual_relation_resource_focus();
+					}
+				}
+			},
 			#[cfg(feature = "visual-capture")]
 			"prompt-editor" | "prompt-remove" => self.visual_prompt_editor(page == "prompt-remove", cx),
 			"recap" => self.visual_recap(),
@@ -1756,6 +1832,7 @@ impl AgentSurface {
 				}
 
 				self.snapshot = Some(AgentSnapshotDto {
+					context_references: vec![],
 					connection_initializing: false,
 					runtime_source: None,
 					workspaces: vec![],
@@ -1770,8 +1847,10 @@ impl AgentSurface {
 				self.native_agents.pages.clear();
 				self.workspace.closing_pages.clear();
 			},
+			"dock-execution" => self.visual_execution_dock(cx),
+			"dock-execution-failed" => self.visual_execution_failure(cx),
 			"dock-compact" | "dock-running" | "dock-result" | "dock-completed"
-			| "dock-dependencies" => self.visual_dock_page(page, cx),
+			| "dock-dependencies" | "dock-blocked" => self.visual_dock_page(page, cx),
 			"expanded" => self.workspace.graph_expanded = true,
 			"in-use" => {
 				self.workspace.graph_visible = false;
@@ -1832,7 +1911,6 @@ impl AgentSurface {
 					model: decodex_protocol::ConversationModel::new(name)
 						.expect("valid fixture model"),
 					name: name.into(),
-					context_references: vec![],
 					efforts: vec![
 						ConversationReasoningEffort::Low,
 						ConversationReasoningEffort::Medium,
@@ -1861,6 +1939,7 @@ impl AgentSurface {
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
+		self.work_board.graph = true;
 		self.handoffs.fixture();
 		self.workspace.sidebar_visible = true;
 
@@ -1884,6 +1963,7 @@ impl AgentSurface {
 			};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
 			workspaces: vec![],
@@ -1963,7 +2043,6 @@ impl AgentSurface {
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
-			context_references: vec![],
 		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
@@ -2275,7 +2354,13 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
 		"graph-expand" => crate::shell::workspace_symbols::Symbol::Expand,
 		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
-		"graph-up" => crate::shell::workspace_symbols::Symbol::Back,
+		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
+		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,
+		"board-show-list" => crate::shell::workspace_symbols::Symbol::AllWork,
+		"dock-toggle" => crate::shell::workspace_symbols::Symbol::ChevronDown,
+		"dock-open-source" => crate::shell::workspace_symbols::Symbol::Forward,
+		"dock-evidence-toggle" => crate::shell::workspace_symbols::Symbol::Eye,
+		"dock-subtasks" => crate::shell::workspace_symbols::Symbol::Agents,
 		"zoom-in" => crate::shell::workspace_symbols::Symbol::Plus,
 		"zoom-out" => crate::shell::workspace_symbols::Symbol::Minus,
 		id if id.starts_with("close-") => crate::shell::workspace_symbols::Symbol::Close,

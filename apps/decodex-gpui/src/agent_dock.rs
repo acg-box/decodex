@@ -8,11 +8,13 @@ use crate::shell::agent_surface::{
 
 #[derive(Default)]
 pub(super) struct Evidence {
-	key: Option<String>,
+	pub(super) key: Option<String>,
+	pub(super) execution: Option<super::execution_dock::Execution>,
 	history: Option<AgentHistoryResult>,
 	final_response: Option<String>,
 	request: Option<super::AgentRequestResult>,
-	task: Option<gpui::Task<()>>,
+	pub(super) task: Option<gpui::Task<()>>,
+	read_at: Option<std::time::Instant>,
 }
 
 impl AgentSurface {
@@ -50,7 +52,7 @@ impl AgentSurface {
 		}
 		self.workspace.dock_record = match page {
 			"dock-result" => Some("website".into()),
-			"dock-running" | "dock-dependencies" => Some("release".into()),
+			"dock-running" | "dock-dependencies" | "dock-blocked" => Some("release".into()),
 			_ => None,
 		};
 		self.handoffs.focus = self.workspace.dock_record.clone();
@@ -62,10 +64,11 @@ impl AgentSurface {
 				work.dispatch_state = super::AgentDispatchStateDto::Idle;
 			}
 		}
-		if page == "dock-dependencies" {
+		if page == "dock-dependencies" || page == "dock-blocked" {
 			self.selected = Some("agent".into());
 			self.history = self.timeline.cache.get("agent").cloned().map(|h| ("agent".into(), h));
-			self.handoffs.focus = Some("release".into());
+			self.handoffs.focus =
+				Some(if page == "dock-blocked" { "impact" } else { "release" }.into());
 			self.workspace.dock_completed = true;
 		}
 
@@ -109,9 +112,8 @@ impl AgentSurface {
 
 		if !blockers.is_empty() {
 			return format!(
-				"Waiting on {} task{}",
-				blockers.len(),
-				if blockers.len() == 1 { "" } else { "s" }
+				"Waiting for {}",
+				blockers.iter().map(|w| self.work_label(w)).collect::<Vec<_>>().join(", ")
 			);
 		}
 		state.label.into()
@@ -122,7 +124,7 @@ impl AgentSurface {
 		let Some(snapshot) = &self.snapshot else {
 			return "Loading work…".into();
 		};
-		let scope = self.workspace.dock_record.clone().or_else(|| self.root_id());
+		let scope = self.workspace.dock_record.clone().or_else(|| self.dock_scope());
 		let owner = snapshot.work_items.iter().find(|w| Some(&w.id) == scope.as_ref());
 		let children: Vec<_> = snapshot
 			.work_items
@@ -150,10 +152,22 @@ impl AgentSurface {
 	}
 
 	pub(super) fn dock_scope(&self) -> Option<String> {
-		self.root_id()
+		let snapshot = self.snapshot.as_ref()?;
+		let root = self.root_id()?;
+		let mut id = self.selected.clone().unwrap_or_else(|| root.clone());
+		for _ in 0..snapshot.work_items.len() {
+			let Some(work) = snapshot.work_items.iter().find(|work| work.id == id) else {
+				return Some(root);
+			};
+			match work.parent_goal_id.as_ref() {
+				Some(parent) if parent != &root => id = parent.clone(),
+				_ => return Some(id),
+			}
+		}
+		Some(root)
 	}
 
-	fn dock_evidence_key(&self, work: &AgentWorkItemDto) -> String {
+	pub(super) fn dock_evidence_key(&self, work: &AgentWorkItemDto) -> String {
 		serde_json::json!([
 			work.id,
 			work.codex_thread_id,
@@ -179,9 +193,28 @@ impl AgentSurface {
 		self.load_dock_evidence(id, cx);
 	}
 
+	pub(super) fn refresh_dock_evidence(&mut self, cx: &mut Context<Self>) {
+		if !self.workspace.graph_visible || self.workspace.dock_compact {
+			return;
+		}
+		let Some(id) = self.handoffs.focus.clone() else { return };
+		let Some(work) =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == id))
+		else {
+			return;
+		};
+		let changed = self.dock_evidence.key.as_ref() != Some(&self.dock_evidence_key(work));
+		let running = matches!(
+			work.dispatch_state,
+			super::AgentDispatchStateDto::Running | super::AgentDispatchStateDto::Dispatching
+		);
+		let due = self.dock_evidence.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2);
+		if changed || (running && due && self.dock_evidence.task.is_none()) {
+			self.load_dock_evidence(&id, cx);
+		}
+	}
+
 	pub(super) fn load_dock_evidence(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.dock_evidence = Evidence::default();
-		cx.notify();
 		let Some(work) =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == id))
 		else {
@@ -192,6 +225,9 @@ impl AgentSurface {
 		}
 		let Some(profile) = self.profile.clone() else { return };
 		let key = self.dock_evidence_key(work);
+		if self.dock_evidence.key.as_ref() != Some(&key) {
+			self.dock_evidence = Evidence::default();
+		}
 		let Ok(owner) = super::EntityId::new(id) else { return };
 		let Some(thread) =
 			work.codex_thread_id.as_deref().and_then(|id| super::EntityId::new(id).ok())
@@ -199,6 +235,7 @@ impl AgentSurface {
 			return;
 		};
 		self.dock_evidence.key = Some(key.clone());
+		self.dock_evidence.read_at = Some(std::time::Instant::now());
 		let event = self
 			.snapshot
 			.as_ref()
@@ -221,15 +258,23 @@ impl AgentSurface {
 					client.history(owner.clone()),
 					client.timeline(owner.clone(), thread.clone(), None)
 				);
+				let timeline = timeline.ok();
+				let execution = timeline.as_ref().and_then(|result| {
+					super::execution_dock::Execution::read(result, owner.as_str(), thread.as_str())
+				});
 				let report = timeline
-					.ok()
 					.and_then(|result| final_response(&result, owner.as_str(), thread.as_str()));
-				Some((history.unwrap_or(AgentHistoryResult::Unavailable), request, report))
+				Some((
+					history.unwrap_or(AgentHistoryResult::Unavailable),
+					request,
+					report,
+					execution,
+				))
 			})
 		});
 		self.dock_evidence.task = Some(cx.spawn(async move |surface, cx| {
-			let (history, request, report) =
-				request.await.unwrap_or((AgentHistoryResult::Unavailable, None, None));
+			let (history, request, report, execution) =
+				request.await.unwrap_or((AgentHistoryResult::Unavailable, None, None, None));
 			let _ = surface.update(cx, |s, cx| {
 				if s.dock_evidence.key.as_ref() != Some(&key) {
 					return;
@@ -241,10 +286,12 @@ impl AgentSurface {
 					})
 				});
 				if current.is_none_or(|work| s.dock_evidence_key(work) != key) {
+					s.dock_evidence = Evidence::default();
 					return;
 				}
 				s.dock_evidence.history = Some(history);
 				s.dock_evidence.final_response = report;
+				s.dock_evidence.execution = execution;
 				s.dock_evidence.request = request;
 				s.dock_evidence.task = None;
 				cx.notify();
@@ -298,14 +345,52 @@ impl AgentSurface {
 		if work_id != &work.id {
 			return None;
 		}
-		let value: serde_json::Value = serde_json::from_str(request_json.as_str()).ok()?;
-		let text = value["questions"]
-			.as_array()
-			.and_then(|q| q.first())
-			.and_then(|q| q["question"].as_str())
-			.or_else(|| value["reason"].as_str())
-			.or_else(|| value["command"].as_str());
-		text.map(report_excerpt)
+		request_excerpt(request_json.as_str())
+	}
+
+	pub(super) fn current_dock_activity(&self, work: &AgentWorkItemDto) -> Option<String> {
+		let turn = work.active_turn_id.as_deref()?;
+		let AgentHistoryResult::Available { entries, .. } = self.overview_history(work)? else {
+			return None;
+		};
+		entries.iter().rev().find_map(|entry| {
+			if !source_matches(work, entry) {
+				return None;
+			}
+			let activity = entry.activity.as_ref()?;
+			(activity.turn_id == turn).then(|| format!("{} · {}", activity.label, activity.status))
+		})
+	}
+
+	pub(super) fn dock_dependencies(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
+		let mut body = gpui::div().flex().flex_col().gap_1();
+		let Some(snapshot) = &self.snapshot else {
+			return body;
+		};
+		let blockers = graph::blockers(snapshot, work);
+		let dependents: Vec<_> = snapshot
+			.work_items
+			.iter()
+			.filter(|candidate| {
+				graph::blockers(snapshot, candidate).iter().any(|blocker| blocker.id == work.id)
+			})
+			.collect();
+		for (label, tasks) in [("Waiting for", blockers), ("Holding up", dependents)] {
+			if tasks.is_empty() {
+				continue;
+			}
+			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label));
+			for task in tasks {
+				let id = task.id.clone();
+				body = body.child(self.workspace_action(
+					format!("dock-related-{id}"),
+					self.work_label(task),
+					move |s, cx| s.activate_graph_node(&id, cx),
+					cx,
+				));
+			}
+		}
+		body
 	}
 
 	pub(super) fn overview_evidence(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
@@ -330,8 +415,17 @@ impl AgentSurface {
 			cx,
 		);
 		let mut body = gpui::div().w_full().min_w_0().pl_2().py_1().flex().flex_col().gap_2();
+		if state.as_ref().is_some_and(|state| state.label == "Waiting on work") {
+			return body.child(gpui::div().flex().child(source));
+		}
 		let fetched = self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work));
-		let excerpt = if fetched {
+		let running = matches!(
+			work.dispatch_state,
+			super::AgentDispatchStateDto::Running | super::AgentDispatchStateDto::Dispatching
+		);
+		let excerpt = if running {
+			self.current_dock_activity(work).map(|text| (text, "Latest activity in this turn"))
+		} else if fetched {
 			self.dock_evidence
 				.final_response
 				.as_deref()
@@ -366,7 +460,9 @@ impl AgentSurface {
 			let loading = self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work))
 				&& self.dock_evidence.task.is_some();
 			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(if loading {
-				"Loading latest report…"
+				"Loading task activity…"
+			} else if running {
+				"Running · No activity received for this turn yet."
 			} else {
 				"No final response is available here. Open the conversation to review its history."
 			}));
@@ -476,7 +572,15 @@ pub(super) fn progress_state(
 	ProgressState { label, reason, color, group }
 }
 
-fn final_response(
+pub(super) fn final_response(
+	result: &decodex_protocol::AgentTimelineResult,
+	work: &str,
+	thread: &str,
+) -> Option<String> {
+	final_response_text(result, work, thread).map(|text| super::execution_dock::preview(&text, 240))
+}
+
+pub(super) fn final_response_text(
 	result: &decodex_protocol::AgentTimelineResult,
 	work: &str,
 	thread: &str,
@@ -496,7 +600,7 @@ fn final_response(
 			if kind == "agentMessage"
 				&& phase.as_deref() == Some("final_answer")
 				&& !text.trim().is_empty() =>
-			Some(report_excerpt(text)),
+			Some(text.clone()),
 		_ => None,
 	})
 }
@@ -516,10 +620,93 @@ fn source_matches(work: &AgentWorkItemDto, entry: &super::AgentHistoryEntryDto) 
 		.is_none_or(|source| work.codex_thread_id.as_ref() == Some(&source.thread_id))
 }
 
+pub(super) fn request_excerpt(json: &str) -> Option<String> {
+	let value: serde_json::Value = serde_json::from_str(json).ok()?;
+	value["questions"]
+		.as_array()
+		.and_then(|q| q.first())
+		.and_then(|q| q["question"].as_str())
+		.or_else(|| value["reason"].as_str())
+		.or_else(|| value["command"].as_str())
+		.map(report_excerpt)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use gpui::AppContext;
+
+	#[gpui::test]
+	fn running_preview_rejects_activity_from_an_old_turn(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|w| w.id == "improve")
+				.unwrap()
+				.clone();
+			work.active_turn_id = Some("current".into());
+			let mut history = s.timeline.cache.get("verify").unwrap().clone();
+			let AgentHistoryResult::Available { entries, .. } = &mut history else {
+				panic!("fixture history");
+			};
+			entries[0].native_source = None;
+			entries[0].activity = Some(decodex_protocol::AgentActivityDto {
+				turn_id: "previous".into(),
+				item_id: "command".into(),
+				kind: "commandExecution".into(),
+				status: "completed".into(),
+				label: "Run launch benchmark".into(),
+				detail: String::new(),
+				plugin_id: None,
+				read_only_hint: None,
+				native_timestamp_ms: None,
+				duration_ms: None,
+			});
+			s.timeline.cache.insert(work.id.clone(), history.clone());
+			assert_eq!(s.current_dock_activity(&work), None);
+			let AgentHistoryResult::Available { entries, .. } = &mut history else {
+				unreachable!()
+			};
+			entries[0].activity.as_mut().unwrap().turn_id = "current".into();
+			s.timeline.cache.insert(work.id.clone(), history);
+			assert_eq!(
+				s.current_dock_activity(&work).as_deref(),
+				Some("Run launch benchmark · completed")
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn dependency_preview_opens_the_blocker_in_the_same_canvas(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = AgentSurface::new(cx);
+			s.visual_workspace_fixture(cx);
+			s.visual_dock_page("dock-dependencies", cx);
+			s.handoffs.focus = Some("impact".into());
+			s.update_graph_inset(800., 400.);
+			assert!(s.workspace.graph_fit_zoom < 1., "long chains must fit below 100 percent");
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		visual.update(|w, cx| {
+			w.refresh();
+			w.draw(cx).clear();
+		});
+		visual.run_until_parked();
+		let link = visual.debug_bounds("dock-related-improve").expect("named prerequisite");
+		visual.simulate_click(link.center(), Default::default());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.handoffs.focus.as_deref(), Some("improve"));
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.workspace.dock_record.as_deref(), Some("release"));
+		});
+	}
 
 	#[test]
 	fn result_excerpt_keeps_the_conclusion_without_report_metadata() {
@@ -572,6 +759,7 @@ mod tests {
 			EntityId,
 		};
 		let message = |phase: Option<&str>, text: &str| AgentTimelineContent::Item {
+			collaboration: None,
 			turn_id: "turn".into(),
 			item_id: text.into(),
 			kind: "agentMessage".into(),
@@ -631,6 +819,14 @@ mod tests {
 			],
 		};
 		assert_eq!(final_response(&unknown, "work", "thread"), None);
+		let long = format!("{}END_OF_REPLY", "Evidence line.\n".repeat(100));
+		let full = AgentTimelineResult::Summary {
+			work_id: EntityId::new("work").unwrap(),
+			account_id: EntityId::new("account").unwrap(),
+			thread_id: "thread".into(),
+			items: vec![message(Some("final_answer"), &long)],
+		};
+		assert_eq!(final_response_text(&full, "work", "thread"), Some(long));
 	}
 
 	#[gpui::test]
@@ -706,7 +902,7 @@ mod tests {
 		visual.simulate_click(source.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("release"));
-			assert_eq!(s.dock_scope().as_deref(), Some("agent"));
+			assert_eq!(s.dock_scope().as_deref(), Some("release"));
 			assert!(s.workspace.dock_record.is_none());
 		});
 	}
@@ -759,7 +955,6 @@ mod tests {
 		visual.simulate_click(close.center(), Default::default());
 		for _ in 0..3 {
 			visual.update(|w, cx| {
-			collaboration: None,
 				w.refresh();
 				w.draw(cx).clear();
 			});
@@ -958,7 +1153,11 @@ mod tests {
 			assert_eq!(s.selected.as_deref(), Some("release"));
 			assert!(!s.handoff_items().iter().any(|h| h.work == "website"));
 			assert!(s.handoff_items().iter().any(|h| h.work == "release"));
-			assert!(s.workspace.dock_record.is_none());
+			assert_eq!(
+				s.workspace.dock_record.as_deref(),
+				Some("website"),
+				"marking viewed keeps the current work scope"
+			);
 		});
 		for _ in 0..3 {
 			visual.update(|w, cx| {

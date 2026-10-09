@@ -106,6 +106,25 @@ impl AgentSurface {
 		Ok(())
 	}
 
+	pub(super) fn history_viewport_fill_ready(&self) -> bool {
+		if self.profile.is_none() {
+			return false;
+		}
+		if let Some(binding) =
+			self.timeline.native.binding.as_ref().filter(|_| !self.timeline.native.show_saved)
+		{
+			return self.selected.as_ref() == Some(&binding.work)
+				&& self.history_viewport_underfilled(&binding.work)
+				&& self.timeline.native.older_cursor.is_some()
+				&& self.timeline.native.notice.is_none()
+				&& self.timeline.native.task.is_none()
+				&& !self.native_pagination_settling()
+				&& self.timeline.native.can_retry(std::time::Instant::now());
+		}
+		self.history_prefetch_needed()
+			&& self.timeline.older_retry_after.is_none_or(|at| at <= std::time::Instant::now())
+	}
+
 	pub(super) fn prefetch_native_history(&mut self, cx: &mut Context<Self>) -> bool {
 		let Some(binding) = self.timeline.native.binding.clone().filter(|binding| {
 			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
@@ -113,18 +132,21 @@ impl AgentSurface {
 			return false;
 		};
 
-		if self.timeline.native.prefetch_requested
+		let underfilled = self.history_viewport_underfilled(&binding.work)
+			&& self.timeline.native.notice.is_none();
+		let near_top = self.timeline.native.prefetch_requested
+			&& self.timeline.follow_paused.contains(&binding.work)
+			&& self.timeline.scroll.get(&binding.work).is_some_and(|scroll| {
+				let height = f32::from(scroll.bounds().size.height);
+				height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
+			});
+		if (underfilled || near_top)
 			&& self.timeline.native.older_cursor.is_some()
 			&& self.timeline.native.task.is_none()
 			&& !self.native_pagination_settling()
 			&& self.timeline.native.can_retry(std::time::Instant::now())
-			&& self.timeline.follow_paused.contains(&binding.work)
-			&& self.timeline.scroll.get(&binding.work).is_some_and(|scroll| {
-				let height = f32::from(scroll.bounds().size.height);
-
-				height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
-			}) {
-			self.load_native_timeline(&binding.work, &binding.thread, true, cx);
+		{
+			self.load_native_timeline_page(&binding.work, &binding.thread, true, underfilled, cx);
 		}
 
 		true
@@ -582,6 +604,17 @@ impl AgentSurface {
 		older: bool,
 		cx: &mut Context<Self>,
 	) {
+		self.load_native_timeline_page(work, thread, older, false, cx);
+	}
+
+	fn load_native_timeline_page(
+		&mut self,
+		work: &str,
+		thread: &str,
+		older: bool,
+		fill_viewport: bool,
+		cx: &mut Context<Self>,
+	) {
 		if self.selected.as_deref() != Some(work) || self.timeline.native.task.is_some() {
 			return;
 		}
@@ -601,11 +634,11 @@ impl AgentSurface {
 
 		if older {
 			self.timeline.native.prefetch_requested = false;
-			self.timeline.follow_paused.insert(work.into());
-
-			self.timeline.navigation = None;
-
-			self.set_voice_follow(false);
+			if !fill_viewport {
+				self.timeline.follow_paused.insert(work.into());
+				self.timeline.navigation = None;
+				self.set_voice_follow(false);
+			}
 		}
 
 		let (work, thread) = (work.to_owned(), thread.to_owned());
@@ -670,7 +703,19 @@ impl AgentSurface {
 				{
 					let binding = Binding { work, thread, account: account_id.as_str().into() };
 					let accepted = match sent_cursor {
-						Some(cursor) => s.prepend_native_history(&binding, &cursor, page),
+						Some(cursor) => {
+							let accepted = s.prepend_native_history(&binding, &cursor, page);
+							if accepted
+								&& fill_viewport
+								&& !s.timeline.follow_paused.contains(&binding.work)
+							{
+								s.cancel_native_scroll_anchor();
+								if let Some(scroll) = s.timeline.scroll.get(&binding.work) {
+									scroll.scroll_to_bottom();
+								}
+							}
+							accepted
+						},
 						None => s.refresh_native_history(binding, page),
 					};
 
@@ -1104,6 +1149,7 @@ mod tests {
 			s.timeline.native.accept_summary(
 				binding,
 				vec![AgentTimelineContent::Item {
+					collaboration: None,
 					phase: None,
 					turn_id: "turn".into(),
 					item_id: "answer".into(),
@@ -1149,9 +1195,9 @@ mod tests {
 	#[test]
 	fn summary_recovery_never_reuses_timeline_positions_or_cursors() {
 		let binding =
-					collaboration: None,
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
 		let item = AgentTimelineContent::Item {
+			collaboration: None,
 			phase: None,
 			turn_id: "turn".into(),
 			item_id: "answer".into(),
@@ -1197,7 +1243,6 @@ mod tests {
 
 		assert!(state.summary.is_empty() && state.binding.is_none());
 	}
-			collaboration: None,
 
 	#[gpui::test]
 	fn prompt_handback_replaces_old_history_only_with_fresh_bound_pages(

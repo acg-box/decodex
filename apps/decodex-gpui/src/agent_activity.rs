@@ -1310,7 +1310,8 @@ mod tests {
 				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
 					duration_ms: Some(3_200), usage: None, usage_summary: None, error: None,
-				} } else { decodex_protocol::AgentTimelineContent::Item { phase: None,
+				} } else { decodex_protocol::AgentTimelineContent::Item { collaboration: None,
+phase: None,
 					app_ui: false,
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
 					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),

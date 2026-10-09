@@ -274,7 +274,9 @@ impl AgentSurface {
 			return;
 		};
 
-		if (self.workspace.agent_tree_visible || self.workspace.browsing)
+		if (self.workspace.agent_tree_visible
+			|| self.workspace.browsing
+			|| self.workspace.graph_visible)
 			&& self.native_agents.task.is_none()
 			&& self.native_agents.next.is_none_or(|t| t <= Instant::now())
 		{
@@ -326,7 +328,9 @@ impl AgentSurface {
 							}
 
 							if complete {
-								result.push((owner, list));
+								result.push((owner, Some(list)));
+							} else {
+								result.push((owner, None));
 							}
 						}
 
@@ -340,6 +344,15 @@ impl AgentSurface {
 						let mut changed = false;
 
 						for (owner, list) in result {
+							let Some(list) = list else {
+								if let Some(previous) = s.native_agents.lists.get_mut(&owner) {
+									for agent in previous {
+										changed |= agent.status != "unknown";
+										agent.status = "unknown".into();
+									}
+								}
+								continue;
+							};
 							if s.native_agents.lists.get(&owner) != Some(&list) {
 								s.native_agents.lists.insert(owner, list);
 
@@ -920,6 +933,7 @@ mod tests {
 				s.native_agents.lists.insert(
 					"agent".into(),
 					vec![NativeAgentDto {
+						task: String::new(),
 						thread_id: "child".into(),
 						parent_thread_id: "parent".into(),
 						title: "Old child".into(),
@@ -933,7 +947,6 @@ mod tests {
 
 				let mut next = s.snapshot.clone().unwrap();
 
-						task: String::new(),
 				match change {
 					"thread" =>
 						next.work_items

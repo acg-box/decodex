@@ -1,6 +1,8 @@
 //! Display-paced wheel motion. Precise trackpad deltas retain native momentum.
 use std::time::Instant;
 
+const SCROLL_RESPONSE: f32 = 40.;
+
 type ScrollChange = std::rc::Rc<dyn Fn(f32, &mut Window, &mut App)>;
 
 use gpui::{
@@ -30,10 +32,10 @@ impl Motion {
 	fn position_velocity(&self, now: Instant) -> (f32, f32) {
 		let t = now.saturating_duration_since(self.started).as_secs_f32();
 		let distance = self.from - self.to;
-		let decay = (-32. * t).exp();
-		let c = self.velocity + 32. * distance;
+		let decay = (-SCROLL_RESPONSE * t).exp();
+		let c = self.velocity + SCROLL_RESPONSE * distance;
 
-		(self.to + (distance + c * t) * decay, (self.velocity - 32. * c * t) * decay)
+		(self.to + (distance + c * t) * decay, (self.velocity - SCROLL_RESPONSE * c * t) * decay)
 	}
 
 	pub fn sample(&self, now: Instant) -> (f32, bool) {
@@ -57,7 +59,7 @@ impl Motion {
 		self.to = (base + delta).clamp(-maximum.max(0.), 0.);
 
 		// A newly reached boundary must not inherit enough velocity to overshoot.
-		let limit = 32. * (self.to - self.from).abs();
+		let limit = SCROLL_RESPONSE * (self.to - self.from).abs();
 
 		self.velocity = self.velocity.clamp(-limit, limit);
 		self.started = now;

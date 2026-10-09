@@ -1,6 +1,8 @@
 //! Interruptible motion shared by native controls and workspace panels.
 #[path = "ui_agent_label.rs"] mod agent_label;
-pub(crate) use agent_label::{AgentLabel, AgentSignal};
+pub(crate) use agent_label::AgentSignal;
+#[path = "ui_overflow_label.rs"] mod overflow_label;
+pub(crate) use overflow_label::OverflowLabel;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 
@@ -326,7 +328,7 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// Reveal the material and its content through one clip, without primitive fades.
+/// Float menus into place without clipping their shadow or fading individual primitives.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	id: ElementId,
@@ -341,18 +343,33 @@ impl Popover {
 	}
 }
 impl RenderOnce for Popover {
-	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-		disclosure(
-			self.id,
-			self.visible,
-			gpui::div().w_full().p_2().child(
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
+		let now = Instant::now();
+		let (progress, moving) = state.update(cx, |s, _| {
+			if !self.visible {
+				*s = Tween::new(0.);
+			} else {
+				s.target(1., now);
+			}
+			(s.sample(now), s.moving(now))
+		});
+		if moving {
+			request_frame(window, cx);
+		}
+
+		// A disclosure's height clip cuts the blur into a rectangular dark patch.
+		// Menus overlay the page, so animate their position without a layout clip.
+		gpui::div().w_full().when(self.visible, |slot| {
+			slot.p_2().child(
 				gpui::div()
 					.w_full()
 					.relative()
+					.top(gpui::px(-4. * (1. - progress)))
 					.when(!self.unframed, menu_surface)
 					.child(self.child),
-			),
-		)
+			)
+		})
 	}
 }
 
@@ -723,6 +740,7 @@ impl RenderOnce for AgentRailStatus {
 		.left(gpui::px(2.))
 		.top(gpui::px(2.))
 		.opacity(ring_opacity);
+		let title_id = gpui::SharedString::from(format!("left-title-{}", self.id));
 		gpui::div()
 			.debug_selector(|| "conversation-name".into())
 			.min_w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
@@ -753,9 +771,7 @@ impl RenderOnce for AgentRailStatus {
 					.flex_1()
 					.min_w_0()
 					.overflow_hidden()
-					.whitespace_nowrap()
-					.text_ellipsis()
-					.child(rest),
+					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
 			)
 	}
 }

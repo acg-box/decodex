@@ -71,6 +71,7 @@ impl AgentSurface {
 
 		gpui::div()
 			.id("agent-panel-focus")
+			.relative()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
 			)
@@ -106,6 +107,7 @@ impl AgentSurface {
 					.child(self.work_details_button(cx)),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
+			.child(self.sidebar_resize_handle(Panel::Right, cx))
 			.into_any_element()
 	}
 
@@ -407,16 +409,16 @@ mod tests {
 				"agent".into(),
 				vec![
 					decodex_protocol::NativeAgentDto {
+						task: String::new(),
 						thread_id: "native-child".into(),
 						parent_thread_id: "root-native".into(),
-						task: String::new(),
 						title: "Research".into(),
 						status: "idle".into(),
 					},
 					decodex_protocol::NativeAgentDto {
+						task: String::new(),
 						thread_id: "native-grandchild".into(),
 						parent_thread_id: "native-child".into(),
-						task: String::new(),
 						title: "Sources".into(),
 						status: "idle".into(),
 					},

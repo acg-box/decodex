@@ -929,9 +929,10 @@ impl Shell {
 		}
 	}
 
-	fn toggle_graph(&mut self, _: &ToggleGraph, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_graph(&mut self, _: &ToggleGraph, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected == Destination::Agent {
 			self.agent.update(cx, AgentSurface::toggle_workspace_graph);
+			window.focus(&self.root_focus, cx);
 		}
 
 		cx.stop_propagation();
@@ -2640,9 +2641,6 @@ fn floating_window_controls(
 						.max_w(gpui::px(360.))
 						.w_full()
 						.min_w_0()
-						.occlude()
-						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-						.on_click(|_, _, cx| cx.stop_propagation())
 						.child(agent.work_context(_window, cx)),
 				)
 		})
@@ -7724,6 +7722,43 @@ mod tests {
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
+	}
+
+	#[gpui::test]
+	fn conversation_title_passes_mouse_down_to_window_drag_region(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		let title = visual.debug_bounds("workspace-conversation-header").unwrap();
+		visual.simulate_mouse_down(title.center(), gpui::MouseButton::Left, Default::default());
+		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		visual.simulate_mouse_up(title.center(), gpui::MouseButton::Left, Default::default());
+		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+	}
+
+	#[gpui::test]
+	fn dock_close_returns_focus_so_shortcut_can_reopen(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		let close = visual.debug_bounds("graph-close").expect("Dock close control");
+		visual.simulate_click(close.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(!shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
+		visual.simulate_keystrokes("cmd-j");
+		assert!(shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
+		visual.simulate_keystrokes("cmd-j");
+		visual.simulate_keystrokes("cmd-j");
+		assert!(shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
 	}
 
 	#[gpui::test]
