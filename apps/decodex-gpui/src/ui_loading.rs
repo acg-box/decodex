@@ -14,6 +14,7 @@ use crate::{ui_motion, ui_theme::TEXT_MUTED};
 #[derive(IntoElement)]
 pub(crate) struct Loading {
 	label: &'static str,
+	icon_only: bool,
 }
 impl RenderOnce for Loading {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -23,6 +24,7 @@ impl RenderOnce for Loading {
 			|_, _| Instant::now(),
 		);
 		let elapsed = clock.read(cx).elapsed().as_secs_f32();
+		let scale = if self.icon_only { 1.7 } else { 1. };
 		let reduced = ui_motion::reduced();
 		let phase = if reduced { 0. } else { (elapsed - 0.15).max(0.) * TAU };
 
@@ -49,7 +51,7 @@ impl RenderOnce for Loading {
 						for i in 0..12 {
 							let angle = phase + i as f32 / 12. * TAU;
 							let alpha = (45. + 210. * (i as f32 / 11.)) as u32;
-							let mut path = PathBuilder::stroke(gpui::px(1.4));
+							let mut path = PathBuilder::stroke(gpui::px(1.4 * scale));
 							let point = |radius: f32| {
 								bounds.center()
 									+ gpui::point(
@@ -57,18 +59,18 @@ impl RenderOnce for Loading {
 										gpui::px(angle.sin() * radius),
 									)
 							};
-							path.move_to(point(3.3));
-							path.line_to(point(5.5));
+							path.move_to(point(3.3 * scale));
+							path.line_to(point(5.5 * scale));
 							if let Ok(path) = path.build() {
 								window.paint_path(path, gpui::rgba((TEXT_MUTED << 8) | alpha));
 							}
 						}
 					},
 				)
-				.size(gpui::px(14.))
+				.size(gpui::px(14. * scale))
 				.flex_none(),
 			)
-			.when(!self.label.is_empty(), |row| row.child(self.label))
+			.when(!self.icon_only && !self.label.is_empty(), |row| row.child(self.label))
 	}
 }
 
@@ -104,9 +106,14 @@ impl RenderOnce for ConversationLoading {
 }
 
 pub(crate) fn loading(label: &'static str) -> Loading {
-	Loading { label }
+	Loading { label, icon_only: false }
 }
 
 pub(crate) fn conversation(label: &'static str) -> ConversationLoading {
 	ConversationLoading { label }
+}
+
+/// Quiet full-workspace feedback; the status remains available to assistive technology.
+pub(crate) fn workspace() -> Loading {
+	Loading { label: "Opening workspace", icon_only: true }
 }

@@ -1072,7 +1072,7 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.justify_center()
-				.child(crate::ui_loading::loading("Connecting to Codex…"))
+				.child(crate::ui_loading::workspace())
 				.into_any_element();
 		}
 		self.observe_visible_output(cx);
@@ -2502,7 +2502,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
-		let loading = visual.debug_bounds("loading-feedback-Connecting to Codex…").unwrap();
+		let loading = visual.debug_bounds("loading-feedback-Opening workspace").unwrap();
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
 		assert!(
 			(workspace.center().y + gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE / 2.)
@@ -2592,7 +2592,7 @@ mod tests {
 		});
 
 		assert!(visual.debug_bounds("workspace-connecting").is_some());
-		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
 		assert!(visual.debug_bounds("work-dock").is_none());
 
 		surface.update(visual, |s, cx| {
@@ -2603,7 +2603,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
 		assert!(visual.debug_bounds("work-dock").is_none());
 		assert!(
 			visual.debug_bounds("workspace-welcome").is_none(),
