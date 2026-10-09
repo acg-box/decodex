@@ -47,11 +47,13 @@ impl AgentSurface {
 			.px_2()
 			.child(if self.work_board.graph {
 				self.dock_status(cx)
+			} else if compact {
+				self.compact_board_status(cx)
 			} else {
 				gpui::div()
 					.flex_1()
 					.text_size(gpui::px(12.))
-					.child(if compact { self.factory_summary() } else { String::new() })
+					.child(String::new())
 					.into_any_element()
 			})
 			.child(self.workspace_action(
@@ -65,23 +67,25 @@ impl AgentSurface {
 				},
 				cx,
 			))
-			.child(
-				self.workspace_action(
-					"graph-expand".into(),
-					if self.workspace.graph_expanded {
-						"Restore conversation"
-					} else {
-						"Expand work overview"
-					}
-					.into(),
-					|s, cx| {
-						s.workspace.graph_expanded = !s.workspace.graph_expanded;
-						s.workspace.dock_compact = false;
-						cx.notify();
-					},
-					cx,
-				),
-			);
+			.when(!compact, |header| {
+				header.child(
+					self.workspace_action(
+						"graph-expand".into(),
+						if self.workspace.graph_expanded {
+							"Restore conversation"
+						} else {
+							"Expand work overview"
+						}
+						.into(),
+						|s, cx| {
+							s.workspace.graph_expanded = !s.workspace.graph_expanded;
+							s.workspace.dock_compact = false;
+							cx.notify();
+						},
+						cx,
+					),
+				)
+			});
 		if self.work_board.graph {
 			header = header.child(self.workspace_action(
 				"factory-overview".into(),

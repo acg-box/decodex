@@ -412,6 +412,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			s.work_board.graph = false;
 			s.workspace.graph_visible = true;
 			s.workspace.dock_compact = true;
 			s.workspace.graph_expanded = false;
@@ -425,7 +426,9 @@ mod tests {
 		let header = visual.debug_bounds("work-dock").unwrap();
 		assert!(header.origin.y < transcript.origin.y);
 		for compact in [false, true] {
-			let toggle = visual.debug_bounds("dock-toggle").unwrap();
+			let toggle = visual
+				.debug_bounds(if compact { "dock-toggle" } else { "compact-agent-graph" })
+				.unwrap();
 			visual.simulate_click(toggle.center(), gpui::Modifiers::default());
 			visual.update(|w, cx| w.draw(cx).clear());
 			std::thread::sleep(std::time::Duration::from_millis(250));
@@ -444,6 +447,10 @@ mod tests {
 			assert!(panel.bottom() <= current.origin.y);
 			assert!(panel.bottom() <= composer.origin.y);
 		}
+		assert!(visual.debug_bounds("graph-expand").is_none());
+		let entry = visual.debug_bounds("compact-agent-graph").unwrap();
+		visual.simulate_click(entry.center(), gpui::Modifiers::default());
+		visual.update(|w, cx| w.draw(cx).clear());
 		for expanded in [true, false] {
 			let toggle = visual.debug_bounds("graph-expand").unwrap();
 			visual.simulate_click(toggle.center(), gpui::Modifiers::default());

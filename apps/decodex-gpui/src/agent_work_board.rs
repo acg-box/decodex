@@ -137,19 +137,102 @@ fn native_state(status: &str) -> (&'static str, u8, u32) {
 }
 
 impl AgentSurface {
-	pub(super) fn factory_summary(&self) -> String {
-		let graph = self.relation_graph();
-		let refs = graph.nodes.len() - graph.agent_count();
-		if refs == 0 {
-			format!("Relations · {} agents · {} links", graph.agent_count(), graph.edges.len())
+	pub(super) fn compact_board_status(&self, cx: &mut Context<Self>) -> AnyElement {
+		use gpui::{Role, StatefulInteractiveElement};
+		let rows = self.board_rows();
+		let mut signals = Vec::new();
+		if !self.command_connection_ready() {
+			signals.push((TEXT_MUTED, "Offline".to_owned()));
 		} else {
-			format!(
-				"Relations · {} agents · {} refs · {} links",
-				graph.agent_count(),
-				refs,
-				graph.edges.len()
-			)
+			for (states, label, color) in [
+				(&["Running", "Starting"][..], "active", crate::ui_theme::BLUE),
+				(
+					&[
+						"Needs you",
+						"Approval",
+						"Input needed",
+						"Waiting on work",
+						"Waiting",
+						"Review result",
+					][..],
+					"waiting",
+					AMBER,
+				),
+				(&["Error"][..], "error", crate::ui_theme::ERROR),
+				(&["Unknown", "Status unavailable"][..], "unknown", TEXT_MUTED),
+			] {
+				let count = rows.iter().filter(|row| states.contains(&row.status.as_str())).count();
+				if count > 0 {
+					signals.push((color, format!("{count} {label}")));
+				}
+			}
+			if signals.is_empty() && !rows.is_empty() {
+				signals.push((TEXT_MUTED, "Idle".to_owned()));
+			}
 		}
+		let title =
+			if rows.is_empty() { "Agent graph".into() } else { format!("{} agents", rows.len()) };
+		let accessible = format!(
+			"Open agent graph · {title} · {}",
+			signals.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join(" · ")
+		);
+		gpui::div()
+			.id("compact-agent-graph")
+			.debug_selector(|| "compact-agent-graph".into())
+			.role(Role::Button)
+			.aria_label(accessible)
+			.tab_index(0)
+			.flex_1()
+			.min_w_0()
+			.h(gpui::px(28.))
+			.px(gpui::px(6.))
+			.flex()
+			.items_center()
+			.gap(gpui::px(14.))
+			.rounded(gpui::px(6.))
+			.cursor_pointer()
+			.hover(|d| d.bg(gpui::rgba(0xffffff08)))
+			.child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap(gpui::px(7.))
+					.flex_none()
+					.child(crate::shell::workspace_symbols::icon_sized(
+						crate::shell::workspace_symbols::Symbol::Graph,
+						14.,
+					))
+					.child(gpui::div().text_size(gpui::px(12.)).child(title)),
+			)
+			.children(signals.into_iter().map(|(color, label)| {
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap(gpui::px(5.))
+					.flex_none()
+					.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(gpui::rgb(color)))
+					.child(
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(label),
+					)
+			}))
+			.on_click(cx.listener(|s, _, _, cx| s.expand_compact_graph(cx)))
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					s.expand_compact_graph(cx);
+					cx.stop_propagation();
+				}
+			}))
+			.into_any_element()
+	}
+
+	fn expand_compact_graph(&mut self, cx: &mut Context<Self>) {
+		self.workspace.dock_compact = false;
+		self.workspace.graph_expanded = false;
+		self.workspace.graph_panel_height = self.workspace.graph_panel_height.max(320.);
+		cx.notify();
 	}
 
 	fn inspect_station(&mut self, row: &Row, cx: &mut Context<Self>) {
