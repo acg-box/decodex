@@ -2743,9 +2743,9 @@ fn history_entry_presented(
 					bubble
 						.flex_none()
 						.max_w(gpui::relative(0.78))
-						.px_4()
-						.py(gpui::px(9.))
-						.rounded(gpui::px(18.0))
+						.px(gpui::px(12.))
+						.py(gpui::px(7.))
+						.rounded(gpui::px(10.))
 						.bg(gpui::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
