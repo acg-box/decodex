@@ -56,6 +56,9 @@ cp "$BUILD_ROOT/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBR
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
 mkdir -p "$RESOURCES/ThirdPartyNotices"
 cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"
+cp "$ROOT/assets/licenses/codex-LICENSE.txt" "$RESOURCES/ThirdPartyNotices/codex-LICENSE.txt"
+cp "$ROOT/assets/licenses/codex-NOTICE.txt" "$RESOURCES/ThirdPartyNotices/codex-NOTICE.txt"
+node --experimental-strip-types "$ROOT/scripts/macos/bundle_codex.mts" "$CONTENTS"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
 cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon.png" "$RESOURCES/StatusBarIcon.png"

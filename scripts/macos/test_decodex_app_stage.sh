@@ -28,9 +28,13 @@ test -f "$contents/Resources/StatusBarIcon.png"
 test -s "$contents/Resources/StatusBarIcon-22.png"
 test -s "$contents/Resources/StatusBarIcon-22@2x.png"
 test ! -e "$contents/Library/LoginItems"
-test "$(find "$stage_root" -type d -name '*.app' | wc -l | tr -d ' ')" = 1
+test -d "$contents/Resources/CodexRuntime/CodexCLI.app"
+test -x "$contents/Resources/CodexRuntime/CodexCLI.app/Contents/MacOS/codex"
+test "$("$contents/Resources/CodexRuntime/bin/codex" --version)" = "codex-cli $(python3 -c 'import json; print(json.load(open("codex-runtime.lock.json"))["version"])')"
+test -s "$contents/Resources/CodexSchema/ClientRequest.json"
+codesign --verify --deep --strict "$contents/Resources/CodexRuntime/CodexCLI.app"
 test "$(find "$contents/MacOS" -type f | wc -l | tr -d ' ')" = 1
-test "$(find "$contents/Helpers" -type f | wc -l | tr -d ' ')" = 1
+test "$(find "$contents/Helpers" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
 test "$(find "$contents/Frameworks" -type f | wc -l | tr -d ' ')" = 2
 
 test -n "$(plutil -extract NSMicrophoneUsageDescription raw "$info")"
