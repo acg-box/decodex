@@ -995,7 +995,7 @@ mod tests {
 		});
 	}
 	#[gpui::test]
-	fn canvas_keeps_long_reports_bounded_below_the_composer(cx: &mut gpui::TestAppContext) {
+	fn canvas_keeps_long_reports_bounded_above_the_composer(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut surface = AgentSurface::new(cx);
 			surface.visual_workspace_fixture(cx);
@@ -1023,7 +1023,7 @@ mod tests {
 		let strip = visual.debug_bounds("work-dock").expect("Dock");
 		assert!(detail.top() >= strip.top());
 		let composer = visual.debug_bounds("floating-composer").expect("floating composer");
-		assert!(composer.bottom() <= strip.top(), "composer stays above the whole Dock");
+		assert!(composer.top() >= strip.bottom(), "composer stays below the top Dock");
 		surface.update(visual, |s, _| assert_eq!(s.selected.as_deref(), Some("agent")));
 		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(840.)));
 		for _ in 0..3 {

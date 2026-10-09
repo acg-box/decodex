@@ -124,7 +124,8 @@ fn install_pending(
 	cx: &mut TestAppContext,
 ) -> DesktopPromptEditDraft {
 	surface.update(cx, |s, cx| {
-		s.bind_profile(Some(profile.clone()), cx);
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile.clone());
 
 		s.poll_task = None;
 

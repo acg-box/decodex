@@ -221,7 +221,8 @@ fn confirmation_view(
 	let work = surface.update(cx, |s, cx| {
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
-		s.bind_profile(Some(profile.clone()), cx);
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile.clone());
 		s.visual_workspace_fixture(cx);
 
 		s.state = LoadState::Ready;

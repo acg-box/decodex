@@ -178,9 +178,9 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(cx: &mut Te
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
-		s.bind_profile(Some(profile), cx);
-		// This fixture serves only creation commands; its catalog is injected below.
-		s.task = None;
+		// Install only the command profile; the fixture supplies its own catalog.
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile);
 
 		s.state = LoadState::Ready;
 
@@ -248,9 +248,9 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
-		s.bind_profile(Some(profile), cx);
-		// This fixture serves only creation commands; its catalog is injected below.
-		s.task = None;
+		// Install only the command profile; the fixture supplies its own catalog.
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile);
 
 		s.state = LoadState::Ready;
 
@@ -306,9 +306,9 @@ fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_eff
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
-		s.bind_profile(Some(profile), cx);
-		// This fixture serves only creation commands; its catalog is injected below.
-		s.task = None;
+		// Install only the command profile; the fixture supplies its own catalog.
+		s.bind_drafts(Some(&profile), cx);
+		s.profile = Some(profile);
 
 		s.state = LoadState::Ready;
 

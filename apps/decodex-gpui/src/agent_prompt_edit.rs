@@ -1004,7 +1004,8 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) -> Entity<ComposerInput> {
 		surface.update(cx, |s, cx| {
-			s.bind_profile(Some(profile.clone()), cx);
+			s.bind_drafts(Some(&profile), cx);
+			s.profile = Some(profile.clone());
 			s.visual_workspace_fixture(cx);
 
 			let work = s.selected.clone().unwrap();
