@@ -372,11 +372,13 @@ impl AgentSurface {
 			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
 			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
-			.justify_center()
+			.flex_col()
+			.items_center()
 			.child(
 				self.render_composer_capsule(false, window, cx)
 					.child(self.render_composer_popover(cx)),
 			)
+			.children(self.usage_line(cx))
 			.into_any_element()
 	}
 
@@ -499,71 +501,35 @@ impl AgentSurface {
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
 		);
 
-		gpui::div()
-			.absolute()
-			.inset_0()
-			.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.bottom(gpui::relative(1.))
-						.mb(gpui::px(if left { 8. } else { 10. }))
-						.when(left, |d| d.left(gpui::px(0.)))
-						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-						.when(menu == Some("model"), |d| d.left(gpui::px(36.)))
-						.when(!left && menu != Some("model"), |d| d.right(gpui::px(70.)))
-						.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
-							380.
-						} else if left {
-							280.
-						} else {
-							232.
-						}))
-						.child(
-							ui_motion::popover(
-								"composer-popover-motion",
-								self.composer_menu.is_some(),
-								self.composer_options(cx)
-									.unwrap_or_else(|| gpui::div().into_any_element()),
-							)
-							.unframed(menu == Some("model")),
-						),
-				)
-				.priority(2),
+		gpui::div().absolute().inset_0().child(
+			gpui::deferred(
+				gpui::div()
+					.absolute()
+					.bottom(gpui::relative(1.))
+					.mb(gpui::px(if left { 8. } else { 10. }))
+					.when(left, |d| d.left(gpui::px(0.)))
+					// Align with the model trigger: inset + mic/send widths + toolbar gaps.
+					.when(menu == Some("model"), |d| d.left(gpui::px(36.)))
+					.when(!left && menu != Some("model"), |d| d.right(gpui::px(70.)))
+					.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
+						380.
+					} else if left {
+						280.
+					} else {
+						232.
+					}))
+					.child(
+						ui_motion::popover(
+							"composer-popover-motion",
+							self.composer_menu.is_some(),
+							self.composer_options(cx)
+								.unwrap_or_else(|| gpui::div().into_any_element()),
+						)
+						.unframed(menu == Some("model")),
+					),
 			)
-			.when(self.context_tip_visible && self.composer_menu.is_none(), |d| {
-				let detail = self.history.as_ref().and_then(|(_, h)| match h {
-					AgentHistoryResult::Available { usage: Some(u), .. } =>
-						u.context_window.filter(|n| *n > 0).map(|capacity| {
-							format!(
-								"Context · {:.0}%\n{} / {} tokens",
-								u.context_tokens as f64 / capacity as f64 * 100.,
-								agent_surface::compact_tokens(u.context_tokens),
-								agent_surface::compact_tokens(capacity)
-							)
-						}),
-					_ => None,
-				});
-
-				d.children(detail.zip(self.context_tip_anchor).map(|(text, anchor)| {
-					gpui::deferred(
-						gpui::anchored()
-							.anchor(gpui::Anchor::BottomRight)
-							.position(anchor)
-							.offset(gpui::point(gpui::px(0.), gpui::px(-8.)))
-							.snap_to_window_with_margin(gpui::px(8.))
-							.child(
-								ui_motion::tooltip_surface(gpui::div())
-									.w(gpui::px(220.))
-									.debug_selector(|| "composer-context-detail".into())
-									.p(gpui::px(12.))
-									.text_size(gpui::px(12.))
-									.child(text),
-							),
-					)
-					.priority(3)
-				}))
-			})
+			.priority(2),
+		)
 	}
 
 	fn attachment_options(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -790,7 +756,6 @@ impl AgentSurface {
 				cx,
 			))
 			.child(gpui::div().flex_1())
-			.children(self.usage_line(cx))
 			.child(self.composer_control_with_window(
 				"dictation",
 				"".into(),
@@ -1172,7 +1137,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn usage_line(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn usage_line(&self, _cx: &mut Context<Self>) -> Option<AnyElement> {
 		let (id, AgentHistoryResult::Available { usage: Some(usage), .. }) =
 			self.history.as_ref()?
 		else {
@@ -1185,58 +1150,26 @@ impl AgentSurface {
 
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
-		let owner = cx.entity();
-
 		Some(
 			gpui::div()
-				.id("composer-context")
-				.debug_selector(|| "composer-context".into())
-				.relative()
-				.size(gpui::px(CONTROL_SIZE))
-				.flex_none()
+				.debug_selector(|| "composer-context-detail".into())
+				.w_full()
+				.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
+				.pt(gpui::px(6.))
+				.px(gpui::px(10.))
 				.flex()
+				.justify_end()
 				.items_center()
-				.text_size(gpui::px(10.5))
+				.gap(gpui::px(6.))
+				.text_size(gpui::px(11.))
+				.line_height(gpui::px(16.))
 				.text_color(gpui::rgb(TEXT_MUTED))
-				.aria_label(format!("Context {percent:.0}%"))
-				.on_hover(cx.listener(|s, hovered, _, cx| {
-					s.context_tip_visible = *hovered;
-
-					cx.notify();
-				}))
-				.justify_center()
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
-				.child(
-					gpui::canvas(
-						move |bounds, window, cx| {
-							owner.update(cx, |s, cx| {
-								let anchor = Some(gpui::point(bounds.right(), bounds.top()));
-								#[cfg(all(target_os = "macos", not(test)))]
-								let anchor =
-									if crate::ui_theme::native_glass_panel::owns_material(window) {
-										s.native_composer.bounds.map(|parent| {
-											gpui::point(
-												parent.left() + bounds.right(),
-												parent.top(),
-											)
-										})
-									} else {
-										anchor
-									};
-								let _ = window;
-								if s.context_tip_anchor != anchor {
-									s.context_tip_anchor = anchor;
-									if s.context_tip_visible {
-										cx.notify();
-									}
-								}
-							});
-						},
-						|_, _, _, _| {},
-					)
-					.absolute()
-					.inset_0(),
-				)
+				.child(format!(
+					"Context {} / {} tokens · {percent:.0}%",
+					agent_surface::compact_tokens(usage.context_tokens),
+					agent_surface::compact_tokens(capacity),
+				))
 				.into_any_element(),
 		)
 	}

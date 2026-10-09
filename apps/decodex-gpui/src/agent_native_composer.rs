@@ -239,7 +239,8 @@ impl AgentSurface {
 			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
 			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
-			.justify_center()
+			.flex_col()
+			.items_center()
 			.child(
 				gpui::div()
 					.relative()
@@ -249,6 +250,7 @@ impl AgentSurface {
 					.child(anchor.absolute().size_full())
 					.child(self.render_composer_popover(cx)),
 			)
+			.children(self.usage_line(cx))
 			.into_any_element()
 	}
 }

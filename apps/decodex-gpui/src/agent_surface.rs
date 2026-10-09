@@ -194,8 +194,6 @@ pub(crate) struct AgentSurface {
 	interrupting: Option<(String, String)>,
 	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
-	context_tip_visible: bool,
-	context_tip_anchor: Option<gpui::Point<gpui::Pixels>>,
 	attachments: Vec<AgentAttachmentDto>,
 	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
@@ -367,8 +365,6 @@ impl AgentSurface {
 			interrupting: None,
 			interrupt_task: None,
 			composer_menu_content: None,
-			context_tip_visible: false,
-			context_tip_anchor: None,
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
@@ -2962,52 +2958,28 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn context_detail_tracks_the_context_control(cx: &mut gpui::TestAppContext) {
+	fn context_usage_stays_below_the_composer(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
-
-		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
-
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_workspace_page("markdown", cx);
-
-			s.context_tip_visible = true;
-			s.composer_menu = None;
-
 			cx.notify();
 		});
-
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-
-		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
-		let detail =
-			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
-		let trigger = visual.debug_bounds("composer-context").expect("context control");
-		assert!(detail.top() >= gpui::px(0.));
-		assert!((detail.right() - trigger.right()).abs() < gpui::px(1.));
-		assert!((detail.bottom() - trigger.top() + gpui::px(8.)).abs() < gpui::px(1.));
-		visual.simulate_resize(gpui::size(gpui::px(1200.), gpui::px(800.)));
-		visual.update(|window, cx| window.draw(cx).clear());
-		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
-		let detail = visual.debug_bounds("composer-context-detail").unwrap();
-		let trigger = visual.debug_bounds("composer-context").unwrap();
-		assert!((detail.right() - trigger.right()).abs() < gpui::px(1.));
-		assert!((detail.bottom() - trigger.top() + gpui::px(8.)).abs() < gpui::px(1.));
-
+		for width in [640., 1400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1000.)));
+			visual.update(|window, cx| window.draw(cx).clear());
+			let detail =
+				visual.debug_bounds("composer-context-detail").expect("visible without hover");
+			let composer = visual.debug_bounds("agent-composer").unwrap();
+			assert!(detail.top() >= composer.bottom());
+			assert!((detail.right() - composer.right()).abs() < gpui::px(1.));
+			assert!(detail.bottom() <= gpui::px(1000.));
+		}
 		surface.update(visual, |s, cx| {
-			s.context_tip_visible = false;
-
+			s.history = None;
 			cx.notify();
 		});
-
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-
+		visual.update(|window, cx| window.draw(cx).clear());
 		assert!(visual.debug_bounds("composer-context-detail").is_none());
 	}
 
