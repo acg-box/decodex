@@ -545,21 +545,21 @@ impl AgentSurface {
 					_ => None,
 				});
 
-				d.children(detail.map(|text| {
+				d.children(detail.zip(self.context_tip_anchor).map(|(text, anchor)| {
 					gpui::deferred(
-						gpui::div()
-							.absolute()
-							.bottom(gpui::relative(1.))
-							.mb(gpui::px(10.))
-							.right(gpui::px(160.))
-							.w(gpui::px(220.))
-							.debug_selector(|| "composer-context-detail".into())
-							.p(gpui::px(12.))
-							.rounded(gpui::px(12.))
-							.bg(gpui::rgb(0x29292d))
-							.text_size(gpui::px(12.))
-							.text_color(gpui::rgb(TEXT))
-							.child(text),
+						gpui::anchored()
+							.anchor(gpui::Anchor::BottomRight)
+							.position(anchor)
+							.offset(gpui::point(gpui::px(0.), gpui::px(-8.)))
+							.snap_to_window_with_margin(gpui::px(8.))
+							.child(
+								ui_motion::tooltip_surface(gpui::div())
+									.w(gpui::px(220.))
+									.debug_selector(|| "composer-context-detail".into())
+									.p(gpui::px(12.))
+									.text_size(gpui::px(12.))
+									.child(text),
+							),
 					)
 					.priority(3)
 				}))
@@ -1185,10 +1185,13 @@ impl AgentSurface {
 
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
+		let owner = cx.entity();
 
 		Some(
 			gpui::div()
 				.id("composer-context")
+				.debug_selector(|| "composer-context".into())
+				.relative()
 				.size(gpui::px(CONTROL_SIZE))
 				.flex_none()
 				.flex()
@@ -1203,6 +1206,37 @@ impl AgentSurface {
 				}))
 				.justify_center()
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
+				.child(
+					gpui::canvas(
+						move |bounds, window, cx| {
+							owner.update(cx, |s, cx| {
+								let anchor = Some(gpui::point(bounds.right(), bounds.top()));
+								#[cfg(all(target_os = "macos", not(test)))]
+								let anchor =
+									if crate::ui_theme::native_glass_panel::owns_material(window) {
+										s.native_composer.bounds.map(|parent| {
+											gpui::point(
+												parent.left() + bounds.right(),
+												parent.top(),
+											)
+										})
+									} else {
+										anchor
+									};
+								let _ = window;
+								if s.context_tip_anchor != anchor {
+									s.context_tip_anchor = anchor;
+									if s.context_tip_visible {
+										cx.notify();
+									}
+								}
+							});
+						},
+						|_, _, _, _| {},
+					)
+					.absolute()
+					.inset_0(),
+				)
 				.into_any_element(),
 		)
 	}
