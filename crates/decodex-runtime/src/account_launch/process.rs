@@ -8,6 +8,9 @@ mod activation_policy_native_tests;
 #[cfg(target_os = "macos")]
 #[path = "process_bundle_snapshot.rs"]
 mod bundle_snapshot;
+#[cfg(target_os = "macos")]
+#[path = "bundled_codex.rs"]
+mod bundled_codex;
 #[path = "exact_history.rs"] mod exact_history;
 #[path = "executable_discovery.rs"] mod executable_discovery;
 #[cfg(target_os = "macos")]
@@ -368,6 +371,10 @@ impl AttestedAppServerProfile {
 
 		let phase = crate::startup_trace::Phase::new("schema_version_attestation");
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
+		#[cfg(target_os = "macos")]
+		if let Some((build, generated)) = bundled_codex::evidence(&command)? {
+			return Ok(Self { command, build, generated, capability });
+		}
 		let home = env::var_os("HOME")
 			.filter(|home| !home.is_empty())
 			.ok_or(SupervisionError::InvalidBinding)?;
