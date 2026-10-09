@@ -50,11 +50,9 @@ impl RenderOnce for AgentSignal {
 struct SignalTip(&'static str);
 impl gpui::Render for SignalTip {
 	fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_2()
 			.py_1()
-			.rounded(gpui::px(6.))
-			.bg(gpui::rgb(0x27272b))
 			.text_size(gpui::px(11.))
 			.child(self.0)
 	}

@@ -7,7 +7,7 @@ use gpui::{
 };
 use graph::{Layout, Node};
 use ui_theme::{
-	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE, CANVAS,
+	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE,
 	CHROME_CONTROL_SIZE, CONTROL_MARGIN, FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT,
 	TEXT_MUTED, TREE_ROW_HEIGHT,
 };
@@ -59,11 +59,9 @@ pub(super) struct PageView {
 struct PanelTip(String);
 impl Render for PanelTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_2()
 			.py_1()
-			.rounded(gpui::px(5.0))
-			.bg(gpui::rgb(CANVAS))
 			.text_color(gpui::rgb(TEXT))
 			.text_size(gpui::px(11.0))
 			.child(self.0.clone())

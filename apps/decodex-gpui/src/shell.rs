@@ -72,8 +72,7 @@ use crate::{
 		COMPOSER_MATERIAL, CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY,
 		GREEN, HEADING_SIZE, MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP,
 		SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL,
-		SURFACE_OVERLAY_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED,
-		window_material,
+		SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -1984,16 +1983,7 @@ impl Global for LifecycleOwnerGlobal {}
 struct RefreshTooltip;
 impl Render for RefreshTooltip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
-			.px_2()
-			.py_1()
-			.rounded(gpui::px(6.0))
-			.border_1()
-			.border_color(gpui::rgba(0xffffff14))
-			.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
-			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(WB_TEXT))
-			.child("Refresh health")
+		tooltip_surface("Refresh health".into(), WB_TEXT)
 	}
 }
 
@@ -2691,14 +2681,9 @@ fn floating_window_controls(
 }
 
 fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	gpui::div()
+	crate::ui_motion::tooltip_surface(gpui::div())
 		.px_2()
 		.py_1()
-		.rounded(gpui::px(6.0))
-		.border_1()
-		.border_color(gpui::rgba(0xffffff14))
-		.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
-		.text_size(gpui::px(11.0))
 		.text_color(gpui::rgb(color))
 		.child(text)
 }

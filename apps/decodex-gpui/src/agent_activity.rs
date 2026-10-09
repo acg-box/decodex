@@ -738,13 +738,7 @@ impl AgentSurface {
 					// Navigation previews already have their text; do not use the
 					// generic tooltip's 500 ms discovery delay.
 					.tooltip_show_delay(std::time::Duration::ZERO)
-					.tooltip(move |_, cx| {
-						cx.new(|_| HistoryPreview {
-							mark: tip.clone(),
-							opened: std::time::Instant::now(),
-						})
-						.into()
-					})
+					.tooltip(move |_, cx| cx.new(|_| HistoryPreview { mark: tip.clone() }).into())
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
@@ -822,29 +816,13 @@ pub(super) struct WheelScroll {
 
 struct HistoryPreview {
 	mark: HistoryMark,
-	opened: std::time::Instant,
 }
 impl Render for HistoryPreview {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let progress = if ui_motion::reduced() {
-			1.0
-		} else {
-			(self.opened.elapsed().as_secs_f32() / 0.08).min(1.0)
-		};
-		if progress < 1.0 {
-			ui_motion::request_frame(window, cx);
-		}
-
-		// Paint the surface and text together, already readable on the first frame.
-		gpui::div()
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.debug_selector(|| "history-hover-preview".into())
-			.opacity(0.8 + 0.2 * (1.0 - (1.0 - progress).powi(3)))
 			.w(gpui::px(320.0))
 			.p_3()
-			.rounded(gpui::px(10.0))
-			.bg(gpui::rgba(0x24242af5))
-			.border_1()
-			.border_color(gpui::rgba(0xffffff16))
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -856,10 +834,20 @@ impl Render for HistoryPreview {
 					.text_color(gpui::rgb(TEXT_MUTED))
 					.child(self.mark.time.clone()),
 			)
-			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.mark.question.clone()))
+			.child(
+				gpui::div()
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.text_color(gpui::rgb(TEXT))
+					.child(self.mark.question.clone()),
+			)
 			.when(!self.mark.answer.is_empty(), |panel| {
 				panel.child(
-					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.mark.answer.clone()),
+					gpui::div()
+						.pt_2()
+						.border_t_1()
+						.border_color(gpui::rgba(0xffffff14))
+						.text_color(gpui::rgb(0xc4c4ce))
+						.child(self.mark.answer.clone()),
 				)
 			})
 	}

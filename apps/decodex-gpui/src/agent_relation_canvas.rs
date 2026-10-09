@@ -1,6 +1,6 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
 use super::*;
-use crate::ui_theme::{CANVAS, TEXT};
+use crate::ui_theme::TEXT;
 use gpui::AppContext;
 #[path = "agent_relation_details.rs"] mod details;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
@@ -130,11 +130,9 @@ impl Node {
 struct RelationTip(String);
 impl gpui::Render for RelationTip {
 	fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.p_2()
 			.max_w(gpui::px(360.))
-			.rounded_md()
-			.bg(gpui::rgb(CANVAS))
 			.text_color(gpui::rgb(TEXT))
 			.text_size(gpui::px(12.))
 			.child(self.0.clone())

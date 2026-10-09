@@ -373,6 +373,19 @@ impl RenderOnce for Popover {
 	}
 }
 
+/// Hover text must remain readable over arbitrary conversation content.
+pub(crate) fn tooltip_surface(surface: gpui::Div) -> gpui::Div {
+	surface
+		.rounded(gpui::px(8.))
+		.border_1()
+		.border_color(gpui::rgba(0xffffff24))
+		.bg(gpui::rgb(0x24242a))
+		.text_color(gpui::rgb(crate::ui_theme::TEXT))
+		.text_size(gpui::px(11.))
+		.line_height(gpui::px(16.))
+		.max_w(gpui::px(360.))
+}
+
 /// Shared menu material: opaque enough for text, with a soft light-facing edge.
 pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
 	surface

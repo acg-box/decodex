@@ -42,11 +42,9 @@ use decodex_protocol::AgentAttachmentDto;
 struct ComposerTip(String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_3()
 			.py_2()
-			.rounded(gpui::px(7.0))
-			.bg(gpui::rgb(0x242429))
 			.text_size(gpui::px(11.0))
 			.text_color(gpui::rgb(TEXT))
 			.child(self.0.clone())
