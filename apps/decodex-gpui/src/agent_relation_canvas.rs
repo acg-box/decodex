@@ -708,6 +708,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.h(gpui::px(24.))
 			.min_w(gpui::px(24.))
+			.when(id == "reset", |d| d.w(gpui::px(44.)).flex_none())
 			.px(gpui::px(4.))
 			.flex()
 			.items_center()
