@@ -2108,7 +2108,9 @@ impl AgentSurface {
 			},
 			Some(AgentHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
-			None => panel = panel.child(ui_loading::conversation("Loading conversation")),
+			None if !self.connection_initializing() =>
+				panel = panel.child(ui_loading::conversation("Loading conversation")),
+			None => {},
 		}
 
 		self.history_activity(panel, work)

@@ -28,10 +28,10 @@ use crate::{
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentRequestResult, AgentSnapshotDto,
 			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, Context,
-			ConversationReasoningEffort, FluentBuilder, FontWeight, InteractiveElement,
-			IntoElement, LoadState, ParentElement, Render, Role, SharedString,
-			StatefulInteractiveElement, Styled, SubmitComposer, Window,
-			activity::HistoryScrollAnchor, creation_setup, graph, prompts, ui_theme,
+			ConversationReasoningEffort, FluentBuilder, InteractiveElement, IntoElement, LoadState,
+			ParentElement, Render, Role, SharedString, StatefulInteractiveElement, Styled,
+			SubmitComposer, Window, activity::HistoryScrollAnchor, creation_setup, graph, prompts,
+			ui_theme,
 		},
 		workspace_symbols,
 	},
@@ -736,7 +736,7 @@ impl AgentSurface {
 			.map(|entry| entry.text.as_str())
 	}
 
-	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
 			return gpui::div()
 				.id("conversation-unavailable")
@@ -756,46 +756,42 @@ impl AgentSurface {
 		}
 
 		let detail = self.connection_failure_detail();
-		let (title, description) = match detail {
-			Some(text) if text.contains("ProcessUnavailable") => (
-				"Codex couldn't start",
-				"The local connection could not start. Decodex will retry automatically.",
-			),
-			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
-				("Account unavailable", "Check account usage or sign-in in Settings → Accounts."),
-			Some(text) if text.contains("SelectWorkingDirectory") => (
-				"Project folder is unavailable",
-				"Restore access to the project folder so this conversation can resume. Your messages and draft are kept.",
-			),
-			_ => ("Can't continue this conversation", reason),
+		let title = if self.uncertain {
+			"Delivery unconfirmed · Sending paused"
+		} else {
+			match detail {
+				Some(text) if text.contains("ProcessUnavailable") =>
+					"Codex unavailable · Retrying automatically",
+				Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
+					"Account unavailable · Check Settings → Accounts",
+				Some(text) if text.contains("SelectWorkingDirectory") =>
+					"Project folder unavailable · Restore folder access",
+				_ if reason.contains("retry automatically") =>
+					"Connection lost · Retrying automatically",
+				_ => "Connection unavailable · Sending paused",
+			}
 		};
 
 		gpui::div()
 			.id("conversation-unavailable")
 			.debug_selector(|| "conversation-unavailable".into())
 			.role(Role::Status)
-			.aria_label(format!("{title}. {description}"))
+			.aria_label(title)
 			.text_color(gpui::rgb(TEXT))
 			.flex()
-			.flex_col()
-			.child(
-				gpui::div()
-					.mb(gpui::px(8.))
-					.text_size(gpui::px(12.))
-					.line_height(gpui::px(17.))
-					.font_weight(FontWeight::MEDIUM)
-					.child(title),
-			)
+			.flex_wrap()
+			.items_center()
+			.gap_x(gpui::px(10.))
 			.child(
 				gpui::div()
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(description),
+					.child(title),
 			)
 			.when(detail.is_some(), |d| {
 				d.child(
-					gpui::div().mt(gpui::px(8.)).flex().justify_end().items_center().child(
+					gpui::div().flex().items_center().child(
 						gpui::div()
 							.id("connection-details")
 							.role(Role::Button)
@@ -832,11 +828,12 @@ impl AgentSurface {
 				"connection-diagnostic",
 				self.workspace.connection_details_expanded && detail.is_some(),
 				gpui::div()
+					.w_full()
 					.pt(gpui::px(8.))
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(detail.unwrap_or_default().to_owned()),
+					.child(format!("{reason}\n{}", detail.unwrap_or_default())),
 			))
 			.into_any_element()
 	}
@@ -883,22 +880,13 @@ impl AgentSurface {
 										.w_full()
 										.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
 										.min_w_0()
-										.p(gpui::px(14.))
-										.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-										.bg(gpui::rgb(0x27272b))
-										.flex()
-										.flex_col()
-										.gap(gpui::px(12.))
-										.child(self.unavailable_composer(reason, cx))
-										.child(self.recovery_composer(cx)),
+										.px(gpui::px(10.))
+										.child(self.connection_notice(reason, cx)),
 								),
 						)
 					},
 				)
-				.when(
-					self.connection_initializing() || self.composer_unavailable_reason().is_none(),
-					|d| d.child(self.render_composer(window, cx)),
-				),
+				.child(self.render_composer(window, cx)),
 		)
 	}
 
@@ -2677,7 +2665,11 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		assert!(visual.debug_bounds("recovery-draft-editor").is_some());
+		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(
+			visual.debug_bounds("conversation-unavailable").unwrap().bottom()
+				<= visual.debug_bounds("agent-composer").unwrap().top()
+		);
 
 		visual.simulate_keystrokes("cmd-end space e d i t e d enter cmd-enter");
 

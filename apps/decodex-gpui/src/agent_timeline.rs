@@ -265,7 +265,7 @@ impl AgentSurface {
 
 		// Reserve the first-load state before the request starts, but retain
 		// existing history during background refreshes and fallback retries.
-		if self.native_history_loading(work) {
+		if self.native_history_loading(work) && !self.connection_initializing() {
 			panel = panel.child(ui_loading::conversation("Loading conversation"));
 		}
 		if self.timeline.native.requested.as_ref().is_some_and(|(id, thread)| {
@@ -1078,6 +1078,22 @@ mod tests {
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
+
+		// Connection feedback in the composer takes precedence over history loading.
+		surface.update(visual, |s, cx| {
+			s.snapshot.as_mut().unwrap().connection_initializing = true;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_some());
+		surface.update(visual, |s, cx| {
+			s.snapshot.as_mut().unwrap().connection_initializing = false;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_none());
 
 		// A failed native read still permits the saved-history fallback.
 		surface.update(visual, |s, cx| {

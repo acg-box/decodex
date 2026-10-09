@@ -312,50 +312,6 @@ impl AgentSurface {
 		let _ = cx;
 	}
 
-	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
-		gpui::div()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.when(self.native_agents.selected.is_none(), |d| {
-				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
-			})
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("Draft"),
-					)
-					.child(self.composer_control(
-						"copy-draft",
-						"Copy text".into(),
-						"Copy draft text",
-						|s, cx| {
-							cx.write_to_clipboard(ClipboardItem::new_string(
-								s.composer.read(cx).content().to_owned(),
-							));
-						},
-						cx,
-					)),
-			)
-			.child(
-				gpui::div()
-					.id("recovery-draft-editor")
-					.debug_selector(|| "recovery-draft-editor".into())
-					.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-						s.submit(cx);
-						cx.stop_propagation();
-					}))
-					.child(self.composer.clone()),
-			)
-	}
-
 	pub(super) fn render_composer(
 		&self,
 		window: &mut Window,
@@ -820,16 +776,22 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let disabled = send && self.composer_unavailable_reason().is_some();
 		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
-		let tooltip =
-			if id == "model" { format!("Model and reasoning · {label}") } else { tip.to_owned() };
+		let tooltip = if disabled {
+			"Sending paused until the connection is restored".to_owned()
+		} else if id == "model" {
+			format!("Model and reasoning · {label}")
+		} else {
+			tip.to_owned()
+		};
 
 		gpui::div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.debug_selector(move || format!("composer-{id}"))
 			.role(Role::Button)
-			.tab_index(0)
+			.tab_index(if disabled { -1 } else { 0 })
 			.aria_label(tooltip.clone())
 			.h(gpui::px(CONTROL_SIZE))
 			.px(gpui::px(6.0))
@@ -878,8 +840,12 @@ impl AgentSurface {
 					.bg(gpui::rgb(0x515155))
 			})
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
-			.cursor_pointer()
+			.when(disabled, |d| d.opacity(0.35))
+			.when(!disabled, |d| d.cursor_pointer())
 			.hover(move |d| {
+				if disabled {
+					return d;
+				}
 				d.bg(if send {
 					gpui::rgb(0x606064)
 				} else {
@@ -890,9 +856,13 @@ impl AgentSurface {
 			.when(!["attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
-			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
+			.on_click(cx.listener(move |s, _, window, cx| {
+				if !disabled {
+					action(s, window, cx);
+				}
+			}))
 			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
-				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+				if !disabled && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					action(s, window, cx);
 
 					cx.stop_propagation();

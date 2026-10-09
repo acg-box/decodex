@@ -113,7 +113,6 @@ impl AgentSurface {
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
 			&& !self.selected_is_archived()
-			&& (self.connection_initializing() || self.composer_unavailable_reason().is_none())
 			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
