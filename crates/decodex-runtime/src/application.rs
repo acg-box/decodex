@@ -2554,7 +2554,20 @@ impl Application for ServiceApplication {
 			tasks.push(Box::pin(runtime.clone().daemon_service(stop.clone())));
 		}
 		if let Some(observations) = &self.account_observations {
-			tasks.push(Box::pin(observations.clone().daemon_service(stop.clone())));
+			let observations = observations.clone();
+			let startup = self.agent.as_ref().map(crate::agent_host::AgentHost::startup_state);
+			let mut stop = stop.clone();
+			tasks.push(Box::pin(async move {
+				// Background provider HTTP reads hold the same account lock as process
+				// admission. Let initial recovery acquire it before quota/profile refresh.
+				if let Some(mut startup) = startup {
+					tokio::select! {
+						_ = startup.wait_for(|initializing| !*initializing) => {},
+						_ = stop.wait_for(|stopped| *stopped) => return,
+					}
+				}
+				observations.daemon_service(stop).await;
+			}));
 		}
 
 		tasks

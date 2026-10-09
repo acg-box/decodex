@@ -528,8 +528,10 @@ impl ConversationRuntime {
 		&self,
 		request: StartAgentProcess,
 	) -> Result<AgentConnection, AgentLaunchError> {
+		let phase = crate::startup_trace::Phase::new("agent_admission_locks");
 		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
+		drop(phase);
 
 		if self.is_shutting_down() {
 			return Err(AgentLaunchError::Unavailable);
@@ -563,7 +565,10 @@ impl ConversationRuntime {
 			.map_err(|_| AgentLaunchError::Unavailable)?
 			.as_micros();
 		let now = i64::try_from(now).map_err(|_| AgentLaunchError::Unavailable)?;
+		let phase = crate::startup_trace::Phase::new("agent_select_account");
 		let selected = self.select_agent_account(account_id.as_ref(), now).await?;
+		drop(phase);
+		let phase = crate::startup_trace::Phase::new("agent_process_credential");
 		let account_id = selected.account.account_id;
 		let credential = self
 			.inner
@@ -571,6 +576,7 @@ impl ConversationRuntime {
 			.process_credential(&account_id, selected.account.revision)
 			.await
 			.map_err(|error| AgentLaunchError::Process(account_recovery(error)))?;
+		drop(phase);
 		let generation_id = ProcessGenerationId::new(derived_uuid(
 			"agent-process-generation",
 			&[&request.root_id, &request.operation_key],
@@ -585,6 +591,7 @@ impl ConversationRuntime {
 				client: None,
 			});
 
+		let phase = crate::startup_trace::Phase::new("agent_launch_account");
 		let process = match self
 			.launch_account_process(
 				&account_id,
@@ -605,6 +612,7 @@ impl ConversationRuntime {
 				return Err(AgentLaunchError::Process(error));
 			},
 		};
+		drop(phase);
 		let control = self.inner.process_generations.clone();
 		let attached = task::spawn_blocking(move || {
 			control.with_fenced_child(&process, AttestedProcessChild::retain_agent_connection)
