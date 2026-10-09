@@ -249,7 +249,6 @@ impl AgentSurface {
 					.child(anchor.absolute().size_full())
 					.child(self.render_composer_popover(cx)),
 			)
-			.children(self.usage_line(cx))
 			.into_any_element()
 	}
 }

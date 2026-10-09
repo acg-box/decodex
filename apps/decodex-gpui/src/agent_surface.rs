@@ -2960,7 +2960,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn context_usage_stays_below_the_composer(cx: &mut gpui::TestAppContext) {
+	fn context_usage_stays_inside_the_composer_toolbar(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -2973,8 +2973,12 @@ mod tests {
 			let detail =
 				visual.debug_bounds("composer-context-detail").expect("visible without hover");
 			let composer = visual.debug_bounds("agent-composer").unwrap();
-			assert!(detail.top() >= composer.bottom());
-			assert!((detail.right() - composer.right()).abs() < gpui::px(1.));
+			assert!(detail.top() >= composer.top());
+			assert!(detail.bottom() <= composer.bottom());
+			assert!(detail.right() <= composer.right());
+			assert!(detail.left() >= composer.left());
+			let send = visual.debug_bounds("composer-send").unwrap();
+			assert!(detail.right() <= send.left());
 			assert!(detail.bottom() <= gpui::px(1000.));
 		}
 		surface.update(visual, |s, cx| {

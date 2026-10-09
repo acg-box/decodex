@@ -334,7 +334,6 @@ impl AgentSurface {
 				self.render_composer_capsule(false, window, cx)
 					.child(self.render_composer_popover(cx)),
 			)
-			.children(self.usage_line(cx))
 			.into_any_element()
 	}
 
@@ -712,6 +711,7 @@ impl AgentSurface {
 				cx,
 			))
 			.child(gpui::div().flex_1())
+			.children(self.usage_line(cx))
 			.child(self.composer_control_with_window(
 				"dictation",
 				"".into(),
@@ -1123,10 +1123,8 @@ impl AgentSurface {
 		Some(
 			gpui::div()
 				.debug_selector(|| "composer-context-detail".into())
-				.w_full()
-				.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
-				.pt(gpui::px(6.))
-				.px(gpui::px(10.))
+				.flex_none()
+				.px(gpui::px(6.))
 				.flex()
 				.justify_end()
 				.items_center()
@@ -1136,7 +1134,7 @@ impl AgentSurface {
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
 				.child(format!(
-					"Context {} / {} tokens · {percent:.0}%",
+					"Context {} / {} · {percent:.0}%",
 					agent_surface::compact_tokens(usage.context_tokens),
 					agent_surface::compact_tokens(capacity),
 				))
