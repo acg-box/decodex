@@ -12,7 +12,7 @@ name                  = "Codex Upstream Maintainer"
 prompt_file           = "automations/upstream/prompts/maintainer.md"
 reasoning_effort      = "medium"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
-status                = "ACTIVE"
+status                = "PAUSED"
 
 [[automations]]
 id               = "decodex-content-manager"
