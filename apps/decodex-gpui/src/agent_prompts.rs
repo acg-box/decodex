@@ -19,7 +19,7 @@ static CURATED: std::sync::LazyLock<Vec<Quote>> = std::sync::LazyLock::new(|| {
 static QUOTES: std::sync::LazyLock<std::sync::Mutex<Vec<Quote>>> = std::sync::LazyLock::new(|| {
 	std::sync::Mutex::new(read_cache().map(|cache| cache.quotes).unwrap_or_default())
 });
-static LAST_TEXT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static SESSION_TEXT: std::sync::LazyLock<String> = std::sync::LazyLock::new(choose_quote);
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Quote {
@@ -28,7 +28,7 @@ pub(super) struct Quote {
 }
 impl Quote {
 	fn display(&self) -> String {
-		format!("“{}” — {}", self.q, self.a)
+		format!("{} — {}", self.q, self.a)
 	}
 }
 
@@ -38,27 +38,19 @@ struct Cache {
 	quotes: Vec<Quote>,
 }
 
-pub(super) fn next() -> String {
-	let entropy = RandomState::new().hash_one(super::unique_command()) as usize;
-	let (mut last, quotes) = (
-		LAST_TEXT.lock().unwrap_or_else(|error| error.into_inner()),
-		QUOTES.lock().unwrap_or_else(|error| error.into_inner()),
-	);
-	let mut choices: Vec<String> =
-		quotes.iter().map(Quote::display).filter(|text| text != &*last).collect();
-
-	if choices.is_empty() {
-		choices = CURATED.iter().map(Quote::display).filter(|text| text != &*last).collect();
-	}
-
-	let text = choices[entropy % choices.len()].to_owned();
-
-	last.clone_from(&text);
-
-	text
+/// Keep the placeholder stable across windows, conversations, and cache refreshes.
+pub(super) fn session_quote() -> String {
+	SESSION_TEXT.clone()
 }
 
-/// Refresh outside the UI thread. Never replace a visible prompt while editing.
+fn choose_quote() -> String {
+	let entropy = RandomState::new().hash_one(super::unique_command()) as usize;
+	let quotes = QUOTES.lock().unwrap_or_else(|error| error.into_inner());
+	let choices = if quotes.is_empty() { CURATED.as_slice() } else { quotes.as_slice() };
+	choices[entropy % choices.len()].display()
+}
+
+/// Refresh outside the UI thread. Updated quotes are used on the next app launch.
 pub(super) fn refresh_cache() -> bool {
 	static LAST_ATTEMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 	static REFRESHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -180,22 +172,26 @@ mod tests {
 		assert!(prompts::refresh_cache());
 		assert!(prompts::read_cache().is_some());
 
-		let text = prompts::next();
+		let text = prompts::session_quote();
 
 		assert!(text.contains(" — "));
-		assert_ne!(prompts::next(), text);
+		assert_eq!(prompts::session_quote(), text);
 	}
 
 	#[test]
-	fn offline_quotes_are_short_attributed_and_non_repeating() {
+	fn offline_quotes_are_short_attributed_and_stable() {
 		for quote in CURATED.iter() {
 			assert!(quote.q.is_ascii() && quote.q.len() <= 80);
 			assert!(!quote.a.is_empty());
 			assert!(quote.display().ends_with(&quote.a));
 		}
 
-		let first = prompts::next();
+		let first = prompts::session_quote();
 
-		assert_ne!(prompts::next(), first);
+		assert_eq!(prompts::session_quote(), first);
+		assert_eq!(
+			Quote { q: "Keep asking questions.".into(), a: "Example".into() }.display(),
+			"Keep asking questions. — Example"
+		);
 	}
 }

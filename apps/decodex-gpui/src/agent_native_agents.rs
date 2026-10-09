@@ -445,7 +445,7 @@ impl AgentSurface {
 			.input
 			.get_or_insert_with(|| {
 				let input = cx.new(|cx| {
-					ComposerInput::message(35, super::prompts::next(), "Agent message", cx)
+					ComposerInput::message(35, super::prompts::session_quote(), "Agent message", cx)
 				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
 				input

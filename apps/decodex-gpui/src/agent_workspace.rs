@@ -282,10 +282,8 @@ impl AgentSurface {
 
 				self.composer.update(cx, |input, cx| {
 					input.set_content(&draft, cx);
-					input.set_placeholder(prompts::next(), cx);
+					input.set_placeholder(prompts::session_quote(), cx);
 				});
-
-				Self::refresh_prompt(cx);
 			}
 
 			self.composer_manager = Some(id.into());

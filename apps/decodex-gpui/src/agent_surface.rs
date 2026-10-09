@@ -450,7 +450,7 @@ impl AgentSurface {
 			)
 		});
 		let composer =
-			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Agent message", cx));
+			cx.new(|cx| ComposerInput::message(35, prompts::session_quote(), "Agent message", cx));
 
 		cx.subscribe(&composer, |s, _, event, cx| {
 			if let ComposerEvent::Attach(item) = event {
@@ -1208,10 +1208,8 @@ impl AgentSurface {
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
-						input.set_placeholder(prompts::next(), cx);
+						input.set_placeholder(prompts::session_quote(), cx);
 					});
-
-					Self::refresh_prompt(cx);
 				}
 			},
 			Ok(AgentCommandResponse::Rejected { error }) =>

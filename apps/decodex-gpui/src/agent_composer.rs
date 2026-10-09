@@ -289,25 +289,7 @@ impl AgentSurface {
 
 	pub(super) fn refresh_prompt(cx: &mut Context<Self>) {
 		#[cfg(not(test))]
-		{
-			let fetch = cx.background_executor().spawn(async { prompts::refresh_cache() });
-
-			cx.spawn(async move |surface, cx| {
-				if fetch.await {
-					let _ = surface.update(cx, |s, cx| {
-						if s.composer.read(cx).content().is_empty()
-							&& !s.sending
-							&& !s.is_new_conversation()
-						{
-							s.composer
-								.update(cx, |input, cx| input.set_placeholder(prompts::next(), cx));
-						}
-					});
-				}
-			})
-			.detach();
-		}
-
+		cx.background_executor().spawn(async { prompts::refresh_cache() }).detach();
 		#[cfg(test)]
 		let _ = cx;
 	}
