@@ -2434,6 +2434,13 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
+		let composer = visual.debug_bounds("agent-composer").unwrap();
+		let loading = visual.debug_bounds("loading-feedback-Connecting to Codex…").unwrap();
+		assert!((composer.center().x - loading.center().x).abs() < gpui::px(1.));
+		assert!((composer.center().y - loading.center().y).abs() < gpui::px(1.));
+		assert!(visual.debug_bounds("composer-send").is_none());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+
 		assert!(visual.debug_bounds("agent-composer").is_some());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());

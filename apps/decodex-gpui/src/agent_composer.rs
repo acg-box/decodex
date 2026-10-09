@@ -319,12 +319,39 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn composer_connecting(&self) -> bool {
+		if self.native_agents.selected.is_some() {
+			matches!(
+				self.native_agents.connection,
+				super::native_agents::NativeConnection::Checking { .. }
+			)
+		} else {
+			self.connection_initializing()
+		}
+	}
+
 	pub(super) fn render_composer_capsule(
 		&self,
 		native: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
+		if self.composer_connecting() {
+			return gpui::div()
+				.id("agent-composer")
+				.debug_selector(|| "agent-composer".into())
+				.occlude()
+				.w_full()
+				.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
+				.min_h(gpui::px(81.))
+				.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
+				.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
+				.flex()
+				.items_center()
+				.justify_center()
+				.child(crate::ui_loading::loading("Connecting to Codex…"));
+		}
+
 		let editor = gpui::div()
 			.id("composer-editor-area")
 			.debug_selector(|| "composer-editor-area".into())
@@ -432,6 +459,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		if self.composer_connecting() {
+			return gpui::div();
+		}
 		let menu = self.composer_menu.or(self.composer_menu_content);
 		let left = matches!(
 			menu,
@@ -607,27 +637,7 @@ impl AgentSurface {
 							cx,
 						));
 				},
-				NativeConnection::Checking { started, .. } => {
-					row = row
-						.child(
-							gpui::div()
-								.flex_1()
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.when(started.elapsed() >= Duration::from_secs(3), |d| {
-									d.child("Connecting…")
-								}),
-						)
-						.child(
-							gpui::div()
-								.size(gpui::px(CONTROL_SIZE))
-								.flex()
-								.items_center()
-								.justify_center()
-								.child(crate::ui_loading::loading("")),
-						);
-				},
+				NativeConnection::Checking { .. } => {},
 				NativeConnection::Ready => {
 					row = row.justify_end().child(
 						if self.running_turn().is_some()
@@ -657,15 +667,6 @@ impl AgentSurface {
 			return row.into_any_element();
 		}
 
-		if self.connection_initializing() {
-			return gpui::div()
-				.flex_1()
-				.min_w_0()
-				.flex()
-				.justify_end()
-				.child(crate::ui_loading::loading("Connecting to Codex…"))
-				.into_any_element();
-		}
 		if let Some(controls) = self.dictation_controls(cx) {
 			return controls;
 		}

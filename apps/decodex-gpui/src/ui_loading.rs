@@ -46,29 +46,26 @@ impl RenderOnce for Loading {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						let mut path = PathBuilder::stroke(gpui::px(1.25));
-
-						for i in 0..=24 {
-							let angle = phase + i as f32 / 24. * TAU * 0.72;
-							let p = bounds.center()
-								+ gpui::point(
-									gpui::px(angle.cos() * 4.5),
-									gpui::px(angle.sin() * 4.5),
-								);
-
-							if i == 0 {
-								path.move_to(p);
-							} else {
-								path.line_to(p);
+						for i in 0..12 {
+							let angle = phase + i as f32 / 12. * TAU;
+							let alpha = (45. + 210. * (i as f32 / 11.)) as u32;
+							let mut path = PathBuilder::stroke(gpui::px(1.4));
+							let point = |radius: f32| {
+								bounds.center()
+									+ gpui::point(
+										gpui::px(angle.cos() * radius),
+										gpui::px(angle.sin() * radius),
+									)
+							};
+							path.move_to(point(3.3));
+							path.line_to(point(5.5));
+							if let Ok(path) = path.build() {
+								window.paint_path(path, gpui::rgba((TEXT_MUTED << 8) | alpha));
 							}
-						}
-
-						if let Ok(path) = path.build() {
-							window.paint_path(path, gpui::rgb(TEXT_MUTED));
 						}
 					},
 				)
-				.size(gpui::px(12.))
+				.size(gpui::px(14.))
 				.flex_none(),
 			)
 			.when(!self.label.is_empty(), |row| row.child(self.label))
