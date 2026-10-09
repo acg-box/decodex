@@ -483,7 +483,7 @@ pub(super) fn progress_state(
 	work: &AgentWorkItemDto,
 ) -> ProgressState {
 	use super::{AgentDispatchStateDto as Dispatch, AgentWorkStatusDto as Status};
-	use crate::ui_theme::{AMBER, BLUE, GREEN};
+	use crate::ui_theme::{AMBER, BLUE};
 	let request = snapshot.pending_events.iter().find(|e| {
 		e.work_item_id == work.id
 			&& ["permission_pending", "user_input_pending", "server_request_pending"]
@@ -505,16 +505,11 @@ pub(super) fn progress_state(
 		(
 			"Status unavailable",
 			"Execution could not be confirmed. Open the task to check its connection.".into(),
-			AMBER,
+			TEXT_MUTED,
 			0,
 		)
 	} else if work.dispatch_state == Dispatch::Running {
-		(
-			"Running",
-			"Execution is active. Open the conversation for live activity.".into(),
-			GREEN,
-			1,
-		)
+		("Running", "Execution is active. Open the conversation for live activity.".into(), BLUE, 1)
 	} else if work.dispatch_state == Dispatch::Dispatching {
 		("Starting", "The task is being submitted; execution is not yet confirmed.".into(), BLUE, 1)
 	} else if work.status == Status::UserDecision {
@@ -528,7 +523,7 @@ pub(super) fn progress_state(
 		(
 			"Marked complete",
 			"Review the result and its verification in the source conversation.".into(),
-			TEXT_MUTED,
+			crate::ui_theme::GREEN,
 			3,
 		)
 	} else {
@@ -544,13 +539,22 @@ pub(super) fn progress_state(
 				2,
 			)
 		} else if snapshot.pending_events.iter().any(|e| e.work_item_id == work.id) {
-			("Update pending", "A recorded update has not been processed yet. It is not a request for your approval.".into(), BLUE, 2)
+			("Update pending", "A recorded update has not been processed yet. It is not a request for your approval.".into(), TEXT_MUTED, 2)
 		} else {
 			match work.status {
 				Status::FollowUp => (
 					"Follow-up pending",
 					"A follow-up is recorded, but no execution is active.".into(),
-					BLUE,
+					TEXT_MUTED,
+					2,
+				),
+				Status::Wait if work.next_check_at_micros.is_some() => (
+					"Scheduled check",
+					format!(
+						"Next check · {}",
+						super::next_check_text(work.next_check_at_micros.unwrap())
+					),
+					TEXT_MUTED,
 					2,
 				),
 				Status::Wait => (
@@ -1057,6 +1061,11 @@ mod tests {
 			assert_eq!(state.label, "Not running");
 			assert_eq!(state.color, TEXT_MUTED);
 			assert!(state.reason.contains("reason is not available"));
+			unexplained_wait.next_check_at_micros = Some(1);
+			let state = progress_state(snapshot, &unexplained_wait);
+			assert_eq!(state.label, "Scheduled check");
+			assert_eq!(state.color, TEXT_MUTED);
+			assert!(state.reason.contains("Due now"));
 			snapshot.pending_events.push(decodex_protocol::AgentPendingEventDto {
 				id: 88,
 				source_event_id: "request".into(),

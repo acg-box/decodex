@@ -39,6 +39,7 @@ fn current_native_activity_creates_interaction_and_reverse_completion_edges(
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				outcome: None,
 				metrics: Default::default(),
 				stamp: s.brief_stamp(&row),
 				resources: None,
@@ -168,6 +169,7 @@ fn native_reply_requires_observed_call_and_rejects_changed_binding(cx: &mut gpui
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				outcome: None,
 				metrics: Default::default(),
 				resources: None,
 				stamp: s.brief_stamp(&row),
@@ -300,4 +302,147 @@ fn compact_status_does_not_turn_inactivity_into_attention() {
 			(GREEN, "1 to review".into()),
 		]
 	);
+}
+
+#[test]
+fn native_states_keep_requests_errors_and_inactivity_distinct() {
+	for (native, label, color) in [
+		("active", "Running", crate::ui_theme::BLUE),
+		("running", "Running", crate::ui_theme::BLUE),
+		("waitingOnApproval", "Approval", AMBER),
+		("waitingOnUserInput", "Input needed", AMBER),
+		("systemError", "Error", crate::ui_theme::ERROR),
+		("idle", "Idle", TEXT_MUTED),
+		("notLoaded", "Not running", TEXT_MUTED),
+		("new-upstream-state", "Unknown", TEXT_MUTED),
+	] {
+		let state = native_state(native);
+		assert_eq!((state.0, state.2), (label, color));
+	}
+}
+
+#[gpui::test]
+fn outcome_preserves_current_requests_and_invalidates_old_turns(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let mut row = s.board_rows().remove(0);
+		for status in [
+			"Running",
+			"Starting",
+			"Needs you",
+			"Approval",
+			"Input needed",
+			"Waiting on work",
+			"Status unavailable",
+			"Error",
+		] {
+			row.status = status.into();
+			row.review = true;
+			apply_outcome(&mut row, "failed");
+			assert_eq!(row.status, status);
+			assert!(row.review, "unread state must stay independent");
+		}
+		for (outcome, label, color) in [
+			("failed", "Failed", crate::ui_theme::ERROR),
+			("interrupted", "Interrupted", TEXT_MUTED),
+		] {
+			row.status = "Not running".into();
+			row.review = true;
+			apply_outcome(&mut row, outcome);
+			assert_eq!(row.status, label);
+			assert_eq!(row.color, color);
+			assert!(!row.review);
+		}
+		let snapshot = s.snapshot.as_mut().unwrap();
+		snapshot.pending_events.clear();
+		snapshot.dependencies.clear();
+		let work = &mut snapshot.work_items[0];
+		let key = work.id.clone();
+		work.dispatch_state = super::super::AgentDispatchStateDto::Idle;
+		work.status = super::super::AgentWorkStatusDto::Open;
+		work.active_turn_id = Some("latest".into());
+		let row = s.board_rows().into_iter().find(|r| r.key == key).unwrap();
+		s.work_board.briefs.insert(
+			key.clone(),
+			Brief {
+				outcome: Some(("old".into(), "failed".into())),
+				resources: None,
+				relations: vec![],
+				metrics: Default::default(),
+				stamp: s.brief_stamp(&row),
+				read_at: std::time::Instant::now(),
+			},
+		);
+		assert_eq!(
+			s.board_rows().into_iter().find(|r| r.key == key).unwrap().status,
+			"Not running"
+		);
+		s.work_board.briefs.get_mut(&key).unwrap().outcome =
+			Some(("latest".into(), "failed".into()));
+		assert_eq!(s.board_rows().into_iter().find(|r| r.key == key).unwrap().status, "Failed");
+		assert_eq!(
+			s.board_rows().into_iter().find(|r| r.key == key).unwrap().status,
+			"Failed",
+			"derived status must not invalidate its own cache"
+		);
+		s.snapshot.as_mut().unwrap().work_items[0].updated_at_micros += 1;
+		assert_eq!(
+			s.board_rows().into_iter().find(|r| r.key == key).unwrap().status,
+			"Not running"
+		);
+	});
+}
+
+#[test]
+fn new_turn_start_clears_previous_terminal_outcome() {
+	use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+	let boundary = |position, completed, status: &str| AgentTimelineEntry {
+		position,
+		content: AgentTimelineContent::TurnBoundary {
+			turn_id: position.to_string(),
+			completed,
+			status: Some(status.into()),
+			duration_ms: None,
+			usage_summary: None,
+			usage: None,
+			error: None,
+		},
+	};
+	let entries = vec![boundary(1, true, "failed"), boundary(2, false, "")];
+	assert_eq!(latest_outcome(&entries), Some(("2".into(), "inProgress".into())));
+}
+
+#[gpui::test]
+fn work_status_matrix_prioritizes_live_execution(cx: &mut gpui::TestAppContext) {
+	use super::super::{AgentDispatchStateDto as D, AgentWorkStatusDto as S};
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let snapshot = s.snapshot.as_mut().unwrap();
+		snapshot.pending_events.clear();
+		snapshot.dependencies.clear();
+		let mut work = snapshot.work_items[0].clone();
+		for (status, idle_label) in [
+			(S::Open, "Not running"),
+			(S::Resolved, "Marked complete"),
+			(S::FollowUp, "Follow-up pending"),
+			(S::Wait, "Not running"),
+			(S::UserDecision, "Needs you"),
+		] {
+			work.status = status;
+			work.next_check_at_micros = None;
+			for (dispatch, label) in [
+				(D::Idle, idle_label),
+				(D::Dispatching, "Starting"),
+				(D::Running, "Running"),
+				(D::Unknown, "Status unavailable"),
+			] {
+				work.dispatch_state = dispatch;
+				assert_eq!(
+					super::super::dock::progress_state(snapshot, &work).label,
+					label,
+					"{status:?} / {dispatch:?}"
+				);
+			}
+		}
+	});
 }
