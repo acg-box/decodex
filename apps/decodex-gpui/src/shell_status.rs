@@ -329,6 +329,7 @@ impl Shell {
 		let open = self.status_open;
 		gpui::div()
 			.id("status-toggle")
+			.debug_selector(|| "status-toggle".into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label.clone())
@@ -344,14 +345,23 @@ impl Shell {
 			.cursor_pointer()
 			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 			.occlude()
-			.on_mouse_down(gpui::MouseButton::Left, |_, window, cx| {
-				window.prevent_default();
-				cx.stop_propagation();
-			})
-			.on_click(cx.listener(move |s, _, _, cx| {
-				s.status_open = !open;
-
-				cx.notify();
+			.on_mouse_down(
+				gpui::MouseButton::Left,
+				cx.listener(move |s, _, window, cx| {
+					window.prevent_default();
+					cx.stop_propagation();
+					// Outside dismissal also runs on mouse down. Use the state shown when
+					// the press began, and do not toggle again after an intervening frame.
+					s.status_open = !open;
+					cx.notify();
+				}),
+			)
+			.on_click(cx.listener(|s, event, _, cx| {
+				if !matches!(event, gpui::ClickEvent::Mouse(_)) {
+					s.status_open = !s.status_open;
+					cx.notify();
+					cx.stop_propagation();
+				}
 			}))
 			.child(workspace_symbols::icon(if notices.is_empty() {
 				Symbol::Bell
@@ -663,6 +673,26 @@ mod tests {
 			);
 			assert_eq!(s.account_status.as_deref(), Some("Fixture account warning"));
 		});
+	}
+
+	#[gpui::test]
+	fn notification_toggle_closes_across_mouse_down_and_mouse_up_frames(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+		for expected in [true, false, true, false] {
+			visual.update(|window, cx| window.draw(cx).clear());
+			let toggle = visual.debug_bounds("status-toggle").expect("notification toggle");
+			visual.simulate_mouse_down(
+				toggle.center(),
+				gpui::MouseButton::Left,
+				Default::default(),
+			);
+			visual.update(|window, cx| window.draw(cx).clear());
+			visual.simulate_mouse_up(toggle.center(), gpui::MouseButton::Left, Default::default());
+			visual.update(|window, cx| window.draw(cx).clear());
+			assert_eq!(shell.read_with(visual, |s, _| s.status_open), expected);
+		}
 	}
 
 	#[gpui::test]
