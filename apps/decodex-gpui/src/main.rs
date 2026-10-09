@@ -192,7 +192,7 @@ fn main() {
 
 		if launched_as_login_item {
 			#[cfg(target_os = "macos")]
-			hide_main_window(cx);
+			order_out_native_windows(true);
 
 			#[cfg(not(target_os = "macos"))]
 			cx.hide();
@@ -290,7 +290,7 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 }
 
 #[cfg(target_os = "macos")]
-fn order_out_native_windows() {
+fn order_out_native_windows(background_only: bool) {
 	let main_thread =
 		MainThreadMarker::new().expect("GPUI application callback runs on main thread");
 	let application = NSApplication::sharedApplication(main_thread);
@@ -301,7 +301,11 @@ fn order_out_native_windows() {
 		}
 	}
 
-	application.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
+	application.setActivationPolicy(if background_only {
+		objc2_app_kit::NSApplicationActivationPolicy::Accessory
+	} else {
+		objc2_app_kit::NSApplicationActivationPolicy::Regular
+	});
 }
 
 fn compose_lifecycle(
@@ -368,7 +372,7 @@ fn hide_main_window(cx: &mut App) {
 	{
 		let _ = cx;
 
-		order_out_native_windows();
+		order_out_native_windows(false);
 	}
 
 	#[cfg(not(target_os = "macos"))]
