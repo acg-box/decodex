@@ -83,18 +83,37 @@ fn usage_label(id: String, title: String, share: String) -> AnyElement {
 	gpui::canvas(
 		move |_, window, _| {
 			let style = window.text_style();
-			let shape = |text: String| {
-				let run = gpui::TextRun {
-					len: text.len(),
-					font: style.font(),
-					color: style.color,
-					background_color: None,
-					underline: None,
-					strikethrough: None,
+			let shape = |text: String, identifier_len: usize, strong: bool| {
+				let make_run = |len, color, weight| {
+					let mut font = style.font();
+					font.weight = weight;
+					gpui::TextRun {
+						len,
+						font,
+						color: gpui::rgb(color).into(),
+						background_color: None,
+						underline: None,
+						strikethrough: None,
+					}
 				};
-				window.text_system().shape_line(text.into(), gpui::px(11.), &[run], None)
+				let mut runs = Vec::new();
+				if identifier_len > 0 {
+					runs.push(make_run(identifier_len, 0xa59bb7, gpui::FontWeight::NORMAL));
+				}
+				if text.len() > identifier_len {
+					runs.push(make_run(
+						text.len() - identifier_len,
+						if strong { 0xf2eef8 } else { TEXT },
+						if strong { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL },
+					));
+				}
+				window.text_system().shape_line(text.into(), gpui::px(11.), &runs, None)
 			};
-			(shape(format!("{id} {}", title.replace(['\n', '\r'], " "))), shape(id), shape(share))
+			(
+				shape(format!("{id} {}", title.replace(['\n', '\r'], " ")), id.len(), false),
+				shape(id.clone(), id.len(), false),
+				shape(share, 0, true),
+			)
 		},
 		move |bounds, (full, id, share), window, cx| {
 			let available = bounds.size.width - gpui::px(12.);
@@ -377,9 +396,9 @@ impl AgentSurface {
 							.bottom_0()
 							.left(gpui::px(2.))
 							.right(gpui::px(2.))
-							.h(gpui::px(2.))
+							.h(gpui::px(if highlighted { 3. } else { 2. }))
 							.rounded_full()
-							.bg(gpui::rgba((TOKENS << 8) | 0x90)),
+							.bg(gpui::rgba((TOKENS << 8) | if highlighted { 0xff } else { 0x90 })),
 					)
 					.on_click(cx.listener(move |s, _, _, cx| s.pick_metric_agent(&key, cx)))
 					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
