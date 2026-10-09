@@ -17,6 +17,8 @@ let symbols = [
     "account-warning": "exclamationmark.circle",
     "account-warning-amber": "exclamationmark.circle",
     "account-reorder": "line.3.horizontal",
+    "arrange": "square.grid.2x2",
+    "fit": "viewfinder",
     "all-work": "square.stack.3d.up",
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",

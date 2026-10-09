@@ -2,6 +2,48 @@
 use super::*;
 
 impl AgentSurface {
+	pub(super) fn relation_legend_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
+		let hidden = self.work_board.view.legend_hidden;
+		let label = if hidden { "Show legend" } else { "Hide legend" };
+		gpui::div()
+			.id("graph-legend-toggle")
+			.debug_selector(|| "graph-legend-toggle".into())
+			.role(Role::Button)
+			.aria_label(label)
+			.tab_index(0)
+			.size(gpui::px(24.))
+			.flex_none()
+			.flex()
+			.items_center()
+			.justify_center()
+			.rounded(gpui::px(5.))
+			.cursor_pointer()
+			.occlude()
+			.hover(|d| d.bg(gpui::rgba(0xffffff10)))
+			.tooltip(move |_, cx| cx.new(|_| RelationTip(label.into())).into())
+			.child(crate::shell::workspace_symbols::icon_sized(
+				if hidden {
+					crate::shell::workspace_symbols::Symbol::Eye
+				} else {
+					crate::shell::workspace_symbols::Symbol::EyeSlash
+				},
+				14.,
+			))
+			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+			.on_click(cx.listener(|s, _, _, cx| {
+				s.work_board.view.legend_hidden = !s.work_board.view.legend_hidden;
+				cx.notify();
+			}))
+			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					s.work_board.view.legend_hidden = !s.work_board.view.legend_hidden;
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
+			.into_any_element()
+	}
+
 	pub(in super::super) fn relation_legend(&self) -> AnyElement {
 		let mut links = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(14.));
 		for (kind, label) in [

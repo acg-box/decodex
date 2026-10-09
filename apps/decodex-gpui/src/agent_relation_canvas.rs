@@ -35,6 +35,7 @@ pub(super) struct View {
 	moved: bool,
 	pub(super) edge: Option<Edge>,
 	pub(super) show_record: bool,
+	legend_hidden: bool,
 }
 struct Drag {
 	key: Option<String>,
@@ -566,16 +567,11 @@ impl AgentSurface {
 			.map(|r| compact_name(if r.native { &r.owner } else { &r.title }))
 			.unwrap_or_else(|| if focused { "Connection".into() } else { String::new() });
 		let cluster = || {
-			gpui::div()
-				.flex()
-				.items_center()
-				.gap(gpui::px(2.))
-				.px(gpui::px(2.))
+			crate::ui_theme::floating_group()
 				.h(gpui::px(28.))
-				.rounded(gpui::px(6.))
-				.border_1()
-				.border_color(gpui::rgba(0xffffff12))
-				.bg(gpui::rgba(0x00000016))
+				.px(gpui::px(2.))
+				.gap(gpui::px(2.))
+				.bg(gpui::rgb(crate::ui_theme::TOPBAR_MATERIAL >> 8))
 		};
 		gpui::div()
 			.absolute()
@@ -625,7 +621,10 @@ impl AgentSurface {
 				cluster()
 					.child(self.graph_control(
 						"arrange",
-						"Arrange",
+						crate::shell::workspace_symbols::icon_sized(
+							crate::shell::workspace_symbols::Symbol::Arrange,
+							14.,
+						),
 						"Restore automatic layout",
 						|s, cx| {
 							s.arrange_relations();
@@ -635,14 +634,18 @@ impl AgentSurface {
 					))
 					.child(self.graph_control(
 						"fit",
-						"Fit",
+						crate::shell::workspace_symbols::icon_sized(
+							crate::shell::workspace_symbols::Symbol::Fit,
+							14.,
+						),
 						"Fit all agents and workspace boundaries",
 						|s, cx| {
 							s.fit_relations();
 							cx.notify();
 						},
 						cx,
-					)),
+					))
+					.child(self.relation_legend_toggle(cx)),
 			)
 			.child(
 				cluster()
@@ -659,7 +662,7 @@ impl AgentSurface {
 					))
 					.child(self.graph_control(
 						"reset",
-						&format!("{:.0}%", scale * 100.),
+						format!("{:.0}%", scale * 100.),
 						"Reset zoom to 100%",
 						move |s, cx| {
 							s.work_board.view.camera_fixed = true;
@@ -686,7 +689,7 @@ impl AgentSurface {
 	fn graph_control(
 		&self,
 		id: &str,
-		label: &str,
+		label: impl IntoElement,
 		description: &str,
 		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
@@ -703,7 +706,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.h(gpui::px(24.))
 			.min_w(gpui::px(24.))
-			.px(gpui::px(7.))
+			.px(gpui::px(4.))
 			.flex()
 			.items_center()
 			.justify_center()
@@ -711,7 +714,7 @@ impl AgentSurface {
 			.cursor_pointer()
 			.hover(|d| d.bg(gpui::rgba(0xffffff10)))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-			.child(label.to_owned())
+			.child(label)
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -1194,7 +1197,9 @@ impl AgentSurface {
 					.right(gpui::px(12.))
 					.flex()
 					.justify_end()
-					.child(self.relation_legend()),
+					.items_end()
+					.gap(gpui::px(8.))
+					.when(!self.work_board.view.legend_hidden, |d| d.child(self.relation_legend())),
 			)
 			.into_any_element()
 	}
