@@ -37,13 +37,13 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 
 		let (release, finished) = oneshot::channel();
 		let server = tokio::spawn(async move {
-			for index in 0..4 {
+			for index in 0..2 {
 				let request = writes.recv().await.unwrap();
 
 				assert_eq!(request["method"], "thread/read");
 				assert_eq!(request["params"]["threadId"], "opaque thread/1");
 
-				if index == 3 {
+				if index == 1 {
 					if change == "disconnect" {
 						return;
 					}
@@ -132,4 +132,84 @@ async fn only_live_item_events_mark_question_arrivals() {
 	assert!(!questions[0].arrived_live);
 	assert!(questions[1].arrived_live);
 	assert!(sent.try_recv().is_err(), "arrival observation cannot submit a turn");
+}
+
+#[tokio::test]
+async fn complete_legacy_question_recovery_reads_history_once_for_many_turns() {
+	let turns: Vec<_> = (0..24)
+		.map(|n| {
+			serde_json::json!({
+				"id":format!("turn-{n}"),"status":"completed","items":[{
+					"id":format!("question-{n}"),"type":"agentMessage","delivery":"async",
+					"questions":[{"title":"Continue?"}]
+				}]
+			})
+		})
+		.collect();
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(serde_json::json!({
+		"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":turns}}
+	}))
+	.await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	while sent.try_recv().is_ok() {}
+	agent.recover_async_questions().await.unwrap();
+	let mut reads = 0;
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read");
+		reads += 1;
+	}
+	assert_eq!(
+		reads, 2,
+		"one metadata read and one complete history read, independent of turn count"
+	);
+	assert!(!agent.store.agent_async_questions_recovering("agent".into()).await.unwrap());
+	assert_eq!(agent.store.read_agent_async_questions("agent".into()).await.unwrap().len(), 24);
+}
+
+#[tokio::test]
+async fn paginated_question_recovery_reads_items_concurrently_in_turn_order() {
+	let (mut agent, _sent, _directory) = tests::fixture().await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	let (incoming, frames) = mpsc::channel(8);
+	let (outgoing, mut writes) = mpsc::channel(8);
+	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	agent.client = client;
+	let (release, finished) = oneshot::channel();
+	let server = tokio::spawn(async move {
+		let request = writes.recv().await.unwrap();
+		assert_eq!(request["method"], "thread/read");
+		incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[]}}}))).await.unwrap();
+		let request = writes.recv().await.unwrap();
+		assert_eq!(request["method"], "thread/turns/list");
+		let headers: Vec<_> = (0..4).rev().map(|n| serde_json::json!({"id":format!("turn-{n}"),"status":"completed","itemsView":"notLoaded","items":[]})).collect();
+		incoming
+			.send(Ok(
+				serde_json::json!({"id":request["id"],"result":{"data":headers,"nextCursor":null}}),
+			))
+			.await
+			.unwrap();
+		let mut requests = Vec::new();
+		for _ in 0..4 {
+			let request = writes.recv().await.unwrap();
+			assert_eq!(request["method"], "thread/items/list");
+			requests.push(request);
+		}
+		for request in requests.into_iter().rev() {
+			let turn = request["params"]["turnId"].as_str().unwrap();
+			let item = serde_json::json!({"id":format!("question-{turn}"),"type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+			incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"data":[{"turnId":turn,"item":item}],"nextCursor":null}}))).await.unwrap();
+		}
+		let _ = finished.await;
+	});
+	time::timeout(Duration::from_secs(3), agent.recover_async_questions()).await.unwrap().unwrap();
+	assert!(!agent.store.agent_async_questions_recovering("agent".into()).await.unwrap());
+	let questions = agent.store.read_agent_async_questions("agent".into()).await.unwrap();
+	assert_eq!(
+		questions.iter().map(|q| q.turn_id.as_str()).collect::<Vec<_>>(),
+		vec!["turn-0", "turn-1", "turn-2", "turn-3"]
+	);
+	let _ = release.send(());
+	server.await.unwrap();
 }

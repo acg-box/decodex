@@ -27,7 +27,9 @@ impl AgentCoordinator {
 				continue;
 			}
 
+			let phase = crate::startup_trace::Phase::new("recover_native_goal");
 			self.resume_active_native_goal(&thread).await?;
+			drop(phase);
 
 			let revision = self.client.history_revision();
 			let Ok(Some(turn)) = self.client.thread_latest_turn_id(&thread).await else { continue };
