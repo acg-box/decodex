@@ -702,7 +702,7 @@ impl AgentSurface {
 			.min_w_0()
 			.flex()
 			.items_center()
-			.gap(gpui::px(1.0))
+			.gap(gpui::px(4.0))
 			.child(self.composer_control(
 				"model",
 				model,
@@ -833,11 +833,7 @@ impl AgentSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(gpui::rgba(0xffffff12)))
 			.when(send, |d| {
-				d.w(gpui::px(28.))
-					.h(gpui::px(28.))
-					.rounded_full()
-					.ml(gpui::px(2.))
-					.bg(gpui::rgb(0x515155))
+				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(gpui::rgb(0x515155))
 			})
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.when(disabled, |d| d.opacity(0.35))
@@ -935,7 +931,7 @@ impl AgentSurface {
 					self.composer_menu == Some("microphone"),
 				))
 				.into_any_element(),
-			"dictation" => workspace_symbols::icon(Symbol::Microphone),
+			"dictation" => workspace_symbols::icon_sized(Symbol::Microphone, 18.),
 			"delivery" => gpui::div()
 				.w_full()
 				.flex()
