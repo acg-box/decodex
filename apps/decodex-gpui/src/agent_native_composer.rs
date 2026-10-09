@@ -12,7 +12,8 @@ use crate::{
 	shell::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
-		ToggleGraph, ToggleInspector, ToggleSidebar, agent_surface::AgentSurface,
+		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
+		agent_surface::AgentSurface,
 	},
 	ui_motion,
 	ui_theme::{
@@ -94,6 +95,7 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &GrowPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ResetPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ToggleGraph, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ToggleContentFullscreen, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateBack, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
 			.child(capsule)

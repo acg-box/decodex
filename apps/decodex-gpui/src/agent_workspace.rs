@@ -110,6 +110,27 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(crate) fn toggle_focused_content(&mut self, cx: &mut Context<Self>) {
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			self.workspace.graph_expanded = false;
+			self.workspace.chat_expanded = false;
+		} else if self.workspace.focused_panel == Some(super::workspace_size::Panel::Bottom)
+			&& self.workspace.graph_visible
+		{
+			self.workspace.graph_expanded = true;
+		} else {
+			self.workspace.chat_expanded = true;
+		}
+		cx.notify();
+	}
+
+	pub(super) fn toggle_chat_fullscreen(&mut self, cx: &mut Context<Self>) {
+		self.workspace.focused_panel = None;
+		self.workspace.chat_expanded = !self.workspace.chat_expanded;
+		self.workspace.graph_expanded = false;
+		cx.notify();
+	}
+
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
 		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
@@ -1103,6 +1124,22 @@ impl AgentSurface {
 				.child(self.conversation_activity(cx))
 				.child(self.workspace_followup(work, cx));
 		}
+
+		chat = chat.child(
+			gpui::div().absolute().top(gpui::px(6.)).right(gpui::px(8.)).occlude().child(
+				self.workspace_action(
+					"chat-expand".into(),
+					if self.workspace.chat_expanded {
+						"Restore layout · Shift-Esc"
+					} else {
+						"Expand conversation · Shift-Esc"
+					}
+					.into(),
+					|s, cx| s.toggle_chat_fullscreen(cx),
+					cx,
+				),
+			),
+		);
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
@@ -2315,7 +2352,7 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 		"workspace-sidebar" => crate::shell::workspace_symbols::Symbol::Sidebar,
 		"workspace-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
-		"graph-expand" => crate::shell::workspace_symbols::Symbol::Expand,
+		"graph-expand" | "chat-expand" => crate::shell::workspace_symbols::Symbol::Expand,
 		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
 		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
 		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,

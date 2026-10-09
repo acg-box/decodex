@@ -60,6 +60,7 @@ impl AgentSurface {
 					.into(),
 					|s, cx| {
 						s.workspace.graph_expanded = !s.workspace.graph_expanded;
+						s.workspace.chat_expanded = false;
 						cx.notify();
 					},
 					cx,

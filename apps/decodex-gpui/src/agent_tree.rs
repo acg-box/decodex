@@ -30,6 +30,7 @@ impl AgentSurface {
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
 		if !self.workspace.agent_tree_visible
 			|| self.workspace.graph_expanded
+			|| self.workspace.chat_expanded
 			|| !self.reserve_workspace_panels()
 		{
 			return 0.0;

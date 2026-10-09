@@ -116,6 +116,7 @@ gpui::actions!(
 		ResetPanels,
 		ToggleInspector,
 		ToggleGraph,
+		ToggleContentFullscreen,
 		DismissStatus,
 		NavigateBack,
 		NavigateForward,
@@ -926,6 +927,19 @@ impl Shell {
 			self.agent.update(cx, AgentSurface::escape_interrupt);
 			cx.stop_propagation();
 		}
+	}
+
+	fn toggle_content_fullscreen(
+		&mut self,
+		_: &ToggleContentFullscreen,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::toggle_focused_content);
+			window.focus(&self.root_focus, cx);
+		}
+		cx.stop_propagation();
 	}
 
 	fn toggle_graph(&mut self, _: &ToggleGraph, window: &mut Window, cx: &mut Context<Self>) {
@@ -1817,6 +1831,7 @@ impl Render for Shell {
 			}))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(Self::toggle_content_fullscreen))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
 				if s.status_open {
 					s.status_open = false;
@@ -2159,6 +2174,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
+		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),

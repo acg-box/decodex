@@ -174,6 +174,9 @@ impl AgentSurface {
 	}
 
 	fn sidebar_target_width(&self, window: &Window) -> f32 {
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			return 0.;
+		}
 		let width = f32::from(window.viewport_size().width);
 		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
@@ -201,7 +204,10 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
-		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
+		if !self.workspace.graph_visible
+			|| self.workspace.chat_expanded
+			|| !self.reserve_workspace_panels()
+		{
 			return (0.0, 0.0);
 		}
 
@@ -221,6 +227,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			return;
+		}
 		self.workspace.sidebar_leave = None;
 		if self.workspace.sidebar_visible {
 			return;
@@ -399,6 +408,56 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
+	#[gpui::test]
+	fn content_fullscreen_hides_both_sidebars_and_restores_preferences(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = true;
+			s.workspace.agent_tree_visible = true;
+			s.workspace.graph_visible = true;
+			s.workspace.sidebar_width = 230.;
+			s.workspace.agent_panel_width = 270.;
+			s.workspace.graph_panel_height = 300.;
+		});
+		for target in [None, Some(Panel::Bottom)] {
+			surface.update(visual, |s, cx| {
+				s.workspace.focused_panel = target;
+				s.toggle_focused_content(cx);
+			});
+			visual.update(|window, cx| {
+				let s = surface.read(cx);
+				assert_eq!(s.sidebar_target_width(window), 0.);
+				assert_eq!(s.agent_tree_width(window), 0.);
+				assert_eq!(s.workspace.chat_expanded, target.is_none());
+				assert_eq!(s.workspace.graph_expanded, target.is_some());
+				if target.is_none() {
+					assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
+				}
+			});
+			surface.update(visual, |s, cx| {
+				s.toggle_focused_content(cx);
+				assert!(!s.workspace.chat_expanded && !s.workspace.graph_expanded);
+				assert!(
+					s.workspace.sidebar_visible
+						&& s.workspace.agent_tree_visible
+						&& s.workspace.graph_visible
+				);
+				assert_eq!(
+					(
+						s.workspace.sidebar_width,
+						s.workspace.agent_panel_width,
+						s.workspace.graph_panel_height
+					),
+					(230., 270., 300.)
+				);
+			});
+		}
+	}
+
 	#[gpui::test]
 	fn top_execution_panel_reserves_space_above_chat(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

@@ -407,7 +407,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(4.))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "escape" {
+				if e.keystroke.key == "escape" && !e.keystroke.modifiers.shift {
 					if !e.is_held {
 						s.escape_interrupt(cx);
 					}
