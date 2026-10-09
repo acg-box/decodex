@@ -281,11 +281,11 @@ pub(crate) fn request_workspace_frame(window: &Window, cx: &mut App) -> bool {
 	cx.defer(move |cx| {
 		if active
 			.update(cx, |_, window, _| {
-				window.on_next_frame(move |_, cx| crate::ui_motion::finish_frame(entity, cx));
+				window.on_next_frame(move |_, cx| cx.notify(entity));
 			})
 			.is_err()
 		{
-			crate::ui_motion::finish_frame(entity, cx);
+			cx.notify(entity);
 		}
 	});
 

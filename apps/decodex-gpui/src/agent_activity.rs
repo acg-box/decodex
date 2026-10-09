@@ -392,6 +392,8 @@ impl AgentSurface {
 
 				if moving {
 					ui_motion::request_frame(window, cx);
+
+					cx.notify();
 				} else {
 					let following = wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
@@ -437,6 +439,8 @@ impl AgentSurface {
 
 		if t < 1.0 {
 			ui_motion::request_frame(window, cx);
+
+			cx.notify();
 		} else {
 			let (work, id, started) =
 				(navigation.work.clone(), navigation.id.clone(), navigation.started);
