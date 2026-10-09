@@ -805,9 +805,20 @@ impl AgentSurface {
 				})
 			})
 			.focus(|d| d.bg(gpui::rgba(SELECTED_HOVER_FILL)))
-			.when(!["attachment-item", "audio-item"].contains(&id), |d| {
-				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
-			})
+			.when(
+				![
+					"model",
+					"effort",
+					"attachment-item",
+					"audio-item",
+					"skill-item",
+					"task-recap-item",
+					"task-reference-item",
+					"agent-settings",
+				]
+				.contains(&id),
+				|d| d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into()),
+			)
 			.on_click(cx.listener(move |s, _, window, cx| {
 				if !disabled {
 					action(s, window, cx);
