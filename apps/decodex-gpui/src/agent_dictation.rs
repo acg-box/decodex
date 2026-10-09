@@ -580,7 +580,7 @@ fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBu
 	let Ok(mut pcm) = STANDARD.decode(first.as_str()) else { return Some(first) };
 	while let Some(next) = queue.front() {
 		let Ok(bytes) = STANDARD.decode(next.as_str()) else { break };
-		if pcm.len() + bytes.len() > 48_000 {
+		if pcm.len() + bytes.len() > decodex_protocol::MAX_DICTATION_PCM_BYTES {
 			break;
 		}
 		pcm.extend_from_slice(&bytes);
@@ -592,6 +592,23 @@ fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBu
 #[cfg(test)]
 mod packet_tests {
 	use super::*;
+
+	#[test]
+	fn connection_backlog_stays_within_service_packet_limit_without_losing_audio() {
+		let expected: Vec<u8> = (0..48_000).map(|i| (i % 251) as u8).collect();
+		let mut queue = expected
+			.chunks(960)
+			.map(|pcm| DictationBuffer::new(STANDARD.encode(pcm)).expect("capture frame"))
+			.collect();
+		let mut delivered = Vec::new();
+		while let Some(batch) = take_audio_batch(&mut queue) {
+			let pcm = STANDARD.decode(batch.as_str()).expect("PCM");
+			assert!(pcm.len() <= decodex_protocol::MAX_DICTATION_PCM_BYTES);
+			assert!(pcm.len().is_multiple_of(2));
+			delivered.extend(pcm);
+		}
+		assert_eq!(delivered, expected);
+	}
 	#[test]
 	fn queued_audio_is_sent_in_order_without_waiting_for_a_full_batch() {
 		let frame = |bytes: &[u8]| DictationBuffer::new(STANDARD.encode(bytes)).unwrap();

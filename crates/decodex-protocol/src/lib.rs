@@ -182,7 +182,9 @@ pub use self::{
 		DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
 	},
 	desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft},
-	dictation::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus},
+	dictation::{
+		DictationBuffer, DictationPhase, DictationRequest, DictationStatus, MAX_DICTATION_PCM_BYTES,
+	},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS, NativeProcessDiagnostics,

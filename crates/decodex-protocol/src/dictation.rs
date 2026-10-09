@@ -9,6 +9,9 @@ use crate::{EntityId, WireScalarTooLong, WireText};
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct DictationBuffer(String);
+
+/// Maximum decoded PCM bytes in one dictation audio request.
+pub const MAX_DICTATION_PCM_BYTES: usize = 32_768;
 impl DictationBuffer {
 	/// Bound one transient frame.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {

@@ -244,9 +244,11 @@ fn start_message() -> Value {
 }
 
 fn valid_audio(audio: &str) -> bool {
-	STANDARD
-		.decode(audio)
-		.is_ok_and(|pcm| !pcm.is_empty() && pcm.len() <= 32_768 && pcm.len().is_multiple_of(2))
+	STANDARD.decode(audio).is_ok_and(|pcm| {
+		!pcm.is_empty()
+			&& pcm.len() <= decodex_protocol::MAX_DICTATION_PCM_BYTES
+			&& pcm.len().is_multiple_of(2)
+	})
 }
 
 #[cfg(test)]
