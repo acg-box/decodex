@@ -666,7 +666,15 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_connecting(&self) -> bool {
-		if self.connection_initializing() {
+		// Before the first snapshot, there is no workspace state to present as empty
+		// or disconnected. Use the same loading surface throughout service startup.
+		if (self.snapshot.is_none()
+			&& matches!(
+				self.displayed_load_state(),
+				LoadState::Idle | LoadState::Loading | LoadState::Unavailable
+			))
+			|| self.connection_initializing()
+		{
 			return true;
 		}
 		self.native_agents.selected.is_some()
@@ -2583,7 +2591,9 @@ mod tests {
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
 
-		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
+		assert!(visual.debug_bounds("workspace-connecting").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_some());
+		assert!(visual.debug_bounds("work-dock").is_none());
 
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Unavailable;
@@ -2593,7 +2603,8 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		assert!(visual.debug_bounds("loading-feedback-Connecting to workspace").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to Codex…").is_some());
+		assert!(visual.debug_bounds("work-dock").is_none());
 		assert!(
 			visual.debug_bounds("workspace-welcome").is_none(),
 			"a cold connection is not an empty conversation"
