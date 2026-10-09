@@ -12,9 +12,7 @@ use std::{
 
 use block2::RcBlock;
 use objc2::{AnyThread, rc::Retained, runtime::Bool};
-use objc2_audio_toolbox::{
-	AudioUnitSetProperty, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global,
-};
+use objc2_audio_toolbox::AUAudioUnit;
 use objc2_avf_audio::{
 	AVAudioEngine, AVAudioFormat, AVAudioSinkNode, AVAudioSourceNode,
 	AVAudioVoiceProcessingOtherAudioDuckingConfiguration,
@@ -45,7 +43,11 @@ impl Device {
 	}
 
 	pub(super) fn resume(&self) -> Result<(), ()> {
-		unsafe { self.engine.startAndReturnError().map_err(|_| ()) }
+		unsafe {
+			self.engine
+				.startAndReturnError()
+				.map_err(|error| eprintln!("DecodexAudio engine_start_failed: {error}"))
+		}
 	}
 
 	pub(super) fn pause(&self) {
@@ -111,6 +113,12 @@ impl Device {
 			let engine = AVAudioEngine::new();
 			let input = engine.inputNode();
 
+			// Select the input before voice processing combines the input and output units.
+			// Changing CurrentDevice on bus 0 of the shared voice unit selects the output.
+			let unit: Retained<AUAudioUnit> = input.AUAudioUnit();
+			if device != 0 && unit.deviceID() != device {
+				unit.setDeviceID_error(device).map_err(|_| ())?;
+			}
 			input.setVoiceProcessingEnabled_error(true).map_err(|_| ())?;
 			input.setVoiceProcessingOtherAudioDuckingConfiguration(
 				AVAudioVoiceProcessingOtherAudioDuckingConfiguration {
@@ -118,23 +126,6 @@ impl Device {
 					duckingLevel: AVAudioVoiceProcessingOtherAudioDuckingLevel::Min,
 				},
 			);
-
-			if device != 0 {
-				let unit = input.audioUnit();
-
-				if unit.is_null()
-					|| AudioUnitSetProperty(
-						unit,
-						kAudioOutputUnitProperty_CurrentDevice,
-						kAudioUnitScope_Global,
-						0,
-						(&device as *const u32).cast(),
-						4,
-					) != 0
-				{
-					return Err(());
-				}
-			}
 
 			let format = AVAudioFormat::initStandardFormatWithSampleRate_channels(
 				AVAudioFormat::alloc(),
@@ -156,6 +147,7 @@ impl Device {
 			engine.attachNode(&source);
 			engine.connect_to_format(&input, &sink, Some(&format));
 			engine.connect_to_format(&source, &engine.mainMixerNode(), Some(&format));
+			// Voice processing requires matching client input and output sample rates.
 			engine.connect_to_format(&engine.mainMixerNode(), &engine.outputNode(), Some(&format));
 
 			let device = Self { engine, sink, source, level, _thread: std::marker::PhantomData };
@@ -233,6 +225,34 @@ mod tests {
 	use std::thread;
 
 	use crate::shell::agent_surface::voice::audio::Device;
+
+	#[test]
+	#[ignore = "Requires authorized microphone and DECODEX_AUDIO_TEST_DEVICE_ID"]
+	fn hardware_selected_microphone_captures_after_preparation() {
+		let input = std::env::var("DECODEX_AUDIO_TEST_DEVICE_ID")
+			.expect("set a physical input AudioDeviceID")
+			.parse::<u32>()
+			.expect("audio device ID");
+		assert_ne!(input, 0);
+		let mut prepared = Vec::new();
+		for rate in [24_000.0, 48_000.0] {
+			let (device, mut pcm) = Device::prepare(input, rate).expect("prepare selected input");
+			thread::sleep(std::time::Duration::from_millis(250));
+			device.resume().expect("start selected input");
+			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+			let mut captured = 0;
+			while std::time::Instant::now() < deadline {
+				assert!(device.running(), "engine stopped at {rate} Hz");
+				while pcm.captured.pop().is_ok() {
+					captured += 1;
+				}
+				thread::sleep(std::time::Duration::from_millis(10));
+			}
+			assert!(captured > rate as usize, "missing PCM at {rate} Hz: {captured}");
+			device.pause();
+			prepared.push(device);
+		}
+	}
 
 	#[test]
 	#[ignore = "Requires authorized microphone and a working macOS audio device"]
