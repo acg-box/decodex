@@ -386,23 +386,19 @@ pub(crate) fn tooltip_surface(surface: gpui::Div) -> gpui::Div {
 		.max_w(gpui::px(360.))
 }
 
-/// Shared menu material: opaque enough for text, with a soft light-facing edge.
+/// Shared matte menu surface with a quiet outline and compact elevation.
 pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
 	surface
 		.rounded(gpui::px(10.))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff16))
-		.bg(gpui::linear_gradient(
-			165.,
-			gpui::linear_color_stop(gpui::rgb(0x34353b), 0.),
-			gpui::linear_color_stop(gpui::rgb(0x24252b), 1.),
-		))
+		.border_color(gpui::rgba(0xffffff14))
+		.bg(gpui::rgb(0x29292d))
 		.shadow(vec![gpui::BoxShadow {
 			inset: false,
-			color: gpui::rgba(0x00000030).into(),
-			offset: gpui::point(gpui::px(0.), gpui::px(6.)),
-			blur_radius: gpui::px(18.),
-			spread_radius: gpui::px(-4.),
+			color: gpui::rgba(0x00000028).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
+			blur_radius: gpui::px(8.),
+			spread_radius: gpui::px(-2.),
 		}])
 }
 
