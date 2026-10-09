@@ -648,6 +648,7 @@ async fn bootstrap_with_authority(
 	config_status: DoctorStatus,
 	listener: LocalTransportListener,
 ) -> ServiceBootstrap {
+	let _phase = crate::startup_trace::Phase::new("bootstrap");
 	let identity = ServerIdentity::load_or_create(&paths);
 	let (server_id, identity_status) = server_identity(identity);
 	let blob_store = BlobStore::open(paths.clone());
@@ -788,15 +789,19 @@ async fn bootstrap_macos_account_runtime(
 			Ok(composition) => composition,
 			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
 		};
-	let _ = service.reconcile_startup().await;
-	// Conversations may still use the optional Codex process adapter, but account health no longer
-	// depends on its executable, callback, schema, or version.  Failure here only disables that
-	// separate capability.
-	let conversation_launch_profile = AttestedAppServerProfile::attest(
-		paths.root().as_path().to_owned(),
-		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
-	)
-	.ok();
+	// Account reconciliation and executable/schema attestation have independent owners.
+	// Run the blocking filesystem/process work off the async executor while accounts recover.
+	let root = paths.root().as_path().to_owned();
+	let attestation = tokio::task::spawn_blocking(move || {
+		let _phase = crate::startup_trace::Phase::new("executable_attestation");
+		AttestedAppServerProfile::attest(root, ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT).ok()
+	});
+	let reconcile = async {
+		let _phase = crate::startup_trace::Phase::new("account_reconcile");
+		service.reconcile_startup().await
+	};
+	let (_, attestation) = tokio::join!(reconcile, attestation);
+	let conversation_launch_profile = attestation.ok().flatten();
 
 	if let Some(profile) = &conversation_launch_profile {
 		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;

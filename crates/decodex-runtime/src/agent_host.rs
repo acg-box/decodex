@@ -1844,6 +1844,7 @@ impl AgentHost {
 		account_id: Option<AccountId>,
 	) -> Result<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
 		let skill_roots = self.skill_roots.as_ref().map_err(|error| *error)?;
+		let phase = crate::startup_trace::Phase::new("agent_process_connect");
 		let connection = match self
 			.runtime
 			.open_agent_connection(StartAgentProcess {
@@ -1867,6 +1868,7 @@ impl AgentHost {
 				);
 			},
 		};
+		drop(phase);
 		let binding = match self.store.read_agent_process_binding(root).await {
 			Ok(binding) => binding,
 			Err(_) => {
@@ -1918,6 +1920,7 @@ impl AgentHost {
 	}
 
 	async fn restore(&self) -> Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)> {
+		let _phase = crate::startup_trace::Phase::new("agent_restore");
 		let root = self
 			.store
 			.list_agent_work_items()
@@ -1937,10 +1940,13 @@ impl AgentHost {
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {
+				let phase = crate::startup_trace::Phase::new("recover_persisted");
 				if active.1.recover_persisted().await.is_err() {
 					self.record_error(&root.id, "recovery_needs_attention").await;
 				}
 
+				drop(phase);
+				let _phase = crate::startup_trace::Phase::new("wake_pending");
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;
 
 				Some(active)

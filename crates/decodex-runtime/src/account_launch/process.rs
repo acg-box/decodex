@@ -366,6 +366,7 @@ impl AttestedAppServerProfile {
 
 		validated_working_directory(&command)?;
 
+		let phase = crate::startup_trace::Phase::new("schema_version_attestation");
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
 		let home = env::var_os("HOME")
 			.filter(|home| !home.is_empty())
@@ -378,6 +379,7 @@ impl AttestedAppServerProfile {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
 
+		drop(phase);
 		Ok(Self { command, build, generated, capability })
 	}
 
@@ -1812,7 +1814,6 @@ impl SupervisedProcess {
 		binding: AccountBinding,
 		guard: Option<RunnerPermit>,
 	) -> Result<Self, SupervisionError> {
-		verify_executable(&command)?;
 		run_before_spawn_test(&command);
 		verify_executable(&command)?;
 		run_after_verification_test(&command);
@@ -4980,15 +4981,18 @@ fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), Supervi
 }
 
 fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
-	verify_canonical_executable(command)?;
-
-	if command.executable.digest().map_err(|_| SupervisionError::ExecutableChanged)?
-		!= command.executable_digest
-	{
-		return Err(SupervisionError::ExecutableChanged);
-	}
-
-	Ok(())
+	// Both byte-for-byte checks remain mandatory. Hash the independent files together
+	// instead of serializing two full executable reads at each admission boundary.
+	thread::scope(|scope| {
+		let snapshot = scope.spawn(|| command.executable.digest());
+		let canonical = verify_canonical_executable(command);
+		let snapshot = snapshot.join().map_err(|_| SupervisionError::ExecutableChanged)?;
+		canonical?;
+		if snapshot.map_err(|_| SupervisionError::ExecutableChanged)? != command.executable_digest {
+			return Err(SupervisionError::ExecutableChanged);
+		}
+		Ok(())
+	})
 }
 
 fn run_before_spawn_test(_command: &AppServerCommand) {
@@ -5018,7 +5022,6 @@ fn configured_app_server_process(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
 ) -> Result<Command, SupervisionError> {
-	verify_executable(command)?;
 	run_before_spawn_test(command);
 	verify_executable(command)?;
 	run_after_verification_test(command);
@@ -5243,6 +5246,7 @@ fn initialize_probe(
 	capabilities: InitializeCapabilities,
 ) -> Result<AccountIdentity, ProbeError> {
 	if let Some(vault) = vault {
+		let _phase = crate::startup_trace::Phase::new("initialize_and_auth");
 		initialize_probe_projection(process, vault, timeout, negotiation, capabilities)?;
 	} else {
 		initialize_probe_connection(process, timeout, negotiation, capabilities)?;
@@ -5577,7 +5581,6 @@ fn run_preflight_command(
 	max_file_bytes: u64,
 	guard: Option<RunnerPermit>,
 ) -> Result<(ExitStatus, Option<RunnerPermit>), SupervisionError> {
-	verify_executable(command)?;
 	run_before_spawn_test(command);
 	verify_executable(command)?;
 	run_after_verification_test(command);
