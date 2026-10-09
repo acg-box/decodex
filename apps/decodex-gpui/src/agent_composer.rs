@@ -1136,7 +1136,7 @@ impl AgentSurface {
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
 				.child(format!(
-					"{} / {}",
+					"CTX {} / {}",
 					agent_surface::compact_tokens(usage.context_tokens),
 					agent_surface::compact_tokens(capacity),
 				))
@@ -1312,11 +1312,11 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 
 fn context_ring(fraction: f32) -> impl IntoElement {
 	let fill = gpui::rgb(if fraction >= 0.9 {
-		ui_theme::ERROR
+		0xed8585
 	} else if fraction >= 0.7 {
 		ui_theme::AMBER
 	} else {
-		ui_theme::TEXT_MUTED
+		0xa5a0ed
 	});
 	gpui::canvas(
 		|_, _, _| (),
