@@ -491,16 +491,27 @@ pub(crate) fn reduced() -> bool {
 	false
 }
 
-/// Keep animation cadence shared by a workspace and its attached controls.
+#[derive(Default)]
+struct FrameRequests(std::collections::HashSet<gpui::EntityId>);
+impl gpui::Global for FrameRequests {}
+
+/// Coalesce all animated elements in a view into one display-paced invalidation.
 pub(crate) fn request_frame(window: &Window, cx: &mut App) {
+	let entity = window.current_view();
+	if !cx.default_global::<FrameRequests>().0.insert(entity) {
+		return;
+	}
 	#[cfg(all(target_os = "macos", not(test)))]
 	if crate::ui_theme::native_glass_panel::request_workspace_frame(window, cx) {
 		return;
 	}
-
 	let _ = cx;
+	window.on_next_frame(move |_, cx| finish_frame(entity, cx));
+}
 
-	window.request_animation_frame();
+pub(crate) fn finish_frame(entity: gpui::EntityId, cx: &mut App) {
+	cx.default_global::<FrameRequests>().0.remove(&entity);
+	cx.notify(entity);
 }
 
 /// Animate a native overlay as one composited surface, including its shadow.
@@ -773,5 +784,22 @@ impl RenderOnce for AgentRailStatus {
 					.overflow_hidden()
 					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
 			)
+	}
+}
+
+#[cfg(test)]
+mod frame_tests {
+	use super::*;
+	use gpui::AppContext as _;
+	#[gpui::test]
+	fn frame_requests_coalesce_until_the_display_callback(cx: &mut gpui::TestAppContext) {
+		cx.update(|cx| {
+			let view = cx.new(|_| ());
+			let entity = view.entity_id();
+			assert!(cx.default_global::<FrameRequests>().0.insert(entity));
+			assert!(!cx.default_global::<FrameRequests>().0.insert(entity));
+			finish_frame(entity, cx);
+			assert!(cx.default_global::<FrameRequests>().0.insert(entity));
+		});
 	}
 }

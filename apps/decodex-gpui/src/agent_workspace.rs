@@ -1032,8 +1032,6 @@ impl AgentSurface {
 					});
 				});
 			};
-		let owner = cx.entity();
-		let key = self.selected.clone().unwrap_or_default();
 		gpui::div()
 			.on_children_prepainted(fill_viewport)
 			.flex_1()
@@ -1042,13 +1040,6 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.child(self.anchored_native_viewport(transcript.into_any_element(), scroll.clone()))
-			.child(crate::ui_scroll::Scrollbar {
-				id: SharedString::from(format!("history-scrollbar-{key}")).into(),
-				scroll,
-				changed: Rc::new(move |offset, _, cx| {
-					owner.update(cx, |s, cx| s.drag_history_scrollbar(offset, cx));
-				}),
-			})
 			.into_any_element()
 	}
 
@@ -1098,11 +1089,11 @@ impl AgentSurface {
 				.flex_1()
 				.min_h_0()
 				.flex()
+				.relative()
+				.child(transcript)
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
-				.relative()
-				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
 

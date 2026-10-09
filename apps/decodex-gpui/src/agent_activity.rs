@@ -311,34 +311,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn drag_history_scrollbar(&mut self, offset: f32, cx: &mut Context<Self>) {
-		self.timeline.latest_follow_work = None;
-		self.cancel_native_scroll_anchor();
-		self.timeline.navigation = None;
-		self.timeline.selected = None;
-		self.timeline.wheel_scroll = None;
-		if let Some(id) = self.selected.clone()
-			&& let Some(scroll) = self.timeline.scroll.get(&id)
-		{
-			let previous = f32::from(scroll.offset().y);
-			let maximum = f32::from(scroll.max_offset().y).max(0.);
-			let offset = offset.clamp(-maximum, 0.);
-			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
-			let following = (offset + maximum).abs() < 1.;
-			if following {
-				self.timeline.follow_paused.remove(&id);
-			} else {
-				self.timeline.follow_paused.insert(id);
-			}
-			self.set_voice_follow(following);
-			if offset > previous {
-				self.timeline.native.prefetch_requested = true;
-				self.prefetch_older_history(cx);
-			}
-			cx.notify();
-		}
-	}
-
 	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
 		let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT));
 
@@ -420,8 +392,6 @@ impl AgentSurface {
 
 				if moving {
 					ui_motion::request_frame(window, cx);
-
-					cx.notify();
 				} else {
 					let following = wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
@@ -467,8 +437,6 @@ impl AgentSurface {
 
 		if t < 1.0 {
 			ui_motion::request_frame(window, cx);
-
-			cx.notify();
 		} else {
 			let (work, id, started) =
 				(navigation.work.clone(), navigation.id.clone(), navigation.started);
@@ -719,6 +687,7 @@ impl AgentSurface {
 			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
+			.debug_selector(|| "conversation-history-rail".into())
 			.w(gpui::px(44.0))
 			.flex_none()
 			.h_full()
@@ -941,6 +910,9 @@ mod tests {
 		let bounds = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
 		});
+		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
+		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+		assert!(rail.left() >= transcript.right(), "timeline replaces the right scrollbar");
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
