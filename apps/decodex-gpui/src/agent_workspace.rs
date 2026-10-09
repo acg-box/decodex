@@ -111,8 +111,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
-		self.workspace.graph_visible = !self.workspace.graph_visible || self.workspace.dock_compact;
-		self.workspace.dock_compact = false;
+		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
 
 		cx.notify();
@@ -342,17 +341,7 @@ impl AgentSurface {
 			}
 			.to_owned()
 		};
-		let icon = if id == "dock-toggle" {
-			Some(
-				workspace_symbols::disclosure_chevron(
-					"execution-panel-chevron",
-					!self.workspace.dock_compact || self.workspace.graph_expanded,
-				)
-				.into_any_element(),
-			)
-		} else {
-			panel_icon(&id)
-		};
+		let icon = panel_icon(&id);
 		let closes_dock = id == "graph-close";
 		let icon_only = icon.is_some();
 		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
@@ -2014,7 +2003,6 @@ impl AgentSurface {
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
 		self.workspace.pages = vec!["verify".into()];
-		self.workspace.dock_compact = false;
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
@@ -2332,7 +2320,6 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
 		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"board-show-list" => crate::shell::workspace_symbols::Symbol::AllWork,
-		"dock-toggle" => crate::shell::workspace_symbols::Symbol::ChevronDown,
 		"dock-open-source" => crate::shell::workspace_symbols::Symbol::Forward,
 		"dock-evidence-toggle" => crate::shell::workspace_symbols::Symbol::Eye,
 		"dock-subtasks" => crate::shell::workspace_symbols::Symbol::Agents,
@@ -2536,7 +2523,6 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-			s.workspace.dock_compact = false;
 
 			s.state = LoadState::Loading;
 

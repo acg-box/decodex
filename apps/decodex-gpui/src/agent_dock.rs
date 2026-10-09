@@ -56,7 +56,6 @@ impl AgentSurface {
 			_ => None,
 		};
 		self.handoffs.focus = self.workspace.dock_record.clone();
-		self.workspace.dock_compact = false;
 		self.workspace.graph_panel_height = if page == "dock-result" { 280. } else { 460. };
 		if page == "dock-completed" {
 			self.handoffs.observe("fixture-baseline".into(), snapshot);
@@ -194,7 +193,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_dock_evidence(&mut self, cx: &mut Context<Self>) {
-		if !self.workspace.graph_visible || self.workspace.dock_compact {
+		if !self.workspace.graph_visible {
 			return;
 		}
 		let Some(id) = self.handoffs.focus.clone() else { return };

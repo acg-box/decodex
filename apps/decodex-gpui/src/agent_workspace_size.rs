@@ -48,7 +48,6 @@ impl AgentSurface {
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
 			self.workspace.graph_visible
-				&& !self.workspace.dock_compact
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
 		];
@@ -58,9 +57,6 @@ impl AgentSurface {
 				continue;
 			}
 
-			if panel == Panel::Bottom {
-				self.workspace.dock_compact = false;
-			}
 			let (value, default, min, max) = match panel {
 				Panel::Left => (&mut self.workspace.sidebar_width, defaults.sidebar, 160.0, 480.0),
 				Panel::Right =>
@@ -219,11 +215,8 @@ impl AgentSurface {
 		if self.workspace.graph_expanded {
 			return available;
 		}
-		let height = if self.workspace.dock_compact {
-			38.
-		} else {
-			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.))
-		};
+		let height =
+			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.));
 		(available.0, height.min(available.1))
 	}
 
@@ -414,7 +407,6 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.work_board.graph = false;
 			s.workspace.graph_visible = true;
-			s.workspace.dock_compact = true;
 			s.workspace.graph_expanded = false;
 			cx.notify();
 		});
@@ -425,32 +417,9 @@ mod tests {
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		let header = visual.debug_bounds("work-dock").unwrap();
 		assert!(header.origin.y < transcript.origin.y);
-		for compact in [false, true] {
-			let toggle = visual
-				.debug_bounds(if compact { "dock-toggle" } else { "compact-agent-graph" })
-				.unwrap();
-			visual.simulate_click(toggle.center(), gpui::Modifiers::default());
-			visual.update(|w, cx| w.draw(cx).clear());
-			std::thread::sleep(std::time::Duration::from_millis(250));
-			visual.update(|w, cx| w.draw(cx).clear());
-			surface.read_with(visual, |s, _| assert_eq!(s.workspace.dock_compact, compact));
-			assert_eq!(visual.debug_bounds("floating-composer").unwrap(), composer);
-			let current = visual.debug_bounds("workspace-transcript").unwrap();
-			assert_eq!(current.size.width, transcript.size.width);
-			if compact {
-				assert_eq!(current, transcript);
-			} else {
-				assert!(current.origin.y > transcript.origin.y);
-			}
-			let panel = visual.debug_bounds("work-dock").unwrap();
-			assert_eq!(panel.origin.y, header.origin.y);
-			assert!(panel.bottom() <= current.origin.y);
-			assert!(panel.bottom() <= composer.origin.y);
-		}
-		assert!(visual.debug_bounds("graph-expand").is_none());
-		let entry = visual.debug_bounds("compact-agent-graph").unwrap();
-		visual.simulate_click(entry.center(), gpui::Modifiers::default());
-		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("dock-toggle").is_none());
+		assert!(header.bottom() <= transcript.origin.y);
+
 		for expanded in [true, false] {
 			let toggle = visual.debug_bounds("graph-expand").unwrap();
 			visual.simulate_click(toggle.center(), gpui::Modifiers::default());
@@ -466,6 +435,18 @@ mod tests {
 				);
 			}
 		}
+		let close = visual.debug_bounds("graph-close").unwrap();
+		visual.simulate_click(close.center(), gpui::Modifiers::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("work-dock").is_none());
+		surface.update(visual, |s, cx| s.toggle_workspace_graph(cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("work-dock").unwrap().size.height > gpui::px(38.));
+		assert!(visual.debug_bounds("dock-toggle").is_none());
 	}
 
 	#[gpui::test]

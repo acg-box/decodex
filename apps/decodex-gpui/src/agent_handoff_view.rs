@@ -37,8 +37,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn handoff_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
-		let compact = self.workspace.dock_compact && !self.workspace.graph_expanded;
-		let floating = !compact && !self.work_board.graph;
+		let floating = !self.work_board.graph;
 		let mut header = gpui::div()
 			.h(gpui::px(38.))
 			.flex_none()
@@ -47,70 +46,26 @@ impl AgentSurface {
 			.px_2()
 			.child(if self.work_board.graph {
 				self.dock_status(cx)
-			} else if compact {
-				self.compact_board_status(cx)
 			} else {
-				gpui::div()
-					.flex_1()
-					.text_size(gpui::px(12.))
-					.child(String::new())
-					.into_any_element()
+				gpui::div().flex_1().into_any_element()
 			})
-			.child(self.workspace_action(
-				"dock-toggle".into(),
-				if compact { "Expand Dock" } else { "Collapse Dock" }.into(),
-				|s, cx| {
-					s.workspace.dock_compact = !s.workspace.dock_compact;
-					s.workspace.graph_expanded = false;
-					s.workspace.graph_panel_height = s.workspace.graph_panel_height.max(320.);
-					cx.notify();
-				},
-				cx,
-			))
-			.when(!compact, |header| {
-				header.child(
-					self.workspace_action(
-						"graph-expand".into(),
-						if self.workspace.graph_expanded {
-							"Restore conversation"
-						} else {
-							"Expand work overview"
-						}
-						.into(),
-						|s, cx| {
-							s.workspace.graph_expanded = !s.workspace.graph_expanded;
-							s.workspace.dock_compact = false;
-							cx.notify();
-						},
-						cx,
-					),
-				)
-			});
-		if self.work_board.graph {
-			header = header.child(self.workspace_action(
-				"factory-overview".into(),
-				"All agents".into(),
-				|s, cx| {
-					s.work_board.graph = false;
-					cx.notify();
-				},
-				cx,
-			));
-		}
-		if self.work_board.graph && self.workspace.dock_record.is_some() {
-			header = header.child(self.workspace_action(
-				"graph-home".into(),
-				"All work".into(),
-				|s, cx| {
-					s.workspace.dock_record = s.root_id();
-					s.handoffs.focus = None;
-					s.workspace.graph_pan = (0., 0.);
-					s.workspace.graph_zoom = 1.;
-					cx.notify();
-				},
-				cx,
-			));
-		}
+			.child(
+				self.workspace_action(
+					"graph-expand".into(),
+					if self.workspace.graph_expanded {
+						"Restore conversation"
+					} else {
+						"Expand work overview"
+					}
+					.into(),
+					|s, cx| {
+						s.workspace.graph_expanded = !s.workspace.graph_expanded;
+						cx.notify();
+					},
+					cx,
+				),
+			);
+
 		header = header.child(self.workspace_action(
 			"graph-close".into(),
 			"Close Dock".into(),
@@ -141,9 +96,9 @@ impl AgentSurface {
 				.into_any_element();
 		}
 		panel = panel.child(header);
-		if !compact && !self.work_board.graph {
+		if !self.work_board.graph {
 			panel = panel.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)));
-		} else if !compact {
+		} else {
 			panel = panel
 				.child(
 					gpui::div()
@@ -242,7 +197,6 @@ impl AgentSurface {
 								}
 							});
 							s.workspace.dock_record = scope;
-							s.workspace.dock_compact = false;
 							s.activate_graph_node(&id, cx);
 						},
 						cx,
