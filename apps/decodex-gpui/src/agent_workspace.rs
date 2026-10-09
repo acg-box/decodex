@@ -92,6 +92,9 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 3] {
+		if self.workspace_connecting() {
+			return [(false, false); 3];
+		}
 		[
 			(self.workspace.sidebar_visible, true),
 			(
@@ -103,6 +106,10 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
 		self.workspace.sidebar_peek = false;
 		self.workspace.sidebar_leave = None;
@@ -111,6 +118,10 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_focused_content(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		if self.workspace.graph_expanded || self.workspace.chat_expanded {
 			self.workspace.graph_expanded = false;
 			self.workspace.chat_expanded = false;
@@ -132,6 +143,10 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
 
@@ -665,7 +680,7 @@ impl AgentSurface {
 		list.into_any_element()
 	}
 
-	pub(super) fn workspace_connecting(&self) -> bool {
+	pub(crate) fn workspace_connecting(&self) -> bool {
 		// Before the first snapshot, there is no workspace state to present as empty
 		// or disconnected. Use the same loading surface throughout service startup.
 		if (self.snapshot.is_none()
@@ -1095,7 +1110,6 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.rounded(gpui::px(10.))
 			.bg(gpui::rgba(AGENT_CHAT_OVERLAY));
 
 		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
@@ -2510,6 +2524,25 @@ mod tests {
 				.abs()
 				< gpui::px(1.)
 		);
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.workspace_panels(), [(false, false); 3]);
+			let panels = (
+				s.workspace.sidebar_visible,
+				s.workspace.graph_visible,
+				s.workspace.agent_tree_visible,
+			);
+			s.toggle_workspace_sidebar(cx);
+			s.toggle_workspace_graph(cx);
+			s.toggle_agent_tree(cx);
+			assert_eq!(
+				panels,
+				(
+					s.workspace.sidebar_visible,
+					s.workspace.graph_visible,
+					s.workspace.agent_tree_visible
+				)
+			);
+		});
 		assert!(visual.debug_bounds("composer-send").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 

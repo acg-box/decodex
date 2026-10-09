@@ -22,6 +22,10 @@ const INDENT: f32 = 12.;
 
 impl AgentSurface {
 	pub(crate) fn toggle_agent_tree(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.agent_tree_visible = !self.workspace.agent_tree_visible;
 
 		cx.notify();

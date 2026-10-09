@@ -2815,14 +2815,14 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle Dock · Command-J",
 		(2, _) => "Toggle agent structure · Command-B",
-		(1, false) => "Dock · no work yet",
+		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
 
 	gpui::div()
 		.id(("agent-panel-control", index))
 		.role(Role::Button)
-		.tab_index(0)
+		.when(enabled, |el| el.tab_index(0))
 		.aria_label(label)
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
