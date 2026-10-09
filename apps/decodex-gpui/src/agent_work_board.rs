@@ -136,40 +136,37 @@ fn native_state(status: &str) -> (&'static str, u8, u32) {
 	}
 }
 
+/// Only surface specific actionable states; inactivity alone is not a blocker.
+fn compact_signals<'a>(statuses: impl Iterator<Item = &'a str>) -> Vec<(u32, String)> {
+	let statuses = statuses.collect::<Vec<_>>();
+	[
+		(&["Running", "Starting"][..], "active", crate::ui_theme::BLUE),
+		(&["Needs you", "Approval", "Input needed"][..], "need you", AMBER),
+		(&["Waiting on work"][..], "blocked", AMBER),
+		(&["Review result"][..], "to review", GREEN),
+		(&["Error"][..], "error", crate::ui_theme::ERROR),
+		(&["Unknown", "Status unavailable"][..], "unknown", TEXT_MUTED),
+	]
+	.into_iter()
+	.filter_map(|(states, label, color)| {
+		let count = statuses.iter().filter(|status| states.contains(status)).count();
+		(count > 0).then(|| {
+			let label = if count == 1 && label == "need you" { "needs you" } else { label };
+			(color, format!("{count} {label}"))
+		})
+	})
+	.collect()
+}
+
 impl AgentSurface {
 	pub(super) fn compact_board_status(&self, cx: &mut Context<Self>) -> AnyElement {
 		use gpui::{Role, StatefulInteractiveElement};
 		let rows = self.board_rows();
-		let mut signals = Vec::new();
-		if !self.command_connection_ready() {
-			signals.push((TEXT_MUTED, "Offline".to_owned()));
+		let signals = if self.command_connection_ready() {
+			compact_signals(rows.iter().map(|row| row.status.as_str()))
 		} else {
-			for (states, label, color) in [
-				(&["Running", "Starting"][..], "active", crate::ui_theme::BLUE),
-				(
-					&[
-						"Needs you",
-						"Approval",
-						"Input needed",
-						"Waiting on work",
-						"Waiting",
-						"Review result",
-					][..],
-					"waiting",
-					AMBER,
-				),
-				(&["Error"][..], "error", crate::ui_theme::ERROR),
-				(&["Unknown", "Status unavailable"][..], "unknown", TEXT_MUTED),
-			] {
-				let count = rows.iter().filter(|row| states.contains(&row.status.as_str())).count();
-				if count > 0 {
-					signals.push((color, format!("{count} {label}")));
-				}
-			}
-			if signals.is_empty() && !rows.is_empty() {
-				signals.push((TEXT_MUTED, "Idle".to_owned()));
-			}
-		}
+			vec![(TEXT_MUTED, "Offline".to_owned())]
+		};
 		let title =
 			if rows.is_empty() { "Agent graph".into() } else { format!("{} agents", rows.len()) };
 		let accessible = format!(

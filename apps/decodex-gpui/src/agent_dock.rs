@@ -554,7 +554,7 @@ pub(super) fn progress_state(
 					2,
 				),
 				Status::Wait => (
-					"Waiting",
+					"Not running",
 					"No active execution or recorded prerequisite. The reason is not available."
 						.into(),
 					TEXT_MUTED,
@@ -1051,6 +1051,12 @@ mod tests {
 			let improve = snapshot.work_items.iter_mut().find(|w| w.id == "improve").unwrap();
 			improve.dispatch_state = super::super::AgentDispatchStateDto::Idle;
 			assert_eq!(progress_state(snapshot, &impact).label, "Not running");
+			let mut unexplained_wait = impact.clone();
+			unexplained_wait.status = super::super::AgentWorkStatusDto::Wait;
+			let state = progress_state(snapshot, &unexplained_wait);
+			assert_eq!(state.label, "Not running");
+			assert_eq!(state.color, TEXT_MUTED);
+			assert!(state.reason.contains("reason is not available"));
 			snapshot.pending_events.push(decodex_protocol::AgentPendingEventDto {
 				id: 88,
 				source_event_id: "request".into(),

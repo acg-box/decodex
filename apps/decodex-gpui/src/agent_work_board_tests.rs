@@ -280,3 +280,24 @@ fn dragging_a_node_changes_layout_without_switching_the_conversation(
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 	});
 }
+
+#[test]
+fn compact_status_does_not_turn_inactivity_into_attention() {
+	assert!(
+		compact_signals(
+			["Waiting", "Not running", "Idle", "Marked complete", "Follow-up pending"].into_iter()
+		)
+		.is_empty()
+	);
+	assert_eq!(
+		compact_signals(
+			["Approval", "Input needed", "Waiting on work", "Review result", "Running"].into_iter()
+		),
+		vec![
+			(crate::ui_theme::BLUE, "1 active".into()),
+			(AMBER, "2 need you".into()),
+			(AMBER, "1 blocked".into()),
+			(GREEN, "1 to review".into()),
+		]
+	);
+}
