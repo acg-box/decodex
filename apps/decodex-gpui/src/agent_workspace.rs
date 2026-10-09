@@ -665,6 +665,17 @@ impl AgentSurface {
 		list.into_any_element()
 	}
 
+	pub(super) fn workspace_connecting(&self) -> bool {
+		if self.native_agents.selected.is_some() {
+			matches!(
+				self.native_agents.connection,
+				super::native_agents::NativeConnection::Checking { .. }
+			)
+		} else {
+			self.connection_initializing()
+		}
+	}
+
 	pub(super) fn connection_initializing(&self) -> bool {
 		self.snapshot.as_ref().is_some_and(|s| s.connection_initializing)
 	}
@@ -1043,6 +1054,18 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
+		if self.workspace_connecting() {
+			return gpui::div()
+				.debug_selector(|| "workspace-connecting".into())
+				.size_full()
+				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+				.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+				.flex()
+				.items_center()
+				.justify_center()
+				.child(crate::ui_loading::loading("Connecting to Codex…"))
+				.into_any_element();
+		}
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 
@@ -2458,14 +2481,19 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
-		let composer = visual.debug_bounds("agent-composer").unwrap();
+		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
 		let loading = visual.debug_bounds("loading-feedback-Connecting to Codex…").unwrap();
-		assert!((composer.center().x - loading.center().x).abs() < gpui::px(1.));
-		assert!((composer.center().y - loading.center().y).abs() < gpui::px(1.));
+		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
+		assert!(
+			(workspace.center().y + gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE / 2.)
+				- loading.center().y)
+				.abs()
+				< gpui::px(1.)
+		);
 		assert!(visual.debug_bounds("composer-send").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 
-		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(visual.debug_bounds("agent-composer").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 		surface.update(visual, |s, cx| {
@@ -2482,6 +2510,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 	}
 

@@ -1079,7 +1079,7 @@ mod tests {
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
-		// Connection feedback in the composer takes precedence over history loading.
+		// Workspace connection feedback takes precedence over history loading.
 		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().connection_initializing = true;
 			cx.notify();

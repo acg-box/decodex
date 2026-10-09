@@ -319,39 +319,12 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_connecting(&self) -> bool {
-		if self.native_agents.selected.is_some() {
-			matches!(
-				self.native_agents.connection,
-				super::native_agents::NativeConnection::Checking { .. }
-			)
-		} else {
-			self.connection_initializing()
-		}
-	}
-
 	pub(super) fn render_composer_capsule(
 		&self,
 		native: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		if self.composer_connecting() {
-			return gpui::div()
-				.id("agent-composer")
-				.debug_selector(|| "agent-composer".into())
-				.occlude()
-				.w_full()
-				.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
-				.min_h(gpui::px(81.))
-				.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-				.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
-				.flex()
-				.items_center()
-				.justify_center()
-				.child(crate::ui_loading::loading("Connecting to Codex…"));
-		}
-
 		let editor = gpui::div()
 			.id("composer-editor-area")
 			.debug_selector(|| "composer-editor-area".into())
@@ -459,7 +432,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		if self.composer_connecting() {
+		if self.workspace_connecting() {
 			return gpui::div();
 		}
 		let menu = self.composer_menu.or(self.composer_menu_content);
