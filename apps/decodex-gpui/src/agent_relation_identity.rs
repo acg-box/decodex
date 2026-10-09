@@ -42,7 +42,9 @@ pub(super) fn labels(keys: impl Iterator<Item = String>) -> BTreeMap<String, Str
 		&& let Some(path) = path()
 	{
 		let save = || -> std::io::Result<()> {
-			std::fs::create_dir_all(path.parent().unwrap())?;
+			std::fs::create_dir_all(
+				path.parent().expect("agent labels path has an application directory"),
+			)?;
 			let staging = path.with_extension("tmp");
 			std::fs::write(&staging, serde_json::to_vec(&*ids)?)?;
 			std::fs::rename(staging, &path)

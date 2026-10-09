@@ -1,5 +1,8 @@
 //! A selected connection explains one fact and links to its source.
-use super::*;
+use super::{
+	AgentSurface, AnyElement, Context, Edge, GREEN, InteractiveElement, IntoElement, Kind,
+	ParentElement, Role, StatefulInteractiveElement, Styled, TEXT_MUTED,
+};
 
 impl AgentSurface {
 	pub(in super::super) fn relation_details(
@@ -82,6 +85,62 @@ impl AgentSurface {
 			};
 			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(message));
 		}
+		body = self.relation_detail_actions(body, edge, &graph, cx);
+
+		gpui::div()
+			.w(gpui::px(300.))
+			.h_full()
+			.min_h_0()
+			.flex_none()
+			.flex()
+			.flex_col()
+			.border_l_1()
+			.border_color(gpui::rgba(0xffffff0c))
+			.child(
+				gpui::div()
+					.flex()
+					.flex_none()
+					.items_center()
+					.p_2()
+					.child(gpui::div().flex_1().child("Connection"))
+					.child(self.workspace_action(
+						"relation-close".into(),
+						"×".into(),
+						|s, cx| {
+							s.work_board.view.edge = None;
+							cx.notify();
+						},
+						cx,
+					)),
+			)
+			.child(
+				gpui::div()
+					.id("relation-inspector-scroll")
+					.h_0()
+					.flex_1()
+					.min_h_0()
+					.overflow_y_scroll()
+					.child(body),
+			)
+			.into_any_element()
+	}
+
+	fn relation_detail_actions(
+		&self,
+		mut body: gpui::Div,
+		edge: &Edge,
+		graph: &super::Graph,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let related = graph.edges.iter().filter(|other| edge.same_pair(other));
+		let title = |key: &str| {
+			graph
+				.nodes
+				.iter()
+				.find(|n| n.key == key)
+				.map(|n| n.title.clone())
+				.unwrap_or_else(|| key.into())
+		};
 		if let Some((work, thread)) = edge.source.clone() {
 			body = body.child(self.workspace_action(
 				"relation-source".into(),
@@ -157,41 +216,6 @@ impl AgentSurface {
 				));
 			}
 		}
-		gpui::div()
-			.w(gpui::px(300.))
-			.h_full()
-			.min_h_0()
-			.flex_none()
-			.flex()
-			.flex_col()
-			.border_l_1()
-			.border_color(gpui::rgba(0xffffff0c))
-			.child(
-				gpui::div()
-					.flex()
-					.flex_none()
-					.items_center()
-					.p_2()
-					.child(gpui::div().flex_1().child("Connection"))
-					.child(self.workspace_action(
-						"relation-close".into(),
-						"×".into(),
-						|s, cx| {
-							s.work_board.view.edge = None;
-							cx.notify();
-						},
-						cx,
-					)),
-			)
-			.child(
-				gpui::div()
-					.id("relation-inspector-scroll")
-					.h_0()
-					.flex_1()
-					.min_h_0()
-					.overflow_y_scroll()
-					.child(body),
-			)
-			.into_any_element()
+		body
 	}
 }

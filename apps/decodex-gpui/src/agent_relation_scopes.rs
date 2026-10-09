@@ -1,5 +1,5 @@
 //! Workspace membership is visible on the canvas, without hiding cross-workspace edges.
-use super::*;
+use super::{BTreeMap, GRID, Graph, Kind, snap};
 
 pub(super) struct Scope {
 	pub id: Option<String>,

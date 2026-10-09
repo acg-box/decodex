@@ -551,7 +551,9 @@ pub(super) fn progress_state(
 					"Scheduled check",
 					format!(
 						"Next check · {}",
-						super::next_check_text(work.next_check_at_micros.unwrap())
+						super::next_check_text(
+							work.next_check_at_micros.expect("scheduled wait has a check time")
+						)
 					),
 					TEXT_MUTED,
 					2,

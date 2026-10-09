@@ -1,5 +1,8 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
-use super::*;
+use super::{
+	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Brief, Context, FluentBuilder, GREEN,
+	InteractiveElement, IntoElement, ParentElement, Row, Styled, TEXT_MUTED,
+};
 use crate::ui_theme::TEXT;
 use gpui::AppContext;
 #[path = "agent_relation_details.rs"] mod details;
@@ -228,236 +231,10 @@ impl AgentSurface {
 		}
 		let thread_keys: BTreeMap<_, _> =
 			rows.iter().filter_map(|r| Some((r.thread.clone()?, r.key.clone()))).collect();
-		for work in &snapshot.work_items {
-			if let Some(parent) = &work.parent_goal_id
-				&& included.contains(parent)
-				&& included.contains(&work.id)
-			{
-				graph.edges.push(Edge {
-					id: format!("assigned:{}", work.id),
-					from: parent.clone(),
-					to: work.id.clone(),
-					kind: Kind::Assigned,
-					color: Kind::Assigned.color(),
-					label: "Delegated".into(),
-					excerpt: None,
-					detail: format!(
-						"{}\n\nRecorded parent task: {}\nState: {}",
-						self.work_label(work),
-						parent,
-						super::super::dock::progress_state(snapshot, work).label
-					),
-					link: None,
-					source: work.codex_thread_id.clone().map(|t| (work.id.clone(), t)),
-				});
-			}
-		}
-		for agents in self.native_agents.lists.values() {
-			for agent in agents {
-				let (Some(from), Some(to)) =
-					(thread_keys.get(&agent.parent_thread_id), thread_keys.get(&agent.thread_id))
-				else {
-					continue;
-				};
-				if !included.contains(from) || !included.contains(to) || from == to {
-					continue;
-				}
-				let id = format!("spawn:{}", agent.thread_id);
-				if graph.edges.iter().any(|e| e.id == id) {
-					continue;
-				}
-				graph.edges.push(Edge {
-					id,
-					from: from.clone(),
-					to: to.clone(),
-					kind: Kind::Spawned,
-					color: Kind::Spawned.color(),
-					label: "Started agent".into(),
-					excerpt: (!agent.task.is_empty()).then(|| agent.task.clone()),
-					detail: format!(
-						"{}\n\nNative child state: {}\n\n{}",
-						agent.title,
-						agent.status,
-						if agent.task.is_empty() {
-							"No initial task text was returned."
-						} else {
-							&agent.task
-						}
-					),
-					source: rows.iter().find(|row| &row.key == from).and_then(|row| {
-						row.thread.as_ref().map(|thread| (row.work.clone(), thread.clone()))
-					}),
-					link: None,
-				});
-			}
-		}
-		for edge in &snapshot.dependencies {
-			if included.contains(&edge.depends_on_id) && included.contains(&edge.work_item_id) {
-				let blocked =
-					snapshot.work_items.iter().find(|w| w.id == edge.work_item_id).is_some_and(
-						|w| {
-							super::super::graph::blockers(snapshot, w)
-								.iter()
-								.any(|b| b.id == edge.depends_on_id)
-						},
-					);
-				graph.edges.push(Edge {
-					id: format!("dependency:{}:{}", edge.depends_on_id, edge.work_item_id),
-					from: edge.depends_on_id.clone(),
-					to: edge.work_item_id.clone(),
-					kind: Kind::Dependency,
-					excerpt: None,
-					color: if blocked { AMBER } else { TEXT_MUTED },
-					label: if blocked { "Waiting" } else { "Prerequisite met" }.into(),
-					detail: if blocked {
-						"This recorded prerequisite has not been resolved."
-					} else {
-						"This prerequisite is marked resolved. That does not prove the downstream task ran."
-					}
-					.into(),
-					source: None,
-					link: None,
-				});
-			}
-		}
-		for reference in &snapshot.context_references {
-			if !included.contains(&reference.recipient_work_id) {
-				continue;
-			}
-			let current = snapshot.work_items.iter().find(|w| w.id == reference.source_work_id);
-			let key = if current
-				.is_some_and(|w| w.codex_thread_id.as_ref() == Some(&reference.source_thread_id))
-				&& included.contains(&reference.source_work_id)
-			{
-				reference.source_work_id.clone()
-			} else {
-				format!("context:{}:{}", reference.source_work_id, reference.source_thread_id)
-			};
-			if !graph.nodes.iter().any(|n| n.key == key) {
-				graph.nodes.push(Node {
-					key: key.clone(),
-					title: current
-						.map(|w| self.work_label(w))
-						.unwrap_or_else(|| "Referenced conversation".into()),
-					status: "Referenced thread".into(),
-					color: Kind::Context.color(),
-					row: None,
-					x: 0.,
-					y: 0.,
-				});
-			}
-			graph.edges.push(Edge { id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Selected context reference\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nDelivery makes the reference available; it does not prove it was read. No content version was recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
-		}
-		// Only typed native calls establish communication; never search prose for thread IDs.
-		for row in &rows {
-			let Some(brief) =
-				self.work_board.briefs.get(&row.key).filter(|b| b.stamp == self.brief_stamp(row))
-			else {
-				continue;
-			};
-			let mut latest = BTreeMap::new();
-			for (item, call) in &brief.relations {
-				for receiver in &call.receiver_thread_ids {
-					latest.insert(
-						(call.sender_thread_id.clone(), receiver.clone(), call.tool.clone()),
-						(item, call),
-					);
-				}
-			}
-			for ((sender, receiver, tool), (item, call)) in latest {
-				let (Some(from), Some(to)) = (thread_keys.get(&sender), thread_keys.get(&receiver))
-				else {
-					continue;
-				};
-				if !included.contains(from) || !included.contains(to) {
-					continue;
-				}
-				let kind = match tool.as_str() {
-					"spawnAgent" | "subAgentActivity/started" => Kind::Spawned,
-					"subAgentActivity/interacted" => Kind::Message,
-					"subAgentActivity/completed" => Kind::Returned,
-					"wait" => Kind::Wait,
-					"sendInput" | "sendMessage" | "followupTask" => Kind::Message,
-					_ => Kind::Control,
-				};
-				let task_excerpt = graph
-					.edges
-					.iter()
-					.find(|e| e.kind == Kind::Spawned && e.from == *from && e.to == *to)
-					.and_then(|e| e.excerpt.clone());
-				if kind == Kind::Spawned {
-					graph
-						.edges
-						.retain(|e| !(e.kind == Kind::Spawned && e.from == *from && e.to == *to));
-				}
-				let native_activity = tool.starts_with("subAgentActivity/");
-				let label = match tool.as_str() {
-					"subAgentActivity/started" => "Started agent".into(),
-					"subAgentActivity/interacted" => "Interacted".into(),
-					"subAgentActivity/completed" => "Finished".into(),
-					"subAgentActivity/interrupted" => "Interrupted".into(),
-					"spawnAgent" => "Started agent".into(),
-					"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
-					"wait" => "Waited".into(),
-					_ => format!("{} · {}", tool, call.status),
-				};
-				let detail = if native_activity {
-					format!(
-						"Native activity: {}\nSource item: {item}\n\nThe provider recorded this event but did not include the message body. This is historical evidence, not the agent's current state.",
-						call.status
-					)
-				} else {
-					format!(
-						"Native tool: {tool}\nCall state: {}\nSource item: {item}\n\nPrompt excerpt:\n{}\n\nThis is the last observed tool call, not a claim about the recipient's current execution.",
-						call.status, call.prompt
-					)
-				};
-				let (from, to) =
-					if native_activity && kind == Kind::Returned { (to, from) } else { (from, to) };
-				graph.edges.push(Edge {
-					id: format!("call:{sender}:{item}:{receiver}"),
-					from: from.clone(),
-					to: to.clone(),
-					kind,
-					color: kind.color(),
-					label,
-					excerpt: if !call.prompt.is_empty() {
-						Some(call.prompt.clone())
-					} else if kind == Kind::Spawned {
-						task_excerpt
-					} else {
-						None
-					},
-					detail,
-					link: None,
-					source: Some((row.work.clone(), sender.clone())),
-				});
-				if let Some(result) =
-					call.results.iter().find(|r| r.thread_id == receiver && !r.message.is_empty())
-				{
-					graph.edges.push(Edge {
-						id: format!("reply:{sender}:{item}:{receiver}"),
-						from: to.clone(),
-						to: from.clone(),
-						kind: Kind::Returned,
-						excerpt: Some(result.message.clone()),
-						color: Kind::Returned.color(),
-						label: if result.status == "errored" {
-							"Error observed"
-						} else {
-							"Result available"
-						}
-						.into(),
-						detail: format!(
-							"Observed by {tool}\nSource item: {item}\n\nReply excerpt:\n{}\n\nThis target-state snapshot can describe an earlier turn; it does not prove a reply to this call.",
-							result.message
-						),
-						link: None,
-					source: Some((row.work.clone(), sender.clone())),
-					});
-				}
-			}
-		}
+		self.add_assigned_relations(&mut graph, &included);
+		self.add_native_ownership(&mut graph, &rows, &included, &thread_keys);
+		self.add_context_relations(&mut graph, &included);
+		self.add_native_calls(&mut graph, &rows, &included, &thread_keys);
 
 		let spawned: BTreeSet<_> = graph
 			.edges
@@ -471,80 +248,7 @@ impl AgentSurface {
 
 		self.add_relation_resources(&rows, &included, &mut graph);
 
-		// A stable ownership layout seeds positions; dependency and context edges may form cycles.
-		let mut placed = BTreeSet::new();
-		let mut cursor = 0.;
-		fn place(
-			key: &str,
-			depth: usize,
-			g: &mut Graph,
-			placed: &mut BTreeSet<String>,
-			cursor: &mut f32,
-		) -> f32 {
-			if !placed.insert(key.into()) {
-				return *cursor;
-			}
-			let mut children: Vec<_> = g
-				.edges
-				.iter()
-				.filter(|e| e.from == key && matches!(e.kind, Kind::Assigned | Kind::Spawned))
-				.map(|e| e.to.clone())
-				.collect();
-			children.sort();
-			children.dedup();
-			let y = if children.is_empty() {
-				let y = *cursor;
-				*cursor += 96.;
-				y
-			} else {
-				let ys: Vec<_> = children
-					.iter()
-					.filter(|c| !placed.contains(*c))
-					.cloned()
-					.collect::<Vec<_>>()
-					.iter()
-					.map(|c| place(c, depth + 1, g, placed, cursor))
-					.collect();
-				if ys.is_empty() { *cursor } else { (ys[0] + ys[ys.len() - 1]) / 2. }
-			};
-			if let Some(n) = g.nodes.iter_mut().find(|n| n.key == key) {
-				n.x = 32. + depth as f32 * 352.;
-				n.y = 32. + y;
-			}
-			y
-		}
-		let roots: Vec<_> = graph
-			.nodes
-			.iter()
-			.filter(|n| {
-				!n.key.starts_with("resource:")
-					&& !graph
-						.edges
-						.iter()
-						.any(|e| e.to == n.key && matches!(e.kind, Kind::Assigned | Kind::Spawned))
-			})
-			.map(|n| n.key.clone())
-			.collect();
-		for root in roots {
-			place(&root, 0, &mut graph, &mut placed, &mut cursor);
-		}
-		for key in graph.nodes.iter().map(|n| n.key.clone()).collect::<Vec<_>>() {
-			if !key.starts_with("resource:") && !placed.contains(&key) {
-				place(&key, 0, &mut graph, &mut placed, &mut cursor);
-			}
-		}
-		graph.pack_workspaces();
-		resources::place_resources(&mut graph);
-		for node in &mut graph.nodes {
-			node.x = snap(node.x);
-			node.y = snap(node.y);
-			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
-				node.x = x;
-				node.y = y;
-			}
-			graph.width = graph.width.max(node.x + 260.);
-			graph.height = graph.height.max(node.y + 116.);
-		}
+		self.place_relation_nodes(&mut graph);
 		graph.scope_bounds(&snapshot.workspaces);
 		graph.width += 180.;
 		graph
@@ -563,14 +267,6 @@ impl AgentSurface {
 
 	pub(super) fn relation_controls(&self, cx: &mut Context<Self>) -> AnyElement {
 		let scale = self.relation_scale(&self.relation_graph());
-		let focused = self.work_board.focus.is_some() || self.work_board.view.edge.is_some();
-		let label = self
-			.work_board
-			.focus
-			.as_ref()
-			.and_then(|key| self.board_rows().into_iter().find(|r| &r.key == key))
-			.map(|r| compact_name(if r.native { &r.owner } else { &r.title }))
-			.unwrap_or_else(|| if focused { "Connection".into() } else { String::new() });
 		let cluster = || {
 			crate::ui_theme::floating_group()
 				.h(gpui::px(28.))
@@ -593,35 +289,7 @@ impl AgentSurface {
 			.gap_2()
 			.text_size(gpui::px(11.))
 			.child(gpui::div().flex_1())
-			.child(
-				gpui::div()
-					.max_w(gpui::px(120.))
-					.min_w_0()
-					.flex()
-					.items_center()
-					.gap_1()
-					.child(
-						gpui::div()
-							.min_w_0()
-							.text_ellipsis()
-							.whitespace_nowrap()
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(label),
-					)
-					.when(focused, |d| {
-						d.child(self.graph_control(
-							"clear",
-							"×",
-							"Clear selection",
-							|s, cx| {
-								s.work_board.focus = None;
-								s.work_board.view.edge = None;
-								cx.notify();
-							},
-							cx,
-						))
-					}),
-			)
+			.child(self.relation_selection_label(cx))
 			.child(
 				cluster()
 					.child(self.graph_control(
@@ -797,6 +465,407 @@ impl AgentSurface {
 					cx.notify();
 				}),
 			);
+		canvas = self.relation_scope_layer(canvas, graph, scale, pan);
+		canvas = self.relation_connection_layer(canvas, graph, cx);
+		canvas = self.relation_node_layer(canvas, graph, cx);
+
+		canvas
+			.child(self.relation_controls(cx))
+			.children(self.picked_metric_card(graph, cx))
+			.child(
+				gpui::div()
+					.absolute()
+					.bottom(gpui::px(12.))
+					.left(gpui::px(12.))
+					.right(gpui::px(12.))
+					.flex()
+					.justify_end()
+					.items_end()
+					.gap(gpui::px(8.))
+					.when(!self.work_board.view.legend_hidden, |d| d.child(self.relation_legend())),
+			)
+			.into_any_element()
+	}
+
+	fn add_assigned_relations(&self, graph: &mut Graph, included: &BTreeSet<String>) {
+		let Some(snapshot) = &self.snapshot else { return };
+		for work in &snapshot.work_items {
+			if let Some(parent) = &work.parent_goal_id
+				&& included.contains(parent)
+				&& included.contains(&work.id)
+			{
+				graph.edges.push(Edge {
+					id: format!("assigned:{}", work.id),
+					from: parent.clone(),
+					to: work.id.clone(),
+					kind: Kind::Assigned,
+					color: Kind::Assigned.color(),
+					label: "Delegated".into(),
+					excerpt: None,
+					detail: format!(
+						"{}\n\nRecorded parent task: {}\nState: {}",
+						self.work_label(work),
+						parent,
+						super::super::dock::progress_state(snapshot, work).label
+					),
+					link: None,
+					source: work.codex_thread_id.clone().map(|t| (work.id.clone(), t)),
+				});
+			}
+		}
+	}
+
+	fn add_native_ownership(
+		&self,
+		graph: &mut Graph,
+		rows: &[Row],
+		included: &BTreeSet<String>,
+		thread_keys: &BTreeMap<String, String>,
+	) {
+		for agents in self.native_agents.lists.values() {
+			for agent in agents {
+				let (Some(from), Some(to)) =
+					(thread_keys.get(&agent.parent_thread_id), thread_keys.get(&agent.thread_id))
+				else {
+					continue;
+				};
+				if !included.contains(from) || !included.contains(to) || from == to {
+					continue;
+				}
+				let id = format!("spawn:{}", agent.thread_id);
+				if graph.edges.iter().any(|e| e.id == id) {
+					continue;
+				}
+				graph.edges.push(Edge {
+					id,
+					from: from.clone(),
+					to: to.clone(),
+					kind: Kind::Spawned,
+					color: Kind::Spawned.color(),
+					label: "Started agent".into(),
+					excerpt: (!agent.task.is_empty()).then(|| agent.task.clone()),
+					detail: format!(
+						"{}\n\nNative child state: {}\n\n{}",
+						agent.title,
+						agent.status,
+						if agent.task.is_empty() {
+							"No initial task text was returned."
+						} else {
+							&agent.task
+						}
+					),
+					source: rows.iter().find(|row| &row.key == from).and_then(|row| {
+						row.thread.as_ref().map(|thread| (row.work.clone(), thread.clone()))
+					}),
+					link: None,
+				});
+			}
+		}
+	}
+
+	fn add_context_relations(&self, graph: &mut Graph, included: &BTreeSet<String>) {
+		let Some(snapshot) = &self.snapshot else { return };
+		for edge in &snapshot.dependencies {
+			if included.contains(&edge.depends_on_id) && included.contains(&edge.work_item_id) {
+				let blocked =
+					snapshot.work_items.iter().find(|w| w.id == edge.work_item_id).is_some_and(
+						|w| {
+							super::super::graph::blockers(snapshot, w)
+								.iter()
+								.any(|b| b.id == edge.depends_on_id)
+						},
+					);
+				graph.edges.push(Edge {
+					id: format!("dependency:{}:{}", edge.depends_on_id, edge.work_item_id),
+					from: edge.depends_on_id.clone(),
+					to: edge.work_item_id.clone(),
+					kind: Kind::Dependency,
+					excerpt: None,
+					color: if blocked { AMBER } else { TEXT_MUTED },
+					label: if blocked { "Waiting" } else { "Prerequisite met" }.into(),
+					detail: if blocked {
+						"This recorded prerequisite has not been resolved."
+					} else {
+						"This prerequisite is marked resolved. That does not prove the downstream task ran."
+					}
+					.into(),
+					source: None,
+					link: None,
+				});
+			}
+		}
+		for reference in &snapshot.context_references {
+			if !included.contains(&reference.recipient_work_id) {
+				continue;
+			}
+			let current = snapshot.work_items.iter().find(|w| w.id == reference.source_work_id);
+			let key = if current
+				.is_some_and(|w| w.codex_thread_id.as_ref() == Some(&reference.source_thread_id))
+				&& included.contains(&reference.source_work_id)
+			{
+				reference.source_work_id.clone()
+			} else {
+				format!("context:{}:{}", reference.source_work_id, reference.source_thread_id)
+			};
+			if !graph.nodes.iter().any(|n| n.key == key) {
+				graph.nodes.push(Node {
+					key: key.clone(),
+					title: current
+						.map(|w| self.work_label(w))
+						.unwrap_or_else(|| "Referenced conversation".into()),
+					status: "Referenced thread".into(),
+					color: Kind::Context.color(),
+					row: None,
+					x: 0.,
+					y: 0.,
+				});
+			}
+			graph.edges.push(Edge { id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Selected context reference\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nDelivery makes the reference available; it does not prove it was read. No content version was recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
+		}
+	}
+
+	fn add_native_calls(
+		&self,
+		graph: &mut Graph,
+		rows: &[Row],
+		included: &BTreeSet<String>,
+		thread_keys: &BTreeMap<String, String>,
+	) {
+		// Only typed native calls establish communication; never search prose for thread IDs.
+		for row in rows {
+			let Some(brief) =
+				self.work_board.briefs.get(&row.key).filter(|b| b.stamp == self.brief_stamp(row))
+			else {
+				continue;
+			};
+			let mut latest = BTreeMap::new();
+			for (item, call) in &brief.relations {
+				for receiver in &call.receiver_thread_ids {
+					latest.insert(
+						(call.sender_thread_id.clone(), receiver.clone(), call.tool.clone()),
+						(item, call),
+					);
+				}
+			}
+			for ((sender, receiver, tool), (item, call)) in latest {
+				let (Some(from), Some(to)) = (thread_keys.get(&sender), thread_keys.get(&receiver))
+				else {
+					continue;
+				};
+				if !included.contains(from) || !included.contains(to) {
+					continue;
+				}
+				let kind = match tool.as_str() {
+					"spawnAgent" | "subAgentActivity/started" => Kind::Spawned,
+					"subAgentActivity/interacted" => Kind::Message,
+					"subAgentActivity/completed" => Kind::Returned,
+					"wait" => Kind::Wait,
+					"sendInput" | "sendMessage" | "followupTask" => Kind::Message,
+					_ => Kind::Control,
+				};
+				let task_excerpt = graph
+					.edges
+					.iter()
+					.find(|e| e.kind == Kind::Spawned && e.from == *from && e.to == *to)
+					.and_then(|e| e.excerpt.clone());
+				if kind == Kind::Spawned {
+					graph
+						.edges
+						.retain(|e| !(e.kind == Kind::Spawned && e.from == *from && e.to == *to));
+				}
+				let native_activity = tool.starts_with("subAgentActivity/");
+				let label = match tool.as_str() {
+					"subAgentActivity/started" => "Started agent".into(),
+					"subAgentActivity/interacted" => "Interacted".into(),
+					"subAgentActivity/completed" => "Finished".into(),
+					"subAgentActivity/interrupted" => "Interrupted".into(),
+					"spawnAgent" => "Started agent".into(),
+					"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
+					"wait" => "Waited".into(),
+					_ => format!("{} · {}", tool, call.status),
+				};
+				let detail = if native_activity {
+					format!(
+						"Native activity: {}\nSource item: {item}\n\nThe provider recorded this event but did not include the message body. This is historical evidence, not the agent's current state.",
+						call.status
+					)
+				} else {
+					format!(
+						"Native tool: {tool}\nCall state: {}\nSource item: {item}\n\nPrompt excerpt:\n{}\n\nThis is the last observed tool call, not a claim about the recipient's current execution.",
+						call.status, call.prompt
+					)
+				};
+				let (from, to) =
+					if native_activity && kind == Kind::Returned { (to, from) } else { (from, to) };
+				graph.edges.push(Edge {
+					id: format!("call:{sender}:{item}:{receiver}"),
+					from: from.clone(),
+					to: to.clone(),
+					kind,
+					color: kind.color(),
+					label,
+					excerpt: if !call.prompt.is_empty() {
+						Some(call.prompt.clone())
+					} else if kind == Kind::Spawned {
+						task_excerpt
+					} else {
+						None
+					},
+					detail,
+					link: None,
+					source: Some((row.work.clone(), sender.clone())),
+				});
+				if let Some(result) =
+					call.results.iter().find(|r| r.thread_id == receiver && !r.message.is_empty())
+				{
+					graph.edges.push(Edge {
+						id: format!("reply:{sender}:{item}:{receiver}"),
+						from: to.clone(),
+						to: from.clone(),
+						kind: Kind::Returned,
+						excerpt: Some(result.message.clone()),
+						color: Kind::Returned.color(),
+						label: if result.status == "errored" {
+							"Error observed"
+						} else {
+							"Result available"
+						}
+						.into(),
+						detail: format!(
+							"Observed by {tool}\nSource item: {item}\n\nReply excerpt:\n{}\n\nThis target-state snapshot can describe an earlier turn; it does not prove a reply to this call.",
+							result.message
+						),
+						link: None,
+					source: Some((row.work.clone(), sender.clone())),
+					});
+				}
+			}
+		}
+	}
+
+	fn place_relation_nodes(&self, graph: &mut Graph) {
+		// A stable ownership layout seeds positions; dependency and context edges may form cycles.
+		let mut placed = BTreeSet::new();
+		let mut cursor = 0.;
+		fn place(
+			key: &str,
+			depth: usize,
+			g: &mut Graph,
+			placed: &mut BTreeSet<String>,
+			cursor: &mut f32,
+		) -> f32 {
+			if !placed.insert(key.into()) {
+				return *cursor;
+			}
+			let mut children: Vec<_> = g
+				.edges
+				.iter()
+				.filter(|e| e.from == key && matches!(e.kind, Kind::Assigned | Kind::Spawned))
+				.map(|e| e.to.clone())
+				.collect();
+			children.sort();
+			children.dedup();
+			let y = if children.is_empty() {
+				let y = *cursor;
+				*cursor += 96.;
+				y
+			} else {
+				let ys: Vec<_> = children
+					.iter()
+					.filter(|c| !placed.contains(*c))
+					.cloned()
+					.collect::<Vec<_>>()
+					.iter()
+					.map(|c| place(c, depth + 1, g, placed, cursor))
+					.collect();
+				if ys.is_empty() { *cursor } else { (ys[0] + ys[ys.len() - 1]) / 2. }
+			};
+			if let Some(n) = g.nodes.iter_mut().find(|n| n.key == key) {
+				n.x = 32. + depth as f32 * 352.;
+				n.y = 32. + y;
+			}
+			y
+		}
+		let roots: Vec<_> = graph
+			.nodes
+			.iter()
+			.filter(|n| {
+				!n.key.starts_with("resource:")
+					&& !graph
+						.edges
+						.iter()
+						.any(|e| e.to == n.key && matches!(e.kind, Kind::Assigned | Kind::Spawned))
+			})
+			.map(|n| n.key.clone())
+			.collect();
+		for root in roots {
+			place(&root, 0, graph, &mut placed, &mut cursor);
+		}
+		for key in graph.nodes.iter().map(|n| n.key.clone()).collect::<Vec<_>>() {
+			if !key.starts_with("resource:") && !placed.contains(&key) {
+				place(&key, 0, graph, &mut placed, &mut cursor);
+			}
+		}
+		graph.pack_workspaces();
+		resources::place_resources(graph);
+		for node in &mut graph.nodes {
+			node.x = snap(node.x);
+			node.y = snap(node.y);
+			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
+				node.x = x;
+				node.y = y;
+			}
+			graph.width = graph.width.max(node.x + 260.);
+			graph.height = graph.height.max(node.y + 116.);
+		}
+	}
+
+	fn relation_selection_label(&self, cx: &mut Context<Self>) -> AnyElement {
+		let focused = self.work_board.focus.is_some() || self.work_board.view.edge.is_some();
+		let label = self
+			.work_board
+			.focus
+			.as_ref()
+			.and_then(|key| self.board_rows().into_iter().find(|r| &r.key == key))
+			.map(|r| compact_name(if r.native { &r.owner } else { &r.title }))
+			.unwrap_or_else(|| if focused { "Connection".into() } else { String::new() });
+		gpui::div()
+			.max_w(gpui::px(120.))
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap_1()
+			.child(
+				gpui::div()
+					.min_w_0()
+					.text_ellipsis()
+					.whitespace_nowrap()
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.child(label),
+			)
+			.when(focused, |d| {
+				d.child(self.graph_control(
+					"clear",
+					"×",
+					"Clear selection",
+					|s, cx| {
+						s.work_board.focus = None;
+						s.work_board.view.edge = None;
+						cx.notify();
+					},
+					cx,
+				))
+			})
+			.into_any_element()
+	}
+
+	fn relation_scope_layer(
+		&self,
+		mut canvas: gpui::Stateful<gpui::Div>,
+		graph: &Graph,
+		scale: f32,
+		pan: (f32, f32),
+	) -> gpui::Stateful<gpui::Div> {
 		for scope in &graph.scopes {
 			let [left, top, right, bottom] = scope.bounds;
 			canvas = canvas.child(
@@ -842,6 +911,18 @@ impl AgentSurface {
 					),
 			);
 		}
+
+		canvas
+	}
+
+	fn relation_connection_layer(
+		&self,
+		mut canvas: gpui::Stateful<gpui::Div>,
+		graph: &Graph,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
+		let scale = self.relation_scale(graph);
+		let pan = self.work_board.view.pan;
 		let connections = graph.connections();
 		let lines: Vec<_> = connections
 			.iter()
@@ -853,119 +934,7 @@ impl AgentSurface {
 				))
 			})
 			.collect();
-		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
-		let reduce_motion = crate::ui_motion::reduced();
-		let connected = self.command_connection_ready();
-		let paint_lines = lines.clone();
-		let selected_edge = self.work_board.view.edge.clone();
-		let focused_agent = self.work_board.focus.clone();
-		let entity = cx.entity().downgrade();
-		let node_count = graph.nodes.len();
-		canvas = canvas.child(
-			gpui::canvas(
-				move |bounds, _, cx| {
-					let _ = entity.update(cx, |s, cx| {
-						let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-						s.work_board.view.origin =
-							(f32::from(bounds.origin.x), f32::from(bounds.origin.y));
-						if s.work_board.view.viewport != size
-							|| s.work_board.view.node_count != node_count
-						{
-							s.work_board.view.node_count = node_count;
-							s.work_board.view.viewport = size;
-							if !s.work_board.view.camera_fixed {
-								s.fit_relations();
-							}
-							cx.notify();
-						}
-					});
-				},
-				move |bounds, _, window, cx| {
-					let mut animate = false;
-					let spacing = grid_spacing(scale);
-					let mut x = pan.0.rem_euclid(spacing);
-					while x < f32::from(bounds.size.width) {
-						let mut y = pan.1.rem_euclid(spacing);
-						while y < f32::from(bounds.size.height) {
-							window.paint_quad(gpui::fill(
-								gpui::Bounds::new(
-									bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
-									gpui::size(gpui::px(1.), gpui::px(1.)),
-								),
-								gpui::rgba(0xffffff28),
-							));
-							y += spacing;
-						}
-						x += spacing;
-					}
-					for (edge, a, b) in &paint_lines {
-						let mut route = route(a, b, edge.kind);
-						let fact = selected_edge
-							.as_ref()
-							.filter(|picked| {
-								!edge.executing(b, connected) && picked.same_pair(edge)
-							})
-							.unwrap_or(edge);
-						if fact.from != edge.from {
-							route = route.reversed();
-						}
-						let selected = focused_agent
-							.as_ref()
-							.is_some_and(|key| &edge.from == key || &edge.to == key)
-							|| selected_edge.as_ref().is_some_and(|picked| {
-								picked.same_pair(edge)
-									|| (picked.kind == Kind::Resource
-										&& edge.kind == Kind::Resource
-										&& picked.to == edge.to)
-							});
-						let faded =
-							(selected_edge.is_some() || focused_agent.is_some()) && !selected;
-						let active = edge.executing(b, connected);
-						let show_flow = !faded && active;
-						let color = if active {
-							crate::ui_theme::BLUE
-						} else if selected {
-							fact.color
-						} else {
-							edge.color
-						};
-
-						let path = route.stroke(
-							fact.kind,
-							bounds.origin,
-							scale,
-							pan,
-							if selected { 1.6 } else { 1.2 },
-						);
-						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								gpui::rgba(
-									(color << 8)
-										| if faded {
-											0x30
-										} else if selected {
-											0xef
-										} else {
-											0x90
-										},
-								),
-							);
-						}
-						if show_flow && !reduce_motion && window.is_window_active() {
-							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
-							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
-							animate = true;
-						}
-					}
-					if animate {
-						crate::ui_motion::request_frame(window, cx);
-					}
-				},
-			)
-			.absolute()
-			.inset_0(),
-		);
+		canvas = self.paint_relation_connections(canvas, graph, &lines, cx);
 		for (edge, a, b) in lines {
 			let label = route(&a, &b, edge.kind).label;
 			let picked = edge.clone();
@@ -1035,47 +1004,23 @@ impl AgentSurface {
 					})),
 			);
 		}
+
+		canvas
+	}
+
+	fn relation_node_layer(
+		&self,
+		mut canvas: gpui::Stateful<gpui::Div>,
+		graph: &Graph,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
+		let scale = self.relation_scale(graph);
 		let neighborhood = self.relation_neighborhood(graph);
 		let labels =
 			identity::labels(graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()));
+
 		for node in &graph.nodes {
-			let linked = self.work_board.view.hovered_agent.as_ref() == Some(&node.key)
-				|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
-			let selected = linked
-				|| self.work_board.view.edge.as_ref().is_some_and(|e| {
-					e.from == node.key
-						|| e.to == node.key
-						|| (e.kind == Kind::Resource
-							&& graph.edges.iter().any(|other| {
-								other.kind == Kind::Resource
-									&& other.to == e.to
-									&& other.from == node.key
-							}))
-				})
-				|| (self.work_board.focus.is_some() && neighborhood.contains(&node.key))
-				|| (self.work_board.focus.is_none()
-					&& self.work_board.view.edge.is_none()
-					&& node.row.as_ref().is_some_and(|r| {
-						if r.native {
-							self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
-								owner == &r.work && r.thread.as_ref() == Some(thread)
-							})
-						} else {
-							self.native_agents.selected.is_none()
-								&& self.selected.as_ref() == Some(&r.work)
-						}
-					}));
-			let faded = self.work_board.focus.is_some() && !neighborhood.contains(&node.key)
-				|| self.work_board.view.edge.as_ref().is_some_and(|e| {
-					e.from != node.key
-						&& e.to != node.key
-						&& !(e.kind == Kind::Resource
-							&& graph.edges.iter().any(|other| {
-								other.kind == Kind::Resource
-									&& other.to == e.to
-									&& other.from == node.key
-							}))
-				});
+			let (selected, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
 			let key = node.key.clone();
 			let row = node.row.clone();
 			let target = graph
@@ -1090,107 +1035,9 @@ impl AgentSurface {
 			let keyboard_target = target.clone();
 			let origin = (node.x, node.y);
 			let dragkey = key.clone();
-			let hoverkey = key.clone();
-			let name = format!("relation-node-{key}");
-			let tip = format!(
-				"{}\n{}",
-				node.row.as_ref().map(|r| r.title.as_str()).unwrap_or(&node.title),
-				node.status
-			);
-			let tip =
-				if let Some(work) = node.row.as_ref().and_then(|r| {
-					self.snapshot.as_ref()?.work_items.iter().find(|w| w.id == r.work)
-				}) {
-					if let Some(due) = work.next_check_at_micros {
-						format!("{tip}\nNext check · {}", super::super::next_check_text(due))
-					} else {
-						tip
-					}
-				} else {
-					tip
-				};
 
-			let view = gpui::div()
-				.id(SharedString::from(name.clone()))
-				.debug_selector(move || name.clone())
-				.role(Role::Button)
-				.tab_index(0)
-				.aria_label(format!("{} · {}", node.title, node.status))
-				.absolute()
-				.left(gpui::px(node.x * scale + pan.0))
-				.top(gpui::px(node.y * scale + pan.1))
-				.w(gpui::px(224. * scale))
-				.h(gpui::px(node.height() * scale))
-				.px(gpui::px(8. * scale))
-				.py(gpui::px(6. * scale))
-				.rounded(gpui::px(if node.key.starts_with("resource:") {
-					3. * scale
-				} else {
-					6. * scale
-				}))
-				.border(gpui::px(0.65 * scale))
-				.border_color(gpui::rgba(if selected { 0x9aaeee70 } else { 0xffffff16 }))
-				// A quiet matte surface. No simulated refraction or specular rim.
-				.bg(gpui::rgb(if selected { 0x323641 } else { 0x2c2d32 }))
-				.text_color(gpui::rgb(if faded { TEXT_MUTED } else { TEXT }))
-				.hover(|d| d.bg(gpui::rgb(0x34363c)).border_color(gpui::rgba(0xd5dfff38)))
-				.on_hover(cx.listener(move |s, hovered, _, cx| {
-					if *hovered {
-						s.work_board.view.hovered_agent = Some(hoverkey.clone());
-					} else if s.work_board.view.hovered_agent.as_ref() == Some(&hoverkey) {
-						s.work_board.view.hovered_agent = None;
-					}
-					cx.notify();
-				}))
-				.cursor_pointer()
-				.flex()
-				.flex_col()
-				.gap(gpui::px(3. * scale))
-				.overflow_hidden()
-				.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-				.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap(gpui::px(8. * scale))
-						.children(labels.get(&node.key).map(|label| {
-							gpui::div()
-								.text_size(gpui::px(10. * scale))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.flex_none()
-								.child(label.clone())
-						}))
-						.child(status_lamp(
-							node.color,
-							connected && node.running(),
-							scale,
-							flow_started,
-						))
-						.child(
-							gpui::div()
-								.flex_1()
-								.w_0()
-								.min_w_0()
-								.text_size(gpui::px(12. * scale))
-								.child(crate::ui_motion::OverflowLabel {
-									id: format!("relation-title-{}", node.key).into(),
-									text: node.title.clone().into(),
-								}),
-						),
-				)
-				.when_some(node.task(), |d, task| {
-					d.child(
-						gpui::div()
-							.text_size(gpui::px(11. * scale))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.min_w_0()
-							.child(crate::ui_motion::OverflowLabel {
-								id: format!("relation-task-{}", node.key).into(),
-								text: task.to_owned().into(),
-							}),
-					)
-				})
-				.when(node.row.is_some(), |d| d.child(self.node_metrics(node, graph, scale)))
+			let view = self
+				.relation_node_surface(node, graph, selected, faded, labels.get(&node.key), cx)
 				.on_mouse_down(
 					MouseButton::Left,
 					cx.listener(move |s, e: &MouseDownEvent, _, cx| {
@@ -1232,21 +1079,308 @@ impl AgentSurface {
 			canvas = canvas.child(view);
 		}
 		canvas
-			.child(self.relation_controls(cx))
-			.children(self.picked_metric_card(graph, cx))
+	}
+
+	fn paint_relation_connections(
+		&self,
+		mut canvas: gpui::Stateful<gpui::Div>,
+		graph: &Graph,
+		lines: &[(Edge, Node, Node)],
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
+		let scale = self.relation_scale(graph);
+		let pan = self.work_board.view.pan;
+		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
+		let reduce_motion = crate::ui_motion::reduced();
+		let connected = self.command_connection_ready();
+		let paint_lines = lines.to_vec();
+		let selected_edge = self.work_board.view.edge.clone();
+		let focused_agent = self.work_board.focus.clone();
+		let entity = cx.entity().downgrade();
+		let node_count = graph.nodes.len();
+		canvas = canvas.child(
+			gpui::canvas(
+				move |bounds, _, cx| {
+					let _ = entity.update(cx, |s, cx| {
+						let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+						s.work_board.view.origin =
+							(f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+						if s.work_board.view.viewport != size
+							|| s.work_board.view.node_count != node_count
+						{
+							s.work_board.view.node_count = node_count;
+							s.work_board.view.viewport = size;
+							if !s.work_board.view.camera_fixed {
+								s.fit_relations();
+							}
+							cx.notify();
+						}
+					});
+				},
+				move |bounds, _, window, cx| {
+					let mut animate = false;
+					paint_relation_grid(bounds, scale, pan, window);
+					for (edge, a, b) in &paint_lines {
+						let mut route = route(a, b, edge.kind);
+						let fact = selected_edge
+							.as_ref()
+							.filter(|picked| {
+								!edge.executing(b, connected) && picked.same_pair(edge)
+							})
+							.unwrap_or(edge);
+						if fact.from != edge.from {
+							route = route.reversed();
+						}
+						let selected = focused_agent
+							.as_ref()
+							.is_some_and(|key| &edge.from == key || &edge.to == key)
+							|| selected_edge.as_ref().is_some_and(|picked| {
+								picked.same_pair(edge)
+									|| (picked.kind == Kind::Resource
+										&& edge.kind == Kind::Resource
+										&& picked.to == edge.to)
+							});
+						let faded =
+							(selected_edge.is_some() || focused_agent.is_some()) && !selected;
+						let active = edge.executing(b, connected);
+						let show_flow = !faded && active;
+						let color = if active {
+							crate::ui_theme::BLUE
+						} else if selected {
+							fact.color
+						} else {
+							edge.color
+						};
+
+						let path = route.stroke(
+							fact.kind,
+							bounds.origin,
+							scale,
+							pan,
+							if selected { 1.6 } else { 1.2 },
+						);
+						if let Ok(path) = path.build() {
+							window.paint_path(
+								path,
+								gpui::rgba(
+									(color << 8)
+										| if faded {
+											0x30
+										} else if selected {
+											0xef
+										} else {
+											0x90
+										},
+								),
+							);
+						}
+						if show_flow && !reduce_motion && window.is_window_active() {
+							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
+							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
+							animate = true;
+						}
+					}
+					if animate {
+						crate::ui_motion::request_frame(window, cx);
+					}
+				},
+			)
+			.absolute()
+			.inset_0(),
+		);
+
+		canvas
+	}
+
+	fn relation_node_surface(
+		&self,
+		node: &Node,
+		graph: &Graph,
+		selected: bool,
+		faded: bool,
+		label: Option<&String>,
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
+		let scale = self.relation_scale(graph);
+		let pan = self.work_board.view.pan;
+		let connected = self.command_connection_ready();
+		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
+		let hoverkey = node.key.clone();
+		let name = format!("relation-node-{}", node.key);
+		let tip = self.relation_node_tooltip(node);
+		gpui::div()
+			.id(SharedString::from(name.clone()))
+			.debug_selector(move || name.clone())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(format!("{} · {}", node.title, node.status))
+			.absolute()
+			.left(gpui::px(node.x * scale + pan.0))
+			.top(gpui::px(node.y * scale + pan.1))
+			.w(gpui::px(224. * scale))
+			.h(gpui::px(node.height() * scale))
+			.px(gpui::px(8. * scale))
+			.py(gpui::px(6. * scale))
+			.rounded(gpui::px(if node.key.starts_with("resource:") {
+				3. * scale
+			} else {
+				6. * scale
+			}))
+			.border(gpui::px(0.65 * scale))
+			.border_color(gpui::rgba(if selected { 0x9aaeee70 } else { 0xffffff16 }))
+			// A quiet matte surface. No simulated refraction or specular rim.
+			.bg(gpui::rgb(if selected { 0x323641 } else { 0x2c2d32 }))
+			.text_color(gpui::rgb(if faded { TEXT_MUTED } else { TEXT }))
+			.hover(|d| d.bg(gpui::rgb(0x34363c)).border_color(gpui::rgba(0xd5dfff38)))
+			.on_hover(cx.listener(move |s, hovered, _, cx| {
+				if *hovered {
+					s.work_board.view.hovered_agent = Some(hoverkey.clone());
+				} else if s.work_board.view.hovered_agent.as_ref() == Some(&hoverkey) {
+					s.work_board.view.hovered_agent = None;
+				}
+				cx.notify();
+			}))
+			.cursor_pointer()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(3. * scale))
+			.overflow_hidden()
+			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
 			.child(
 				gpui::div()
-					.absolute()
-					.bottom(gpui::px(12.))
-					.left(gpui::px(12.))
-					.right(gpui::px(12.))
 					.flex()
-					.justify_end()
-					.items_end()
-					.gap(gpui::px(8.))
-					.when(!self.work_board.view.legend_hidden, |d| d.child(self.relation_legend())),
+					.items_center()
+					.gap(gpui::px(8. * scale))
+					.children(label.map(|label| {
+						gpui::div()
+							.text_size(gpui::px(10. * scale))
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.flex_none()
+							.child(label.clone())
+					}))
+					.child(status_lamp(
+						node.color,
+						connected && node.running(),
+						scale,
+						flow_started,
+					))
+					.child(
+						gpui::div()
+							.flex_1()
+							.w_0()
+							.min_w_0()
+							.text_size(gpui::px(12. * scale))
+							.child(crate::ui_motion::OverflowLabel {
+								id: format!("relation-title-{}", node.key).into(),
+								text: node.title.clone().into(),
+							}),
+					),
 			)
-			.into_any_element()
+			.when_some(node.task(), |d, task| {
+				d.child(
+					gpui::div()
+						.text_size(gpui::px(11. * scale))
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.min_w_0()
+						.child(crate::ui_motion::OverflowLabel {
+							id: format!("relation-task-{}", node.key).into(),
+							text: task.to_owned().into(),
+						}),
+				)
+			})
+			.when(node.row.is_some(), |d| d.child(self.node_metrics(node, graph, scale)))
+	}
+
+	fn relation_node_tooltip(&self, node: &Node) -> String {
+		let tip = format!(
+			"{}\n{}",
+			node.row.as_ref().map(|r| r.title.as_str()).unwrap_or(&node.title),
+			node.status
+		);
+		if let Some(work) = node
+			.row
+			.as_ref()
+			.and_then(|r| self.snapshot.as_ref()?.work_items.iter().find(|w| w.id == r.work))
+		{
+			if let Some(due) = work.next_check_at_micros {
+				format!("{tip}\nNext check · {}", super::super::next_check_text(due))
+			} else {
+				tip
+			}
+		} else {
+			tip
+		}
+	}
+
+	fn relation_node_emphasis(
+		&self,
+		node: &Node,
+		graph: &Graph,
+		neighborhood: &BTreeSet<String>,
+	) -> (bool, bool) {
+		let linked = self.work_board.view.hovered_agent.as_ref() == Some(&node.key)
+			|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
+		let selected = linked
+			|| self.work_board.view.edge.as_ref().is_some_and(|e| {
+				e.from == node.key
+					|| e.to == node.key
+					|| (e.kind == Kind::Resource
+						&& graph.edges.iter().any(|other| {
+							other.kind == Kind::Resource
+								&& other.to == e.to
+								&& other.from == node.key
+						}))
+			})
+			|| (self.work_board.focus.is_some() && neighborhood.contains(&node.key))
+			|| (self.work_board.focus.is_none()
+				&& self.work_board.view.edge.is_none()
+				&& node.row.as_ref().is_some_and(|r| {
+					if r.native {
+						self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
+							owner == &r.work && r.thread.as_ref() == Some(thread)
+						})
+					} else {
+						self.native_agents.selected.is_none()
+							&& self.selected.as_ref() == Some(&r.work)
+					}
+				}));
+		let faded = self.work_board.focus.is_some() && !neighborhood.contains(&node.key)
+			|| self.work_board.view.edge.as_ref().is_some_and(|e| {
+				e.from != node.key
+					&& e.to != node.key
+					&& !(e.kind == Kind::Resource
+						&& graph.edges.iter().any(|other| {
+							other.kind == Kind::Resource
+								&& other.to == e.to
+								&& other.from == node.key
+						}))
+			});
+
+		(selected, faded)
+	}
+}
+
+fn paint_relation_grid(
+	bounds: gpui::Bounds<gpui::Pixels>,
+	scale: f32,
+	pan: (f32, f32),
+	window: &mut gpui::Window,
+) {
+	let spacing = grid_spacing(scale);
+	let mut x = pan.0.rem_euclid(spacing);
+	while x < f32::from(bounds.size.width) {
+		let mut y = pan.1.rem_euclid(spacing);
+		while y < f32::from(bounds.size.height) {
+			window.paint_quad(gpui::fill(
+				gpui::Bounds::new(
+					bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
+					gpui::size(gpui::px(1.), gpui::px(1.)),
+				),
+				gpui::rgba(0xffffff28),
+			));
+			y += spacing;
+		}
+		x += spacing;
 	}
 }
 

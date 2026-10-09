@@ -139,8 +139,8 @@ impl Graph {
 		self.result = "Benchmark running · keep this window visible".into();
 	}
 }
-impl Render for Graph {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl Graph {
+	fn measure_frame(&mut self, window: &mut Window) {
 		if self.material.is_none() {
 			self.material = Some(Material::install(window));
 		}
@@ -194,9 +194,11 @@ impl Render for Graph {
 			self.bench = None;
 			self.result = "Benchmark saved: /tmp/decodex-native-graph-benchmark.json".into();
 		}
-		let zoom = self.zoom;
-		let pan = self.pan;
-		let count = self.count;
+	}
+}
+impl Graph {
+	fn render_canvas(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+		let (zoom, pan, count) = (self.zoom, self.pan, self.count);
 		let mut canvas = div()
 			.id("native-graph-canvas")
 			.relative()
@@ -278,6 +280,15 @@ impl Render for Graph {
 					),
 			);
 		}
+		canvas
+	}
+}
+impl Render for Graph {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.measure_frame(window);
+		let zoom = self.zoom;
+		let count = self.count;
+		let canvas = self.render_canvas(cx);
 		div()
 			.size_full()
 			.flex()

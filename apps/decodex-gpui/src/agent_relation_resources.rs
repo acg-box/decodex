@@ -1,5 +1,5 @@
 //! Native associations establish shared references, not authorship or verification.
-use super::*;
+use super::{AgentSurface, BTreeSet, Edge, Graph, Kind, Node, Row};
 
 impl AgentSurface {
 	pub(super) fn add_relation_resources(

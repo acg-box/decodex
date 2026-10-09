@@ -1,5 +1,9 @@
 //! One visual grammar for graph edges. Line patterns denote relation types, not certainty.
-use super::*;
+use super::{
+	AMBER, AgentSurface, AnyElement, AppContext, Context, GREEN, InteractiveElement, IntoElement,
+	Kind, MouseButton, ParentElement, PathBuilder, RelationTip, Role, Route,
+	StatefulInteractiveElement, Styled, TEXT_MUTED,
+};
 
 impl AgentSurface {
 	pub(super) fn relation_legend_toggle(&self, cx: &mut Context<Self>) -> AnyElement {

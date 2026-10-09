@@ -93,8 +93,11 @@ pub enum AgentTimelineAttachmentSource {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationResultDto {
+	/// Native thread whose state was observed.
 	pub thread_id: String,
+	/// Native status recorded with this observation.
 	pub status: String,
+	/// Provider-returned message excerpt.
 	pub message: String,
 }
 
@@ -102,14 +105,21 @@ pub struct AgentCollaborationResultDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationDto {
+	/// Target states returned by the native call.
 	pub results: Vec<AgentCollaborationResultDto>,
+	/// Native thread that made the call.
 	pub sender_thread_id: String,
+	/// Explicit native recipients of the call.
 	pub receiver_thread_ids: Vec<String>,
+	/// Native collaboration tool name.
 	pub tool: String,
+	/// Native status recorded with this observation.
 	pub status: String,
+	/// Provider-recorded input excerpt.
 	pub prompt: String,
 }
 
+/// Timeline content safe for presentation without raw tool arguments or credentials.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentTimelineContent {

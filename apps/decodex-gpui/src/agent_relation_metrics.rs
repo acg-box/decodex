@@ -1,5 +1,9 @@
 //! Compare recorded native thread totals; duration describes the latest completed turn.
-use super::*;
+use super::{
+	AMBER, AgentSurface, AnyElement, AppContext, Context, FluentBuilder, Graph, InteractiveElement,
+	IntoElement, Node, ParentElement, RelationTip, Role, SharedString, StatefulInteractiveElement,
+	Styled, TEXT, TEXT_MUTED, identity,
+};
 
 const TOKENS: u32 = 0xa99aef;
 const TIME: u32 = 0x91a5b9;
@@ -355,7 +359,7 @@ impl AgentSurface {
 				|| self.work_board.view.picked_agent.as_ref() == Some(&key);
 			let tip = format!(
 				"{label} · {}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
-				node.row.as_ref().unwrap().title,
+				node.row.as_ref().expect("ranked nodes have rows").title,
 				self.metrics_for(node).label(),
 				percentage(Some(share))
 			);
@@ -387,7 +391,7 @@ impl AgentSurface {
 					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
 					.child(usage_label(
 						label,
-						node.row.as_ref().unwrap().title.clone(),
+						node.row.as_ref().expect("ranked nodes have rows").title.clone(),
 						percentage(Some(share)),
 					))
 					.child(
@@ -409,7 +413,17 @@ impl AgentSurface {
 					})),
 			);
 		}
-		let amount = if ranked.is_empty() {
+		self.relation_metrics_footer(graph, ranked.is_empty(), total, distribution)
+	}
+
+	fn relation_metrics_footer(
+		&self,
+		graph: &Graph,
+		empty: bool,
+		total: u128,
+		distribution: gpui::Div,
+	) -> AnyElement {
+		let amount = if empty {
 			"—".into()
 		} else {
 			match u64::try_from(total) {
