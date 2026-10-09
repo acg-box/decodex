@@ -876,6 +876,19 @@ mod tests {
 			s.composer.update(cx, |i, cx| i.set_content("Parent draft", cx));
 			s.timeline.follow_paused.insert("parent-marker".into());
 			s.enter_native_conversation("agent", "child-a", cx);
+			assert!(s.workspace_connecting());
+			s.timeline.native.binding =
+				Some(crate::shell::agent_surface::native_timeline::Binding {
+					work: "agent".into(),
+					thread: "child-a".into(),
+					account: "account".into(),
+				});
+			assert!(!s.workspace_connecting(), "retained history must not wait for send readiness");
+			assert!(!s.native_input_available(), "retained content must not grant send permission");
+			s.snapshot.as_mut().unwrap().connection_initializing = true;
+			assert!(s.workspace_connecting(), "global connection still blocks the workspace");
+			s.snapshot.as_mut().unwrap().connection_initializing = false;
+
 			assert_eq!(s.conversation_work().unwrap().codex_thread_id.as_deref(), Some("child-a"));
 			assert_eq!(s.conversation_page().as_deref(), Some("native:agent:child-a"));
 			assert_eq!(s.navigation_work().as_deref(), Some("native:agent:child-a"));

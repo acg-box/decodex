@@ -666,14 +666,15 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_connecting(&self) -> bool {
-		if self.native_agents.selected.is_some() {
-			matches!(
+		if self.connection_initializing() {
+			return true;
+		}
+		self.native_agents.selected.is_some()
+			&& matches!(
 				self.native_agents.connection,
 				super::native_agents::NativeConnection::Checking { .. }
 			)
-		} else {
-			self.connection_initializing()
-		}
+			&& self.conversation_work().is_none_or(|work| !self.native_history_active(&work))
 	}
 
 	pub(super) fn connection_initializing(&self) -> bool {

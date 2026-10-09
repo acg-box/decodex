@@ -610,7 +610,9 @@ impl AgentSurface {
 							cx,
 						));
 				},
-				NativeConnection::Checking { .. } => {},
+				NativeConnection::Checking { .. } => {
+					row = row.justify_end().child(crate::ui_loading::loading(""));
+				},
 				NativeConnection::Ready => {
 					row = row.justify_end().child(
 						if self.running_turn().is_some()

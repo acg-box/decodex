@@ -954,6 +954,9 @@ impl AgentSurface {
 	}
 
 	fn command_connection_ready(&self) -> bool {
+		if self.connection_initializing() {
+			return false;
+		}
 		*self.displayed_load_state() == LoadState::Ready
 			|| (self.state == LoadState::Loading
 				&& self.status_before_refresh.is_none()
@@ -1347,6 +1350,7 @@ impl AgentSurface {
 		self.archive = Default::default();
 		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
+		self.refresh(cx);
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(500)).await;
@@ -1456,6 +1460,10 @@ impl AgentSurface {
 				};
 
 				surface.apply_result(result);
+				if surface.connection_initializing() {
+					cx.notify();
+					return;
+				}
 				surface.refresh_native_goal(cx);
 				surface.refresh_dock_evidence(cx);
 				surface.refresh_factory_briefs(cx);
