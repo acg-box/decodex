@@ -5,7 +5,7 @@ use decodex_protocol::{
 use gpui::AppContext;
 
 #[gpui::test]
-fn selecting_agent_focuses_graph_without_opening_a_second_sidebar(cx: &mut gpui::TestAppContext) {
+fn selecting_agent_shows_usage_without_opening_a_second_sidebar(cx: &mut gpui::TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut s = fixture(cx);
 		s.workspace.graph_expanded = true;
@@ -19,14 +19,16 @@ fn selecting_agent_focuses_graph_without_opening_a_second_sidebar(cx: &mut gpui:
 		let row = s.board_rows().into_iter().find(|r| r.native).unwrap();
 		let before = s.relation_graph();
 		let bounds = before.nodes.iter().map(|n| (n.x, n.y)).collect::<Vec<_>>();
-		s.inspect_station(&row, cx);
+		s.pick_metric_agent(&row.key, cx);
 		assert_eq!(bounds, s.relation_graph().nodes.iter().map(|n| (n.x, n.y)).collect::<Vec<_>>());
-		assert_eq!(s.work_board.focus.as_deref(), Some(row.key.as_str()));
+		assert_eq!(s.work_board.view.picked_agent.as_deref(), Some(row.key.as_str()));
+		assert!(s.work_board.focus.is_none());
 		assert!(s.work_board.view.edge.is_none());
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 	});
 	visual.update(|w, cx| w.draw(cx).clear());
 	assert!(visual.debug_bounds("relation-inspector-scroll").is_none());
+	assert!(visual.debug_bounds("agent-usage-popover").is_some());
 }
 
 #[gpui::test]

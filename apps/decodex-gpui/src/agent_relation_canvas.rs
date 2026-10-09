@@ -3,6 +3,7 @@ use super::*;
 use crate::ui_theme::TEXT;
 use gpui::AppContext;
 #[path = "agent_relation_details.rs"] mod details;
+#[path = "agent_relation_identity.rs"] mod identity;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
 #[path = "agent_relation_resources.rs"] mod resources;
 #[path = "agent_relation_scopes.rs"] mod scopes;
@@ -36,6 +37,8 @@ pub(super) struct View {
 	pub(super) edge: Option<Edge>,
 	pub(super) show_record: bool,
 	legend_hidden: bool,
+	hovered_agent: Option<String>,
+	pub(super) picked_agent: Option<String>,
 }
 struct Drag {
 	key: Option<String>,
@@ -753,7 +756,9 @@ impl AgentSurface {
 			}))
 			.on_mouse_down(
 				MouseButton::Left,
-				cx.listener(move |s, e: &MouseDownEvent, _, _| {
+				cx.listener(move |s, e: &MouseDownEvent, _, cx| {
+					s.work_board.view.picked_agent = None;
+					cx.notify();
 					s.work_board.view.camera_fixed = true;
 					s.work_board.view.zoom = Some(scale);
 					s.work_board.view.moved = false;
@@ -1024,24 +1029,30 @@ impl AgentSurface {
 						s.work_board.focus = None;
 						s.handoffs.focus = None;
 						s.work_board.view.camera_fixed = true;
+						s.work_board.view.picked_agent = None;
 						s.work_board.view.edge = Some(picked.clone());
 						cx.notify();
 					})),
 			);
 		}
 		let neighborhood = self.relation_neighborhood(graph);
+		let labels =
+			identity::labels(graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()));
 		for node in &graph.nodes {
-			let selected = self.work_board.view.edge.as_ref().is_some_and(|e| {
-				e.from == node.key
-					|| e.to == node.key
-					|| (e.kind == Kind::Resource
-						&& graph.edges.iter().any(|other| {
-							other.kind == Kind::Resource
-								&& other.to == e.to
-								&& other.from == node.key
-						}))
-			}) || (self.work_board.focus.is_some()
-				&& neighborhood.contains(&node.key))
+			let linked = self.work_board.view.hovered_agent.as_ref() == Some(&node.key)
+				|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
+			let selected = linked
+				|| self.work_board.view.edge.as_ref().is_some_and(|e| {
+					e.from == node.key
+						|| e.to == node.key
+						|| (e.kind == Kind::Resource
+							&& graph.edges.iter().any(|other| {
+								other.kind == Kind::Resource
+									&& other.to == e.to
+									&& other.from == node.key
+							}))
+				})
+				|| (self.work_board.focus.is_some() && neighborhood.contains(&node.key))
 				|| (self.work_board.focus.is_none()
 					&& self.work_board.view.edge.is_none()
 					&& node.row.as_ref().is_some_and(|r| {
@@ -1079,6 +1090,7 @@ impl AgentSurface {
 			let keyboard_target = target.clone();
 			let origin = (node.x, node.y);
 			let dragkey = key.clone();
+			let hoverkey = key.clone();
 			let name = format!("relation-node-{key}");
 			let tip = format!(
 				"{}\n{}",
@@ -1122,6 +1134,14 @@ impl AgentSurface {
 				.bg(gpui::rgb(if selected { 0x323641 } else { 0x2c2d32 }))
 				.text_color(gpui::rgb(if faded { TEXT_MUTED } else { TEXT }))
 				.hover(|d| d.bg(gpui::rgb(0x34363c)).border_color(gpui::rgba(0xd5dfff38)))
+				.on_hover(cx.listener(move |s, hovered, _, cx| {
+					if *hovered {
+						s.work_board.view.hovered_agent = Some(hoverkey.clone());
+					} else if s.work_board.view.hovered_agent.as_ref() == Some(&hoverkey) {
+						s.work_board.view.hovered_agent = None;
+					}
+					cx.notify();
+				}))
 				.cursor_pointer()
 				.flex()
 				.flex_col()
@@ -1133,6 +1153,13 @@ impl AgentSurface {
 						.flex()
 						.items_center()
 						.gap(gpui::px(8. * scale))
+						.children(labels.get(&node.key).map(|label| {
+							gpui::div()
+								.text_size(gpui::px(10. * scale))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.flex_none()
+								.child(label.clone())
+						}))
 						.child(status_lamp(
 							node.color,
 							connected && node.running(),
@@ -1178,9 +1205,10 @@ impl AgentSurface {
 				.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 						if let Some(row) = &keyboard_row {
-							s.inspect_station(row, cx);
+							s.pick_metric_agent(&row.key, cx);
 						} else {
 							s.work_board.focus = None;
+							s.work_board.view.picked_agent = None;
 							s.work_board.view.edge = keyboard_target.clone();
 							cx.notify();
 						}
@@ -1193,9 +1221,10 @@ impl AgentSurface {
 						return;
 					}
 					if let Some(row) = &row {
-						s.inspect_station(row, cx);
+						s.pick_metric_agent(&row.key, cx);
 					} else {
 						s.work_board.focus = None;
+						s.work_board.view.picked_agent = None;
 						s.work_board.view.edge = target.clone();
 						cx.notify();
 					}
@@ -1204,6 +1233,7 @@ impl AgentSurface {
 		}
 		canvas
 			.child(self.relation_controls(cx))
+			.children(self.picked_metric_card(graph, cx))
 			.child(
 				gpui::div()
 					.absolute()
@@ -1435,6 +1465,21 @@ impl AgentSurface {
 #[cfg(test)]
 mod fit_tests {
 	use super::*;
+	#[gpui::test]
+	fn usage_selection_preserves_camera_and_toggles(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.work_board.view.pan = (80., -30.);
+			s.work_board.view.zoom = Some(0.42);
+			s.pick_metric_agent("agent", cx);
+			assert_eq!(s.work_board.view.pan, (80., -30.));
+			assert_eq!(s.work_board.view.zoom, Some(0.42));
+			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("agent"));
+			s.pick_metric_agent("agent", cx);
+			assert!(s.work_board.view.picked_agent.is_none());
+		});
+	}
+
 	#[gpui::test]
 	fn fit_ignores_selection_and_arrange_restores_dragged_nodes(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::super::tests::fixture);

@@ -278,18 +278,6 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	fn inspect_station(&mut self, row: &Row, cx: &mut Context<Self>) {
-		self.work_board.view.camera_fixed = true;
-		self.work_board.view.edge = None;
-		self.work_board.focus = if self.work_board.focus.as_ref() == Some(&row.key) {
-			None
-		} else {
-			Some(row.key.clone())
-		};
-		self.handoffs.focus = None;
-		cx.notify();
-	}
-
 	pub(super) fn render_work_board(&self, cx: &mut Context<Self>) -> AnyElement {
 		let graph = self.relation_graph();
 		let mut content =

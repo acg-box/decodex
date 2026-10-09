@@ -79,7 +79,161 @@ fn metric_track(value: Option<f32>, color: u32, scale: f32) -> AnyElement {
 		.into_any_element()
 }
 
+fn usage_label(id: String, title: String, share: String) -> AnyElement {
+	gpui::canvas(
+		move |_, window, _| {
+			let style = window.text_style();
+			let shape = |text: String| {
+				let run = gpui::TextRun {
+					len: text.len(),
+					font: style.font(),
+					color: style.color,
+					background_color: None,
+					underline: None,
+					strikethrough: None,
+				};
+				window.text_system().shape_line(text.into(), gpui::px(11.), &[run], None)
+			};
+			(shape(format!("{id} {}", title.replace(['\n', '\r'], " "))), shape(id), shape(share))
+		},
+		move |bounds, (full, id, share), window, cx| {
+			let available = bounds.size.width - gpui::px(12.);
+			let (name, show_share) = if full.width + share.width + gpui::px(10.) <= available {
+				(Some(full), true)
+			} else if id.width + share.width + gpui::px(10.) <= available {
+				(Some(id), true)
+			} else if id.width <= available {
+				(Some(id), false)
+			} else {
+				(None, false)
+			};
+			let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
+			if let Some(name) = name {
+				let _ = name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
+			}
+			if show_share {
+				let _ = share.paint(
+					gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
+					gpui::px(16.),
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+			}
+		},
+	)
+	.w_full()
+	.h_full()
+	.into_any_element()
+}
+
 impl AgentSurface {
+	pub(in super::super) fn pick_metric_agent(&mut self, key: &str, cx: &mut Context<Self>) {
+		self.work_board.view.picked_agent =
+			if self.work_board.view.picked_agent.as_deref() == Some(key) {
+				None
+			} else {
+				Some(key.to_owned())
+			};
+		self.work_board.view.edge = None;
+		self.work_board.focus = None;
+		self.handoffs.focus = None;
+		cx.notify();
+	}
+
+	pub(super) fn picked_metric_card(
+		&self,
+		graph: &Graph,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let node = graph
+			.nodes
+			.iter()
+			.find(|n| Some(&n.key) == self.work_board.view.picked_agent.as_ref())?;
+		let row = node.row.as_ref()?;
+		let labels = identity::labels(std::iter::once(node.key.clone()));
+		let tokens = self.metrics_for(node).tokens;
+		let share = percentage(fraction(tokens, self.metric_baselines(graph).0));
+		Some(
+			gpui::div()
+				.debug_selector(|| "agent-usage-popover".into())
+				.absolute()
+				.top(gpui::px(60.))
+				.left(gpui::px(12.))
+				.w(gpui::px(320.))
+				.max_w(gpui::relative(0.85))
+				.occlude()
+				.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+				.child(
+					crate::ui_motion::tooltip_surface(gpui::div())
+						.p_3()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(
+							gpui::div()
+								.flex()
+								.items_center()
+								.justify_between()
+								.child(
+									gpui::div()
+										.text_color(gpui::rgb(TEXT_MUTED))
+										.child(labels[&node.key].clone()),
+								)
+								.child(
+									gpui::div()
+										.id("close-agent-metric")
+										.role(Role::Button)
+										.aria_label("Close agent usage")
+										.tab_index(0)
+										.on_key_down(cx.listener(
+											|s, e: &gpui::KeyDownEvent, _, cx| {
+												if ["enter", "space", "escape"]
+													.contains(&e.keystroke.key.as_str())
+												{
+													s.work_board.view.picked_agent = None;
+													cx.notify();
+													cx.stop_propagation();
+												}
+											},
+										))
+										.size(gpui::px(24.))
+										.flex()
+										.items_center()
+										.justify_center()
+										.cursor_pointer()
+										.child("×")
+										.on_click(cx.listener(|s, _, _, cx| {
+											s.work_board.view.picked_agent = None;
+											cx.notify();
+										})),
+								),
+						)
+						.child(
+							gpui::div()
+								.id("agent-metric-full-name")
+								.max_h(gpui::px(100.))
+								.overflow_y_scroll()
+								.child(row.title.clone()),
+						)
+						.child(format!(
+							"{} tokens · {share}",
+							tokens
+								.map(super::super::super::compact_tokens)
+								.unwrap_or_else(|| "—".into())
+						))
+						.child(
+							gpui::div()
+								.text_size(gpui::px(10.))
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child("Recorded total · includes cached input"),
+						),
+				)
+				.into_any_element(),
+		)
+	}
+
 	fn metrics_for(&self, node: &Node) -> Metrics {
 		node.row
 			.as_ref()
@@ -169,15 +323,20 @@ impl AgentSurface {
 			nodes.iter().filter_map(|n| self.metrics_for(n).tokens.map(|v| (*n, v))).collect();
 		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
 		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
+		let labels = identity::labels(nodes.iter().map(|n| n.key.clone()));
 		let mut distribution =
 			gpui::div().flex().w_full().h(gpui::px(28.)).rounded(gpui::px(4.)).overflow_hidden();
 		for (node, value) in ranked.iter().filter(|(_, v)| *v > 0) {
 			let share = fraction(Some(*value), total).unwrap_or(0.);
-			let row = node.row.clone().expect("agent node");
-			let keyrow = row.clone();
+			let key = node.key.clone();
+			let keyrow = key.clone();
+			let hoverkey = key.clone();
+			let label = labels[&node.key].clone();
+			let highlighted = self.work_board.view.hovered_agent.as_ref() == Some(&key)
+				|| self.work_board.view.picked_agent.as_ref() == Some(&key);
 			let tip = format!(
-				"{}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
-				node.title,
+				"{label} · {}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
+				node.row.as_ref().unwrap().title,
 				self.metrics_for(node).label(),
 				percentage(Some(share))
 			);
@@ -196,37 +355,22 @@ impl AgentSurface {
 					.items_center()
 					.relative()
 					.cursor_pointer()
+					.when(highlighted, |d| d.bg(gpui::rgba(0xa99aef20)))
 					.hover(|d| d.bg(gpui::rgba(0xffffff08)))
+					.on_hover(cx.listener(move |s, hovered, _, cx| {
+						if *hovered {
+							s.work_board.view.hovered_agent = Some(hoverkey.clone());
+						} else if s.work_board.view.hovered_agent.as_ref() == Some(&hoverkey) {
+							s.work_board.view.hovered_agent = None;
+						}
+						cx.notify();
+					}))
 					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-					.child(
-						gpui::div()
-							.w_full()
-							.min_w_0()
-							.flex()
-							.items_center()
-							.gap_1()
-							.px_2()
-							.pb_1()
-							.text_size(gpui::px(11.))
-							.when(share >= 0.12, |d| {
-								d.child(
-									gpui::div()
-										.flex_1()
-										.min_w_0()
-										.text_ellipsis()
-										.whitespace_nowrap()
-										.child(node.title.clone()),
-								)
-							})
-							.when(share >= 0.04, |d| {
-								d.child(
-									gpui::div()
-										.flex_none()
-										.whitespace_nowrap()
-										.child(percentage(Some(share))),
-								)
-							}),
-					)
+					.child(usage_label(
+						label,
+						node.row.as_ref().unwrap().title.clone(),
+						percentage(Some(share)),
+					))
 					.child(
 						gpui::div()
 							.absolute()
@@ -237,10 +381,10 @@ impl AgentSurface {
 							.rounded_full()
 							.bg(gpui::rgba((TOKENS << 8) | 0x90)),
 					)
-					.on_click(cx.listener(move |s, _, _, cx| s.inspect_station(&row, cx)))
+					.on_click(cx.listener(move |s, _, _, cx| s.pick_metric_agent(&key, cx)))
 					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							s.inspect_station(&keyrow, cx);
+							s.pick_metric_agent(&keyrow, cx);
 							cx.stop_propagation();
 						}
 					})),
