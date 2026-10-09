@@ -1,6 +1,8 @@
 //! Interruptible motion shared by native controls and workspace panels.
 #[path = "ui_agent_label.rs"] mod agent_label;
-pub(crate) use agent_label::{AgentLabel, AgentSignal};
+pub(crate) use agent_label::AgentSignal;
+#[path = "ui_overflow_label.rs"] mod overflow_label;
+pub(crate) use overflow_label::OverflowLabel;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 
@@ -326,7 +328,7 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// Reveal the material and its content through one clip, without primitive fades.
+/// Float menus into place without clipping their shadow or fading individual primitives.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	id: ElementId,
@@ -341,38 +343,62 @@ impl Popover {
 	}
 }
 impl RenderOnce for Popover {
-	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-		disclosure(
-			self.id,
-			self.visible,
-			gpui::div().w_full().p_2().child(
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
+		let now = Instant::now();
+		let (progress, moving) = state.update(cx, |s, _| {
+			if !self.visible {
+				*s = Tween::new(0.);
+			} else {
+				s.target(1., now);
+			}
+			(s.sample(now), s.moving(now))
+		});
+		if moving {
+			request_frame(window, cx);
+		}
+
+		// A disclosure's height clip cuts the blur into a rectangular dark patch.
+		// Menus overlay the page, so animate their position without a layout clip.
+		gpui::div().w_full().when(self.visible, |slot| {
+			slot.p_2().child(
 				gpui::div()
 					.w_full()
 					.relative()
+					.top(gpui::px(-4. * (1. - progress)))
 					.when(!self.unframed, menu_surface)
 					.child(self.child),
-			),
-		)
+			)
+		})
 	}
 }
 
-/// Shared menu material: opaque enough for text, with a soft light-facing edge.
+/// Hover text must remain readable over arbitrary conversation content.
+pub(crate) fn tooltip_surface(surface: gpui::Div) -> gpui::Div {
+	surface
+		.rounded(gpui::px(8.))
+		.border_1()
+		.border_color(gpui::rgba(0xffffff24))
+		.bg(gpui::rgb(0x24242a))
+		.text_color(gpui::rgb(crate::ui_theme::TEXT))
+		.text_size(gpui::px(11.))
+		.line_height(gpui::px(16.))
+		.max_w(gpui::px(360.))
+}
+
+/// Shared matte menu surface with a quiet outline and compact elevation.
 pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
 	surface
 		.rounded(gpui::px(10.))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff16))
-		.bg(gpui::linear_gradient(
-			165.,
-			gpui::linear_color_stop(gpui::rgb(0x34353b), 0.),
-			gpui::linear_color_stop(gpui::rgb(0x24252b), 1.),
-		))
+		.border_color(gpui::rgba(0xffffff14))
+		.bg(gpui::rgb(0x29292d))
 		.shadow(vec![gpui::BoxShadow {
 			inset: false,
-			color: gpui::rgba(0x00000030).into(),
-			offset: gpui::point(gpui::px(0.), gpui::px(6.)),
-			blur_radius: gpui::px(18.),
-			spread_radius: gpui::px(-4.),
+			color: gpui::rgba(0x00000028).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
+			blur_radius: gpui::px(8.),
+			spread_radius: gpui::px(-2.),
 		}])
 }
 
@@ -723,6 +749,7 @@ impl RenderOnce for AgentRailStatus {
 		.left(gpui::px(2.))
 		.top(gpui::px(2.))
 		.opacity(ring_opacity);
+		let title_id = gpui::SharedString::from(format!("left-title-{}", self.id));
 		gpui::div()
 			.debug_selector(|| "conversation-name".into())
 			.min_w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
@@ -753,9 +780,7 @@ impl RenderOnce for AgentRailStatus {
 					.flex_1()
 					.min_w_0()
 					.overflow_hidden()
-					.whitespace_nowrap()
-					.text_ellipsis()
-					.child(rest),
+					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
 			)
 	}
 }

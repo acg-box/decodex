@@ -12,7 +12,8 @@ use crate::{
 	shell::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
-		ToggleGraph, ToggleInspector, ToggleSidebar, agent_surface::AgentSurface,
+		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
+		agent_surface::AgentSurface,
 	},
 	ui_motion,
 	ui_theme::{
@@ -94,6 +95,7 @@ impl Render for ComposerPanel {
 			.on_action(move |action: &GrowPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ResetPanels, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ToggleGraph, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ToggleContentFullscreen, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateBack, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
 			.child(capsule)
@@ -110,10 +112,10 @@ impl AgentSurface {
 	) {
 		// Inline tool disclosures do not cover or replace the native composer.
 		let requested = allowed
+			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
 			&& !self.selected_is_archived()
-			&& (self.connection_initializing() || self.composer_unavailable_reason().is_none())
 			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
@@ -239,7 +241,8 @@ impl AgentSurface {
 			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
 			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
-			.justify_center()
+			.flex_col()
+			.items_center()
 			.child(
 				gpui::div()
 					.relative()

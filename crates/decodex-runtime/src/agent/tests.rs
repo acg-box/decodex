@@ -610,9 +610,8 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 
 	metrics::enrich(&store, "agent", &mut other).await.unwrap();
 
-	assert!(
-		matches!(&other.entries[0].content, AgentTimelineContent::Item{ activity: Some(activity), .. } if activity.duration_ms.is_none())
-	);
+	assert!(matches!(&other.entries[0].content, AgentTimelineContent::Item{
+activity: Some(activity), .. } if activity.duration_ms.is_none()));
 	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 }
 

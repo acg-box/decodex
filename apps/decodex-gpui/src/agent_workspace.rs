@@ -7,10 +7,19 @@ use gpui::{
 };
 use graph::{Layout, Node};
 use ui_theme::{
-	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE, CANVAS,
+	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE,
 	CHROME_CONTROL_SIZE, CONTROL_MARGIN, FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT,
 	TEXT_MUTED, TREE_ROW_HEIGHT,
 };
+
+// The close control is removed in the next frame. Keep subsequent keyboard actions
+// on the persistent shell instead of its now-detached focus node.
+fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
+	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
+		let focus = shell.read(cx).root_focus.clone();
+		window.focus(&focus, cx);
+	}
+}
 
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 use crate::{
@@ -19,10 +28,10 @@ use crate::{
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentRequestResult, AgentSnapshotDto,
 			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, Context,
-			ConversationReasoningEffort, FluentBuilder, FontWeight, InteractiveElement,
-			IntoElement, LoadState, ParentElement, Render, Role, SharedString,
-			StatefulInteractiveElement, Styled, SubmitComposer, Window,
-			activity::HistoryScrollAnchor, creation_setup, graph, prompts, ui_theme,
+			ConversationReasoningEffort, FluentBuilder, InteractiveElement, IntoElement, LoadState,
+			ParentElement, Render, Role, SharedString, StatefulInteractiveElement, Styled,
+			SubmitComposer, Window, activity::HistoryScrollAnchor, creation_setup, graph, prompts,
+			ui_theme,
 		},
 		workspace_symbols,
 	},
@@ -50,11 +59,9 @@ pub(super) struct PageView {
 struct PanelTip(String);
 impl Render for PanelTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_2()
 			.py_1()
-			.rounded(gpui::px(5.0))
-			.bg(gpui::rgb(CANVAS))
 			.text_color(gpui::rgb(TEXT))
 			.text_size(gpui::px(11.0))
 			.child(self.0.clone())
@@ -85,6 +92,9 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 3] {
+		if self.workspace_connecting() {
+			return [(false, false); 3];
+		}
 		[
 			(self.workspace.sidebar_visible, true),
 			(
@@ -96,6 +106,10 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.sidebar_visible = !self.workspace.sidebar_visible;
 		self.workspace.sidebar_peek = false;
 		self.workspace.sidebar_leave = None;
@@ -103,7 +117,36 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(crate) fn toggle_focused_content(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			self.workspace.graph_expanded = false;
+			self.workspace.chat_expanded = false;
+		} else if self.workspace.focused_panel == Some(super::workspace_size::Panel::Bottom)
+			&& self.workspace.graph_visible
+		{
+			self.workspace.graph_expanded = true;
+		} else {
+			self.workspace.chat_expanded = true;
+		}
+		cx.notify();
+	}
+
+	pub(super) fn toggle_chat_fullscreen(&mut self, cx: &mut Context<Self>) {
+		self.workspace.focused_panel = None;
+		self.workspace.chat_expanded = !self.workspace.chat_expanded;
+		self.workspace.graph_expanded = false;
+		cx.notify();
+	}
+
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
 
@@ -199,10 +242,12 @@ impl AgentSurface {
 				zoom: 0.85,
 			});
 
-			self.workspace.graph_scope = saved.scope;
-			self.workspace.graph_selected = saved.selected;
-			self.workspace.graph_pan = saved.pan;
-			self.workspace.graph_zoom = saved.zoom;
+			if !self.dock_open() {
+				self.workspace.graph_scope = saved.scope;
+				self.workspace.graph_selected = saved.selected;
+				self.workspace.graph_pan = saved.pan;
+				self.workspace.graph_zoom = saved.zoom;
+			}
 			// Dock visibility is global; conversation navigation only restores graph inspection.
 			self.workspace.graph_expanded = false;
 		}
@@ -272,10 +317,8 @@ impl AgentSurface {
 
 				self.composer.update(cx, |input, cx| {
 					input.set_content(&draft, cx);
-					input.set_placeholder(prompts::next(), cx);
+					input.set_placeholder(prompts::session_quote(), cx);
 				});
-
-				Self::refresh_prompt(cx);
 			}
 
 			self.composer_manager = Some(id.into());
@@ -326,6 +369,7 @@ impl AgentSurface {
 				"new-project" => "New project",
 				"graph-up" => "Parent work scope",
 				"graph-close" => "Close Dock",
+				"handoff-close" => "Collapse task details",
 				"zoom-in" => "Zoom in",
 				"zoom-out" => "Zoom out",
 				"inspect-work" => "Work details",
@@ -334,12 +378,13 @@ impl AgentSurface {
 			.to_owned()
 		};
 		let icon = panel_icon(&id);
+		let closes_dock = id == "graph-close";
 		let icon_only = icon.is_some();
 		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
-		let expanded = (id == "handoff-relations").then_some(self.handoffs.relations);
+		let expanded = None::<bool>;
 		let debug_id = id.clone();
 		let label_id = format!("overflow-{id}");
 
@@ -370,15 +415,21 @@ impl AgentSurface {
 				})
 			})
 			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
-			.on_click(cx.listener(move |s, _, _, cx| {
+			.on_click(cx.listener(move |s, _, window, cx| {
 				if is_tree || is_tab {
 					cx.stop_propagation();
 				}
 				action(s, cx);
+				if closes_dock {
+					restore_shell_focus(window, cx);
+				}
 			}))
-			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
+					if closes_dock {
+						restore_shell_focus(window, cx);
+					}
 
 					cx.stop_propagation();
 				}
@@ -402,7 +453,7 @@ impl AgentSurface {
 			.child(if let Some(icon) = icon {
 				icon
 			} else if is_tree {
-				crate::ui_motion::AgentLabel {
+				crate::ui_motion::OverflowLabel {
 					id: SharedString::from(label_id).into(),
 					text: label.into(),
 				}
@@ -458,7 +509,7 @@ impl AgentSurface {
 			));
 		panel
 			.when(self.workspace.sidebar_visible, |panel| {
-				panel.child(self.sidebar_resize_handle(cx))
+				panel.child(self.sidebar_resize_handle(super::workspace_size::Panel::Left, cx))
 			})
 			.into_any_element()
 	}
@@ -629,6 +680,26 @@ impl AgentSurface {
 		list.into_any_element()
 	}
 
+	pub(crate) fn workspace_connecting(&self) -> bool {
+		// Before the first snapshot, there is no workspace state to present as empty
+		// or disconnected. Use the same loading surface throughout service startup.
+		if (self.snapshot.is_none()
+			&& matches!(
+				self.displayed_load_state(),
+				LoadState::Idle | LoadState::Loading | LoadState::Unavailable
+			))
+			|| self.connection_initializing()
+		{
+			return true;
+		}
+		self.native_agents.selected.is_some()
+			&& matches!(
+				self.native_agents.connection,
+				super::native_agents::NativeConnection::Checking { .. }
+			)
+			&& self.conversation_work().is_none_or(|work| !self.native_history_active(&work))
+	}
+
 	pub(super) fn connection_initializing(&self) -> bool {
 		self.snapshot.as_ref().is_some_and(|s| s.connection_initializing)
 	}
@@ -708,7 +779,7 @@ impl AgentSurface {
 			.map(|entry| entry.text.as_str())
 	}
 
-	fn unavailable_composer(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
 			return gpui::div()
 				.id("conversation-unavailable")
@@ -728,46 +799,42 @@ impl AgentSurface {
 		}
 
 		let detail = self.connection_failure_detail();
-		let (title, description) = match detail {
-			Some(text) if text.contains("ProcessUnavailable") => (
-				"Codex couldn't start",
-				"The local connection could not start. Decodex will retry automatically.",
-			),
-			Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
-				("Account unavailable", "Check account usage or sign-in in Settings → Accounts."),
-			Some(text) if text.contains("SelectWorkingDirectory") => (
-				"Project folder is unavailable",
-				"Restore access to the project folder so this conversation can resume. Your messages and draft are kept.",
-			),
-			_ => ("Can't continue this conversation", reason),
+		let title = if self.uncertain {
+			"Delivery unconfirmed · Sending paused"
+		} else {
+			match detail {
+				Some(text) if text.contains("ProcessUnavailable") =>
+					"Codex unavailable · Retrying automatically",
+				Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
+					"Account unavailable · Check Settings → Accounts",
+				Some(text) if text.contains("SelectWorkingDirectory") =>
+					"Project folder unavailable · Restore folder access",
+				_ if reason.contains("retry automatically") =>
+					"Connection lost · Retrying automatically",
+				_ => "Connection unavailable · Sending paused",
+			}
 		};
 
 		gpui::div()
 			.id("conversation-unavailable")
 			.debug_selector(|| "conversation-unavailable".into())
 			.role(Role::Status)
-			.aria_label(format!("{title}. {description}"))
+			.aria_label(title)
 			.text_color(gpui::rgb(TEXT))
 			.flex()
-			.flex_col()
-			.child(
-				gpui::div()
-					.mb(gpui::px(8.))
-					.text_size(gpui::px(12.))
-					.line_height(gpui::px(17.))
-					.font_weight(FontWeight::MEDIUM)
-					.child(title),
-			)
+			.flex_wrap()
+			.items_center()
+			.gap_x(gpui::px(10.))
 			.child(
 				gpui::div()
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(description),
+					.child(title),
 			)
 			.when(detail.is_some(), |d| {
 				d.child(
-					gpui::div().mt(gpui::px(8.)).flex().justify_end().items_center().child(
+					gpui::div().flex().items_center().child(
 						gpui::div()
 							.id("connection-details")
 							.role(Role::Button)
@@ -804,11 +871,12 @@ impl AgentSurface {
 				"connection-diagnostic",
 				self.workspace.connection_details_expanded && detail.is_some(),
 				gpui::div()
+					.w_full()
 					.pt(gpui::px(8.))
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(detail.unwrap_or_default().to_owned()),
+					.child(format!("{reason}\n{}", detail.unwrap_or_default())),
 			))
 			.into_any_element()
 	}
@@ -855,22 +923,13 @@ impl AgentSurface {
 										.w_full()
 										.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
 										.min_w_0()
-										.p(gpui::px(14.))
-										.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-										.bg(gpui::rgb(0x27272b))
-										.flex()
-										.flex_col()
-										.gap(gpui::px(12.))
-										.child(self.unavailable_composer(reason, cx))
-										.child(self.recovery_composer(cx)),
+										.px(gpui::px(10.))
+										.child(self.connection_notice(reason, cx)),
 								),
 						)
 					},
 				)
-				.when(
-					self.connection_initializing() || self.composer_unavailable_reason().is_none(),
-					|d| d.child(self.render_composer(window, cx)),
-				),
+				.child(self.render_composer(window, cx)),
 		)
 	}
 
@@ -978,22 +1037,38 @@ impl AgentSurface {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
 
-		let owner = cx.entity();
-		let key = self.selected.clone().unwrap_or_default();
+		let fill_owner = cx.entity().downgrade();
+		let fill_key = self.selected.clone();
+		// Measure after layout, including folded process rows and the composer inset.
+		let fill_viewport =
+			move |_: Vec<gpui::Bounds<gpui::Pixels>>, _: &mut Window, cx: &mut gpui::App| {
+				let Some(entity) = fill_owner.upgrade() else {
+					return;
+				};
+				let state = entity.read(cx);
+				if state.selected != fill_key || !state.history_viewport_fill_ready() {
+					return;
+				}
+				let owner = fill_owner.clone();
+				let key = fill_key.clone();
+				cx.defer(move |cx| {
+					let _ = owner.update(cx, |s, cx| {
+						if s.selected == key
+							&& key.as_ref().is_some_and(|key| s.history_viewport_underfilled(key))
+						{
+							s.prefetch_older_history(cx);
+						}
+					});
+				});
+			};
 		gpui::div()
+			.on_children_prepainted(fill_viewport)
 			.flex_1()
 			.min_h_0()
 			.min_w_0()
 			.relative()
 			.flex()
 			.child(self.anchored_native_viewport(transcript.into_any_element(), scroll.clone()))
-			.child(crate::ui_scroll::Scrollbar {
-				id: SharedString::from(format!("history-scrollbar-{key}")).into(),
-				scroll,
-				changed: Rc::new(move |offset, _, cx| {
-					owner.update(cx, |s, cx| s.drag_history_scrollbar(offset, cx));
-				}),
-			})
 			.into_any_element()
 	}
 
@@ -1003,6 +1078,18 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
+		if self.workspace_connecting() {
+			return gpui::div()
+				.debug_selector(|| "workspace-connecting".into())
+				.size_full()
+				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+				.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+				.flex()
+				.items_center()
+				.justify_center()
+				.child(crate::ui_loading::workspace())
+				.into_any_element();
+		}
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 
@@ -1023,7 +1110,6 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.rounded(gpui::px(10.))
 			.bg(gpui::rgba(AGENT_CHAT_OVERLAY));
 
 		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
@@ -1043,11 +1129,11 @@ impl AgentSurface {
 				.flex_1()
 				.min_h_0()
 				.flex()
+				.relative()
+				.child(transcript)
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
-				.relative()
-				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
 
@@ -1085,6 +1171,22 @@ impl AgentSurface {
 				.child(self.workspace_followup(work, cx));
 		}
 
+		chat = chat.child(
+			gpui::div().absolute().top(gpui::px(6.)).right(gpui::px(8.)).occlude().child(
+				self.workspace_action(
+					"chat-expand".into(),
+					if self.workspace.chat_expanded {
+						"Restore layout · Shift-Esc"
+					} else {
+						"Expand conversation · Shift-Esc"
+					}
+					.into(),
+					|s, cx| s.toggle_chat_fullscreen(cx),
+					cx,
+				),
+			),
+		);
+
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
 	}
@@ -1098,35 +1200,50 @@ impl AgentSurface {
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
-		self.update_graph_inset((graph_width - 16.).clamp(240., 640.) - 24., 280.);
+		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
+		let displayed_height = ui_motion::direct_value(
+			"execution-surface-height",
+			graph_height,
+			self.workspace
+				.panel_drag
+				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Bottom),
+			window,
+			cx,
+		);
+		// The top panel owns its space. Chat follows it in normal layout flow.
+		let center = gpui::div()
+			.relative()
+			.flex_1()
+			.min_w_0()
+			.h_full()
+			.flex()
+			.flex_col()
+			.child(
+				gpui::div()
+					.flex_none()
+					.overflow_hidden()
+					.w_full()
+					.h(gpui::px(displayed_height))
+					.when(displayed_height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
+			)
+			.when(!self.workspace.graph_expanded, |center| center.child(chat));
 
-		let mut center =
-			gpui::div().relative().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(
-				ui_motion::reveal("agent-graph-dock", graph_height, false, self.handoff_bar(cx)),
-			);
-		if self.workspace.graph_visible
-			&& let Some(popup) =
-				self.handoff_popup(graph_width, f32::from(window.viewport_size().height), cx)
-		{
-			center = center.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.left(gpui::px(8.))
-						.bottom(gpui::px(graph_height + 8.))
-						.child(popup),
-				)
-				.with_priority(3),
-			);
-		}
-
+		let right_width = ui_motion::direct_value(
+			"agent-tree-panel",
+			self.agent_tree_width(window),
+			self.workspace
+				.panel_drag
+				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Right),
+			window,
+			cx,
+		);
 		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
-			ui_motion::reveal(
-				"agent-tree-panel",
-				self.agent_tree_width(window),
-				true,
-				self.agent_tree(cx),
-			),
+			gpui::div()
+				.flex_none()
+				.w(gpui::px(right_width))
+				.h_full()
+				.overflow_hidden()
+				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(cx))),
 		);
 		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
 		let main = gpui::div()
@@ -1450,7 +1567,7 @@ impl AgentSurface {
 						"zoom-reset".into(),
 						"Fit".into(),
 						|s, cx| {
-							s.workspace.graph_zoom = 1.0;
+							s.workspace.graph_zoom = s.workspace.graph_fit_zoom;
 							s.workspace.graph_pan = (0.0, 0.0);
 
 							cx.notify();
@@ -1491,7 +1608,9 @@ impl AgentSurface {
 						graph::blockers(snapshot, work).iter().any(|w| w.id == a.id)
 					})
 				});
-				((a.x + 190.0, a.y + 33.0), (b.x, b.y + 33.0), report, blocked)
+				let (width, height) = self.graph_node_size(&a.id);
+				let (_, target_height) = self.graph_node_size(&b.id);
+				((a.x + width, a.y + height / 2.), (b.x, b.y + target_height / 2.), report, blocked)
 			})
 			.collect();
 
@@ -1537,7 +1656,7 @@ impl AgentSurface {
 			)
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, _, cx| {
 				if event.pressed_button == Some(MouseButton::Left)
-					&& s.workspace.sidebar_drag.is_none()
+					&& s.workspace.panel_drag.is_none()
 				{
 					if let Some(previous) = s.workspace.graph_drag {
 						s.workspace.graph_pan.0 += f32::from(event.position.x - previous.x);
@@ -1565,21 +1684,8 @@ impl AgentSurface {
 									gpui::px(b.0 * zoom + pan.0),
 									gpui::px(b.1 * zoom + pan.1),
 								);
-							let mut path =
-								PathBuilder::stroke(gpui::px(if blocked { 2.0 } else { 1.0 }));
 
-							path.move_to(start);
-							path.cubic_bezier_to(
-								end,
-								gpui::point((start.x + end.x) * 0.5, start.y),
-								gpui::point((start.x + end.x) * 0.5, end.y),
-							);
-
-							if !report {
-								path.move_to(end + gpui::point(gpui::px(-5.0), gpui::px(-3.0)));
-								path.line_to(end);
-								path.line_to(end + gpui::point(gpui::px(-5.0), gpui::px(3.0)));
-							}
+							let path = graph_edge_path(start, end, report, blocked);
 
 							if let Ok(path) = path.build() {
 								window.paint_path(
@@ -1623,6 +1729,10 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		if self.handoffs.focus.as_deref() == Some(&node.id) {
+			return self.expanded_graph_node(node, work, cx);
+		}
+
 		let zoom = self.workspace.graph_display_zoom;
 		let pan = (
 			self.workspace.graph_pan.0 + self.workspace.graph_inset.0,
@@ -1632,7 +1742,7 @@ impl AgentSurface {
 		let key = id.clone();
 		let state =
 			super::dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
-		let status = state.label;
+		let status = self.graph_node_caption(work);
 		let color = state.color;
 		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
 
@@ -1650,28 +1760,36 @@ impl AgentSurface {
 			.left(gpui::px(node.x * zoom + pan.0))
 			.top(gpui::px(node.y * zoom + pan.1))
 			.w(gpui::px(190.0 * zoom))
-			.h(gpui::px(66.0 * zoom))
+			.h(gpui::px((66.0 * zoom).max(42.)))
 			.border_1()
 			.border_color(
-				gpui::rgb(if self.workspace.dock_record.as_ref() == Some(&id) {
-					TEXT
-				} else {
-					color
-				})
+				gpui::rgb(
+					if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref())
+						== Some(&id)
+					{
+						TEXT
+					} else {
+						color
+					},
+				)
 				.opacity(if state.group == 3 { 0.25 } else { 0.7 }),
 			)
 			.px_2()
-			.py_1()
+			.py(gpui::px(3.))
 			.rounded(gpui::px(9.0))
-			.bg(if self.workspace.dock_record.as_ref() == Some(&id) {
-				gpui::rgba(0x35353ce8)
-			} else {
-				gpui::rgba(0x242427db)
-			})
+			.bg(
+				if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref()) == Some(&id)
+				{
+					gpui::rgba(0x35353ce8)
+				} else {
+					gpui::rgba(0x242427db)
+				},
+			)
 			.hover(|style| style.bg(gpui::rgba(0x3a3a40eb)))
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(gpui::px((12.0 * zoom).max(10.0)))
+			.line_height(gpui::px(14.))
 			.on_click(cx.listener(move |s, _, _, cx| s.activate_graph_node(&id, cx)))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if event.keystroke.key == "enter" || event.keystroke.key == "space" {
@@ -1682,17 +1800,40 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.justify_center()
-			.gap_1()
+			.gap(gpui::px(2.))
 			.child(gpui::div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
 			.child(
 				gpui::div()
 					.text_size(gpui::px((11.0 * zoom).max(10.0)))
 					.text_color(gpui::rgb(color))
+					.whitespace_nowrap()
+					.text_ellipsis()
 					.child(status),
 			);
 
 		element.into_any_element()
 	}
+}
+
+fn graph_edge_path(
+	start: gpui::Point<gpui::Pixels>,
+	end: gpui::Point<gpui::Pixels>,
+	report: bool,
+	blocked: bool,
+) -> PathBuilder {
+	let mut path = PathBuilder::stroke(gpui::px(if blocked { 2. } else { 1. }));
+	path.move_to(start);
+	path.cubic_bezier_to(
+		end,
+		gpui::point((start.x + end.x) * 0.5, start.y),
+		gpui::point((start.x + end.x) * 0.5, end.y),
+	);
+	if !report {
+		path.move_to(end + gpui::point(gpui::px(-5.), gpui::px(-3.)));
+		path.line_to(end);
+		path.line_to(end + gpui::point(gpui::px(-5.), gpui::px(3.)));
+	}
+	path
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -1725,6 +1866,16 @@ impl AgentSurface {
 		}
 
 		match page {
+			"factory" | "relations" | "relations-resource" => {
+				self.work_board.graph = false;
+				self.workspace.graph_expanded = true;
+				if page.starts_with("relations") {
+					self.visual_relation_evidence();
+					if page == "relations-resource" {
+						self.visual_relation_resource_focus();
+					}
+				}
+			},
 			#[cfg(feature = "visual-capture")]
 			"prompt-editor" | "prompt-remove" => self.visual_prompt_editor(page == "prompt-remove", cx),
 			"recap" => self.visual_recap(),
@@ -1739,6 +1890,7 @@ impl AgentSurface {
 				}
 
 				self.snapshot = Some(AgentSnapshotDto {
+					context_references: vec![],
 					connection_initializing: false,
 					runtime_source: None,
 					workspaces: vec![],
@@ -1753,8 +1905,10 @@ impl AgentSurface {
 				self.native_agents.pages.clear();
 				self.workspace.closing_pages.clear();
 			},
+			"dock-execution" => self.visual_execution_dock(cx),
+			"dock-execution-failed" => self.visual_execution_failure(cx),
 			"dock-compact" | "dock-running" | "dock-result" | "dock-completed"
-			| "dock-dependencies" => self.visual_dock_page(page, cx),
+			| "dock-dependencies" | "dock-blocked" => self.visual_dock_page(page, cx),
 			"expanded" => self.workspace.graph_expanded = true,
 			"in-use" => {
 				self.workspace.graph_visible = false;
@@ -1843,6 +1997,7 @@ impl AgentSurface {
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
+		self.work_board.graph = true;
 		self.handoffs.fixture();
 		self.workspace.sidebar_visible = true;
 
@@ -1866,6 +2021,7 @@ impl AgentSurface {
 			};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
 			workspaces: vec![],
@@ -1941,7 +2097,6 @@ impl AgentSurface {
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
 		self.workspace.pages = vec!["verify".into()];
-		self.workspace.dock_compact = false;
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
@@ -2056,7 +2211,7 @@ impl AgentSurface {
 					gpui::div()
 						.flex()
 						.flex_col()
-						.gap_1()
+						.gap(gpui::px(2.))
 						.child(summary)
 						.child(format!("Preview: {preview}"))
 						.when_some(ordinary_preview, |element, preview| element.child(preview))
@@ -2081,7 +2236,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label("Keep both draft copies")
 			.px_2()
-			.py_1()
+			.py(gpui::px(3.))
 			.cursor_pointer()
 			.on_click(cx.listener(|s, _, _, cx| s.keep_both_drafts(cx)))
 			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
@@ -2160,7 +2315,7 @@ impl AgentSurface {
 			.aria_label(label.to_owned())
 			.w_full()
 			.px_4()
-			.py_1()
+			.py(gpui::px(3.))
 			.flex()
 			.items_center()
 			.justify_center()
@@ -2254,9 +2409,14 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 		"workspace-sidebar" => crate::shell::workspace_symbols::Symbol::Sidebar,
 		"workspace-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
-		"graph-expand" => crate::shell::workspace_symbols::Symbol::Expand,
+		"graph-expand" | "chat-expand" => crate::shell::workspace_symbols::Symbol::Expand,
 		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
-		"graph-up" => crate::shell::workspace_symbols::Symbol::Back,
+		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
+		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,
+		"board-show-list" => crate::shell::workspace_symbols::Symbol::AllWork,
+		"dock-open-source" => crate::shell::workspace_symbols::Symbol::Forward,
+		"dock-evidence-toggle" => crate::shell::workspace_symbols::Symbol::Eye,
+		"dock-subtasks" => crate::shell::workspace_symbols::Symbol::Agents,
 		"zoom-in" => crate::shell::workspace_symbols::Symbol::Plus,
 		"zoom-out" => crate::shell::workspace_symbols::Symbol::Minus,
 		id if id.starts_with("close-") => crate::shell::workspace_symbols::Symbol::Close,
@@ -2355,7 +2515,38 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
-		assert!(visual.debug_bounds("agent-composer").is_some());
+		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
+		let loading = visual.debug_bounds("loading-feedback-Opening workspace").unwrap();
+		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
+		assert!(
+			(workspace.center().y + gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE / 2.)
+				- loading.center().y)
+				.abs()
+				< gpui::px(1.)
+		);
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.workspace_panels(), [(false, false); 3]);
+			let panels = (
+				s.workspace.sidebar_visible,
+				s.workspace.graph_visible,
+				s.workspace.agent_tree_visible,
+			);
+			s.toggle_workspace_sidebar(cx);
+			s.toggle_workspace_graph(cx);
+			s.toggle_agent_tree(cx);
+			assert_eq!(
+				panels,
+				(
+					s.workspace.sidebar_visible,
+					s.workspace.graph_visible,
+					s.workspace.agent_tree_visible
+				)
+			);
+		});
+		assert!(visual.debug_bounds("composer-send").is_none());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+
+		assert!(visual.debug_bounds("agent-composer").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 		surface.update(visual, |s, cx| {
@@ -2372,6 +2563,7 @@ mod tests {
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
 		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 	}
 
@@ -2432,7 +2624,9 @@ mod tests {
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
 
-		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
+		assert!(visual.debug_bounds("workspace-connecting").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("work-dock").is_none());
 
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Unavailable;
@@ -2442,7 +2636,8 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		assert!(visual.debug_bounds("loading-feedback-Connecting to workspace").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("work-dock").is_none());
 		assert!(
 			visual.debug_bounds("workspace-welcome").is_none(),
 			"a cold connection is not an empty conversation"
@@ -2450,7 +2645,6 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-			s.workspace.dock_compact = true;
 
 			s.state = LoadState::Loading;
 
@@ -2584,7 +2778,11 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		assert!(visual.debug_bounds("recovery-draft-editor").is_some());
+		assert!(visual.debug_bounds("agent-composer").is_some());
+		assert!(
+			visual.debug_bounds("conversation-unavailable").unwrap().bottom()
+				<= visual.debug_bounds("agent-composer").unwrap().top()
+		);
 
 		visual.simulate_keystrokes("cmd-end space e d i t e d enter cmd-enter");
 

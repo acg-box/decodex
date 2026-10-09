@@ -22,6 +22,10 @@ const INDENT: f32 = 12.;
 
 impl AgentSurface {
 	pub(crate) fn toggle_agent_tree(&mut self, cx: &mut Context<Self>) {
+		if self.workspace_connecting() {
+			return;
+		}
+
 		self.workspace.agent_tree_visible = !self.workspace.agent_tree_visible;
 
 		cx.notify();
@@ -30,6 +34,7 @@ impl AgentSurface {
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
 		if !self.workspace.agent_tree_visible
 			|| self.workspace.graph_expanded
+			|| self.workspace.chat_expanded
 			|| !self.reserve_workspace_panels()
 		{
 			return 0.0;
@@ -71,6 +76,7 @@ impl AgentSurface {
 
 		gpui::div()
 			.id("agent-panel-focus")
+			.relative()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
 			)
@@ -106,6 +112,7 @@ impl AgentSurface {
 					.child(self.work_details_button(cx)),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
+			.child(self.sidebar_resize_handle(Panel::Right, cx))
 			.into_any_element()
 	}
 
@@ -407,12 +414,14 @@ mod tests {
 				"agent".into(),
 				vec![
 					decodex_protocol::NativeAgentDto {
+						task: String::new(),
 						thread_id: "native-child".into(),
 						parent_thread_id: "root-native".into(),
 						title: "Research".into(),
 						status: "idle".into(),
 					},
 					decodex_protocol::NativeAgentDto {
+						task: String::new(),
 						thread_id: "native-grandchild".into(),
 						parent_thread_id: "native-child".into(),
 						title: "Sources".into(),

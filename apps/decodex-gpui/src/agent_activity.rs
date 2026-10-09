@@ -311,34 +311,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn drag_history_scrollbar(&mut self, offset: f32, cx: &mut Context<Self>) {
-		self.timeline.latest_follow_work = None;
-		self.cancel_native_scroll_anchor();
-		self.timeline.navigation = None;
-		self.timeline.selected = None;
-		self.timeline.wheel_scroll = None;
-		if let Some(id) = self.selected.clone()
-			&& let Some(scroll) = self.timeline.scroll.get(&id)
-		{
-			let previous = f32::from(scroll.offset().y);
-			let maximum = f32::from(scroll.max_offset().y).max(0.);
-			let offset = offset.clamp(-maximum, 0.);
-			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(offset)));
-			let following = (offset + maximum).abs() < 1.;
-			if following {
-				self.timeline.follow_paused.remove(&id);
-			} else {
-				self.timeline.follow_paused.insert(id);
-			}
-			self.set_voice_follow(following);
-			if offset > previous {
-				self.timeline.native.prefetch_requested = true;
-				self.prefetch_older_history(cx);
-			}
-			cx.notify();
-		}
-	}
-
 	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
 		let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT));
 
@@ -719,6 +691,7 @@ impl AgentSurface {
 			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
+			.debug_selector(|| "conversation-history-rail".into())
 			.w(gpui::px(44.0))
 			.flex_none()
 			.h_full()
@@ -765,13 +738,7 @@ impl AgentSurface {
 					// Navigation previews already have their text; do not use the
 					// generic tooltip's 500 ms discovery delay.
 					.tooltip_show_delay(std::time::Duration::ZERO)
-					.tooltip(move |_, cx| {
-						cx.new(|_| HistoryPreview {
-							mark: tip.clone(),
-							opened: std::time::Instant::now(),
-						})
-						.into()
-					})
+					.tooltip(move |_, cx| cx.new(|_| HistoryPreview { mark: tip.clone() }).into())
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
@@ -849,29 +816,13 @@ pub(super) struct WheelScroll {
 
 struct HistoryPreview {
 	mark: HistoryMark,
-	opened: std::time::Instant,
 }
 impl Render for HistoryPreview {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let progress = if ui_motion::reduced() {
-			1.0
-		} else {
-			(self.opened.elapsed().as_secs_f32() / 0.08).min(1.0)
-		};
-		if progress < 1.0 {
-			ui_motion::request_frame(window, cx);
-		}
-
-		// Paint the surface and text together, already readable on the first frame.
-		gpui::div()
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.debug_selector(|| "history-hover-preview".into())
-			.opacity(0.8 + 0.2 * (1.0 - (1.0 - progress).powi(3)))
 			.w(gpui::px(320.0))
 			.p_3()
-			.rounded(gpui::px(10.0))
-			.bg(gpui::rgba(0x24242af5))
-			.border_1()
-			.border_color(gpui::rgba(0xffffff16))
 			.flex()
 			.flex_col()
 			.gap_2()
@@ -883,10 +834,20 @@ impl Render for HistoryPreview {
 					.text_color(gpui::rgb(TEXT_MUTED))
 					.child(self.mark.time.clone()),
 			)
-			.child(gpui::div().text_color(gpui::rgb(TEXT)).child(self.mark.question.clone()))
+			.child(
+				gpui::div()
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.text_color(gpui::rgb(TEXT))
+					.child(self.mark.question.clone()),
+			)
 			.when(!self.mark.answer.is_empty(), |panel| {
 				panel.child(
-					gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(self.mark.answer.clone()),
+					gpui::div()
+						.pt_2()
+						.border_t_1()
+						.border_color(gpui::rgba(0xffffff14))
+						.text_color(gpui::rgb(0xc4c4ce))
+						.child(self.mark.answer.clone()),
 				)
 			})
 	}
@@ -941,6 +902,9 @@ mod tests {
 		let bounds = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
 		});
+		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
+		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+		assert!(rail.left() >= transcript.right(), "timeline replaces the right scrollbar");
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
@@ -1051,6 +1015,7 @@ mod tests {
 		let row = |position, user| AgentTimelineEntry {
 			position,
 			content: decodex_protocol::AgentTimelineContent::Item {
+				collaboration: None,
 				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
@@ -1195,6 +1160,7 @@ mod tests {
 				AgentTimelineEntry {
 					position: 5,
 					content: decodex_protocol::AgentTimelineContent::Item {
+						collaboration: None,
 						phase: None,
 						app_ui: false,
 						turn_id: "turn".into(),
@@ -1308,7 +1274,8 @@ mod tests {
 				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
 					duration_ms: Some(3_200), usage: None, usage_summary: None, error: None,
-				} } else { decodex_protocol::AgentTimelineContent::Item { phase: None,
+				} } else { decodex_protocol::AgentTimelineContent::Item { collaboration: None,
+phase: None,
 					app_ui: false,
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
 					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),

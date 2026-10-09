@@ -472,7 +472,8 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-                connection_initializing: false,
+                context_references: vec![],
+connection_initializing: false,
                 runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![AgentWorkItemDto {
@@ -572,7 +573,8 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-                connection_initializing: false,
+                context_references: vec![],
+connection_initializing: false,
                 runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![AgentWorkItemDto {

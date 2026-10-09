@@ -965,10 +965,29 @@ pub struct WorkspaceDto {
 	pub directory: String,
 }
 
+/// An exact user-selected context reference and its delivery receipt.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentContextReferenceDto {
+	/// Local input event that carried the reference.
+	pub event_id: i64,
+	/// Work receiving the reference; this does not claim its current thread read it.
+	pub recipient_work_id: String,
+	/// Referenced work identity.
+	pub source_work_id: String,
+	/// Exact referenced thread, retained across subsequent work rebinding.
+	pub source_thread_id: String,
+	/// Confirmed receiving turn. None means queued, not delivered.
+	pub delivery_turn_id: Option<String>,
+}
+
 /// One bounded work snapshot plus observed runtime identity, including a valid empty state.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// Explicit selected context references, not inferred from prose.
+	#[serde(default)]
+	pub context_references: Vec<AgentContextReferenceDto>,
 	/// The service is still checking its persisted connection after startup.
 	#[serde(default)]
 	pub connection_initializing: bool,
@@ -999,6 +1018,14 @@ impl AgentSnapshotDto {
 					&& workspace.work_ids.iter().all(|id| ids.contains(id.as_str()))
 			})
 			&& self.work_items.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.context_references.len() <= MAX_AGENT_DEPENDENCIES
+			&& self.context_references.iter().all(|r| {
+				r.event_id > 0
+					&& text(&r.recipient_work_id, 512)
+					&& text(&r.source_work_id, 512)
+					&& text(&r.source_thread_id, 512)
+					&& optional(&r.delivery_turn_id)
+			})
 			&& self.dependencies.len() <= MAX_AGENT_DEPENDENCIES
 			&& self.pending_events.len() <= MAX_AGENT_PENDING_EVENTS
 			&& ids.len() == self.work_items.len()
@@ -1254,6 +1281,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -1275,6 +1303,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],

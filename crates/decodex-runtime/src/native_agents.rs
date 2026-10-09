@@ -35,20 +35,55 @@ pub(crate) async fn read(
 
         if data.len()>100 {return None;}
 
-        let agents = data.iter().filter_map(|item| {
-            let id = item["id"].as_str()?;
-            let parent = item["parentThreadId"].as_str()?;
-            let source = item.pointer("/source/subAgent/thread_spawn/parent_thread_id")?.as_str()?;
-
-            if parent != source || id.len()>512 || parent.len()>512 {return None;}
-
-            Some(NativeAgentDto {thread_id:id.into(),parent_thread_id:parent.into(),title:clean(item["name"].as_str().filter(|s|!s.is_empty()).or(item["agentNickname"].as_str()).unwrap_or("Agent"),120),status:clean(item.pointer("/status/type").and_then(Value::as_str).unwrap_or("unknown"),32)})
-        }).collect();
+        let agents = data.iter().filter_map(observation).collect();
 
         Some(NativeAgentsResult::Available { agents, next_cursor: value["nextCursor"].as_str().map(str::to_owned) })
     }).await;
 
 	result.ok().flatten().unwrap_or(NativeAgentsResult::Unavailable)
+}
+
+fn observation(item: &Value) -> Option<NativeAgentDto> {
+	let id = item["id"].as_str()?;
+	let parent = item["parentThreadId"].as_str()?;
+	let source = item.pointer("/source/subAgent/thread_spawn/parent_thread_id")?.as_str()?;
+	if parent != source || id.len() > 512 || parent.len() > 512 {
+		return None;
+	}
+	Some(NativeAgentDto {
+		thread_id: id.into(),
+		parent_thread_id: parent.into(),
+		title: clean(
+			item["name"]
+				.as_str()
+				.filter(|s| !s.is_empty())
+				.or(item["agentNickname"].as_str())
+				.unwrap_or("Agent"),
+			120,
+		),
+		task: clean(item["preview"].as_str().unwrap_or(""), 320),
+		status: observed_status(item),
+	})
+}
+
+// Preserve native waiting flags instead of presenting every active thread as executing.
+fn observed_status(item: &Value) -> String {
+	let state = item.pointer("/status/type").and_then(Value::as_str).unwrap_or("unknown");
+	if state == "active" {
+		if let Some(flags) = item.pointer("/status/activeFlags").and_then(Value::as_array) {
+			for flag in ["waitingOnApproval", "waitingOnUserInput"] {
+				if flags.iter().any(|v| v.as_str() == Some(flag)) {
+					return flag.into();
+				}
+			}
+			if !flags.is_empty() {
+				return "unknown".into();
+			}
+		} else {
+			return "unknown".into();
+		}
+	}
+	clean(state, 32)
 }
 
 /// Prepare a conversation, not a turn. Keep inspection read-only and send no queued input.
@@ -129,5 +164,43 @@ mod tests {
 		assert_eq!(can_input, None);
 		assert_eq!(active_turn.as_deref(), Some("t"));
 		assert!(native_agents::conversation(&v, "other").is_none());
+	}
+}
+
+#[cfg(test)]
+mod observation_tests {
+	use super::*;
+	#[test]
+	fn active_waiting_flags_are_not_running() {
+		for flag in ["waitingOnApproval", "waitingOnUserInput"] {
+			assert_eq!(
+				observed_status(
+					&serde_json::json!({"status":{"type":"active", "activeFlags":[flag]}})
+				),
+				flag
+			);
+		}
+		assert_eq!(
+			observed_status(&serde_json::json!({"status":{"type":"active", "activeFlags":[]}})),
+			"active"
+		);
+		assert_eq!(observed_status(&serde_json::json!({"status":{"type":"active"}})), "unknown");
+	}
+
+	#[test]
+	fn native_inventory_retains_bounded_task_and_exact_parent() {
+		let mut item = serde_json::json!({"id":"child","parentThreadId":"parent","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"parent"}}},"agentNickname":"Mencius","preview":"Review navigation","status":{"type":"idle"}});
+		let agent = observation(&item).unwrap();
+		assert_eq!(agent.task, "Review navigation");
+		assert_eq!(agent.status, "idle");
+		item["preview"] = Value::String("x".repeat(400));
+		assert_eq!(observation(&item).unwrap().task.len(), 320);
+		item["parentThreadId"] = Value::String("other".into());
+		assert!(observation(&item).is_none());
+	}
+	#[test]
+	fn older_native_observations_without_task_remain_readable() {
+		let agent: NativeAgentDto = serde_json::from_value(serde_json::json!({"thread_id":"child","parent_thread_id":"parent","title":"Agent","status":"idle"})).unwrap();
+		assert!(agent.task.is_empty());
 	}
 }

@@ -236,6 +236,7 @@ mod tests {
 			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
 				content: decodex_protocol::AgentTimelineContent::Item {
+					collaboration: None,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -370,6 +371,7 @@ mod tests {
 			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
 				content: decodex_protocol::AgentTimelineContent::Item {
+					collaboration: None,
 					turn_id: "new-turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),

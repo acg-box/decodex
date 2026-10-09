@@ -145,6 +145,7 @@ mod tests {
 
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],

@@ -72,8 +72,7 @@ use crate::{
 		COMPOSER_MATERIAL, CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY,
 		GREEN, HEADING_SIZE, MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP,
 		SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL,
-		SURFACE_OVERLAY_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED,
-		window_material,
+		SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -117,6 +116,7 @@ gpui::actions!(
 		ResetPanels,
 		ToggleInspector,
 		ToggleGraph,
+		ToggleContentFullscreen,
 		DismissStatus,
 		NavigateBack,
 		NavigateForward,
@@ -929,9 +929,23 @@ impl Shell {
 		}
 	}
 
-	fn toggle_graph(&mut self, _: &ToggleGraph, _: &mut Window, cx: &mut Context<Self>) {
+	fn toggle_content_fullscreen(
+		&mut self,
+		_: &ToggleContentFullscreen,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::toggle_focused_content);
+			window.focus(&self.root_focus, cx);
+		}
+		cx.stop_propagation();
+	}
+
+	fn toggle_graph(&mut self, _: &ToggleGraph, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected == Destination::Agent {
 			self.agent.update(cx, AgentSurface::toggle_workspace_graph);
+			window.focus(&self.root_focus, cx);
 		}
 
 		cx.stop_propagation();
@@ -1817,6 +1831,7 @@ impl Render for Shell {
 			}))
 			.on_action(cx.listener(Self::toggle_inspector))
 			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(Self::toggle_content_fullscreen))
 			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
 				if s.status_open {
 					s.status_open = false;
@@ -1983,16 +1998,7 @@ impl Global for LifecycleOwnerGlobal {}
 struct RefreshTooltip;
 impl Render for RefreshTooltip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
-			.px_2()
-			.py_1()
-			.rounded(gpui::px(6.0))
-			.border_1()
-			.border_color(gpui::rgba(0xffffff14))
-			.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
-			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(WB_TEXT))
-			.child("Refresh health")
+		tooltip_surface("Refresh health".into(), WB_TEXT)
 	}
 }
 
@@ -2168,6 +2174,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
 		KeyBinding::new("cmd-b", ToggleInspector, None),
 		KeyBinding::new("cmd-j", ToggleGraph, None),
+		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
@@ -2640,9 +2647,6 @@ fn floating_window_controls(
 						.max_w(gpui::px(360.))
 						.w_full()
 						.min_w_0()
-						.occlude()
-						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-						.on_click(|_, _, cx| cx.stop_propagation())
 						.child(agent.work_context(_window, cx)),
 				)
 		})
@@ -2693,14 +2697,9 @@ fn floating_window_controls(
 }
 
 fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	gpui::div()
+	crate::ui_motion::tooltip_surface(gpui::div())
 		.px_2()
 		.py_1()
-		.rounded(gpui::px(6.0))
-		.border_1()
-		.border_color(gpui::rgba(0xffffff14))
-		.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
-		.text_size(gpui::px(11.0))
 		.text_color(gpui::rgb(color))
 		.child(text)
 }
@@ -2816,14 +2815,14 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle Dock · Command-J",
 		(2, _) => "Toggle agent structure · Command-B",
-		(1, false) => "Dock · no work yet",
+		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
 
 	gpui::div()
 		.id(("agent-panel-control", index))
 		.role(Role::Button)
-		.tab_index(0)
+		.when(enabled, |el| el.tab_index(0))
 		.aria_label(label)
 		.aria_expanded(active)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
@@ -7727,6 +7726,43 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn conversation_title_passes_mouse_down_to_window_drag_region(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		let title = visual.debug_bounds("workspace-conversation-header").unwrap();
+		visual.simulate_mouse_down(title.center(), gpui::MouseButton::Left, Default::default());
+		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		visual.simulate_mouse_up(title.center(), gpui::MouseButton::Left, Default::default());
+		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+	}
+
+	#[gpui::test]
+	fn dock_close_returns_focus_so_shortcut_can_reopen(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		let close = visual.debug_bounds("graph-close").expect("Dock close control");
+		visual.simulate_click(close.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear());
+		assert!(!shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
+		visual.simulate_keystrokes("cmd-j");
+		assert!(shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
+		visual.simulate_keystrokes("cmd-j");
+		visual.simulate_keystrokes("cmd-j");
+		assert!(shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
+	}
+
+	#[gpui::test]
 	fn held_panel_activation_does_not_toggle_again(cx: &mut TestAppContext) {
 		let (view, visual) = cx.add_window_view(|window, cx| {
 			PanelControlView(cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped)))
@@ -7831,7 +7867,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-shift-=");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
 
 		visual.simulate_keystrokes("ctrl-alt-_");
 
@@ -7839,7 +7875,7 @@ mod tests {
 
 		visual.simulate_keystrokes("ctrl-alt-+");
 
-		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2));
+		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
 
 		visual.simulate_keystrokes("ctrl-alt-)");
 

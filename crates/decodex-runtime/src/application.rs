@@ -2554,7 +2554,20 @@ impl Application for ServiceApplication {
 			tasks.push(Box::pin(runtime.clone().daemon_service(stop.clone())));
 		}
 		if let Some(observations) = &self.account_observations {
-			tasks.push(Box::pin(observations.clone().daemon_service(stop.clone())));
+			let observations = observations.clone();
+			let startup = self.agent.as_ref().map(crate::agent_host::AgentHost::startup_state);
+			let mut stop = stop.clone();
+			tasks.push(Box::pin(async move {
+				// Background provider HTTP reads hold the same account lock as process
+				// admission. Let initial recovery acquire it before quota/profile refresh.
+				if let Some(mut startup) = startup {
+					tokio::select! {
+						_ = startup.wait_for(|initializing| !*initializing) => {},
+						_ = stop.wait_for(|stopped| *stopped) => return,
+					}
+				}
+				observations.daemon_service(stop).await;
+			}));
 		}
 
 		tasks
@@ -6101,7 +6114,21 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
+	let Ok(references) = store.agent_context_references().await else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
+	};
+
 	let snapshot = AgentSnapshotDto {
+		context_references: references
+			.into_iter()
+			.map(|r| decodex_protocol::AgentContextReferenceDto {
+				event_id: r.event_id,
+				recipient_work_id: r.recipient_work_id,
+				source_work_id: r.source_work_id,
+				source_thread_id: r.source_thread_id,
+				delivery_turn_id: r.delivery_turn_id,
+			})
+			.collect(),
 		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces

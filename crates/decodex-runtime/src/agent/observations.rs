@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use futures_util::{StreamExt as _, stream};
 use sha2::{Digest as _, Sha256};
 use tokio::time::{self, Instant};
 
@@ -79,35 +80,45 @@ impl AgentCoordinator {
 			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
 			let mut complete = true;
 
-			for header in turns {
-				let Some(turn) = header["id"].as_str() else {
-					complete = false;
-
-					break;
-				};
-				let Ok(Ok(history)) =
-					time::timeout_at(deadline, self.client.thread_read_turn(&thread, turn)).await
-				else {
-					complete = false;
-
-					break;
-				};
-				let Some(items) = history
-					.pointer("/thread/turns")
-					.and_then(Value::as_array)
-					.and_then(|turns| turns.iter().find(|item| item["id"].as_str() == Some(turn)))
-					.and_then(|turn| turn["items"].as_array())
-				else {
-					complete = false;
-
-					break;
-				};
-
-				if latest.as_deref() == Some(turn)
-					&& let Some(native_turn) =
-						history.pointer("/thread/turns").and_then(Value::as_array).and_then(
-							|turns| turns.iter().find(|value| value["id"].as_str() == Some(turn)),
+			let client = self.client.clone();
+			// The headers already identify each turn. Fetch only missing item pages,
+			// with bounded read-ahead and chronological application of observations.
+			let reads = stream::iter(turns.into_iter().map(|mut header| {
+				let client = client.clone();
+				let thread = thread.clone();
+				async move {
+					if !header["items"].is_array()
+						|| header.get("itemsView").is_some_and(|view| view != "full")
+					{
+						let turn = header["id"]
+							.as_str()
+							.ok_or(app_server_client::ClientError::InvalidFrame)?;
+						header["items"] = time::timeout_at(
+							deadline,
+							client.thread_read_turn_items(&thread, turn),
 						)
+						.await
+						.map_err(|_| app_server_client::ClientError::Io)??;
+					}
+					Ok::<_, app_server_client::ClientError>(header)
+				}
+			}))
+			.buffered(4);
+			tokio::pin!(reads);
+			while let Some(result) = reads.next().await {
+				let Ok(native_turn) = result else {
+					complete = false;
+					break;
+				};
+				let Some(turn) = native_turn["id"].as_str() else {
+					complete = false;
+					break;
+				};
+				let Some(items) = native_turn["items"].as_array() else {
+					complete = false;
+					break;
+				};
+				if latest.as_deref() == Some(turn)
 					&& native_turn["status"] == "failed"
 					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
 				{
@@ -162,7 +173,7 @@ impl AgentCoordinator {
 					.await?;
 
 				if self.client.question_revision() != revision {
-					self.store.refresh_agent_async_projection(thread).await?;
+					self.store.refresh_agent_async_projection(thread.clone()).await?;
 				}
 			}
 		}

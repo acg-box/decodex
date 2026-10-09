@@ -213,7 +213,9 @@ impl SuspendedAttestedSpawn {
 
 		let pid = self.child.as_ref().expect("a suspended spawn owns its child").pid;
 
+		let phase = crate::startup_trace::Phase::new("dynamic_process_identity");
 		verify_dynamic_identity(pid, identity)?;
+		drop(phase);
 		verify_session_and_process_group(pid)?;
 
 		// SAFETY: the positive pid names the unreaped, suspended child owned by this value.

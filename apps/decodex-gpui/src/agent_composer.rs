@@ -42,11 +42,9 @@ use decodex_protocol::AgentAttachmentDto;
 struct ComposerTip(String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
+		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_3()
 			.py_2()
-			.rounded(gpui::px(7.0))
-			.bg(gpui::rgb(0x242429))
 			.text_size(gpui::px(11.0))
 			.text_color(gpui::rgb(TEXT))
 			.child(self.0.clone())
@@ -291,71 +289,9 @@ impl AgentSurface {
 
 	pub(super) fn refresh_prompt(cx: &mut Context<Self>) {
 		#[cfg(not(test))]
-		{
-			let fetch = cx.background_executor().spawn(async { prompts::refresh_cache() });
-
-			cx.spawn(async move |surface, cx| {
-				if fetch.await {
-					let _ = surface.update(cx, |s, cx| {
-						if s.composer.read(cx).content().is_empty()
-							&& !s.sending
-							&& !s.is_new_conversation()
-						{
-							s.composer
-								.update(cx, |input, cx| input.set_placeholder(prompts::next(), cx));
-						}
-					});
-				}
-			})
-			.detach();
-		}
-
+		cx.background_executor().spawn(async { prompts::refresh_cache() }).detach();
 		#[cfg(test)]
 		let _ = cx;
-	}
-
-	pub(super) fn recovery_composer(&self, cx: &mut Context<Self>) -> Div {
-		gpui::div()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.when(self.native_agents.selected.is_none(), |d| {
-				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
-			})
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("Draft"),
-					)
-					.child(self.composer_control(
-						"copy-draft",
-						"Copy text".into(),
-						"Copy draft text",
-						|s, cx| {
-							cx.write_to_clipboard(ClipboardItem::new_string(
-								s.composer.read(cx).content().to_owned(),
-							));
-						},
-						cx,
-					)),
-			)
-			.child(
-				gpui::div()
-					.id("recovery-draft-editor")
-					.debug_selector(|| "recovery-draft-editor".into())
-					.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-						s.submit(cx);
-						cx.stop_propagation();
-					}))
-					.child(self.composer.clone()),
-			)
 	}
 
 	pub(super) fn render_composer(
@@ -374,7 +310,8 @@ impl AgentSurface {
 			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
 			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
-			.justify_center()
+			.flex_col()
+			.items_center()
 			.child(
 				self.render_composer_capsule(false, window, cx)
 					.child(self.render_composer_popover(cx)),
@@ -443,7 +380,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(4.))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "escape" {
+				if e.keystroke.key == "escape" && !e.keystroke.modifiers.shift {
 					if !e.is_held {
 						s.escape_interrupt(cx);
 					}
@@ -495,77 +432,44 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		if self.workspace_connecting() {
+			return gpui::div();
+		}
 		let menu = self.composer_menu.or(self.composer_menu_content);
 		let left = matches!(
 			menu,
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
 		);
 
-		gpui::div()
-			.absolute()
-			.inset_0()
-			.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.bottom(gpui::relative(1.))
-						.mb(gpui::px(if left { 8. } else { 10. }))
-						.when(left, |d| d.left(gpui::px(0.)))
-						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-						.when(menu == Some("model"), |d| d.left(gpui::px(36.)))
-						.when(!left && menu != Some("model"), |d| d.right(gpui::px(70.)))
-						.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
-							380.
-						} else if left {
-							280.
-						} else {
-							232.
-						}))
-						.child(
-							ui_motion::popover(
-								"composer-popover-motion",
-								self.composer_menu.is_some(),
-								self.composer_options(cx)
-									.unwrap_or_else(|| gpui::div().into_any_element()),
-							)
-							.unframed(menu == Some("model")),
-						),
-				)
-				.priority(2),
+		gpui::div().absolute().inset_0().child(
+			gpui::deferred(
+				gpui::div()
+					.absolute()
+					.bottom(gpui::relative(1.))
+					.mb(gpui::px(if left { 8. } else { 10. }))
+					.when(left, |d| d.left(gpui::px(0.)))
+					// Align with the model trigger: inset + mic/send widths + toolbar gaps.
+					.when(menu == Some("model"), |d| d.left(gpui::px(36.)))
+					.when(!left && menu != Some("model"), |d| d.right(gpui::px(70.)))
+					.w(gpui::px(if matches!(menu, Some("agent-settings" | "skills")) {
+						380.
+					} else if left {
+						280.
+					} else {
+						232.
+					}))
+					.child(
+						ui_motion::popover(
+							"composer-popover-motion",
+							self.composer_menu.is_some(),
+							self.composer_options(cx)
+								.unwrap_or_else(|| gpui::div().into_any_element()),
+						)
+						.unframed(menu == Some("model")),
+					),
 			)
-			.when(self.context_tip_visible && self.composer_menu.is_none(), |d| {
-				let detail = self.history.as_ref().and_then(|(_, h)| match h {
-					AgentHistoryResult::Available { usage: Some(u), .. } =>
-						u.context_window.filter(|n| *n > 0).map(|capacity| {
-							format!(
-								"Context · {:.0}%\n{} / {} tokens",
-								u.context_tokens as f64 / capacity as f64 * 100.,
-								agent_surface::compact_tokens(u.context_tokens),
-								agent_surface::compact_tokens(capacity)
-							)
-						}),
-					_ => None,
-				});
-
-				d.children(detail.map(|text| {
-					gpui::deferred(
-						gpui::div()
-							.absolute()
-							.bottom(gpui::relative(1.))
-							.mb(gpui::px(10.))
-							.right(gpui::px(160.))
-							.w(gpui::px(220.))
-							.debug_selector(|| "composer-context-detail".into())
-							.p(gpui::px(12.))
-							.rounded(gpui::px(12.))
-							.bg(gpui::rgb(0x29292d))
-							.text_size(gpui::px(12.))
-							.text_color(gpui::rgb(TEXT))
-							.child(text),
-					)
-					.priority(3)
-				}))
-			})
+			.priority(2),
+		)
 	}
 
 	fn attachment_options(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -706,26 +610,8 @@ impl AgentSurface {
 							cx,
 						));
 				},
-				NativeConnection::Checking { started, .. } => {
-					row = row
-						.child(
-							gpui::div()
-								.flex_1()
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.when(started.elapsed() >= Duration::from_secs(3), |d| {
-									d.child("Connecting…")
-								}),
-						)
-						.child(
-							gpui::div()
-								.size(gpui::px(CONTROL_SIZE))
-								.flex()
-								.items_center()
-								.justify_center()
-								.child(crate::ui_loading::loading("")),
-						);
+				NativeConnection::Checking { .. } => {
+					row = row.justify_end().child(crate::ui_loading::loading(""));
 				},
 				NativeConnection::Ready => {
 					row = row.justify_end().child(
@@ -756,15 +642,6 @@ impl AgentSurface {
 			return row.into_any_element();
 		}
 
-		if self.connection_initializing() {
-			return gpui::div()
-				.flex_1()
-				.min_w_0()
-				.flex()
-				.justify_end()
-				.child(crate::ui_loading::loading("Connecting to Codex…"))
-				.into_any_element();
-		}
 		if let Some(controls) = self.dictation_controls(cx) {
 			return controls;
 		}
@@ -783,7 +660,7 @@ impl AgentSurface {
 			.min_w_0()
 			.flex()
 			.items_center()
-			.gap(gpui::px(1.0))
+			.gap(gpui::px(4.0))
 			.child(self.composer_control(
 				"model",
 				model,
@@ -857,16 +734,22 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let disabled = send && self.composer_unavailable_reason().is_some();
 		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
-		let tooltip =
-			if id == "model" { format!("Model and reasoning · {label}") } else { tip.to_owned() };
+		let tooltip = if disabled {
+			"Sending paused until the connection is restored".to_owned()
+		} else if id == "model" {
+			format!("Model and reasoning · {label}")
+		} else {
+			tip.to_owned()
+		};
 
 		gpui::div()
 			.id(SharedString::from(format!("composer-{id}")))
 			.debug_selector(move || format!("composer-{id}"))
 			.role(Role::Button)
-			.tab_index(0)
+			.tab_index(if disabled { -1 } else { 0 })
 			.aria_label(tooltip.clone())
 			.h(gpui::px(CONTROL_SIZE))
 			.px(gpui::px(6.0))
@@ -908,15 +791,15 @@ impl AgentSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(gpui::rgba(0xffffff12)))
 			.when(send, |d| {
-				d.w(gpui::px(28.))
-					.h(gpui::px(28.))
-					.rounded_full()
-					.ml(gpui::px(2.))
-					.bg(gpui::rgb(0x515155))
+				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(gpui::rgb(0x515155))
 			})
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
-			.cursor_pointer()
+			.when(disabled, |d| d.opacity(0.35))
+			.when(!disabled, |d| d.cursor_pointer())
 			.hover(move |d| {
+				if disabled {
+					return d;
+				}
 				d.bg(if send {
 					gpui::rgb(0x606064)
 				} else {
@@ -924,12 +807,27 @@ impl AgentSurface {
 				})
 			})
 			.focus(|d| d.bg(gpui::rgba(SELECTED_HOVER_FILL)))
-			.when(!["attachment-item", "audio-item"].contains(&id), |d| {
-				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
-			})
-			.on_click(cx.listener(move |s, _, window, cx| action(s, window, cx)))
+			.when(
+				![
+					"model",
+					"effort",
+					"attachment-item",
+					"audio-item",
+					"skill-item",
+					"task-recap-item",
+					"task-reference-item",
+					"agent-settings",
+				]
+				.contains(&id),
+				|d| d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into()),
+			)
+			.on_click(cx.listener(move |s, _, window, cx| {
+				if !disabled {
+					action(s, window, cx);
+				}
+			}))
 			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
-				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+				if !disabled && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					action(s, window, cx);
 
 					cx.stop_propagation();
@@ -1002,7 +900,7 @@ impl AgentSurface {
 					self.composer_menu == Some("microphone"),
 				))
 				.into_any_element(),
-			"dictation" => workspace_symbols::icon(Symbol::Microphone),
+			"dictation" => workspace_symbols::icon_sized(Symbol::Microphone, 18.),
 			"delivery" => gpui::div()
 				.w_full()
 				.flex()
@@ -1174,7 +1072,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn usage_line(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn usage_line(&self, _cx: &mut Context<Self>) -> Option<AnyElement> {
 		let (id, AgentHistoryResult::Available { usage: Some(usage), .. }) =
 			self.history.as_ref()?
 		else {
@@ -1187,24 +1085,26 @@ impl AgentSurface {
 
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
-
 		Some(
 			gpui::div()
-				.id("composer-context")
-				.size(gpui::px(CONTROL_SIZE))
+				.id("composer-context-detail")
+				.debug_selector(|| "composer-context-detail".into())
+				.aria_label(format!("Context: {} of {} tokens", usage.context_tokens, capacity))
 				.flex_none()
+				.px(gpui::px(6.))
 				.flex()
+				.justify_end()
 				.items_center()
-				.text_size(gpui::px(10.5))
+				.gap(gpui::px(4.))
+				.text_size(gpui::px(11.))
+				.line_height(gpui::px(16.))
 				.text_color(gpui::rgb(TEXT_MUTED))
-				.aria_label(format!("Context {percent:.0}%"))
-				.on_hover(cx.listener(|s, hovered, _, cx| {
-					s.context_tip_visible = *hovered;
-
-					cx.notify();
-				}))
-				.justify_center()
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
+				.child(format!(
+					"CTX {} / {}",
+					agent_surface::compact_tokens(usage.context_tokens),
+					agent_surface::compact_tokens(capacity),
+				))
 				.into_any_element(),
 		)
 	}
@@ -1376,12 +1276,17 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 }
 
 fn context_ring(fraction: f32) -> impl IntoElement {
+	let fill = gpui::rgb(if fraction >= 0.9 {
+		0xed8585
+	} else if fraction >= 0.7 {
+		ui_theme::AMBER
+	} else {
+		0xa5a0ed
+	});
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
-			for (portion, color) in
-				[(1.0, gpui::rgba(0xffffff24)), (fraction, gpui::rgba(0xc2becbe0))]
-			{
+			for (portion, color) in [(1.0, gpui::rgba(0xffffff24)), (fraction, fill)] {
 				if portion <= 0.0 {
 					continue;
 				}

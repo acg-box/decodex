@@ -2,7 +2,7 @@
 
 use gpui::{
 	AnyElement, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	Stateful,
+	Stateful, prelude::FluentBuilder,
 };
 
 use crate::{
@@ -48,7 +48,6 @@ impl AgentSurface {
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
 			self.workspace.graph_visible
-				&& self.workspace.dock_record.is_some()
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
 		];
@@ -58,9 +57,6 @@ impl AgentSurface {
 				continue;
 			}
 
-			if panel == Panel::Bottom {
-				self.workspace.dock_compact = false;
-			}
 			let (value, default, min, max) = match panel {
 				Panel::Left => (&mut self.workspace.sidebar_width, defaults.sidebar, 160.0, 480.0),
 				Panel::Right =>
@@ -75,13 +71,19 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(super) fn graph_node_size(&self, id: &str) -> (f32, f32) {
+		if self.handoffs.focus.as_deref() == Some(id) { (360., 180.) } else { (190., 66.) }
+	}
+
 	pub(super) fn update_graph_inset(&mut self, width: f32, height: f32) {
 		let layout = self.workspace_graph_layout();
-		let (right, bottom) = layout
-			.nodes
-			.iter()
-			.fold((0.0_f32, 0.0_f32), |(x, y), node| (x.max(node.x + 190.0), y.max(node.y + 66.0)));
-		self.workspace.graph_display_zoom *= ((width - 20.0) / (right + 20.0)).clamp(0.1, 1.0);
+		let (right, bottom) = layout.nodes.iter().fold((0.0_f32, 0.0_f32), |(x, y), node| {
+			let (width, height) = self.graph_node_size(&node.id);
+			(x.max(node.x + width), y.max(node.y + height))
+		});
+
+		self.workspace.graph_fit_zoom =
+			(width / (right + 20.)).min((height - 38.).max(1.) / (bottom + 20.)).clamp(0.35, 1.);
 		let zoom = self.workspace.graph_display_zoom;
 
 		self.workspace.graph_inset = (
@@ -134,8 +136,9 @@ impl AgentSurface {
 			}
 		}
 
-		// Ownership belongs in the agent tree; this view shows prerequisites only.
-		if !layout.reports.is_empty() {
+		// Dependency chains already explain the flow. Keep the owner in the heading,
+		// rather than drawing a second set of ownership lines across those chains.
+		if !layout.edges.is_empty() && !layout.reports.is_empty() {
 			layout.nodes.pop();
 			layout.reports.clear();
 			for node in &mut layout.nodes {
@@ -150,10 +153,30 @@ impl AgentSurface {
 			node.y = 20.0 + (x - 20.0) / 188.0 * 96.0;
 		}
 
+		if let Some(focus) = self.handoffs.focus.as_ref()
+			&& let Some(column) =
+				layout.nodes.iter().find(|node| &node.id == focus).map(|node| node.x)
+		{
+			let mut row = 230.;
+			for node in &mut layout.nodes {
+				if &node.id == focus {
+					node.y = 20.;
+				} else if node.x == column {
+					node.y = row;
+					row += 96.;
+				} else if node.x > column {
+					node.x += 170.;
+				}
+			}
+		}
+
 		layout
 	}
 
 	fn sidebar_target_width(&self, window: &Window) -> f32 {
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			return 0.;
+		}
 		let width = f32::from(window.viewport_size().width);
 		if (self.workspace.sidebar_visible || self.workspace.sidebar_peek) && width > 1000. {
 			sidebar_width(self.workspace.sidebar_width, width)
@@ -167,7 +190,7 @@ impl AgentSurface {
 		let now = std::time::Instant::now();
 		let mut motion = self.workspace.sidebar_motion.borrow_mut();
 		let tween = motion.get_or_insert_with(|| ui_motion::Tween::new(target));
-		if self.workspace.sidebar_drag.is_some() {
+		if self.workspace.panel_drag.is_some_and(|(panel, _, _)| panel == Panel::Left) {
 			*tween = ui_motion::Tween::new(target);
 		} else {
 			tween.target(target, now);
@@ -181,7 +204,10 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
-		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
+		if !self.workspace.graph_visible
+			|| self.workspace.chat_expanded
+			|| !self.reserve_workspace_panels()
+		{
 			return (0.0, 0.0);
 		}
 
@@ -192,10 +218,18 @@ impl AgentSurface {
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 
-		(available.0, 72.0_f32.min(available.1))
+		if self.workspace.graph_expanded {
+			return available;
+		}
+		let height =
+			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.));
+		(available.0, height.min(available.1))
 	}
 
 	pub(super) fn sidebar_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+		if self.workspace.graph_expanded || self.workspace.chat_expanded {
+			return;
+		}
 		self.workspace.sidebar_leave = None;
 		if self.workspace.sidebar_visible {
 			return;
@@ -245,11 +279,24 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	pub(super) fn sidebar_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+	pub(super) fn sidebar_resize_handle(
+		&self,
+		panel: Panel,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
+		let right = panel == Panel::Right;
 		gpui::div()
-			.id("agent-sidebar-resize")
+			.id(if right { "agent-right-sidebar-resize" } else { "agent-sidebar-resize" })
+			.debug_selector(move || {
+				if right {
+					"agent-right-sidebar-resize".into()
+				} else {
+					"agent-sidebar-resize".into()
+				}
+			})
 			.absolute()
-			.right_0()
+			.when(right, |handle| handle.left_0())
+			.when(!right, |handle| handle.right_0())
 			.top_0()
 			.bottom_0()
 			.w(gpui::px(6.0))
@@ -260,39 +307,88 @@ impl AgentSurface {
 			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
-				cx.listener(|s, event: &MouseDownEvent, window, cx| {
-					s.workspace.sidebar_drag = Some((
+				cx.listener(move |s, event: &MouseDownEvent, window, cx| {
+					s.workspace.focused_panel = Some(panel);
+					s.workspace.panel_drag = Some((
+						panel,
 						event.position.x.into(),
-						sidebar_width(
-							s.workspace.sidebar_width,
-							window.viewport_size().width.into(),
-						),
+						if right {
+							s.agent_tree_width(window)
+						} else {
+							sidebar_width(
+								s.workspace.sidebar_width,
+								window.viewport_size().width.into(),
+							)
+						},
 					));
 
 					cx.stop_propagation();
+					cx.notify();
 				}),
 			)
-			.on_click(cx.listener(|s, event: &ClickEvent, _, cx| {
+			.on_click(cx.listener(move |s, event: &ClickEvent, _, cx| {
 				if event.click_count() == 2 {
-					s.workspace.sidebar_width = PanelDefaults::configured().sidebar.into();
+					if right {
+						s.workspace.agent_panel_width = PanelDefaults::configured().sidebar.into();
+					} else {
+						s.workspace.sidebar_width = PanelDefaults::configured().sidebar.into();
+					}
 
 					cx.notify();
 				}
 			}))
-			.on_key_down(cx.listener(|s, event: &KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				let delta = match event.keystroke.key.as_str() {
 					"left" => -16.0,
 					"right" => 16.0,
 					_ => return,
 				};
 
-				s.workspace.sidebar_width = sidebar_width(
-					s.workspace.sidebar_width + delta,
-					window.viewport_size().width.into(),
-				);
+				if right {
+					s.workspace.agent_panel_width =
+						(s.workspace.agent_panel_width - delta).clamp(160., 480.);
+				} else {
+					s.workspace.sidebar_width = sidebar_width(
+						s.workspace.sidebar_width + delta,
+						window.viewport_size().width.into(),
+					);
+				}
 
 				cx.stop_propagation();
 				cx.notify();
+			}))
+	}
+
+	pub(super) fn dock_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.id("agent-dock-resize")
+			.debug_selector(|| "agent-dock-resize".into())
+			.absolute()
+			.bottom_0()
+			.left_0()
+			.right_0()
+			.h(gpui::px(6.))
+			.cursor_row_resize()
+			.role(Role::Slider)
+			.aria_label("Dock height. Drag to resize. Double-click to reset. Control-Option minus or equals adjusts the selected panel.")
+			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
+			.on_mouse_down(
+				MouseButton::Left,
+				cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					s.workspace.focused_panel = Some(Panel::Bottom);
+					s.workspace.panel_drag = Some((
+						Panel::Bottom,
+						event.position.y.into(),
+						s.workspace_graph_size(window, true).1,
+					));
+					cx.stop_propagation();
+					cx.notify();
+				}),
+			)
+			.on_click(cx.listener(|s, event: &ClickEvent, window, cx| {
+				if event.click_count() == 2 {
+					s.resize_panel(0., true, false, window, cx);
+				}
 			}))
 	}
 
@@ -301,20 +397,26 @@ impl AgentSurface {
 			.id("agent-workspace")
 			.relative()
 			.on_mouse_move(cx.listener(|s, event: &MouseMoveEvent, window, cx| {
-				let Some((start, width)) = s.workspace.sidebar_drag else {
+				let Some((panel, start, width)) = s.workspace.panel_drag else {
 					return;
 				};
 
 				if event.pressed_button != Some(MouseButton::Left) {
-					s.workspace.sidebar_drag = None;
+					s.workspace.panel_drag = None;
 
 					return;
 				}
 
-				s.workspace.sidebar_width = sidebar_width(
-					width + f32::from(event.position.x) - start,
-					window.viewport_size().width.into(),
-				);
+				let delta = f32::from(event.position.x) - start;
+				if panel == Panel::Bottom {
+					let delta = f32::from(event.position.y) - start;
+					s.workspace.graph_panel_height = (width + delta).clamp(120., 640.);
+				} else if panel == Panel::Right {
+					s.workspace.agent_panel_width = (width - delta).clamp(160., 480.);
+				} else {
+					s.workspace.sidebar_width =
+						sidebar_width(width + delta, window.viewport_size().width.into());
+				}
 
 				cx.stop_propagation();
 				cx.notify();
@@ -322,13 +424,13 @@ impl AgentSurface {
 			.on_mouse_up(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
-					s.workspace.sidebar_drag = None;
+					s.workspace.panel_drag = None;
 				}),
 			)
 			.on_mouse_up_out(
 				MouseButton::Left,
 				cx.listener(|s, _, _, _| {
-					s.workspace.sidebar_drag = None;
+					s.workspace.panel_drag = None;
 				}),
 			)
 	}
@@ -342,6 +444,106 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
+	#[gpui::test]
+	fn content_fullscreen_hides_both_sidebars_and_restores_preferences(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.sidebar_visible = true;
+			s.workspace.agent_tree_visible = true;
+			s.workspace.graph_visible = true;
+			s.workspace.sidebar_width = 230.;
+			s.workspace.agent_panel_width = 270.;
+			s.workspace.graph_panel_height = 300.;
+		});
+		for target in [None, Some(Panel::Bottom)] {
+			surface.update(visual, |s, cx| {
+				s.workspace.focused_panel = target;
+				s.toggle_focused_content(cx);
+			});
+			visual.update(|window, cx| {
+				let s = surface.read(cx);
+				assert_eq!(s.sidebar_target_width(window), 0.);
+				assert_eq!(s.agent_tree_width(window), 0.);
+				assert_eq!(s.workspace.chat_expanded, target.is_none());
+				assert_eq!(s.workspace.graph_expanded, target.is_some());
+				if target.is_none() {
+					assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
+				}
+			});
+			surface.update(visual, |s, cx| {
+				s.toggle_focused_content(cx);
+				assert!(!s.workspace.chat_expanded && !s.workspace.graph_expanded);
+				assert!(
+					s.workspace.sidebar_visible
+						&& s.workspace.agent_tree_visible
+						&& s.workspace.graph_visible
+				);
+				assert_eq!(
+					(
+						s.workspace.sidebar_width,
+						s.workspace.agent_panel_width,
+						s.workspace.graph_panel_height
+					),
+					(230., 270., 300.)
+				);
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn top_execution_panel_reserves_space_above_chat(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.work_board.graph = false;
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let composer = visual.debug_bounds("floating-composer").unwrap();
+		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+		let header = visual.debug_bounds("work-dock").unwrap();
+		assert!(header.origin.y < transcript.origin.y);
+		assert!(visual.debug_bounds("dock-toggle").is_none());
+		assert!(header.bottom() <= transcript.origin.y);
+
+		for expanded in [true, false] {
+			let toggle = visual.debug_bounds("graph-expand").unwrap();
+			visual.simulate_click(toggle.center(), gpui::Modifiers::default());
+			visual.update(|w, cx| w.draw(cx).clear());
+			std::thread::sleep(std::time::Duration::from_millis(250));
+			visual.update(|w, cx| w.draw(cx).clear());
+			assert_eq!(visual.debug_bounds("floating-composer").is_none(), expanded);
+			if !expanded {
+				assert_eq!(visual.debug_bounds("floating-composer").unwrap(), composer);
+				assert!(
+					visual.debug_bounds("work-dock").unwrap().bottom()
+						<= visual.debug_bounds("workspace-transcript").unwrap().origin.y
+				);
+			}
+		}
+		let close = visual.debug_bounds("graph-close").unwrap();
+		visual.simulate_click(close.center(), gpui::Modifiers::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("work-dock").is_none());
+		surface.update(visual, |s, cx| s.toggle_workspace_graph(cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("work-dock").unwrap().size.height > gpui::px(38.));
+		assert!(visual.debug_bounds("dock-toggle").is_none());
+	}
+
 	#[gpui::test]
 	fn sidebar_hover_uses_pinned_layout_and_reentry_cancels_close(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -390,7 +592,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
+	fn panel_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.0), gpui::px(900.0)));
@@ -419,8 +621,51 @@ mod tests {
 		visual.simulate_mouse_move(point(400.0), None, Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.workspace.sidebar_width, 272.0);
-			assert!(s.workspace.sidebar_drag.is_none());
+			assert!(s.workspace.panel_drag.is_none());
 		});
+	}
+
+	#[gpui::test]
+	fn dock_drag_resizes_height_without_panning_and_stops_on_release(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = false;
+			s.workspace.graph_panel_height = 300.;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let start = visual.debug_bounds("agent-dock-resize").unwrap().center();
+		let end = start + gpui::point(gpui::px(40.), gpui::px(80.));
+		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(visual.debug_bounds("work-dock").unwrap().size.height, gpui::px(380.));
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.graph_panel_height, 380.);
+			assert_eq!(s.workspace.focused_panel, Some(Panel::Bottom));
+			assert_eq!(s.workspace.graph_pan, (0., 0.));
+		});
+		visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(start, None, Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.graph_panel_height, 380.);
+			assert!(s.workspace.panel_drag.is_none());
+		});
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.resize_panel(-24., false, false, window, cx);
+				assert_eq!(s.workspace.graph_panel_height, 356.);
+				s.workspace.graph_expanded = true;
+				cx.notify();
+			})
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("agent-dock-resize").is_none());
 	}
 
 	#[gpui::test]
@@ -486,7 +731,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn handoff_strip_keeps_conversation_space_when_preview_changes(cx: &mut gpui::TestAppContext) {
+	fn graph_expands_restores_and_preserves_conversation_space(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_200.), gpui::px(900.)));
@@ -503,16 +748,19 @@ mod tests {
 				// Geometry assertions below describe the settled panel layout.
 				s.workspace.sidebar_motion = Default::default();
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_zoom = 1.8;
 				s.workspace.graph_pan = (800., 600.);
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(s.workspace_graph_size(window, true).1, 275.);
 
 				s.workspace.graph_expanded = true;
 
-				assert_eq!(s.workspace_graph_size(window, true).1, 72.);
+				assert_eq!(
+					s.workspace_graph_size(window, true).1,
+					900. - super::WINDOW_CONTROLS_CLEARANCE
+				);
 
 				s.workspace.graph_visible = false;
 
@@ -529,7 +777,7 @@ mod tests {
 			surface.update(cx, |s, _| {
 				let (_, height) = s.workspace_graph_size(window, true);
 
-				assert_eq!(height, 72.);
+				assert_eq!(height, 38.);
 				assert_eq!(
 					s.workspace.graph_panel_height, 275.,
 					"small windows retain the requested height"
@@ -537,6 +785,31 @@ mod tests {
 			});
 		});
 	}
+	#[gpui::test]
+	fn right_sidebar_drag_grows_leftward_and_stops_on_release(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.agent_panel_width = 192.;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let start = visual.debug_bounds("agent-right-sidebar-resize").unwrap().center();
+		let end = start - gpui::point(gpui::px(80.), gpui::px(0.));
+		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
+		surface.read_with(visual, |s, _| assert_eq!(s.workspace.agent_panel_width, 272.));
+		visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(start, None, Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.agent_panel_width, 272.);
+			assert!(s.workspace.panel_drag.is_none());
+		});
+	}
+
 	#[test]
 	fn sidebar_limits_preserve_main_space() {
 		assert_eq!(workspace_size::sidebar_width(80.0, 1_200.0), 160.0);

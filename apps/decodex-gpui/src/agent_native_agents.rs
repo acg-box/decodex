@@ -274,7 +274,9 @@ impl AgentSurface {
 			return;
 		};
 
-		if (self.workspace.agent_tree_visible || self.workspace.browsing)
+		if (self.workspace.agent_tree_visible
+			|| self.workspace.browsing
+			|| self.workspace.graph_visible)
 			&& self.native_agents.task.is_none()
 			&& self.native_agents.next.is_none_or(|t| t <= Instant::now())
 		{
@@ -326,7 +328,9 @@ impl AgentSurface {
 							}
 
 							if complete {
-								result.push((owner, list));
+								result.push((owner, Some(list)));
+							} else {
+								result.push((owner, None));
 							}
 						}
 
@@ -340,6 +344,15 @@ impl AgentSurface {
 						let mut changed = false;
 
 						for (owner, list) in result {
+							let Some(list) = list else {
+								if let Some(previous) = s.native_agents.lists.get_mut(&owner) {
+									for agent in previous {
+										changed |= agent.status != "unknown";
+										agent.status = "unknown".into();
+									}
+								}
+								continue;
+							};
 							if s.native_agents.lists.get(&owner) != Some(&list) {
 								s.native_agents.lists.insert(owner, list);
 
@@ -432,7 +445,7 @@ impl AgentSurface {
 			.input
 			.get_or_insert_with(|| {
 				let input = cx.new(|cx| {
-					ComposerInput::message(35, super::prompts::next(), "Agent message", cx)
+					ComposerInput::message(35, super::prompts::session_quote(), "Agent message", cx)
 				});
 				cx.observe(&input, |_, _, cx| cx.notify()).detach();
 				input
@@ -863,6 +876,19 @@ mod tests {
 			s.composer.update(cx, |i, cx| i.set_content("Parent draft", cx));
 			s.timeline.follow_paused.insert("parent-marker".into());
 			s.enter_native_conversation("agent", "child-a", cx);
+			assert!(s.workspace_connecting());
+			s.timeline.native.binding =
+				Some(crate::shell::agent_surface::native_timeline::Binding {
+					work: "agent".into(),
+					thread: "child-a".into(),
+					account: "account".into(),
+				});
+			assert!(!s.workspace_connecting(), "retained history must not wait for send readiness");
+			assert!(!s.native_input_available(), "retained content must not grant send permission");
+			s.snapshot.as_mut().unwrap().connection_initializing = true;
+			assert!(s.workspace_connecting(), "global connection still blocks the workspace");
+			s.snapshot.as_mut().unwrap().connection_initializing = false;
+
 			assert_eq!(s.conversation_work().unwrap().codex_thread_id.as_deref(), Some("child-a"));
 			assert_eq!(s.conversation_page().as_deref(), Some("native:agent:child-a"));
 			assert_eq!(s.navigation_work().as_deref(), Some("native:agent:child-a"));
@@ -920,6 +946,7 @@ mod tests {
 				s.native_agents.lists.insert(
 					"agent".into(),
 					vec![NativeAgentDto {
+						task: String::new(),
 						thread_id: "child".into(),
 						parent_thread_id: "parent".into(),
 						title: "Old child".into(),

@@ -154,6 +154,7 @@ mod tests {
 	}
 	fn message(text: &str) -> AgentTimelineEntry {
 		entry(Content::Item {
+			collaboration: None,
 			turn_id: "turn".into(),
 			item_id: text.into(),
 			kind: "userMessage".into(),

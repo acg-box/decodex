@@ -9,10 +9,7 @@ use std::{
 	fmt::{Display, Formatter},
 	future::{self, Future},
 	path::Path,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
+	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -88,7 +85,7 @@ impl From<&'static str> for AgentHostError {
 
 #[derive(Clone)]
 pub(crate) struct AgentHost {
-	initializing: Arc<AtomicBool>,
+	initializing: watch::Sender<bool>,
 	skill_roots: Result<crate::agent_skill_roots::RuntimeSkillRoots, &'static str>,
 	observations: Option<AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
@@ -109,7 +106,7 @@ impl AgentHost {
 		let (sender, receiver) = mpsc::channel(32);
 
 		Self {
-			initializing: Arc::new(AtomicBool::new(true)),
+			initializing: watch::channel(true).0,
 			observations: None,
 			skill_roots: crate::agent_skill_roots::RuntimeSkillRoots::from_environment(),
 			recovery_cursor: Default::default(),
@@ -338,8 +335,12 @@ impl AgentHost {
 		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
 	}
 
+	pub(crate) fn startup_state(&self) -> watch::Receiver<bool> {
+		self.initializing.subscribe()
+	}
+
 	pub(crate) fn connection_initializing(&self) -> bool {
-		self.initializing.load(Ordering::Acquire)
+		*self.initializing.borrow()
 	}
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
@@ -842,7 +843,7 @@ impl AgentHost {
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
-			self.initializing.store(false, Ordering::Release);
+			self.initializing.send_replace(false);
 
 			let mut recovery = RecoverySchedule::new();
 			let mut tick = time::interval(Duration::from_secs(15));
@@ -1844,6 +1845,7 @@ impl AgentHost {
 		account_id: Option<AccountId>,
 	) -> Result<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
 		let skill_roots = self.skill_roots.as_ref().map_err(|error| *error)?;
+		let phase = crate::startup_trace::Phase::new("agent_process_connect");
 		let connection = match self
 			.runtime
 			.open_agent_connection(StartAgentProcess {
@@ -1867,6 +1869,7 @@ impl AgentHost {
 				);
 			},
 		};
+		drop(phase);
 		let binding = match self.store.read_agent_process_binding(root).await {
 			Ok(binding) => binding,
 			Err(_) => {
@@ -1918,6 +1921,7 @@ impl AgentHost {
 	}
 
 	async fn restore(&self) -> Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)> {
+		let _phase = crate::startup_trace::Phase::new("agent_restore");
 		let root = self
 			.store
 			.list_agent_work_items()
@@ -1937,10 +1941,13 @@ impl AgentHost {
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {
+				let phase = crate::startup_trace::Phase::new("recover_persisted");
 				if active.1.recover_persisted().await.is_err() {
 					self.record_error(&root.id, "recovery_needs_attention").await;
 				}
 
+				drop(phase);
+				let _phase = crate::startup_trace::Phase::new("wake_pending");
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;
 
 				Some(active)

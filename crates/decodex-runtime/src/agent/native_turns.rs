@@ -21,16 +21,28 @@ impl AgentCoordinator {
 
 			if !self
 				.store
-				.agent_thread_is_owned(work.id, thread.clone(), generation.clone())
+				.agent_thread_is_owned(work.id.clone(), thread.clone(), generation.clone())
 				.await?
 			{
 				continue;
 			}
 
+			let phase = crate::startup_trace::Phase::new("recover_native_goal");
 			self.resume_active_native_goal(&thread).await?;
+			drop(phase);
 
 			let revision = self.client.history_revision();
 			let Ok(Some(turn)) = self.client.thread_latest_turn_id(&thread).await else { continue };
+			// These exact terminal receipts already make observe_agent_native_turn reject
+			// replay. Avoid fetching the full turn only to reach that same decision.
+			if self
+				.store
+				.agent_native_terminal_recorded(work.id, thread.clone(), turn.clone())
+				.await?
+			{
+				continue;
+			}
+
 			let Ok(history) = self.client.thread_read_turn(&thread, &turn).await else { continue };
 			let Some(observed) = history
 				.pointer("/thread/turns")

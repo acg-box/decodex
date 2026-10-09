@@ -2,6 +2,9 @@
 #![allow(dead_code)]
 #[path = "../composer_input.rs"] mod composer_input;
 #[cfg(target_os = "macos")]
+#[path = "probes/native_graph.rs"]
+mod graph_probe;
+#[cfg(target_os = "macos")]
 #[path = "../native_quit.rs"]
 mod native_quit;
 #[allow(unused_imports)]
@@ -385,7 +388,7 @@ mod probe {
 		.expect("open probe window")
 	}
 
-	fn native_view(window: &Window) -> Retained<NSView> {
+	pub(super) fn native_view(window: &Window) -> Retained<NSView> {
 		let handle = HasWindowHandle::window_handle(window).expect("native window handle");
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
 
@@ -394,7 +397,7 @@ mod probe {
 		}
 	}
 
-	fn native_window(window: &Window) -> Retained<NSWindow> {
+	pub(super) fn native_window(window: &Window) -> Retained<NSWindow> {
 		native_view(window).window().expect("attached native window")
 	}
 
@@ -470,6 +473,13 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	if std::env::current_exe()
+		.ok()
+		.is_some_and(|p| p.file_name().is_some_and(|n| n == "decodex-graph-glass-probe"))
+	{
+		graph_probe::run();
+		return;
+	}
 	#[cfg(not(test))]
 	if std::env::args().any(|arg| arg == "--material-update") {
 		probe::run_material_update();

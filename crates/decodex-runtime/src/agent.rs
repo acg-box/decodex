@@ -191,7 +191,9 @@ impl AgentCoordinator {
 	/// This hydrates native ownership and records evidence without local turn submission.
 	/// Native Codex can continue a persisted active goal when its thread is resumed.
 	pub async fn recover_persisted(&mut self) -> Result<(), AgentError> {
+		let phase = crate::startup_trace::Phase::new("recover_voice");
 		self.recover_voice_calls().await?;
+		drop(phase);
 
 		if !self.async_recovery_queued {
 			self.store.queue_agent_async_reconnection().await?;
@@ -199,7 +201,9 @@ impl AgentCoordinator {
 			self.async_recovery_queued = true;
 		}
 
+		let phase = crate::startup_trace::Phase::new("recover_async_questions");
 		self.recover_async_questions().await?;
+		drop(phase);
 
 		let work = self.store.list_agent_work_items().await?;
 
@@ -218,6 +222,7 @@ impl AgentCoordinator {
 			self.recover_persisted_work(item, None, 0).await?;
 		}
 
+		let _phase = crate::startup_trace::Phase::new("recover_native_turns");
 		self.recover_native_turns().await?;
 
 		Ok(())

@@ -73,6 +73,10 @@ impl Shell {
 	}
 
 	pub(super) fn navigate_history(&mut self, forward: bool, cx: &mut Context<Self>) {
+		if self.selected == Destination::Agent && self.agent.read(cx).workspace_connecting() {
+			return;
+		}
+
 		self.record_navigation(cx);
 
 		let Some(index) = self.navigation_neighbor(forward, cx) else {
@@ -91,7 +95,9 @@ impl Shell {
 	}
 
 	pub(super) fn navigation_control(&self, forward: bool, cx: &Context<Self>) -> AnyElement {
-		let enabled = self.navigation_neighbor(forward, cx).is_some();
+		let enabled = !(self.selected == Destination::Agent
+			&& self.agent.read(cx).workspace_connecting())
+			&& self.navigation_neighbor(forward, cx).is_some();
 		let label = if forward { "Forward · Command-]" } else { "Back · Command-[" };
 
 		gpui::div()

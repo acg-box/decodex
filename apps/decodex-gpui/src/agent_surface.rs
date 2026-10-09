@@ -13,6 +13,7 @@
 #[path = "agent_dictation.rs"] mod dictation;
 #[path = "agent_dock.rs"] mod dock;
 #[path = "agent_drafts.rs"] mod drafts;
+#[path = "agent_execution_dock.rs"] mod execution_dock;
 #[path = "agent_execution_intent.rs"] mod execution_intent;
 #[path = "agent_graph.rs"] mod graph;
 #[path = "agent_guardian.rs"] mod guardian;
@@ -55,6 +56,7 @@ mod native_composer;
 #[path = "agent_voice.rs"] mod voice;
 #[path = "agent_voice_settings.rs"] mod voice_settings;
 #[path = "agent_weather.rs"] mod weather;
+#[path = "agent_work_board.rs"] mod work_board;
 #[path = "agent_work_browser.rs"] mod work_browser;
 #[path = "agent_workspace.rs"] mod workspace;
 #[path = "agent_workspace_size.rs"] mod workspace_size;
@@ -147,6 +149,7 @@ pub(crate) struct AgentSurface {
 	dictation_task: Option<Task<()>>,
 	activity_detail: ActivityDetailState,
 	dock_evidence: dock::Evidence,
+	work_board: work_board::Board,
 	handoffs: handoffs::Handoffs,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
@@ -191,7 +194,6 @@ pub(crate) struct AgentSurface {
 	interrupting: Option<(String, String)>,
 	interrupt_task: Option<Task<()>>,
 	composer_menu_content: Option<&'static str>,
-	context_tip_visible: bool,
 	attachments: Vec<AgentAttachmentDto>,
 	task_references: Vec<AgentTaskReferenceDto>,
 	task_reference_search: Entity<ComposerInput>,
@@ -329,6 +331,7 @@ impl AgentSurface {
 			dictation_task: None,
 			activity_detail: Default::default(),
 			dock_evidence: Default::default(),
+			work_board: work_board::Board::new(cx),
 			handoffs: Default::default(),
 			resources: None,
 			resources_task: None,
@@ -362,7 +365,6 @@ impl AgentSurface {
 			interrupting: None,
 			interrupt_task: None,
 			composer_menu_content: None,
-			context_tip_visible: false,
 			attachments: vec![],
 			task_references: vec![],
 			task_reference_search: Self::new_task_reference_search(cx),
@@ -448,7 +450,7 @@ impl AgentSurface {
 			)
 		});
 		let composer =
-			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Agent message", cx));
+			cx.new(|cx| ComposerInput::message(35, prompts::session_quote(), "Agent message", cx));
 
 		cx.subscribe(&composer, |s, _, event, cx| {
 			if let ComposerEvent::Attach(item) = event {
@@ -952,6 +954,9 @@ impl AgentSurface {
 	}
 
 	fn command_connection_ready(&self) -> bool {
+		if self.connection_initializing() {
+			return false;
+		}
 		*self.displayed_load_state() == LoadState::Ready
 			|| (self.state == LoadState::Loading
 				&& self.status_before_refresh.is_none()
@@ -1206,10 +1211,8 @@ impl AgentSurface {
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
-						input.set_placeholder(prompts::next(), cx);
+						input.set_placeholder(prompts::session_quote(), cx);
 					});
-
-					Self::refresh_prompt(cx);
 				}
 			},
 			Ok(AgentCommandResponse::Rejected { error }) =>
@@ -1239,6 +1242,7 @@ impl AgentSurface {
 	}
 
 	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.work_board.clear(cx);
 		self.clear_activity_detail();
 		self.reset_resources();
 		self.clear_usage_estimate();
@@ -1346,6 +1350,7 @@ impl AgentSurface {
 		self.archive = Default::default();
 		self.selected = self.composer_manager.clone();
 		self.state = LoadState::Idle;
+		self.refresh(cx);
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(500)).await;
@@ -1455,7 +1460,13 @@ impl AgentSurface {
 				};
 
 				surface.apply_result(result);
+				if surface.connection_initializing() {
+					cx.notify();
+					return;
+				}
 				surface.refresh_native_goal(cx);
+				surface.refresh_dock_evidence(cx);
+				surface.refresh_factory_briefs(cx);
 
 				if !surface.connection_initializing()
 					&& (surface.current_model_catalog(cx).is_none()
@@ -1879,14 +1890,20 @@ impl AgentSurface {
 		}
 	}
 
+	pub(super) fn history_viewport_underfilled(&self, work: &str) -> bool {
+		self.timeline.scroll.get(work).is_some_and(|scroll| {
+			f32::from(scroll.bounds().size.height) > 0. && f32::from(scroll.max_offset().y) <= 1.
+		})
+	}
+
 	fn history_prefetch_needed(&self) -> bool {
 		if self.timeline.loading_older || self.timeline.older_scroll_anchor.is_some() {
 			return false;
 		}
 
-		let Some(id) =
-			self.selected.as_ref().filter(|id| self.timeline.follow_paused.contains(*id))
-		else {
+		let Some(id) = self.selected.as_ref().filter(|id| {
+			self.timeline.follow_paused.contains(*id) || self.history_viewport_underfilled(id)
+		}) else {
 			return false;
 		};
 		let Some((owner, AgentHistoryResult::Available { next_before, .. })) =
@@ -1959,6 +1976,7 @@ impl AgentSurface {
 					s.timeline.older_retry_after = None;
 
 					if s.selected.as_ref() == Some(&id)
+						&& s.timeline.follow_paused.contains(&id)
 						&& let Some(scroll) = s.timeline.scroll.get(&id)
 					{
 						s.timeline.older_scroll_anchor = Some(activity::HistoryScrollAnchor {
@@ -1974,6 +1992,12 @@ impl AgentSurface {
 						});
 					}
 
+					if s.selected.as_ref() == Some(&id)
+						&& !s.timeline.follow_paused.contains(&id)
+						&& let Some(scroll) = s.timeline.scroll.get(&id)
+					{
+						scroll.scroll_to_bottom();
+					}
 					let page = s.timeline.older_history.entry(id).or_default();
 
 					page.0.extend(entries);
@@ -2090,7 +2114,9 @@ impl AgentSurface {
 			},
 			Some(AgentHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
-			None => panel = panel.child(ui_loading::conversation("Loading conversation")),
+			None if !self.connection_initializing() =>
+				panel = panel.child(ui_loading::conversation("Loading conversation")),
+			None => {},
 		}
 
 		self.history_activity(panel, work)
@@ -2386,8 +2412,8 @@ struct WorkspaceView {
 	closing_pages: HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
+	chat_expanded: bool,
 	dock_completed: bool,
-	dock_compact: bool,
 	dock_record: Option<String>,
 	page_views: std::collections::BTreeMap<String, PageView>,
 	graph_scope: Option<String>,
@@ -2396,6 +2422,7 @@ struct WorkspaceView {
 	graph_display_zoom: f32,
 	graph_pan: (f32, f32),
 	graph_inset: (f32, f32),
+	graph_fit_zoom: f32,
 	graph_drag: Option<Point<Pixels>>,
 	agent_tree_visible: bool,
 	agent_tree_collapsed: std::collections::BTreeSet<String>,
@@ -2407,7 +2434,7 @@ struct WorkspaceView {
 	agent_panel_width: f32,
 	graph_panel_height: f32,
 	focused_panel: Option<workspace_size::Panel>,
-	sidebar_drag: Option<(f32, f32)>,
+	panel_drag: Option<(workspace_size::Panel, f32, f32)>,
 	connection_details_expanded: bool,
 	details_visible: bool,
 	setup_expanded: bool,
@@ -2429,8 +2456,8 @@ impl Default for WorkspaceView {
 			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,
-			dock_completed: false,
-			dock_compact: true,
+			chat_expanded: false,
+			dock_completed: true,
 			dock_record: None,
 			page_views: Default::default(),
 			graph_scope: None,
@@ -2439,6 +2466,7 @@ impl Default for WorkspaceView {
 			graph_display_zoom: 0.85,
 			graph_pan: (0.0, 0.0),
 			graph_inset: (0.0, 0.0),
+			graph_fit_zoom: 1.,
 			graph_drag: None,
 			agent_tree_visible: true,
 			agent_tree_collapsed: Default::default(),
@@ -2448,9 +2476,9 @@ impl Default for WorkspaceView {
 			sidebar_width: PanelDefaults::configured().sidebar.into(),
 			sidebar_motion: Default::default(),
 			agent_panel_width: PanelDefaults::configured().sidebar.into(),
-			graph_panel_height: PanelDefaults::configured().dock.into(),
+			graph_panel_height: f32::from(PanelDefaults::configured().dock).max(320.),
 			focused_panel: None,
-			sidebar_drag: None,
+			panel_drag: None,
 			connection_details_expanded: false,
 			details_visible: false,
 			setup_expanded: false,
@@ -2721,9 +2749,9 @@ fn history_entry_presented(
 					bubble
 						.flex_none()
 						.max_w(gpui::relative(0.78))
-						.px_4()
-						.py(gpui::px(9.))
-						.rounded(gpui::px(18.0))
+						.px(gpui::px(12.))
+						.py(gpui::px(7.))
+						.rounded(gpui::px(10.))
 						.bg(gpui::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
@@ -2938,40 +2966,32 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn context_detail_uses_space_above_the_composer(cx: &mut gpui::TestAppContext) {
+	fn context_usage_stays_inside_the_composer_toolbar(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
-
-		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
-
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_workspace_page("markdown", cx);
-
-			s.context_tip_visible = true;
-			s.composer_menu = None;
-
 			cx.notify();
 		});
-
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-
-		let detail =
-			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
-
-		assert!(detail.top() >= gpui::px(0.));
-
+		for width in [640., 1400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1000.)));
+			visual.update(|window, cx| window.draw(cx).clear());
+			let detail =
+				visual.debug_bounds("composer-context-detail").expect("visible without hover");
+			let composer = visual.debug_bounds("agent-composer").unwrap();
+			assert!(detail.top() >= composer.top());
+			assert!(detail.bottom() <= composer.bottom());
+			assert!(detail.right() <= composer.right());
+			assert!(detail.left() >= composer.left());
+			let send = visual.debug_bounds("composer-send").unwrap();
+			assert!(detail.right() <= send.left());
+			assert!(detail.bottom() <= gpui::px(1000.));
+		}
 		surface.update(visual, |s, cx| {
-			s.context_tip_visible = false;
-
+			s.history = None;
 			cx.notify();
 		});
-
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-
+		visual.update(|window, cx| window.draw(cx).clear());
 		assert!(visual.debug_bounds("composer-context-detail").is_none());
 	}
 
@@ -2994,6 +3014,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -3090,6 +3111,35 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn history_prefetch_fills_a_short_first_screen_without_user_scrolling(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			if let Some((_, AgentHistoryResult::Available { entries, next_before, .. })) =
+				&mut s.history
+			{
+				entries.clear();
+				*next_before = Some(1);
+			}
+		});
+		visual.update(|window, cx| window.draw(cx).clear());
+		surface.update(visual, |s, _| {
+			assert!(!s.timeline.follow_paused.contains("agent"));
+			assert!(s.history_viewport_underfilled("agent"));
+			assert!(s.history_prefetch_needed());
+			s.timeline.loading_older = true;
+			assert!(!s.history_prefetch_needed());
+			s.timeline.loading_older = false;
+			s.timeline.older_history.insert("agent".into(), (vec![], None));
+			assert!(!s.history_prefetch_needed());
+		});
+	}
+
+	#[gpui::test]
 	fn history_prefetch_requires_reading_near_top_and_a_remaining_cursor(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -3168,6 +3218,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -3237,6 +3288,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -3373,6 +3425,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -3498,6 +3551,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -3588,6 +3642,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],

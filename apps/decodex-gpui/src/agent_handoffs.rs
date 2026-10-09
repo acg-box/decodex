@@ -13,13 +13,14 @@ pub(super) struct Handoff {
 	pub label: &'static str,
 	pub reason: &'static str,
 	pub result: bool,
+	pub attention: bool,
 }
 
 #[derive(Default)]
 pub(super) struct Handoffs {
 	scope: Option<String>,
 	seen: BTreeMap<String, String>,
-	pub relations: bool,
+	pub focus: Option<String>,
 	pub read_on_open: Option<(String, String)>,
 }
 
@@ -35,6 +36,30 @@ fn direct_work(snapshot: &AgentSnapshotDto, work: &AgentWorkItemDto) -> bool {
 
 fn completed(work: &AgentWorkItemDto) -> bool {
 	work.status == Status::Resolved && work.dispatch_state == Dispatch::Idle
+}
+
+fn running_owners(snapshot: &AgentSnapshotDto) -> std::collections::BTreeSet<String> {
+	let mut owners = std::collections::BTreeSet::new();
+	for work in snapshot
+		.work_items
+		.iter()
+		.filter(|w| matches!(w.dispatch_state, Dispatch::Running | Dispatch::Dispatching))
+	{
+		let mut owner = work;
+		for _ in 0..snapshot.work_items.len() {
+			if direct_work(snapshot, owner) {
+				owners.insert(owner.id.clone());
+				break;
+			}
+			let Some(parent) =
+				snapshot.work_items.iter().find(|w| Some(&w.id) == owner.parent_goal_id.as_ref())
+			else {
+				break;
+			};
+			owner = parent;
+		}
+	}
+	owners
 }
 
 impl Handoffs {
@@ -54,7 +79,7 @@ impl Handoffs {
 				.collect()
 		});
 		self.scope = Some(scope);
-		self.relations = false;
+		self.focus = None;
 		self.read_on_open = None;
 		self.save();
 	}
@@ -128,9 +153,49 @@ impl Handoffs {
 				} else {
 					return None;
 				};
-				Some(Handoff { work: work.id.clone(), key, label, reason, result })
+				Some(Handoff { work: work.id.clone(), key, label, reason, result, attention: true })
 			})
 			.collect()
+	}
+
+	pub fn dock_items(&self, snapshot: &AgentSnapshotDto) -> Vec<Handoff> {
+		if snapshot.connection_initializing {
+			return Vec::new();
+		}
+		let mut items = self.items(snapshot);
+		items.sort_by_key(|item| item.result);
+		let running = running_owners(snapshot);
+		let mut recent: Vec<_> = snapshot
+			.work_items
+			.iter()
+			.filter(|work| direct_work(snapshot, work) && completed(work))
+			.collect();
+		recent.sort_by_key(|work| (std::cmp::Reverse(work.updated_at_micros), &work.id));
+		for work in snapshot.work_items.iter().filter(|w| running.contains(&w.id)) {
+			if !items.iter().any(|item| item.work == work.id) {
+				items.push(Handoff {
+					work: work.id.clone(),
+					key: receipt(work),
+					label: "Running · Preview",
+					reason: "Work is running. Open the conversation for live activity.",
+					result: false,
+					attention: false,
+				});
+			}
+		}
+		for work in recent.into_iter().take(3) {
+			if !items.iter().any(|item| item.work == work.id) {
+				items.push(Handoff {
+					work: work.id.clone(),
+					key: receipt(work),
+					label: "Completed · Review",
+					reason: "Recent result",
+					result: true,
+					attention: false,
+				});
+			}
+		}
+		items
 	}
 
 	#[cfg(any(test, feature = "visual-capture"))]
@@ -145,6 +210,39 @@ mod tests {
 	use super::*;
 	use crate::shell::agent_surface::AgentSurface;
 	use gpui::AppContext;
+
+	#[gpui::test]
+	fn dock_keeps_read_results_and_groups_running_children(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_dock_page("dock-result", cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			let mut handoffs = Handoffs::default();
+			handoffs.observe("dock-test".into(), &snapshot);
+			let items = handoffs.dock_items(&snapshot);
+			let saved = items.iter().find(|h| h.work == "website").unwrap();
+			assert!(saved.result && !saved.attention);
+			assert!(!items.iter().any(|h| h.work == "flow"));
+			let release = snapshot.work_items.iter_mut().find(|w| w.id == "release").unwrap();
+			release.status = Status::Open;
+			let items = handoffs.dock_items(&snapshot);
+			assert_eq!(items.iter().filter(|h| h.work == "release").count(), 1);
+			assert_eq!(items[0].label, "Running · Preview");
+			assert!(!items.iter().any(|h| h.work == "verify"));
+			for n in 0..5 {
+				let mut work =
+					snapshot.work_items.iter().find(|w| w.id == "website").unwrap().clone();
+				work.id = format!("recent-{n}");
+				work.updated_at_micros += n + 1;
+				snapshot.work_items.push(work);
+			}
+			handoffs.observe("dock-more".into(), &snapshot);
+			let items = handoffs.dock_items(&snapshot);
+			assert_eq!(items.iter().filter(|h| h.result).count(), 3);
+			assert_eq!(items.iter().find(|h| h.result).unwrap().work, "recent-4");
+		});
+	}
 
 	#[gpui::test]
 	fn handoffs_ignore_history_and_subordinate_results_but_keep_explicit_requests(

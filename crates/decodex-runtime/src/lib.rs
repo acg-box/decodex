@@ -52,6 +52,7 @@ mod process_supervisor;
 mod provider_attempt_service;
 mod routing_orchestration;
 mod shared_auth_coordinator;
+mod startup_trace;
 mod supervised_validation;
 mod websocket;
 

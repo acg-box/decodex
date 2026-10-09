@@ -32,6 +32,22 @@ async fn newer_native_turn_cancels_pending_capacity_retry_without_claiming_input
 			.unwrap()
 	);
 	assert!(store.pending_agent_capacity_retry("agent".into()).await.unwrap().is_some());
+	assert!(
+		store
+			.agent_native_terminal_recorded("agent".into(), "thread".into(), "old".into())
+			.await
+			.unwrap()
+	);
+	for (work, thread, turn) in
+		[("other", "thread", "old"), ("agent", "other", "old"), ("agent", "thread", "new")]
+	{
+		assert!(
+			!store
+				.agent_native_terminal_recorded(work.into(), thread.into(), turn.into())
+				.await
+				.unwrap()
+		);
+	}
 
 	let input = store
 		.enqueue_agent_event(EnqueueAgentEvent {

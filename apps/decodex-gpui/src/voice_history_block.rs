@@ -75,9 +75,8 @@ impl RenderOnce for VoiceBlock {
 		gpui::div()
 			.w_full()
 			.min_w_0()
-			.px_3()
-			.py_2()
 			.rounded(gpui::px(10.))
+			.overflow_hidden()
 			.border_1()
 			.border_color(gpui::rgba(0xffffff12))
 			.bg(gpui::rgba(0xffffff05))
@@ -94,10 +93,11 @@ impl RenderOnce for VoiceBlock {
 					.items_center()
 					.justify_between()
 					.gap_2()
-					.py_1()
-					.rounded(gpui::px(5.))
+					.px_3()
+					.py_3()
 					.cursor_pointer()
 					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.focus(|s| s.bg(gpui::rgba(HOVER_FILL)))
 					.child(self.title)
 					.child(
 						gpui::div()
@@ -126,6 +126,8 @@ impl RenderOnce for VoiceBlock {
 				open,
 				gpui::div()
 					.debug_selector(|| "voice-history-transcript".into())
+					.px_3()
+					.pb_3()
 					.pt_2()
 					.child(markdown::render(
 						&transcript_markdown(&self.text),

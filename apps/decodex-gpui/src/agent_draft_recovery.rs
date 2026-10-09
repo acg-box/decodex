@@ -377,6 +377,7 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -470,6 +471,7 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -657,6 +659,7 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],

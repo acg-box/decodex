@@ -242,9 +242,9 @@ pub(super) fn live_mark() -> AnyElement {
 		.flex()
 		.items_center()
 		.justify_center()
-		.gap(gpui::px(1.5))
-		.children([5., 10., 15., 10., 5.].map(|height| {
-			gpui::div().w(gpui::px(2.)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
+		.gap(gpui::px(2.))
+		.children([4., 8., 12., 8., 4.].map(|height| {
+			gpui::div().w(gpui::px(1.5)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
 		}))
 		.into_any_element()
 }

@@ -153,7 +153,8 @@ fn handback_view(
 	let work = surface.update(cx, |s, cx| {
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
-		s.bind_profile(Some(profile.clone()), cx);
+		s.bind_drafts(Some(profile), cx);
+		s.profile = Some(profile.clone());
 
 		s.poll_task = None;
 

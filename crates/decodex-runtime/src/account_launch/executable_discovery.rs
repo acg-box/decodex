@@ -1,4 +1,4 @@
-//! Prefer the installed desktop CLI over a shell PATH entry on macOS.
+//! Packaged apps use their pinned runtime; development falls back to installed Codex.
 use std::{
 	env,
 	ffi::OsString,
@@ -6,6 +6,13 @@ use std::{
 };
 
 pub(super) fn find(requested: &Path) -> Option<PathBuf> {
+	#[cfg(target_os = "macos")]
+	if requested == Path::new("codex")
+		&& let Some(contents) = bundled_contents()
+	{
+		// A broken packaged runtime must not silently switch to an unrelated installation.
+		return Some(contents.join("Resources/CodexRuntime/CodexCLI.app/Contents/MacOS/codex"));
+	}
 	#[cfg(not(target_os = "macos"))]
 	let applications = Vec::new();
 	#[cfg(target_os = "macos")]
@@ -21,6 +28,24 @@ pub(super) fn find(requested: &Path) -> Option<PathBuf> {
 	}
 
 	select(requested, &applications, env::var_os("PATH"))
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn bundled_contents() -> Option<PathBuf> {
+	bundle_contents_for(&env::current_exe().ok()?)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn bundle_contents_for(executable: &Path) -> Option<PathBuf> {
+	let owner = executable.parent()?;
+	if !matches!(owner.file_name()?.to_str()?, "Helpers" | "MacOS") {
+		return None;
+	}
+	let contents = owner.parent()?;
+	if contents.file_name()? != "Contents" || contents.parent()?.extension()? != "app" {
+		return None;
+	}
+	Some(contents.to_owned())
 }
 
 fn select(requested: &Path, applications: &[PathBuf], path: Option<OsString>) -> Option<PathBuf> {
@@ -54,6 +79,22 @@ mod tests {
 	use std::{fs, slice};
 
 	use crate::account_launch::process::executable_discovery::{self, Path, env};
+
+	#[test]
+	fn packaged_runtime_is_relative_to_the_running_app() {
+		for executable in ["Helpers/decodex", "MacOS/decodex-gpui"] {
+			assert_eq!(
+				executable_discovery::bundle_contents_for(
+					&Path::new("/Moved/Renamed.app/Contents").join(executable)
+				),
+				Some("/Moved/Renamed.app/Contents".into())
+			);
+		}
+		assert!(
+			executable_discovery::bundle_contents_for(Path::new("/repo/target/release/decodex"))
+				.is_none()
+		);
+	}
 
 	#[test]
 	fn app_wins_over_path_and_works_without_shell_path() {

@@ -5,6 +5,28 @@ use sha2::{Digest as _, Sha256};
 use crate::{SqliteStore, StoreError, agent, agent_process, error::sqlite_error};
 
 impl SqliteStore {
+	/// Check the exact terminal receipt before fetching an already recovered native turn.
+	pub async fn agent_native_terminal_recorded(
+		&self,
+		work: String,
+		thread: String,
+		turn: String,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			Ok(connection
+				.query_row(
+					"SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1
+				AND event_kind IN ('agent_turn_completed','worker_turn_completed','capacity_retry')
+				AND json_valid(payload) AND json_extract(payload,'$.terminal.threadId')=?2
+				AND json_extract(payload,'$.terminal.turn.id')=?3)",
+					rusqlite::params![work, thread, turn],
+					|row| row.get(0),
+				)
+				.map_err(sqlite_error)?)
+		})
+		.await
+	}
+
 	/// Adopt a new native turn only for its exact bound work and current process owner.
 	/// The resolved receipt prevents replay after completion or process restart.
 	pub async fn observe_agent_native_turn(
