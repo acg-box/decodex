@@ -57,7 +57,8 @@ mod tests {
 
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-				connection_initializing: false,
+				context_references: vec![],
+connection_initializing: false,
 				runtime_source: None, workspaces: vec![], dependencies: vec![],
 				work_items: vec![AgentWorkItemDto { id: "root".into(), parent_goal_id: None, kind: AgentWorkKindDto::Goal, title: "Agent".into(), codex_thread_id: Some("thread".into()), active_turn_id: None, dispatch_state: AgentDispatchStateDto::Idle, status: AgentWorkStatusDto::Open, next_check_at_micros: None, created_at_micros: 1, updated_at_micros: 1 }],
 				pending_events: vec![AgentPendingEventDto { id: 7, source_event_id: "suggestion".into(), work_item_id: "root".into(), event_kind: "server_request_pending".into(), created_at_micros: 1, delivery_claimed: false }],

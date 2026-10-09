@@ -601,6 +601,7 @@ mod tests {
 			decodex_protocol::AgentTimelineEntry {
 				position: 1,
 				content: AgentTimelineContent::Item {
+					collaboration: None,
 					phase: None,
 					app_ui: false,
 					turn_id: turn.into(),

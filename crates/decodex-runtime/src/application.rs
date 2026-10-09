@@ -6101,7 +6101,21 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
+	let Ok(references) = store.agent_context_references().await else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
+	};
+
 	let snapshot = AgentSnapshotDto {
+		context_references: references
+			.into_iter()
+			.map(|r| decodex_protocol::AgentContextReferenceDto {
+				event_id: r.event_id,
+				recipient_work_id: r.recipient_work_id,
+				source_work_id: r.source_work_id,
+				source_thread_id: r.source_thread_id,
+				delivery_turn_id: r.delivery_turn_id,
+			})
+			.collect(),
 		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces

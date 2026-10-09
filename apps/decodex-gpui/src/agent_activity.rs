@@ -1051,6 +1051,7 @@ mod tests {
 		let row = |position, user| AgentTimelineEntry {
 			position,
 			content: decodex_protocol::AgentTimelineContent::Item {
+				collaboration: None,
 				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
@@ -1195,6 +1196,7 @@ mod tests {
 				AgentTimelineEntry {
 					position: 5,
 					content: decodex_protocol::AgentTimelineContent::Item {
+						collaboration: None,
 						phase: None,
 						app_ui: false,
 						turn_id: "turn".into(),

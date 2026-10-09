@@ -759,6 +759,7 @@ mod tests {
 		visual.simulate_click(close.center(), Default::default());
 		for _ in 0..3 {
 			visual.update(|w, cx| {
+			collaboration: None,
 				w.refresh();
 				w.draw(cx).clear();
 			});

@@ -108,3 +108,33 @@ fn field<'a>(reference: &'a Value, key: &str, max: usize) -> Result<&'a str, Sto
 		.filter(|s| !s.is_empty() && s.len() <= max)
 		.ok_or(StoreError::InvalidInput("invalid task reference field"))
 }
+
+/// A persisted, explicitly selected context reference. Delivery is not proof of reading.
+#[derive(Clone, Debug)]
+pub struct AgentContextReference {
+	pub event_id: i64,
+	pub recipient_work_id: String,
+	pub source_work_id: String,
+	pub source_thread_id: String,
+	pub delivery_turn_id: Option<String>,
+}
+
+impl SqliteStore {
+	/// Read a bounded set of reference receipts, including queued input.
+	pub async fn agent_context_references(&self) -> Result<Vec<AgentContextReference>, StoreError> {
+		self.run(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT e.id,e.work_item_id,json_extract(r.value,'$.workId'),json_extract(r.value,'$.threadId'),CASE WHEN e.delivery_work_item_id=e.work_item_id THEN NULLIF(e.delivered_turn_id,'') END
+                 FROM agent_inbox_events e, json_each(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.options.taskReferences') r
+                 WHERE e.event_kind='user_message' AND r.type='object'
+                 AND json_extract(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.source')='user'
+                 AND (e.disposition IS NULL OR (e.delivery_work_item_id=e.work_item_id AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>''))
+                 ORDER BY e.id DESC LIMIT 501"
+            ).map_err(error::sqlite_error)?;
+            let rows = statement.query_map([], |row| Ok(AgentContextReference {
+                event_id: row.get(0)?, recipient_work_id: row.get(1)?, source_work_id: row.get(2)?, source_thread_id: row.get(3)?, delivery_turn_id: row.get(4)?,
+            })).map_err(error::sqlite_error)?;
+            rows.collect::<Result<Vec<_>,_>>().map_err(|e| error::sqlite_error(e).into())
+        }).await
+	}
+}

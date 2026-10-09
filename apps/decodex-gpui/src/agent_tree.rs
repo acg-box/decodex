@@ -409,12 +409,14 @@ mod tests {
 					decodex_protocol::NativeAgentDto {
 						thread_id: "native-child".into(),
 						parent_thread_id: "root-native".into(),
+						task: String::new(),
 						title: "Research".into(),
 						status: "idle".into(),
 					},
 					decodex_protocol::NativeAgentDto {
 						thread_id: "native-grandchild".into(),
 						parent_thread_id: "native-child".into(),
+						task: String::new(),
 						title: "Sources".into(),
 						status: "idle".into(),
 					},

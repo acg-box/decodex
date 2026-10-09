@@ -851,7 +851,8 @@ mod timing_tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
-                connection_initializing: false,
+                context_references: vec![],
+connection_initializing: false,
                 runtime_source: None,
                 workspaces: vec![], dependencies: vec![],
                 work_items: vec![requests::AgentWorkItemDto {

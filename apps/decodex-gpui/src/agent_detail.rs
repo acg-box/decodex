@@ -371,6 +371,7 @@ mod tests {
 		s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
 			position: 0,
 			content: decodex_protocol::AgentTimelineContent::Item {
+				collaboration: None,
 				turn_id: "turn".into(),
 				item_id: "search".into(),
 				kind: "webSearch".into(),
@@ -435,6 +436,7 @@ mod tests {
 
 	fn activity_detail_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new("source").expect("valid activity detail source")),
 			workspaces: vec![],

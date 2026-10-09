@@ -3016,6 +3016,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
+				context_references: vec![],
 			window.draw(cx).clear();
 		});
 		visual.simulate_keystrokes("cmd-enter");
@@ -3219,6 +3220,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
+				context_references: vec![],
 		});
 
 		let bounds =
@@ -3288,6 +3290,7 @@ mod tests {
 					has_more: false,
 					next_before: None,
 					live: vec![],
+				context_references: vec![],
 				},
 			));
 			surface.request = Some(AgentRequestResult::Available {
@@ -3424,6 +3427,7 @@ mod tests {
 
 			s.composer_manager = Some("root".into());
 			s.attachments = vec![file];
+				context_references: vec![],
 			s.sending = true;
 
 			let feedback = s.feedback.clone();
@@ -3549,6 +3553,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(720.0)));
+				context_references: vec![],
 			window.draw(cx).clear();
 		});
 	}
@@ -3639,4 +3644,5 @@ mod tests {
 			assert!(surface.task.is_none());
 		});
 	}
+				context_references: vec![],
 }

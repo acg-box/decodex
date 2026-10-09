@@ -238,6 +238,7 @@ mod tests {
 			};
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
 				workspaces: vec![],
@@ -283,6 +284,7 @@ mod tests {
 	fn estimates_discard_changed_sources_and_late_reopened_requests(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		let snapshot = |source: &str, thread: &str| AgentSnapshotDto {
+			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new(source).unwrap()),
 			workspaces: vec![],

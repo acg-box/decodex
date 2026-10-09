@@ -189,7 +189,19 @@ fn project_fields(
 	};
 	let page = AgentTimelinePage {
 		thread_id: id(&Value::String(thread.into()))?,
-		entries: rows.iter().filter(visible).map(entry).collect::<Option<Vec<_>>>()?,
+		entries: rows
+			.iter()
+			.filter(visible)
+			.map(|row| {
+				let mut entry = entry(row)?;
+				if row["item"]["type"] == "subAgentActivity"
+					&& let AgentTimelineContent::Item { collaboration, .. } = &mut entry.content
+				{
+					*collaboration = subagent_activity(thread, &row["item"]);
+				}
+				Some(entry)
+			})
+			.collect::<Option<Vec<_>>>()?,
 		next_cursor: nullable_text(value.get("nextCursor")?, 4_096)?,
 		weather: Default::default(),
 		safety_buffering_turn_id: None,
@@ -284,6 +296,7 @@ fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 		.flatten();
 
 	Some(AgentTimelineContent::Item {
+		collaboration: collaboration(item),
 		phase: item["phase"].as_str().map(str::to_owned),
 		// Retain the wire field for older clients without advertising the retired viewer.
 		app_ui: false,
@@ -438,8 +451,95 @@ async fn project_with_saved_origins(
 	project_with_origins(thread, value, &origins)
 }
 
+// Current native sessions use this compact event instead of the older tool-call record.
+// Fields and kinds verified against installed 0.162.0-alpha.2 and upstream 9b738582.
+fn subagent_activity(
+	thread: &str,
+	item: &Value,
+) -> Option<decodex_protocol::AgentCollaborationDto> {
+	let kind = item["kind"].as_str()?;
+	if !["started", "interacted", "interrupted", "completed"].contains(&kind) {
+		return None;
+	}
+	Some(decodex_protocol::AgentCollaborationDto {
+		sender_thread_id: id(&Value::String(thread.into()))?,
+		receiver_thread_ids: vec![id(&item["agentThreadId"])?],
+		tool: format!("subAgentActivity/{kind}"),
+		status: kind.into(),
+		prompt: String::new(),
+		results: vec![],
+	})
+}
+
+// Verified against openai/codex 9b738582 and installed 0.162.0-alpha.2 schemas.
+fn collaboration(item: &Value) -> Option<decodex_protocol::AgentCollaborationDto> {
+	if item["type"] != "collabAgentToolCall" {
+		return None;
+	}
+	let receivers = item["receiverThreadIds"].as_array()?;
+	if receivers.len() > 128 {
+		return None;
+	}
+	let prompt = item["prompt"].as_str().unwrap_or("");
+	let (prompt, _) = visible_text(prompt);
+	Some(decodex_protocol::AgentCollaborationDto {
+		results: receivers
+			.iter()
+			.filter_map(|receiver| {
+				let thread = id(receiver)?;
+				let state = &item["agentsStates"][&thread];
+				Some(decodex_protocol::AgentCollaborationResultDto {
+					thread_id: thread,
+					status: state["status"].as_str()?.chars().take(64).collect(),
+					message: visible_text(state["message"].as_str().unwrap_or(""))
+						.0
+						.chars()
+						.take(1024)
+						.collect(),
+				})
+			})
+			.collect(),
+		sender_thread_id: id(&item["senderThreadId"])?,
+		receiver_thread_ids: receivers.iter().map(id).collect::<Option<Vec<_>>>()?,
+		tool: item["tool"].as_str()?.chars().take(64).collect(),
+		status: item["status"].as_str()?.chars().take(64).collect(),
+		prompt: prompt.chars().take(1024).collect(),
+	})
+}
+
 #[cfg(test)]
 mod tests {
+
+	#[test]
+	fn native_subagent_activity_keeps_thread_identity_without_inventing_message_body() {
+		for kind in ["started", "interacted", "interrupted", "completed"] {
+			let value = serde_json::json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{"type":"subAgentActivity","id":"activity","kind":kind,"agentThreadId":"child","agentPath":"/root/reviewer"}}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+			let page = super::project("parent", &value).unwrap();
+			let decodex_protocol::AgentTimelineContent::Item { collaboration: Some(call), .. } =
+				&page.entries[0].content
+			else {
+				panic!("missing collaboration")
+			};
+			assert_eq!(call.sender_thread_id, "parent");
+			assert_eq!(call.receiver_thread_ids, ["child"]);
+			assert_eq!(call.tool, format!("subAgentActivity/{kind}"));
+			assert!(call.prompt.is_empty() && call.results.is_empty());
+		}
+	}
+	#[test]
+	fn collaboration_preserves_receivers_and_reply_evidence() {
+		let item = serde_json::json!({"type":"collabAgentToolCall","senderThreadId":"sender","receiverThreadIds":["child"],"tool":"wait","status":"completed","prompt":null,"agentsStates":{"child":{"status":"completed","message":"Review complete"}}});
+		let call = super::collaboration(&item).unwrap();
+		assert_eq!(call.receiver_thread_ids, vec!["child"]);
+		assert_eq!(call.results[0].message, "Review complete");
+		assert!(
+			super::collaboration(
+				&serde_json::json!({"type":"agentMessage","text":item.to_string()})
+			)
+			.is_none()
+		);
+	}
+
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};

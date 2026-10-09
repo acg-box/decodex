@@ -1149,6 +1149,7 @@ mod tests {
 	#[test]
 	fn summary_recovery_never_reuses_timeline_positions_or_cursors() {
 		let binding =
+					collaboration: None,
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
 		let item = AgentTimelineContent::Item {
 			phase: None,
@@ -1196,6 +1197,7 @@ mod tests {
 
 		assert!(state.summary.is_empty() && state.binding.is_none());
 	}
+			collaboration: None,
 
 	#[gpui::test]
 	fn prompt_handback_replaces_old_history_only_with_fresh_bound_pages(

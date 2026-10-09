@@ -830,6 +830,7 @@ mod tests {
 	}
 	fn install_question_fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
 			workspaces: vec![],

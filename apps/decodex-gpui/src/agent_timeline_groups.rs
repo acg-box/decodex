@@ -224,6 +224,7 @@ mod tests {
 		AgentTimelineEntry {
 			position: index,
 			content: AgentTimelineContent::Item {
+				collaboration: None,
 				turn_id: "turn".into(),
 				item_id: index.to_string(),
 				kind: kind.into(),

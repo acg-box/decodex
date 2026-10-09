@@ -543,6 +543,7 @@ mod tests {
 		AgentTimelineEntry {
 			position,
 			content: decodex_protocol::AgentTimelineContent::Item {
+				collaboration: None,
 				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),

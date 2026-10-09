@@ -72,15 +72,16 @@ pub use self::{
 	},
 	agent::{
 		AgentActionDto, AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto,
-		AgentAttachmentDto, AgentCapabilitiesResult, AgentDependencyDto, AgentDispatchStateDto,
-		AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentHistoryResult, AgentHistorySourceDto,
-		AgentInputReceiptsResult, AgentLiveMessageDto, AgentLiveMessageKind, AgentMisalignmentDto,
-		AgentModelDto, AgentModelUpgradeDto, AgentOutputResult, AgentPendingEventDto,
-		AgentRequestResult, AgentRequestText, AgentResourceDto, AgentResourcesResult,
-		AgentSandboxDto, AgentServiceTierDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
-		AgentTaskReferenceDto, AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto,
-		AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES,
-		MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, WorkspaceDto,
+		AgentAttachmentDto, AgentCapabilitiesResult, AgentContextReferenceDto, AgentDependencyDto,
+		AgentDispatchStateDto, AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentHistoryResult,
+		AgentHistorySourceDto, AgentInputReceiptsResult, AgentLiveMessageDto, AgentLiveMessageKind,
+		AgentMisalignmentDto, AgentModelDto, AgentModelUpgradeDto, AgentOutputResult,
+		AgentPendingEventDto, AgentRequestResult, AgentRequestText, AgentResourceDto,
+		AgentResourcesResult, AgentSandboxDto, AgentServiceTierDto, AgentSnapshotDto,
+		AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto, AgentTurnUsageDto,
+		AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
+		AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
+		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, WorkspaceDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_settings::{
@@ -140,9 +141,9 @@ pub use self::{
 	agent_skills::{AgentSkillDto, AgentSkillsPage, AgentSkillsResult, AgentSkillsTarget},
 	agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult},
 	agent_timeline::{
-		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelineContent,
-		AgentTimelineEntry, AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent,
-		AgentTimelineResult,
+		AgentCollaborationDto, AgentCollaborationResultDto, AgentTimelineAttachment,
+		AgentTimelineAttachmentSource, AgentTimelineContent, AgentTimelineEntry,
+		AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent, AgentTimelineResult,
 	},
 	agent_transcript::{
 		AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,
@@ -261,7 +262,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 114 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 116 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

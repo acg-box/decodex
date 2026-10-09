@@ -10,6 +10,9 @@ pub struct NativeAgentDto {
 	pub parent_thread_id: String,
 	/// Bounded display title.
 	pub title: String,
+	/// Bounded first native input, used to identify the delegated work.
+	#[serde(default)]
+	pub task: String,
 	/// Provider-reported thread state.
 	pub status: String,
 }

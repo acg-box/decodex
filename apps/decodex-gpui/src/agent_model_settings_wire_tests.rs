@@ -56,6 +56,7 @@ fn work() -> AgentWorkItemDto {
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").unwrap()),
 		workspaces: vec![],

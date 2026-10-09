@@ -1832,6 +1832,7 @@ impl AgentSurface {
 					model: decodex_protocol::ConversationModel::new(name)
 						.expect("valid fixture model"),
 					name: name.into(),
+					context_references: vec![],
 					efforts: vec![
 						ConversationReasoningEffort::Low,
 						ConversationReasoningEffort::Medium,
@@ -1962,6 +1963,7 @@ impl AgentSurface {
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
+			context_references: vec![],
 		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}

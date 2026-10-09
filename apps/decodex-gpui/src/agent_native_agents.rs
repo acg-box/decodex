@@ -933,6 +933,7 @@ mod tests {
 
 				let mut next = s.snapshot.clone().unwrap();
 
+						task: String::new(),
 				match change {
 					"thread" =>
 						next.work_items
