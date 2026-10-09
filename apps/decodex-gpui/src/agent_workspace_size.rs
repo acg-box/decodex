@@ -359,6 +359,39 @@ impl AgentSurface {
 			}))
 	}
 
+	pub(super) fn dock_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.id("agent-dock-resize")
+			.debug_selector(|| "agent-dock-resize".into())
+			.absolute()
+			.bottom_0()
+			.left_0()
+			.right_0()
+			.h(gpui::px(6.))
+			.cursor_row_resize()
+			.role(Role::Slider)
+			.aria_label("Dock height. Drag to resize. Double-click to reset. Control-Option minus or equals adjusts the selected panel.")
+			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
+			.on_mouse_down(
+				MouseButton::Left,
+				cx.listener(|s, event: &MouseDownEvent, window, cx| {
+					s.workspace.focused_panel = Some(Panel::Bottom);
+					s.workspace.panel_drag = Some((
+						Panel::Bottom,
+						event.position.y.into(),
+						s.workspace_graph_size(window, true).1,
+					));
+					cx.stop_propagation();
+					cx.notify();
+				}),
+			)
+			.on_click(cx.listener(|s, event: &ClickEvent, window, cx| {
+				if event.click_count() == 2 {
+					s.resize_panel(0., true, false, window, cx);
+				}
+			}))
+	}
+
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		gpui::div()
 			.id("agent-workspace")
@@ -375,7 +408,10 @@ impl AgentSurface {
 				}
 
 				let delta = f32::from(event.position.x) - start;
-				if panel == Panel::Right {
+				if panel == Panel::Bottom {
+					let delta = f32::from(event.position.y) - start;
+					s.workspace.graph_panel_height = (width + delta).clamp(120., 640.);
+				} else if panel == Panel::Right {
 					s.workspace.agent_panel_width = (width - delta).clamp(160., 480.);
 				} else {
 					s.workspace.sidebar_width =
@@ -587,6 +623,49 @@ mod tests {
 			assert_eq!(s.workspace.sidebar_width, 272.0);
 			assert!(s.workspace.panel_drag.is_none());
 		});
+	}
+
+	#[gpui::test]
+	fn dock_drag_resizes_height_without_panning_and_stops_on_release(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = false;
+			s.workspace.graph_panel_height = 300.;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let start = visual.debug_bounds("agent-dock-resize").unwrap().center();
+		let end = start + gpui::point(gpui::px(40.), gpui::px(80.));
+		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(visual.debug_bounds("work-dock").unwrap().size.height, gpui::px(380.));
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.graph_panel_height, 380.);
+			assert_eq!(s.workspace.focused_panel, Some(Panel::Bottom));
+			assert_eq!(s.workspace.graph_pan, (0., 0.));
+		});
+		visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(start, None, Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.graph_panel_height, 380.);
+			assert!(s.workspace.panel_drag.is_none());
+		});
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.resize_panel(-24., false, false, window, cx);
+				assert_eq!(s.workspace.graph_panel_height, 356.);
+				s.workspace.graph_expanded = true;
+				cx.notify();
+			})
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("agent-dock-resize").is_none());
 	}
 
 	#[gpui::test]

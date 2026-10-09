@@ -1179,6 +1179,15 @@ impl AgentSurface {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
 
 		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
+		let displayed_height = ui_motion::direct_value(
+			"execution-surface-height",
+			graph_height,
+			self.workspace
+				.panel_drag
+				.is_some_and(|(panel, _, _)| panel == super::workspace_size::Panel::Bottom),
+			window,
+			cx,
+		);
 		// The top panel owns its space. Chat follows it in normal layout flow.
 		let center = gpui::div()
 			.relative()
@@ -1187,12 +1196,14 @@ impl AgentSurface {
 			.h_full()
 			.flex()
 			.flex_col()
-			.child(ui_motion::reveal(
-				"execution-surface-height",
-				graph_height,
-				false,
-				self.handoff_canvas(cx),
-			))
+			.child(
+				gpui::div()
+					.flex_none()
+					.overflow_hidden()
+					.w_full()
+					.h(gpui::px(displayed_height))
+					.when(displayed_height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
+			)
 			.when(!self.workspace.graph_expanded, |center| center.child(chat));
 
 		let right_width = ui_motion::direct_value(

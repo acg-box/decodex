@@ -94,6 +94,9 @@ impl AgentSurface {
 			return panel
 				.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)))
 				.child(header.absolute().top_0().right_0())
+				.when(!self.workspace.graph_expanded, |panel| {
+					panel.child(self.dock_resize_handle(cx))
+				})
 				.into_any_element();
 		}
 		panel = panel.child(header);
@@ -110,7 +113,9 @@ impl AgentSurface {
 				)
 				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
 		}
-		panel.into_any_element()
+		panel
+			.when(!self.workspace.graph_expanded, |panel| panel.child(self.dock_resize_handle(cx)))
+			.into_any_element()
 	}
 
 	pub(super) fn expanded_graph_node(
