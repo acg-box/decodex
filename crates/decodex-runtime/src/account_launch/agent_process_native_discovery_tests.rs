@@ -144,7 +144,7 @@ async fn installed_native_permission_catalog_uses_each_requested_working_directo
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated enterprise MCP policy"]
-async fn installed_native_enterprise_mcp_rejects_oauth_and_project_downgrade() {
+async fn installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let root = tempfile::tempdir().unwrap();
 	let home = root.path().join("home");
@@ -182,7 +182,7 @@ auth = "ema_auth"
 		time::timeout(Duration::from_secs(30), async {
 			let login = session.client.request("mcpServer/oauth/login", serde_json::json!({"name":"enterprise"})).await;
 
-			assert!(matches!(login, Err(ClientError::Remote(error)) if error.message.contains("EMA MCP connections are not enabled")));
+			assert!(matches!(&login, Err(ClientError::Remote(error)) if error.code == -32_600 && error.message.contains("requires a connected thread")), "missing thread: {login:?}");
 
 			for change in [
 				"auth = \"oauth\"",
