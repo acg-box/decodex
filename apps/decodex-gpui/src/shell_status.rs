@@ -228,11 +228,13 @@ impl Shell {
 			if detail.as_ref() != "Cancelling sign-in…" {
 				let notice = Notice::new("Account sign-in", detail.to_string(), Recovery::Accounts);
 
-				notices.push(if detail.as_ref() == "Sign-in code copied." {
-					notice.info()
-				} else {
-					notice
-				});
+				notices.push(
+					if matches!(detail.as_ref(), "Sign-in code copied." | "Sign-in link copied.") {
+						notice.info()
+					} else {
+						notice
+					},
+				);
 			}
 		} else if let Some(status) = &self.account_login_status {
 			match status.state {
