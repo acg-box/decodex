@@ -488,11 +488,14 @@ impl SqliteStore {
 			return Err(StoreError::InvalidInput("invalid activity receipt"));
 		}
 
-		// Native subagent and yielded MCP observations can outlive their originating turn.
+		// Native subagent, yielded MCP and command lifecycle events can outlive their turn.
+		// Upstream a69d757c/ec4d27ae completes failed command launches after interruption.
 		// Only an exact saved terminal receipt can authorize that historical association.
 		let historical_activity = serde_json::from_str::<Value>(&payload).is_ok_and(|value| {
-			matches!(value["kind"].as_str(), Some("subAgentActivity" | "mcpToolCall"))
-				&& value["turn_id"] == turn
+			matches!(
+				value["kind"].as_str(),
+				Some("subAgentActivity" | "mcpToolCall" | "commandExecution")
+			) && value["turn_id"] == turn
 				&& value["item_id"] == item
 		});
 		let terminal_source = serde_json::json!(["turn/completed", thread, turn]).to_string();
