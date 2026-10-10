@@ -33,6 +33,10 @@ pub struct TemporaryStructuredThread {
 	id: String,
 }
 impl TemporaryStructuredThread {
+	pub(super) fn from_ephemeral(client: AppServerClient, id: String) -> Self {
+		Self { client, id }
+	}
+
 	/// Exact identity for the runtime's temporary-thread event route.
 	pub fn id(&self) -> &str {
 		&self.id
