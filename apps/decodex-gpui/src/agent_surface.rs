@@ -41,6 +41,7 @@ mod native_composer;
 #[path = "agent_prompt_edit.rs"] mod prompt_edit;
 #[path = "agent_prompts.rs"] mod prompts;
 #[path = "agent_question_notices.rs"] mod question_notices;
+#[path = "agent_read_state.rs"] mod read_state;
 #[path = "agent_recap.rs"] mod recap;
 #[path = "agent_requests.rs"] mod requests;
 #[path = "agent_resources.rs"] mod resources;
@@ -207,6 +208,7 @@ pub(crate) struct AgentSurface {
 	hook_settings: hooks::Panel,
 	app_exposure: app_exposure::Panel,
 	native_goal: native_goal::Panel,
+	read_state: read_state::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
 	account: Entity<ComposerInput>,
@@ -384,6 +386,7 @@ impl AgentSurface {
 			hook_settings: Default::default(),
 			app_exposure: Default::default(),
 			native_goal: Default::default(),
+			read_state: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
 			effort: ConversationReasoningEffort::High,
@@ -1269,6 +1272,7 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
+		self.reset_read_state();
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
@@ -1397,6 +1401,7 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
+		self.reset_read_state();
 
 		self.question_notices = Default::default();
 
@@ -1465,6 +1470,7 @@ impl AgentSurface {
 					return;
 				}
 				surface.refresh_native_goal(cx);
+				surface.refresh_read_state(cx);
 				surface.refresh_dock_evidence(cx);
 				surface.refresh_factory_briefs(cx);
 
@@ -1514,6 +1520,7 @@ impl AgentSurface {
 				self.invalidate_recap(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
+				self.invalidate_read_state(&snapshot);
 
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
@@ -2333,6 +2340,7 @@ impl AgentSurface {
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.search_settings_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
+					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))
 					.child(self.transcript_panel(cx))
 					.children(

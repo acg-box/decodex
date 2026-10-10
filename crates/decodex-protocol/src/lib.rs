@@ -25,6 +25,7 @@ mod agent_prompt_edit;
 mod agent_prompt_send;
 mod agent_prompt_upload;
 mod agent_questions;
+mod agent_read_state;
 mod agent_recap;
 mod agent_requested_decision;
 mod agent_search_settings;
@@ -135,6 +136,7 @@ pub use self::{
 		agent_async_question_reply, parse_agent_async_question_replies,
 		project_agent_async_questions, render_agent_async_question_history,
 	},
+	agent_read_state::{AgentReadStateResult, AgentUnreadPosition},
 	agent_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus},
 	agent_requested_decision::{AgentRequestedDecision, requested_decision_response},
 	agent_search_settings::AgentSearchSettingsResult,

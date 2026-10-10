@@ -26,6 +26,7 @@ use crate::{
 	agent::{AgentInputExtras, misalignment, native_subagents, timeline, timeline::media},
 	agent_app_exposure, agent_capabilities, agent_detail, agent_hooks, agent_integrations,
 	agent_live_settings, agent_model_settings, agent_models, agent_native_goal, agent_permissions,
+	agent_read_state,
 	agent_recap::Recaps,
 	agent_resources, agent_search_settings, agent_skills,
 	agent_transcript::Transcripts,
@@ -48,12 +49,12 @@ use decodex_protocol::{
 	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
 	AgentAttachmentDto, AgentCapabilitiesResult, AgentHookSettingsState, AgentIntegrationsResult,
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
-	AgentModelSettingsResult, AgentNativeGoalResult, AgentPermissionState, AgentRequestedDecision,
-	AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
-	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
-	McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentPermissionState, AgentReadStateResult,
+	AgentRequestedDecision, AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest,
+	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText,
+	McpLoginPhase, McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
 };
 use prompt_edit::Reviews;
 use weather::CachedWeather;
@@ -376,6 +377,23 @@ impl AgentHost {
 			})
 		})
 		.await
+	}
+
+	async fn read_state_source(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Option<crate::agent_usage_estimate::Source> {
+		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+		if owner.parent_goal_id.is_some() || owner.codex_thread_id.as_deref() != Some(thread) {
+			return None;
+		}
+		self.timeline_source(work, thread).await
+	}
+
+	pub(crate) async fn read_state(&self, work: &str, thread: &str) -> AgentReadStateResult {
+		agent_read_state::read(|| async { self.read_state_source(work, thread).await }, thread)
+			.await
 	}
 
 	pub(crate) async fn native_goal(&self, work: &str, thread: &str) -> AgentNativeGoalResult {
@@ -1289,6 +1307,23 @@ impl AgentHost {
 				Err(AgentHostError::Rejected(
 					"Configure connector approvals in Codex for this account.",
 				)),
+			AgentActionDto::SetThreadReadState {
+				work_id,
+				thread_id,
+				revision,
+				review_token,
+				read,
+			} => {
+				agent_read_state::write(
+					|| async { self.read_state_source(work_id.as_str(), thread_id.as_str()).await },
+					thread_id.as_str(),
+					revision.as_str(),
+					review_token.as_str(),
+					read,
+				)
+				.await?;
+				Ok(work_id.as_str().into())
+			},
 			AgentActionDto::EditNativeGoal { work_id, thread_id, review_token, edit } => {
 				agent_native_goal::write(
 					&self.store,
@@ -1407,7 +1442,8 @@ impl AgentHost {
 			action
 			@ (AgentActionDto::GenerateRecap { .. } | AgentActionDto::CancelRecap { .. }) =>
 				self.handle_recap(&key, action).await,
-			action @ (AgentActionDto::EditNativeGoal { .. }
+			action @ (AgentActionDto::SetThreadReadState { .. }
+			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
 			| AgentActionDto::SetAppToolExposure { .. }

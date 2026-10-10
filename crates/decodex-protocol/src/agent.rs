@@ -505,6 +505,19 @@ pub enum AgentActionDto {
 		request_id: WireText,
 	},
 
+	/// Change the native receipt that the user actually reviewed.
+	SetThreadReadState {
+		/// Exact local task owner.
+		work_id: EntityId,
+		/// Exact native conversation.
+		thread_id: EntityId,
+		/// Native compare-and-set revision.
+		revision: WireText,
+		/// Source-bound local review token.
+		review_token: WireText,
+		/// True clears unread; false sets an explicit unread mark.
+		read: bool,
+	},
 	/// Edit one exact, reviewed native goal.
 	EditNativeGoal {
 		/// Owning local task.
