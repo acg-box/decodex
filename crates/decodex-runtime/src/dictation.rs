@@ -220,6 +220,12 @@ impl Session {
 	}
 
 	fn complete(&mut self) {
+		if self.status.phase != DictationPhase::Finalizing {
+			self.fail(
+				"Dictation ended before you finished. Your received text remains in the draft.",
+			);
+			return;
+		}
 		self.status.phase = DictationPhase::Complete;
 		self.transport = None;
 	}
@@ -285,12 +291,21 @@ mod tests {
 
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
+		session.status.phase = DictationPhase::Finalizing;
 		session.receive(frame(
 			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
 		));
 
 		assert_eq!(session.status.phase, DictationPhase::Complete);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
+
+		session.status.phase = DictationPhase::Listening;
+		session.receive(frame(
+			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
+		));
+		assert_eq!(session.status.phase, DictationPhase::Failed);
+		assert_eq!(session.status.text.as_str(), "Final draft.");
+		assert!(session.status.message.as_ref().unwrap().as_str().contains("before you finished"));
 
 		session.status.phase = DictationPhase::Listening;
 
