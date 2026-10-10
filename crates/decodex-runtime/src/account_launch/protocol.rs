@@ -217,11 +217,17 @@ pub struct ProtocolThreadItem {
 	pub text: Option<SensitiveString>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct JsonRpcError {
 	pub code: i64,
+	pub data: Option<serde_json::Value>,
 	#[serde(rename = "message")]
 	_message: SensitiveString,
+}
+impl std::fmt::Debug for JsonRpcError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("JsonRpcError").field("code", &self.code).finish_non_exhaustive()
+	}
 }
 impl JsonRpcError {
 	pub(super) fn message(&self) -> &str {

@@ -9,15 +9,24 @@ pub enum NativeDispatchRefusal {
 	ManagedProviderChanged,
 }
 
-/// Classify only fixed native invalid-request messages, never substrings or private data.
+/// Classify the native shutdown reason, with exact-message fallback for older servers.
 /// This is not authority to retry or to discard effects from earlier requests.
-pub fn classify_dispatch_refusal(code: i64, message: &str) -> Option<NativeDispatchRefusal> {
+pub fn classify_dispatch_refusal(
+	code: i64,
+	message: &str,
+	data: Option<&serde_json::Value>,
+) -> Option<NativeDispatchRefusal> {
 	if code != -32_600 {
 		return None;
 	}
 
+	if data.and_then(|value| value.get("reason")).and_then(serde_json::Value::as_str)
+		== Some("serverShuttingDown")
+	{
+		return Some(NativeDispatchRefusal::ServerDraining);
+	}
 	match message {
-		"Server is draining; retry after reconnecting" =>
+		"Server is draining; retry after reconnecting" if data.is_none() =>
 			Some(NativeDispatchRefusal::ServerDraining),
 		"failed to load configuration: Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent" =>
 			Some(NativeDispatchRefusal::ManagedProviderChanged),
@@ -39,16 +48,54 @@ mod tests {
 			),
 		] {
 			assert_eq!(
-				dispatch_refusal::classify_dispatch_refusal(-32_600, message),
+				dispatch_refusal::classify_dispatch_refusal(-32_600, message, None),
 				Some(expected)
 			);
-			assert_eq!(dispatch_refusal::classify_dispatch_refusal(-32_603, message), None);
+			assert_eq!(dispatch_refusal::classify_dispatch_refusal(-32_603, message, None), None);
 			assert_eq!(
-				dispatch_refusal::classify_dispatch_refusal(-32_600, &format!("{message} ")),
+				dispatch_refusal::classify_dispatch_refusal(-32_600, &format!("{message} "), None),
 				None
 			);
 			assert_eq!(
-				dispatch_refusal::classify_dispatch_refusal(-32_600, &format!("prefix: {message}")),
+				dispatch_refusal::classify_dispatch_refusal(
+					-32_600,
+					&format!("prefix: {message}"),
+					None
+				),
+				None
+			);
+		}
+	}
+	#[test]
+	fn structured_shutdown_never_falls_back_over_present_data() {
+		let reason = serde_json::json!({"reason":"serverShuttingDown"});
+		assert_eq!(
+			dispatch_refusal::classify_dispatch_refusal(
+				-32_600,
+				"New shutdown wording",
+				Some(&reason)
+			),
+			Some(NativeDispatchRefusal::ServerDraining)
+		);
+		assert_eq!(
+			dispatch_refusal::classify_dispatch_refusal(
+				-32_603,
+				"New shutdown wording",
+				Some(&reason)
+			),
+			None
+		);
+		for data in [
+			serde_json::json!({}),
+			serde_json::json!({"reason":"anotherReason"}),
+			serde_json::json!({"reason":7}),
+		] {
+			assert_eq!(
+				dispatch_refusal::classify_dispatch_refusal(
+					-32_600,
+					"Server is draining; retry after reconnecting",
+					Some(&data)
+				),
 				None
 			);
 		}

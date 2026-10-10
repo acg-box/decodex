@@ -72,11 +72,13 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 
 #[tokio::test]
 async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() {
-	for (managed, message) in [
-		(false, "Server is draining; retry after reconnecting"),
+	for (managed, message, data) in [
+		(false, "Server is draining; retry after reconnecting", None),
+		(false, "New shutdown wording", Some(serde_json::json!({"reason":"serverShuttingDown"}))),
 		(
 			true,
 			"failed to load configuration: Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent",
+			None,
 		),
 	] {
 		for (prior_effects, lost_response, expected_rejection) in
@@ -110,7 +112,11 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 			let error = if lost_response {
 				ClientError::Closed
 			} else {
-				ClientError::Remote(RpcError { code: -32_600, message: message.into(), data: None })
+				ClientError::Remote(RpcError {
+					code: -32_600,
+					message: message.into(),
+					data: data.clone(),
+				})
 			};
 			let result = agent
 				.finish_dispatch_attempt(
