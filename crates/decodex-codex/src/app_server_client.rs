@@ -981,6 +981,9 @@ async fn run_frames(
 						if let Err(error) = result { break error; }
 					},
 					Outbound::Request { method, params, reply, .. } => {
+						// Timed-out callers must not consume admission slots indefinitely.
+						// This releases bookkeeping only; it does not cancel or replay native work.
+						pending.retain(|_, request| !request.reply.is_closed());
 						if pending.len() >= MAX_PENDING_REQUESTS {
 							let _ = reply.send(Err(ClientError::RequestQueueFull));
 
@@ -1668,6 +1671,45 @@ mod tests {
 			events.recv().await,
 			Some(ServerEvent::Closed(ClientError::FrameTooLarge))
 		));
+	}
+
+	#[tokio::test]
+	async fn canceled_requests_release_capacity_without_server_replies() {
+		let (incoming, frames) = mpsc::channel(4);
+		let (outgoing, mut requests) = mpsc::channel(4);
+		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let mut canceled_ids = Vec::new();
+
+		for _ in 0..MAX_PENDING_REQUESTS {
+			let peer = client.clone();
+			let task = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
+			let request = requests.recv().await.unwrap();
+
+			canceled_ids.push(request["id"].clone());
+			task.abort();
+			assert!(task.await.unwrap_err().is_cancelled());
+		}
+
+		let peer = client.clone();
+		let mut task = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
+		let request = tokio::select! {
+			request = requests.recv() => request.unwrap(),
+			result = &mut task => panic!("canceled requests must not exhaust capacity: {result:?}"),
+		};
+
+		incoming
+			.send(Ok(serde_json::json!({"id":canceled_ids[0],"result":{"late":true}})))
+			.await
+			.unwrap();
+		assert!(matches!(events.recv().await, Some(ServerEvent::UnmatchedResponse { .. })));
+		assert!(!task.is_finished());
+		incoming
+			.send(Ok(serde_json::json!({"id":request["id"],"result":{"current":true}})))
+			.await
+			.unwrap();
+		assert_eq!(task.await.unwrap().unwrap()["current"], true);
+		assert!(requests.try_recv().is_err());
+		client.shutdown().await.unwrap();
 	}
 
 	#[tokio::test]
