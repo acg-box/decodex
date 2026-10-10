@@ -72,9 +72,15 @@ async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_pro
 
 				let result = match method {
 					"config/read" =>
-						serde_json::json!({"config":{"default_permissions":":workspace"}}),
+						serde_json::json!({"config":{"default_permissions":":workspace","approval_policy":"on-request"}}),
 					"thread/start" => {
 						let params = &req["params"];
+
+						assert!(
+							params.get("approvalPolicy").is_none(),
+							"inherit managed approval policy"
+						);
+						assert!(params["config"].get("approval_policy").is_none());
 
 						if profile == Some("restricted") {
 							assert_eq!(params["permissions"], "restricted");
@@ -257,5 +263,28 @@ async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inferenc
 		}
 
 		server.await.unwrap();
+	}
+}
+
+#[tokio::test]
+async fn temporary_collector_rejects_tool_approval_and_user_input_requests() {
+	for method in [
+		"item/tool/call",
+		"item/commandExecution/requestApproval",
+		"item/permissions/requestApproval",
+		"item/tool/requestUserInput",
+	] {
+		let (tx, mut rx) = mpsc::channel(1);
+		tx.send(ServerEvent::Request {
+			id: crate::app_server_client::RequestId::Number(91),
+			method: method.into(),
+			params: serde_json::json!({"threadId":"temporary","turnId":"turn"}),
+		})
+		.await
+		.unwrap();
+		assert!(matches!(
+			temporary_structured::collect(&mut rx, "temporary", "turn").await,
+			Err(crate::app_server_client::ClientError::InvalidFrame)
+		));
 	}
 }

@@ -126,6 +126,7 @@ impl TemporaryStructuredThread {
 
 impl AppServerClient {
 	/// Start an ephemeral thread with tools disabled, then verify native permissions.
+	/// Inherit the native approval policy; the private event route rejects interaction.
 	/// Cancellation during startup must wait for this result so the thread can be detached.
 	pub async fn start_temporary_structured(
 		&self,
@@ -150,7 +151,7 @@ impl AppServerClient {
 		let config = isolation_config(&config["config"], &options.mcp_server_names)?;
 		let profile = options.active_permission_profile.filter(|id| !id.starts_with(':'));
 		let mut params = serde_json::json!({"model":options.model,"modelProvider":options.model_provider,
-			"cwd":options.cwd,"approvalPolicy":"never","runtimeWorkspaceRoots":[],
+			"cwd":options.cwd,"runtimeWorkspaceRoots":[],
 			"ephemeral":true,"threadSource":"system","environments":[],
 			"dynamicTools":[],"selectedCapabilityRoots":[],"config":config});
 

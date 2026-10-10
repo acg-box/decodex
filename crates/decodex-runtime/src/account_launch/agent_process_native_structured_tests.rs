@@ -37,7 +37,7 @@ async fn qualify() {
 		|_| serde_json::json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
 	));
 	let config = format!(
-		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
+		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\napproval_policy=\"on-request\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
 	);
 
 	fs::write(home.path().join("config.toml"), &config).expect("native temporary fixture");
@@ -60,6 +60,10 @@ async fn qualify() {
 				_ => panic!("fixture: {error}"),
 			});
 		let id = thread.id().to_owned();
+		let (permissions, _) =
+			session.client.configured_task_permissions(&id).expect("native temporary permissions");
+		assert_eq!(permissions.approval_policy, serde_json::json!("on-request"));
+
 		let (_cancel, watch) = watch::channel(false);
 		let (_placeholder, empty) = mpsc::channel(1);
 		let mut events = mem::replace(&mut session.events, empty);

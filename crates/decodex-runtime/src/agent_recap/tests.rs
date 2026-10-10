@@ -127,6 +127,20 @@ async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_so
 
 	assert!(recaps.route(event("temporary", "turn/completed")).is_none());
 	assert!(routed.recv().await.is_some());
+	for method in
+		["item/tool/call", "item/commandExecution/requestApproval", "item/tool/requestUserInput"]
+	{
+		let request = ServerEvent::Request {
+			id: decodex_codex::app_server_client::RequestId::Number(91),
+			method: method.into(),
+			params: serde_json::json!({"threadId":"temporary","turnId":"turn"}),
+		};
+		assert!(
+			recaps.route(request).is_none(),
+			"hidden requests must not reach interactive routing"
+		);
+		assert!(matches!(routed.recv().await, Some(ServerEvent::Request { .. })));
+	}
 	assert!(!*cancelled.borrow());
 	assert!(recaps.route(event("other", "thread/reverted")).is_some());
 	assert!(!*cancelled.borrow());
