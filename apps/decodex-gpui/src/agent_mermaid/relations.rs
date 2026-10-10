@@ -160,6 +160,13 @@ fn parse_relationship(
 
 		for (token, tip) in [("|>", '◁'), (">", '◄'), ("*", '◆'), ("o", '◇')] {
 			if let Some(after) = rest.strip_prefix(token) {
+				// A longer identifier wins over the single-letter aggregation token.
+				if token == "o"
+					&& after.starts_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_')
+				{
+					continue;
+				}
+
 				target_tip = tip;
 				rest = after;
 

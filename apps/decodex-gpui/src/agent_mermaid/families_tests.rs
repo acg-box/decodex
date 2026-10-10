@@ -338,3 +338,13 @@ fn canvas_limit_applies_even_with_unlimited_caller_width() {
 		assert_eq!(mermaid::render(&source, /* max_width */ usize::MAX), Err(RenderError::Limit));
 	}
 }
+
+#[test]
+fn class_identifiers_starting_with_o_are_not_aggregation_markers() {
+	for name in ["order", "o2", "o_item"] {
+		let graph = super::relations::parse("classDiagram", &[&format!("A --{name}")]).unwrap();
+
+		assert_eq!(graph.nodes[graph.edges[0].to].id, name);
+		assert_eq!(graph.edges[0].target_tip, '─');
+	}
+}
