@@ -15,7 +15,12 @@ impl Transcript {
 		}
 
 		match self.0.iter_mut().find(|segment| segment.id == incoming.id) {
-			Some(old) if old.finalized || incoming.revision < old.revision => {},
+			// Final and partial revisions are separate streams. A final supersedes
+			// any partial, but only another current final can revise finalized text.
+			Some(old)
+				if (old.finalized && !incoming.finalized)
+					|| (old.finalized == incoming.finalized
+						&& incoming.revision < old.revision) => {},
 			Some(old) => *old = incoming,
 			None => self.0.push(incoming),
 		}
@@ -67,6 +72,14 @@ mod tests {
 
 		assert_eq!(apply("a", 3, "This is live.", true).as_str(), "This is live. 第二句话。");
 		assert_eq!(apply("a", 4, "late", false).as_str(), "This is live. 第二句话。");
+		assert_eq!(apply("a", 4, "Corrected final.", true).as_str(), "Corrected final. 第二句话。");
+		assert_eq!(apply("a", 3, "stale final", true).as_str(), "Corrected final. 第二句话。");
+		assert_eq!(apply("a", 5, "late partial", false).as_str(), "Corrected final. 第二句话。");
+		apply("c", 8, "Third partial", false);
+		assert_eq!(
+			apply("c", 1, "Third final.", true).as_str(),
+			"Corrected final. 第二句话。 Third final."
+		);
 	}
 
 	#[test]

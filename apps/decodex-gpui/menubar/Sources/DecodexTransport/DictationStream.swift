@@ -6,6 +6,8 @@ import OSLog
 final class DictationStream: @unchecked Sendable {
     private static let log = Logger(subsystem: "box.acg.decodex", category: "dictation")
     private let started = Date()
+    private let diagnosticID = UUID().uuidString
+    private var utterances: [String: Int] = [:]
     private var sentBytes = 0
     private var receivedMessages = 0
     private static let endpoint: URL = {
@@ -117,7 +119,8 @@ final class DictationStream: @unchecked Sendable {
     private func logFailure(_ error: Error, operation: String) {
         let error = error as NSError
         // Log transport metadata only: never authentication, audio, text, or server reasons.
-        Self.log.error("\(operation, privacy: .public) failed: domain=\(error.domain, privacy: .public) code=\(error.code) close=\(self.socket.closeCode.rawValue) elapsed=\(Date().timeIntervalSince(self.started)) sent_bytes=\(self.sentBytes) received=\(self.receivedMessages)")
+        let httpStatus = (socket.response as? HTTPURLResponse)?.statusCode ?? 0
+        Self.log.error("session=\(self.diagnosticID, privacy: .public) \(operation, privacy: .public) failed: domain=\(error.domain, privacy: .public) code=\(error.code) http=\(httpStatus) close=\(self.socket.closeCode.rawValue) elapsed=\(Date().timeIntervalSince(self.started)) sent_bytes=\(self.sentBytes) received=\(self.receivedMessages)")
     }
 
     private func handle(_ data: Data) {
@@ -125,14 +128,27 @@ final class DictationStream: @unchecked Sendable {
             fail("Invalid dictation response.")
             return
         }
-        if let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let type = event["type"] as? String,
-           type == "transcript.failed" || type == "session.error" {
-            let error = event["error"] as? [String: Any]
-            let code = (error?["code"] as? String ?? "unknown").prefix(80)
-            Self.log.error("Service event=\(type, privacy: .public) code=\(String(code), privacy: .public) fatal=\(event["fatal"] as? Bool ?? false)")
+        if let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            trace(event)
         }
         emit(["kind":"message", "message":message])
+    }
+
+    private func trace(_ event: [String: Any]) {
+        guard let type = event["type"] as? String else { return }
+        if type == "transcript.failed" || type == "session.error" {
+            let error = event["error"] as? [String: Any]
+            let code = (error?["code"] as? String ?? "unknown").prefix(80)
+            Self.log.error("session=\(self.diagnosticID, privacy: .public) event=\(type, privacy: .public) code=\(String(code), privacy: .public) fatal=\(event["fatal"] as? Bool ?? false)")
+        } else if ["speech.started", "speech.stopped", "transcript.segment", "transcript.final"].contains(type) {
+            // Local ordinals correlate revisions without logging text, audio, or provider IDs.
+            let id = event["utterance_id"] as? String ?? ""
+            if utterances[id] == nil { utterances[id] = utterances.count + 1 }
+            let ordinal = utterances[id] ?? 0
+            let length = (event["text"] as? String)?.utf8.count ?? 0
+            let revision = event["revision"] as? Int ?? -1
+            Self.log.notice("session=\(self.diagnosticID, privacy: .public) event=\(type, privacy: .public) utterance=\(ordinal) revision=\(revision) text_bytes=\(length) sent_bytes=\(self.sentBytes) elapsed=\(Date().timeIntervalSince(self.started))")
+        }
     }
 
     private func fail(_ message: String) {

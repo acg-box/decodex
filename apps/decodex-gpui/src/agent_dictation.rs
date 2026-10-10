@@ -60,6 +60,7 @@ impl AgentSurface {
 
 		let id = EntityId::new(agent_surface::unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
+		self.feedback.clear();
 
 		self.dictation = Some(DictationUi {
 			media,
