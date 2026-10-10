@@ -1,6 +1,8 @@
 //! Native policy for the direct, tool-free quota activation request.
 //! Source: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582,
 //! account_processor/workspace_routing.rs and model-provider/workspace_routing.rs.
+//! Destination admission: openai/codex 22a3f6d5d89c026c6b4f606ae5604f9e00059b23,
+//! app-server/application_network.rs and http-client/network_policy.rs.
 
 use std::time::Duration;
 
@@ -63,6 +65,7 @@ impl ActivationPolicy {
 			None
 		} else {
 			let requirements = requirements.as_object().ok_or(())?;
+			check_application_destination(requirements.get("application"), &responses_url)?;
 
 			match requirements.get("chatgptBaseUrl") {
 				Some(Value::String(base))
@@ -96,6 +99,29 @@ impl ActivationPolicy {
 
 		request
 	}
+}
+
+// The native process supplies normalized, effective requirements. This is a send-time
+// snapshot; it does not supply the native transport's live revocation permit.
+fn check_application_destination(application: Option<&Value>, destination: &Url) -> Result<(), ()> {
+	let application = match application {
+		None | Some(Value::Null) => return Ok(()),
+		Some(value) => value.as_object().ok_or(())?,
+	};
+	let network = match application.get("network") {
+		None | Some(Value::Null) => return Ok(()),
+		Some(value) => value.as_object().ok_or(())?,
+	};
+
+	if !network.get("enabled").and_then(Value::as_bool).ok_or(())? {
+		return Ok(());
+	}
+
+	let host = destination.host_str().ok_or(())?;
+	let host = host.strip_suffix('.').unwrap_or(host);
+	let domains = network.get("domains").and_then(Value::as_object).ok_or(())?;
+
+	(domains.get(host).and_then(Value::as_str) == Some("allow")).then_some(()).ok_or(())
 }
 
 struct ActivationVault<'a> {
@@ -213,6 +239,33 @@ mod tests {
 		.unwrap();
 
 		assert!(policy.request(&reqwest::Client::new()).build().unwrap().headers().is_empty());
+	}
+
+	#[test]
+	fn activation_respects_native_application_destination_rules() {
+		let route = account("https://gov.example", "us");
+
+		for (network, allowed) in [
+			(serde_json::json!(null), true),
+			(serde_json::json!({"enabled":false,"domains":{}}), true),
+			(serde_json::json!({"enabled":true,"domains":{"gov.example":"allow"}}), true),
+			(serde_json::json!({"enabled":true,"domains":{}}), false),
+			(serde_json::json!({"enabled":true,"domains":{"gov.example":"deny"}}), false),
+			(serde_json::json!({"enabled":true,"domains":{"other.example":"allow"}}), false),
+			(serde_json::json!({"enabled":true,"domains":{"*.example":"allow"}}), false),
+			(serde_json::json!({"enabled":true,"domains":{"gov.example":"future"}}), false),
+			(serde_json::json!({"domains":{"gov.example":"allow"}}), false),
+		] {
+			let requirements = serde_json::json!({"requirements":{
+				"chatgptBaseUrl":null,"enforceResidency":null,"application":{"network":network}
+			}});
+
+			assert_eq!(
+				ActivationPolicy::decode(&route, &requirements, "selected").is_ok(),
+				allowed,
+				"{network}"
+			);
+		}
 	}
 
 	#[test]
