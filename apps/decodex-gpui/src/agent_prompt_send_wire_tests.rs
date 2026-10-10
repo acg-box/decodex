@@ -78,7 +78,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds(button).expect("send control");
@@ -105,7 +105,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 		}
 		if check_receipt {
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			if let Some(bounds) = visual.debug_bounds("prompt-send") {

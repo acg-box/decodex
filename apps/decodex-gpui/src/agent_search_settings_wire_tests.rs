@@ -52,7 +52,7 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(search_settings::px(700.), search_settings::px(850.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("search-settings-toggle").unwrap();
@@ -60,7 +60,7 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("search-choice-0").unwrap();

@@ -1073,7 +1073,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
@@ -1084,14 +1084,14 @@ mod tests {
 			s.snapshot.as_mut().unwrap().connection_initializing = true;
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
 		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().connection_initializing = false;
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
 
@@ -1103,7 +1103,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
@@ -1119,7 +1119,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
@@ -1181,7 +1181,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-summary-message").is_some());
@@ -1202,7 +1202,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-summary-message").is_none());

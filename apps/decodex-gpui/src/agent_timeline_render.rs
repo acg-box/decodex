@@ -1001,14 +1001,14 @@ mod tests {
 			}
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			// Present received text over frames before reading the copy control bounds.
 			for _ in 0..32 {
 				thread::sleep(std::time::Duration::from_millis(16));
 
-				visual.update(|window, cx| window.draw(cx).clear());
+				visual.update(|window, cx| window.draw(cx).clear(cx));
 			}
 
 			visual.update(|_, cx| {
@@ -1018,7 +1018,7 @@ mod tests {
 			let copy = visual.debug_bounds(selector).expect("native response remains copyable");
 
 			visual.simulate_mouse_down(copy.center(), gpui::MouseButton::Left, Default::default());
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 
 			assert_eq!(visual.debug_bounds(selector), Some(copy));
 
@@ -1208,7 +1208,7 @@ phase: None, app_ui: false,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-live-plan").is_some());
@@ -1219,7 +1219,7 @@ phase: None, app_ui: false,
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-live-plan").is_none());
@@ -1242,7 +1242,7 @@ phase: None, app_ui: false,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-live-reasoning-summary").is_none());
@@ -1335,14 +1335,14 @@ phase: None, app_ui: false,
 		let selectors = surface.update(visual, prepare_rendered_history);
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// Settle the workspace's sidebar entrance before measuring the footer.
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = selectors
@@ -1362,20 +1362,20 @@ phase: None, app_ui: false,
 
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let details = visual.debug_bounds("turn-metrics-hover").unwrap();
 
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert_eq!(
@@ -1391,7 +1391,7 @@ phase: None, app_ui: false,
 			Default::default(),
 		);
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-turn-usage").is_none(), "moving away closes details");
@@ -1405,14 +1405,14 @@ phase: None, app_ui: false,
 			s.workspace.details_visible = true;
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let toggle = visual.debug_bounds("native-history-source-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("saved-local-history").is_some());
@@ -1423,7 +1423,7 @@ phase: None, app_ui: false,
 
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("saved-local-history").is_none());
@@ -1438,7 +1438,7 @@ phase: None, app_ui: false,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("native-promotion-unavailable").is_some());
@@ -1513,7 +1513,7 @@ phase: None, app_ui: false,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let copy = visual.debug_bounds("copy-partial-991").expect("retained plan is visible");
@@ -1537,7 +1537,7 @@ phase: None, app_ui: false,
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			assert_eq!(visual.debug_bounds("copy-partial-991").is_some(), truncated);

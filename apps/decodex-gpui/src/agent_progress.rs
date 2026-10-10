@@ -351,7 +351,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		surface.read_with(visual, |s, _| {
@@ -381,7 +381,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());

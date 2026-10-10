@@ -205,7 +205,7 @@ mod tests {
 			s.workspace.details_visible = true;
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		for selector in [
 			"inspection-Requires-agent",
@@ -221,7 +221,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("inspection-Coordinates-improve").is_some());
 	}
@@ -233,12 +233,12 @@ mod tests {
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
 
 		for _ in 0..4 {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 		}
 
 		thread::sleep(std::time::Duration::from_millis(250));
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let before = surface.read_with(visual, |s, _| {
 			(s.timeline.scroll["agent"].bounds(), s.timeline.scroll["agent"].offset())
@@ -250,7 +250,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.timeline.scroll["agent"].bounds(), before.0);
 			assert_eq!(s.timeline.scroll["agent"].offset(), before.1);

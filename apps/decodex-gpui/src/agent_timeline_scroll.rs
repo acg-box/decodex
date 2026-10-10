@@ -661,16 +661,16 @@ mod tests {
 			let binding = surface.update(visual, initialize_latest_history);
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			surface.update(visual, |s, cx| {
 				s.workspace.details_visible = true;
 				cx.notify();
 			});
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			std::thread::sleep(std::time::Duration::from_millis(250));
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			let button = visual.debug_bounds("native-latest-action").unwrap();
 
 			visual.simulate_click(button.center(), Default::default());
@@ -720,7 +720,7 @@ mod tests {
 				cx.notify();
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&binding.work].clone());
@@ -781,7 +781,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// The fixture closes the initially reserved dock. Measure refreshes only
@@ -789,14 +789,14 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&work].clone());
 
 		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let maximum = scroll.max_offset();
@@ -811,7 +811,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			assert_eq!(
@@ -909,7 +909,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let key = scroll::row_key(&row(11));
@@ -923,7 +923,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let before = surface.update(visual, |s, cx| {
@@ -952,7 +952,7 @@ mod tests {
 
 		for frame in 0..3 {
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 				let s = surface.read(cx);
 				let geometry = s.timeline.native.viewport.0.borrow();
 				let painted = geometry.painted_rows[&key]
@@ -1028,7 +1028,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let key = scroll::row_key(&row(11));
@@ -1044,7 +1044,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let before = surface.update(visual, |s, cx| {
@@ -1072,7 +1072,7 @@ mod tests {
 
 		for frame in 0..3 {
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 				let s = surface.read(cx);
 				let geometry = s.timeline.native.viewport.0.borrow();
 				let painted = geometry.painted_rows[&key]

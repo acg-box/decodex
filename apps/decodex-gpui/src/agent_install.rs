@@ -69,7 +69,7 @@ connection_initializing: false,
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(install::px(1_180.0), install::px(1_400.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("install-decline").is_some());

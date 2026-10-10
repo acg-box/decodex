@@ -206,7 +206,7 @@ mod tests {
 
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		for (selector, popup) in [
@@ -220,7 +220,7 @@ mod tests {
 
 			visual.simulate_click(trigger, Modifiers::default());
 			visual.update(|w, cx| {
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 
 			let bounds =
@@ -249,7 +249,7 @@ mod tests {
 				});
 
 				visual.update(|w, cx| {
-					w.draw(cx).clear();
+					w.draw(cx).clear(cx);
 				});
 
 				assert_eq!(
@@ -263,7 +263,7 @@ mod tests {
 
 			visual.simulate_click(gpui::point(gpui::px(5.), gpui::px(5.)), Modifiers::default());
 			visual.update(|w, cx| {
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 
 			assert!(visual.debug_bounds(popup).is_none());

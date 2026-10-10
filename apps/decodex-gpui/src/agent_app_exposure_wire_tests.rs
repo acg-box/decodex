@@ -63,14 +63,14 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 	visual.run_until_parked();
 	visual.update(|w, cx| {
 		w.resize(gpui::size(app_exposure::px(1_180.), app_exposure::px(2_600.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let toggle = visual.debug_bounds("app-exposure-surface-0").unwrap();
 
 	visual.simulate_click(toggle.center(), Default::default());
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let save = visual.debug_bounds("app-exposure-save").unwrap();

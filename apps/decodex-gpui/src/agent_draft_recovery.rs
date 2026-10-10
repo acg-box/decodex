@@ -391,20 +391,20 @@ mod tests {
 
 		visual.simulate_resize(gpui::size(gpui::px(1_200.0), gpui::px(1_000.0)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let remove = visual.debug_bounds("draft-copy-remove-0").unwrap();
 
 		visual.simulate_click(remove.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert_eq!(store.load().unwrap().revision, 2);
@@ -485,20 +485,20 @@ mod tests {
 
 		visual.simulate_resize(gpui::size(gpui::px(1_100.0), gpui::px(800.0)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let toggle = visual.debug_bounds("draft-copies-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let restore = visual.debug_bounds("draft-copy-restore-0").unwrap();
@@ -673,13 +673,13 @@ mod tests {
 
 		visual.simulate_resize(gpui::size(gpui::px(1_000.0), gpui::px(700.0)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let button = visual

@@ -317,14 +317,14 @@ mod tests {
 		});
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		for _ in 0..2 {
 			thread::sleep(std::time::Duration::from_millis(200));
 
 			visual.update(|w, cx| {
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 		}
 
@@ -372,7 +372,7 @@ mod tests {
 			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::High)
 		});
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let model = surface.update(visual, |s, _| s.menu_trigger_bounds["model"].center());
@@ -381,13 +381,13 @@ mod tests {
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert!(s.composer_menu.is_none()));
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert_eq!(s.composer_menu, Some("model")));
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.simulate_mouse_down(
 			gpui::point(gpui::px(400.), gpui::px(200.)),

@@ -964,7 +964,7 @@ mod multiline_tests {
 		let text = "你好👨‍👩‍👧‍👦".repeat(60);
 		input.update(visual, |input, cx| input.set_streaming_content(&text, cx));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		input.update(visual, |input, cx| {
 			assert_eq!(
@@ -992,7 +992,7 @@ mod multiline_tests {
 		for width in [460., 500., 600., 740.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 			input.read_with(visual, |input, _| {
 				let painted: gpui::Pixels = input
@@ -1021,11 +1021,11 @@ mod multiline_tests {
 		input.update(visual, |input, cx| input.set_content("第一行", cx));
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("shift-enter");
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		input.update(visual, |input, cx| {
@@ -1043,7 +1043,7 @@ mod multiline_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		input.update(visual, |input, _| {
@@ -1071,7 +1071,7 @@ mod multiline_tests {
 			input.obscure();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let position = input.read_with(visual, |input, _| {
@@ -1094,7 +1094,7 @@ mod multiline_tests {
 			assert_eq!(input.content(), "你abc");
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 	}
 }

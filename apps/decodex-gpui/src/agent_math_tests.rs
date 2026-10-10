@@ -94,7 +94,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 	for width in [600., 120.] {
 		visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("math-math-preview-0-formula-0").expect("formula");
@@ -116,7 +116,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 				..Default::default()
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let moved =
@@ -133,7 +133,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 				..Default::default()
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 		}
 

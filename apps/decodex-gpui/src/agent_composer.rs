@@ -1335,7 +1335,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		let main = visual.debug_bounds("agent-composer").unwrap();
 		let main_send = visual.debug_bounds("composer-send").unwrap();
@@ -1346,7 +1346,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		let native = visual.debug_bounds("agent-composer").unwrap();
 		let native_send = visual.debug_bounds("composer-send").unwrap();

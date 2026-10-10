@@ -2932,7 +2932,7 @@ mod tests {
 
 				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(900.0)));
 				visual.update(|window, cx| {
-					window.draw(cx).clear();
+					window.draw(cx).clear(cx);
 				});
 
 				let measured = measured.borrow();
@@ -2983,7 +2983,7 @@ mod tests {
 		});
 		for width in [640., 1400.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1000.)));
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			let detail =
 				visual.debug_bounds("composer-context-detail").expect("visible without hover");
 			let composer = visual.debug_bounds("agent-composer").unwrap();
@@ -2999,7 +2999,7 @@ mod tests {
 			s.history = None;
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("composer-context-detail").is_none());
 	}
 
@@ -3045,7 +3045,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
@@ -3134,7 +3134,7 @@ mod tests {
 				*next_before = Some(1);
 			}
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		surface.update(visual, |s, _| {
 			assert!(!s.timeline.follow_paused.contains("agent"));
 			assert!(s.history_viewport_underfilled("agent"));
@@ -3165,7 +3165,7 @@ mod tests {
 			}
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		surface.update(visual, |s, _| {
 			s.timeline.scroll["agent"].set_offset(gpui::point(gpui::px(0.), gpui::px(-20.)));
@@ -3277,7 +3277,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds =
@@ -3363,7 +3363,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(720.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 	}
 
@@ -3611,7 +3611,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(720.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 	}
 

@@ -161,14 +161,14 @@ mod tests {
 	fn voice_block_expands_from_its_header(cx: &mut gpui::TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, _| Fixture);
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		assert!(visual.debug_bounds("voice-history-transcript").is_none());
 		let button = visual.debug_bounds("voice-history-block").unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
 	}

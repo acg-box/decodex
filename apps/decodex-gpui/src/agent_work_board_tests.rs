@@ -12,9 +12,9 @@ fn selecting_agent_shows_usage_without_opening_a_second_sidebar(cx: &mut gpui::T
 		s
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	surface.update(visual, |s, cx| {
 		let row = s.board_rows().into_iter().find(|r| r.native).unwrap();
 		let before = s.relation_graph();
@@ -26,7 +26,7 @@ fn selecting_agent_shows_usage_without_opening_a_second_sidebar(cx: &mut gpui::T
 		assert!(s.work_board.view.edge.is_none());
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 	});
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	assert!(visual.debug_bounds("relation-inspector-scroll").is_none());
 	assert!(visual.debug_bounds("agent-usage-popover").is_some());
 }
@@ -216,11 +216,11 @@ fn canvas_edge_inspection_preserves_conversation(cx: &mut gpui::TestAppContext) 
 		s
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	assert!(visual.debug_bounds("relations-canvas").is_some());
 	// Context and dependency share one visible connection; both facts survive.
 	let representative = surface.read_with(visual, |s, _| {
@@ -257,9 +257,9 @@ fn dragging_a_node_changes_layout_without_switching_the_conversation(
 		s
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear());
+	visual.update(|w, cx| w.draw(cx).clear(cx));
 	let start = visual.debug_bounds("relation-node-agent").unwrap().center();
 	let before = surface.read_with(visual, |s, _| {
 		let g = s.relation_graph();

@@ -767,7 +767,7 @@ mod tests {
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(
@@ -808,7 +808,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |s, cx| {
@@ -886,7 +886,7 @@ mod tests {
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("async-question-toggle").expect("return control");
@@ -900,7 +900,7 @@ mod tests {
 				assert!(!s.sending);
 				assert!(s.submission.command.is_none());
 			});
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("async-send-q1").is_none());
@@ -915,7 +915,7 @@ mod tests {
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("async-send-q1").is_some());
@@ -941,7 +941,7 @@ mod tests {
 		});
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("async-skip-q1").expect("explicit skip control");
@@ -967,7 +967,7 @@ mod tests {
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let key = ("root".into(), "q1".into());
@@ -1032,7 +1032,7 @@ mod tests {
 			});
 
 			window.focus(&focus, cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		visual.simulate_event(gpui::KeyDownEvent {
@@ -1094,7 +1094,7 @@ mod tests {
 			visual.update(|window, cx| {
 				assert_eq!(window.viewport_size(), gpui::size(gpui::px(width), gpui::px(height)));
 
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 
 				surface.update(cx, |s, cx| {
 					let scroll =
@@ -1110,7 +1110,7 @@ mod tests {
 					cx.notify();
 				});
 
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			surface.update(visual, |s, cx| {

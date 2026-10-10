@@ -149,7 +149,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("native-model-settings-read").unwrap();
@@ -164,7 +164,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 			assert_eq!(s.composer_effort_value(), "high");
 		});
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("task-models-read").unwrap();
@@ -172,7 +172,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(
@@ -186,7 +186,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		if preserve {
@@ -231,7 +231,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 			}
 		});
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("task-model-0").is_none());
@@ -349,7 +349,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("task-model-0").is_some());
@@ -367,7 +367,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 	});
 
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("task-model-0").is_none());
@@ -446,7 +446,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(900.), gpui::px(700.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("task-model-receipt").is_some());

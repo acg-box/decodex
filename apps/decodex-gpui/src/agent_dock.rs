@@ -701,7 +701,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
 		let link = visual.debug_bounds("dock-related-improve").expect("named prerequisite");
@@ -745,7 +745,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
 		let action = visual.debug_bounds("dock-next-action").expect("primary action");
@@ -849,13 +849,13 @@ mod tests {
 		] {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 			std::thread::sleep(std::time::Duration::from_millis(240));
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			let bounds = visual.debug_bounds(control).expect("graph control");
 			visual.simulate_click(bounds.center(), Default::default());
@@ -881,7 +881,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -894,14 +894,14 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		let source = visual.debug_bounds("handoff-open-request").expect("source link");
 		visual.simulate_click(source.center(), Default::default());
@@ -926,7 +926,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -942,7 +942,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -961,7 +961,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -969,7 +969,7 @@ mod tests {
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		assert!(
 			visual.debug_bounds("work-graph-canvas").is_some(),
@@ -1012,7 +1012,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -1029,7 +1029,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -1159,7 +1159,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -1178,7 +1178,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -1188,7 +1188,7 @@ mod tests {
 		for _ in 0..3 {
 			visual.update(|w, cx| {
 				w.refresh();
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}

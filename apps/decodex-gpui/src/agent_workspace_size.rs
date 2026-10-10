@@ -505,9 +505,9 @@ mod tests {
 			s.workspace.graph_expanded = false;
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let composer = visual.debug_bounds("floating-composer").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		let header = visual.debug_bounds("work-dock").unwrap();
@@ -518,9 +518,9 @@ mod tests {
 		for expanded in [true, false] {
 			let toggle = visual.debug_bounds("graph-expand").unwrap();
 			visual.simulate_click(toggle.center(), gpui::Modifiers::default());
-			visual.update(|w, cx| w.draw(cx).clear());
+			visual.update(|w, cx| w.draw(cx).clear(cx));
 			std::thread::sleep(std::time::Duration::from_millis(250));
-			visual.update(|w, cx| w.draw(cx).clear());
+			visual.update(|w, cx| w.draw(cx).clear(cx));
 			assert_eq!(visual.debug_bounds("floating-composer").is_none(), expanded);
 			if !expanded {
 				assert_eq!(visual.debug_bounds("floating-composer").unwrap(), composer);
@@ -532,14 +532,14 @@ mod tests {
 		}
 		let close = visual.debug_bounds("graph-close").unwrap();
 		visual.simulate_click(close.center(), gpui::Modifiers::default());
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("work-dock").is_none());
 		surface.update(visual, |s, cx| s.toggle_workspace_graph(cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("work-dock").unwrap().size.height > gpui::px(38.));
 		assert!(visual.debug_bounds("dock-toggle").is_none());
 	}
@@ -548,23 +548,31 @@ mod tests {
 	fn sidebar_hover_uses_pinned_layout_and_reentry_cancels_close(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+		// GPUI can dispatch an initial hover when it creates the window.
+		// Start this fixture outside the rail with its transient peek closed.
+		visual.simulate_mouse_move(
+			gpui::point(gpui::px(1000.), gpui::px(800.)),
+			None,
+			Default::default(),
+		);
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.workspace.sidebar_visible = false;
+			s.workspace.sidebar_peek = false;
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let collapsed = visual.debug_bounds("workspace-transcript").unwrap();
 		let mark = "conversation-mark-agent";
 		let collapsed_mark = visual.debug_bounds(mark).unwrap();
 		let row = visual.debug_bounds("page-agent").unwrap();
 		assert_eq!(row.size.width, row.size.height, "collapsed conversation targets are square");
 		surface.update(visual, |s, cx| s.sidebar_hover(true, cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let expanded = visual.debug_bounds("workspace-transcript").unwrap();
 		assert!(expanded.origin.x > collapsed.origin.x);
 		assert_eq!(visual.debug_bounds(mark).unwrap(), collapsed_mark);
@@ -573,7 +581,7 @@ mod tests {
 			s.workspace.sidebar_peek = false;
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert_eq!(visual.debug_bounds("workspace-transcript").unwrap(), expanded);
 		surface.update(visual, |s, _| s.workspace.sidebar_visible = false);
 		surface.update(visual, |s, cx| {
@@ -606,7 +614,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let point = |x| gpui::point(gpui::px(x), gpui::px(300.0));
@@ -638,12 +646,12 @@ mod tests {
 			s.workspace.graph_panel_height = 300.;
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let start = visual.debug_bounds("agent-dock-resize").unwrap().center();
 		let end = start + gpui::point(gpui::px(40.), gpui::px(80.));
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert_eq!(visual.debug_bounds("work-dock").unwrap().size.height, gpui::px(380.));
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.workspace.graph_panel_height, 380.);
@@ -664,7 +672,7 @@ mod tests {
 				cx.notify();
 			})
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("agent-dock-resize").is_none());
 	}
 
@@ -794,9 +802,9 @@ mod tests {
 			s.workspace.agent_panel_width = 192.;
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(250));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let start = visual.debug_bounds("agent-right-sidebar-resize").unwrap().center();
 		let end = start - gpui::point(gpui::px(80.), gpui::px(0.));
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());

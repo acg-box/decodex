@@ -48,7 +48,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(700.), gpui::px(850.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("voice-settings-toggle").unwrap();
@@ -56,7 +56,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("voice-choice-0").unwrap();

@@ -296,7 +296,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(600.), gpui::px(400.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("weather-card-test").unwrap();
@@ -308,7 +308,7 @@ mod tests {
 			..Default::default()
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert_eq!(visual.debug_bounds("weather-hour-0").unwrap().origin.x, start);
@@ -325,7 +325,7 @@ mod tests {
 				..Default::default()
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 		}
 
@@ -335,7 +335,7 @@ mod tests {
 
 		visual.simulate_click(dot.center(), Modifiers::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let first_frame = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
@@ -343,7 +343,7 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(100));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let middle = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
@@ -353,7 +353,7 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(180));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("weather-hour-6").unwrap().left() < bounds.right());
@@ -364,7 +364,7 @@ mod tests {
 
 		visual.simulate_click(dot.center(), Modifiers::default());
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("weather-hour-0").is_some());
@@ -372,7 +372,7 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(280));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(

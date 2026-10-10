@@ -243,7 +243,7 @@ mod tests {
 		let (preview, visual) = cx.add_window_view(|_, _| Preview { text: "abcd".into() });
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("changing-selection").expect("text");
@@ -258,7 +258,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 			cx.write_to_clipboard(ClipboardItem::new_string("sentinel".into()));
 		});
 		visual.simulate_keystrokes("cmd-c");

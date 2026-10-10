@@ -187,7 +187,7 @@ mod tests {
 
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("account-activity-chart").is_some());
@@ -199,7 +199,7 @@ mod tests {
 		});
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(
@@ -216,7 +216,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(

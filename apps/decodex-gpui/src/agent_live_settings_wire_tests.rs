@@ -175,7 +175,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(900.), gpui::px(600.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("live-reviewer-read").unwrap();
@@ -183,7 +183,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	if model {
@@ -193,7 +193,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 			visual.simulate_click(button.center(), Default::default());
 			visual.run_until_parked();
 			visual.update(|w, cx| {
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 		}
 	}
@@ -248,7 +248,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 		assert!(s.live_reviewer.task.is_none(), "a repeated click cannot publish again");
 	});
 	visual.update(|window, cx| {
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("live-reviewer-user").is_none());
@@ -302,7 +302,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 
 	visual.update(|window, cx| {
 		window.resize(gpui::size(gpui::px(900.), gpui::px(600.)));
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("live-reviewer-read").is_none());
@@ -313,7 +313,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 		cx.notify();
 	});
 	visual.update(|window, cx| {
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("live-reviewer-read").is_none());

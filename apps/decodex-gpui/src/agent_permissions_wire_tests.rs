@@ -108,7 +108,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(permissions::px(900.), permissions::px(700.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("permission-profiles-read").unwrap();
@@ -116,7 +116,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(
@@ -144,7 +144,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 		));
 	});
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("permission-profile-0").is_none());
@@ -227,7 +227,7 @@ fn running_permissions_offer_both_named_and_builtin_profiles(cx: &mut TestAppCon
 
 	visual.update(|window, cx| {
 		window.resize(gpui::size(permissions::px(900.), permissions::px(700.)));
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("permission-profile-0").is_some());

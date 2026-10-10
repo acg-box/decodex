@@ -449,14 +449,14 @@ mod tests {
 		});
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		// Hit-test the settled sidebar, after its entrance animation.
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let root = visual.debug_bounds("agent-row-agent").unwrap();

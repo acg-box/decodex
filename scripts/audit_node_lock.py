@@ -18,14 +18,6 @@ SITE = ROOT / "site"
 REQUIRED_NODE = (22, 12, 0)
 EXPECTED_PACKAGE_MANAGER = "npm@12.1.0"
 EXPECTED_INSTALL_SCRIPT_PACKAGES = {
-    "node_modules/esbuild": {
-        "name": "esbuild",
-        "version": "0.28.1",
-        "integrity": (
-            "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+"
-            "LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw=="
-        ),
-    },
     "node_modules/fsevents": {
         "name": "fsevents",
         "version": "2.3.3",
@@ -36,15 +28,12 @@ EXPECTED_INSTALL_SCRIPT_PACKAGES = {
     },
 }
 EXPECTED_INSTALL_METADATA_SHA256 = {
-    "node_modules/esbuild": (
-        "03dfffc6e78a07dc579b606e9ee98d00fe9f435c0067d504d2f4e770809aa744"
-    ),
     "node_modules/fsevents": (
         "92061b4377f5827b78dbbc00fa890d3ec41cfae88f0a323d565cedf9cd991716"
     ),
 }
 EXPECTED_NATIVE_PACKAGE_SET_SHA256 = (
-    "059c918a6e03aa43ad78f86c23d367bdde55ceaa8912db46c603265cb04de2e2"
+    "58d20f50bb414be855fd1b3577fce8f83865f282e7d5c73f3a16da7c6da1e0a8"
 )
 REGISTRY_PREFIX = "https://registry.npmjs.org/"
 INTEGRITY_PATTERN = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}")
@@ -328,6 +317,20 @@ def audit_package_graph(
         version = value.get("version")
         resolved = value.get("resolved")
         integrity = value.get("integrity")
+        if value.get("inBundle") is True:
+            # npm records bundled packages inside their parent's tarball,
+            # without a separate download URL or integrity hash.
+            parent_path, separator, bundled_name = path.rpartition("/node_modules/")
+            parent = packages.get(parent_path, {})
+            if (
+                not separator
+                or not isinstance(parent, dict)
+                or not isinstance(parent.get("bundleDependencies"), list)
+                or bundled_name not in parent.get("bundleDependencies", [])
+            ):
+                raise AuditError("node_lock_bundle_provenance_invalid")
+            resolved = parent.get("resolved")
+            integrity = parent.get("integrity")
         if (
             not isinstance(version, str)
             or not version

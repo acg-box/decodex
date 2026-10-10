@@ -469,11 +469,11 @@ mod tests {
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 
 		surface.update(visual, prepare_tool_history);
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
@@ -505,11 +505,11 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		thread::sleep(std::time::Duration::from_millis(300));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
 
@@ -523,23 +523,23 @@ mod tests {
 				cx.notify();
 			});
 
-			visual.update(|w, cx| w.draw(cx).clear());
+			visual.update(|w, cx| w.draw(cx).clear(cx));
 
 			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
 		}
 
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, complete_tool_history);
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		thread::sleep(std::time::Duration::from_millis(250));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
 

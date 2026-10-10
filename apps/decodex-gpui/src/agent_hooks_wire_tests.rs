@@ -109,7 +109,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 
 		visual.update(|w, cx| {
 			w.resize(gpui::size(hooks::px(900.), hooks::px(700.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("hook-settings-read").unwrap();
@@ -117,7 +117,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("hook-setting-0-0").unwrap();
@@ -140,7 +140,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 			));
 		});
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("hook-setting-0-0").is_none());
@@ -248,7 +248,7 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut Tes
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(hooks::px(900.), hooks::px(700.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("hook-setting-0-0").is_some());
@@ -266,7 +266,7 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut Tes
 	});
 
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("hook-setting-0-0").is_none());

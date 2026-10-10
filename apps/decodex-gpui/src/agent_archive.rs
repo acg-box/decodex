@@ -466,13 +466,13 @@ mod tests {
 		visual.update(|window, cx| {
 			assert_eq!(window.viewport_size(), gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// Read hit-test bounds after the workspace panels finish their 200 ms transition.
 		thread::sleep(Duration::from_millis(240));
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
 
@@ -481,7 +481,7 @@ mod tests {
 			gpui::MouseButton::Left,
 			gpui::Modifiers::default(),
 		);
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
 
@@ -513,7 +513,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("archive-restore").is_none());

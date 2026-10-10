@@ -233,7 +233,7 @@ fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut TestApp
 	});
 
 	visual.update(|window, cx| {
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("reasoning-configured").is_some());
@@ -272,7 +272,7 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 	let (_view, visual) = cx.add_window_view(|_, _| EffortView { surface: visible });
 
 	visual.update(|window, cx| {
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("creation-native-effort").unwrap();
