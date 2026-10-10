@@ -24,20 +24,20 @@ use crate::{
 	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
 	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentRequestResult,
-	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity,
-	AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult,
-	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus,
-	CURRENT_VERSION, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
-	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
-	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
-	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
-	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
-	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
-	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
-	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
-	ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
+	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentRequestResult, AgentResourcesResult, AgentSavedAppSettingsResult,
+	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
+	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
+	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, CURRENT_VERSION, ConversationCreationReceiptRequest,
+	ConversationCreationReceiptResult, ConversationExecutionOverrides,
+	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
+	ConversationListSize, ConversationModelReviewResult, ConversationModelSettingsResult,
+	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
+	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationUnavailableReason,
+	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
+	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
+	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
 	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
 	ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
@@ -2292,6 +2292,13 @@ pub enum QueryPayload {
 		/// Exact local task whose configured native settings are requested.
 		work_id: EntityId,
 	},
+	/// Read the native receipt for the exact current conversation.
+	GetAgentReadState {
+		/// Local task owner.
+		work_id: EntityId,
+		/// Exact native conversation.
+		thread_id: EntityId,
+	},
 	/// Read the native goal for one exact task and thread.
 	GetAgentNativeGoal {
 		/// Exact local task owner.
@@ -3183,6 +3190,8 @@ pub enum QueryResultPayload {
 	AgentInputReceipts(AgentInputReceiptsResult),
 	/// Native goal observation.
 	AgentNativeGoal(AgentNativeGoalResult),
+	/// Source-bound native read receipt.
+	AgentReadState(AgentReadStateResult),
 	/// Native usage estimate.
 	AgentUsageEstimate(AgentUsageEstimateResult),
 	/// Configured native model settings for one exact task.

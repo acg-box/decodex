@@ -23,6 +23,7 @@ mod permission_observations;
 mod permissions;
 mod prompt_edit;
 mod provider_wait;
+mod read_state;
 mod realtime_preferences;
 mod realtime_settings;
 mod recovery_auth;
@@ -68,6 +69,7 @@ pub use self::{
 		ThreadPermissionSelectionQueued, is_thread_permission_selection,
 	},
 	prompt_edit::PromptEditCandidate,
+	read_state::{NativeReadState, NativeUnreadPosition, is_thread_read_state_update},
 	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},
 	recovery_auth::NativeRecoveryAuth,
 	search_preferences::{NativeSearchSettings, is_search_mode_write},

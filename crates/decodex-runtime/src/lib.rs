@@ -27,6 +27,7 @@ mod agent_models;
 mod agent_native_goal;
 mod agent_permissions;
 mod agent_plugins;
+mod agent_read_state;
 mod agent_recap;
 mod agent_resources;
 mod agent_search_settings;

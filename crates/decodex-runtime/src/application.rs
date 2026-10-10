@@ -92,12 +92,12 @@ use decodex_protocol::{
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentMisalignmentDto,
 	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
 	AgentPendingAppUiCall, AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState,
-	AgentRequestText, AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
-	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
-	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel,
-	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	AgentReadStateResult, AgentRequestText, AgentResourcesResult, AgentSavedAppSettingsResult,
+	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
+	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
+	AgentTranscriptResult, AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId,
+	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
@@ -290,6 +290,13 @@ impl ServiceApplication {
 				}),
 			_ => unreachable!("only Guardian queries reach this owner"),
 		}
+	}
+
+	async fn query_read_state(&self, work: &str, thread: &str) -> QueryResultPayload {
+		QueryResultPayload::AgentReadState(match &self.agent {
+			Some(agent) => agent.read_state(work, thread).await,
+			None => AgentReadStateResult::Unavailable,
+		})
 	}
 
 	async fn query_native_goal(&self, work: &str, thread: &str) -> QueryResultPayload {
@@ -2729,6 +2736,8 @@ impl Application for ServiceApplication {
 				self.query_resources(work_id.as_str()).await,
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
+			QueryPayload::GetAgentReadState { work_id, thread_id } =>
+				self.query_read_state(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetAgentAppSettings { .. } =>

@@ -317,6 +317,13 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 		};
 	}
 
+	if method == "thread/readState/update" {
+		return if app_server_client::is_thread_read_state_update(params) {
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
 	if method == "thread/goal/set" {
 		return if app_server_client::is_native_goal_update(params) {
 			Ok(())

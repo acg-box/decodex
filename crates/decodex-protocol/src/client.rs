@@ -32,14 +32,14 @@ use crate::{
 	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
 	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentPluginSelectionState, AgentRequestResult, AgentResourcesResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
-	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
-	CommandResultEnvelope, CorrelationId, DictationRequest, DictationStatus, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
+	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
+	AgentResourcesResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello,
+	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
+	CommandPayload, CommandResultEnvelope, CorrelationId, DictationRequest, DictationStatus,
+	DoctorReport, EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
 	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
 	NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
@@ -833,6 +833,44 @@ impl AgentClient {
 		match completed.value {
 			QueryResultPayload::AgentAppExposure(result) => {
 				if matches!(&result,AgentAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read a native read receipt for the exact task and native thread.
+	pub async fn read_state(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+	) -> Result<AgentReadStateResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+
+		let expected = (work_id.clone(), thread_id.clone());
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(45),
+		};
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"agent-read-state",
+				QueryPayload::GetAgentReadState { work_id, thread_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
+		close_one_shot_socket(completed.socket).await;
+
+		match completed.value {
+			QueryResultPayload::AgentReadState(result) => {
+				if matches!(&result,AgentReadStateResult::Available{work_id,thread_id,..} if (work_id,thread_id)!=(&expected.0,&expected.1))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -2068,6 +2106,7 @@ impl AgentClient {
 			AgentActionDto::RefreshIntegrations { .. }
 			| AgentActionDto::InstallSuggestedPlugin { .. }
 			| AgentActionDto::SetAppToolExposure { .. }
+			| AgentActionDto::SetThreadReadState { .. }
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
@@ -3544,6 +3583,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::RecoverPromptEdit { work_id, .. }
 		| AgentActionDto::GenerateRecap { work_id, .. }
 		| AgentActionDto::CancelRecap { work_id, .. }
+		| AgentActionDto::SetThreadReadState { work_id, .. }
 		| AgentActionDto::EditNativeGoal { work_id, .. }
 		| AgentActionDto::SetVoicePreference { work_id, .. }
 		| AgentActionDto::SetSearchPreference { work_id, .. }
