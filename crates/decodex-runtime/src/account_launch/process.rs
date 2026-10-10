@@ -1388,8 +1388,19 @@ pub(super) struct AppServerCommand {
 	#[cfg(all(test, target_os = "macos"))]
 	test_spawn_path: Option<PathBuf>,
 }
-const APP_SERVER_ARGS: [&str; 4] =
-	["app-server", "--stdio", "--enable", "code_mode_tool_description_first"];
+// Native defaults qualified against the locked runtime. Keep transport selection
+// native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
+// The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
+const APP_SERVER_ARGS: [&str; 8] = [
+	"app-server",
+	"--stdio",
+	"--enable",
+	"code_mode_tool_description_first",
+	"--enable",
+	"subagent_default_context_limits",
+	"-c",
+	"features.multi_agent_v2.preserve_fork_prefix=true",
+];
 
 impl AppServerCommand {
 	/// Construct the only production command shape: Codex app-server plus read-only attestation.
@@ -6341,7 +6352,16 @@ pub(crate) mod tests {
 		assert_eq!(command.program.file_name().unwrap(), "codex");
 		assert_eq!(
 			command.app_server_args,
-			["app-server", "--stdio", "--enable", "code_mode_tool_description_first"]
+			[
+				"app-server",
+				"--stdio",
+				"--enable",
+				"code_mode_tool_description_first",
+				"--enable",
+				"subagent_default_context_limits",
+				"-c",
+				"features.multi_agent_v2.preserve_fork_prefix=true"
+			]
 		);
 		command.app_server_args.push("--listen=ws://127.0.0.1:9999".into());
 		assert!(super::ExactBuildLaunchCapability::attest_profile(&command).is_err());

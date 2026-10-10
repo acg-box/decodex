@@ -115,11 +115,21 @@ pub(crate) fn read_native_account(child: &mut AttestedProcessChild) -> Value {
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated production argument qualification"]
-async fn installed_native_tool_description_order_uses_fixed_launch_policy() {
+async fn installed_native_qualified_defaults_preserve_multi_agent_selection() {
+	for selection in ["true", "false", "{enabled=true}", "{enabled=false}"] {
+		qualify_defaults(selection).await;
+	}
+}
+async fn qualify_defaults(selection: &str) {
 	use decodex_codex::app_server_client::AppServerClient;
 	use std::process::Stdio;
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("isolated home");
+	std::fs::write(
+		home.path().join("config.toml"),
+		format!("[features]\nmulti_agent_v2={selection}\n"),
+	)
+	.expect("native selection fixture");
 	let profile = attested_profile(&binary, home.path());
 	let mut child = tokio::process::Command::new(&profile.command.program)
 		.args(&profile.command.app_server_args)
@@ -144,6 +154,12 @@ async fn installed_native_tool_description_order_uses_fixed_launch_policy() {
 		.await
 		.expect("native config");
 	assert_eq!(config["config"]["features"]["code_mode_tool_description_first"], true);
+	assert_eq!(config["config"]["features"]["subagent_default_context_limits"], true);
+	assert_eq!(config["config"]["features"]["multi_agent_v2"]["preserve_fork_prefix"], true);
+	assert_eq!(
+		config["config"]["features"]["multi_agent_v2"]["enabled"],
+		selection.contains("true")
+	);
 	child.kill().await.expect("stop fixture");
 	child.wait().await.expect("reap fixture");
 	drain.abort();
