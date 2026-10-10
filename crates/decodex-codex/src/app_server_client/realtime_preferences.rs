@@ -71,7 +71,7 @@ impl AppServerClient {
 			}
 
 			let version = string(&user["version"])?;
-			let (voices, default) = self.realtime_voice_catalog().await;
+			let (voices, default) = self.realtime_voice_catalog().await?;
 			let effective =
 				optional_voice(&config["config"]["realtime"]["voice"])?.or(Some(default));
 			let preference = optional_voice(&user["config"]["realtime"]["voice"])?;
@@ -120,26 +120,26 @@ impl AppServerClient {
 		self.realtime_voice_settings(&observed.cwd).await
 	}
 
-	pub(super) async fn realtime_voice_catalog(&self) -> (Vec<String>, String) {
-		if let Ok(value) = self.request("thread/realtime/listVoices", serde_json::json!({})).await
-			&& let Some(catalog) = value["voices"]["v1"].as_array()
-			&& !catalog.is_empty()
-			&& catalog.len() <= 64
-			&& let Ok(voices) = catalog.iter().map(string).collect::<Result<Vec<_>, _>>()
-			&& voices.iter().all(|voice| realtime_settings::known_voice(voice))
-			&& let Ok(default) = string(&value["voices"]["defaultV1"])
-			&& voices.contains(&default)
-		{
-			return (voices, default);
+	pub(super) async fn realtime_voice_catalog(
+		&self,
+	) -> Result<(Vec<String>, String), ClientError> {
+		let value = self.request("thread/realtime/listVoices", serde_json::json!({})).await?;
+		let catalog = value["voices"]["v1"].as_array().ok_or(ClientError::InvalidFrame)?;
+
+		if catalog.is_empty() || catalog.len() > 64 {
+			return Err(ClientError::InvalidFrame);
 		}
 
-		(
-			["juniper", "maple", "spruce", "ember", "vale", "breeze", "arbor", "sol", "cove"]
-				.into_iter()
-				.map(str::to_owned)
-				.collect(),
-			"cove".into(),
-		)
+		let voices = catalog.iter().map(string).collect::<Result<Vec<_>, _>>()?;
+		let default = string(&value["voices"]["defaultV1"])?;
+
+		if !voices.iter().all(|voice| realtime_settings::known_voice(voice))
+			|| !voices.contains(&default)
+		{
+			return Err(ClientError::InvalidFrame);
+		}
+
+		Ok((voices, default))
 	}
 }
 
