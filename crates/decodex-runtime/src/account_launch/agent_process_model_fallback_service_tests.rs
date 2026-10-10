@@ -37,6 +37,9 @@ async fn automatic_fallback_service_preserves_source_settings_and_no_replay() {
 		"unknown",
 		"rejected",
 		"preserve-tier",
+		"ultrafast-allowed",
+		"ultrafast-default",
+		"ultrafast-denied",
 		"custom-auth",
 		"stale-banner",
 		"reserve",
@@ -107,7 +110,16 @@ async fn scenario(mode: &'static str) {
 		.await
 		.expect("evaluate fallback");
 
-	let sent = matches!(mode, "queued" | "unknown" | "rejected" | "preserve-tier");
+	let sent = matches!(
+		mode,
+		"queued"
+			| "unknown"
+			| "rejected"
+			| "preserve-tier"
+			| "ultrafast-allowed"
+			| "ultrafast-default"
+			| "ultrafast-denied"
+	);
 
 	assert_eq!(writes.load(Ordering::Acquire), usize::from(sent), "{mode}");
 
@@ -121,7 +133,14 @@ async fn scenario(mode: &'static str) {
 	assert_eq!(receipt.is_some(), reserved, "{mode}");
 
 	if reserved {
-		let expected = if matches!(mode, "queued" | "preserve-tier") {
+		let expected = if matches!(
+			mode,
+			"queued"
+				| "preserve-tier"
+				| "ultrafast-allowed"
+				| "ultrafast-default"
+				| "ultrafast-denied"
+		) {
 			"queued"
 		} else if mode == "unknown" {
 			"unknown"
@@ -169,6 +188,16 @@ async fn scenario(mode: &'static str) {
 
 async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 	let (r, mut w) = io::split(remote);
+	let tier = if mode.starts_with("ultrafast-") { "ultrafast" } else { "priority" };
+	let settings_for = |model| {
+		let mut value = settings(model);
+		value["serviceTier"] = if mode == "ultrafast-default" && model == "original" {
+			Value::Null
+		} else {
+			serde_json::json!(tier)
+		};
+		value
+	};
 	let mut lines = BufReader::new(r).lines();
 
 	while let Some(line) = lines.next_line().await.expect("read native request") {
@@ -176,7 +205,7 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 		let id = &request["id"];
 		let reply = match request["method"].as_str().expect("native request method") {
 			"thread/resume" => {
-				let mut value = settings("original");
+				let mut value = settings_for("original");
 
 				value["thread"] = serde_json::json!({"id":"thread"});
 				value["reasoningEffort"] = value["effort"].take();
@@ -193,24 +222,25 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 				serde_json::json!({"id":id,"result":{"authMethod":"chatgpt","requiresOpenaiAuth":mode!="custom-auth","authToken":null}})
 			},
 			"model/list" =>
-				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","serviceTiers":[{"id":"priority"}],"defaultServiceTier":"priority"}],"nextCursor":null}}),
+				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","serviceTiers":[{"id":tier}],"defaultServiceTier":tier}],"nextCursor":null}}),
 			"experimentalFeature/list" =>
-				serde_json::json!({"id":id,"result":{"data":[{"name":"fast_mode","enabled":mode!="preserve-tier"}],"nextCursor":null}}),
+				serde_json::json!({"id":id,"result":{"data":[{"name":"fast_mode","enabled":!matches!(mode,"preserve-tier" | "ultrafast-allowed" | "ultrafast-default")},{"name":"ultrafast_mode","enabled":mode!="ultrafast-denied"}],"nextCursor":null}}),
 			"thread/settings/update" => {
 				writes.fetch_add(1, Ordering::AcqRel);
 
 				let mut expected =
 					serde_json::json!({"threadId":"thread","model":"scoped","effort":"low"});
 
-				if mode != "preserve-tier" {
-					expected["serviceTier"] = serde_json::json!("priority");
+				if !matches!(mode, "preserve-tier" | "ultrafast-denied") {
+					expected["serviceTier"] = serde_json::json!(tier);
 				}
 
 				assert_eq!(request["params"], expected);
 
 				match mode {
-					"queued" | "preserve-tier" => {
-						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings("scoped")}});
+					"queued" | "preserve-tier" | "ultrafast-allowed" | "ultrafast-default"
+					| "ultrafast-denied" => {
+						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings_for("scoped")}});
 
 						w.write_all(format!("{event}\n").as_bytes())
 							.await

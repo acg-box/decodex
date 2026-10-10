@@ -98,9 +98,15 @@ where
 	) else {
 		return Ok(());
 	};
-	let fast = agent_capabilities::feature_enabled(&before.client, "fast_mode", Some(thread)).await;
+	let feature = if target_service_tier(&settings, target) == "ultrafast" {
+		"ultrafast_mode"
+	} else {
+		"fast_mode"
+	};
+	let tier_enabled =
+		agent_capabilities::feature_enabled(&before.client, feature, Some(thread)).await;
 	let Some((update, attempt)) =
-		prepare_recovery(&before, observed.id, settings, target, fast, &recovery)?
+		prepare_recovery(&before, observed.id, settings, target, tier_enabled, &recovery)?
 	else {
 		return Ok(());
 	};
@@ -147,11 +153,11 @@ fn prepare_recovery(
 	settings_event: i64,
 	settings: NativeTaskModelSettings,
 	target: &AgentModelDto,
-	fast: Option<bool>,
+	tier_enabled: Option<bool>,
 	recovery: &AccountRecoveryResult,
 ) -> Result<Option<(ThreadModelRecoveryUpdate, AgentModelAttempt)>, AgentError> {
 	let thread = &source.key.thread;
-	let Some((effort, tier)) = target_settings(&settings, target, fast) else {
+	let Some((effort, tier)) = target_settings(&settings, target, tier_enabled) else {
 		return Ok(None);
 	};
 	let update = match tier.as_deref() {
@@ -199,34 +205,34 @@ fn recovery_source_ready(guard: &HistoryGuard, events: &Receiver<ServerEvent>) -
 fn target_settings(
 	current: &NativeTaskModelSettings,
 	target: &AgentModelDto,
-	fast: Option<bool>,
+	tier_enabled: Option<bool>,
 ) -> Option<(String, Option<String>)> {
 	let effort = current
 		.effort
 		.as_deref()
 		.and_then(|e| target.efforts.iter().find(|v| v.as_str() == e).cloned())
 		.or_else(|| target.default_effort.clone())?;
-	let tier = if current.service_tier.as_deref() == Some("flex") {
-		Some("flex".into())
-	} else {
-		match fast? {
-			false => None,
-			true => Some(match current.service_tier.as_deref() {
-				Some("default") => "default".into(),
-				Some(tier) if target.service_tiers.iter().any(|t| t.id.as_str() == tier) =>
-					tier.into(),
-				Some(_) => "default".into(),
-				None => target
-					.default_service_tier
-					.as_ref()
-					.filter(|t| target.service_tiers.iter().any(|v| &v.id == *t))
-					.map(|t| t.as_str().to_owned())
-					.unwrap_or_else(|| "default".into()),
-			}),
-		}
-	};
+	let requested = target_service_tier(current, target);
+	let tier =
+		if requested == "flex" { Some(requested) } else { tier_enabled?.then_some(requested) };
 
 	Some((effort.as_str().into(), tier))
+}
+
+// Resolve the candidate before reading its native policy. Ultra Fast has its own gate.
+fn target_service_tier(current: &NativeTaskModelSettings, target: &AgentModelDto) -> String {
+	match current.service_tier.as_deref() {
+		Some("default") => "default".into(),
+		Some("flex") => "flex".into(),
+		Some(tier) if target.service_tiers.iter().any(|t| t.id.as_str() == tier) => tier.into(),
+		Some(_) => "default".into(),
+		None => target
+			.default_service_tier
+			.as_ref()
+			.filter(|t| target.service_tiers.iter().any(|v| &v.id == *t))
+			.map(|t| t.as_str().to_owned())
+			.unwrap_or_else(|| "default".into()),
+	}
 }
 
 #[cfg(test)]
