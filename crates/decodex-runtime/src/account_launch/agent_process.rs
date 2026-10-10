@@ -637,6 +637,7 @@ mod tests {
 		}
 		for edit in [
 			serde_json::json!({"objective":"Updated objective"}),
+			serde_json::json!({"origin":"user", "objective":"Updated objective", "status":"paused", "tokenBudget":75}),
 			serde_json::json!({"tokenBudget":1_234}),
 			serde_json::json!({"tokenBudget":null}),
 			serde_json::json!({"status":"paused"}),
@@ -655,6 +656,8 @@ mod tests {
 		}
 		for edit in [
 			serde_json::json!({"status":"usageLimited"}),
+			serde_json::json!({"origin":"user"}),
+			serde_json::json!({"origin":"automatic", "objective":"Not a user edit"}),
 			serde_json::json!({"tokenBudget":0}),
 			serde_json::json!({"objective":""}),
 			serde_json::json!({"objective":"New", "cwd":"/other"}),
