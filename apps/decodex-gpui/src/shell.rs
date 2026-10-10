@@ -1358,17 +1358,22 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn copy_account_login_code(&mut self, cx: &mut Context<Self>) {
-		if let Some(code) = self
-			.account_login_status
-			.as_ref()
-			.and_then(|status| status.prompt.as_ref())
-			.map(|prompt| prompt.user_code.as_str().to_owned())
-		{
-			cx.write_to_clipboard(ClipboardItem::new_string(code));
-
-			self.account_login_error = Some("Sign-in code copied.".into());
-
+	fn copy_account_login_value(&mut self, cx: &mut Context<Self>) {
+		let copy = self.account_login_status.as_ref().and_then(|status| {
+			status
+				.prompt
+				.as_ref()
+				.map(|prompt| (prompt.user_code.as_str(), "Sign-in code copied."))
+				.or_else(|| {
+					status
+						.authorization_url
+						.as_ref()
+						.map(|url| (url.as_str(), "Sign-in link copied."))
+				})
+		});
+		if let Some((text, notice)) = copy {
+			cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
+			self.account_login_error = Some(notice.into());
 			cx.notify();
 		}
 	}
@@ -3613,9 +3618,18 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					|actions| {
 						actions
 							.child(
-								account_login_button("account-login-copy", "Copy code", true)
+								account_login_button(
+									"account-login-copy",
+									if shell.account_login_status.as_ref().is_some_and(|status| status.prompt.is_some()) {
+										"Copy code"
+									} else {
+										"Copy link"
+									},
+									true,
+								)
+									.debug_selector(|| "account-login-copy".to_owned())
 									.on_click(cx.listener(|shell, _, _, cx| {
-										shell.copy_account_login_code(cx);
+										shell.copy_account_login_value(cx);
 									})),
 							)
 							.child(
@@ -6797,6 +6811,55 @@ mod tests {
 			}
 
 			assert!(visual.debug_bounds("account-logout-0").is_some());
+		}
+	}
+
+	#[gpui::test]
+	fn account_login_copy_uses_browser_link_or_device_code(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		for (prompt, authorization_url, expected, notice) in [
+			(
+				serde_json::Value::Null,
+				serde_json::json!("https://auth.openai.com/authorize?state=fixture"),
+				"https://auth.openai.com/authorize?state=fixture",
+				"Sign-in link copied.",
+			),
+			(
+				serde_json::json!({"verification_url":"https://auth.openai.com/codex/device","user_code":"ABCD-EFGH"}),
+				serde_json::Value::Null,
+				"ABCD-EFGH",
+				"Sign-in code copied.",
+			),
+		] {
+			shell.update(visual, |s, cx| {
+				s.visual_accounts_and_health();
+				s.selected = Destination::Accounts;
+				s.account_login_status = Some(
+					serde_json::from_value(serde_json::json!({
+						"session_id":"10000000-0000-4000-8000-000000000001",
+						"state":"waiting_for_browser","prompt":prompt,"authorization_url":authorization_url
+					}))
+					.unwrap(),
+				);
+				cx.write_to_clipboard(gpui::ClipboardItem::new_string("unchanged".into()));
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
+				window.draw(cx).clear();
+			});
+			let bounds = visual.debug_bounds("account-login-copy").expect("sign-in copy button");
+			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+			visual.update(|_, cx| {
+				assert_eq!(
+					cx.read_from_clipboard().and_then(|item| item.text()),
+					Some(expected.into())
+				);
+			});
+			assert_eq!(
+				shell.read_with(visual, |s, _| s.account_login_error.clone()),
+				Some(notice.into())
+			);
 		}
 	}
 
