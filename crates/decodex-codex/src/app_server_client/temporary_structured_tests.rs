@@ -19,8 +19,7 @@ fn options() -> TemporaryStructuredOptions {
 
 #[test]
 fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration() {
-	let effective =
-		serde_json::json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
+	let effective = serde_json::json!({"cloud":{"skills":{"enabled":true}},"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
 	let config = temporary_structured::isolation_config(&effective, &["observed".into()]).unwrap();
 
 	assert_eq!(
@@ -31,6 +30,8 @@ fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration(
 	assert_eq!(config["features.plugins"], false);
 	assert_eq!(config["features.hooks"], false);
 	assert_eq!(config["skills.include_instructions"], false);
+	assert_eq!(config["cloud.skills.enabled"], false);
+	assert_eq!(effective["cloud"]["skills"]["enabled"], true);
 	assert_eq!(config["web_search"], "disabled");
 	assert_eq!(effective["mcp_servers"]["native"]["required"], true);
 	assert!(
