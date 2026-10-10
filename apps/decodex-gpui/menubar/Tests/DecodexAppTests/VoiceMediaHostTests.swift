@@ -56,6 +56,10 @@ final class VoiceMediaHostTests: XCTestCase {
         }
     }
 
+    func testDefaultMicrophoneKeepsSystemRouting() throws {
+        XCTAssertEqual(try MicrophoneDevice.device(named: ""), 0)
+    }
+
     func testDeniedPermissionReportsFailure() throws {
         let host = VoiceMediaHost(authorizationRequestForTesting: { $0(false) }, deviceForTesting: { XCTFail("Denied permission must not resolve devices"); return 42 })
         defer { host.close() }

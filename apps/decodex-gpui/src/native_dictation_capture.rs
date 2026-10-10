@@ -85,13 +85,16 @@ fn run(
 			break;
 		}
 		let final_buffer = finished.load(Ordering::Acquire);
-		if final_buffer && audio.pause().is_err() {
-			return false;
-		}
+		let drained = if final_buffer {
+			match audio.pause() {
+				Ok(drained) => drained,
+				Err(_) => return false,
+			}
+		} else {
+			false
+		};
 		let (engine, pcm) = audio.parts();
-		while let Ok(sample) = pcm.captured.pop() {
-			bytes.extend_from_slice(&pcm16(sample).to_le_bytes());
-		}
+		drain_pcm(&mut pcm.captured, &mut bytes);
 		if first && !bytes.is_empty() {
 			first = false;
 			let elapsed = requested.elapsed().as_secs_f64() * 1_000.;
@@ -111,17 +114,27 @@ fn run(
 				break;
 			}
 		}
-		if final_buffer {
+		if final_buffer && drained && pcm.captured.is_empty() {
 			healthy = events.try_send(json!({"type":"ended"})).is_ok();
 			break;
 		}
-		if !engine.running() {
+		if !final_buffer && !engine.running() {
 			healthy = false;
 			break;
 		}
 		thread::sleep(Duration::from_millis(5));
 	}
 	healthy
+}
+
+fn drain_pcm(input: &mut rtrb::Consumer<f32>, bytes: &mut Vec<u8>) {
+	let available = (decodex_protocol::MAX_DICTATION_PCM_BYTES - bytes.len()) / 2;
+	for _ in 0..available {
+		let Ok(sample) = input.pop() else {
+			break;
+		};
+		bytes.extend_from_slice(&pcm16(sample).to_le_bytes());
+	}
 }
 
 fn pcm16(sample: f32) -> i16 {
@@ -132,6 +145,24 @@ fn pcm16(sample: f32) -> i16 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn capture_burst_keeps_every_sample_within_the_wire_limit() {
+		let (mut input, mut captured) = rtrb::RingBuffer::new(19_200);
+		for index in 0..19_200 {
+			input.push(index as f32 / 19_200.).unwrap();
+		}
+		let mut result = Vec::new();
+		while !captured.is_empty() {
+			let mut bytes = Vec::new();
+			drain_pcm(&mut captured, &mut bytes);
+			let packet = DictationAudio::from_pcm(bytes).unwrap();
+			result.extend_from_slice(packet.pcm());
+		}
+		let expected: Vec<u8> =
+			(0..19_200).flat_map(|index| pcm16(index as f32 / 19_200.).to_le_bytes()).collect();
+		assert_eq!(result, expected);
+	}
+
 	#[test]
 	fn capture_reports_worker_exit_but_not_after_normal_completion() {
 		for normal in [false, true] {

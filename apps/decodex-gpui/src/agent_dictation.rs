@@ -72,7 +72,7 @@ impl AgentSurface {
 			capture_ended: false,
 			finishing: false,
 			finish_sent: false,
-			status: "Connecting dictation…".into(),
+			status: "Opening microphone…".into(),
 			level: 0.,
 			started: Instant::now(),
 		});
@@ -197,6 +197,10 @@ impl AgentSurface {
 					dictation.status =
 						event["message"].as_str().unwrap_or("Opening microphone…").into(),
 				Some("dictation_ready") => {
+					eprintln!(
+						"DecodexAudio dictation_click_first_pcm_ms={:.3}",
+						dictation.started.elapsed().as_secs_f64() * 1000.
+					);
 					dictation.status = "Listening".into();
 					dictation.started = Instant::now();
 				},
