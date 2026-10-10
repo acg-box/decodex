@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import select
 import subprocess
 import sys
 import time
@@ -344,6 +345,19 @@ for line in sys.stdin:
             if mode == "login-missing-type"
             else {"type": "chatgptAuthTokens"}
         )
+        completion = {"method": "account/login/completed", "params": {
+            "loginId": None, "success": mode != "login-completion-failed",
+            "error": "fixture rejection" if mode == "login-completion-failed" else None,
+        }}
+        if mode == "login-completion-first":
+            print(json.dumps(completion), flush=True)
+        print(json.dumps({"id": message["id"], "result": result}), flush=True)
+        if mode == "login-completion-delayed":
+            if select.select([sys.stdin], [], [], 0.1)[0]:
+                Path("login-read-before-completion").write_text("early request")
+        if mode not in ("login-completion-first", "login-completion-missing"):
+            print(json.dumps(completion), flush=True)
+        continue
     elif method == "thread/list":
         if message["params"].get("searchTerm", "").startswith(
             "decodex-capability-probe-no-match-"

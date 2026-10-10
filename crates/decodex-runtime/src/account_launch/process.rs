@@ -1929,8 +1929,15 @@ impl SupervisedProcess {
 		self.stdin.flush().map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
 
 		let deadline = Instant::now() + timeout;
+		// External login acknowledges credentials before native cache invalidation finishes.
+		// Keep both messages inside this request's deadline, in either arrival order.
+		let mut login_complete = method != ReadOnlyMethod::AccountLoginStart.as_str();
+		let mut pending_response = None;
 
 		loop {
+			if login_complete && let Some(response) = pending_response.take() {
+				return Ok(response);
+			}
 			let remaining = deadline.saturating_duration_since(Instant::now());
 
 			if remaining.is_zero() {
@@ -1980,6 +1987,21 @@ impl SupervisedProcess {
 
 				continue;
 			}
+			if method == ReadOnlyMethod::AccountLoginStart.as_str()
+				&& header.id.is_none()
+				&& header.method.as_deref() == Some("account/login/completed")
+			{
+				let completion: CredentialProjectionCompletion = serde_json::from_slice(&line)
+					.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+				if !completion.params.success
+					|| completion.params.login_id.is_some()
+					|| completion.params.error.is_some()
+				{
+					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+				}
+				login_complete = true;
+				continue;
+			}
 
 			if header.id == Some(request_id) {
 				let response_digest = hex_digest(&Sha256::digest(&line));
@@ -1993,14 +2015,14 @@ impl SupervisedProcess {
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
 
-				return match (response.result, response.error) {
+				pending_response = Some(match (response.result, response.error) {
 					(Some(result), None) => Ok(RpcSuccess {
 						value: result,
 						wire: RpcWireReceipt {
 							request_id: i64::try_from(request_id).map_err(|_| {
 								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
 							})?,
-							request_digest,
+							request_digest: request_digest.clone(),
 							response_id: i64::try_from(response.id).map_err(|_| {
 								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
 							})?,
@@ -2009,7 +2031,8 @@ impl SupervisedProcess {
 					}),
 					(None, Some(error)) => Err(RpcError::MethodRejected(error.code)),
 					_ => Err(RpcError::Supervision(SupervisionError::InvalidProtocol)),
-				};
+				}?);
+				continue;
 			}
 
 			if let Some(id) = header.id {
@@ -3003,6 +3026,19 @@ pub(super) struct ChatgptAuthParams<'a> {
 pub(super) struct CredentialProjectionResponse {
 	#[serde(rename = "type")]
 	_kind: CredentialProjectionResponseKind,
+}
+
+#[derive(Deserialize)]
+struct CredentialProjectionCompletion {
+	params: CredentialProjectionCompletionParams,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CredentialProjectionCompletionParams {
+	login_id: Option<IgnoredAny>,
+	success: bool,
+	error: Option<IgnoredAny>,
 }
 
 #[derive(Deserialize)]
@@ -6515,6 +6551,34 @@ pub(crate) mod tests {
 		.unwrap_err();
 
 		assert_eq!(error, ProbeError::CredentialVault(CredentialVaultError::Unavailable));
+	}
+
+	#[test]
+	fn credential_projection_waits_for_successful_login_completion() {
+		for (mode, succeeds) in [
+			("login-completion-delayed", true),
+			("login-completion-first", true),
+			("login-completion-failed", false),
+			("login-completion-missing", false),
+		] {
+			let temp = TempDir::new().unwrap();
+			let result = ReadOnlyProbe::new_for_test(
+				fake_command(mode, temp.path(), None),
+				binding(),
+				SchemaMarker::accepted(),
+				Duration::from_secs(2),
+			)
+			.run_bound_for_test(&FixtureVault::matching(), &mut CapabilityCache::default());
+
+			assert!(!temp.path().join("login-read-before-completion").exists(), "{mode}");
+			assert_eq!(result.is_ok(), succeeds, "{mode}");
+			if let Err(error) = result {
+				assert_eq!(
+					error,
+					ProbeError::CredentialVault(CredentialVaultError::ProjectionRejected)
+				);
+			}
+		}
 	}
 
 	#[test]
