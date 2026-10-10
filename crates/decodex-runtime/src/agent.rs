@@ -1191,6 +1191,7 @@ impl AgentCoordinator {
 						match app_server_client::classify_dispatch_refusal(
 							remote.code,
 							&remote.message,
+							remote.data.as_ref(),
 						)? {
 							NativeDispatchRefusal::ServerDraining =>
 								decodex_database::AgentDispatchRefusal::ServerDraining,

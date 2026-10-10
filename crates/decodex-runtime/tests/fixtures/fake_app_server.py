@@ -498,7 +498,7 @@ for line in sys.stdin:
             "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": {"type": "dangerFullAccess"},
             "reasoningEffort": "high", "multiAgentMode": "explicitRequestOnly"
         }
-    elif method == "turn/start" and mode.startswith(("turn-reject-draining", "turn-reject-managed-provider")):
+    elif method == "turn/start" and mode.startswith(("turn-reject-draining", "turn-reject-managed-provider", "turn-reject-structured")):
         if mode.endswith("prior-activity"):
             print(json.dumps({"method": "turn/started", "params": {"threadId": message["params"]["threadId"], "turn": {"id": "unexpected-turn"}}}), flush=True)
         code = -32603 if mode.endswith("wrong-code") else -32600
@@ -507,7 +507,11 @@ for line in sys.stdin:
         if mode.endswith("wrong-text"):
             text += " fixture-secret"
         request_id = message["id"] + 100 if mode.endswith("wrong-id") else message["id"]
-        print(json.dumps({"id": request_id, "error": {"code": code, "message": text}}), flush=True)
+        error = {"code": code, "message": text}
+        if mode.startswith("turn-reject-structured"):
+            error["message"] = "New shutdown wording"
+            error["data"] = {"reason": "otherReason" if mode.endswith("wrong-text") else "serverShuttingDown", "private": "fixture-secret"}
+        print(json.dumps({"id": request_id, "error": error}), flush=True)
         continue
     elif method == "thread/resume" and mode.startswith("resume-reject-"):
         resume_attempts += 1

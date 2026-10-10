@@ -2215,6 +2215,7 @@ impl SupervisedProcess {
 							&& app_server_client::classify_dispatch_refusal(
 								error.code,
 								error.message(),
+								error.data.as_ref(),
 							)
 							.is_some()
 						{
@@ -4417,7 +4418,9 @@ fn conversation_rejection_reason(
 ) -> ConversationRejectionReason {
 	let message = error.message();
 
-	if let Some(refusal) = app_server_client::classify_dispatch_refusal(error.code, message) {
+	if let Some(refusal) =
+		app_server_client::classify_dispatch_refusal(error.code, message, error.data.as_ref())
+	{
 		return match refusal {
 			NativeDispatchRefusal::ServerDraining => ConversationRejectionReason::ServerDraining,
 			NativeDispatchRefusal::ManagedProviderChanged =>
@@ -8536,6 +8539,7 @@ pub(crate) mod tests {
 	fn ordinary_refusal_requires_exact_response_identity_code_and_message() {
 		for (prefix, expected) in [
 			("turn-reject-draining", super::ConversationRejectionReason::ServerDraining),
+			("turn-reject-structured", super::ConversationRejectionReason::ServerDraining),
 			(
 				"turn-reject-managed-provider",
 				super::ConversationRejectionReason::ManagedProviderChanged,
