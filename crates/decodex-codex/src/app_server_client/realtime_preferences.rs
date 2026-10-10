@@ -5,7 +5,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use tokio::{sync::mpsc::Sender, time};
 
-use crate::app_server_client::{AppServerClient, ClientError, Outbound, realtime_settings};
+use crate::app_server_client::{AppServerClient, ClientError, Outbound};
 
 /// Reviewed native configuration, including the version needed for a conditional write.
 #[derive(Clone)]
@@ -14,7 +14,7 @@ pub struct NativeVoiceSettings {
 	cwd: String,
 	file: String,
 	version: String,
-	/// V3 uses the native V1 catalog.
+	/// Native V3 catalog, or the V1 catalog advertised by an older server.
 	pub voices: Vec<String>,
 	/// Effective project voice, or an unknown voice supplied by a newer server.
 	pub effective: Option<String>,
@@ -124,7 +124,13 @@ impl AppServerClient {
 		&self,
 	) -> Result<(Vec<String>, String), ClientError> {
 		let value = self.request("thread/realtime/listVoices", serde_json::json!({})).await?;
-		let catalog = value["voices"]["v1"].as_array().ok_or(ClientError::InvalidFrame)?;
+		let catalog = match &value["voices"]["v3"] {
+			Value::Null => value["voices"]["v1"].as_array(),
+			Value::Array(voices) if voices.is_empty() => value["voices"]["v1"].as_array(),
+			Value::Array(voices) => Some(voices),
+			_ => None,
+		}
+		.ok_or(ClientError::InvalidFrame)?;
 
 		if catalog.is_empty() || catalog.len() > 64 {
 			return Err(ClientError::InvalidFrame);
@@ -133,9 +139,7 @@ impl AppServerClient {
 		let voices = catalog.iter().map(string).collect::<Result<Vec<_>, _>>()?;
 		let default = string(&value["voices"]["defaultV1"])?;
 
-		if !voices.iter().all(|voice| realtime_settings::known_voice(voice))
-			|| !voices.contains(&default)
-		{
+		if !voices.contains(&default) {
 			return Err(ClientError::InvalidFrame);
 		}
 

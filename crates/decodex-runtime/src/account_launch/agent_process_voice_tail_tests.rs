@@ -195,6 +195,8 @@ async fn serve_voice_transcript_fixture(remote: DuplexStream, sent: UnboundedSen
 				serde_json::json!({"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}),
 			"configRequirements/read" => serde_json::json!({"requirements":null}),
 			"config/read" => serde_json::json!({"config":{"realtime":{"voice":"juniper"}}}),
+			"thread/realtime/listVoices" =>
+				serde_json::json!({"voices":{"v3":["juniper"],"defaultV1":"juniper"}}),
 			"thread/realtime/start" => {
 				assert_eq!(request["params"]["voice"], "juniper");
 
