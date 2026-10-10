@@ -137,9 +137,15 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 }
 
 #[tokio::test]
-async fn delayed_mcp_activity_keeps_terminal_turn_without_changing_current_dispatch() {
+async fn delayed_activity_keeps_terminal_turn_without_changing_current_dispatch() {
+	for kind in ["mcpToolCall", "commandExecution"] {
+		check_delayed_activity(kind).await;
+	}
+}
+
+async fn check_delayed_activity(kind: &str) {
 	let directory = tempfile::tempdir().unwrap();
-	let path = directory.path().join("late-mcp.sqlite3");
+	let path = directory.path().join("late-activity.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
 	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
@@ -149,7 +155,7 @@ async fn delayed_mcp_activity_keeps_terminal_turn_without_changing_current_dispa
 	store.complete_agent_turn_with_event("agent".into(),"old".into(), EnqueueAgentEvent {
         source_event_id: serde_json::json!(["turn/completed","thread","old"]).to_string(),
         work_item_id:"agent".into(), event_kind:"agent_turn_completed".into(),
-        payload:serde_json::json!({"terminal":{"threadId":"thread","turn":{"id":"old","status":"completed"}}}).to_string(),
+        payload:serde_json::json!({"terminal":{"threadId":"thread","turn":{"id":"old","status":"interrupted"}}}).to_string(),
     }).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "current".into()).await.unwrap();
@@ -163,8 +169,21 @@ async fn delayed_mcp_activity_keeps_terminal_turn_without_changing_current_dispa
 		("thread", "old", "old"),
 		("thread", "old", "old"),
 	] {
-		store.record_agent_activity(thread.into(),turn.into(),"mcp".into(),true,
-            serde_json::json!({"kind":"mcpToolCall","turn_id":payload_turn,"item_id":"mcp","status":"completed","label":"Using tool","detail":"fixture · hold"}).to_string()).await.unwrap();
+		for completed in [false, true] {
+			store
+				.record_agent_activity(
+					thread.into(),
+					turn.into(),
+					"item".into(),
+					completed,
+					serde_json::json!({"kind":kind,"turn_id":payload_turn,"item_id":"item",
+                    "status":if completed {"failed"} else {"running"},
+                    "label":"Tool attempt","detail":"Exit code -1","duration_ms":0})
+					.to_string(),
+				)
+				.await
+				.unwrap();
+		}
 	}
 
 	drop(store);
@@ -174,8 +193,12 @@ async fn delayed_mcp_activity_keeps_terminal_turn_without_changing_current_dispa
 	let activity =
 		events.iter().filter(|event| event.event_kind == "activity_completed").collect::<Vec<_>>();
 
-	assert_eq!(activity.len(), 1);
+	assert_eq!(activity.len(), 1, "{kind}");
 	assert_eq!(activity[0].delivered_turn_id.as_deref(), Some("old"));
+	let payload: Value = serde_json::from_str(&activity[0].payload).unwrap();
+	assert_eq!(payload["status"], "failed");
+	assert_eq!(payload["detail"], "Exit code -1");
+	assert_eq!(payload["duration_ms"], 0);
 
 	let work = store.get_agent_work_item("agent".into()).await.unwrap();
 
