@@ -5,6 +5,10 @@
 #[path = "agent_math.rs"] mod math;
 #[path = "agent_mermaid.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
+#[path = "agent_markdown_task_lists.rs"] mod task_lists;
+#[cfg(test)]
+#[path = "agent_markdown_task_lists_tests.rs"]
+mod task_lists_tests;
 
 use std::{
 	cell::{OnceCell, RefCell},
@@ -346,7 +350,8 @@ fn parse(text: &str) -> Vec<Node> {
 	let mut stack = vec![(Kind::Group, Vec::new())];
 	let mut flattened = 0;
 
-	for (event, range) in math.events(Parser::new_ext(&math.markdown, options).into_offset_iter()) {
+	let events = math.events(Parser::new_ext(&math.markdown, options).into_offset_iter());
+	for (event, range) in task_lists::events(text, events) {
 		match event {
 			Event::Start(tag) =>
 				if stack.len() < 64 && flattened == 0 {
