@@ -4,15 +4,20 @@
 
 Local agent factory above Codex app-server.
 
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License](https://img.shields.io/badge/License-GPLv3%20only-blue.svg)](https://spdx.org/licenses/GPL-3.0-only.html)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/acg-box/decodex)](https://github.com/acg-box/decodex/tags)
+[![GitHub last commit](https://img.shields.io/github/last-commit/acg-box/decodex?color=red&style=plastic)](https://github.com/acg-box/decodex)
 
 </div>
+
+## Feature Highlights
 
 Decodex is not another coding model or a replacement for Codex. Codex app-server is the
 execution runtime for independent threads. Decodex adds the durable product state and coordination
 needed when one engineer manages many conversations, accounts, dependencies, gates, and
 follow-up actions.
+
+### Agent Coordination
 
 The personal Agent coordinates goals through independent Codex threads. It receives
 worker and automation results, requests repairs in the original worker thread, and
@@ -20,92 +25,9 @@ reports decisions to the user. SQLite preserves work relationships and obligatio
 across service restarts. Ordinary Conversations remain available for direct work.
 See [Agent coordination](openwiki/architecture/chief-coordination.md) for the current ownership model.
 
-## Working with Agent
+## Status
 
-The Agent tab uses the same local service as the other app surfaces. Select an
-explicit model, reasoning effort, working directory and execution policy before
-starting. Workers use the same model with medium effort. The account-owned process
-remains alive across turns; a worker result can wake the original Agent later.
-Agent process admission uses account readiness and current quota observations.
-The five-hour limit is optional: confirmed absence is distinct from an unknown
-window or a failed query. Accounts are not classified by plan name. Known current
-exhaustion still blocks admission. A newly enrolled account can require a quota
-refresh before its first Agent process starts.
-
-The CLI exposes the same operations:
-
-```sh
-decodex agent status
-decodex agent start --root-id personal-agent --model MODEL --effort high --cwd /absolute/project --read-only "Coordinate this goal"
-decodex agent send --root-id personal-agent "Report the remaining decisions"
-decodex agent ingest --work-id WORK_ID --source-event-id SOURCE_EVENT_ID "Automation result"
-decodex agent request --event-id EVENT_ID
-```
-
-Use a stable source event ID for automation results. Repeated delivery of the same
-event does not create another inbox item. Requests need an explicit answer; the
-Agent does not automatically grant execution approvals. An uncertain dispatch
-stays visible and must not be blindly retried. Follow-up checks run while the local
-service is running; this does not promise wakeups after the app and service exit.
-Answer work decisions in the Agent conversation. The Agent records a new decision
-receipt linked to that reply; it does not rewrite the original evidence. Execution
-approval requests remain separate and require an explicit response to the exact
-pending request. Work details and dependencies are available below the conversation.
-Goal completion is also an explicit Agent judgment with related evidence; resolved
-workers do not automatically mark the parent goal complete.
-
-The Agent retains its selected account process while the service runs. Existing
-account-capacity rules still apply to ordinary Conversations that require a separate
-process. The work snapshot is bounded to 100 items, 500 dependencies and 100 pending
-events; exceeding the bound produces an explicit capacity result, not partial data.
-
-## Reset Cards
-
-In Accounts, open an account's menu and select **Reset Cards**. Choose a card and
-confirm **use 1 card**. The service records the request before redemption and
-restores its status after restart. **Refresh** only reads status. An uncertain
-result blocks another redemption; it does not cause an automatic retry.
-
-The explicit `decodex reset-card list`, `use`, and `status` commands share this
-service. See [Reset Card operation](openwiki/operations/reset-cards.md).
-
-## Current architecture
-
-- `decodex serve` is the sole product-state and side-effect owner. The same `decodex`
-  executable also provides the short-lived CLI commands.
-- A bundled SQLite database at `~/.decodex/server/decodex.sqlite3` is the only normal
-  product store.
-- `database/` owns migrations, schema verification, storage APIs, transfer tooling, and
-  restart tests.
-- Account credentials are stored in a narrow owner-private SQLite table. They are
-  available only to the service credential adapter and never enter protocol output.
-- Codex app-server remains the provider runtime. Agent threads share a retained,
-  account-bound process. The service owns its lifecycle and correlated event stream;
-  one worker finishing does not terminate peer threads. Ordinary Conversations retain
-  their existing RuntimeSession account and thread bindings.
-- GPUI and ordinary CLI commands are same-UID Unix WebSocket clients. They do not open SQLite, credential
-  files, or Codex authentication files.
-- The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
-  contains a signed `Contents/Helpers/decodex` for local profiles and the native Swift menu-bar
-  presentation as an in-process dynamic library. It contains no second app or UI process.
-- A local app session starts `Contents/Helpers/decodex serve --parent-fd ...` when no
-  service is available. It reuses an exact-version service and reports
-  `service_version_mismatch` for any other version. The app-user command at
-  `~/.local/bin/decodex` is a symlink to the bundled helper, never a copied second binary.
-  The standalone local-service installer instead places one regular `decodex` executable at
-  that path for pure CLI and LaunchAgent operation. These installation modes are mutually
-  exclusive; neither installer adds coexistence machinery. Running `decodex` without a
-  subcommand displays help, and serving is always explicit.
-- **Show Decodex in the menu bar** is a service-owned product preference. **Launch Decodex
-  at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
-  SQLite. Closing the main window hides Decodex and retains the protocol session, native
-  menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
-
-Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
-can import the existing account pool from the retired redb vault during upgrade. It opens
-the source read only and leaves all rollback sources intact.
-
-## Supported product slice
+### Supported product slice
 
 ```text
 User -> Agent conversation -> same-UID service -> durable inbox
@@ -150,7 +72,7 @@ default changes. A different conversation can select a different account. If the
 account is depleted, this milestone stops for explicit recovery; it does not silently
 replace the account and discard provider cache affinity.
 
-## Removed and deferred surfaces
+### Removed and deferred surfaces
 
 The active Factory renderer and fixed Program/Review workflow are retired. Public
 Program mutation commands and new-conversation Program binding are removed; hiding
@@ -178,26 +100,7 @@ retired. Agent uses task-authorized tools when GitHub work is requested; Decodex
 does not impose a native PR delivery workflow. This removal does not change Radar,
 Publisher, or repository maintenance automation.
 
-## Persistence compatibility
-
-Migration 0013 adds Agent work, inbox, process bindings and saved settings. Migration
-0014 preserves quota facts while adding explicit optional-window absence. Prior
-account-route upgrade history remains unchanged. Accounts, credentials, routing
-data, conversations and historical Program Pack bindings remain readable.
-The local protocol accepts one exact version; build commit and package version remain diagnostics,
-not a second compatibility scheme.
-The compatibility allowlist is limited to persisted/internal bytes that existing databases or
-Pack digests already own:
-
-- the `quick_task_requests` table, `quick_task_admission_key` column, and migration identity/file
-  `quick_task_execution_controls` / `0003_quick_task_execution_controls.sql`;
-- persisted command-operation discriminators containing `quick_task` in existing receipts and
-  process-generation evidence;
-- the immutable built-in Pack capability literal `codex.quick_task`.
-
-These names are not product, UI, protocol, or Rust API concepts.
-
-## Workspace
+## Workspace Posture
 
 - `database/`: SQLite authority and one-shot account transfer.
 - `crates/decodex-core/`: mechanism-neutral domain types and fixed local paths.
@@ -209,10 +112,61 @@ These names are not product, UI, protocol, or Rust API concepts.
 - `apps/decodex-gpui/`: the only desktop GUI and `Decodex.app` packaging source.
 - `openwiki/`: current product, architecture, operations, and evidence authority.
 
+## Usage
+
+### Working with Agent
+
+The Agent tab uses the same local service as the other app surfaces. Select an
+explicit model, reasoning effort, working directory and execution policy before
+starting. Workers use the same model with medium effort. The account-owned process
+remains alive across turns; a worker result can wake the original Agent later.
+Agent process admission uses account readiness and current quota observations.
+The five-hour limit is optional: confirmed absence is distinct from an unknown
+window or a failed query. Accounts are not classified by plan name. Known current
+exhaustion still blocks admission. A newly enrolled account can require a quota
+refresh before its first Agent process starts.
+
+The CLI exposes the same operations:
+
+```sh
+decodex agent status
+decodex agent start --root-id personal-agent --model MODEL --effort high --cwd /absolute/project --read-only "Coordinate this goal"
+decodex agent send --root-id personal-agent "Report the remaining decisions"
+decodex agent ingest --work-id WORK_ID --source-event-id SOURCE_EVENT_ID "Automation result"
+decodex agent request --event-id EVENT_ID
+```
+
+Use a stable source event ID for automation results. Repeated delivery of the same
+event does not create another inbox item. Requests need an explicit answer; the
+Agent does not automatically grant execution approvals. An uncertain dispatch
+stays visible and must not be blindly retried. Follow-up checks run while the local
+service is running; this does not promise wakeups after the app and service exit.
+Answer work decisions in the Agent conversation. The Agent records a new decision
+receipt linked to that reply; it does not rewrite the original evidence. Execution
+approval requests remain separate and require an explicit response to the exact
+pending request. Work details and dependencies are available below the conversation.
+Goal completion is also an explicit Agent judgment with related evidence; resolved
+workers do not automatically mark the parent goal complete.
+
+The Agent retains its selected account process while the service runs. Existing
+account-capacity rules still apply to ordinary Conversations that require a separate
+process. The work snapshot is bounded to 100 items, 500 dependencies and 100 pending
+events; exceeding the bound produces an explicit capacity result, not partial data.
+
+### Reset Cards
+
+In Accounts, open an account's menu and select **Reset Cards**. Choose a card and
+confirm **use 1 card**. The service records the request before redemption and
+restores its status after restart. **Refresh** only reads status. An uncertain
+result blocks another redemption; it does not cause an automatic retry.
+
+The explicit `decodex reset-card list`, `use`, and `status` commands share this
+service. See [Reset Card operation](openwiki/operations/reset-cards.md).
+
 ## Development
 
-The active Rust toolchain is stable. The repository uses a separately pinned formatter
-because its style options are newer than stable rustfmt.
+`rust-toolchain.toml` selects the stable Rust toolchain. Rust formatting uses
+the unversioned nightly channel through the repository formatting tasks.
 
 ```sh
 python3 scripts/vnext/local_database_gate.py
@@ -244,6 +198,96 @@ Start with the [OpenWiki quickstart](openwiki/quickstart.md) for the repository 
 Generated pages can lag this refactor; current source, tests and
 [Agent coordination](openwiki/architecture/chief-coordination.md) take precedence for the new workflow.
 
-## License
+### Current architecture
 
-Decodex is licensed under GPLv3. See [LICENSE](LICENSE).
+- `decodex serve` is the sole product-state and side-effect owner. The same `decodex`
+  executable also provides the short-lived CLI commands.
+- A bundled SQLite database at `~/.decodex/server/decodex.sqlite3` is the only normal
+  product store.
+- `database/` owns migrations, schema verification, storage APIs, transfer tooling, and
+  restart tests.
+- Account credentials are stored in a narrow owner-private SQLite table. They are
+  available only to the service credential adapter and never enter protocol output.
+- Codex app-server remains the provider runtime. Agent threads share a retained,
+  account-bound process. The service owns its lifecycle and correlated event stream;
+  one worker finishing does not terminate peer threads. Ordinary Conversations retain
+  their existing RuntimeSession account and thread bindings.
+- GPUI and ordinary CLI commands are same-UID Unix WebSocket clients. They do not open SQLite, credential
+  files, or Codex authentication files.
+- The GPUI product is the sole macOS GUI and is packaged as `Decodex.app`. The bundle
+  contains a signed `Contents/Helpers/decodex` for local profiles and the native Swift menu-bar
+  presentation as an in-process dynamic library. It contains no second app or UI process.
+- A local app session starts `Contents/Helpers/decodex serve --parent-fd ...` when no
+  service is available. It reuses an exact-version service and reports
+  `service_version_mismatch` for any other version. The app-user command at
+  `~/.local/bin/decodex` is a symlink to the bundled helper, never a copied second binary.
+  The standalone local-service installer instead places one regular `decodex` executable at
+  that path for pure CLI and LaunchAgent operation. These installation modes are mutually
+  exclusive; neither installer adds coexistence machinery. Running `decodex` without a
+  subcommand displays help, and serving is always explicit.
+- **Show Decodex in the menu bar** is a service-owned product preference. **Launch Decodex
+  at login** is an independent macOS `SMAppService.mainApp` preference and is not stored in
+  SQLite. Closing the main window hides Decodex and retains the protocol session, native
+  menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
+
+Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
+can import the existing account pool from the retired redb vault during upgrade. It opens
+the source read only and leaves all rollback sources intact.
+
+### Persistence compatibility
+
+Migration 0013 adds Agent work, inbox, process bindings and saved settings. Migration
+0014 preserves quota facts while adding explicit optional-window absence. Prior
+account-route upgrade history remains unchanged. Accounts, credentials, routing
+data, conversations and historical Program Pack bindings remain readable.
+The local protocol accepts one exact version; build commit and package version remain diagnostics,
+not a second compatibility scheme.
+The compatibility allowlist is limited to persisted/internal bytes that existing databases or
+Pack digests already own:
+
+- the `quick_task_requests` table, `quick_task_admission_key` column, and migration identity/file
+  `quick_task_execution_controls` / `0003_quick_task_execution_controls.sql`;
+- persisted command-operation discriminators containing `quick_task` in existing receipts and
+  process-generation evidence;
+- the immutable built-in Pack capability literal `codex.quick_task`.
+
+These names are not product, UI, protocol, or Rust API concepts.
+
+## Support Me
+
+If you find this project helpful and would like to support its development, you can buy me a coffee!
+
+Your support is greatly appreciated and motivates me to keep improving this project.
+
+- **Fiat**
+    - [Ko-fi](https://ko-fi.com/hack_ink)
+    - [Afdian](https://afdian.com/a/hack_ink)
+- **Crypto**
+    - **Bitcoin**
+        - `bc1pedlrf67ss52md29qqkzr2avma6ghyrt4jx9ecp9457qsl75x247sqcp43c`
+    - **Ethereum**
+        - `0x3e25247CfF03F99a7D83b28F207112234feE73a6`
+    - **Polkadot**
+        - `156HGo9setPcU2qhFMVWLkcmtCEGySLwNqa3DaEiYSWtte4Y`
+
+Thank you for your support!
+
+## Appreciation
+
+We would like to extend our heartfelt gratitude to the following projects and contributors:
+
+- The Rust community for their continuous support and development of the Rust ecosystem.
+
+## Additional Acknowledgements
+
+- TODO
+
+---
+
+<div align="right">
+
+### License
+
+<sup>Licensed under [GPL-3.0-only](LICENSE).</sup>
+
+</div>
