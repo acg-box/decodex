@@ -74,7 +74,7 @@ async fn native(home: &Path) -> (AppServerClient, Child) {
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native configuration only"]
-async fn native_voice_preferences_survive_restart_and_preserve_project_override() {
+async fn native_v3_voice_preferences_survive_restart_and_preserve_project_override() {
 	let temp = tempfile::tempdir().unwrap();
 	let home = temp.path().canonicalize().unwrap();
 	let project = home.join("project");
@@ -89,13 +89,13 @@ async fn native_voice_preferences_survive_restart_and_preserve_project_override(
 
 	assert_eq!(first.effective.as_deref(), Some("maple"));
 	assert_eq!(first.preference.as_deref(), Some("juniper"));
-	assert!(first.voices.iter().any(|v| v == "cove"));
+	assert!(first.voices.iter().any(|v| v == "aube"));
 
 	let (peer, mut peer_child) = native(&home).await;
 	let peer_before = peer.realtime_voice_settings(project.to_str().unwrap()).await.unwrap();
-	let saved = client.write_realtime_voice(&first, "cove").await.unwrap();
+	let saved = client.write_realtime_voice(&first, "aube").await.unwrap();
 
-	assert_eq!(saved.preference.as_deref(), Some("cove"));
+	assert_eq!(saved.preference.as_deref(), Some("aube"));
 	assert_eq!(saved.effective.as_deref(), Some("maple"));
 	assert_ne!(saved.fingerprint(), first.fingerprint());
 	assert!(matches!(
@@ -127,12 +127,12 @@ async fn native_voice_preferences_survive_restart_and_preserve_project_override(
 
 	let cold = client.realtime_voice_settings(project.to_str().unwrap()).await.unwrap();
 
-	assert_eq!(cold.preference.as_deref(), Some("cove"));
+	assert_eq!(cold.preference.as_deref(), Some("aube"));
 	assert_eq!(cold.effective.as_deref(), Some("maple"));
 
 	let global = client.realtime_voice_settings(home.to_str().unwrap()).await.unwrap();
 
-	assert_eq!(global.effective.as_deref(), Some("cove"));
+	assert_eq!(global.effective.as_deref(), Some("aube"));
 
 	child.kill().await.unwrap();
 	child.wait().await.unwrap();

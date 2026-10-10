@@ -23,6 +23,7 @@ use decodex_protocol::{
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
 	for (voice, config_fails, policy) in [
 		("juniper", false, None),
+		("aube", false, None),
 		("future_voice", false, Some(true)),
 		("juniper", true, None),
 		("juniper", false, Some(false)),
@@ -48,6 +49,8 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 						serde_json::json!({"result":{"config":{"realtime":{"voice":voice}}}}),
 					"configRequirements/read" =>
 						serde_json::json!({"result":{"requirements":policy.map(|allowed| serde_json::json!({"featureRequirements":{"in_app_voice":allowed}}))}}),
+					"thread/realtime/listVoices" =>
+						serde_json::json!({"result":{"voices":{"v1":["juniper"],"v3":["juniper","aube"],"defaultV1":"juniper"}}}),
 					"thread/realtime/start" => serde_json::json!({"result":{}}),
 					other => panic!("unexpected native method: {other}"),
 				};

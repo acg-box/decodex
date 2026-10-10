@@ -45,43 +45,21 @@ impl AppServerClient {
 
 			match &config["config"]["realtime"]["voice"] {
 				Value::Null => {
-					// V3 uses the server's V1 catalog; a failed lookup must stop startup.
+					// The server owns the supported catalog and its default.
 					let (_, default) = self.realtime_voice_catalog().await?;
 
 					Ok(Some(default))
 				},
-				Value::String(voice) => Ok(known_voice(voice).then(|| voice.clone())),
+				Value::String(voice) => {
+					let (voices, _) = self.realtime_voice_catalog().await?;
+					Ok(voices.contains(voice).then(|| voice.clone()))
+				},
 				_ => Err(ClientError::InvalidFrame),
 			}
 		})
 		.await
 		.map_err(|_| ClientError::Io)?
 	}
-}
-
-pub(super) fn known_voice(voice: &str) -> bool {
-	matches!(
-		voice,
-		"alloy"
-			| "arbor"
-			| "ash"
-			| "ballad"
-			| "breeze"
-			| "cedar"
-			| "coral"
-			| "cove"
-			| "echo"
-			| "ember"
-			| "juniper"
-			| "maple"
-			| "marin"
-			| "sage"
-			| "shimmer"
-			| "sol"
-			| "spruce"
-			| "vale"
-			| "verse"
-	)
 }
 
 #[cfg(test)]
@@ -94,8 +72,28 @@ mod tests {
 	async fn voice_start_reads_each_project_and_distinguishes_unsupported_from_failed_config() {
 		for (config, catalog, expected) in [
 			(
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":[],"defaultV1":"cove"}}}),
+				Ok(Some("cove")),
+			),
+			(
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":"invalid","defaultV1":"cove"}}}),
+				Err(()),
+			),
+			(
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["aube"],"defaultV1":"cove"}}}),
+				Err(()),
+			),
+			(
+				serde_json::json!({"result":{"config":{"realtime":{"voice":"aube"}}}}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"v3":["cove","aube"],"defaultV1":"cove"}}}),
+				Ok(Some("aube")),
+			),
+			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
-				serde_json::json!({}),
+				serde_json::json!({"result":{"voices":{"v1":["juniper"],"defaultV1":"juniper"}}}),
 				Ok(Some("juniper")),
 			),
 			(
@@ -120,7 +118,7 @@ mod tests {
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
-				serde_json::json!({}),
+				serde_json::json!({"result":{"voices":{"v1":["cove"],"defaultV1":"cove"}}}),
 				Ok(None),
 			),
 			(
