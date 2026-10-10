@@ -299,7 +299,7 @@ struct Caption {
 impl AgentSurface {
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
-		self.retire_voice_media();
+		let _ = self.retire_voice_media();
 		cx.notify();
 	}
 
@@ -576,7 +576,7 @@ impl AgentSurface {
 							event["message"].as_str().unwrap_or("Voice disconnected.").into();
 					}
 
-					self.retire_voice_media();
+					let _ = self.retire_voice_media();
 					cx.notify();
 
 					return None;
@@ -615,9 +615,9 @@ impl AgentSurface {
 		} else {
 			// Signaling can disconnect while WebRTC still sends microphone audio.
 			// Dropping media stops local capture; the loop then stops this exact session.
-			self.retire_voice_media();
-
-			self.feedback = "Voice stopped because the service connection was lost.".into();
+			self.feedback = self
+				.retire_voice_media()
+				.unwrap_or_else(|| "Voice stopped because the service connection was lost.".into());
 
 			cx.notify();
 		}
@@ -650,7 +650,7 @@ impl AgentSurface {
 					self.feedback = message.as_str().into();
 				}
 
-				self.retire_voice_media();
+				let _ = self.retire_voice_media();
 			},
 		}
 
@@ -834,9 +834,9 @@ impl AgentSurface {
 							{
 								voice.muted = muted;
 							} else {
-								s.retire_voice_media();
-
-								s.feedback = "Voice stopped because the microphone control could not be updated.".into();
+								s.feedback = s.retire_voice_media().unwrap_or_else(|| {
+									"Voice stopped because the microphone control could not be updated.".into()
+								});
 							}
 						}
 
@@ -849,7 +849,7 @@ impl AgentSurface {
 					"End".into(),
 					"End voice call · Existing work continues",
 					|s, cx| {
-						s.retire_voice_media();
+						let _ = s.retire_voice_media();
 						s.load_history(cx);
 						cx.notify();
 					},
@@ -859,9 +859,11 @@ impl AgentSurface {
 		)
 	}
 
-	fn retire_voice_media(&mut self) {
+	fn retire_voice_media(&mut self) -> Option<String> {
+		let mut failure = None;
+
 		if let Some(mut voice) = self.voice.take() {
-			drain_caption_events(&mut voice.captions, || voice.media.poll());
+			failure = drain_caption_events(&mut voice.captions, || voice.media.poll());
 
 			for caption in &mut voice.captions {
 				caption.complete = true;
@@ -879,6 +881,8 @@ impl AgentSurface {
 
 			self.history = Some((work, history));
 		}
+
+		failure
 	}
 
 	pub(super) fn reconcile_voice_captions(&mut self, work: &str, history: &AgentHistoryResult) {
@@ -1034,16 +1038,25 @@ fn reconcile_captions(
 	});
 }
 
-/// Consume the host's already queued text before releasing the media object.
+/// Consume queued text and retain the first failure before releasing the media object.
 /// The native mailbox has a 128-event bound; retirement never waits for more input.
-fn drain_caption_events(captions: &mut Vec<Caption>, mut poll: impl FnMut() -> Option<Value>) {
+fn drain_caption_events(
+	captions: &mut Vec<Caption>,
+	mut poll: impl FnMut() -> Option<Value>,
+) -> Option<String> {
+	let mut failure = None;
+
 	for _ in 0..128 {
 		let Some(event) = poll() else { break };
 
 		if event["type"] == "caption" {
 			update_caption(&event["event"], captions);
+		} else if event["type"] == "error" && failure.is_none() {
+			failure = event["message"].as_str().map(str::to_owned);
 		}
 	}
+
+	failure
 }
 
 fn append_caption_delta(event: &Value, captions: &mut Vec<Caption>, role: &'static str) {
@@ -1347,10 +1360,14 @@ mod tests {
 			serde_json::json!({"type":"level","level":0.2}),
 			serde_json::json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
 			serde_json::json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
+			serde_json::json!({"type":"error","message":"The audio device disconnected."}),
+			serde_json::json!({"type":"error","message":"The control channel closed."}),
 			serde_json::json!({"type":"ended"}),
 		]);
 
-		voice::drain_caption_events(&mut captions, || pending.pop_front());
+		let failure = voice::drain_caption_events(&mut captions, || pending.pop_front());
+
+		assert_eq!(failure.as_deref(), Some("The audio device disconnected."));
 
 		assert!(pending.is_empty());
 		assert_eq!(
@@ -1360,12 +1377,13 @@ mod tests {
 
 		let mut polled = 0;
 
-		voice::drain_caption_events(&mut captions, || {
+		let failure = voice::drain_caption_events(&mut captions, || {
 			polled += 1;
 
 			Some(serde_json::json!({"type":"level"}))
 		});
 
+		assert!(failure.is_none());
 		assert_eq!(polled, 128, "Retirement must not wait for an ongoing producer");
 	}
 
@@ -1586,7 +1604,7 @@ mod tests {
 			);
 		}
 		surface.update(visual, |s, cx| {
-			s.retire_voice_media();
+			let _ = s.retire_voice_media();
 			cx.notify();
 		});
 		visual.update(|window, cx| {
