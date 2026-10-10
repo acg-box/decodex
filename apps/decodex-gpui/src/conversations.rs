@@ -38,7 +38,7 @@ use drafts::DeliveryDrafts;
 use model_settings::Observation;
 
 pub(crate) const CONVERSATION_MODELS: &[&str] =
-	&["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
+	&["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"];
 
 const MAX_LIVE_DELTAS: usize = 64;
 const MAX_LIVE_DELTA_BYTES: usize = 64 * 1_024;
