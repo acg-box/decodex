@@ -120,6 +120,7 @@ impl McpLoginGateway {
 				server: server_name.as_str().into(),
 				generation: source.generation.clone(),
 				pending: true,
+				attempt: LoginAttempt::Starting(Vec::new()),
 				started: Instant::now(),
 			});
 		}
@@ -151,13 +152,32 @@ impl McpLoginGateway {
 			return status(request, McpLoginPhase::Disconnected, "The sign-in connection changed.");
 		};
 
-		// Completion can arrive before the initiating RPC reply; never overwrite it.
+		// Expiration or disconnection must not publish a late authorization link.
 		if session.status.phase != McpLoginPhase::Starting {
 			return project(session, request);
 		}
 
 		match reply {
 			Ok(Ok(value)) => {
+				let Ok(login_id) = login_id(&value) else {
+					session.status = status(
+						request,
+						McpLoginPhase::Unknown,
+						"Native sign-in returned an invalid attempt identity. Refresh server status.",
+					);
+					return project(session, request);
+				};
+				let previous = std::mem::replace(
+					&mut session.attempt,
+					LoginAttempt::Accepted(login_id.clone()),
+				);
+				if let LoginAttempt::Starting(completions) = previous
+					&& let Some((_, success)) =
+						completions.into_iter().find(|(id, _)| *id == login_id)
+				{
+					session.complete(success);
+					return project(session, request);
+				}
 				let url = value["authorizationUrl"]
 					.as_str()
 					.and_then(|value| Url::parse(value).ok())
@@ -226,17 +246,17 @@ impl McpLoginGateway {
 		let Some(success) = params["success"].as_bool() else {
 			return;
 		};
-
-		session.pending = false;
-		session.status.authorization_url = None;
-		session.status.phase =
-			if success { McpLoginPhase::NativeCompleted } else { McpLoginPhase::Failed };
-		session.status.message = WireText::new(if success {
-			"Codex reported sign-in complete. Refresh tool status to verify the connection."
-		} else {
-			"Codex reported sign-in failure. Refresh server status before trying again."
-		})
-		.expect("static OAuth status fits wire bounds");
+		let Ok(login_id) = login_id(params) else { return };
+		match &mut session.attempt {
+			LoginAttempt::Starting(completions) => {
+				// A superseded native attempt can finish before this start reply.
+				if completions.len() < 16 && !completions.iter().any(|(id, _)| *id == login_id) {
+					completions.push((login_id, success));
+				}
+			},
+			LoginAttempt::Accepted(expected) if *expected == login_id => session.complete(success),
+			LoginAttempt::Accepted(_) => {},
+		}
 	}
 
 	pub(crate) async fn expire(&self) {
@@ -276,7 +296,38 @@ struct Session {
 	server: String,
 	generation: ProcessGenerationId,
 	pending: bool,
+	attempt: LoginAttempt,
 	started: Instant,
+}
+
+enum LoginAttempt {
+	Starting(Vec<(Option<String>, bool)>),
+	Accepted(Option<String>),
+}
+
+impl Session {
+	fn complete(&mut self, success: bool) {
+		self.pending = false;
+		self.status.authorization_url = None;
+		self.status.phase =
+			if success { McpLoginPhase::NativeCompleted } else { McpLoginPhase::Failed };
+		self.status.message = WireText::new(if success {
+			"Codex reported sign-in complete. Refresh tool status to verify the connection."
+		} else {
+			"Codex reported sign-in failure. Refresh server status before trying again."
+		})
+		.expect("static OAuth status fits wire bounds");
+	}
+}
+
+fn login_id(value: &Value) -> Result<Option<String>, ()> {
+	match value.get("loginId") {
+		None | Some(Value::Null) => Ok(None),
+		Some(Value::String(id))
+			if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) =>
+			Ok(Some(id.clone())),
+		_ => Err(()),
+	}
 }
 
 pub(crate) fn status(
@@ -423,6 +474,61 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn completion_matches_the_native_attempt_even_before_the_reply() {
+		for early in [false, true] {
+			let (local, remote) = io::duplex(4_096);
+			let (reader, writer) = io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let (received, request_received) = tokio::sync::oneshot::channel();
+			let (release, released) = tokio::sync::oneshot::channel();
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				let request: serde_json::Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				received.send(()).unwrap();
+				released.await.unwrap();
+				writer.write_all(format!("{}\n", serde_json::json!({"id":request["id"],"result":{"loginId":"current","authorizationUrl":"https://example.test/authorize"}})).as_bytes()).await.unwrap();
+				lines.next_line().await
+			});
+			let gateway = McpLoginGateway::default();
+			let peer = gateway.clone();
+			let native_source = source(&client);
+			let task =
+				tokio::spawn(async move { peer.exchange(&request(), Some(native_source)).await });
+			request_received.await.unwrap();
+			let completion = |id, success| ServerEvent::Notification {
+				method: "mcpServer/oauthLogin/completed".into(),
+				params: serde_json::json!({"threadId":"native-thread","name":"server","loginId":id,"success":success}),
+			};
+			gateway.observe(&generation(), &completion("previous", false)).await;
+			if early {
+				gateway.observe(&generation(), &completion("current", true)).await;
+			}
+			release.send(()).unwrap();
+			let result = task.await.unwrap();
+			if early {
+				assert_eq!(result.phase, McpLoginPhase::NativeCompleted);
+				assert!(result.authorization_url.is_none());
+			} else {
+				assert_eq!(result.phase, McpLoginPhase::AwaitingUser);
+				gateway.observe(&generation(), &completion("previous", true)).await;
+				assert_eq!(
+					gateway.exchange(&request(), Some(source(&client))).await.phase,
+					McpLoginPhase::AwaitingUser
+				);
+				gateway.observe(&generation(), &completion("current", true)).await;
+				assert_eq!(
+					gateway.exchange(&request(), Some(source(&client))).await.phase,
+					McpLoginPhase::NativeCompleted
+				);
+			}
+			client.shutdown().await.unwrap();
+			server.await.unwrap().unwrap();
+		}
+	}
+
+	#[tokio::test]
 	async fn expiration_removes_private_url_but_does_not_replay_an_uncertain_flow() {
 		let gateway = McpLoginGateway::default();
 		let request = request();
@@ -440,6 +546,7 @@ mod tests {
 			server: "server".into(),
 			generation: generation(),
 			pending: true,
+			attempt: mcp_login::LoginAttempt::Accepted(None),
 			started: Instant::now() - Duration::from_secs(181),
 		});
 
