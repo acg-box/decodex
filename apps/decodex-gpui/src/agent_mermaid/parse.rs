@@ -119,6 +119,11 @@ fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
 		return Err(RenderError::Unsupported);
 	}
 
+	// Longer shape delimiters must not become punctuation inside a simpler node.
+	if ["[(", "[[", "[/", "[\\", "{{"].iter().any(|open| rest.starts_with(open)) {
+		return Err(RenderError::Unsupported);
+	}
+
 	let declaration = match rest.chars().next() {
 		Some('[') => Some(("[", "]", Shape::Rectangle)),
 		Some('{') => Some(("{", "}", Shape::Decision)),

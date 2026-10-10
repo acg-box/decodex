@@ -257,3 +257,14 @@ fn stadium_shapes_references_and_widths() {
 		Err(RenderError::Limit)
 	);
 }
+
+#[test]
+fn unsupported_long_shape_delimiters_keep_source_fallback() {
+	for declaration in ["A[(Database)]", "A[[Subroutine]]", "A[/Input/]", "A{{Hexagon}}"] {
+		assert_eq!(
+			mermaid::render(&format!("flowchart TD; {declaration}"), 100),
+			Err(RenderError::Unsupported),
+			"{declaration}"
+		);
+	}
+}
