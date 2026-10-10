@@ -7,7 +7,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{self, Value};
 use tokio::{sync::Mutex, time};
 
@@ -100,10 +99,9 @@ impl DictationGateway {
 			DictationRequest::Audio { audio, .. }
 				if session.status.phase == DictationPhase::Listening =>
 			{
-				if !valid_audio(audio.as_str())
-					|| !session.transport.as_mut().is_some_and(|s| {
-						s.command(serde_json::json!({"type":"audio.append","audio":audio.as_str()}))
-					}) {
+				if !session.transport.as_mut().is_some_and(|s| {
+					s.command(serde_json::json!({"type":"audio.append","audio":audio.to_base64()}))
+				}) {
 					session.fail(
 						"Audio could not be delivered. Your received text remains in the draft.",
 					);
@@ -236,26 +234,17 @@ pub(crate) fn failed(session_id: EntityId, message: &str) -> DictationStatus {
 
 fn start_message() -> Value {
 	serde_json::json!({"type":"session.start", "config":{
-		"input_audio_format":"pcm16", "sample_rate_hz":24_000, "num_channels":1,
+		"input_audio_format":"pcm16", "sample_rate_hz":decodex_protocol::DICTATION_SAMPLE_RATE, "num_channels":1,
 		"max_buffer_size_bytes":4_194_304, "max_utterance_duration_ms":30_000,
 		"session_ttl_ms":300_000, "provider_mode":"streaming_sse", "transcript_delivery_mode":"segment",
 		"vad":{"type":"server_vad", "threshold":0.5, "prefix_padding_ms":300, "silence_duration_ms":500}
 	}})
 }
 
-fn valid_audio(audio: &str) -> bool {
-	STANDARD.decode(audio).is_ok_and(|pcm| {
-		!pcm.is_empty()
-			&& pcm.len() <= decodex_protocol::MAX_DICTATION_PCM_BYTES
-			&& pcm.len().is_multiple_of(2)
-	})
-}
-
 #[cfg(test)]
 mod tests {
 	use std::time::Duration;
 
-	#[cfg(test)] use base64::Engine as _;
 	use tokio::{sync::mpsc, time};
 
 	use crate::dictation::{DictationGateway, DictationPhase, DictationRequest};
@@ -301,17 +290,6 @@ mod tests {
 
 		assert_eq!(session.status.phase, DictationPhase::Failed);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
-	}
-
-	#[test]
-	fn pcm_validation_rejects_invalid_or_partial_samples() {
-		for audio in ["", "not base64", "AQ=="] {
-			assert!(!super::valid_audio(audio));
-		}
-
-		assert!(super::valid_audio("AQI="));
-		assert!(super::valid_audio(&super::STANDARD.encode(vec![0; 32_768])));
-		assert!(!super::valid_audio(&super::STANDARD.encode(vec![0; 32_770])));
 	}
 
 	#[tokio::test]

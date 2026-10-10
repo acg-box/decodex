@@ -1,17 +1,96 @@
 //! Transient subscription dictation. Audio and drafts never become command receipts.
-use std::fmt::{self, Debug, Formatter};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use std::{
+	collections::VecDeque,
+	fmt::{self, Debug, Formatter},
+};
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 use crate::{EntityId, WireScalarTooLong, WireText};
 
-/// Bounded private audio or transcript payload, omitted from diagnostics.
+/// Bounded private transcript payload, omitted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct DictationBuffer(String);
 
 /// Maximum decoded PCM bytes in one dictation audio request.
 pub const MAX_DICTATION_PCM_BYTES: usize = 32_768;
+/// Capture and subscription format: PCM16 little-endian, mono.
+pub const DICTATION_SAMPLE_RATE: u32 = 24_000;
+/// Maximum buffered capture while the subscription connection catches up (10 seconds).
+pub const MAX_DICTATION_BACKLOG_BYTES: usize = DICTATION_SAMPLE_RATE as usize * 2 * 10;
+
+/// Bounded, complete PCM16 samples at [`DICTATION_SAMPLE_RATE`], supplied as mono audio.
+/// The wire representation remains a base64 string.
+/// Construction, deserialization and batching all enforce the same audio contract.
+#[derive(Clone, Eq, PartialEq)]
+pub struct DictationAudio(Vec<u8>);
+
+/// Audio is empty, malformed, oversized, or contains a partial PCM16 sample.
+#[derive(Debug)]
+pub struct InvalidDictationAudio;
+impl fmt::Display for InvalidDictationAudio {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.write_str("invalid dictation PCM16 audio")
+	}
+}
+impl std::error::Error for InvalidDictationAudio {}
+impl DictationAudio {
+	/// Validate decoded audio without exposing its contents in an error.
+	pub fn from_pcm(pcm: Vec<u8>) -> Result<Self, InvalidDictationAudio> {
+		if pcm.is_empty() || pcm.len() > MAX_DICTATION_PCM_BYTES || !pcm.len().is_multiple_of(2) {
+			return Err(InvalidDictationAudio);
+		}
+		Ok(Self(pcm))
+	}
+
+	/// Decode and validate the string used by the native capture bridge.
+	pub fn from_base64(encoded: &str) -> Result<Self, InvalidDictationAudio> {
+		if encoded.len() > MAX_DICTATION_PCM_BYTES.div_ceil(3) * 4 {
+			return Err(InvalidDictationAudio);
+		}
+		Self::from_pcm(STANDARD.decode(encoded).map_err(|_| InvalidDictationAudio)?)
+	}
+
+	/// Borrow complete PCM16 samples for transport and accounting.
+	pub fn pcm(&self) -> &[u8] {
+		&self.0
+	}
+
+	/// Encode an already validated packet for the subscription transport.
+	pub fn to_base64(&self) -> String {
+		STANDARD.encode(&self.0)
+	}
+
+	/// Drain available frames in order, leaving the next complete packet queued.
+	pub fn take_batch(queue: &mut VecDeque<Self>) -> Option<Self> {
+		let mut packet = queue.pop_front()?;
+		while let Some(next) = queue.front() {
+			if packet.0.len() + next.0.len() > MAX_DICTATION_PCM_BYTES {
+				break;
+			}
+			packet.0.extend(queue.pop_front().expect("front exists").0);
+		}
+		Some(packet)
+	}
+}
+impl Debug for DictationAudio {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.write_str("DictationAudio([redacted])")
+	}
+}
+impl Serialize for DictationAudio {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.serialize_str(&self.to_base64())
+	}
+}
+impl<'de> Deserialize<'de> for DictationAudio {
+	fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+		Self::from_base64(&String::deserialize(d)?).map_err(D::Error::custom)
+	}
+}
+
 impl DictationBuffer {
 	/// Bound one transient frame.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
@@ -56,7 +135,7 @@ pub enum DictationRequest {
 		/// Exact session.
 		session_id: EntityId,
 		/// Base64-encoded audio.
-		audio: DictationBuffer,
+		audio: DictationAudio,
 	},
 	/// Stop capture and request final correction after all queued audio.
 	Finish {
@@ -132,5 +211,49 @@ mod tests {
 		let boundary = DictationBuffer::new("x".repeat(65_536)).expect("boundary");
 
 		assert_eq!(boundary.as_str().len(), 65_536);
+	}
+}
+
+#[cfg(test)]
+mod audio_tests {
+	use super::*;
+	#[test]
+	fn audio_contract_rejects_bad_wire_data_before_it_reaches_the_service() {
+		for encoded in [
+			String::new(),
+			"not base64".into(),
+			STANDARD.encode([1]),
+			STANDARD.encode(vec![0; MAX_DICTATION_PCM_BYTES + 2]),
+		] {
+			let request =
+				serde_json::json!({"operation":"audio","session_id":"recording","audio":encoded});
+			assert!(serde_json::from_value::<DictationRequest>(request).is_err());
+		}
+		let packet = DictationAudio::from_pcm(vec![0; MAX_DICTATION_PCM_BYTES]).unwrap();
+		let encoded = serde_json::to_string(&packet).unwrap();
+		assert_eq!(serde_json::from_str::<DictationAudio>(&encoded).unwrap(), packet);
+		assert_eq!(format!("{packet:?}"), "DictationAudio([redacted])");
+	}
+	#[test]
+	fn connection_backlog_is_lossless_ordered_and_valid_at_the_service_boundary() {
+		let expected: Vec<u8> = (0..48_000).map(|i| (i % 251) as u8).collect();
+		let mut queue = expected
+			.chunks(960)
+			.map(|pcm| DictationAudio::from_pcm(pcm.to_vec()).unwrap())
+			.collect();
+		let mut delivered = Vec::new();
+		let mut packets = 0;
+		while let Some(audio) = DictationAudio::take_batch(&mut queue) {
+			let request =
+				DictationRequest::Audio { session_id: EntityId::new("recording").unwrap(), audio };
+			let decoded: DictationRequest =
+				serde_json::from_slice(&serde_json::to_vec(&request).unwrap()).unwrap();
+			let DictationRequest::Audio { audio, .. } = decoded else { panic!("audio request") };
+			assert!(audio.pcm().len() <= MAX_DICTATION_PCM_BYTES);
+			delivered.extend_from_slice(audio.pcm());
+			packets += 1;
+		}
+		assert_eq!(delivered, expected);
+		assert_eq!(packets, 2);
 	}
 }

@@ -1,5 +1,6 @@
 //! Apple voice processing with a direct, bounded PCM path to the native transport.
 #![cfg_attr(test, allow(dead_code))]
+#[path = "native_audio_owner.rs"] pub(super) mod owner;
 use std::{
 	ptr::NonNull,
 	rc::Rc,
@@ -21,6 +22,9 @@ use objc2_avf_audio::{
 use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
 use rtrb::{Consumer, Producer, RingBuffer};
 
+pub(super) const LIVE_SAMPLE_RATE: u32 = 48_000;
+pub(super) const LIVE_FRAME_SAMPLES: u32 = LIVE_SAMPLE_RATE / 100;
+
 pub(super) struct Pcm {
 	pub(super) captured: Consumer<f32>,
 	pub(super) playback: Producer<f32>,
@@ -30,19 +34,12 @@ pub(super) struct Device {
 	engine: Retained<AVAudioEngine>,
 	sink: Retained<AVAudioSinkNode>,
 	source: Retained<AVAudioSourceNode>,
+	output: Arc<Mutex<Consumer<f32>>>,
 	level: Arc<AtomicU32>,
 	_thread: std::marker::PhantomData<Rc<()>>,
 }
 impl Device {
-	/// Call after microphone authorization and retain this owner on its creating thread. A zero ID
-	/// uses the system input.
-	pub(super) fn start(device: u32) -> Result<(Self, Pcm), ()> {
-		let (engine, pcm) = Self::prepare(device, 48_000.0)?;
-		engine.resume()?;
-		Ok((engine, pcm))
-	}
-
-	pub(super) fn resume(&self) -> Result<(), ()> {
+	fn resume(&self) -> Result<(), ()> {
 		unsafe {
 			self.engine
 				.startAndReturnError()
@@ -56,11 +53,12 @@ impl Device {
 		}
 	}
 
-	pub(super) fn prepare(device: u32, sample_rate: f64) -> Result<(Self, Pcm), ()> {
+	fn prepare(device: u32, sample_rate: f64) -> Result<(Self, Pcm), ()> {
 		let (capture, captured) = RingBuffer::new(4_800);
 		let (playback, output) = RingBuffer::new(4_800);
 		let capture = Mutex::new(capture);
-		let output = Mutex::new(output);
+		let output = Arc::new(Mutex::new(output));
+		let rendered_output = output.clone();
 		let level = Arc::new(AtomicU32::new(0));
 		let captured_level = level.clone();
 		let receive = RcBlock::new(
@@ -93,7 +91,7 @@ impl Device {
 
 				samples.fill(0.0);
 
-				if let Ok(mut output) = output.try_lock() {
+				if let Ok(mut output) = rendered_output.try_lock() {
 					for sample in samples.iter_mut() {
 						*sample = output.pop().unwrap_or(0.0);
 					}
@@ -150,12 +148,19 @@ impl Device {
 			// Voice processing requires matching client input and output sample rates.
 			engine.connect_to_format(&engine.mainMixerNode(), &engine.outputNode(), Some(&format));
 
-			let device = Self { engine, sink, source, level, _thread: std::marker::PhantomData };
+			let device =
+				Self { engine, sink, source, output, level, _thread: std::marker::PhantomData };
 
 			device.engine.prepare();
 
 			Ok((device, Pcm { captured, playback }))
 		}
+	}
+
+	fn clear_playback(&self) -> Result<(), ()> {
+		let mut output = self.output.lock().map_err(|_| ())?;
+		while output.pop().is_ok() {}
+		Ok(())
 	}
 
 	pub(super) fn running(&self) -> bool {
@@ -218,63 +223,4 @@ unsafe fn capture_audio(
 	}
 
 	0
-}
-
-#[cfg(test)]
-mod tests {
-	use std::thread;
-
-	use crate::shell::agent_surface::voice::audio::Device;
-
-	#[test]
-	#[ignore = "Requires authorized microphone and DECODEX_AUDIO_TEST_DEVICE_ID"]
-	fn hardware_selected_microphone_captures_after_preparation() {
-		let input = std::env::var("DECODEX_AUDIO_TEST_DEVICE_ID")
-			.expect("set a physical input AudioDeviceID")
-			.parse::<u32>()
-			.expect("audio device ID");
-		assert_ne!(input, 0);
-		let mut prepared = Vec::new();
-		for rate in [24_000.0, 48_000.0] {
-			let (device, mut pcm) = Device::prepare(input, rate).expect("prepare selected input");
-			thread::sleep(std::time::Duration::from_millis(250));
-			device.resume().expect("start selected input");
-			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-			let mut captured = 0;
-			while std::time::Instant::now() < deadline {
-				assert!(device.running(), "engine stopped at {rate} Hz");
-				while pcm.captured.pop().is_ok() {
-					captured += 1;
-				}
-				thread::sleep(std::time::Duration::from_millis(10));
-			}
-			assert!(captured > rate as usize, "missing PCM at {rate} Hz: {captured}");
-			device.pause();
-			prepared.push(device);
-		}
-	}
-
-	#[test]
-	#[ignore = "Requires authorized microphone and a working macOS audio device"]
-	fn hardware_voice_processing_captures_and_renders_on_one_engine() {
-		let (device, mut pcm) = Device::start(0).expect("Apple audio start");
-		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-		let (mut captured, mut supplied) = (0, 0);
-
-		while std::time::Instant::now() < deadline {
-			while pcm.captured.pop().is_ok() {
-				captured += 1;
-			}
-			while pcm.playback.push(0.0).is_ok() {
-				supplied += 1;
-			}
-
-			thread::sleep(std::time::Duration::from_millis(10));
-		}
-
-		assert!(device.running());
-		assert!(device.level().is_finite());
-		assert!(captured > 48_000);
-		assert!(supplied - (4_800 - pcm.playback.slots()) > 48_000);
-	}
 }

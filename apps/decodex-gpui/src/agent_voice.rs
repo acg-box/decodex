@@ -191,14 +191,15 @@ impl Media {
 				return None;
 			}
 			if event["type"] == "dictation_authorized" {
-				self.capture = event["device"]
+				let started = event["device"]
 					.as_u64()
-					.and_then(|v| u32::try_from(v).ok())
-					.and_then(|id| dictation_capture::Capture::start(id).ok());
-				if self.capture.is_none() {
-					return Some(
-						serde_json::json!({"type":"error","message":"The microphone worker could not start."}),
-					);
+					.and_then(|id| u32::try_from(id).ok())
+					.ok_or(audio::owner::AudioError::Prepare)
+					.and_then(dictation_capture::Capture::start);
+				match started {
+					Ok(capture) => self.capture = Some(capture),
+					Err(error) =>
+						return Some(serde_json::json!({"type":"error","message":error.message()})),
 				}
 				return None;
 			}
@@ -209,20 +210,19 @@ impl Media {
 			let started = event["device"]
 				.as_u64()
 				.and_then(|id| u32::try_from(id).ok())
-				.and_then(|id| transport::Transport::start_device(id).ok());
+				.ok_or(audio::owner::AudioError::Prepare)
+				.and_then(transport::Transport::start_device);
 
 			match started {
-				Some(transport) => {
+				Ok(transport) => {
 					if self.muted {
 						transport.command(transport::Command::Mute(true));
 					}
 
 					self.transport = Some(transport);
 				},
-				None =>
-					return Some(
-						serde_json::json!({"type":"error","message":"The selected audio device could not start."}),
-					),
+				Err(error) =>
+					return Some(serde_json::json!({"type":"error","message":error.message()})),
 			}
 		}
 		if let Some(capture) = &self.capture

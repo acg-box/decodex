@@ -1636,7 +1636,6 @@ dependencies = [
 name = "decodex-gpui"
 version = "0.2.0"
 dependencies = [
- "base64 0.23.1",
  "block2 0.6.2",
  "decodex-protocol",
  "futures-util",
@@ -1669,6 +1668,7 @@ dependencies = [
 name = "decodex-protocol"
 version = "0.2.0"
 dependencies = [
+ "base64 0.23.1",
  "decodex-core",
  "futures-util",
  "libc",

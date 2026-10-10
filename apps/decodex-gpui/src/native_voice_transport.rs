@@ -30,7 +30,10 @@ use tokio::{
 	time::{self, Duration, Instant, MissedTickBehavior},
 };
 
-use crate::shell::agent_surface::voice::audio::{Device, Pcm};
+use crate::shell::agent_surface::voice::audio::{
+	LIVE_FRAME_SAMPLES, LIVE_SAMPLE_RATE, Pcm,
+	owner::{AudioError, Mode, Session, State},
+};
 
 #[cfg(test)]
 type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
@@ -52,9 +55,10 @@ pub(super) struct Transport {
 	overflow: Arc<AtomicBool>,
 	level: Arc<AtomicU32>,
 	stop: Option<oneshot::Sender<()>>,
+	cancelled: Arc<AtomicBool>,
 }
 impl Transport {
-	pub(super) fn start_device(device: u32) -> Result<Self, ()> {
+	pub(super) fn start_device(device: u32) -> Result<Self, AudioError> {
 		Self::start_input(
 			Input::Device(device),
 			#[cfg(test)]
@@ -63,7 +67,7 @@ impl Transport {
 	}
 
 	#[cfg(test)]
-	pub(super) fn start(pcm: Pcm) -> Result<Self, ()> {
+	pub(super) fn start(pcm: Pcm) -> Result<Self, AudioError> {
 		Self::start_inner(
 			pcm,
 			#[cfg(test)]
@@ -72,69 +76,44 @@ impl Transport {
 	}
 
 	#[cfg(test)]
-	fn start_inner(pcm: Pcm, offer_pause: Option<OfferPause>) -> Result<Self, ()> {
+	fn start_inner(pcm: Pcm, offer_pause: Option<OfferPause>) -> Result<Self, AudioError> {
 		Self::start_input(Input::Pcm(pcm), offer_pause)
 	}
 
-	fn start_input(input: Input, #[cfg(test)] offer_pause: Option<OfferPause>) -> Result<Self, ()> {
+	fn start_input(
+		input: Input,
+		#[cfg(test)] offer_pause: Option<OfferPause>,
+	) -> Result<Self, AudioError> {
 		let (commands, requests) = sync::mpsc::channel(8);
 		let (sender, events) = mpsc::sync_channel(128);
 		let overflow = Arc::new(AtomicBool::new(false));
 		let output = Events { sender, overflow: overflow.clone() };
-		let (stop, mut cancelled) = oneshot::channel();
+		let (stop, ended) = oneshot::channel();
+		let cancelled = Arc::new(AtomicBool::new(false));
 		let level = Arc::new(AtomicU32::new(0));
-		let captured_level = level.clone();
-
+		let call = Call {
+			requests,
+			output,
+			ended,
+			level: level.clone(),
+			#[cfg(test)]
+			offer_pause,
+		};
+		let stopped = cancelled.clone();
 		std::thread::Builder::new()
 			.name("native-voice".into())
-			.spawn(move || {
-				let Ok(runtime) =
-					tokio::runtime::Builder::new_current_thread().enable_time().build()
-				else {
-					output.send(
-						serde_json::json!({"type":"error","message":"The native audio runtime could not start."}),
-					);
-
-					return;
-				};
-
-				// Create, use and release the engine on this worker. GPUI never waits for
-                // device configuration, and a cancelled startup never opens a network call.
-                let (device, pcm) = match input {
-                    Input::Device(id) => match Device::start(id) {
-                        Ok((device, pcm)) => (Some(device), pcm),
-                        Err(()) => {
-                            output.send(serde_json::json!({"type":"error","message":"The selected audio device could not start."}));
-                            return;
-                        }
-                    },
-                    #[cfg(test)]
-                    Input::Pcm(pcm) => (None, pcm),
-                };
-                if !matches!(cancelled.try_recv(), Err(oneshot::error::TryRecvError::Empty)) { return; }
-                runtime.block_on(async {
-                    let monitor = async {
-                        loop {
-                            time::sleep(Duration::from_millis(50)).await;
-                            if let Some(device) = &device {
-                                if !device.running() {
-                                    output.send(serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}));
-                                    return;
-                                }
-                                captured_level.store(device.level().to_bits(), Ordering::Relaxed);
-                            }
-                        }
-                    };
-                    tokio::select! {
-						_ = cancelled => {},
-                        _ = monitor => {},
-						_ = run(pcm, requests, output.clone(), #[cfg(test)] offer_pause) => {},
-					}
-				});
+			.spawn(move || match input {
+				Input::Device(id) => match Session::start(id, Mode::Live, stopped) {
+					Ok(session) => call.run(Audio::Device(session)),
+					Err(error) => call
+						.output
+						.send(serde_json::json!({"type":"error","message":error.message()})),
+				},
+				#[cfg(test)]
+				Input::Pcm(pcm) => call.run(Audio::Pcm(pcm)),
 			})
-			.map_err(|_| ())?;
-
-		Ok(Self { commands, events, overflow, level, stop: Some(stop) })
+			.map_err(|_| AudioError::Worker)?;
+		Ok(Self { commands, events, overflow, level, stop: Some(stop), cancelled })
 	}
 
 	pub(super) fn command(&self, command: Command) -> bool {
@@ -155,9 +134,74 @@ impl Transport {
 }
 impl Drop for Transport {
 	fn drop(&mut self) {
+		self.cancelled.store(true, Ordering::Release);
 		if let Some(stop) = self.stop.take() {
 			let _ = stop.send(());
 		}
+	}
+}
+
+enum Audio {
+	Device(Session),
+	#[cfg(test)]
+	Pcm(Pcm),
+}
+impl Audio {
+	fn state(&mut self) -> Option<Arc<State>> {
+		match self {
+			Self::Device(session) => Some(session.parts().0),
+			#[cfg(test)]
+			Self::Pcm(_) => None,
+		}
+	}
+
+	fn pcm(&mut self) -> &mut Pcm {
+		match self {
+			Self::Device(session) => session.parts().1,
+			#[cfg(test)]
+			Self::Pcm(pcm) => pcm,
+		}
+	}
+}
+struct Call {
+	requests: sync::mpsc::Receiver<Command>,
+	output: Events,
+	ended: oneshot::Receiver<()>,
+	level: Arc<AtomicU32>,
+	#[cfg(test)]
+	offer_pause: Option<OfferPause>,
+}
+impl Call {
+	fn run(mut self, mut audio: Audio) {
+		let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_time().build()
+		else {
+			self.output.send(
+				serde_json::json!({"type":"error","message":"The native audio runtime could not start."}),
+			);
+			return;
+		};
+		if !matches!(self.ended.try_recv(), Err(oneshot::error::TryRecvError::Empty)) {
+			return;
+		}
+		let device = audio.state();
+		runtime.block_on(async {
+            let monitor = async {
+                loop {
+                    time::sleep(Duration::from_millis(50)).await;
+                    if let Some(device) = &device {
+                        if !device.running() {
+                            self.output.send(serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."})); return;
+                        }
+                        self.level.store(device.level().to_bits(), Ordering::Relaxed);
+                    }
+                }
+            };
+            tokio::select! {
+                _ = self.ended => {},
+                _ = monitor => {},
+                _ = run(audio, self.requests, self.output.clone(), #[cfg(test)] self.offer_pause) => {},
+            }
+        });
 	}
 }
 
@@ -181,7 +225,7 @@ impl Drop for Peer {
 }
 
 async fn run(
-	pcm: Pcm,
+	audio: Audio,
 	commands: sync::mpsc::Receiver<Command>,
 	events: Events,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
@@ -206,12 +250,12 @@ async fn run(
 			return;
 		},
 	};
-	// Drop PCM before synchronous peer teardown, including when this future is cancelled.
-	let mut pcm = pcm;
+	// Release capture/PCM before synchronous peer teardown, including cancellation.
+	let mut audio = audio;
 	let result = run_media(
 		&factory,
 		&peer,
-		&mut pcm,
+		audio.pcm(),
 		commands,
 		events.clone(),
 		#[cfg(test)]
@@ -265,7 +309,7 @@ async fn run_media(
 	events: Events,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) -> Result<(), &'static str> {
-	let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
+	let source = NativeAudioSource::new(AudioSourceOptions::default(), LIVE_SAMPLE_RATE, 1, 40);
 	let track = factory.create_audio_track("microphone", source.clone());
 
 	peer.0
@@ -332,7 +376,7 @@ async fn run_media(
 
 	clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-	let mut frame = AudioFrame::new(48_000, 1, 480);
+	let mut frame = AudioFrame::new(LIVE_SAMPLE_RATE, 1, LIVE_FRAME_SAMPLES);
 
 	loop {
 		tokio::select! {
@@ -345,7 +389,7 @@ async fn run_media(
 				Some(Command::Mute(muted)) => { track.set_enabled(!muted); },
 				None => return Ok(()),
 			},
-			Some(track) = incoming.recv() => remote = Some(NativeAudioStream::new(track, 48_000, 1)),
+			Some(track) = incoming.recv() => remote = Some(NativeAudioStream::new(track, LIVE_SAMPLE_RATE as i32, 1)),
 			decoded = async { match &mut remote {
 				Some(stream) => stream.next().await,
 				None => future::pending().await,
@@ -365,7 +409,7 @@ async fn run_media(
 					return Err("The audio connection was lost.");
 				}
 				if !announced && Instant::now() >= deadline { return Err("The audio connection timed out."); }
-				if pcm.captured.slots() >= 480 {
+				if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
 					for sample in frame.data.to_mut() {
 						let value = pcm.captured.pop().unwrap_or(0.0);
 

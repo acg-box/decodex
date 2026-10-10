@@ -1,29 +1,18 @@
 //! Dictation uses the same Apple voice-processing sink as Live, on one audio owner thread.
 #![cfg_attr(test, allow(dead_code))]
-use super::audio::{Device, Pcm};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use super::audio::owner::{self, AudioError, Mode, Session};
+use decodex_protocol::DictationAudio;
 use serde_json::{Value, json};
 use std::{
 	cell::Cell,
 	sync::{
-		Arc, OnceLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
-		mpsc::{self, Receiver, Sender, SyncSender},
+		mpsc::{self, Receiver, SyncSender},
 	},
 	thread,
 	time::{Duration, Instant},
 };
-
-enum Command {
-	Prepare(u32),
-	Start {
-		device: u32,
-		requested: Instant,
-		events: SyncSender<Value>,
-		stopped: Arc<AtomicBool>,
-		finished: Arc<AtomicBool>,
-	},
-}
 
 pub(super) struct Capture {
 	terminal: Cell<bool>,
@@ -33,22 +22,25 @@ pub(super) struct Capture {
 }
 impl Capture {
 	pub(super) fn prepare(device: u32) {
-		let _ = owner().and_then(|tx| tx.send(Command::Prepare(device)).map_err(|_| ()));
+		owner::warm(device);
 	}
 
-	pub(super) fn start(device: u32) -> Result<Self, ()> {
+	pub(super) fn start(device: u32) -> Result<Self, AudioError> {
 		let (tx, events) = mpsc::sync_channel(128);
 		let stopped = Arc::new(AtomicBool::new(false));
 		let finished = Arc::new(AtomicBool::new(false));
-		owner()?
-			.send(Command::Start {
-				device,
-				requested: Instant::now(),
-				events: tx,
-				stopped: stopped.clone(),
-				finished: finished.clone(),
-			})
-			.map_err(|_| ())?;
+		let stop = stopped.clone();
+		let finish = finished.clone();
+		let requested = Instant::now();
+		thread::Builder::new().name("dictation-capture".into()).spawn(move || {
+            let mut audio = match Session::start(device, Mode::Dictation, stop.clone()) {
+                Ok(audio) => audio,
+                Err(error) => { let _ = tx.try_send(json!({"type":"error","message":error.message()})); return; }
+            };
+            if !run(&mut audio, &tx, &stop, &finish, requested) {
+                let _ = tx.try_send(json!({"type":"error","message":"Microphone capture stopped. Check the input device and try again."}));
+            }
+        }).map_err(|_| AudioError::Worker)?;
 		Ok(Self { terminal: Cell::new(false), events, stopped, finished })
 	}
 
@@ -78,53 +70,13 @@ impl Drop for Capture {
 	}
 }
 
-fn owner() -> Result<&'static Sender<Command>, ()> {
-	static OWNER: OnceLock<Result<Sender<Command>, ()>> = OnceLock::new();
-	OWNER.get_or_init(|| {
-        let (tx, rx) = mpsc::channel();
-        thread::Builder::new().name("dictation-audio".into()).spawn(move || {
-            let mut prepared: Option<(u32, Device, Pcm)> = None;
-            while let Ok(command) = rx.recv() {
-                let device = match &command { Command::Prepare(id) | Command::Start { device: id, .. } => *id };
-                if let Command::Start { stopped, .. } = &command
-                    && stopped.load(Ordering::Acquire) { continue; }
-                if prepared.as_ref().is_none_or(|(id, _, _)| *id != device) {
-                    prepared = Device::prepare(device, 24_000.0).ok().map(|(engine, pcm)| (device, engine, pcm));
-                }
-                if let Command::Start { events, stopped, finished, requested, .. } = command {
-                    let healthy = if let Some((_, engine, pcm)) = &mut prepared {
-                        run(engine, pcm, &events, &stopped, &finished, requested)
-                    } else { false };
-                    if !healthy {
-                        prepared = None;
-                        let _ = events.try_send(json!({"type":"error","message":"Microphone capture stopped. Check the input device and try again."}));
-                    }
-                }
-            }
-        }).map_err(|_| ())?;
-        Ok(tx)
-    }).as_ref().map_err(|_| ())
-}
-
 fn run(
-	engine: &Device,
-	pcm: &mut Pcm,
+	audio: &mut Session,
 	events: &SyncSender<Value>,
 	stopped: &AtomicBool,
 	finished: &AtomicBool,
 	requested: Instant,
 ) -> bool {
-	// No previous session audio crosses the capture boundary.
-	while pcm.captured.pop().is_ok() {}
-	if stopped.load(Ordering::Acquire) {
-		return true;
-	}
-	if finished.load(Ordering::Acquire) {
-		return events.try_send(json!({"type":"ended"})).is_ok();
-	}
-	if engine.resume().is_err() {
-		return false;
-	}
 	let mut first = true;
 	let mut bytes = Vec::with_capacity(9_600);
 	let mut healthy = true;
@@ -133,9 +85,10 @@ fn run(
 			break;
 		}
 		let final_buffer = finished.load(Ordering::Acquire);
-		if final_buffer {
-			engine.pause();
+		if final_buffer && audio.pause().is_err() {
+			return false;
 		}
+		let (engine, pcm) = audio.parts();
 		while let Ok(sample) = pcm.captured.pop() {
 			bytes.extend_from_slice(&pcm16(sample).to_le_bytes());
 		}
@@ -149,8 +102,10 @@ fn run(
 			}
 		}
 		if bytes.len() >= 960 || (final_buffer && !bytes.is_empty()) {
-			let event = json!({"type":"pcm","audio":STANDARD.encode(&bytes),"level":(engine.level() * 5.).min(1.)});
-			bytes.clear();
+			let Ok(packet) = DictationAudio::from_pcm(std::mem::take(&mut bytes)) else {
+				return false;
+			};
+			let event = json!({"type":"pcm","audio":packet,"level":(engine.level() * 5.).min(1.)});
 			if events.try_send(event).is_err() {
 				healthy = false;
 				break;
@@ -166,7 +121,6 @@ fn run(
 		}
 		thread::sleep(Duration::from_millis(5));
 	}
-	engine.pause();
 	healthy
 }
 
