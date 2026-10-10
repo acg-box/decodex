@@ -226,7 +226,7 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 		"features.tool_suggest",
 		"features.unified_exec",
 		"features.view_image",
-		"orchestrator.skills.enabled",
+		"cloud.skills.enabled",
 		"skills.include_instructions",
 		"tools.experimental_request_user_input.enabled",
 		"tools.update_plan.enabled",
