@@ -3,12 +3,7 @@ type: Architecture
 title: Conversation presentation and motion
 description: Bounded chat layout, grouped voice history, incremental loading, and adaptive streamed text in the native desktop.
 tags: [desktop, conversation, motion]
-verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
 sources:
-  - id: openwiki-source-2fc387fccf8dd1285437f49e
-    resource: repo://apps/decodex-gpui/src/agent_activity.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
@@ -19,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-56b561d7e6dd906d218aa9d1
+    resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -45,7 +42,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+generated: { by: "codex", at: "2026-10-10T18:01:25.138Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-10T18:01:25.138Z
 ---
 
 
@@ -77,13 +77,17 @@ A voice call has one expandable group with speaker-labelled transcript text. Cal
 
 Completed calls with no transcript and no failure are hidden from history and its navigation rail. Failed or pending empty calls retain a compact status. A completed call uses its closing boundary for both the disclosure identity and the outer history anchor. Loading earlier records therefore preserves an already-expanded call.
 
-The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch requires fresh upward-scroll intent and waits for anchor restoration. Remaining near the top does not drain successive pages while the user is idle.
+The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch waits for anchor restoration. It can fill an underfilled viewport; once content fills the viewport, further prefetch requires upward-scroll intent.
 
 Saved edit recovery and history refresh/source controls live in Details. The normal transcript contains the active editor or a compact notice for an unresolved operation, rather than a permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 
+## Conversation read status
+
+Task preferences shows the native read receipt for an eligible root conversation. Reading history or refreshing the receipt does not acknowledge a result. Mark as read and Mark as unread submit the displayed revision with a source-bound review token. A replaced source discards the observation; a rejected or uncertain write refreshes status without replay. Missing receipts remain unavailable. Native read state stays separate from Dock handoff and attention state.
+
 ## Floating controls and motion
 
-The shared GPUI popover is currently a fixed-anchor opaque surface. Its background, shadow and content are shown together. It does not apply separate primitive fades or slide an already opaque card; those effects previously produced a visible dark surface before or after the content. This is a deliberate fallback, not a claim that fully composited transitions are implemented.
+The shared GPUI popover moves into place by four points as one opaque surface. Its background, shadow and content move together, without a height clip or separate primitive fades. The menu overlays the page so the layout does not clip its blur and shadow.
 
 Animation requests use the workspace frame owner on macOS and the normal GPUI animation-frame path elsewhere. Native glass surfaces have their own host integration. Keep these ownership boundaries intact when changing a disclosure: transcript expansion must not recreate or change the composer's material.
 

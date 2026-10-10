@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2d888dbeadc93fa9919a0ad232862618a67b7f50936c4b26ea191d3cfeca5bf7",
+  "pageVersion": "sha256:bce27778559977b1c54906ceaa74e92c78cf62dc22614ea4fda6923c6ce95e4c",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -16,7 +16,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:80b601b4db221f2e70952b78dcb183b116b926cff760cd8ea43ad7d763306f0e"
+          "version": "repo-file-v1:sha256:114c7964c387ccfe668b14036b092a5d68529cd73e0f6d506cf515c384b7c09c"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "version": "repo-lines-v1:sha256:e730ee0cb44b1c4ae1c87a6c36d03c6f1331bac286b45cc2e5e5d7748c37d43c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYTBkZmUwZjk0YTlmZmQ0MDRkZGEyNGMyZWQ3ZDIyOTA4MTIwNmZmMTE1ZmIxOTE5ZjhlZDNhY2IwMjIzNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzM0ODNhOGY0ZDNhM2Q0YTc3OTMxOTNiYzM1YjI3ZDNiY2ZlMjU0OTI0ZWM2MGE4YjZmM2NlZmQ5NjJmZTQifQ"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/client.rs#L2260-L2287",
+          "resource": "repo://crates/decodex-protocol/src/client.rs#L2301-L2328",
           "version": "repo-lines-v1:sha256:f9076f56054fb5de44d6c9b0483832b918a24c0b0193ecdb0dbe39c73f00ef75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMDMxNjg5NzQxYmNjM2ZlMmIxYmNiMDFjMDE3ZDNkYTg0YjcyN2JjMzY0ODQzY2RmMjI4ZWI2YWY5MmUwNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYzBjMmJhYThjYjgxMTg0MzAxZjA4OGYwNzFkZWNjNzgwMzgzNTMyNDM4YTVjYTVhNjMwNzIzM2E4N2JkZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxODUxNjFiNGVmZmVlNzE1NGNmNWUxNTUxYTMyZjFmMWY5NWZiYjhkNmZmZjhiODQzMzMyMzVlNzllYmViZmUifQ"
         }
       ]
@@ -44,13 +44,37 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:cccfa29e3ce619ec63d4333ec307cffcb1985c02ea7455b877117ed5f9087742"
+          "version": "repo-file-v1:sha256:a39b03ac438618ab9e01858f393bca83ca6aa52d301e3fee1fa71645967b8f62"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd2702ce8e994ceaa097e84f68a05242",
+      "statement": "The attested native launch enables description-first tool ordering, subagent context defaults and full-fork prefix preservation without enabling multi_agent_v2 itself or forcing gRPC hosting.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1391-L1405",
+          "version": "repo-lines-v1:sha256:b4dd06c1b85bffe95101e1d3a8b98e1645d41a5b9997061c34f4793f16cdc413:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmZmOTBlYzA5NzdhMjYyZTA4NmJkMDhlZmFmODZiMzI2Nzg2ZGI2YzVjMDEyMTY5OWZhY2ZiNzRjYmE2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyMDY5NmJmN2ZhNDIxZGZlNjdlNzgwYWM1Y2E0YzEwNjFiZTlmNmQxMzM3YzBmMjBjNjEwNjNhOTZkZDI4ZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MTUyNzhjZDk2NmZiMDE3NDgxZjgwYjM4ZmQyOWUwODAyZWRkZDFlN2I4ZDIyMWJlNmY4NTlhMTgyN2JhNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4N2IyYjMyM2VlZWExNzhiZTAzMjZlMWNmNzY5ZTYwNzU3NGM1YjkxMjlmNjdjMWJhZTEyZWY3NzUyNzE2ZDAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+          "version": "repo-file-v1:sha256:69c8dc7ce60ce7308be8eea518d1200d5f675fdc3ec011d5cbc753845f6b3933"
+        }
+      ]
+    },
+    {
+      "id": "claim_da10d19c06264673b486859a621417e1",
+      "statement": "Native shutdown refusal classification uses code -32600 and serverShuttingDown data, permits the exact older message only when data is absent, and does not itself authorize replay.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs#L1-L43",
+          "version": "repo-lines-v1:sha256:b96f7eddfbde6bd99340c2dd609728da7fb56582b178b1ed49b53f7846556c16:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0NDY5NWQ4MDAwMjgwNjk3YWJhODljZmQ3NTc2ZjJkN2JlMTY5YWFjYjU0ZGZjYzIxOWRlMjc0ZmU3NjlmODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MjA4MWYzN2YxMmQzYjNjYzdlYjBjZWYwNmI2NDc3MDQxYmU4ZjkyYWZlMTI4ZmM3ZWY4NDc1ZGUzOGRiMDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwZjZjMTY4ZTI0NzI3ZjQ0NWFiMDZiNWM3NGQ1Yzc5NTk2YjJiMDI4Y2U3NjE4MGUwMmY1MjE4NzNmMWRhMGQifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

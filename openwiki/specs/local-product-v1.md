@@ -20,10 +20,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Current local product contract
@@ -50,7 +50,7 @@ Markdown text can be selected per block. Response metadata separates duration fr
 
 Route is one synchronous service-owned command. It locks routing and account state, derives current revisions, checks liveness/shared-source identity, refreshes when required and commits an authoritative projection. The retired Pending-route shape and 100 ms retry loop are not current requirements.
 
-Shared-auth writes use exact-source compare-and-swap and readback. Passive following requires stable metadata and same-account non-older rotations. A refresh can adopt a valid concurrent Codex winner without a second provider call or loser writeback. Generation-bound callbacks require a strictly newer same-provider credential and an active original generation.
+Shared-auth writes use exact-source compare-and-swap and readback. Passive observation requires a stable two-poll source and an exact known stored bundle; it does not import a different bundle. A refresh can adopt a valid concurrent Codex winner without a second provider call or loser writeback. Generation-bound callbacks require a strictly newer same-provider credential and an active original generation.
 
 Desktop controllers apply results only for the exact active session and command. They never kill or restart external Codex to make a route succeed. Account ordering, enablement, logout and explicit recovery remain service-owned.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6516b9452688e06d20de4cae89527aee1343600b151ac237333d7d8689e97413",
+  "pageVersion": "sha256:89b7657e308b6080a0a22c1e999e5d98891075bf9ef2b8f4af26bb903369b822",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -8,21 +8,21 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
+          "version": "repo-file-v1:sha256:2f21271cb59c191ffeeddad5d4166332c1e1df07346ec0bbf9104209b7db4903"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
+          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
         }
       ]
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio defines three native automation roles and gives the upstream Maintainer an ACTIVE repository default with worktree execution.",
+      "statement": "The portfolio defines three native automation roles and gives the upstream Maintainer an explicit PAUSED status with worktree execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:cc20a3d726a9eb9fc79e7b0034eb093d136390eef7c6c0dbb4dc5e55ac406af9"
+          "version": "repo-file-v1:sha256:2f21271cb59c191ffeeddad5d4166332c1e1df07346ec0bbf9104209b7db4903"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
+          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
         }
       ]
     },
@@ -42,13 +42,33 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
+          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b93ddb1ba8444c29fd3c8d4e0175218",
+      "statement": "The maintenance prompt follows a fixed latest-main commit, requires matching runtime artifact qualification and source, test and consumer review for each commit, and forbids advancing the contiguous cursor past unread or unresolved review evidence.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+        }
+      ]
+    },
+    {
+      "id": "claim_154006fe1db74652a6cd21137caa55a5",
+      "statement": "Manual catch-up keeps the automation paused; completion or a configuration change does not authorize resumption without an explicit user instruction.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

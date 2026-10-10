@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5c290731b0804cb64bc3bee3a4b6b9f4d3ed97f0f0a84293b92fdc7cdd689654",
+  "pageVersion": "sha256:cfa1a8ca0f9fbad6edc39985c4a9956e8b02c90d98fc346f3aa011be20109046",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:8df8c688e1e3cc884a9d5d0d53d6f48b31f0605b0729934aa83ba0ee05629111"
+          "version": "repo-file-v1:sha256:2ef6b9cc978b28d1b9a47f5f852689fd25d100ee804127841df62234da6fe80e"
         }
       ]
     },
@@ -18,11 +18,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:08aa4dd34e00390b97fee38ce138d8b12ded697eba1bca1d5e3344cf6d3d1bc8"
+          "version": "repo-file-v1:sha256:c2b2027cc4d85d3223745aa4c414d9f16a98ea0874210baa25abc8cca41a2031"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:b5017da6e210431a809c68fbce60762f3ceffd01148a420d8980914848326a47"
+          "version": "repo-file-v1:sha256:f3df76fdcd9e673a98186efd0338be90a4dfaeeee70ab6c0d35bb14efaf1253e"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:08aa4dd34e00390b97fee38ce138d8b12ded697eba1bca1d5e3344cf6d3d1bc8"
+          "version": "repo-file-v1:sha256:c2b2027cc4d85d3223745aa4c414d9f16a98ea0874210baa25abc8cca41a2031"
         }
       ]
     },
@@ -61,8 +61,8 @@
       "statement": "Explicit conversation branches reserve independent local work, retain the source role and tool version, and gain source-process ownership only through an acknowledged fork record; they do not copy pending work or create another personal Main.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_fork.rs#L123-L174",
-          "version": "repo-lines-v1:sha256:f104be3012d4399abead8b2b5c6d4130351bebb32220a66bbb24629b435a3e9c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzk0NjU4NmU1NzcwODk3NzliOWRjNWFmMmIzMmRkNGRmYjFlNGE1ZmRjOGQwM2FmYjFhNDBiYTk5YWIzYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YTI4OTE2YTdlNGI2MjBkZTA4ZDA0N2Q2MDBiNTFmY2RiMTE1Yzk1NDViOGFiZTNlOWEwNjYzOTA3MDEwMDUifQ"
+          "resource": "repo://database/src/agent_fork.rs#L123-L176",
+          "version": "repo-lines-v1:sha256:e388f9a788b7520d96ca7e61d8e2a8f182552c7fb47716049923d52f343d941a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzk0NjU4NmU1NzcwODk3NzliOWRjNWFmMmIzMmRkNGRmYjFlNGE1ZmRjOGQwM2FmYjFhNDBiYTk5YWIzYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YTI4OTE2YTdlNGI2MjBkZTA4ZDA0N2Q2MDBiNTFmY2RiMTE1Yzk1NDViOGFiZTNlOWEwNjYzOTA3MDEwMDUifQ"
         },
         {
           "resource": "repo://database/src/agent_process.rs#L170-L193",
@@ -75,8 +75,8 @@
       "statement": "Branch creation makes one native fork request with Goal continuation deferred, saves an acknowledged thread ID before history readback, and recovers known branches by reading without replaying creation or starting inference.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L1-L75",
-          "version": "repo-lines-v1:sha256:79872f41a681ad047b2046fff99a29919ff24166716f01af57a7b800c81da28a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1OGU1NjE5ZTI0ZGJkNzdlNjkyZDk0MjM4Mzk1YzAzMzgwYThhZjI1MmI4YWQ2NjFlYWU3MmEwNDI1YzE5NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZTczZTVhMzRhMGQ1MWNjMmQ2ZjRiMjU1Yzg0M2M3MzZkMzEyODhmMjgxNzNkMzM2MzU1ZjBmMTcyMDQxMmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkMDI2MDQzMzAwZWQ4OGY3OWI1NjAzMDljYzExM2FmNjk0NmIxNzIwZDU0YzI3NWU2MTg0M2RmOTEwMmI2MWEifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs#L1-L135",
+          "version": "repo-lines-v1:sha256:d30b56f2dca2670fa35969366798e92aded799d258fe2677c7512078965ebeae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1NThlNTYxOWUyNGRiZDc3ZTY5MmQ5NDIzODM5NWMwMzM4MGE4YWYyNTJiOGFkNjYxZWFlNzJhMDQyNWMxOTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkNmU3M2U1YTM0YTBkNTFjYzJkNmY0YjI1NWM4NDNjNzM2ZDMxMjg4ZjI4MTczZDMzNjM1NWYwZjE3MjA0MTJkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlZDAyNjA0MzMwMGVkODhmNzliNTYwMzA5Y2MxMTNhZjY5NDZiMTcyMGQ1NGMyNzVlNjE4NDNkZjkxMDJiNjFhIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/prompt_edit.rs#L30-L161",
@@ -86,7 +86,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

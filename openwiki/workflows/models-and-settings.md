@@ -8,6 +8,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
     resource: repo://crates/decodex-codex/src/app_server_client/search_preferences.rs
+  - id: openwiki-source-f5d073da07bcb17ee416f3b5
+    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
+  - id: openwiki-source-b2869e6da778a74cb6afc667
+    resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
   - id: openwiki-source-a2c2a5ced9dfa1aee02eedc2
@@ -16,10 +20,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Model selection and settings ownership
@@ -57,6 +61,12 @@ The reviewed source, thread and Goal identity must still match before a write. L
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
 Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. Periodic distillation and automatic thread cleanup require their own product decision.
+
+## Native launch defaults
+
+The attested app-server launch enables description-first Code Mode and native child context limits. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
+
+Native Codex retains transport selection. The integration does not force shared gRPC hosting or a global tool-output retention setting. Fork-prefix preservation and child context limits have bounded compatibility evidence; they do not establish provider cache savings, latency improvements or better model answers. Follow [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) when evaluating those effects.
 
 ## Known native limits
 

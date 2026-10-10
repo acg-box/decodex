@@ -32,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Subscription dictation and live voice
@@ -85,6 +85,8 @@ See [Agent coordination](../architecture/chief-coordination.md) and [Desktop wor
 
 ## Retained voice preferences and limitations
 
-The voice preference picker reads native catalog and effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context and requests transcript-tail flush at session end. Optional model and start/end instructions stay bound to that call.
+The voice preference picker uses the nonempty native V3 catalog. It falls back to V1 only when V3 is missing, null or empty; a malformed V3 value is an error. The native `defaultV1` field supplies the shared default and must belong to the selected catalog. There is no local fixed voice whitelist.
+
+The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context and requests transcript-tail flush at session end. Optional model and start/end instructions stay bound to that call.
 
 Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).

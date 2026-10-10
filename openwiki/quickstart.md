@@ -22,10 +22,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # OpenWiki quickstart
@@ -39,8 +39,8 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace Agent coordination and native children | [Agent coordination](architecture/chief-coordination.md) |
 | Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |
-| Change input, branches, drafts, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
-| Change model, effort, Goal or search settings | [Models and settings](workflows/models-and-settings.md) |
+| Change input, branches, drafts, read state, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
+| Change model, effort, Goal, search or native launch defaults | [Models and settings](workflows/models-and-settings.md) |
 | Handle an approval or provider question | [Approvals and ownership](workflows/approvals-and-native-ownership.md) |
 | Use native skills or understand plugin and connection ownership | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
 | Change dictation, live voice or voice preferences | [Subscription voice](integrations/subscription-voice.md) |
@@ -60,7 +60,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Local plugin management and embedded MCP HTML widgets are retired. Codex owns configuration and native execution; Decodex retains tool observations, native forms and readable history.
-- The checked-in automation portfolio marks the upstream maintainer **ACTIVE**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
+- The checked-in automation portfolio marks the upstream maintainer **PAUSED**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
 
 ## Build and evidence
 

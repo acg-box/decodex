@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8831ee7d204143424dec5603ad37c44029a42e486957ea6879105412c48661dc",
+  "pageVersion": "sha256:bc8144817265457579dc06273e55690abea4f868009235b270269662dd7eb8cd",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -40,7 +40,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:3f3276e5ff939b5c4f0f0854eef4e192300b88add53ce806b68bf451285f5607"
+          "version": "repo-file-v1:sha256:843872483cc6baee4cda844728a2367d489bb999ebdb23858d28834c110f388a"
         }
       ]
     },
@@ -60,15 +60,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
+          "version": "repo-file-v1:sha256:6c87173088ad20756af4de5dc7092a6f6c888ab135fabe2ec52a0eee94041d18"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
+          "version": "repo-file-v1:sha256:02986513407905d0be763f6d0e2904a844f9d9dc4e34ccacab0a54cd7d417504"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
+          "version": "repo-file-v1:sha256:97cba46e0ba6779d724ac3e0da018f5d699b48118c3bd3937af5acffddf570e2"
         }
       ]
     },
@@ -77,7 +77,7 @@
       "statement": "Live call startup reads the effective voice for the exact native thread and sends it in the v3 real-time request with startup context and transcript-tail flushing; optional model and start/end instructions are call-scoped.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L250-L287",
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L253-L290",
           "version": "repo-lines-v1:sha256:6eb881107d48991d09052df921dab0ef6ae8520d81d4c11148b20c6a9403b3c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYzUyZjAxMGQyYTdhNzY3ZTBkOTc0MTQwMWNhMjkwMzI4Y2NlNWI0NWY1ZDMwNTJlNTBkNzYxY2Q4Y2RkYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMWVjNWJhNDE1YjA3NTgwM2UwZGZlNjhhNjU2MWNjMTlhYjQyZmE5MDUxOTE5YjJlYTdkZTgxZDM0YjgzYWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MWVlYjE3YWMyNDkzYzlmMDZkMDVjM2YxMGY5MjQ3ZjdlNGU3Mzg2Y2UyNDhiMTdmYjk2YmE3MDJkYTQ1NzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzMWVjNmE1Yjg1YWE2YWRkMmMyYmJkZGIxM2ZmZmNiNjAwMjVlNGNhMmNmNDVjMzhmNjM1OWViMmYxM2M3OGQifQ"
         }
       ]
@@ -88,15 +88,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
+          "version": "repo-file-v1:sha256:6c87173088ad20756af4de5dc7092a6f6c888ab135fabe2ec52a0eee94041d18"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
+          "version": "repo-file-v1:sha256:02986513407905d0be763f6d0e2904a844f9d9dc4e34ccacab0a54cd7d417504"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
+          "version": "repo-file-v1:sha256:97cba46e0ba6779d724ac3e0da018f5d699b48118c3bd3937af5acffddf570e2"
         }
       ]
     },
@@ -105,12 +105,12 @@
       "statement": "Local live-voice transcript storage preserves newer received text when a final is its shorter prefix, marks that saved text incomplete, and ignores empty finals without replaying transcript input; expanded finals and ordinary corrections remain supported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L334-L380",
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L337-L383",
           "version": "repo-lines-v1:sha256:529dbd63e889b87c68b548df6bfaa3cea689fc956c352608dd7b66d88f16d87f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxY2FkZTFkNTBjNzY4YjM0YzdmODg3OGYxZjI1ODY3ZTY3N2FmNWNhN2YxMmZlOTYwOTJmMmE5Y2M1NGRmNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjOWI2YTRmMjBiODUwZTcxNjFjNjM1MzQ0MDhhOTJiYTdiZmZlMTc3NjQ1ZDEwYjc2MTgwMDE0MTIzNWVhNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMWI2MjhkNGJjNDQ0MzI5ZTRmYTU0ZDE5MzZiZjBmMTVmYzdiYzQyODEzOTBiMjYwOWM4YTMwNDUwOGI5ZTcifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs",
-          "version": "repo-file-v1:sha256:8765f6903dbb760de3f71843deb276721b76d84fdc6288a57bc47e6cfb129e31"
+          "version": "repo-file-v1:sha256:4763d4bddce12d930f8bcb8a09a97e75a9bb73bd0613e49cbf04c3951452e4a6"
         }
       ]
     },
@@ -120,10 +120,10 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
-          "version": "repo-file-v1:sha256:e7545e34ced490cca67d1dd22c5cbfeb1f91911867ddbb15b0bd94a0c4aa308b"
+          "version": "repo-file-v1:sha256:20f939831427c345e3685c3af941517fc474ccfe5b9616321f890d4ba432b552"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs#L40-L165",
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs#L41-L166",
           "version": "repo-lines-v1:sha256:fd9c6e536e230cd02afc85a4c3b20d5f640c14eba48fd2d23fd37d474a08d166:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5N2YyZTJjODQxZjA1YTcyMzllN2I3NzEwNDkxZWZmYWMwODI1ODIwNmYxOTA0NzhlYjBlMzQ0MjEyODZiZGI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NGVmYzQ5NDE4ZDI2ZGNmMTI5YjIyYTZhYTIxMTA4Y2VlYzM3Njc3YTMyZDA4ZTlkNWZlZTM1ZGRhNjZiYjlkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MjU3MmE2YmFkMTNiYjM0MTFhNzk4YjdmODYyZDFkMjlmZTFjYmRkNzY0OWFkM2NlMzdkYTA2MGE1ZWJlYjg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkMTc4YzQzZjlkZTFiZTIzNmZmNmQ2ZDA3NWNlYjdkNmI5NTNjZmNiNGNjNDc2OGVhNDAxOTY2YzBmYjc0YmY2In0"
         }
       ]
@@ -144,11 +144,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
+          "version": "repo-file-v1:sha256:02986513407905d0be763f6d0e2904a844f9d9dc4e34ccacab0a54cd7d417504"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
+          "version": "repo-file-v1:sha256:97cba46e0ba6779d724ac3e0da018f5d699b48118c3bd3937af5acffddf570e2"
         }
       ]
     },
@@ -162,11 +162,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:81bfb61f50c08f5c156a6ba10fbdad088d4ae4b5d37e8f16ff2ad810ae8d742b"
+          "version": "repo-file-v1:sha256:6c87173088ad20756af4de5dc7092a6f6c888ab135fabe2ec52a0eee94041d18"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:80b601b4db221f2e70952b78dcb183b116b926cff760cd8ea43ad7d763306f0e"
+          "version": "repo-file-v1:sha256:114c7964c387ccfe668b14036b092a5d68529cd73e0f6d506cf515c384b7c09c"
         }
       ]
     },
@@ -176,11 +176,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
-          "version": "repo-file-v1:sha256:af475b44d814b08e1d2df0992660424eae02114137bf55da84648f0d985fc6f7"
+          "version": "repo-file-v1:sha256:02986513407905d0be763f6d0e2904a844f9d9dc4e34ccacab0a54cd7d417504"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:4e1a8b828bc6fa4a59381dd04e808a17042dd6a13f5c26e3d4587442e1749d05"
+          "version": "repo-file-v1:sha256:97cba46e0ba6779d724ac3e0da018f5d699b48118c3bd3937af5acffddf570e2"
         }
       ]
     },
@@ -190,7 +190,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/native_dictation_capture.rs",
-          "version": "repo-file-v1:sha256:e7545e34ced490cca67d1dd22c5cbfeb1f91911867ddbb15b0bd94a0c4aa308b"
+          "version": "repo-file-v1:sha256:20f939831427c345e3685c3af941517fc474ccfe5b9616321f890d4ba432b552"
         }
       ]
     },
@@ -211,10 +211,20 @@
           "version": "repo-lines-v1:sha256:48e3d7da152082036e4c68e18153e537cbba27597996eab069cd6ea51a4f9c15:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNmRmODdhOTNlNGUxZWY0ODljYmE2NDBjMWM0NzAzOTgxMWI4NDdkMWM2ZDk1ZjgzZTZlZjM1YmRlMmYwNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhNDQwNzZhOTE5YzYxYWI2MmRkMjU0ZTA0NWY0YmJjMTY1OGQ0ZmY4OGMwZDdmYzM3ZTA4MWFlMTViYTgyNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjVhZmYwNmFhYWRiZDFiZTI3NmExMzViODcyNTIxM2Q0OTRiYmRlYTRjNDllOTUxNzJhYmY3ZjRhNDAxOGMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_e25079cbb5dc40dab2c2b03d2ec7f61d",
+      "statement": "The voice picker prefers a nonempty native V3 catalog, falls back to V1 only for missing, null or empty V3, rejects malformed V3, and checks the shared defaultV1 against the selected catalog instead of a fixed local whitelist.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs",
+          "version": "repo-file-v1:sha256:b47dda6ebedaa7ad291a42422a8beb960d07acc43e953f9ffeb2ad571c3ee061"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

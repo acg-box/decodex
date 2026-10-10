@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:282f127863c62e2bfc035891943877dc1e13aac179c2ceea6e4e62fbfff33bf3",
+  "pageVersion": "sha256:3f94d6e4c87b3336b6d47fadeef53e7ca0d96a0e92bd40c32cff52ba08440e46",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -27,16 +27,16 @@
       "statement": "The desktop offers before-input and after-turn native branches separately from same-thread revert, persists the selected destination with the draft before dispatch, and restores canonical input only for before-input branches.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm.rs#L21-L115",
-          "version": "repo-lines-v1:sha256:720cf36d2328e1ce42fd15d6bc4a18417c560aa234a520a1e948f788cc477ba5:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OTEzZDFkZjMxMjY2MGJjMzUzODcyNWM5MDYzYTkwYTg0ZDA0MzU1OTU2YTk5MDIwNzNkNGViYzJjYWNjOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiOTBiYWJlZDYyOTUxMjRmMzFhOWNjMzA3OTlkNjYzZDI2NmM0MTY4MjhkNjAyYjNjMThiZTczZmY2OTVkNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5NjU2ZjkwODk5MTNlOTg5ZDRmZjY1NzdlYTgzYTA4YWYyMTdhNjljNzJhYmFkNDAzYTdmMTE5MjAzODI2OGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyN2Y4YThlMmY4ZWU3NmZiMWM3YzQ0MmY4Y2I0ZDI0Y2MxMGMwZTY1MDAyZjFmYTBlZDA1YjIwMjFiMGZmY2IifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm.rs",
+          "version": "repo-file-v1:sha256:b6c421f5a1c53be22688e070102cbeddc86054a4021283de2b2a1510175b7a73"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L879-L937",
-          "version": "repo-lines-v1:sha256:ee86e61f9b87cdac0925adfa11d2212bdb94469d41ec88edde3d52884c542fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NmM2YzU4MGI0YWQyMWI3NGQwZTQ3ZWNmNWRiMmEzMWU4M2VlZjM1ZmM1OWM3YWE1MjQ0OGVhMmNkNjk2OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyODNjNjljNzkxODM4YjUyMGM5ZTJkYmUxMTEyMzkyOTA0YTExYTRlMzZmNmRiOTczZjg4YmI3MmM3M2I1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2YyOGNhMDJkZDExZDhhMmRiZDZkYjMwNDNkMzAyMzMxNDAwYzgxM2ViYjVjOTZkNzE3NzdjMTU4Yjg4OTkifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
+          "version": "repo-file-v1:sha256:460ea3dda05581243947a30f4d193596647a1e3f6543f5e61a3111463d9f11a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
-          "version": "repo-file-v1:sha256:bb4af741c95ed5612ca3f84790d1acd90e15c4b2ef0c1be5b3c3a7731083f891"
+          "version": "repo-file-v1:sha256:ffe694c5e5b03e337ef4e030b26d031e4a61cb9c60ed1815e45bd006e53e7e93"
         }
       ]
     },
@@ -59,8 +59,8 @@
       "statement": "Temporary recap threads select the native :read-only default for absent or built-in profiles, preserve explicit custom profiles, and verify returned permissions and ephemeral status before inference.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs#L128-L185",
-          "version": "repo-lines-v1:sha256:4dc6d06ef9d4f5a34c4da1a3c33f5fc1720945959b41e86b9b5f9033672fbc89:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmODE0MWY0ZjYwYzU4MDU3MjUxYjZjMGFjYjM0NzA0NGJhMzc1YmJkNmI0NmY3YzM3YjU4MTliM2Y4NGEzMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNmVmNDIzYTA2MmNiNGY2Y2MxNGJmN2ExMTY1OWQ0ZmRiMGYxNmIxYzQyOTk0MmY1YzlhZDZhOWEyODAyZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlYTRlNTk5MzlmNjRiZjMyZTViNmUxMzM0ZGM5MWIwYjY4OGJkZDFjNjcwMzg3Zjg0ZDMzZTQ4NjM4NWY4OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs",
+          "version": "repo-file-v1:sha256:1b229b9b7bfb9c244127a169e599a43e021d93b8716e19c54c5578d119a06fdf"
         }
       ]
     },
@@ -87,18 +87,56 @@
       "statement": "Unfinished edit recovery and native history controls are presented in Details; an after-turn fork clears the finished source edit, while before-input forks retain canonical input for the target.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs#L59-L70",
-          "version": "repo-lines-v1:sha256:b8e68991e7c4f91af6f0bd9d65e4c369d27a4fb5f6dce5d57cb1dc7b66d2e074:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNmNiNDI3YTU1MTcwNTRmYmI5MmM0NjRkNzNiYjZhNzdiMzIxMzMwNjAzOTczZmZhOGU3ZTYyYTYyMDkyODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjOGIwYWM3MmM0MzE0ODQ3OGYyMWJjNDg1YzRiMDUxMjUyYTEyMjM5ODIwNzFjMzUwOTkxMmZiNzM0MjA4YmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ODRiYTA2OWQyNDU3ZmFkM2EzODhkMDZhNzU4NjAwOGJmM2NlZDlmOGU1N2IzM2FkYjg4Y2JhMzg1MTc1YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1ZTUxNzk5MzNlZjQwNTYzZWRkMzMzYTRiNjY2NTVhZjU2YWQ2ZjkxMDc3NWY0MzI3YmQxZTdhNDU1MzA5Y2UifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
+          "version": "repo-file-v1:sha256:d2d4eeddb49d6d9137e9098bf540f3a222b43c3a48894ff47fec5d2bc540f22c"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs#L62-L84",
-          "version": "repo-lines-v1:sha256:9de0e9eca4f9d4ba47549a91c366152138c15c88de07f38b9792031e1633025a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZmZlZjY1MjNlMmNjZTJmOTcyYjUxMGYyMDMwNmZiNzg5MzJiNjY1OTRmNWQ0YTMxZWE4MjA3NDA1MGMzNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMGM0MGYxYzNkOTU1NTEyZGM1MzcxNjM2Y2QzMWNmNjY1OWMxNWI1MDUwNGJkOGI3OTM4M2EwOTIwNTQ0ODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlN2QxZTkzZDAwNzM2MDc0MzdhNGI2NGE3ZjBiNDU3YzA4NjI5ZDI5MGFhNzUyNDY0OWUwNzMzOTJhMjZiZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlYmY4M2E0ZjI4Mzk2ZWFjYjJhMjc1MGViM2Y4ZDVjZGI0ZmIwN2FiZjAyZWUxYjA4YjkwNWIxNDU5NDhlOGEifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
+          "version": "repo-file-v1:sha256:ffe694c5e5b03e337ef4e030b26d031e4a61cb9c60ed1815e45bd006e53e7e93"
+        }
+      ]
+    },
+    {
+      "id": "claim_4130b2e801704a058a1148554d19b2fd",
+      "statement": "Task preferences exposes explicit source- and revision-bound read/unread marks for the current root conversation; refresh never acknowledges results and uncertain writes are not automatically retried.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2277-L2344",
+          "version": "repo-lines-v1:sha256:596cd93b2b2e2c805234c07eff265751d337438df3fa5739df2615f163492151:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_read_state.rs",
+          "version": "repo-file-v1:sha256:623090d06ca0c9c75418b406db1f2299e73eca2b3aa5e32c3cff29fe0b95f67e"
+        }
+      ]
+    },
+    {
+      "id": "claim_780ade45a16847e3b6db2a20b8d54dae",
+      "statement": "Tool and file detail reads use an exact native history item with full-thread fallback only when item reading is unsupported.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/history_item.rs",
+          "version": "repo-file-v1:sha256:0f196f6423b5647fc89f0cd774b0b37a6173733617754c58722efde8b120c858"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_detail.rs",
+          "version": "repo-file-v1:sha256:e49b2ca26e2f2f300ab7ddd89d67e2d8ce75d817d1b918e4a042acc18e288237"
+        }
+      ]
+    },
+    {
+      "id": "claim_98a4c6c516e94e75ba23bbf7de43172a",
+      "statement": "Explicit ephemeral prediction forks inherit native context, tools and permissions, run with a bounded deadline and cleanup, and do not add automatic suggestions or replace isolated recaps.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/prediction.rs",
+          "version": "repo-file-v1:sha256:48b865a3e823354994bbd39796567e1f15887f75e69ba3aff42e781aac32475c"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

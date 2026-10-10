@@ -12,8 +12,8 @@ sources:
     resource: repo://database/src/migrations.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 > Current decision retained: one local SQLite owner. Use the embedded migration ledger for the current schema version, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).

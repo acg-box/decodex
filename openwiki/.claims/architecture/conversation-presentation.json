@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b47563c77a2f9f3baa98c0cb99345e8f98f579d7090761287a860f8a3a1cf60c",
+  "pageVersion": "sha256:95fcac49cb229bb0d9dc6ee61a026aab7f466c504af426cd9df6f0521cfde52f",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
       "statement": "Completed process groups require a successful turn boundary and an explicit nonempty final answer; interleaved user inputs, attachments and interactive items retain their positions.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs#L125-L207",
-          "version": "repo-lines-v1:sha256:d94173b35ff3437ce34b7148c3da67aea19a73a277423f3d6f8e98aebc40cb8a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyOWI5ZGExMzQ1NjA2ZmY0ZmViNGM1MGI3NDY4ODhhM2RlNzRhZjcxYjhmZjY5ZGE4ZjZlM2M3MTIwNzkwMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNWQzYWM3YzllMjlhZGZmZWE4NDc5MWIxZjg2ODYwZjRhYjQxMTdhZjFjMGUxZTM5YTYzNDI1NjhlMmIzMjIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs#L125-L208",
+          "version": "repo-lines-v1:sha256:dd336f0198439a57489d3258efffeb1667955b87e6fa4336ac51fbc6bf8f189c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyOWI5ZGExMzQ1NjA2ZmY0ZmViNGM1MGI3NDY4ODhhM2RlNzRhZjcxYjhmZjY5ZGE4ZjZlM2M3MTIwNzkwMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNWQzYWM3YzllMjlhZGZmZWE4NDc5MWIxZjg2ODYwZjRhYjQxMTdhZjFjMGUxZTM5YTYzNDI1NjhlMmIzMjIifQ"
         }
       ]
     },
@@ -28,20 +28,20 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
-          "version": "repo-file-v1:sha256:cbe1312bc98747745efdd24d7a5183ecdf25e93fbd4e5a87c65b9fdb6b6804f7"
+          "version": "repo-file-v1:sha256:cb2ad552e5e6f99e3216af4b4d20ee661b1ae387f26474de4736e08cf83044d5"
         }
       ]
     },
     {
       "id": "claim_db7a69c23698468587f610b31c09fe20",
-      "statement": "The shared GPUI popover renders a fixed opaque subtree without per-primitive opacity or slide transitions; animation requests prefer the native workspace frame owner on macOS.",
+      "statement": "The shared GPUI popover moves its opaque subtree into place without a height clip or per-primitive fades; animation requests prefer the native workspace frame owner on macOS.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L350-L390",
-          "version": "repo-lines-v1:sha256:22c1ecc4d9d0731e16a451728785835c45e57abbdc745c9c47b3549cca1052a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NWE1M2JjYWZkZjQwMjA0MzFjNGVhM2E2OTFjMjQ4MDk5ZmJmOWNmMjkwZGQ2ZTg4MWQ1Yjg5ZDYzNDI2Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNTg0NDhmMTQ3Y2Q1OWM5ZThjZTIxMjdiOTg3NjFlYjZmYjI0OTcyYWVjMDFkN2EyNDdjNDBiOWNiNDIxZmYifQ"
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L346-L374",
+          "version": "repo-lines-v1:sha256:2fd0471eb8c7772b5df8dbf4b6c72473bfd213d41d07a342d185c1b4a20811cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzYmVkYWU3ZTVlNjk0ZjBlZjI0NjYxYTQxMjM0MGJlMjUzYWNlMzYyMmVjZDQ2YTJkZmEzN2E2ZThhNmYwMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3MWIwYzEwNWE5NjM5Yjc4MDYyN2MxMDNkMThjYmE3YTM2YThmY2I2Y2M2NjBmNjk2NDBiNTkyZDc5NjRkNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NDM2MjJkMTlkNDU0ZjhjN2M1OTcyZWM1ZjVhOTkwMWYyNGM4MWM3NjgyY2FjYWM5OGNjNTI4MDY3Njk5NDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L490-L499",
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L504-L513",
           "version": "repo-lines-v1:sha256:6793db48f074fad71b9be63fc451faa062b8f417ef7d303bb1b11788626e755b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMWM4ODY2YzZjMjEyNTljMGEyOGJlMDkzNjMxNjQxOGI0MWQ3N2ZiZWI1YTk0MTY0MzY5YWMyMTBhYTA0MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMmMyNmQwMzE2YmFhZmFlMzNlMzY2MDA5YWNhZmRjMDc3YTBjOWRiYzFiOTZjNjVhN2UyMWI5YTIyZWUxMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhOGUxYzcxYjEyZjdhZGY5YjBkYWExNzZmOGU3NWY5NGFiNzk1MzVkZGJkMjk5N2IwNmFhZGY1M2I1NWUxMTAifQ"
         }
       ]
@@ -56,7 +56,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/parse.rs",
-          "version": "repo-file-v1:sha256:943bbeecc86a5bc6cb7c57c68ca5a32d523689f13307a6fe5ad335b4baf6d71b"
+          "version": "repo-file-v1:sha256:b1aa1a9230393cd057c29419aee9907c4275dab031544b26e8f68067a9910e5a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
@@ -69,16 +69,16 @@
       "statement": "The transcript and composer share a responsive 880-point maximum width and 16-point insets; the composer occupies separate layout space and caps editable height at six lines.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L810-L911",
-          "version": "repo-lines-v1:sha256:3e5c90a9e271fe12f58b1dd653554da43958e97af5a8d1285f9e2a0a14b115a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNmI1YzljZWMyNmUzNTI0ZjA5ZWJhZjc4YzYxZTYyM2M1MGZiY2U2YTE4ZDJkMjhlODExNjE5MGU0N2FhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNjJiNWNmN2YxZmY3YTBmMDdhMjFhOTc4MWVhYzZkOWM3OTQyYmExOTc0ZDA3YWRhMDI5ODYxNmEwYWRhMDM2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNzNhYzAzMWYzNGNkZmQ5ZTFlNGMyY2Y4YjZkMjgxMzk5MDA1ZWQyNDk5ZGM4YjQ0NzlmMjJjY2U0YmI1OGI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzMmY4NDA0NDRkZmZlZjM3YjFhMmE0MDhjODg4NjliYTRmMWI1M2E2ZmQ0ZDBmNTUxYjIyMTc4NDExOTQyYjFmIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:7fe6248cbc3ee4586cc79443873b3cc6bd054897c441e4415aa03500715477ca"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs#L47-L70",
           "version": "repo-lines-v1:sha256:e0b1c4ba9412e457544730003fbc0dd5e1bf2723b1a1a1b0a1700e7e96e4a41b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZWJhY2U5Y2Y0OGQ3ZWI3YjFkYjVkOGU3MzBhZmUyMDM5ZGQ3OTMzNGY1MTY1ZjBkNWVmYTZjMGI3ZDA2MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhOGUyNjhhMTA2YTNhMzZlMWZhNDQ0ZGIzMGQwMGQ4MTFlYzZmNjVmZDRjNzViYmJkZTRiYzE1Y2FkNjc5M2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxMzJlNzJkMTc4NGIwNTQ0NDI0ZjAzYTQ3YTMyODhkNThjNDgwNGNlMGRlOGI1ZmZjMmFjZDRkYTY3ZDYyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MWQ4NGIyNjRlY2ExMjM2MzUxMTZkZDg3M2IxODQ3OWJiMGQ2YWQ1NzliM2ZhY2Y2NmM2NjQ1OTY1NTE1NzgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L32-L38",
-          "version": "repo-lines-v1:sha256:63e09cd83ed9f97f815543edb670bf9ced7a797c8c8a571135d5e217b89bb72f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk2NTE2YjIyOWQ4MzVhZDg5MGVlNjlkMjM3YTAzMmFlMmZhNzNjNzJlMmFkNzlhZjhmMmM0OWJhZWI3ZDZhOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2M5NmQ0YjFjM2UwOTI0Zjg5NTBjMTlmMTg4NWZiOTE2OGE4ODBiZjc4ZjY3NTcxMzMzMTc0N2RiYTI3NThhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE1MGFjNjk2NWZjMTYxNzRiNmZiOTQ1ODViYmQ4MmZiMzhkZjc4NDM0ODk3MzIxODdlNDg3MWY5Y2Q5NzEwOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGI1ZDVmOWVkNGI5Nzk0N2Y1YmUzNzM5Y2EyZDE5NWYyZDM4MzJmM2RmZTc0NDk3ZDA2YTgzNTA0ZmNmNjgwYyJ9"
+          "resource": "repo://apps/decodex-gpui/src/ui_theme.rs#L41-L45",
+          "version": "repo-lines-v1:sha256:ffb505dc4309b792c5f1b47b89ba97d669e946b0e1f6e3abc2e468a6406fbc31:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmVlYTk3ZjNiYTdjMDI4ZGEzZDEwMDRiNGU5MTQzZWMxNjFiOWI5NzhkMTZkMWE3YmIyY2I1MjFhMjA2ZmRkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2M5NmQ0YjFjM2UwOTI0Zjg5NTBjMTlmMTg4NWZiOTE2OGE4ODBiZjc4ZjY3NTcxMzMzMTc0N2RiYTI3NThhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDJlNTliMjg0YTY0NzkyYTNhM2Y3NzYwZDY1MjA1ZWFiNTQzNWEzOTkwMDViNTA4ZjQ0NzQ0NDFjNDczM2VmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGI1ZDVmOWVkNGI5Nzk0N2Y1YmUzNzM5Y2EyZDE5NWYyZDM4MzJmM2RmZTc0NDk3ZDA2YTgzNTA0ZmNmNjgwYyJ9"
         }
       ]
     },
@@ -87,30 +87,26 @@
       "statement": "Voice history groups utterances by call occurrence, merges overlapping tails, hides normally ended empty calls, and anchors completed groups to their closing boundary across older pages.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L350-L410",
-          "version": "repo-lines-v1:sha256:85b5b9e478a8b8adf45b03238aaa8d5b59aa364e13d95d68d34e7765c1a8f929:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDc5ZTQ0NGNhNjg4NGU3ZGE0MGVhMGMzZTlmZDEyYmVlNjViZDNiMjFmZTIzYmRlZjYzMDIxMTE2ODhlNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMWVhNWY1ODVkNjI2ZDQwMGFlYmQ2OTYyMWRmOTllZTViYWE5N2NkMTFjMWJkNGEyZGNkNmRjZDExZDg5NzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0OGNlMmY5MTk4ZjIyMzUyY2IzMzE4ZTI2MTk4OWYyOWFiMzljZDUyMTlhMzk0NmI1NWY1Y2RlMTdiNjk1YTIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L400-L480",
+          "version": "repo-lines-v1:sha256:06f34e3cefc4b667754c4b7633380e982997860c24fa18b5f9e5d93d2d32c380:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzM2Y4OWQyZWFiZGZmZTRlMDBjNzdlY2RlMDFlYTMwYzZhNDYyYjg3MWJjOWE0OTgzODY1YTlkODRjMTdmNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNzg0OGZiODY0MWE1YjhlZTc4Y2IwMzk2YzdlMDY4NjI5ODA1MDZkZGVjZWU4NjY0OGIzMjI1YTU1OTQ1NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0MWQ1ZDQxOGQwNzRmMTJjM2FmNzAwNGYwMGUzZjM1MTQ0MGJiZjJkMDQ2ZGUzZGRhMDdjMTY5YTYzMGNmN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0ZmJlN2U2ODI1MzQzNjYyZTg1NGQ0YWQ2NDhkZTFmZTY0MTBjOWIzYWM4YWU4MjFlOTNmNWIyYjc0MDEwYzYifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_conversation_groups.rs",
-          "version": "repo-file-v1:sha256:b0e82e613260572a77b29977f678aa6acdaab2767dc40506b30a34b4a29d795f"
+          "version": "repo-file-v1:sha256:55bab081706bea41b24139bc569106f5c7cc6704b08453a258445c4552e9bfa6"
         }
       ]
     },
     {
       "id": "claim_db1ecd9076a14b1abc27e118a412ac47",
-      "statement": "Earlier native pages request at most 15 records, fall back to smaller dense pages, and require renewed upward-scroll intent for automatic prefetch.",
+      "statement": "Earlier native pages request at most 15 records and retry smaller dense pages; automatic prefetch waits for anchor restoration and can fill an underfilled viewport before requiring upward-scroll intent.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_activity.rs",
-          "version": "repo-file-v1:sha256:51f3db55db145f7fb356b5b650e6d6a98354b5571247d5f7a41dc167cb4912a5"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L109-L173",
+          "version": "repo-lines-v1:sha256:de020907d54b529c20b48c8daa5195665d1a03722ae14dfde17ebba9492c20b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZDU3ZDFiYTMxMWUwZWI3OWEwM2M4OTFiOTc5Y2RjNzc2MTU0NThjMzVhYzI5NmU3OTgxYzcwMDJjYzg3N2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYTA2ZGFkZjAzZTNjMTMzNWViMzNiMGU1M2ZlNWJkZGFlYWMzYWUzYTViOTA4NjIzMjViZjg5ZjBlN2E4ZWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMGIxYmFmNTJkMTVlY2ZlOGY3YjRiYTUzZjk3NWFmYzExZDQxNGEzOWEyNjljYmI3NjVjZmFkMWRiY2M3NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2NGI4ZGY3ZTBiZDhmMTY2MTY0MjNmOTRkM2E4MzNhYjFhMzNkNTdlM2ZiN2YxZDA3OGE1M2JiMjdkMjMxZmIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L109-L133",
-          "version": "repo-lines-v1:sha256:5b1cd1b78d588c5ca1597359d07d2d1b88d5393a23db0c91bc638d8f370d5bf4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5Zjg1NTFiYmVlZmY0ZDEwNzE0ZDY1YTFjYmU5ZjVkMWU4YjMxYmI3NzUxNTQ4OGQ1ZjI5OGY5NGVhMjQ4YmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzYjk3YTI2N2NmZWVhNzIzNDY4NWVmYzI2NjdhZDIxOWZjMGUxZThlOWNhNWMzNTQ2Y2FjODU3NzMzMjk0OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMGIxYmFmNTJkMTVlY2ZlOGY3YjRiYTUzZjk3NWFmYzExZDQxNGEzOWEyNjljYmI3NjVjZmFkMWRiY2M3NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhZDdlNTk0MWJhNTZiM2NlYjBlYTg5NmRiOTc5ZjE5NjRlZmI2ODc5ODZiYmI4ZTc5ZTQyYzQzMWM1MzY4MmIifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs#L40-L85",
-          "version": "repo-lines-v1:sha256:31eb768623213df25771f8f15e9f0ce27fa5d7deb551e4993a32563461e05f32:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZmQ2ODY0Y2M3MmJhMzA3YmMzNGRjYTJkODliYjg1ZjcwODgxZDY4MTg4ZTc0YTk3ZGQyNjdhNWQ3M2ExNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzMDk4MTE3NDY5ZGRmZTY3MzAwNTRmMDRkZjJlODViNDUzYjYxMmI5YmNmMzBmODM2YTU3NWUxMmUyNWQyZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODFjNTFhYzU3ZDM2NTM1YWRmMTQ0YzU1MGZhNTJkMDJjNDdkMTFhNTNiNmNkZTUxMzY1NzIwY2MzMzEwYWMifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs#L45-L85",
+          "version": "repo-lines-v1:sha256:ec8113e713a251579d2f9062364d44866a077a40da7e84f69f7ab648a76de6c7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5Y2JhM2VlNTg5OWFmZWU1ZTIwNzMxZDllZWEyZjU4ODIxOGIwYjZjNjc1ZTZlNDI3NWJjMTk5OWVkYWE0MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODFjNTFhYzU3ZDM2NTM1YWRmMTQ0YzU1MGZhNTJkMDJjNDdkMTFhNTNiNmNkZTUxMzY1NzIwY2MzMzEwYWMifQ"
         }
       ]
     },
@@ -137,18 +133,32 @@
           "version": "repo-lines-v1:sha256:5e61a7baffe62637d6fcc318662bde940875e7a5de0690dff9611001cadc3348:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4M2E5ZjkyMDIyYjY5MjdmZTMyNThlY2JiOGJhNTUzNTQ3MmVmNzNiZmViYjc5ZWI0NTg2M2M3YjE1OThiZGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3ODU0MGUwODdiMWU0MmZkM2Q1NjFkYjA0NmJhZTczNDFlYjdkYTU0OGE3MWIyNzQ4MTE1YmEzNTMyNDUzNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkOWQ0ZDcyNzhlYTdhMGE1MzMxODAxN2M4Mzk3ZWY2YmVlNTNmZjdhMmFiZDBjMGUxZjM1Y2E5Y2YwNTJhNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmMDY5MzU1M2NiMDc3NDgxMDI0NTNmNWExMDBjM2JjODdhNjgzMzYxYmQ1MDMxY2ZmMTc5ZGM1NjY1MTY0NDcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L698-L731",
-          "version": "repo-lines-v1:sha256:a1fe0212e45a4e4cbb9dbd71935b4ffdac34a7b4077669efcbba05129eea7ecc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjJlMWFmNDY1NDRjMzYyYjIxNTZjY2ZjYmNiMzU3NjYzZTA3NzYwODM2Y2MwZjZmN2ZjZTkxYjc3ZWRkYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwY2RmMDk4NzkzYzYwN2RkN2NlOTY2NTdmOWE2YTE0NzdiYTU3OWJlZDQyZGY5NGVmYzFhZWY3MzIxYmJiM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3YzdkNzIzOWQ3NTRkMzM3NDI5MGUwODk0ZjcyOWM5YTBhOTI2NDg0NTEwNjkxNWJmMzIwZDJlMTZkMjk2NTIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L707-L740",
+          "version": "repo-lines-v1:sha256:8cf57332ee0a616ff4c701cfd7792f8a5172c4425022efd6d4cfe2c38631ee79:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYzcxMDkzNjZmNTQ1MjQzNTE2MTdhNTM1MTNlNTE5YTc4NGY2NWI3ODc0ZGYzYTA5OWQ0MmQzZmQ0YzMzN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MDM1ZTViMTAxNjg5MDBmOGVmMWQxNGEzOTljYjg1YzcwODg5ODc2Mjc0NDcwYTc0NGIyMDBmZjQ0ODMwMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzIyM2M2ZTVkZmFiZTg4ZTVkNWRlOTEzMjE1ZjFhM2JlZTc0NTNiNGVlYTI5MmEyZTAwNjI1ZTgzMzllMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlNzY2ZDNkNGNkY2Q4NDFlNTNjMmM4Y2JiZDliMDUyYWQ3MzVhNGE5MTM3OGI3YThmOWY1MTEyMjE3ZTg0ZTUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1886-L1900",
-          "version": "repo-lines-v1:sha256:60a4801dcdcbf7e59b30e7c2e995f8318319fd317971ae10076a99c2cac734bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0Yzk2NDM1NDUwODU1OWNiMWE5NWRjZDMwMWNkNzJjYjdjZmZjYTA1MjVlZjZlZjVmY2QyZTk0NjlkYTlmYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZWEzY2ZlMjk5MjliOGU1N2Q1NTEwNmJlMzg0Y2Y5NjNkNWFmNWVhM2NlOGU2Mjc1NzMwOThlZjU0MGU3ZDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiM2QwODY5M2U4NTJkODJmYjNjZmVmYWM1YTYxY2UwOTJiMDdlZTEzN2IwM2M3YzQ0ZjdiNTJiNTI4MzA5MjYifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2025-L2048",
+          "version": "repo-lines-v1:sha256:ec3dd7f22dff5a87eaf6e2065bf74369ea1d2498f3fc09f325cc755027763b52:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1MzZhZDEzMjUwMTBmNTU0ODdmMGU2Njc5M2I3ZDU3MzFhNjIzMjg5NzliYWFkMjdkODMyMzViODlhYjU2N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ZGU5OWU0OTQ5ODExZmFkNDNiNTZhOTY0NTJjYzc4NmRiODgxZDE3ZjIzN2FiYWFlODk0YTU5Zjg4NmUyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4OTc1ZmZkNjBiOTA3NmRmODY0MjExOWVmZGY5YTJkODFhOGZiOGVkNTdiOTU2NmExZDc0YmYxMzhkZDNlYjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_db34a3a46f864d2a882d30048b15d309",
+      "statement": "The task preferences panel exposes explicit native read and unread marks for the current root conversation, refreshes without acknowledging results, and discards observations when the source changes.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_read_state.rs",
+          "version": "repo-file-v1:sha256:3a888afd5334ef76e377710aff030b6f718a89cf171389a9864817ccffa27d58"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2277-L2344",
+          "version": "repo-lines-v1:sha256:596cd93b2b2e2c805234c07eff265751d337438df3fa5739df2615f163492151:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T18:01:25.138Z"
   }
 }

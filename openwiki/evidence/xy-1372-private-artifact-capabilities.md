@@ -9,10 +9,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T09:30:20.448Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Current scope
@@ -41,16 +41,16 @@ is in the [vNext authority decision](../decisions/vnext-authority.md),
 
 ## Evidence identity and integrity
 
-Capability owner: `codex://threads/019f842c-67a5-7292-9830-872955ba345b`
+Capability owner: recorded in the private evidence package.
 
-Fresh independent skeptic: `codex://threads/019f84a8-528f-7da3-8217-3ce5e50dede5`
+Fresh independent skeptic: recorded in the private evidence package.
 
 Skeptic verdict: **ACCEPT, no blockers**.
 
 The private durable run root is:
 
 ```text
-/Users/x/.decodex/evidence/xy-1372/run-20260721TXXXXXX-N7E5Ei6S
+<private-evidence-root>/xy-1372/<run>
 ```
 
 The raw evidence package remains outside Git. The three external manifest-file identities are:

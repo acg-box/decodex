@@ -16,18 +16,28 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
+  - id: openwiki-source-ecdf4586908bb6226955607a
+    resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
+  - id: openwiki-source-830a575f82404942511da59b
+    resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-dc292a3cdb3064363ab29907
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
+  - id: openwiki-source-720a745d503e0e60ebcad0c5
+    resource: repo://crates/decodex-runtime/src/agent_detail.rs
+  - id: openwiki-source-3d25cb6558fde84d70520ac2
+    resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Conversation input, history and recovery
@@ -74,6 +84,12 @@ Current native timeline readers preserve complete selected items through paging.
 
 Complete Markdown export reads the full native conversation through its history owner. The service transfers bounded chunks tied to the exact source and export token, then releases the temporary document. The desktop can save it to a file or copy it. **Loaded excerpt** is a distinct action and must not be described as a complete export when older history is not loaded.
 
+## Read state and exact item details
+
+Task preferences shows the native read state for the current root conversation and explicit read/unread actions. Refresh does not acknowledge a result. A mark is bound to the reviewed source and native receipt revision; source drift, an unavailable receipt or a stale revision requires a fresh read rather than an automatic retry. Native child conversations and the Dock's local status are separate.
+
+Expanded tool and file details can read the exact native history item. Unsupported item-read methods fall back to the existing full-thread path; unrelated errors do not. This does not replace complete transcript export or add a bulk media loader.
+
 ## Recap and questions
 
 Manual recap is available. Automatic recap is a separate preference and defaults off; it is unrelated to scheduled upstream maintenance. Recap generation uses the native task and exact publication identity. A foreground result does not qualify a long background eligibility timer.
@@ -81,6 +97,10 @@ Manual recap is available. Automatic recap is a separate preference and defaults
 Recap uses a temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference.
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
+
+## Explicit prediction capability
+
+The adapter can create one ephemeral prediction fork of a loaded parent, with the native model, provider, environment, context, tools and permissions inherited. Its bounded structured run has a 30-second deadline and exact-thread cleanup; cancellation before inference makes no model request. It does not send to the parent, modify a draft, schedule background predictions or add a suggestion UI. Callers must authorize inherited tool use. It must not replace the tool-free recap path.
 
 ## Evidence and extension boundary
 
