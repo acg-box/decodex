@@ -28,7 +28,10 @@ struct NextCall {
 }
 
 impl AgentSurface {
-	fn voice_option_target(&self, work: &str) -> Option<(String, String, Option<EntityId>)> {
+	pub(super) fn voice_option_target(
+		&self,
+		work: &str,
+	) -> Option<(String, String, Option<EntityId>)> {
 		if self.composer_manager.clone().or_else(|| self.root_id()).as_deref() != Some(work) {
 			return None;
 		}

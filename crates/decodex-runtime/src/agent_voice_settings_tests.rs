@@ -34,6 +34,13 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 }
 
 fn fixture(fail_readback: bool) -> (AppServerClient, Arc<AtomicUsize>, JoinHandle<()>) {
+	fixture_with_policy(fail_readback, serde_json::json!({"result":{"requirements":null}}))
+}
+
+fn fixture_with_policy(
+	fail_readback: bool,
+	policy: Value,
+) -> (AppServerClient, Arc<AtomicUsize>, JoinHandle<()>) {
 	let (local, remote) = io::duplex(8_192);
 	let (read, write) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
@@ -48,6 +55,7 @@ fn fixture(fail_readback: bool) -> (AppServerClient, Arc<AtomicUsize>, JoinHandl
 			let saved = count.load(Ordering::SeqCst) > 0;
 			let version = if saved { "v2" } else { "v1" };
 			let mut response = match request["method"].as_str().unwrap() {
+				"configRequirements/read" => policy.clone(),
 				"thread/read" =>
 					serde_json::json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
 				"config/read" if saved && fail_readback =>
@@ -181,4 +189,24 @@ async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 
 	first_task.abort();
 	second_task.abort();
+}
+
+#[tokio::test]
+async fn managed_voice_denial_or_unreadable_policy_blocks_settings_and_writes() {
+	for policy in [
+		serde_json::json!({"result":{"requirements":{"featureRequirements":{"in_app_voice":false}}}}),
+		serde_json::json!({"result":{"requirements":{"featureRequirements":{"in_app_voice":"false"}}}}),
+		serde_json::json!({"result":{}}),
+		serde_json::json!({"error":{"code":-32603,"message":"unavailable"}}),
+	] {
+		let (client, writes, task) = fixture_with_policy(false, policy);
+		let read_source = || future::ready(Some(source(client.clone(), 1)));
+		assert!(matches!(
+			agent_voice_settings::read(read_source).await,
+			AgentVoiceSettingsResult::Unavailable
+		));
+		assert!(agent_voice_settings::write(read_source, "untrusted", "juniper").await.is_err());
+		assert_eq!(writes.load(Ordering::SeqCst), 0);
+		task.abort();
+	}
 }
