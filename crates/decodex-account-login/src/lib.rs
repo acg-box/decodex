@@ -690,7 +690,7 @@ fn run_browser(
 ) -> Result<(), Error> {
 	let server = bind_callback_server(&config.callback_ports)?;
 	let actual_port = server.local_addr().map_err(|_| Error::Unavailable)?.port();
-	let redirect_uri = format!("http://localhost:{actual_port}/auth/callback");
+	let redirect_uri = format!("http://127.0.0.1:{actual_port}/auth/callback");
 	let pkce = generate_pkce()?;
 	let state = generate_state()?;
 	let authorization_url = build_authorize_url(config, &redirect_uri, &pkce, &state)?.into();
@@ -1754,6 +1754,8 @@ mod tests {
 			let redirect_uri = parameters.get("redirect_uri").expect("redirect URI");
 			let state = parameters.get("state").expect("state");
 			let mut callback = Url::parse(redirect_uri).expect("callback URL");
+
+			assert_eq!(callback.host_str(), Some("127.0.0.1"));
 
 			callback
 				.query_pairs_mut()
