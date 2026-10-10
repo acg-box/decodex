@@ -203,12 +203,20 @@ impl Session {
 			},
 			Some("session.closed") => self.complete(),
 			Some("session.updated") if message["session"]["status"] == "closed" => self.complete(),
-			Some("session.error" | "error") =>
-				self.fail("The subscription dictation service could not finish this recording."),
+			Some("transcript.failed" | "error") => self.provider_failed(&message),
+			Some("session.error") if message["fatal"] != false => self.provider_failed(&message),
 			Some(_) => {},
 			None =>
 				self.fail("Invalid dictation response. Your received text remains in the draft."),
 		}
+	}
+
+	fn provider_failed(&mut self, event: &Value) {
+		let message = event["error"]["message"]
+			.as_str()
+			.filter(|text| !text.trim().is_empty())
+			.unwrap_or("The subscription dictation service could not finish this recording.");
+		self.fail(message);
 	}
 
 	fn complete(&mut self) {
@@ -290,6 +298,29 @@ mod tests {
 
 		assert_eq!(session.status.phase, DictationPhase::Failed);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
+	}
+
+	#[test]
+	fn provider_failure_preserves_the_draft_and_nonfatal_events_keep_listening() {
+		for kind in ["transcript.failed", "session.error"] {
+			let mut session = super::Session {
+				status: super::failed(decodex_protocol::EntityId::new("failure-test").unwrap(), ""),
+				transport: None,
+				seen: std::time::Instant::now(),
+				transcript: Default::default(),
+			};
+			session.status.phase = DictationPhase::Listening;
+			session.status.message = None;
+			session.status.text = decodex_protocol::DictationBuffer::new("Earlier words.").unwrap();
+			let frame = |event: serde_json::Value| serde_json::json!({"kind":"message","message":event.to_string()});
+			session.receive(frame(serde_json::json!({"type":"session.error","fatal":false,"error":{"message":"Recoverable notice"}})));
+			assert_eq!(session.status.phase, DictationPhase::Listening);
+			assert!(session.status.message.is_none());
+			session.receive(frame(serde_json::json!({"type":kind,"fatal":true,"error":{"code":"provider_failed","message":"Transcription was interrupted."}})));
+			assert_eq!(session.status.phase, DictationPhase::Failed);
+			assert_eq!(session.status.text.as_str(), "Earlier words.");
+			assert_eq!(session.status.message.unwrap().as_str(), "Transcription was interrupted.");
+		}
 	}
 
 	#[tokio::test]
