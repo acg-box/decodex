@@ -435,9 +435,9 @@ impl AgentCoordinator {
 
 		params["experimentalRawEvents"] = serde_json::json!(true);
 
-		// Codex 0.160.0 supports cwd on thread/start and thread/resume. Upstream
-		// 3f1ccb7ceb814e54314826f68d61c892e2f5a48e tests thread_start cwd directly;
-		// only folder membership is local. Existing native threads keep their identity.
+		// Upstream c1382380de69521303b416720a52f42d51af6248 verifies cwd in
+		// thread_start_respects_project_config_from_cwd (app-server thread_start tests).
+		// Only folder membership is local. Existing native threads keep their identity.
 		if let Some(directory) = self.store.work_directory(item.id.clone()).await? {
 			params["cwd"] = serde_json::json!(directory);
 		}
