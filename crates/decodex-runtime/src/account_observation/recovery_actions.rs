@@ -58,7 +58,7 @@ fn destination(
 	banner: &AccountRecoveryBanner,
 	action: AccountRecoveryAction,
 ) -> Option<AccountRecoveryDestination> {
-	let usage = "https://chatgpt.com/codex/settings/usage";
+	let usage = "https://chatgpt.com/settings/usage";
 	let url = match action {
 		AccountRecoveryAction::ResetUsage => return Some(AccountRecoveryDestination::ResetPicker),
 		AccountRecoveryAction::NotifyOwner =>
@@ -133,7 +133,7 @@ fn workspace(plan: &str) -> Option<bool> {
 		| "edu"
 		| "edu_plus"
 		| "edu_pro" => Some(true),
-		"free" | "go" | "plus" | "pro" | "prolite" => Some(false),
+		"free" | "go" | "plus" | "pro" | "prolite" | "promax" => Some(false),
 		_ => None,
 	}
 }
@@ -205,7 +205,7 @@ mod tests {
 
 		assert_eq!(
 			url(&context, &banner, AccountRecoveryAction::AddCredits).path(),
-			"/codex/settings/usage"
+			"/settings/usage"
 		);
 
 		let target = url(&context, &banner, AccountRecoveryAction::Pricing);
@@ -223,6 +223,20 @@ mod tests {
 		assert!(
 			recovery_actions::destination(&context, &banner, AccountRecoveryAction::Pricing)
 				.is_none()
+		);
+	}
+	#[test]
+	fn pro_max_credit_recovery_uses_personal_usage_without_account_identity() {
+		let context = AccountApiRecoveryContext {
+			provider_account_id: "private-personal-account".into(),
+			plan_type: Some("promax".into()),
+		};
+		let target = url(&context, &banner(), AccountRecoveryAction::AddCredits);
+
+		assert_eq!(target.as_str(), "https://chatgpt.com/settings/usage?credits_modal=true");
+		assert_eq!(
+			url(&context, &banner(), AccountRecoveryAction::ViewUsage).as_str(),
+			"https://chatgpt.com/settings/usage"
 		);
 	}
 	#[test]
