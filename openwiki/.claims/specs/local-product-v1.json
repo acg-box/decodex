@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b2c5856ee16bdd140b7abd7407439994682e40ccd56341059f3abad2f4814de4",
+  "pageVersion": "sha256:cfa5e66930185340934194fbd4fdcae87fc06b59a37c2a7a5d54c3747c366203",
   "claims": [
     {
       "id": "claim_43cc36a83ec3487a92f18c719c5bdd1a",
       "statement": "The current RouteAccount command names the target account; the service derives current revision fences and completes a synchronous authoritative Route result.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L574-L1101",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L525-L1052",
           "version": "repo-lines-v1:sha256:6e13c1257ba348dd98f4e906118afe1c77efcb7d0be2d2c50d7a6645cae5e449:eyJzZWxlY3RlZExpbmVDb3VudCI6NTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YWMzYmVjNjlhMTQ0NDk4NmQyYTFkYTc2ODI3ZjYxODYwNDY2ZDg5NmEyMzJmNmJjZTAwZTU5ZWE2MjJiZWY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlYzEzMDYxNzE4OWVjZDI4MTgzY2NmYzk4NTE2MTc3NmQ4NzQxZmUwNWJjODA5NDRhYjQ4YmI4ZjM3ODRjZjlhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlY2E1ZGJlMDdkYzI0ZDk3NDMzM2QwZjc5MDdmNmJjZDQxYmU1Y2M3M2JkOGI5ZDZmZjhiZDExNDA1ZjEyOWUyIn0"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1079-L1087",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1090-L1098",
           "version": "repo-lines-v1:sha256:b510868f92b870dbd5e7d63f97672ac8d366337940f4c664ad8f8123788b4f71:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBhZTJjYWQ3MDY4YjdlMTllODhhZGU4YjEwNTI5MjIzNzc4OGJjMzdhMGZiNTRhNTYxNjRmOTAwNjQxMGEyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODAyOTZhM2MwNDc4ZjExMzFkMWMzNDU4MjRiMDlkOGMxMzBkODc2YWQzZDk3NzY2NjhkMjI2MTVjOTM1YjAzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2E4NmRjMjVjNDE1OGU3YjZmNzY1N2NjYzllZDZmZTMzYzVhZjM0ZjZjYmI1NDcxZGU2MzIwMTczMDU4NmVhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmZlNWM4ZjM5MzkxODU2ZjlkOTlhOGIzMDYxMzBmNmY4NGJlYzI2YjcyOWNkOWYwYjFhMWY1NTk4NGQ5YzcwMSJ9"
         }
       ]
     },
     {
       "id": "claim_2da1007615b641c3b2416d8a17b13c98",
-      "statement": "The shared-auth writer uses exact-source compare-and-swap and readback, while passive following requires stable metadata and imports only same-account non-older rotations.",
+      "statement": "The shared-auth writer uses exact-source compare-and-swap and readback, while passive observation requires stable metadata and an exact known stored bundle without importing a different bundle.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
-          "version": "repo-file-v1:sha256:0db63eb79398d35e2b1d4d1d20314e2cf54ac0b8122570f03cd56968e88e4598"
+          "version": "repo-file-v1:sha256:e966c40c8b9f09fe2153c56d1ef6217ddeefe61ab249565a5546c0fa453670a9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/accounts.rs",
@@ -64,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -77,12 +77,12 @@
       "statement": "The exact local protocol is defined by CURRENT_VERSION, and the SQLite schema version is defined by the embedded migration ledger.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L265-L282",
-          "version": "repo-lines-v1:sha256:6a14bf19ba5b0804c31fee4057da330e2fa680b07e4a559118ee9560c334eacf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlOTIzMGQwYzlhNTFjMTI5MzljZDM0YzEwYmNkY2Y2ZGI4YjMzOWFkMjQ3ZGM5ODY0NjNiN2Q2NjRkOGViYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L267-L284",
+          "version": "repo-lines-v1:sha256:3a3a45cc72f83096718b43dec5e0e0d509439b5e5588ee0de93d3b799715f312:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmY2YwMzAwZTE3NDI3NDJjZTZlNDBkNmMzZDhmNjdkODQ4ZTViOWNhODFjMmI4N2I0YjZiNGE0NDE3NTJmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L8-L38",
-          "version": "repo-lines-v1:sha256:76ebafeb8420bde95d3109d01eadf0346b6bfdf36bf546e8ecc643f4d6589807:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZjAzZTZhZGI0NzdlYjZiZTRhNGY2MjBlZDdhOWY0ZmQ1NjZhMjZkOWIyNTY0ZDY1ZTk0MDVjOTc4MGE2ZWYifQ"
+          "resource": "repo://database/src/migrations.rs#L8-L43",
+          "version": "repo-lines-v1:sha256:3b69c2a3664947a9f2064046df37d1c5ce127d88caaf74db5b266cf33c4a9c17:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzZjAzZTZhZGI0NzdlYjZiZTRhNGY2MjBlZDdhOWY0ZmQ1NjZhMjZkOWIyNTY0ZDY1ZTk0MDVjOTc4MGE2ZWYifQ"
         }
       ]
     },
@@ -91,7 +91,7 @@
       "statement": "Historical Program aggregates and Domain Pack projections remain read-only compatibility data rather than an active execution scheduler.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1420-L1435",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1431-L1446",
           "version": "repo-lines-v1:sha256:a294a7f6446ae8018e2af84c04419f9177b76991e36245aed43dfd0163c083b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTYyNzdjOTEwZGIxNTY5M2UzMzAzNzNiMmU0ODRmNmU0OTkwNWY5N2RjZDFkYWYwYmYzOTZkOTVjZDQ1OGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWNhZGI2NzZiNDIxNWMxNjA2ZTIyMDBiZTcxYWEwOTdlYWFjMDc4OWI4YzE5OWVjZmFiYTc2ZmVlNWRhYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYTJlMzY0OGI1YTJhNTk5N2YwYmE4MDE5ZDMyNDc3YjkzOWNmYzFmODI4ZGM4MTU2YmFmNDQ4YjZjNDMwYmIifQ"
         },
         {
@@ -102,7 +102,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

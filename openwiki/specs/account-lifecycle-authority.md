@@ -10,10 +10,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Account lifecycle authority
@@ -34,7 +34,7 @@ Desktop controllers accept only results matching generation, server identity, pr
 
 ## Refresh convergence
 
-Passive shared-auth following requires a stable two-poll source. Only a known same-account, non-older credential can be adopted. For a refresh of the exact projected family, Decodex mirrors its successor conditionally; if Codex wins the race with a valid non-older bundle, Decodex adopts that winner without another provider refresh or losing-token writeback.
+Passive shared-auth observation requires a stable two-poll source and one known account with the exact stored credential bundle. A different bundle is reported as unmanaged; this observation does not import it. For a refresh of the exact projected family, Decodex mirrors its successor conditionally; if Codex wins the race with a valid non-older bundle, Decodex adopts that winner without another provider refresh or losing-token writeback.
 
 A generation-bound refresh callback may return a registry successor only for the same provider, a strictly newer credential, a non-older account revision and a still-active generation. Invalid or uncertain bindings fail closed. Credentials and raw auth responses must not be logged or sent through UI projections.
 

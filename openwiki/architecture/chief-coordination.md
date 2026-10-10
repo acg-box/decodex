@@ -4,8 +4,8 @@ title: "Agent coordination and native conversations"
 description: "Local work ownership, native conversation dispatch, explicit branches and recovery."
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 sources:
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs

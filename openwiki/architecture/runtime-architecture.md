@@ -12,16 +12,22 @@ sources:
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-94c4593cb5944bf1f2ecf050
+    resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
+  - id: openwiki-source-f5d073da07bcb17ee416f3b5
+    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
+  - id: openwiki-source-b2869e6da778a74cb6afc667
+    resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Runtime Architecture
@@ -57,9 +63,17 @@ Codex app-server owns provider threads and execution. Decodex adds durable work 
 
 Retired repository/GitHub effect orchestration does not return through a wiki update. Historical records remain readable; a historical operation shape is not live execution authority.
 
+## Native launch policy
+
+Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
+
+The runtime lock and its exact source revision define the bundled implementation. Installed applications can still contain an older binary. Check the bundled artifact and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
+
 ## Protocol and safety
 
 Clients use same-UID local transport and exact protocol/artifact compatibility. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+
+Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. The older exact-message fallback applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
 
 The Settings menu-bar preference is durable SQLite state. macOS launch-at-login registration is a distinct platform preference. Window material, focus, animation and local panel visibility remain presentation responsibilities.
 

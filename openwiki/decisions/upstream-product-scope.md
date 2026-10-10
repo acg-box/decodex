@@ -8,24 +8,36 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-56b561d7e6dd906d218aa9d1
+    resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-ecdf4586908bb6226955607a
+    resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
+  - id: openwiki-source-830a575f82404942511da59b
+    resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
+  - id: openwiki-source-dc292a3cdb3064363ab29907
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-e2f4e298ab0a4c683b92158d
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
+  - id: openwiki-source-720a745d503e0e60ebcad0c5
+    resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-d8df4be72e86f8bd3d65cce8
     resource: repo://crates/decodex-runtime/src/agent_plugins.rs
+  - id: openwiki-source-3d25cb6558fde84d70520ac2
+    resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T06:49:11.265Z
 ---
 
 # Product scope and native ownership
@@ -49,6 +61,16 @@ The bridge admits installed-plugin observations but rejects local plugin list/re
 Provider authentication recovery recording, formerly O24, is also retired. Saved recovery history remains readable without generating new notifications or outgoing work.
 
 The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill; it does not reproduce plugin setup.
+
+## Retained native additions
+
+Tool and file-change details use exact native thread, turn and item identities. Only an explicit unsupported-method response permits the older history-read fallback. This detail path does not replace bulk transcript paging.
+
+Eligible root conversations expose native read receipts in task preferences. Read and unread marks require the reviewed native revision and local source identity. Reading does not acknowledge a result, and these receipts do not replace Dock handoff or attention state.
+
+The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
+
+Native launch policy enables description-first tool ordering, full-fork prefix preservation and model-specific subagent context defaults. The native configuration still selects Code Mode hosting transport. Decodex does not add a universal retain flag to submitted application tool outputs. See [Runtime architecture](../architecture/runtime-architecture.md) and [Acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
 ## Adoption and evidence
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:94bdfef69027e5e8dd1096ce1dfc776b9deef895f595b3835028cba8b5ea8f4b",
+  "pageVersion": "sha256:cb7059080c04b5af1e81cca36fdc845f2707aee87493dd7d9d81d6a408cb5499",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/goals.rs",
-          "version": "repo-file-v1:sha256:ea7afc119f90feeb6e3cb94d884d74a46924902cf164df8e6789ffa78e807eb9"
+          "version": "repo-file-v1:sha256:dd1f79f7b5ad7afab4ba3918e7f61b8595e52b0c0fea522ada9414e20e562b79"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_native_goal.rs#L107-L199",
@@ -49,10 +49,24 @@
           "version": "repo-lines-v1:sha256:063df2cf702a366c8e829d85b95a14db403f5b9097dfebfb990fbffc158e965c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNDVkYTQ0ODM2MjZkNjhkMzU0NmU1MGNlZjJhMjIwMjkxY2JiNGI5MWQ1ZTdlNjM3YzgwNWMzOTcyNmRjOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4MWI4NWFiMDUyNGY2NzQzYjcyZDgzYzIwZGFkNjQzYzA5YWQ2OTA4ZWFkNWJhNzEwNDhhOTllNTNkM2M0OTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_44c1374d75fc42698bc1e9b1bcbfd46c",
+      "statement": "The fixed attested app-server launch enables description-first Code Mode, native child context limits and dotted fork-prefix preservation while leaving multi-agent enablement and transport selection native-owned.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1391-L1404",
+          "version": "repo-lines-v1:sha256:b48c04c3a719e407b237d67999a95f6b3f6b4e8b80e2ff83eb7088afc94dbe81:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmZmOTBlYzA5NzdhMjYyZTA4NmJkMDhlZmFmODZiMzI2Nzg2ZGI2YzVjMDEyMTY5OWZhY2ZiNzRjYmE2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MTUyNzhjZDk2NmZiMDE3NDgxZjgwYjM4ZmQyOWUwODAyZWRkZDFlN2I4ZDIyMWJlNmY4NTlhMTgyN2JhNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhMjQ5NWU2NDQ3MGUzZDg0OGFjMmNkNzliYzllODE4MmVkNTM0MmM2ZDY0NjE3NDllNzQ3YmY2ZGQwYTY4YTIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+          "version": "repo-file-v1:sha256:69c8dc7ce60ce7308be8eea518d1200d5f675fdc3ec011d5cbc753845f6b3933"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fd73a046d7a50668842d141d88944287e296f70f5a7a3cf58d3a153ff2eaa0ca",
+  "pageVersion": "sha256:2a250480b08687f35a2d2717ea9b8e7816cda3b5615c694b489632b904ad63a5",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
       "statement": "Current cross-account Route is synchronous and rejects unsafe external liveness or auth-source changes instead of retaining a Pending-route queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L574-L1101",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L525-L1052",
           "version": "repo-lines-v1:sha256:6e13c1257ba348dd98f4e906118afe1c77efcb7d0be2d2c50d7a6645cae5e449:eyJzZWxlY3RlZExpbmVDb3VudCI6NTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YWMzYmVjNjlhMTQ0NDk4NmQyYTFkYTc2ODI3ZjYxODYwNDY2ZDg5NmEyMzJmNmJjZTAwZTU5ZWE2MjJiZWY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlYzEzMDYxNzE4OWVjZDI4MTgzY2NmYzk4NTE2MTc3NmQ4NzQxZmUwNWJjODA5NDRhYjQ4YmI4ZjM3ODRjZjlhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlY2E1ZGJlMDdkYzI0ZDk3NDMzM2QwZjc5MDdmNmJjZDQxYmU1Y2M3M2JkOGI5ZDZmZjhiZDExNDA1ZjEyOWUyIn0"
         }
       ]
     },
     {
       "id": "claim_f8c6d3a7f9674b7cb7dbba5618c43deb",
-      "statement": "Passive shared-auth following requires a stable two-poll source and imports only one known same-account bundle that is not older than the current credential.",
+      "statement": "Passive shared-auth observation requires a stable two-poll source and one known account with the exact stored bundle; a different bundle is unmanaged and is not imported by this observation.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L343-L415",
+          "version": "repo-lines-v1:sha256:dc4c05d0c74f1615394f673a6cf59bbb6b3c6157e036cca261b6b49aeedca06e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YjBjZDgzODg0NDA4NDhhODc4ZTRiNTcyOWE5YTEzOTU0YzM3Y2Y2ZGYyMWFmOTU0NDk5ZjZmOGU5OGI2MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlZTAxNWFhNWFjNmU2NTNiZWZkNzVjYjA4ZGQ4ZmRjM2E1MmE0ZmVhYzM2NDdiMjNiNDViNjY5ZjdkNTJmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMmQ5ODQyMTBiOTFlYzI0NjNjZjJlYTdjODViOGI3MzI2YmQ0ZDE1MTY0YmI1MTM4MGNkMWFiMjRlZDczZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMGM5ZDMzMjIwY2ZhNmRjMzNhOThmOGE2NmQ5NzhiNGJlMzgyZjNhZTJjZmZmM2JhODY0NzEyMTkyMzU0MDcifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
-          "version": "repo-file-v1:sha256:f372f0d7da0646ec3f65432b637dbbaf03c2c508e11dbfae1d913736d52dd997"
+          "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs#L167-L198",
+          "version": "repo-lines-v1:sha256:f35e824d4b325a43cb95578f01be3a5e28facf92190f9a89bbb33d2418218ec6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NGExZjJhNjEyNDRkNGYxOGM4YmY0MTY4ODIxNTliNWVmOWJjYTZjOGU5ZGY3Njg2OGQ3NjliN2M0NGE1NWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2M2NmYTg3YzQ5NTY4ZjYwYWEwZjZkOThjMTk4MDA1NDlhOGM5MTVjM2U0YjNiYWQ1ZGJmZDc3YzY5ODA3ZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMmQ4ZTMzNjFmOTMwN2IwOTExMTQ0NzEwN2Q5NzBiZjljYTYzZmZmYzc0YzExNGU4NGI1M2U3YTQ3ZDVlYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0NWYwNjlhYTE1ZjMyODM2NGY3Y2JiZmUwZTgxZmJkZjYwMWI3OTZiZTMxOTk1OGNhZGMxNmEwYjE3NGViZDIifQ"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:330d2b8daeed5322add635edc3e3fd6ed373ec895683f9ae5bb587b1a33266f1"
+          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -66,7 +66,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }

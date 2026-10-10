@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5f74bc44dba8bd5f48d0e4bb2825efd9ce1f5ee1b0f886ed2aed261c95a5733e",
+  "pageVersion": "sha256:c1f32da6efbb51b13042013278c113f57d1af684ce609dafc46edcf65955f323",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -36,11 +36,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift",
-          "version": "repo-file-v1:sha256:a326c0ba8683b8c10d72ec79fec995b39f3ea96f84bda8d5645fac564985534e"
+          "version": "repo-file-v1:sha256:4e2e5f96e74ecd6c6b2a7f358c8cc499383c77b83406021317d0a66795269cda"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:0e1aa884464633d766834846b81e1493abd02066d1bb64e21c7e2492ddf7f55c"
+          "version": "repo-file-v1:sha256:72274d0c97e4286a13465f78552fec581182e88e5570977c7371e56f1302b3bd"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
@@ -48,7 +48,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:96422789b1e6382bde2aca83e4e6e15a4ec466118ed8a4711baa975e674546d3"
+          "version": "repo-file-v1:sha256:e4cca18d87aa31850e1975a442ca1ddc32b0713b3a35c4b43e040b6c34e2bc20"
         }
       ]
     },
@@ -62,7 +62,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift",
-          "version": "repo-file-v1:sha256:ec43a0f416cd4db2fc97e6c927a711acfc9e57c2f0b4a0fb1c74d64da0756166"
+          "version": "repo-file-v1:sha256:4a124cdbb47beb356f4752d4c738d023db65b493ad391dc6729ed1f3e311bd0e"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
@@ -97,16 +97,16 @@
       "statement": "Reset Cards and saved activity share each account's independently expanded details, while separate drag handles and action handlers prevent reorder or card actions from toggling disclosure.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L77-L196",
-          "version": "repo-lines-v1:sha256:1fd20a6a4138ed3f5848359631d60d3aacb0d5254cc70a828718fe3622d36248:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZWMyYWRhZjNmM2Y3ZTQ5MDFlZTVkOGE0MTY1ZDczZGJlMTc5NjgxOWMzZGMxNzY4OGIzOWY4ZTcwNDM3YmE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyZTJhZjhhODg0YjdjZDY2NDczZGYxN2VjZmI0OGE5ODIyZWI3M2Y5OGRkZTlhNjhmMjM4ZjY1MzA0NGZlNDg4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkYmY4OTM4YTk4YmMwYTNmZTlkM2U5ZjIxYjFjOGYyZGUzYWRjYTlkMjc3YjQ3ZjI0OTNkZDIxYTUxNTg3Njc5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmNTc3YTFmY2RmMjllZGFmZGI4ZmY1OGJiMjllMjViMzA1MmMzOWJjZjJkODg4ZmU0NDdlMTNkZDY5YmJjZjRkIn0"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
+          "version": "repo-file-v1:sha256:54772f1f28f89f5dd9383d4be31c461309f189d3a8018b9f490d68c5bccc864f"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1114-L1144",
-          "version": "repo-lines-v1:sha256:91830a9bbed7dc8b0fa52686359788839a5933b5e3a78741cb69a1b4ef293c5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhZDBiNWRhMDA3NGZlYzY0Yzc5Yzc2ZTkxM2I3NDU2NzhmYjJkNDIzYTZhYjAyZDMyNzI5M2NlODFkOWM3NWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZWI5NmNiNjVlNjcyYzRkNDliMjg1ZjU1NzQ5OTllNGE3MzBhNDAxZjhiODEyNjNiYTJjOWIwMTFjODU5NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0NjI4NDdlMzI5NjkxNWM4NGVmYmQ3MDA3MDU2ZWQzODY5Y2JjZGI4YTJlYzAyYzhkNzFhOGJmMTMwNzQ1MWIifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs",
+          "version": "repo-file-v1:sha256:7c693a66f6b3561dde202a17ce841440060aed692bd62955f54a0d0d08420173"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L387-L405",
-          "version": "repo-lines-v1:sha256:cc11080c86ffc202242a92396c42db74a00e167f3291198e1f56658776edd075:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5YzkxMWM5NDdiY2ZmMTYyMGY2MDUxN2VmMjQ2YTk2YzY1M2ZlMmFmM2ExMDVjM2Q1MWVkNTYyNGQwMDBkZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZmMwYzU3NTRmYTFhOGJiN2YxMmFkYTJmYjg4Y2FjZTI5NTJhYzBlMmMyYzcxNjkyNzU3NmZkNTZiZTI1NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYTJiNGY2ZWYxOTIyOTA2M2M5ODdjODc2YmYxMTU3MTVlZDQzOTQzOTJmNWFiZDgzZmIyNDJhMjhlYmNhMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3YTU2MmFlYzg3ODljZDhmOWFlZjk5NjhiN2EzZTQ3NDU4Y2Q5ZjFkYmQxNTU4ZjAxMzAzOGRmNGQ5ODI4YTUifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
+          "version": "repo-file-v1:sha256:432f266123a53f14dd107551b4ffff784fc84d240bf7a896237dee990517cdec"
         }
       ]
     },
@@ -115,22 +115,22 @@
       "statement": "The compact Reset Card controls require a second activation of the same selected card within a five-second confirmation window and recheck eligibility before dispatch.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift#L1201-L1228",
-          "version": "repo-lines-v1:sha256:2b5bec5e93f1a3e69857ca1c8cf34f1fb114dd71cf9e621982917b626e82853b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3Njk3MzM2OGRjYmVjMTFhZjc4ZDU4MmI5Y2M2Nzg5MmVmMWEwZTgxMmQwOTE5Yjg3M2Q0MGI5NTY4YWQ0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDJjMjUxN2NkMjI0YmU5MGRhMTgzZmVhYWM2NDYxMGMxOGQ5MGYyNjk1ZjI5MDZkN2FhOGI2NDlmODUyNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwOTg1MDIzOWIyNTdiNzY5OWI4MGIwZTI3ZjVkZWJmZjI3MTk5ZDA5MzQ3YzE3OGQwZmNiOTgxODFiYmYyZmMifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
+          "version": "repo-file-v1:sha256:72274d0c97e4286a13465f78552fec581182e88e5570977c7371e56f1302b3bd"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift#L40-L80",
-          "version": "repo-lines-v1:sha256:7ed560fe5f165330012aab7d45afec5ad8bc58ce4fc33730cd6de96185be29cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZDAyMjE1MTc5MmM4MGZlODgxNDllYTNkYzNkOTBkZDRjOWQ1OTE2Y2Q5MmEzYTVkOGIwMDhkOWRhMTg4ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5ODliM2I0NjIxNjEzYWJhNGM1NTNiYmUyOWQ0Y2EwZjM1ZmVjMTZjMzQwMTAwNmU5N2E1ZmNhMjNiMDhjMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhYWI4NDg5MjMyZjAwZTc2ZDZjMDQyZGY0YmZmMGViZDBjMjhmOWU4ZGMzMWMwMWZiZTlkY2NhMWFjYWI5ZTgifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift",
+          "version": "repo-file-v1:sha256:7afacb50ff69e7136aefa2f930b9cd41f79e82dedd5cfc9ca71da1c5a8640234"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs#L185-L220",
-          "version": "repo-lines-v1:sha256:fde8c067b2978e49be6d2d0080a7890028c780c6221968023686795bd86ea5d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MmJkMWYwY2NkOWU5NDg0MTY3YTAwY2FjNzQ5NDUzZGVhNGE0NGQ1NzkwN2ZkZTNhOWM3ODI3ZTIyOGQ1OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYmNmMGQ2YzcxYjg3ZTc2NTQ3OGQ4YmYyOTY5ZjkzZjdkMjIyZTMwZTc2ZDE5ZmI1ZDMyNjk0NjVhYWQ5MTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MmZmNTA1NDBhYmI0NjVhZjdhNzRlN2QwMzhjNDI3M2M2NzdiNjExZDIxODhiNDNjYzRjMjQ1MmFhYmJmZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2NmNiYWM1MjMxMDlmNzAwZWI0YmQ4NDRhMDA2NGE4ZjFhZjE5NDBlOWVjNzFjYWE3MjE5MTQ5Njk3M2E0ZjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
+          "version": "repo-file-v1:sha256:432f266123a53f14dd107551b4ffff784fc84d240bf7a896237dee990517cdec"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-10T06:49:11.265Z"
   }
 }
