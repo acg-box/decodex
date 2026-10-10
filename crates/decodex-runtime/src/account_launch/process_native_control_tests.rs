@@ -112,3 +112,39 @@ pub(crate) fn read_native_account(child: &mut AttestedProcessChild) -> Value {
 		.request(ReadOnlyMethod::AccountRead, &serde_json::json!({}), Duration::from_secs(15))
 		.expect("account routing through the attested process")
 }
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated production argument qualification"]
+async fn installed_native_tool_description_order_uses_fixed_launch_policy() {
+	use decodex_codex::app_server_client::AppServerClient;
+	use std::process::Stdio;
+	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let home = tempfile::tempdir().expect("isolated home");
+	let profile = attested_profile(&binary, home.path());
+	let mut child = tokio::process::Command::new(&profile.command.program)
+		.args(&profile.command.app_server_args)
+		.env_clear()
+		.env("HOME", home.path())
+		.env("CODEX_HOME", home.path())
+		.env("PATH", "/usr/bin:/bin")
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
+		.kill_on_drop(true)
+		.spawn()
+		.expect("native launch");
+	let (client, mut events) = AppServerClient::from_io(
+		child.stdout.take().expect("stdout"),
+		child.stdin.take().expect("stdin"),
+	);
+	let drain = tokio::spawn(async move { while events.recv().await.is_some() {} });
+	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_description_order_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
+	let config = client
+		.request("config/read", serde_json::json!({"includeLayers":false}))
+		.await
+		.expect("native config");
+	assert_eq!(config["config"]["features"]["code_mode_tool_description_first"], true);
+	child.kill().await.expect("stop fixture");
+	child.wait().await.expect("reap fixture");
+	drain.abort();
+}

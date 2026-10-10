@@ -1388,6 +1388,9 @@ pub(super) struct AppServerCommand {
 	#[cfg(all(test, target_os = "macos"))]
 	test_spawn_path: Option<PathBuf>,
 }
+const APP_SERVER_ARGS: [&str; 4] =
+	["app-server", "--stdio", "--enable", "code_mode_tool_description_first"];
+
 impl AppServerCommand {
 	/// Construct the only production command shape: Codex app-server plus read-only attestation.
 	///
@@ -1433,7 +1436,7 @@ impl AppServerCommand {
 			executable_digest,
 			#[cfg(target_os = "macos")]
 			attested_code_identity: None,
-			app_server_args: vec!["app-server".into(), "--stdio".into()],
+			app_server_args: APP_SERVER_ARGS.iter().map(OsString::from).collect(),
 			version_args: vec!["--version".into()],
 			schema_args: vec![
 				"app-server".into(),
@@ -4172,9 +4175,11 @@ impl ExactBuildLaunchCapability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
 
-		let exact_args = command.app_server_args.len() == 2
-			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
-			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
+		let exact_args = command
+			.app_server_args
+			.iter()
+			.map(OsString::as_os_str)
+			.eq(APP_SERVER_ARGS.iter().map(OsStr::new));
 
 		if !exact_args {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
@@ -6325,7 +6330,7 @@ pub(crate) mod tests {
 	fn production_command_shape_cannot_inject_fake_launch_arguments() {
 		let (_, executable, executable_digest) =
 			process::resolve_executable(OsStr::new("python3")).unwrap();
-		let command = AppServerCommand::production_from_resolved(
+		let mut command = AppServerCommand::production_from_resolved(
 			PathBuf::from("/resolved/codex"),
 			executable,
 			executable_digest,
@@ -6334,7 +6339,12 @@ pub(crate) mod tests {
 
 		assert!(command.program.is_absolute());
 		assert_eq!(command.program.file_name().unwrap(), "codex");
-		assert_eq!(command.app_server_args, ["app-server", "--stdio"]);
+		assert_eq!(
+			command.app_server_args,
+			["app-server", "--stdio", "--enable", "code_mode_tool_description_first"]
+		);
+		command.app_server_args.push("--listen=ws://127.0.0.1:9999".into());
+		assert!(super::ExactBuildLaunchCapability::attest_profile(&command).is_err());
 		assert_eq!(command.version_args, ["--version"]);
 		assert_eq!(
 			command.schema_args,
