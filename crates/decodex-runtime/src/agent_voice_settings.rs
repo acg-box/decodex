@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::time;
 
 use crate::{agent_host::AgentHostError, agent_usage_estimate::Source};
-use decodex_codex::app_server_client::NativeVoiceSettings;
+use decodex_codex::app_server_client::{AppServerClient, ClientError, NativeVoiceSettings};
 use decodex_protocol::{AgentVoiceSettingsResult, EntityId, WireText};
 
 pub(crate) async fn read<F, Fut>(source: F) -> AgentVoiceSettingsResult
@@ -89,7 +89,32 @@ fn project(
 	(serde_json::to_vec(&result).ok()?.len() <= 32 * 1_024).then_some(result)
 }
 
+pub(crate) async fn voice_allowed(client: &AppServerClient) -> Result<bool, ClientError> {
+	let response = time::timeout(
+		Duration::from_secs(8),
+		client.request("configRequirements/read", serde_json::json!({})),
+	)
+	.await
+	.map_err(|_| ClientError::Io)??;
+	let requirements = response.get("requirements").ok_or(ClientError::InvalidFrame)?;
+	if requirements.is_null() {
+		return Ok(true);
+	}
+	let requirements = requirements.as_object().ok_or(ClientError::InvalidFrame)?;
+	let Some(features) = requirements.get("featureRequirements").filter(|v| !v.is_null()) else {
+		return Ok(true);
+	};
+	let features = features.as_object().ok_or(ClientError::InvalidFrame)?;
+	match features.get("in_app_voice") {
+		None => Ok(true),
+		Some(value) => value.as_bool().ok_or(ClientError::InvalidFrame),
+	}
+}
+
 async fn inspect(source: &Source) -> Option<(NativeVoiceSettings, String)> {
+	if !voice_allowed(&source.client).await.ok()? {
+		return None;
+	}
 	let native =
 		source.client.thread_read(serde_json::json!({"threadId":source.key.thread})).await.ok()?;
 

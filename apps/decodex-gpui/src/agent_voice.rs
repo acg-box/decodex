@@ -34,7 +34,8 @@ use crate::{
 	ui_theme::HOVER_FILL,
 };
 use decodex_protocol::{
-	AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, HistoryText, VoiceSdp,
+	AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, HistoryText, VoiceSdp,
 };
 
 pub(super) struct VoiceUi {
@@ -405,6 +406,49 @@ impl AgentSurface {
 
 			cx.notify();
 
+			return;
+		};
+		let Some(target) = self.voice_option_target(work.as_str()) else {
+			return;
+		};
+		let generation = self.generation;
+		let query_work = work.clone();
+		let future = cx.background_executor().spawn(async move {
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
+			runtime.block_on(AgentClient::new(profile).voice_settings(query_work)).ok()
+		});
+		self.feedback = "Checking voice availability…".into();
+		self.voice_task = Some(cx.spawn_in(window, async move |surface, cx| {
+            let result = future.await;
+            let _ = cx.update(|window, cx| {
+                let _ = surface.update(cx, |s, cx| {
+                    s.voice_task = None;
+                    if s.generation != generation || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
+                        s.feedback = "Voice start canceled because the conversation changed.".into();
+                        cx.notify();
+                        return;
+                    }
+                    if matches!(result, Some(AgentVoiceSettingsResult::Available { ref work_id, .. }) if work_id == &work) {
+                        s.start_allowed_voice(work, window, cx);
+                    } else {
+                        s.feedback = "Voice is unavailable or disabled by managed policy.".into();
+                        cx.notify();
+                    }
+                });
+            });
+        }));
+		cx.notify();
+	}
+
+	fn start_allowed_voice(&mut self, work: EntityId, window: &mut Window, cx: &mut Context<Self>) {
+		if self.selected_is_archived()
+			|| self.composer_unavailable_reason().is_some()
+			|| self.voice_task.is_some()
+			|| self.dictation_task.is_some()
+		{
+			return;
+		}
+		let Some(profile) = self.profile.clone() else {
 			return;
 		};
 		let options = match self.voice_call_options(work.as_str(), cx) {

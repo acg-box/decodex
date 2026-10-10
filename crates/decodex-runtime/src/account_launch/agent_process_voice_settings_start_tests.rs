@@ -21,7 +21,13 @@ use decodex_protocol::{
 
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
-	for (voice, fails) in [("juniper", false), ("future_voice", false), ("juniper", true)] {
+	for (voice, config_fails, policy) in [
+		("juniper", false, None),
+		("future_voice", false, Some(true)),
+		("juniper", true, None),
+		("juniper", false, Some(false)),
+	] {
+		let fails = config_fails || policy == Some(false);
 		let home = tempfile::tempdir().unwrap();
 		let (local, remote) = io::duplex(8_192);
 		let (read, write) = io::split(local);
@@ -36,10 +42,12 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				let mut response = match request["method"].as_str().unwrap() {
 					"thread/read" | "thread/resume" =>
 						serde_json::json!({"result":{"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}}),
-					"config/read" if fails =>
+					"config/read" if config_fails =>
 						serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
 					"config/read" =>
 						serde_json::json!({"result":{"config":{"realtime":{"voice":voice}}}}),
+					"configRequirements/read" =>
+						serde_json::json!({"result":{"requirements":policy.map(|allowed| serde_json::json!({"featureRequirements":{"in_app_voice":allowed}}))}}),
 					"thread/realtime/start" => serde_json::json!({"result":{}}),
 					other => panic!("unexpected native method: {other}"),
 				};
@@ -212,4 +220,18 @@ async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_con
 
 	assert_eq!(cold.preference.as_deref(), Some("juniper"));
 	assert_eq!(cold.effective.as_deref(), Some("juniper"));
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; native requirements read without managed policy"]
+async fn installed_native_voice_policy_read_does_not_use_user_feature_flags() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+	for enabled in [false, true] {
+		let home = tempfile::tempdir().unwrap();
+		let config = format!("[features]\nin_app_voice = {enabled}\n");
+		fs::write(home.path().join("config.toml"), &config).unwrap();
+		let session = NativeSession::start(&binary, home.path());
+		assert!(crate::agent_voice_settings::voice_allowed(&session.client).await.unwrap());
+		assert_eq!(fs::read_to_string(home.path().join("config.toml")).unwrap(), config);
+	}
 }
