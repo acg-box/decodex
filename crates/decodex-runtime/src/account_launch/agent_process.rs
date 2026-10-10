@@ -402,6 +402,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/goal/get"
 				| "thread/turns/list"
 				| "thread/items/list"
+				| "thread/items/read"
 				| "thread/timeline/list"
 				| "thread/attachment/add"
 				| "thread/attachment/remove"
@@ -902,7 +903,7 @@ mod tests {
 			.is_err()
 		);
 
-		for method in ["thread/turns/list", "thread/items/list"] {
+		for method in ["thread/turns/list", "thread/items/list", "thread/items/read"] {
 			assert!(
 				agent_process::validate_outbound(
 					&serde_json::json!({"id":43,"method":method,"params":{}}),

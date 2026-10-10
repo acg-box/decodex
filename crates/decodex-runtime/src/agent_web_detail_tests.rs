@@ -121,7 +121,7 @@ fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
 }
 
 #[tokio::test]
-async fn paginated_native_history_preserves_page_action_and_result_error() {
+async fn exact_native_item_preserves_page_action_and_result_error() {
 	let (local, remote) = io::duplex(65_536);
 	let (reader, writer) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
@@ -129,17 +129,10 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 		let (reader, mut writer) = io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
 
-		for (method, result) in [
-			(
-				"thread/read",
-				serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
-			),
-			("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
-			(
-				"thread/items/list",
-				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"web","type":"webSearch","query":"","action":{"type":"findInPage","url":"https://example.com","pattern":"needle"},"results":[{"error":{"status":404}}]}}],"nextCursor":null}),
-			),
-		] {
+		for (method, result) in [(
+			"thread/items/read",
+			serde_json::json!({"data":[{"turnId":"turn","item":{"id":"web","type":"webSearch","query":"","action":{"type":"findInPage","url":"https://example.com","pattern":"needle"},"results":[{"error":{"status":404}}]}}],"nextCursor":null}),
+		)] {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
