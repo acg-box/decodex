@@ -89,7 +89,7 @@ fn transport(
 				"thread/read" if is_fork =>
 					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}}),
 				"thread/read" | "thread/revert" =>
-					serde_json::json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[]}}),
+					serde_json::json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[],"model":"fixture-model","reasoningEffort":null,"modelProvider":"fixture-provider"}}),
 				"thread/turns/list" => {
 					let mut turns = visible.clone();
 

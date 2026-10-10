@@ -9,6 +9,56 @@ use crate::account_launch::agent_process::native_tests::cold_settings::recap_soc
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native provider fork"]
+async fn installed_fork_preserves_source_provider_after_default_changes() {
+	use crate::account_launch::agent_process::native_tests::{
+		Arc, Duration, NativeSession, ServerEvent, env, fs, serve_fixture, time,
+	};
+	use decodex_codex::app_server_client::ThreadForkBoundary;
+
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().unwrap();
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let requests = Arc::new(AtomicUsize::new(0));
+	let backend = tokio::spawn(serve_fixture(
+		listener,
+		requests.clone(),
+		None,
+		None,
+		None,
+		|_| serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Done"}]}),
+	));
+	let config = format!(
+		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"Fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[model_providers.other]\nname=\"Other\"\nbase_url=\"http://127.0.0.1:9\"\nwire_api=\"responses\"\nrequires_openai_auth=false\n"
+	);
+	fs::write(home.path().join("config.toml"), &config).unwrap();
+	let mut session = NativeSession::start(&binary, home.path());
+	time::timeout(Duration::from_secs(30), async {
+		let client = &session.client;
+		let started = client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+		let thread = started["thread"]["id"].as_str().unwrap();
+		let turn = client.request("turn/start", serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Reply Done"}]})).await.unwrap();
+		while let Some(event) = session.events.recv().await {
+			if matches!(event, ServerEvent::Notification {ref method, ref params} if method == "turn/completed" && params["threadId"] == thread) { break; }
+		}
+		fs::write(home.path().join("config.toml"), config.replacen("model_provider=\"fixture\"", "model_provider=\"other\"", 1)).unwrap();
+		let count = requests.load(Ordering::Acquire);
+		for before in [true, false] {
+			let turn = turn["turn"]["id"].as_str().unwrap();
+			let boundary = if before { ThreadForkBoundary::BeforeInput(turn) } else { ThreadForkBoundary::AfterTurn(turn) };
+			let fork = client.fork_thread_at_boundary(thread, boundary, client.thread_settings_guard(thread).unwrap()).await.unwrap();
+			assert_eq!(fork["modelProvider"], "fixture");
+			let read = client.thread_read(serde_json::json!({"threadId":fork["thread"]["id"],"includeTurns":false})).await.unwrap();
+			assert_eq!(read["thread"]["modelProvider"], "fixture");
+		}
+		assert_eq!(requests.load(Ordering::Acquire), count, "fork must not infer");
+	}).await.unwrap();
+	drop(session);
+	backend.abort();
+}
+
 pub(super) async fn check(
 	client: &AgentClient,
 	native: &AppServerClient,

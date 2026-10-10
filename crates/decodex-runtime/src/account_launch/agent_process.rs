@@ -427,7 +427,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 	};
 
 	if params.as_object().is_some_and(|p| {
-		p.len() == 4
+		p.len() == 5
 			&& p.keys().all(|key| {
 				matches!(
 					key.as_str(),
@@ -436,9 +436,11 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 						| "lastTurnId"
 						| "deferGoalContinuation"
 						| "excludeTurns"
+						| "modelProvider"
 				)
 			})
 	}) && identity(&params["threadId"])
+		&& identity(&params["modelProvider"])
 		&& (identity(&params["beforeTurnId"]) ^ identity(&params["lastTurnId"]))
 		&& params["deferGoalContinuation"] == true
 		&& params["excludeTurns"] == true
@@ -467,7 +469,7 @@ mod tests {
 	#[test]
 	fn fork_bridge_preserves_explicit_boundary_and_deferred_goal() {
 		for boundary in ["beforeTurnId", "lastTurnId"] {
-			let mut params = serde_json::json!({"threadId":"source","deferGoalContinuation":true,"excludeTurns":true});
+			let mut params = serde_json::json!({"threadId":"source","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"});
 
 			params[boundary] = serde_json::json!("selected");
 
@@ -481,6 +483,8 @@ mod tests {
 				("deferGoalContinuation", serde_json::json!(false)),
 				("excludeTurns", serde_json::json!(false)),
 				("threadId", serde_json::json!("")),
+				("modelProvider", serde_json::json!(null)),
+				("modelProvider", serde_json::json!("\n")),
 				(
 					if boundary == "beforeTurnId" { "lastTurnId" } else { "beforeTurnId" },
 					serde_json::json!("other"),
