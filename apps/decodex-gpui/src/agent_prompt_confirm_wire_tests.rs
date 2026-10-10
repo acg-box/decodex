@@ -91,7 +91,7 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 			visual.run_until_parked();
 			visual.update(|window, cx| {
 				window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			bounds = visual.debug_bounds(button);

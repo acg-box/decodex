@@ -87,7 +87,7 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut T
 	for index in 0..4 {
 		visual.update(|w, cx| {
 			w.resize(gpui::size(model_settings::px(900.), model_settings::px(600.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("native-model-settings-read").unwrap();

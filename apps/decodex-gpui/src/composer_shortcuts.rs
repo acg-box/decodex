@@ -206,7 +206,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			input.update(cx, |s, cx| s.set_content("first line\nhello, world", cx));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("alt-backspace");
 		input.read_with(visual, |s, _| assert_eq!(s.content(), "first line\nhello, "));

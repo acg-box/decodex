@@ -351,7 +351,7 @@ mod tests {
 
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(380.), gpui::px(500.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("skill-choice-0").unwrap();
@@ -386,7 +386,7 @@ mod tests {
 
 		visual.update(|w, cx| {
 			w.focus(&search.focus_handle(cx), cx);
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("enter");
 		visual.run_until_parked();

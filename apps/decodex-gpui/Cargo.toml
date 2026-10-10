@@ -13,32 +13,32 @@ native-glass-probe = []
 visual-capture     = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
-base64 = { workspace = true }
+base64               = { workspace = true }
 decodex-protocol     = { workspace = true }
 gpui                 = { workspace = true }
 gpui_platform        = { workspace = true }
 libc                 = { workspace = true }
 pulldown-cmark       = { workspace = true }
-raw-window-handle    = "0.6.2"
+raw-window-handle    = { workspace = true }
 reqwest              = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }
 sha2                 = { workspace = true }
 time                 = { workspace = true }
 tokio                = { workspace = true }
-unicode-segmentation = "1.13.3"
+unicode-segmentation = { workspace = true }
 unicode-width        = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2                 = { workspace = true }
 futures-util           = { workspace = true }
 libwebrtc              = { workspace = true }
-objc2                  = { version = "~0.6" }
-objc2-app-kit          = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSTrackingArea", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
+objc2                  = { workspace = true }
+objc2-app-kit          = { workspace = true }
 objc2-audio-toolbox    = { workspace = true }
 objc2-avf-audio        = { workspace = true }
 objc2-core-audio-types = { workspace = true }
-objc2-foundation       = { version = "=0.3.2", default-features = false, features = ["NSDate", "NSRunLoop", "NSString"] }
+objc2-foundation       = { workspace = true }
 rtrb                   = { workspace = true }
 
 [dev-dependencies]

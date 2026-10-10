@@ -1424,7 +1424,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let button = visual.debug_bounds("composer-voice-mute").expect("microphone control");
@@ -1534,7 +1534,7 @@ mod tests {
 					s.composer.update(cx, |input, cx| input.set_content(text, cx))
 				});
 				visual.update(|window, cx| {
-					window.draw(cx).clear();
+					window.draw(cx).clear(cx);
 				});
 				let editor = visual.debug_bounds("composer-editor-area").unwrap();
 				let footer = visual.debug_bounds("composer-action-row").unwrap();
@@ -1587,7 +1587,7 @@ mod tests {
 		for width in [320., 800.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(400.)));
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 				input.update(cx, |input, cx| {
 					assert!(
 						input.bounds_for_range(0..5, Default::default(), window, cx).is_none(),
@@ -1609,7 +1609,7 @@ mod tests {
 		});
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("shift-enter");
 		input.read_with(visual, |input, _| assert_eq!(input.content(), "Draft\n"));

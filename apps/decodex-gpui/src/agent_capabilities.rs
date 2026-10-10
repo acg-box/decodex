@@ -515,14 +515,14 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_280.), gpui::px(1_400.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// The popover uses a real-time entrance translation; click its settled bounds.
 		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("tier-inherited").is_none());

@@ -503,7 +503,7 @@ connection_initializing: false,
         });
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("mcp-submit").is_some(), "form submit must render");
@@ -558,7 +558,7 @@ connection_initializing: false,
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			assert!(visual.debug_bounds("mcp-submit").is_none());
@@ -596,7 +596,7 @@ connection_initializing: false,
         });
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("mcp-confirm-url").is_none());
@@ -610,7 +610,7 @@ connection_initializing: false,
 			assert!(s.feedback.is_empty());
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds =
@@ -642,7 +642,7 @@ connection_initializing: false,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("mcp-open-url").is_none());

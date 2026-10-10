@@ -212,7 +212,7 @@ mod checks {
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
 		assert!(visual.debug_bounds("dock-run-steps").is_none(), "no separate execution browser");
@@ -228,7 +228,7 @@ mod checks {
 		visual.simulate_click(close.center(), Default::default());
 		visual.update(|w, cx| {
 			w.refresh();
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		assert_eq!(before, visual.debug_bounds("work-dock").expect("same Dock"));
 		surface.update(visual, |s, _| {
@@ -299,7 +299,7 @@ fn source_action_reveals_the_current_conversation_from_fullscreen(cx: &mut gpui:
 	for _ in 0..3 {
 		visual.update(|window, cx| {
 			window.refresh();
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
 	}

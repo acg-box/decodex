@@ -224,11 +224,11 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let preview = visual.debug_bounds("sending-message-preview").unwrap();
 
@@ -250,7 +250,7 @@ mod tests {
 			});
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("sending-message-preview").is_none());
 		assert_eq!(visual.debug_bounds("native-promotion-content").unwrap(), preview);

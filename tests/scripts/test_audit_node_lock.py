@@ -61,6 +61,28 @@ class NodeAuditInputTests(unittest.TestCase):
             (1, {"status": "failed", "error_code": "node_site_root_invalid"}),
         )
 
+    def test_bundled_package_requires_parent_membership(self) -> None:
+        path = self.site / "package-lock.json"
+        lock = json.loads(path.read_text())
+        parent = lock["packages"]["node_modules/@tailwindcss/oxide-wasm32-wasi"]
+        parent["bundleDependencies"].remove("tslib")
+        path.write_text(json.dumps(lock))
+        self.assertEqual(
+            self.run_audit(self.site),
+            (1, {"status": "failed", "error_code": "node_lock_bundle_provenance_invalid"}),
+        )
+
+    def test_bundled_package_requires_registry_parent_integrity(self) -> None:
+        path = self.site / "package-lock.json"
+        lock = json.loads(path.read_text())
+        parent = lock["packages"]["node_modules/@tailwindcss/oxide-wasm32-wasi"]
+        parent["integrity"] = "invalid"
+        path.write_text(json.dumps(lock))
+        self.assertEqual(
+            self.run_audit(self.site),
+            (1, {"status": "failed", "error_code": "node_lock_provenance_invalid"}),
+        )
+
     def test_non_utf8_inputs_return_structured_failure(self) -> None:
         for name, expected in (
             ("package.json", "node_manifest_unavailable"),

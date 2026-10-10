@@ -798,7 +798,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-detail-next").is_some());
@@ -820,7 +820,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_some());
@@ -846,7 +846,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
@@ -972,7 +972,7 @@ mod tests {
 		surface.update(visual, |s, _| seed(s));
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
@@ -985,7 +985,7 @@ mod tests {
 			assert!(s.guardian.pending.is_empty());
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("guardian-approve-1").expect("explicit approval");
@@ -1023,7 +1023,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());

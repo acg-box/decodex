@@ -338,14 +338,14 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.focus(&search.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("v e r i f y");
 
 		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert_eq!(search.read_with(visual, |input, _| input.content().to_owned()), "verify");
@@ -377,7 +377,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let chip = visual

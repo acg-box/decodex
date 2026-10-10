@@ -121,7 +121,7 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(native_goal::px(900.), native_goal::px(600.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("native-goal-read").expect("goal disclosure");

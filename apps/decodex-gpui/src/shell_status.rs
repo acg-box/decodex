@@ -630,8 +630,8 @@ mod tests {
 		assert!(initial >= 2);
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
-			w.blur();
+			w.draw(cx).clear(cx);
+			w.blur(cx);
 		});
 
 		for _ in 0..tabs {
@@ -641,7 +641,7 @@ mod tests {
 		}
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 
 			let keystroke = Keystroke::parse("enter").expect("activation key");
 

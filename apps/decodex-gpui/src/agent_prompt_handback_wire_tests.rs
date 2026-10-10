@@ -82,7 +82,7 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut TestAppCo
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.resize(gpui::size(storage::px(1_000.), storage::px(900.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds(button).expect("send control");

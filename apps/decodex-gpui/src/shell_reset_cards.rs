@@ -776,7 +776,7 @@ mod render_tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let five = visual.debug_bounds("quota-reset-5h").unwrap();
@@ -793,7 +793,7 @@ mod render_tests {
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
@@ -826,7 +826,7 @@ mod render_tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let first = visual.debug_bounds("account-card-0").unwrap();
@@ -849,13 +849,13 @@ mod render_tests {
 				assert_eq!(s.expanded_accounts.contains(&last), expanded)
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			thread::sleep(Duration::from_millis(250));
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 		}
 
@@ -899,13 +899,13 @@ mod render_tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		for selector in [
@@ -931,13 +931,13 @@ mod render_tests {
 		});
 		shell.update(visual, |s, cx| s.toggle_account_activity(first.clone(), cx));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000001-0").is_none());
@@ -951,7 +951,7 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let blocked =

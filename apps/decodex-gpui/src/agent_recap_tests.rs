@@ -151,7 +151,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestApp
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(600.), gpui::px(500.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("recap-generate").is_some());
@@ -174,7 +174,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestApp
 	});
 
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("recap-generate").is_none());
@@ -251,11 +251,11 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut Test
 		s.visual_workspace_fixture(cx);
 		cx.notify();
 	});
-	visual.update(|window, cx| window.draw(cx).clear());
+	visual.update(|window, cx| window.draw(cx).clear(cx));
 
 	thread::sleep(Duration::from_millis(240));
 
-	visual.update(|window, cx| window.draw(cx).clear());
+	visual.update(|window, cx| window.draw(cx).clear(cx));
 
 	assert!(visual.debug_bounds("recap-toggle").is_none(), "no recap row in the transcript");
 
@@ -271,11 +271,11 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut Test
 		assert!(s.recap.feedback.contains("Connect to the service"));
 	});
 
-	visual.update(|window, cx| window.draw(cx).clear());
+	visual.update(|window, cx| window.draw(cx).clear(cx));
 
 	thread::sleep(Duration::from_millis(240));
 
-	visual.update(|window, cx| window.draw(cx).clear());
+	visual.update(|window, cx| window.draw(cx).clear(cx));
 
 	let panel = visual.debug_bounds("work-inspection-scroll").unwrap();
 	let recap = visual.debug_bounds("recap-toggle").unwrap();

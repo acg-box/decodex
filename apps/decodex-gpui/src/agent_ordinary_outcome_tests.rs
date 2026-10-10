@@ -84,7 +84,7 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("ordinary-turn-acknowledge-0").unwrap();
@@ -178,7 +178,7 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut TestApp
 	visual.run_until_parked();
 	visual.update(|window, cx| {
 		window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("conversation-send").unwrap();
@@ -284,7 +284,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("ordinary-control-acknowledge-0").is_none());
@@ -298,7 +298,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();
@@ -403,7 +403,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("ordinary-control-acknowledge-0").is_none());
@@ -419,7 +419,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();

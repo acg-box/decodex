@@ -1928,7 +1928,7 @@ mod ordinary_owner_tests {
 			visual.run_until_parked();
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let send = visual.debug_bounds("conversation-send").unwrap();
@@ -2059,7 +2059,7 @@ mod ordinary_owner_tests {
 		if cancel {
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let button = visual.debug_bounds("ordinary-cancel-unsent").expect("cancel button");

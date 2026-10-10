@@ -524,14 +524,14 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		for _ in 0..2 {
 			thread::sleep(std::time::Duration::from_millis(200));
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 		}
 

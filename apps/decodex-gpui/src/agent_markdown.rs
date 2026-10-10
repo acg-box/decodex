@@ -5,7 +5,6 @@
 #[path = "agent_math.rs"] mod math;
 #[path = "agent_mermaid.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
-#[path = "agent_markdown_task_lists.rs"] mod task_lists;
 #[cfg(test)]
 #[path = "agent_markdown_task_lists_tests.rs"]
 mod task_lists_tests;
@@ -326,7 +325,7 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 		Tag::Heading { level, .. } => Kind::Heading(level as u8),
 		Tag::List(start) => Kind::List(start),
 		Tag::Item => Kind::Item,
-		Tag::BlockQuote => Kind::Quote,
+		Tag::BlockQuote(_) => Kind::Quote,
 		Tag::CodeBlock(CodeBlockKind::Fenced(info))
 			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
 			Kind::Mermaid { content_end: range.start, fence: range },
@@ -351,7 +350,7 @@ fn parse(text: &str) -> Vec<Node> {
 	let mut flattened = 0;
 
 	let events = math.events(Parser::new_ext(&math.markdown, options).into_offset_iter());
-	for (event, range) in task_lists::events(text, events) {
+	for (event, range) in events {
 		match event {
 			Event::Start(tag) =>
 				if stack.len() < 64 && flattened == 0 {
@@ -864,7 +863,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(700.), gpui::px(500.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("weather-card-42-0").is_some(), "inline weather card");
@@ -888,7 +887,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(700.), gpui::px(500.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("copy-code-message-42-1").expect("code copy control");
@@ -915,7 +914,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 			cx.write_to_clipboard(ClipboardItem::new_string("sentinel".into()));
 		});
 
@@ -937,7 +936,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(700.), gpui::px(300.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("message-42-0").expect("selectable paragraph");

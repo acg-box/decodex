@@ -217,17 +217,17 @@ mod tests {
 			cx.notify();
 			binding
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let button = visual.debug_bounds("voice-history-block").unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
 		surface.update(visual, |s, cx| {
 			assert!(s.prepend_native_history(&binding, "older", page(entries[..2].to_vec(), None)));
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(
 			visual.debug_bounds("voice-history-transcript").is_some(),
 			"pagination collapsed the existing transcript"

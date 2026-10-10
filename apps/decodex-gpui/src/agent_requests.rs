@@ -699,7 +699,7 @@ mod timing_tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// Let the fixture's dock-close animation settle before choosing a
@@ -707,14 +707,14 @@ mod timing_tests {
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		surface.update(visual, |s, cx| {
 			s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 			cx.notify();
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let next = visual.debug_bounds("large-request-next").expect("next section");
@@ -725,7 +725,7 @@ mod timing_tests {
 			assert!(s.submission.command.is_none());
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let first_offset = surface.read_with(visual, |s, _| s.request_reader.offset);
@@ -738,7 +738,7 @@ mod timing_tests {
 			)
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let previous = visual.debug_bounds("large-request-previous").expect("previous section");
@@ -804,14 +804,14 @@ mod timing_tests {
 		for _ in 0..32 {
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 			surface.update(visual, |s, cx| {
 				s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 				cx.notify();
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			if visual.debug_bounds("request-allow").is_some() {
@@ -820,7 +820,7 @@ mod timing_tests {
 					cx.notify();
 				});
 				visual.update(|window, cx| {
-					window.draw(cx).clear();
+					window.draw(cx).clear(cx);
 				});
 
 				let allow = visual.debug_bounds("request-allow").unwrap();
@@ -877,7 +877,7 @@ connection_initializing: false,
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
@@ -948,7 +948,7 @@ connection_initializing: false,
 
 				visual.update(|window, cx| {
 					window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-					window.draw(cx).clear();
+					window.draw(cx).clear(cx);
 				});
 
 				assert!(
@@ -1000,7 +1000,7 @@ connection_initializing: false,
 
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			assert_eq!(

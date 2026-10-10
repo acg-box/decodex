@@ -255,13 +255,13 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_400.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("task-usage-toggle").expect("usage toggle");

@@ -216,12 +216,12 @@ fn settle_capture_layout(cx: &mut VisualTestAppContext, window: AnyWindowHandle)
 	// GPUI element animations use the monotonic wall clock, while async timers
 	// use the visual-test dispatcher clock. Render once to start the element
 	// animation, then wait on the same clock that drives it.
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
 
 	cx.advance_clock(Duration::from_millis(16));
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 	cx.run_until_parked();
 
 	Ok(())
@@ -242,7 +242,7 @@ fn capture_integrations(
 			..Default::default()
 		},
 	);
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 	Ok(())
 }
@@ -354,12 +354,12 @@ fn animate_panel_motion(
 		cx.run_until_parked();
 		// Render once at the new generation to start its animation, then wait
 		// until approximately the midpoint before taking the evidence frame.
-		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 		thread::sleep(MOTION_PANEL / 2);
 
 		cx.advance_clock(Duration::from_millis(16));
-		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 		cx.run_until_parked();
 	}
 
@@ -377,11 +377,11 @@ fn capture_status_dismissal(cx: &mut VisualTestAppContext, window: AnyWindowHand
 	};
 
 	cx.simulate_click(window, gpui::point(gpui::px(1_200.), gpui::px(815.)), Default::default());
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 	thread::sleep(Duration::from_millis(delay));
 
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 	Ok(())
 }
@@ -449,13 +449,13 @@ fn capture_interactions(cx: &mut VisualTestAppContext, window: AnyWindowHandle) 
 	cx.simulate_mouse_move(window, gpui::point(gpui::px(x), gpui::px(y)), None, Default::default());
 	cx.advance_clock(Duration::from_secs(1));
 	cx.run_until_parked();
-	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 
 	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
 
 	cx.update_window(window, |_, window, cx| {
 		window.refresh();
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	})?;
 
 	Ok(())
@@ -490,7 +490,7 @@ fn prove_composer_send(
 			},
 		);
 
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 
 		evidence
 	})?;
@@ -544,7 +544,7 @@ fn prove_automatic_recap(
 
 	eprintln!("Automatic recap fixture: initial draw");
 
-	cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear())?;
+	cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear(cx))?;
 	cx.update_window(handle.into(), |view, _, cx| {
 		view.downcast::<AgentSurface>()
 			.expect("Agent capture root")
@@ -607,7 +607,7 @@ fn prove_media(
 		cx.run_until_parked();
 
 		let evidence = cx.update_window(handle.into(), |view, window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 
 			view.downcast::<AgentSurface>().expect("Agent capture").read(cx).visual_media_evidence()
 		})?;
@@ -650,7 +650,7 @@ fn prove_steer_receipt(
 			},
 		);
 
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 
 		evidence
 	})?;
@@ -672,7 +672,7 @@ fn prove_steer_receipt(
 		cx.run_until_parked();
 
 		let after = cx.update_window(handle.into(), |view, window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 
 			view.downcast::<AgentSurface>()
 				.expect("Agent capture root")

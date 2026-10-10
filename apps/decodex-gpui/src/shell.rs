@@ -6771,7 +6771,7 @@ mod tests {
 				cx.notify();
 			});
 
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 
 			assert_eq!(
 				visual.debug_bounds("accounts-empty").is_some(),
@@ -6798,7 +6798,7 @@ mod tests {
 
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let needs_login = observed == AccountObservedStateDto::AuthFailed;
@@ -6846,7 +6846,7 @@ mod tests {
 			});
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 			let bounds = visual.debug_bounds("account-login-copy").expect("sign-in copy button");
 			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
@@ -7432,7 +7432,7 @@ mod tests {
 
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let button = visual
@@ -7469,7 +7469,7 @@ mod tests {
 
 			visual.update(|window, cx| {
 				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let button = visual
@@ -7525,7 +7525,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("conversation-defaults-pending").is_some());
@@ -7556,7 +7556,7 @@ mod tests {
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("conversation-defaults-pending").is_none());
@@ -7597,7 +7597,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		for tier in ["ultrafast", "default", "ultrafast"] {
@@ -7653,7 +7653,7 @@ mod tests {
 		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
 		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
 
-		settings.update(|window, cx| window.draw(cx).clear());
+		settings.update(|window, cx| window.draw(cx).clear(cx));
 
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
@@ -7794,9 +7794,9 @@ mod tests {
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let title = visual.debug_bounds("workspace-conversation-header").unwrap();
 		visual.simulate_mouse_down(title.center(), gpui::MouseButton::Left, Default::default());
 		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
@@ -7810,13 +7810,13 @@ mod tests {
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let close = visual.debug_bounds("graph-close").expect("Dock close control");
 		visual.simulate_click(close.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(!shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
 		visual.simulate_keystrokes("cmd-j");
 		assert!(shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[1].0));
@@ -7834,7 +7834,7 @@ mod tests {
 
 		shell.update(visual, |s, cx| s.select_destination(Destination::Conversations, cx));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 			window.focus_next(cx);
 		});
 
@@ -7877,7 +7877,7 @@ mod tests {
 		let shell = view.read_with(visual, |view, _| view.0.clone());
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 			window.focus_next(cx);
 		});
 
@@ -7911,7 +7911,7 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let dimensions = |visual: &mut VisualTestContext| {
@@ -7999,7 +7999,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("model-review-original-input").is_none());
@@ -8041,7 +8041,7 @@ mod tests {
 			s.synchronize_conversations(cx);
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert!(
 			visual.debug_bounds("model-review-original-input").is_some(),
@@ -8126,11 +8126,11 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		shell.read_with(visual, |s, _| {
 			assert_eq!(s.selected, Destination::Conversations);
 			assert!(s.quick.selected_task().unwrap().native_settings.is_some());
@@ -8156,7 +8156,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("conversation-native-settings").is_none());
 		assert!(visual.debug_bounds("conversation-native-settings-unavailable").is_some());

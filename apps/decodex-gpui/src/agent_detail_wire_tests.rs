@@ -116,17 +116,17 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 		visual.run_until_parked();
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(800.), gpui::px(600.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		// Disclosure uses wall-clock animation: measure, begin expansion, then settle.
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let before = view

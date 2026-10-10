@@ -263,7 +263,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("unconfirmed-native-input").is_some());
@@ -282,7 +282,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("input-receipts-next").is_none());
@@ -302,7 +302,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("unconfirmed-native-input").is_none());

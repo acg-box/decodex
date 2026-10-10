@@ -70,7 +70,7 @@ fn read_state_panel_hides_invalid_actions_and_discards_replaced_source(cx: &mut 
 		});
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(500.), gpui::px(200.)));
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 		assert_eq!(visual.debug_bounds("native-read-state-mark").is_some(), available);
 	}

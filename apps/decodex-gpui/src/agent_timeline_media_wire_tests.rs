@@ -99,7 +99,7 @@ fn preview_click_reads_real_local_chunks_and_rejects_changed_account(cx: &mut Te
 		let work = surface.update(visual, |surface, cx| prepare(surface, profile, cx));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let action = visual.debug_bounds("native-media-action").unwrap();
@@ -107,7 +107,7 @@ fn preview_click_reads_real_local_chunks_and_rejects_changed_account(cx: &mut Te
 		visual.simulate_click(action.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let requests = server.join().unwrap();

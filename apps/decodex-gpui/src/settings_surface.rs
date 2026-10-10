@@ -978,7 +978,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("menubar-surface-toggle").is_none());
 		assert!(visual.debug_bounds("automatic-recap-toggle").is_none());
@@ -1005,7 +1005,7 @@ mod tests {
 			)
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
 		let before = visual.debug_bounds("notification-count-preference").unwrap();
@@ -1017,7 +1017,7 @@ mod tests {
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1_000.))),
 			..Default::default()
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let after = visual.debug_bounds("notification-count-preference").unwrap();
 
@@ -1042,7 +1042,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(800.), gpui::px(700.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let original = visual.debug_bounds("launch-at-login-toggle").expect("login toggle");
@@ -1058,7 +1058,7 @@ mod tests {
 				cx.notify();
 			});
 
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 
 			assert!(visual.debug_bounds("menubar-runtime-status").is_none());
 			assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
@@ -1071,7 +1071,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("menubar-runtime-status").is_none());
 
@@ -1101,7 +1101,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(800.), gpui::px(600.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let clear = visual.debug_bounds("Clear").expect("Clear control");
@@ -1124,7 +1124,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_490.0), gpui::px(1_055.0)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 	}
 }

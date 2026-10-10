@@ -78,7 +78,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 
 	visual.update(|w, cx| {
 		w.resize(gpui::size(app_exposure::px(1_180.), app_exposure::px(2_600.)));
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let button = visual.debug_bounds("app-exposure-surface-0").expect("direct toggle");
@@ -89,7 +89,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 		assert!(s.app_exposure.task.is_none(), "editing does not send a write");
 	});
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("app-exposure-save").is_some());
@@ -99,7 +99,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 	visual.simulate_click(clear.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, Some(vec![])));
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	let inherit = visual.debug_bounds("app-exposure-inherit").unwrap();
@@ -107,7 +107,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 	visual.simulate_click(inherit.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, None));
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("app-exposure-save").is_none());
@@ -120,7 +120,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 	});
 
 	visual.update(|w, cx| {
-		w.draw(cx).clear();
+		w.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("app-exposure-surface-0").is_none());

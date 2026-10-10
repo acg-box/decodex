@@ -898,7 +898,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let bounds = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
 		});
@@ -908,7 +908,7 @@ mod tests {
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("history-hover-preview").is_some());
 		visual.simulate_mouse_move(
 			gpui::point(gpui::px(1.), gpui::px(1.)),
@@ -916,7 +916,7 @@ mod tests {
 			Default::default(),
 		);
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("history-hover-preview").is_none());
 	}
 
@@ -932,11 +932,11 @@ mod tests {
 			(s.selected.clone(), s.history.clone())
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let original = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -951,7 +951,7 @@ mod tests {
 			for delay in [0, 100, 140] {
 				thread::sleep(std::time::Duration::from_millis(delay));
 
-				visual.update(|w, cx| w.draw(cx).clear());
+				visual.update(|w, cx| w.draw(cx).clear(cx));
 
 				let bounds = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -977,7 +977,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		surface.update(visual, |s, cx| {
@@ -987,7 +987,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 			surface.update(cx, |s, cx| s.jump_to_history(HistoryKey::Local(3), cx));
 		});
 
@@ -1000,7 +1000,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		surface.read_with(visual, |s, _| {
 			assert!(s.timeline.navigation.is_none());
@@ -1071,13 +1071,13 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let target = HistoryKey::native("thread", &row(20, true));
@@ -1109,7 +1109,7 @@ mod tests {
 
 		for _ in 0..3 {
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 			visual.run_until_parked();
 		}
@@ -1210,13 +1210,13 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = surface.read_with(visual, |s, _| {
@@ -1244,7 +1244,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		surface.read_with(visual, |s, _| {
 			assert!(s.timeline.navigation.is_none() && s.timeline.selected.is_none());
@@ -1294,7 +1294,7 @@ phase: None,
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let anchors = surface.read_with(visual, |s, _| {
 			s.timeline
@@ -1318,7 +1318,7 @@ phase: None,
 
 			let start = std::time::Instant::now();
 
-			visual.update(|w, cx| w.draw(cx).clear());
+			visual.update(|w, cx| w.draw(cx).clear(cx));
 
 			if frame >= 10 {
 				samples.push(start.elapsed().as_secs_f64() * 1_000.);
@@ -1376,13 +1376,13 @@ phase: None,
 		});
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| {
-			w.draw(cx).clear();
+			w.draw(cx).clear(cx);
 		});
 
 		let ids =
@@ -1410,7 +1410,7 @@ phase: None,
 			});
 
 			visual.update(|w, cx| {
-				w.draw(cx).clear();
+				w.draw(cx).clear(cx);
 			});
 			surface.update(visual, |s, _| assert_eq!(s.timeline.selected, Some(id.clone())));
 		}
@@ -1429,7 +1429,7 @@ phase: None,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		visual.update(|_, cx| {
@@ -1451,7 +1451,7 @@ phase: None,
 
 		visual.run_until_parked();
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 		surface.update(visual, |s, _| {
 			assert!(s.timeline.scroll["agent"].offset().y < gpui::px(0.0));
@@ -1475,7 +1475,7 @@ phase: None,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		surface.update(visual, |s, cx| {
@@ -1563,7 +1563,7 @@ phase: None,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		surface.update(visual, |s, cx| {
@@ -1620,7 +1620,7 @@ phase: None,
 		for width in [1600., 700.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.)));
 			{
-				visual.update(|w, cx| w.draw(cx).clear());
+				visual.update(|w, cx| w.draw(cx).clear(cx));
 				let footer = visual.debug_bounds("floating-composer").unwrap();
 				let composer = visual.debug_bounds("agent-composer").unwrap();
 				assert!(
@@ -1652,7 +1652,7 @@ phase: None,
 				cx.notify();
 			});
 			for _ in 0..8 {
-				visual.update(|w, cx| w.draw(cx).clear());
+				visual.update(|w, cx| w.draw(cx).clear(cx));
 			}
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 			let footer = visual.debug_bounds("floating-composer").unwrap();
@@ -1682,13 +1682,13 @@ phase: None,
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		// Panel animation uses wall time, including in optimized test builds.
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
 
@@ -1708,7 +1708,7 @@ phase: None,
 			..Default::default()
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert_eq!(scroll.offset().y, gpui::px(-100.0), "wheel delta must be applied once");
@@ -1721,7 +1721,7 @@ phase: None,
 			..Default::default()
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(scroll.offset().y > previous);
@@ -1757,10 +1757,10 @@ phase: None,
 			}
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			visual.run_until_parked();
 		}
 
@@ -1798,7 +1798,7 @@ phase: None,
 		});
 
 		for _ in 0..4 {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			visual.run_until_parked();
 		}
 
@@ -1836,9 +1836,9 @@ phase: None,
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let button = visual.debug_bounds("jump-to-latest").expect("button while reading history");
 
@@ -1858,7 +1858,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 		}
 
 		surface.read_with(visual, |s, _| {
@@ -1886,7 +1886,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.timeline.follow_paused.insert("agent".into());
@@ -1901,7 +1901,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 		}
 
 		surface.read_with(visual, |s, _| {
@@ -1930,7 +1930,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		surface.update(visual, |s, cx| {
 			let scroll = s.timeline.scroll["agent"].clone();
@@ -1953,7 +1953,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
-			visual.update(|w, cx| w.draw(cx).clear());
+			visual.update(|w, cx| w.draw(cx).clear(cx));
 		}
 
 		surface.update(visual, |s, cx| {

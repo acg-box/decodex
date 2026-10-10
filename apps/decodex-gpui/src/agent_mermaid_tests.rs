@@ -92,7 +92,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 	for width in [800., 160.] {
 		visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(500.)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		let bounds = visual.debug_bounds("mermaid-diagram-preview-0").expect("diagram viewport");
@@ -114,7 +114,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 				..Default::default()
 			});
 			visual.update(|window, cx| {
-				window.draw(cx).clear();
+				window.draw(cx).clear(cx);
 			});
 
 			let moved =
@@ -138,7 +138,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 	});
 
 	visual.update(|window, cx| {
-		window.draw(cx).clear();
+		window.draw(cx).clear(cx);
 	});
 
 	assert!(visual.debug_bounds("mermaid-diagram-preview-0").is_none());

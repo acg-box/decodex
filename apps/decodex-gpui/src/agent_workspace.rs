@@ -2514,7 +2514,7 @@ mod tests {
 			assert!(s.status_notice().is_none());
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
 		let loading = visual.debug_bounds("loading-feedback-Opening workspace").unwrap();
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
@@ -2553,7 +2553,7 @@ mod tests {
 			s.snapshot.as_mut().unwrap().connection_initializing = false;
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("conversation-unavailable").is_some());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 		surface.update(visual, |s, cx| {
@@ -2561,7 +2561,7 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("agent-composer").is_some());
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
@@ -2616,7 +2616,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		let reserved = visual.update(|window, cx| {
 			let s = surface.read(cx);
@@ -2634,7 +2634,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
 		assert!(visual.debug_bounds("work-dock").is_none());
@@ -2651,7 +2651,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
 
@@ -2667,7 +2667,7 @@ mod tests {
 			s.workspace.pages.push("release".into());
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		assert_eq!(
 			transcript,
@@ -2681,7 +2681,7 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, cx| ActionView(cx.new(AgentSurface::new)));
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let bounds = visual.debug_bounds("test-action").expect("workspace action");
 
@@ -2725,7 +2725,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("worker-stop").is_some(), "running worker has no stop control");
@@ -2743,7 +2743,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		assert!(visual.debug_bounds("worker-stop").is_none(), "disconnected worker cannot stop");
 	}
@@ -2775,7 +2775,7 @@ mod tests {
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 
 		assert!(visual.debug_bounds("agent-composer").is_some());
@@ -2867,7 +2867,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear();
+			window.draw(cx).clear(cx);
 		});
 	}
 	struct WorkspaceWithTabs(gpui::Entity<AgentSurface>);
@@ -2891,23 +2891,23 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
 		});
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		surface.update(visual, |s, cx| s.open_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		surface.update(visual, |s, _| {
 			assert_eq!(s.workspace.pages, vec!["verify"]);
 			assert_eq!(s.selected.as_deref(), Some("verify"));
 			assert!(s.workspace.closing_pages.is_empty());
 		});
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 
 		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		visual.run_until_parked();
 		surface.update(visual, |s, _| {
 			assert!(s.workspace.pages.is_empty());
