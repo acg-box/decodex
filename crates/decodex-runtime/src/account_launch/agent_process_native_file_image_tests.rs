@@ -60,6 +60,12 @@ async fn qualify(omit_media: bool) {
 		let thread = started["thread"]["id"].as_str().expect("thread ID").to_owned();
 		let started = session.client.turn_start(serde_json::json!({"threadId":thread,"input":input})).await.expect("native turn");
 		let turn = started["turn"]["id"].as_str().expect("turn ID").to_owned();
+		assert_eq!(started["turn"]["rootTurnId"], turn);
+		let decoded = decodex_codex::decode_conversation_turn_start_response(
+			&serde_json::to_vec(&started).expect("native turn response"),
+		).expect("ordinary conversation accepts the native causal root");
+
+		assert_eq!(decoded.turn_id().as_str(), turn);
 		let mut observed = 0;
 
 		loop {

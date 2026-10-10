@@ -127,8 +127,17 @@ const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
 ];
 const TURN_START_RESPONSE_FIELDS: &[&str] = &["turn"];
 const TURN_START_RESPONSE_REQUIRED_FIELDS: &[&str] = &["turn"];
-const TURN_RESPONSE_FIELDS: &[&str] =
-	&["id", "items", "itemsView", "status", "error", "startedAt", "completedAt", "durationMs"];
+const TURN_RESPONSE_FIELDS: &[&str] = &[
+	"id",
+	"rootTurnId",
+	"items",
+	"itemsView",
+	"status",
+	"error",
+	"startedAt",
+	"completedAt",
+	"durationMs",
+];
 const TURN_RESPONSE_REQUIRED_FIELDS: &[&str] = &["id", "items", "status"];
 
 /// Closed ordinary Conversation app-server method set.
@@ -1689,6 +1698,7 @@ struct ConversationTurnStartResponseWire {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ConversationTurnResponseWire {
 	id: String,
+	root_turn_id: Option<String>,
 	items: Vec<ConversationForbiddenValueWire>,
 	#[serde(default)]
 	items_view: ConversationTurnItemsViewWire,
@@ -2684,6 +2694,45 @@ mod tests {
 		assert_eq!(turn.status(), ConversationTurnStatus::InProgress);
 		assert!(conversation::decode_conversation_turn_interrupt_response(b"{}").is_ok());
 		assert!(conversation::decode_conversation_thread_archive_response(b"{}").is_ok());
+	}
+
+	#[test]
+	fn turn_start_accepts_native_root_without_relaxing_response_shape() {
+		let base = serde_json::json!({"turn": {
+			"id":"turn-1", "items":[], "itemsView":"notLoaded", "status":"inProgress"
+		}});
+
+		for root in [None, Some(Value::Null), Some(serde_json::json!("causal-root"))] {
+			let mut response = base.clone();
+
+			if let Some(root) = root {
+				response["turn"]["rootTurnId"] = root;
+			}
+
+			let decoded = conversation::decode_conversation_turn_start_response(
+				&serde_json::to_vec(&response).unwrap(),
+			)
+			.expect("current and legacy native turn responses must decode");
+
+			assert_eq!(decoded.turn_id().as_str(), "turn-1");
+			assert_eq!(decoded.status(), ConversationTurnStatus::InProgress);
+		}
+
+		for (field, value) in [
+			("rootTurnId", serde_json::json!(42)),
+			("unexpectedAuthority", serde_json::json!("causal-root")),
+		] {
+			let mut response = base.clone();
+
+			response["turn"][field] = value;
+
+			assert!(
+				conversation::decode_conversation_turn_start_response(
+					&serde_json::to_vec(&response).unwrap()
+				)
+				.is_err()
+			);
+		}
 	}
 
 	#[test]
