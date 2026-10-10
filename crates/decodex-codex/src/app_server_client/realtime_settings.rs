@@ -45,17 +45,10 @@ impl AppServerClient {
 
 			match &config["config"]["realtime"]["voice"] {
 				Value::Null => {
-					// V3 uses the V1 catalog. Cove is the upstream built-in default.
-					let catalog =
-						self.request("thread/realtime/listVoices", serde_json::json!({})).await;
-					let default = catalog
-						.as_ref()
-						.ok()
-						.and_then(|value| value["voices"]["defaultV1"].as_str())
-						.filter(|voice| known_voice(voice))
-						.unwrap_or("cove");
+					// V3 uses the server's V1 catalog; a failed lookup must stop startup.
+					let (_, default) = self.realtime_voice_catalog().await?;
 
-					Ok(Some(default.into()))
+					Ok(Some(default))
 				},
 				Value::String(voice) => Ok(known_voice(voice).then(|| voice.clone())),
 				_ => Err(ClientError::InvalidFrame),
@@ -107,13 +100,23 @@ mod tests {
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
-				serde_json::json!({"result":{"voices":{"defaultV1":"maple"}}}),
+				serde_json::json!({"result":{"voices":{"v1":["maple"],"defaultV1":"maple"}}}),
 				Ok(Some("maple")),
 			),
 			(
 				serde_json::json!({"result":{"config":{}}}),
 				serde_json::json!({"error":{"code":-32_601,"message":"missing"}}),
-				Ok(Some("cove")),
+				Err(()),
+			),
+			(
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"error":{"code":-32_000,"message":"catalog unavailable"}}),
+				Err(()),
+			),
+			(
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"result":{"voices":{"v1":["juniper"],"defaultV1":"maple"}}}),
+				Err(()),
 			),
 			(
 				serde_json::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
