@@ -270,7 +270,7 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 				assert_eq!(update["method"], "thread/goal/set");
 				assert_eq!(
 					update["params"],
-					serde_json::json!({"threadId":"root","objective":"Updated"})
+					serde_json::json!({"threadId":"root","origin":"user","objective":"Updated"})
 				);
 
 				current["objective"] = serde_json::json!("Updated");

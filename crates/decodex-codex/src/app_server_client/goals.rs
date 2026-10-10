@@ -60,7 +60,7 @@ pub struct NativeGoalUpdate {
 }
 impl NativeGoalUpdate {
 	fn params(&self, thread: &str) -> Value {
-		let mut params = serde_json::json!({"threadId":thread});
+		let mut params = serde_json::json!({"threadId":thread,"origin":"user"});
 
 		if let Some(objective) = &self.objective {
 			params["objective"] = serde_json::json!(objective);
@@ -149,10 +149,12 @@ impl AppServerClient {
 pub fn is_native_goal_update(params: &Value) -> bool {
 	let Some(object) = params.as_object() else { return false };
 
-	(2..=4).contains(&object.len())
-		&& object
-			.keys()
-			.all(|key| matches!(key.as_str(), "threadId" | "objective" | "status" | "tokenBudget"))
+	(2..=5).contains(&object.len())
+		&& object.keys().all(|key| {
+			matches!(key.as_str(), "threadId" | "origin" | "objective" | "status" | "tokenBudget")
+		})
+		&& ["objective", "status", "tokenBudget"].iter().any(|key| object.contains_key(*key))
+		&& params.get("origin").is_none_or(|value| value == "user")
 		&& params["threadId"].as_str().is_some_and(|id| !id.is_empty() && id.len() <= 512)
 		&& params.get("objective").is_none_or(|value| {
 			value
@@ -299,6 +301,25 @@ mod edit_tests {
 		app_link_settings::tests,
 		goals::{ClientError, NativeGoalUpdate, NativeThreadGoalStatus},
 	};
+
+	#[test]
+	fn explicit_goal_edits_carry_user_origin_and_require_a_mutation() {
+		let edit = NativeGoalUpdate {
+			objective: Some("Updated objective".into()),
+			status: Some(NativeThreadGoalStatus::Paused),
+			token_budget: Some(Some(75)),
+		};
+		let params = edit.params("thread");
+
+		assert_eq!(params["origin"], "user");
+		assert!(super::is_native_goal_update(&params));
+		assert!(!super::is_native_goal_update(&serde_json::json!({
+			"threadId":"thread", "origin":"user"
+		})));
+		assert!(!super::is_native_goal_update(&serde_json::json!({
+			"threadId":"thread", "origin":"automatic", "status":"paused"
+		})));
+	}
 
 	#[tokio::test]
 	#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated paused native goals"]
