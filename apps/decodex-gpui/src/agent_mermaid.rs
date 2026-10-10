@@ -156,6 +156,18 @@ pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, Re
 	if source.len() > MAX_SOURCE {
 		return Err(RenderError::Limit);
 	}
+	// Entity escapes need decoding. Reject them before statement splitting can
+	// discard their semicolon and render a different label.
+	if source.lines().filter(|line| !line.trim_start().starts_with("%%")).any(|line| {
+		line.match_indices(['#', '&']).any(|(index, _)| {
+			let after = &line[index + 1..];
+			let len = after.bytes().take_while(|b| b.is_ascii_alphanumeric() || *b == b'_').count();
+
+			len > 0 && after[len..].starts_with(';')
+		})
+	}) {
+		return Err(RenderError::Unsupported);
+	}
 
 	let statements = source
 		.lines()

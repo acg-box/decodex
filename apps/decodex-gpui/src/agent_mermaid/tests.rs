@@ -50,6 +50,21 @@ fn rejects_partial_or_unsupported_input() {
 }
 
 #[test]
+fn entity_escapes_keep_complete_source_fallback() {
+	for entity in ["#9829;", "#semi;", "&amp;", "&#38;", "&#x26;"] {
+		for source in [
+			format!("sequenceDiagram\nA->>B: {entity}"),
+			format!("stateDiagram-v2; A-->B: {entity}"),
+			format!("classDiagram; class A; A: {entity}"),
+			format!("erDiagram; A ||--|| B: {entity}"),
+			format!("flowchart TD; A[{entity}]"),
+		] {
+			assert_eq!(mermaid::render(&source, 180), Err(RenderError::Unsupported), "{source}");
+		}
+	}
+}
+
+#[test]
 fn source_graph_and_width_limits() {
 	for source in [
 		" ".repeat(16 * 1_024 + 1),

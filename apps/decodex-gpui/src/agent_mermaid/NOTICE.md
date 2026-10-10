@@ -19,3 +19,7 @@ Copyright (c) 2023-2025 The Ratatui Developers
 
 Stadium node parsing and rounded-corner rendering follow upstream commit
 `2426ed7684c87f9a627c60b54271cfed77c979df`.
+
+Entity escape rejection before statement splitting follows upstream commit
+`659b35f1316eda27ef61850dd0832c4a4e95c120`. The broader label grammar from
+that commit is not included.
