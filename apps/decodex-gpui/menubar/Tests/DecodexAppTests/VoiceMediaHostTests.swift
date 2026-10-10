@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import CoreAudio
 @testable import DecodexApp
 
 @MainActor
@@ -36,6 +37,23 @@ final class VoiceMediaHostTests: XCTestCase {
         XCTAssertNil(host.poll())
         authorizations[2](true)
         XCTAssertEqual(try event(host)["type"] as? String, "voice_authorized")
+    }
+
+    func testAmbiguousMicrophonesCannotAuthorizeCapture() throws {
+        let inputs: [(id: AudioDeviceID, name: String)] = [(41, "USB microphone"), (42, "USB microphone"), (43, "Built-in")]
+        XCTAssertEqual(try MicrophoneDevice.namedInput("Built-in", in: inputs), 43)
+        XCTAssertThrowsError(try MicrophoneDevice.namedInput("Missing", in: inputs))
+        for operation in ["dictate", "start"] {
+            let host = VoiceMediaHost(authorizationRequestForTesting: { $0(true) }, deviceForTesting: {
+                try MicrophoneDevice.namedInput("USB microphone", in: inputs)
+            })
+            defer { host.close() }
+            XCTAssertTrue(host.command("{\"operation\":\"\(operation)\"}"))
+            let value = try event(host)
+            XCTAssertEqual(value["type"] as? String, "error")
+            XCTAssertNil(value["device"])
+            XCTAssertNil(host.poll())
+        }
     }
 
     func testDeniedPermissionReportsFailure() throws {
