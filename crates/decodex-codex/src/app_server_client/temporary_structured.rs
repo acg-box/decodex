@@ -12,7 +12,7 @@ use crate::app_server_client::{AppServerClient, ClientError, ServerEvent};
 const DEADLINE: Duration = Duration::from_secs(30);
 const MAX_RESPONSE: usize = 8 * 1_024;
 
-/// Existing task settings used to start a tool-isolated ephemeral thread.
+/// Existing task settings used to start an isolated ephemeral thread.
 pub struct TemporaryStructuredOptions {
 	/// The selected task's model.
 	pub model: String,
@@ -125,7 +125,8 @@ impl TemporaryStructuredThread {
 }
 
 impl AppServerClient {
-	/// Start an ephemeral thread with tools disabled, then verify native permissions.
+	/// Start an ephemeral thread without environment or connector tools.
+	/// Model-required Code Mode wrappers can remain; verify native permissions.
 	/// Inherit the native approval policy; the private event route rejects interaction.
 	/// Cancellation during startup must wait for this result so the thread can be detached.
 	pub async fn start_temporary_structured(
@@ -222,6 +223,7 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 		"features.request_permissions_tool",
 		"features.shell_snapshot",
 		"features.shell_tool",
+		"features.stable_environment_tools",
 		"features.standalone_web_search",
 		"features.token_budget",
 		"features.tool_suggest",

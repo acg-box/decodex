@@ -17,7 +17,7 @@ use decodex_codex::app_server_client::TemporaryStructuredOptions;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated temporary structured request"]
-async fn installed_temporary_requests_disable_tools_and_preserve_custom_permissions() {
+async fn installed_temporary_requests_isolate_environment_and_preserve_custom_permissions() {
 	time::timeout(Duration::from_secs(60), qualify()).await.expect("bounded native fixture");
 }
 
@@ -37,7 +37,7 @@ async fn qualify() {
 		|_| serde_json::json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
 	));
 	let config = format!(
-		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\napproval_policy=\"on-request\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
+		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\napproval_policy=\"on-request\"\n[features]\nstable_environment_tools=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
 	);
 
 	fs::write(home.path().join("config.toml"), &config).expect("native temporary fixture");
@@ -119,10 +119,7 @@ async fn qualify() {
 	assert_eq!(calls.load(Ordering::Acquire), 2);
 
 	for body in bodies.lock().expect("native temporary fixture").iter() {
-		assert!(
-			body["tools"].as_array().is_none_or(Vec::is_empty),
-			"native temporary request exposed tools"
-		);
+		assert_isolated_tool_catalog(body);
 		assert_eq!(body["text"]["format"]["type"], "json_schema");
 	}
 
@@ -132,4 +129,35 @@ async fn qualify() {
 	);
 
 	backend.abort();
+}
+
+// Responses Lite carries the model catalog in input, not the top-level tools field.
+// The bundled model forces Code Mode even when the feature overrides are false.
+fn assert_isolated_tool_catalog(body: &Value) {
+	assert!(body["tools"].as_array().is_none_or(Vec::is_empty));
+
+	let catalogs: Vec<_> = body["input"]
+		.as_array()
+		.expect("Responses Lite input")
+		.iter()
+		.filter(|item| item["type"] == "additional_tools")
+		.collect();
+	assert_eq!(catalogs.len(), 1);
+	let namespaces = catalogs[0]["tools"].as_array().expect("native tool namespaces");
+	assert_eq!(namespaces.len(), 1);
+	assert_eq!(namespaces[0]["name"], "functions");
+	let tools = namespaces[0]["tools"].as_array().expect("Code Mode tools");
+	assert_eq!(
+		tools.iter().map(|tool| tool["name"].as_str().expect("tool name")).collect::<Vec<_>>(),
+		["exec", "wait"]
+	);
+	let nested: Vec<_> = tools[0]["description"]
+		.as_str()
+		.expect("Code Mode catalog")
+		.lines()
+		.filter_map(|line| line.strip_prefix("### `").and_then(|name| name.strip_suffix('`')))
+		.collect();
+	// These native resource helpers remain registered with zero configured servers.
+	// No environment, app, dynamic, or MCP server tool may enter the catalog.
+	assert_eq!(nested, ["list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"]);
 }
