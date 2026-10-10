@@ -21,6 +21,7 @@ mod model_defaults;
 mod model_recovery;
 mod permission_observations;
 mod permissions;
+mod prediction;
 mod prompt_edit;
 mod provider_wait;
 mod read_state;
@@ -68,6 +69,7 @@ pub use self::{
 		NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
 		ThreadPermissionSelectionQueued, is_thread_permission_selection,
 	},
+	prediction::{NativePredictionThread, is_prediction_fork},
 	prompt_edit::PromptEditCandidate,
 	read_state::{NativeReadState, NativeUnreadPosition, is_thread_read_state_update},
 	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},

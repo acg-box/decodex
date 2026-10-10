@@ -428,6 +428,9 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 }
 
 fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
+	if app_server_client::is_prediction_fork(params) {
+		return Ok(());
+	}
 	let identity = |value: &Value| {
 		value.as_str().is_some_and(|id| {
 			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
