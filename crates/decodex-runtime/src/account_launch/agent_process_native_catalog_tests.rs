@@ -143,7 +143,20 @@ async fn qualify_inference(
 
 	assert_eq!(bodies.len(), 1);
 	assert_eq!(bodies[0]["body"]["model"], "catalog-model");
-	assert_eq!(bodies[0]["body"]["instructions"], instructions(explicit));
+	assert_eq!(base_instructions(&bodies[0]["body"]), instructions(explicit));
+}
+
+// Standard Responses now prefixes base instructions as a developer input message.
+// Reference: openai/codex c9253c4977e485d6a098282ad583a6db9585d7ff.
+pub(super) fn base_instructions(body: &Value) -> &str {
+	assert!(body.get("instructions").is_none());
+	let message = &body["input"][0];
+	assert_eq!(message["type"], "message");
+	assert_eq!(message["role"], "developer");
+	let content = message["content"].as_array().expect("instruction content");
+	assert_eq!(content.len(), 1);
+	assert_eq!(content[0]["type"], "input_text");
+	content[0]["text"].as_str().expect("base instruction text")
 }
 
 async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>, explicit: bool) {
