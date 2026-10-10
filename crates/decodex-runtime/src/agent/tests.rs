@@ -72,6 +72,20 @@ impl FixtureFaults {
 		history: &Value,
 		writer: &mut WriteHalf<DuplexStream>,
 	) -> Option<bool> {
+		if request["method"] == "thread/items/read" {
+			writer
+				.write_all(
+					format!(
+						"{}\n",
+						serde_json::json!({"id":request["id"],"error":{"code":-32601,"message":"legacy fixture"}})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			return Some(true);
+		}
+
 		if request["method"] == "turn/start"
 			&& (history["_turn_draining"] == true
 				|| (history["_capacity_draining"] == true
@@ -3270,7 +3284,10 @@ async fn incomplete_async_recovery_hides_cards_until_a_later_complete_read() {
 	while let Ok(request) = sent.try_recv() {
 		let method = request["method"].as_str().unwrap();
 
-		assert!(["thread/read", "thread/turns/list", "thread/items/list"].contains(&method));
+		assert!(
+			["thread/read", "thread/turns/list", "thread/items/list", "thread/items/read"]
+				.contains(&method)
+		);
 
 		saw_items |= method == "thread/items/list";
 	}

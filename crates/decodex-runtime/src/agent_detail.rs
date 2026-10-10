@@ -41,7 +41,8 @@ pub(crate) async fn read(
 	item: &str,
 ) -> AgentActivityDetailResult {
 	let result =
-		tokio::time::timeout(Duration::from_secs(8), client.thread_read_turn(thread, turn)).await;
+		tokio::time::timeout(Duration::from_secs(8), read_item_history(client, thread, turn, item))
+			.await;
 	let Ok(Ok(history)) = result else {
 		return AgentActivityDetailResult::Unavailable;
 	};
@@ -64,7 +65,7 @@ where
 	};
 	let history = time::timeout(
 		Duration::from_secs(8),
-		before.client.thread_read_turn(&before.key.thread, turn),
+		read_item_history(&before.client, &before.key.thread, turn, item),
 	)
 	.await;
 	let Ok(Ok(history)) = history else {
@@ -100,7 +101,7 @@ pub(crate) async fn read_file_changes(
 	item: &str,
 ) -> AgentActivityDetailResult {
 	let Ok(Ok(history)) =
-		time::timeout(Duration::from_secs(8), client.thread_read_turn(thread, turn)).await
+		time::timeout(Duration::from_secs(8), read_item_history(client, thread, turn, item)).await
 	else {
 		return AgentActivityDetailResult::Unavailable;
 	};
@@ -118,6 +119,18 @@ pub(crate) async fn read_file_changes(
 	}
 
 	project(&history, thread, turn, item).unwrap_or(AgentActivityDetailResult::Unavailable)
+}
+
+async fn read_item_history(
+	client: &AppServerClient,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> Result<Value, decodex_codex::app_server_client::ClientError> {
+	let item = client.thread_read_item(thread, turn, item).await?;
+	Ok(
+		serde_json::json!({"thread":{"id":thread,"turns":[{"id":turn,"items":item.into_iter().collect::<Vec<_>>()}]}}),
+	)
 }
 
 fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option<String> {
@@ -398,20 +411,10 @@ mod tests {
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 
-				for (method, result) in [
-					(
-						"thread/read",
-						serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
-					),
-					(
-						"thread/turns/list",
-						serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null}),
-					),
-					(
-						"thread/items/list",
-						serde_json::json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
-					),
-				] {
+				for (method, result) in [(
+					"thread/items/read",
+					serde_json::json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
+				)] {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
@@ -472,20 +475,10 @@ mod tests {
 					return;
 				}
 
-				for (method, result) in [
-					(
-						"thread/read",
-						serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
-					),
-					(
-						"thread/turns/list",
-						serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null}),
-					),
-					(
-						"thread/items/list",
-						serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
-					),
-				] {
+				for (method, result) in [(
+					"thread/items/read",
+					serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
+				)] {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 

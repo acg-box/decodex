@@ -10,6 +10,7 @@ mod attachments;
 mod dispatch_refusal;
 mod goals;
 mod history;
+mod history_item;
 mod history_summary;
 mod hooks;
 mod initialize;
