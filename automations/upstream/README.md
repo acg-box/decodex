@@ -11,6 +11,11 @@ declares the desired configuration; inspect the native definition for its curren
 status. Preserve the user's pause decision. A source-review batch, schema check
 or manifest status does not authorize activation.
 
+Development follows official Codex main at an exact reviewed commit. Necessary
+runtime and compatibility updates can merge after qualification without waiting
+for a stable tag. The actual runtime artifact must match that commit. Tag creation,
+release cadence, installation and publication are outside this task.
+
 The maintainer reads consecutive official Codex commits and traces relevant
 behavior into current Decodex consumers. It checks merged and concurrent work
 before adding an implementation. Native Codex owns supported execution behavior;
