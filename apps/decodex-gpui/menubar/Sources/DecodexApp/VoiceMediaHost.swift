@@ -46,6 +46,8 @@ final class VoiceMediaHost: NSObject {
                 do {
                     let device = try self.deviceForTesting?() ?? MicrophoneDevice.device(named: input)
                     self.emit(["type":operation == "dictate" ? "dictation_authorized" : "voice_authorized", "device":device])
+                } catch CaptureError.ambiguous {
+                    self.emit(["type":"error", "message":"More than one microphone has this name. Choose System default or another microphone."])
                 } catch { self.emit(["type":"error", "message":"The selected microphone is unavailable."]) }
             }
             if let authorizationRequestForTesting { authorizationRequestForTesting(authorized) }

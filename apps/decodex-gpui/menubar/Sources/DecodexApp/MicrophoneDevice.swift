@@ -3,7 +3,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 
-enum CaptureError: Error { case device }
+enum CaptureError: Error { case device, ambiguous }
 
 /// Device discovery only. Rust owns the system voice-processing audio engine.
 enum MicrophoneDevice {
@@ -25,15 +25,24 @@ enum MicrophoneDevice {
             return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size, baseAddress)
         }
         guard status == noErr else { throw CaptureError.device }
+        var inputs: [(id: AudioDeviceID, name: String)] = []
         for device in devices {
             var label: Unmanaged<CFString>?
             var labelSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             var labelProperty = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-            guard AudioObjectGetPropertyData(device, &labelProperty, 0, nil, &labelSize, &label) == noErr, let label, label.takeRetainedValue() as String == name else { continue }
+            guard AudioObjectGetPropertyData(device, &labelProperty, 0, nil, &labelSize, &label) == noErr, let label else { continue }
+            let deviceName = label.takeRetainedValue() as String
             var streams = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
             var streamSize: UInt32 = 0
-            if AudioObjectGetPropertyDataSize(device, &streams, 0, nil, &streamSize) == noErr && streamSize > 0 { return device }
+            if AudioObjectGetPropertyDataSize(device, &streams, 0, nil, &streamSize) == noErr && streamSize > 0 { inputs.append((device, deviceName)) }
         }
-        throw CaptureError.device
+        return try namedInput(name, in: inputs)
+    }
+
+    nonisolated static func namedInput(_ name: String, in inputs: [(id: AudioDeviceID, name: String)]) throws -> AudioDeviceID {
+        let matches = inputs.filter { $0.name == name }
+        guard let input = matches.first else { throw CaptureError.device }
+        guard matches.count == 1 else { throw CaptureError.ambiguous }
+        return input.id
     }
 }
