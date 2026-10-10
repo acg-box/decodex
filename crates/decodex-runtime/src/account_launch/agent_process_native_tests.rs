@@ -33,6 +33,7 @@
 #[path = "agent_process_native_steer_tests.rs"] mod steer;
 #[path = "agent_process_native_structured_tests.rs"] mod structured;
 #[path = "agent_process_native_summary_tests.rs"] mod summary;
+#[path = "agent_process_native_upgrade_tests.rs"] mod upgrade;
 #[path = "agent_process_native_usage_tests.rs"] mod usage;
 
 use std::{

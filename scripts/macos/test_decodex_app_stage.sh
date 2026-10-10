@@ -32,6 +32,22 @@ test -d "$contents/Resources/CodexRuntime/CodexCLI.app"
 test -x "$contents/Resources/CodexRuntime/CodexCLI.app/Contents/MacOS/codex"
 test "$("$contents/Resources/CodexRuntime/bin/codex" --version)" = "codex-cli $(python3 -c 'import json; print(json.load(open("codex-runtime.lock.json"))["version"])')"
 test -s "$contents/Resources/CodexSchema/ClientRequest.json"
+python3 - "$contents/Resources/CodexRuntime" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+runtime = Path(sys.argv[1])
+lock = json.loads(Path("codex-runtime.lock.json").read_text())
+evidence = json.loads((runtime / "decodex-runtime-evidence.json").read_text())
+assert evidence["upstreamCommit"] == lock["upstreamCommit"]
+assert evidence["schemaSha256"] == lock["targets"]["aarch64-apple-darwin"]["schemaSha256"]
+with (runtime / "CodexCLI.app/Contents/MacOS/codex").open("rb") as image:
+    assert evidence["executableSha256"] == hashlib.file_digest(image, "sha256").hexdigest()
+PY
+codesign --verify --strict "$contents/Resources/CodexRuntime/bin/codex-code-mode-host"
+codesign --verify --strict "$contents/Resources/CodexRuntime/codex-path/rg"
 codesign --verify --deep --strict "$contents/Resources/CodexRuntime/CodexCLI.app"
 test "$(find "$contents/MacOS" -type f | wc -l | tr -d ' ')" = 1
 test "$(find "$contents/Helpers" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
