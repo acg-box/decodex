@@ -36,12 +36,6 @@ verify_signing_team() {
 
 BUILD_ROOT=$(cargo +stable metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
 
-cargo +stable build --locked --release --bin decodex-gpui
-cargo +stable build --locked --release --bin decodex
-cargo +stable build --locked --release -p decodex-app-client-ffi --lib
-SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar --show-bin-path)
-swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar
-
 case "$APP" in
 	/Decodex.app) exit 2 ;;
 	*/Decodex.app) ;;
@@ -49,6 +43,16 @@ case "$APP" in
 esac
 rm -rf -- "$APP"
 mkdir -p "$MACOS" "$RESOURCES" "$FRAMEWORKS" "$HELPERS"
+node --experimental-strip-types "$ROOT/scripts/macos/bundle_codex.mts" "$CONTENTS" "$SIGN_IDENTITY"
+DECODEX_BUNDLED_RUNTIME_EVIDENCE="$RESOURCES/CodexRuntime/decodex-runtime-evidence.json"
+export DECODEX_BUNDLED_RUNTIME_EVIDENCE
+
+cargo +stable build --locked --release --bin decodex-gpui
+cargo +stable build --locked --release --bin decodex
+cargo +stable build --locked --release -p decodex-app-client-ffi --lib
+SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar --show-bin-path)
+swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar
+
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
 cp "$BUILD_ROOT/release/decodex-gpui" "$MACOS/decodex-gpui"
 cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"
@@ -58,7 +62,6 @@ mkdir -p "$RESOURCES/ThirdPartyNotices"
 cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"
 cp "$ROOT/assets/licenses/codex-LICENSE.txt" "$RESOURCES/ThirdPartyNotices/codex-LICENSE.txt"
 cp "$ROOT/assets/licenses/codex-NOTICE.txt" "$RESOURCES/ThirdPartyNotices/codex-NOTICE.txt"
-node --experimental-strip-types "$ROOT/scripts/macos/bundle_codex.mts" "$CONTENTS"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
 cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon.png" "$RESOURCES/StatusBarIcon.png"
