@@ -454,7 +454,7 @@ mod tests {
 			}
 		})
 		.await
-		.expect("native media event")
+		.unwrap_or_else(|error| panic!("native media event {kind}: {error}"))
 	}
 
 	async fn energy(stream: &mut NativeAudioStream) -> f64 {
@@ -551,11 +551,22 @@ mod tests {
 
 	async fn connect_fixture_peer(peer: &Peer, transport: &Transport) {
 		let offer = event(transport, "offer").await;
+		let sdp = offer["sdp"].as_str().unwrap();
+		// Both peers are on this host. Use one advertised interface so virtual
+		// adapters do not add unrelated ICE paths to this media lifecycle test.
+		let address = sdp
+			.lines()
+			.filter_map(|line| {
+				let fields: Vec<_> = line.split_whitespace().collect();
+				(line.starts_with("a=candidate:") && fields.get(2) == Some(&"udp"))
+					.then(|| fields[4].to_owned())
+			})
+			.next()
+			.expect("local UDP candidate");
+		let offer = fixture_sdp_on_interface(sdp, &address);
 
 		peer.0
-			.set_remote_description(
-				SessionDescription::parse(offer["sdp"].as_str().unwrap(), SdpType::Offer).unwrap(),
-			)
+			.set_remote_description(SessionDescription::parse(&offer, SdpType::Offer).unwrap())
 			.await
 			.unwrap();
 		peer.0
@@ -567,12 +578,30 @@ mod tests {
 			time::sleep(Duration::from_millis(10)).await;
 		}
 
-		assert!(
-			transport
-				.command(Command::Answer(peer.0.current_local_description().unwrap().to_string()))
-		);
+		assert!(transport.command(Command::Answer(fixture_sdp_on_interface(
+			&peer.0.current_local_description().unwrap().to_string(),
+			&address
+		))));
 
 		event(transport, "connected").await;
+	}
+
+	fn fixture_sdp_on_interface(sdp: &str, address: &str) -> String {
+		let mut candidates = 0;
+		let lines: Vec<_> = sdp
+			.lines()
+			.filter(|line| {
+				if !line.starts_with("a=candidate:") {
+					return true;
+				}
+				let fields: Vec<_> = line.split_whitespace().collect();
+				let selected = fields.get(2) == Some(&"udp") && fields.get(4) == Some(&address);
+				candidates += usize::from(selected);
+				selected
+			})
+			.collect();
+		assert!(candidates > 0, "fixture peers must share an advertised UDP interface");
+		lines.join("\r\n") + "\r\n"
 	}
 
 	async fn feed_fixture_tone(mut input: rtrb::Producer<f32>, source: NativeAudioSource) {
