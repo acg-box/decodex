@@ -102,9 +102,13 @@ impl DictationGateway {
 				if !session.transport.as_mut().is_some_and(|s| {
 					s.command(serde_json::json!({"type":"audio.append","audio":audio.to_base64()}))
 				}) {
-					session.fail(
-						"Audio could not be delivered. Your received text remains in the draft.",
-					);
+					// A rejected write can leave the underlying error queued in the transport.
+					session.poll();
+					if session.status.phase != DictationPhase::Failed {
+						session.fail(
+							"Dictation lost its connection while sending audio. Start a new recording. Your received text remains in the draft.",
+						);
+					}
 				}
 			},
 			DictationRequest::Audio { .. } =>
