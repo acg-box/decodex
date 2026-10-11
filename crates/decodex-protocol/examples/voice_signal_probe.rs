@@ -8,6 +8,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use base64 as _;
 use futures_util as _;
 #[cfg(unix)] use libc as _;
 use percent_encoding as _;

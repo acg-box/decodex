@@ -1,8 +1,15 @@
 import Foundation
+import OSLog
 
 /// Service-only transport. Its token comes from the retained native app-server connection.
 /// URLSession owns networking; this class never opens a microphone or starts an agent turn.
 final class DictationStream: @unchecked Sendable {
+    private static let log = Logger(subsystem: "box.acg.decodex", category: "dictation")
+    private let started = Date()
+    private let diagnosticID = UUID().uuidString
+    private var utterances: [String: Int] = [:]
+    private var sentBytes = 0
+    private var receivedMessages = 0
     private static let endpoint: URL = {
         guard let url = URL(string: "wss://chatgpt.com/backend-api/dictation/stream") else {
             preconditionFailure("The dictation endpoint URL must be valid.")
@@ -68,12 +75,19 @@ final class DictationStream: @unchecked Sendable {
     private func drain() {
         guard !closed, !sending, !outgoing.isEmpty else { return }
         sending = true
-        socket.send(.string(outgoing.removeFirst())) { [weak self] error in
+        let message = outgoing.removeFirst()
+        socket.send(.string(message)) { [weak self] error in
             guard let self else { return }
             queue.async {
+                guard !self.closed else { return }
                 self.sending = false
-                if error != nil { self.fail("Dictation connection failed. Your received text remains in the draft.") }
-                else { self.drain() }
+                if let error {
+                    self.logFailure(error, operation: "send")
+                    self.fail("Dictation connection failed. Your received text remains in the draft.")
+                } else {
+                    self.sentBytes += message.utf8.count
+                    self.drain()
+                }
             }
         }
     }
@@ -84,9 +98,11 @@ final class DictationStream: @unchecked Sendable {
             queue.async {
                 guard !self.closed else { return }
                 switch result {
-                case .failure:
+                case .failure(let error):
+                    self.logFailure(error, operation: "receive")
                     self.fail("Dictation disconnected before final correction. Your received text remains in the draft.")
                 case .success(let message):
+                    self.receivedMessages += 1
                     let data: Data
                     switch message {
                     case .data(let value): data = value
@@ -100,12 +116,39 @@ final class DictationStream: @unchecked Sendable {
         }
     }
 
+    private func logFailure(_ error: Error, operation: String) {
+        let error = error as NSError
+        // Log transport metadata only: never authentication, audio, text, or server reasons.
+        let httpStatus = (socket.response as? HTTPURLResponse)?.statusCode ?? 0
+        Self.log.error("session=\(self.diagnosticID, privacy: .public) \(operation, privacy: .public) failed: domain=\(error.domain, privacy: .public) code=\(error.code) http=\(httpStatus) close=\(self.socket.closeCode.rawValue) elapsed=\(Date().timeIntervalSince(self.started)) sent_bytes=\(self.sentBytes) received=\(self.receivedMessages)")
+    }
+
     private func handle(_ data: Data) {
         guard data.count <= 131_072, let message = String(data: data, encoding: .utf8) else {
             fail("Invalid dictation response.")
             return
         }
+        if let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            trace(event)
+        }
         emit(["kind":"message", "message":message])
+    }
+
+    private func trace(_ event: [String: Any]) {
+        guard let type = event["type"] as? String else { return }
+        if type == "transcript.failed" || type == "session.error" {
+            let error = event["error"] as? [String: Any]
+            let code = (error?["code"] as? String ?? "unknown").prefix(80)
+            Self.log.error("session=\(self.diagnosticID, privacy: .public) event=\(type, privacy: .public) code=\(String(code), privacy: .public) fatal=\(event["fatal"] as? Bool ?? false)")
+        } else if ["speech.started", "speech.stopped", "transcript.segment", "transcript.final"].contains(type) {
+            // Local ordinals correlate revisions without logging text, audio, or provider IDs.
+            let id = event["utterance_id"] as? String ?? ""
+            if utterances[id] == nil { utterances[id] = utterances.count + 1 }
+            let ordinal = utterances[id] ?? 0
+            let length = (event["text"] as? String)?.utf8.count ?? 0
+            let revision = event["revision"] as? Int ?? -1
+            Self.log.notice("session=\(self.diagnosticID, privacy: .public) event=\(type, privacy: .public) utterance=\(ordinal) revision=\(revision) text_bytes=\(length) sent_bytes=\(self.sentBytes) elapsed=\(Date().timeIntervalSince(self.started))")
+        }
     }
 
     private func fail(_ message: String) {

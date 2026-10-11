@@ -8,13 +8,8 @@ enum CaptureError: Error { case device, ambiguous }
 /// Device discovery only. Rust owns the system voice-processing audio engine.
 enum MicrophoneDevice {
     nonisolated static func device(named name: String) throws -> AudioDeviceID {
-        if name.isEmpty {
-            var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-            var device: AudioDeviceID = 0
-            var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-            guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr, device != 0 else { throw CaptureError.device }
-            return device
-        }
+        // Zero means follow the system input, not pin today's default device ID.
+        if name.isEmpty { return 0 }
 
         var property = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0

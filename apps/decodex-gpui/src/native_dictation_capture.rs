@@ -1,29 +1,18 @@
 //! Dictation uses the same Apple voice-processing sink as Live, on one audio owner thread.
 #![cfg_attr(test, allow(dead_code))]
-use super::audio::{Device, Pcm};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use super::audio::owner::{self, AudioError, Mode, Session};
+use decodex_protocol::DictationAudio;
 use serde_json::{Value, json};
 use std::{
 	cell::Cell,
 	sync::{
-		Arc, OnceLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
-		mpsc::{self, Receiver, Sender, SyncSender},
+		mpsc::{self, Receiver, SyncSender},
 	},
 	thread,
 	time::{Duration, Instant},
 };
-
-enum Command {
-	Prepare(u32),
-	Start {
-		device: u32,
-		requested: Instant,
-		events: SyncSender<Value>,
-		stopped: Arc<AtomicBool>,
-		finished: Arc<AtomicBool>,
-	},
-}
 
 pub(super) struct Capture {
 	terminal: Cell<bool>,
@@ -33,22 +22,25 @@ pub(super) struct Capture {
 }
 impl Capture {
 	pub(super) fn prepare(device: u32) {
-		let _ = owner().and_then(|tx| tx.send(Command::Prepare(device)).map_err(|_| ()));
+		owner::warm(device);
 	}
 
-	pub(super) fn start(device: u32) -> Result<Self, ()> {
+	pub(super) fn start(device: u32) -> Result<Self, AudioError> {
 		let (tx, events) = mpsc::sync_channel(128);
 		let stopped = Arc::new(AtomicBool::new(false));
 		let finished = Arc::new(AtomicBool::new(false));
-		owner()?
-			.send(Command::Start {
-				device,
-				requested: Instant::now(),
-				events: tx,
-				stopped: stopped.clone(),
-				finished: finished.clone(),
-			})
-			.map_err(|_| ())?;
+		let stop = stopped.clone();
+		let finish = finished.clone();
+		let requested = Instant::now();
+		thread::Builder::new().name("dictation-capture".into()).spawn(move || {
+            let mut audio = match Session::start(device, Mode::Dictation, stop.clone()) {
+                Ok(audio) => audio,
+                Err(error) => { let _ = tx.try_send(json!({"type":"error","message":error.message()})); return; }
+            };
+            if !run(&mut audio, &tx, &stop, &finish, requested) {
+                let _ = tx.try_send(json!({"type":"error","message":"Microphone capture stopped. Check the input device and try again."}));
+            }
+        }).map_err(|_| AudioError::Worker)?;
 		Ok(Self { terminal: Cell::new(false), events, stopped, finished })
 	}
 
@@ -78,53 +70,13 @@ impl Drop for Capture {
 	}
 }
 
-fn owner() -> Result<&'static Sender<Command>, ()> {
-	static OWNER: OnceLock<Result<Sender<Command>, ()>> = OnceLock::new();
-	OWNER.get_or_init(|| {
-        let (tx, rx) = mpsc::channel();
-        thread::Builder::new().name("dictation-audio".into()).spawn(move || {
-            let mut prepared: Option<(u32, Device, Pcm)> = None;
-            while let Ok(command) = rx.recv() {
-                let device = match &command { Command::Prepare(id) | Command::Start { device: id, .. } => *id };
-                if let Command::Start { stopped, .. } = &command
-                    && stopped.load(Ordering::Acquire) { continue; }
-                if prepared.as_ref().is_none_or(|(id, _, _)| *id != device) {
-                    prepared = Device::prepare(device, 24_000.0).ok().map(|(engine, pcm)| (device, engine, pcm));
-                }
-                if let Command::Start { events, stopped, finished, requested, .. } = command {
-                    let healthy = if let Some((_, engine, pcm)) = &mut prepared {
-                        run(engine, pcm, &events, &stopped, &finished, requested)
-                    } else { false };
-                    if !healthy {
-                        prepared = None;
-                        let _ = events.try_send(json!({"type":"error","message":"Microphone capture stopped. Check the input device and try again."}));
-                    }
-                }
-            }
-        }).map_err(|_| ())?;
-        Ok(tx)
-    }).as_ref().map_err(|_| ())
-}
-
 fn run(
-	engine: &Device,
-	pcm: &mut Pcm,
+	audio: &mut Session,
 	events: &SyncSender<Value>,
 	stopped: &AtomicBool,
 	finished: &AtomicBool,
 	requested: Instant,
 ) -> bool {
-	// No previous session audio crosses the capture boundary.
-	while pcm.captured.pop().is_ok() {}
-	if stopped.load(Ordering::Acquire) {
-		return true;
-	}
-	if finished.load(Ordering::Acquire) {
-		return events.try_send(json!({"type":"ended"})).is_ok();
-	}
-	if engine.resume().is_err() {
-		return false;
-	}
 	let mut first = true;
 	let mut bytes = Vec::with_capacity(9_600);
 	let mut healthy = true;
@@ -133,12 +85,16 @@ fn run(
 			break;
 		}
 		let final_buffer = finished.load(Ordering::Acquire);
-		if final_buffer {
-			engine.pause();
-		}
-		while let Ok(sample) = pcm.captured.pop() {
-			bytes.extend_from_slice(&pcm16(sample).to_le_bytes());
-		}
+		let drained = if final_buffer {
+			match audio.pause() {
+				Ok(drained) => drained,
+				Err(_) => return false,
+			}
+		} else {
+			false
+		};
+		let (engine, pcm) = audio.parts();
+		drain_pcm(&mut pcm.captured, &mut bytes);
 		if first && !bytes.is_empty() {
 			first = false;
 			let elapsed = requested.elapsed().as_secs_f64() * 1_000.;
@@ -149,25 +105,36 @@ fn run(
 			}
 		}
 		if bytes.len() >= 960 || (final_buffer && !bytes.is_empty()) {
-			let event = json!({"type":"pcm","audio":STANDARD.encode(&bytes),"level":(engine.level() * 5.).min(1.)});
-			bytes.clear();
+			let Ok(packet) = DictationAudio::from_pcm(std::mem::take(&mut bytes)) else {
+				return false;
+			};
+			let event = json!({"type":"pcm","audio":packet,"level":(engine.level() * 5.).min(1.)});
 			if events.try_send(event).is_err() {
 				healthy = false;
 				break;
 			}
 		}
-		if final_buffer {
+		if final_buffer && drained && pcm.captured.is_empty() {
 			healthy = events.try_send(json!({"type":"ended"})).is_ok();
 			break;
 		}
-		if !engine.running() {
+		if !final_buffer && !engine.running() {
 			healthy = false;
 			break;
 		}
 		thread::sleep(Duration::from_millis(5));
 	}
-	engine.pause();
 	healthy
+}
+
+fn drain_pcm(input: &mut rtrb::Consumer<f32>, bytes: &mut Vec<u8>) {
+	let available = (decodex_protocol::MAX_DICTATION_PCM_BYTES - bytes.len()) / 2;
+	for _ in 0..available {
+		let Ok(sample) = input.pop() else {
+			break;
+		};
+		bytes.extend_from_slice(&pcm16(sample).to_le_bytes());
+	}
 }
 
 fn pcm16(sample: f32) -> i16 {
@@ -178,6 +145,24 @@ fn pcm16(sample: f32) -> i16 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn capture_burst_keeps_every_sample_within_the_wire_limit() {
+		let (mut input, mut captured) = rtrb::RingBuffer::new(19_200);
+		for index in 0..19_200 {
+			input.push(index as f32 / 19_200.).unwrap();
+		}
+		let mut result = Vec::new();
+		while !captured.is_empty() {
+			let mut bytes = Vec::new();
+			drain_pcm(&mut captured, &mut bytes);
+			let packet = DictationAudio::from_pcm(bytes).unwrap();
+			result.extend_from_slice(packet.pcm());
+		}
+		let expected: Vec<u8> =
+			(0..19_200).flat_map(|index| pcm16(index as f32 / 19_200.).to_le_bytes()).collect();
+		assert_eq!(result, expected);
+	}
+
 	#[test]
 	fn capture_reports_worker_exit_but_not_after_normal_completion() {
 		for normal in [false, true] {

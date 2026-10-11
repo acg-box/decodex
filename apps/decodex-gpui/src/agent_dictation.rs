@@ -6,7 +6,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gpui::{AnyElement, AsyncApp, Task, WeakEntity};
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, TEXT_MUTED};
@@ -15,7 +14,8 @@ use crate::shell::agent_surface::{
 	self, AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
 	ParentElement, Role, StatefulInteractiveElement, Styled, Window, ui_theme, voice::Media,
 };
-use decodex_protocol::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
+#[cfg(test)] use decodex_protocol::DictationBuffer;
+use decodex_protocol::{DictationAudio, DictationPhase, DictationRequest, DictationStatus};
 
 pub(super) struct DictationUi {
 	media: Media,
@@ -23,7 +23,7 @@ pub(super) struct DictationUi {
 	original: String,
 	expected: String,
 	request: Option<DictationRequest>,
-	audio: VecDeque<DictationBuffer>,
+	audio: VecDeque<DictationAudio>,
 	network_ready: bool,
 	capture_ended: bool,
 	finishing: bool,
@@ -60,6 +60,7 @@ impl AgentSurface {
 
 		let id = EntityId::new(agent_surface::unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
+		self.feedback.clear();
 
 		self.dictation = Some(DictationUi {
 			media,
@@ -72,7 +73,7 @@ impl AgentSurface {
 			capture_ended: false,
 			finishing: false,
 			finish_sent: false,
-			status: "Connecting dictation…".into(),
+			status: "Opening microphone…".into(),
 			level: 0.,
 			started: Instant::now(),
 		});
@@ -168,16 +169,22 @@ impl AgentSurface {
 				},
 				Some("pcm") => {
 					if let Some(audio) =
-						event["audio"].as_str().and_then(|s| DictationBuffer::new(s).ok())
+						event["audio"].as_str().and_then(|s| DictationAudio::from_base64(s).ok())
 					{
 						dictation.audio.push_back(audio);
+					} else {
+						self.feedback =
+							"Microphone returned invalid audio. Try recording again.".into();
+						self.dictation = None;
+						cx.notify();
+						return None;
 					}
 
 					dictation.level =
 						event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
 
-					if dictation.audio.iter().map(|audio| audio.as_str().len()).sum::<usize>()
-						> 640_000
+					if dictation.audio.iter().map(|audio| audio.pcm().len()).sum::<usize>()
+						> decodex_protocol::MAX_DICTATION_BACKLOG_BYTES
 					{
 						self.dictation = None;
 						self.feedback="Dictation stopped because audio delivery fell behind. Your received text remains in the draft.".into();
@@ -191,6 +198,10 @@ impl AgentSurface {
 					dictation.status =
 						event["message"].as_str().unwrap_or("Opening microphone…").into(),
 				Some("dictation_ready") => {
+					eprintln!(
+						"DecodexAudio dictation_click_first_pcm_ms={:.3}",
+						dictation.started.elapsed().as_secs_f64() * 1000.
+					);
 					dictation.status = "Listening".into();
 					dictation.started = Instant::now();
 				},
@@ -223,7 +234,7 @@ impl AgentSurface {
 		}
 
 		if dictation.network_ready
-			&& let Some(audio) = take_audio_batch(&mut dictation.audio)
+			&& let Some(audio) = DictationAudio::take_batch(&mut dictation.audio)
 		{
 			return Some(DictationRequest::Audio { session_id: dictation.session.clone(), audio });
 		}
@@ -384,8 +395,9 @@ mod tests {
 	#[cfg(test)] use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::dictation::{
-		self, AgentSurface, Context, DictationBuffer, DictationPhase, DictationRequest,
-		DictationStatus, DictationUi, Duration, EntityId, Instant, Media, VecDeque,
+		self, AgentSurface, Context, DictationAudio, DictationBuffer, DictationPhase,
+		DictationRequest, DictationStatus, DictationUi, Duration, EntityId, Instant, Media,
+		VecDeque,
 	};
 
 	#[test]
@@ -550,7 +562,7 @@ mod tests {
 			capture.network_ready = false;
 			capture.capture_ended = true;
 
-			capture.audio.push_back(DictationBuffer::new("AAA=").expect("frame"));
+			capture.audio.push_back(DictationAudio::from_base64("AAA=").expect("frame"));
 
 			s.dictation = Some(capture);
 
@@ -570,39 +582,5 @@ mod tests {
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Finish { .. })));
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));
 		});
-	}
-}
-
-// Coalesce audio already available without waiting to fill a batch. Preserve invalid input
-// unchanged for the service to reject; do not silently drop a frame.
-fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBuffer> {
-	let first = queue.pop_front()?;
-	let Ok(mut pcm) = STANDARD.decode(first.as_str()) else { return Some(first) };
-	while let Some(next) = queue.front() {
-		let Ok(bytes) = STANDARD.decode(next.as_str()) else { break };
-		if pcm.len() + bytes.len() > 48_000 {
-			break;
-		}
-		pcm.extend_from_slice(&bytes);
-		queue.pop_front();
-	}
-	Some(DictationBuffer::new(STANDARD.encode(pcm)).expect("bounded PCM batch"))
-}
-
-#[cfg(test)]
-mod packet_tests {
-	use super::*;
-	#[test]
-	fn queued_audio_is_sent_in_order_without_waiting_for_a_full_batch() {
-		let frame = |bytes: &[u8]| DictationBuffer::new(STANDARD.encode(bytes)).unwrap();
-		let mut queue = VecDeque::from([frame(&[1, 2]), frame(&[3, 4])]);
-		let batch = take_audio_batch(&mut queue).unwrap();
-		assert_eq!(STANDARD.decode(batch.as_str()).unwrap(), [1, 2, 3, 4]);
-		assert!(queue.is_empty());
-		queue.push_back(frame(&[5, 6]));
-		assert_eq!(
-			STANDARD.decode(take_audio_batch(&mut queue).unwrap().as_str()).unwrap(),
-			[5, 6]
-		);
 	}
 }

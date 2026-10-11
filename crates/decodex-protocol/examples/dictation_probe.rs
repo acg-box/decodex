@@ -7,6 +7,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use base64 as _;
 use futures_util as _;
 #[cfg(unix)] use libc as _;
 use percent_encoding as _;
@@ -18,7 +19,7 @@ use url as _;
 
 use decodex_core as _;
 use decodex_protocol::{
-	AgentClient, ClientProfile, DictationBuffer, DictationPhase, DictationRequest, EntityId,
+	AgentClient, ClientProfile, DictationAudio, DictationPhase, DictationRequest, EntityId,
 };
 
 #[tokio::main]
@@ -48,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut partials=0;
 
         for line in io::stdin().lock().lines() {
-            let audio=DictationBuffer::new(line?).map_err(|_|"audio frame too large")?;
+            let audio=DictationAudio::from_base64(&line?).map_err(|_|"audio frame too large")?;
 
             status=client.dictation(DictationRequest::Audio{session_id:id.clone(),audio}).await?;
 

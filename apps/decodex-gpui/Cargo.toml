@@ -13,7 +13,6 @@ native-glass-probe = []
 visual-capture     = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
-base64               = { workspace = true }
 decodex-protocol     = { workspace = true }
 gpui                 = { workspace = true }
 gpui_platform        = { workspace = true }
@@ -35,10 +34,10 @@ futures-util           = { workspace = true }
 libwebrtc              = { workspace = true }
 objc2                  = { workspace = true }
 objc2-app-kit          = { workspace = true }
-objc2-audio-toolbox    = { workspace = true }
+objc2-audio-toolbox    = { workspace = true, features = ["AUAudioUnit"] }
 objc2-avf-audio        = { workspace = true }
 objc2-core-audio-types = { workspace = true }
-objc2-foundation       = { workspace = true }
+objc2-foundation       = { workspace = true, features = ["NSNotification", "NSOperation", "block2"] }
 rtrb                   = { workspace = true }
 
 [dev-dependencies]

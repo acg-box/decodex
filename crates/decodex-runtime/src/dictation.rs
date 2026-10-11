@@ -7,7 +7,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{self, Value};
 use tokio::{sync::Mutex, time};
 
@@ -100,13 +99,16 @@ impl DictationGateway {
 			DictationRequest::Audio { audio, .. }
 				if session.status.phase == DictationPhase::Listening =>
 			{
-				if !valid_audio(audio.as_str())
-					|| !session.transport.as_mut().is_some_and(|s| {
-						s.command(serde_json::json!({"type":"audio.append","audio":audio.as_str()}))
-					}) {
-					session.fail(
-						"Audio could not be delivered. Your received text remains in the draft.",
-					);
+				if !session.transport.as_mut().is_some_and(|s| {
+					s.command(serde_json::json!({"type":"audio.append","audio":audio.to_base64()}))
+				}) {
+					// A rejected write can leave the underlying error queued in the transport.
+					session.poll();
+					if session.status.phase != DictationPhase::Failed {
+						session.fail(
+							"Dictation lost its connection while sending audio. Start a new recording. Your received text remains in the draft.",
+						);
+					}
 				}
 			},
 			DictationRequest::Audio { .. } =>
@@ -205,15 +207,29 @@ impl Session {
 			},
 			Some("session.closed") => self.complete(),
 			Some("session.updated") if message["session"]["status"] == "closed" => self.complete(),
-			Some("session.error" | "error") =>
-				self.fail("The subscription dictation service could not finish this recording."),
+			Some("transcript.failed" | "error") => self.provider_failed(&message),
+			Some("session.error") if message["fatal"] != false => self.provider_failed(&message),
 			Some(_) => {},
 			None =>
 				self.fail("Invalid dictation response. Your received text remains in the draft."),
 		}
 	}
 
+	fn provider_failed(&mut self, event: &Value) {
+		let message = event["error"]["message"]
+			.as_str()
+			.filter(|text| !text.trim().is_empty())
+			.unwrap_or("The subscription dictation service could not finish this recording.");
+		self.fail(message);
+	}
+
 	fn complete(&mut self) {
+		if self.status.phase != DictationPhase::Finalizing {
+			self.fail(
+				"Dictation ended before you finished. Your received text remains in the draft.",
+			);
+			return;
+		}
 		self.status.phase = DictationPhase::Complete;
 		self.transport = None;
 	}
@@ -236,24 +252,17 @@ pub(crate) fn failed(session_id: EntityId, message: &str) -> DictationStatus {
 
 fn start_message() -> Value {
 	serde_json::json!({"type":"session.start", "config":{
-		"input_audio_format":"pcm16", "sample_rate_hz":24_000, "num_channels":1,
+		"input_audio_format":"pcm16", "sample_rate_hz":decodex_protocol::DICTATION_SAMPLE_RATE, "num_channels":1,
 		"max_buffer_size_bytes":4_194_304, "max_utterance_duration_ms":30_000,
 		"session_ttl_ms":300_000, "provider_mode":"streaming_sse", "transcript_delivery_mode":"segment",
 		"vad":{"type":"server_vad", "threshold":0.5, "prefix_padding_ms":300, "silence_duration_ms":500}
 	}})
 }
 
-fn valid_audio(audio: &str) -> bool {
-	STANDARD
-		.decode(audio)
-		.is_ok_and(|pcm| !pcm.is_empty() && pcm.len() <= 32_768 && pcm.len().is_multiple_of(2))
-}
-
 #[cfg(test)]
 mod tests {
 	use std::time::Duration;
 
-	#[cfg(test)] use base64::Engine as _;
 	use tokio::{sync::mpsc, time};
 
 	use crate::dictation::{DictationGateway, DictationPhase, DictationRequest};
@@ -286,12 +295,21 @@ mod tests {
 
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
+		session.status.phase = DictationPhase::Finalizing;
 		session.receive(frame(
 			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
 		));
 
 		assert_eq!(session.status.phase, DictationPhase::Complete);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
+
+		session.status.phase = DictationPhase::Listening;
+		session.receive(frame(
+			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
+		));
+		assert_eq!(session.status.phase, DictationPhase::Failed);
+		assert_eq!(session.status.text.as_str(), "Final draft.");
+		assert!(session.status.message.as_ref().unwrap().as_str().contains("before you finished"));
 
 		session.status.phase = DictationPhase::Listening;
 
@@ -302,14 +320,26 @@ mod tests {
 	}
 
 	#[test]
-	fn pcm_validation_rejects_invalid_or_partial_samples() {
-		for audio in ["", "not base64", "AQ=="] {
-			assert!(!super::valid_audio(audio));
+	fn provider_failure_preserves_the_draft_and_nonfatal_events_keep_listening() {
+		for kind in ["transcript.failed", "session.error"] {
+			let mut session = super::Session {
+				status: super::failed(decodex_protocol::EntityId::new("failure-test").unwrap(), ""),
+				transport: None,
+				seen: std::time::Instant::now(),
+				transcript: Default::default(),
+			};
+			session.status.phase = DictationPhase::Listening;
+			session.status.message = None;
+			session.status.text = decodex_protocol::DictationBuffer::new("Earlier words.").unwrap();
+			let frame = |event: serde_json::Value| serde_json::json!({"kind":"message","message":event.to_string()});
+			session.receive(frame(serde_json::json!({"type":"session.error","fatal":false,"error":{"message":"Recoverable notice"}})));
+			assert_eq!(session.status.phase, DictationPhase::Listening);
+			assert!(session.status.message.is_none());
+			session.receive(frame(serde_json::json!({"type":kind,"fatal":true,"error":{"code":"provider_failed","message":"Transcription was interrupted."}})));
+			assert_eq!(session.status.phase, DictationPhase::Failed);
+			assert_eq!(session.status.text.as_str(), "Earlier words.");
+			assert_eq!(session.status.message.unwrap().as_str(), "Transcription was interrupted.");
 		}
-
-		assert!(super::valid_audio("AQI="));
-		assert!(super::valid_audio(&super::STANDARD.encode(vec![0; 32_768])));
-		assert!(!super::valid_audio(&super::STANDARD.encode(vec![0; 32_770])));
 	}
 
 	#[tokio::test]
