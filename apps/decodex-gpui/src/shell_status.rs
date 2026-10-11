@@ -681,16 +681,16 @@ mod tests {
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
 		for expected in [true, false, true, false] {
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			let toggle = visual.debug_bounds("status-toggle").expect("notification toggle");
 			visual.simulate_mouse_down(
 				toggle.center(),
 				gpui::MouseButton::Left,
 				Default::default(),
 			);
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			visual.simulate_mouse_up(toggle.center(), gpui::MouseButton::Left, Default::default());
-			visual.update(|window, cx| window.draw(cx).clear());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
 			assert_eq!(shell.read_with(visual, |s, _| s.status_open), expected);
 		}
 	}
