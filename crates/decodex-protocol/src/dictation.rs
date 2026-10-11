@@ -5,6 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 use crate::{EntityId, WireScalarTooLong, WireText};
 
+/// Maximum decoded PCM16 bytes in one dictation request.
+pub const MAX_DICTATION_PCM_BYTES: usize = 32_768;
+
 /// Bounded private audio or transcript payload, omitted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]

@@ -15,7 +15,9 @@ use crate::shell::agent_surface::{
 	self, AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
 	ParentElement, Role, StatefulInteractiveElement, Styled, Window, ui_theme, voice::Media,
 };
-use decodex_protocol::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
+use decodex_protocol::{
+	DictationBuffer, DictationPhase, DictationRequest, DictationStatus, MAX_DICTATION_PCM_BYTES,
+};
 
 pub(super) struct DictationUi {
 	media: Media,
@@ -61,6 +63,7 @@ impl AgentSurface {
 		let id = EntityId::new(agent_surface::unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
 
+		self.feedback.clear();
 		self.dictation = Some(DictationUi {
 			media,
 			session: id.clone(),
@@ -578,9 +581,15 @@ mod tests {
 fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBuffer> {
 	let first = queue.pop_front()?;
 	let Ok(mut pcm) = STANDARD.decode(first.as_str()) else { return Some(first) };
+	if pcm.len() > MAX_DICTATION_PCM_BYTES {
+		let remainder = pcm.split_off(MAX_DICTATION_PCM_BYTES);
+		queue.push_front(
+			DictationBuffer::new(STANDARD.encode(remainder)).expect("bounded remainder"),
+		);
+	}
 	while let Some(next) = queue.front() {
 		let Ok(bytes) = STANDARD.decode(next.as_str()) else { break };
-		if pcm.len() + bytes.len() > 48_000 {
+		if pcm.len() + bytes.len() > MAX_DICTATION_PCM_BYTES {
 			break;
 		}
 		pcm.extend_from_slice(&bytes);
@@ -592,6 +601,30 @@ fn take_audio_batch(queue: &mut VecDeque<DictationBuffer>) -> Option<DictationBu
 #[cfg(test)]
 mod packet_tests {
 	use super::*;
+	#[test]
+	fn startup_backlog_and_large_capture_frames_keep_service_sized_batches() {
+		for sizes in [vec![9_600; 5], vec![48_000, 960]] {
+			let expected: Vec<u8> =
+				sizes.iter().enumerate().flat_map(|(i, n)| vec![i as u8; *n]).collect();
+			let mut queue = sizes
+				.into_iter()
+				.enumerate()
+				.map(|(i, n)| DictationBuffer::new(STANDARD.encode(vec![i as u8; n])).unwrap())
+				.collect();
+			let mut received = Vec::new();
+			while let Some(batch) = take_audio_batch(&mut queue) {
+				let bytes = STANDARD.decode(batch.as_str()).unwrap();
+				assert!(
+					!bytes.is_empty()
+						&& bytes.len() <= MAX_DICTATION_PCM_BYTES
+						&& bytes.len().is_multiple_of(2)
+				);
+				received.extend(bytes);
+			}
+			assert_eq!(received, expected);
+		}
+	}
+
 	#[test]
 	fn queued_audio_is_sent_in_order_without_waiting_for_a_full_batch() {
 		let frame = |bytes: &[u8]| DictationBuffer::new(STANDARD.encode(bytes)).unwrap();

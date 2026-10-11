@@ -13,7 +13,8 @@ use tokio::{sync::Mutex, time};
 
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{
-	DictationBuffer, DictationPhase, DictationRequest, DictationStatus, EntityId, WireText,
+	DictationBuffer, DictationPhase, DictationRequest, DictationStatus, EntityId,
+	MAX_DICTATION_PCM_BYTES, WireText,
 };
 use transcript::Transcript;
 
@@ -100,13 +101,16 @@ impl DictationGateway {
 			DictationRequest::Audio { audio, .. }
 				if session.status.phase == DictationPhase::Listening =>
 			{
-				if !valid_audio(audio.as_str())
-					|| !session.transport.as_mut().is_some_and(|s| {
-						s.command(serde_json::json!({"type":"audio.append","audio":audio.as_str()}))
-					}) {
-					session.fail(
-						"Audio could not be delivered. Your received text remains in the draft.",
-					);
+				if !valid_audio(audio.as_str()) {
+					session.fail("Dictation stopped because the app could not process microphone audio. Try recording again. Your draft has not been sent.");
+				} else if !session.transport.as_mut().is_some_and(|s| {
+					s.command(serde_json::json!({"type":"audio.append","audio":audio.as_str()}))
+				}) {
+					// A rejected command can have a queued transport error. Keep its cause.
+					session.poll();
+					if session.status.phase != DictationPhase::Failed {
+						session.fail("Dictation lost its connection while sending audio. Check your connection and start a new recording. Your draft has not been sent.");
+					}
 				}
 			},
 			DictationRequest::Audio { .. } =>
@@ -244,9 +248,9 @@ fn start_message() -> Value {
 }
 
 fn valid_audio(audio: &str) -> bool {
-	STANDARD
-		.decode(audio)
-		.is_ok_and(|pcm| !pcm.is_empty() && pcm.len() <= 32_768 && pcm.len().is_multiple_of(2))
+	STANDARD.decode(audio).is_ok_and(|pcm| {
+		!pcm.is_empty() && pcm.len() <= MAX_DICTATION_PCM_BYTES && pcm.len().is_multiple_of(2)
+	})
 }
 
 #[cfg(test)]
