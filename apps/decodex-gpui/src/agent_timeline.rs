@@ -344,9 +344,13 @@ impl AgentSurface {
 			}
 		}
 
-		ui_loading::content(
+		ui_loading::history(
 			format!("native-history-{}", work.id),
 			self.native_history_active(work),
+			self.timeline.native.task.is_none()
+				&& !self.native_pagination_settling()
+				&& !self.history_viewport_fill_ready(),
+			self.timeline.scroll.get(&work.id).cloned().unwrap_or_default(),
 			panel,
 		)
 		.into_any_element()
@@ -451,8 +455,6 @@ impl AgentSurface {
 				}
 				let title = if group.failed {
 					"Voice conversation · Failed"
-				} else if group.ended {
-					"Voice conversation · Ended"
 				} else {
 					"Voice conversation"
 				};
@@ -474,7 +476,6 @@ impl AgentSurface {
 						])
 						.to_string(),
 						title: title.into(),
-						expanded: !group.ended,
 						text: group.text.clone(),
 					}
 					.into_any_element()

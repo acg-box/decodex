@@ -68,7 +68,6 @@ fn transcript_turns(text: &str) -> Vec<(&str, String)> {
 pub(crate) struct VoiceBlock {
 	pub key: String,
 	pub title: String,
-	pub expanded: bool,
 	pub text: String,
 }
 impl RenderOnce for VoiceBlock {
@@ -76,7 +75,7 @@ impl RenderOnce for VoiceBlock {
 		let expanded = window.use_keyed_state(
 			SharedString::from(format!("voice-block-{}", self.key)),
 			cx,
-			|_, _| self.expanded,
+			|_, _| false,
 		);
 		let open = *expanded.read(cx);
 		let click = expanded.clone();
@@ -172,7 +171,6 @@ mod tests {
 			VoiceBlock {
 				key: "fixture".into(),
 				title: "Voice conversation".into(),
-				expanded: false,
 				text: "user: Hello\nassistant: Hi".into(),
 			}
 		}

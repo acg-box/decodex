@@ -67,6 +67,8 @@ gpui::actions!(
 	[
 		/// Quit the application and release its owned services.
 		Quit,
+		/// Reload workspace reads and replay loading without restarting execution.
+		ReloadWorkspace,
 		/// Close the main window while keeping the menu bar available.
 		CloseWindow,
 		/// Minimize the active main window.
@@ -455,12 +457,18 @@ fn request_saved_quit(cx: &mut App) {
 fn install_application_menu(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("cmd-q", Quit, None),
+		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
 		KeyBinding::new("cmd-w", CloseWindow, None),
 		KeyBinding::new("cmd-m", Minimize, None),
 		KeyBinding::new("cmd-h", Hide, None),
 		KeyBinding::new("alt-cmd-h", HideOthers, None),
 	]);
 	cx.on_action(|_: &Quit, cx| request_saved_quit(cx));
+	cx.on_action(|_: &ReloadWorkspace, cx| {
+		for window in cx.windows().into_iter().filter_map(|window| window.downcast::<Shell>()) {
+			let _ = window.update(cx, |shell, window, cx| shell.debug_reload(window, cx));
+		}
+	});
 	cx.on_action(|_: &CloseWindow, cx| hide_main_window(cx));
 	cx.on_action(|_: &Hide, cx| cx.hide());
 	cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
@@ -488,5 +496,6 @@ fn install_application_menu(cx: &mut App) {
 			MenuItem::action("Select All", SelectAll),
 		]),
 		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
+		Menu::new("Debug").items([MenuItem::action("Reload Workspace", ReloadWorkspace)]),
 	]);
 }

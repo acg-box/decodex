@@ -112,12 +112,33 @@ pub(crate) struct Content {
 	key: SharedString,
 	ready: bool,
 	child: AnyElement,
+	layout: Option<(bool, gpui::ScrollHandle)>,
 }
 #[derive(Default)]
 struct Arrival {
+	loaded: bool,
 	started: Option<Instant>,
+	geometry:
+		Option<(gpui::Bounds<gpui::Pixels>, gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
+	stable_frames: u8,
 }
 impl Arrival {
+	fn observe_layout(
+		&mut self,
+		geometry: (
+			gpui::Bounds<gpui::Pixels>,
+			gpui::Point<gpui::Pixels>,
+			gpui::Point<gpui::Pixels>,
+		),
+	) {
+		if self.geometry == Some(geometry) {
+			self.stable_frames = (self.stable_frames + 1).min(2);
+		} else {
+			self.geometry = Some(geometry);
+			self.stable_frames = 0;
+		}
+	}
+
 	fn progress(&mut self, ready: bool, now: Instant, reduced: bool) -> f32 {
 		if !ready {
 			return 1.;
@@ -137,12 +158,43 @@ impl RenderOnce for Content {
 			cx,
 			|_, _| Arrival::default(),
 		);
-		let opacity =
-			state.update(cx, |s, _| s.progress(self.ready, Instant::now(), ui_motion::reduced()));
-		if opacity < 1. {
+		let settled = self.layout.as_ref().is_none_or(|(settled, _)| *settled);
+		let opacity = state.update(cx, |s, _| {
+			if self.ready && !s.loaded && s.started.is_none() {
+				s.geometry = None;
+				s.stable_frames = 0;
+			}
+			s.loaded = self.ready;
+			if self.ready
+				&& s.started.is_none()
+				&& self.layout.is_some()
+				&& (!settled || s.stable_frames < 2)
+			{
+				0.
+			} else {
+				s.progress(self.ready, Instant::now(), ui_motion::reduced())
+			}
+		});
+		if opacity < 1. && settled {
 			ui_motion::request_frame(window, cx);
 		}
-		gpui::div().w_full().min_w_0().flex_none().opacity(opacity).child(self.child)
+		let mut body =
+			gpui::div().w_full().min_w_0().flex_none().opacity(opacity).child(self.child);
+		if let Some((_, scroll)) = self.layout {
+			body = body.on_children_prepainted(move |bounds, _, cx| {
+				if state.read(cx).started.is_some() {
+					return;
+				}
+				let Some(bounds) = bounds.first().copied() else {
+					return;
+				};
+				let geometry = (bounds, scroll.offset(), scroll.max_offset());
+				if state.read(cx).geometry != Some(geometry) || state.read(cx).stable_frames < 2 {
+					state.update(cx, |s, _| s.observe_layout(geometry));
+				}
+			});
+		}
+		body
 	}
 }
 pub(crate) fn content(
@@ -150,11 +202,46 @@ pub(crate) fn content(
 	ready: bool,
 	child: impl IntoElement,
 ) -> Content {
-	Content { key: key.into(), ready, child: child.into_any_element() }
+	Content { key: key.into(), ready, child: child.into_any_element(), layout: None }
 }
+
+/// Lay out the initial history and restore its scroll anchor before revealing it.
+pub(crate) fn history(
+	key: impl Into<SharedString>,
+	ready: bool,
+	settled: bool,
+	scroll: gpui::ScrollHandle,
+	child: impl IntoElement,
+) -> Content {
+	Content {
+		key: key.into(),
+		ready,
+		child: child.into_any_element(),
+		layout: Some((settled, scroll)),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn initial_history_waits_for_scroll_and_layout_to_stop_changing() {
+		let mut state = Arrival::default();
+		let mut geometry =
+			(gpui::Bounds::default(), gpui::Point::default(), gpui::Point::default());
+		state.observe_layout(geometry);
+		state.observe_layout(geometry);
+		assert_eq!(state.stable_frames, 1);
+		geometry.1.y = gpui::px(-400.);
+		state.observe_layout(geometry);
+		assert_eq!(state.stable_frames, 0, "restored scroll must settle before reveal");
+		state.observe_layout(geometry);
+		state.observe_layout(geometry);
+		assert_eq!(state.stable_frames, 2);
+		geometry.0.size.height = gpui::px(900.);
+		state.observe_layout(geometry);
+		assert_eq!(state.stable_frames, 0, "a layout change invalidates readiness");
+	}
 	#[test]
 	fn data_arrives_once_without_replaying_refresh_or_delaying_reduced_motion() {
 		let now = Instant::now();

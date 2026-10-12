@@ -224,6 +224,14 @@ pub(crate) struct Shell {
 	native_status: native_status::NativeStatus,
 }
 impl Shell {
+	pub(crate) fn debug_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.agent.update(cx, |surface, cx| surface.debug_reload(cx)) {
+			let agent = self.agent.clone();
+			window.on_next_frame(move |_, cx| agent.update(cx, |surface, cx| surface.refresh(cx)));
+			window.request_animation_frame();
+		}
+	}
+
 	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
 		self.sync_ordinary_drafts(cx);
 

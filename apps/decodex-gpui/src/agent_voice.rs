@@ -992,7 +992,6 @@ impl AgentSurface {
 					super::voice::history::VoiceBlock {
 						key: format!("retired-{}-{}", work, call.session.as_str()),
 						title: "Voice conversation · Ended".into(),
-						expanded: false,
 						text: call
 							.captions
 							.iter()
