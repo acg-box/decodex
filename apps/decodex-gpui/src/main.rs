@@ -461,6 +461,14 @@ fn install_application_menu(cx: &mut App) {
 		KeyBinding::new("alt-cmd-h", HideOthers, None),
 	]);
 	cx.on_action(|_: &Quit, cx| request_saved_quit(cx));
+	// The composer owns a child key window while the workspace stays main.
+	// Resolve its owner independently of the main window's focus path.
+	cx.on_action(|action: &shell::FocusMessage, cx| {
+		if let Some(window) = cx.windows().into_iter().find_map(|window| window.downcast::<Shell>())
+		{
+			let _ = window.update(cx, |shell, window, cx| shell.focus_message(action, window, cx));
+		}
+	});
 	cx.on_action(|_: &CloseWindow, cx| hide_main_window(cx));
 	cx.on_action(|_: &Hide, cx| cx.hide());
 	cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
