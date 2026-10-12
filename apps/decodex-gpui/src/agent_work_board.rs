@@ -49,6 +49,12 @@ pub(super) struct Row {
 }
 
 impl AgentSurface {
+	pub(super) fn debug_reload_graph(&mut self) {
+		self.work_board.brief_task = None;
+		self.work_board.briefs.clear();
+		self.work_board.usage = None;
+	}
+
 	fn board_rows(&self) -> Vec<Row> {
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let workspace_for = |id: &str| {

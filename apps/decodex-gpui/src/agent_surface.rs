@@ -9,6 +9,7 @@
 #[path = "agent_composer.rs"] mod composer;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
+#[path = "agent_debug_reload.rs"] mod debug_reload;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
 #[path = "agent_dock.rs"] mod dock;
@@ -2127,9 +2128,14 @@ impl AgentSurface {
 		}
 
 		let ready = self.history.as_ref().is_some_and(|(id, _)| id == &work.id);
-		gpui::div().w_full().min_w_0().child(ui_loading::content(
+		gpui::div().w_full().min_w_0().child(ui_loading::history(
 			format!("local-history-{}", work.id),
 			ready,
+			self.history_task.is_none()
+				&& !self.timeline.loading_older
+				&& self.timeline.older_scroll_anchor.is_none()
+				&& !self.history_viewport_fill_ready(),
+			self.timeline.scroll.get(&work.id).cloned().unwrap_or_default(),
 			self.history_activity(panel, work, cx),
 		))
 	}
@@ -2747,7 +2753,6 @@ fn history_entry_presented(
 		return gpui::div().w_full().child(voice::history::VoiceBlock {
 			key: identity.into(),
 			title: "Voice conversation".into(),
-			expanded: false,
 			text,
 		});
 	}

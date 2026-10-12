@@ -98,6 +98,8 @@ use quota_meter::ResetFill;
 gpui::actions!(
 	decodex_shell,
 	[
+		/// Reload workspace reads without restarting execution.
+		ReloadWorkspace,
 		FocusNext,
 		FocusPrevious,
 		ActivateDestination,
@@ -224,6 +226,13 @@ pub(crate) struct Shell {
 	native_status: native_status::NativeStatus,
 }
 impl Shell {
+	pub(crate) fn debug_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.agent.update(cx, |surface, cx| surface.debug_reload(cx)) {
+			let agent = self.agent.clone();
+			window.on_next_frame(move |_, cx| agent.update(cx, |surface, cx| surface.refresh(cx)));
+		}
+	}
+
 	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
 		self.sync_ordinary_drafts(cx);
 
@@ -2153,6 +2162,15 @@ enum InspectorTab {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	cx.on_action(|_: &ReloadWorkspace, cx| {
+		// Global keyboard actions run while the dispatching window is borrowed.
+		cx.defer(|cx| {
+			for window in cx.windows().into_iter().filter_map(|window| window.downcast::<Shell>()) {
+				let _ = window.update(cx, |shell, window, cx| shell.debug_reload(window, cx));
+			}
+		});
+	});
+
 	composer_input::bind_keys(cx);
 
 	cx.bind_keys([
@@ -2160,6 +2178,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
 	]);
 	cx.bind_keys([
+		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
 		KeyBinding::new("cmd-2", ActivateAgent, None),
@@ -6721,6 +6740,22 @@ mod tests {
 		cx.update(bind_keys);
 
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped))
+	}
+
+	#[gpui::test]
+	fn debug_reload_action_reaches_the_dispatching_window(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx));
+			assert!(!s.agent.read(cx).workspace_connecting());
+		});
+		visual.dispatch_action(super::ReloadWorkspace);
+		shell.update(visual, |s, cx| {
+			assert!(
+				s.agent.read(cx).workspace_connecting(),
+				"reload must clear the snapshot even while its window dispatches the action"
+			);
+		});
 	}
 
 	#[test]

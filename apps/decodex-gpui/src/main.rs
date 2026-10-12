@@ -59,7 +59,7 @@ use crate::{
 };
 use composer_input::{Copy, Cut, Paste, SelectAll};
 use decodex_protocol::{ClientFailure, ClientProfile};
-use shell::SettingsWindow;
+use shell::{ReloadWorkspace, SettingsWindow};
 use ui_theme::window_material;
 
 gpui::actions!(
@@ -98,11 +98,10 @@ fn main() {
 		}
 	});
 	application.run(move |cx: &mut App| {
+		shell::bind_keys(cx);
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
 		install_native_quit_preflight(cx);
-
-		shell::bind_keys(cx);
 
 		let profile = ClientProfile::load_default(None);
 		let agent_profile = profile.as_ref().ok().cloned();
@@ -488,5 +487,6 @@ fn install_application_menu(cx: &mut App) {
 			MenuItem::action("Select All", SelectAll),
 		]),
 		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
+		Menu::new("Debug").items([MenuItem::action("Reload Workspace", ReloadWorkspace)]),
 	]);
 }
