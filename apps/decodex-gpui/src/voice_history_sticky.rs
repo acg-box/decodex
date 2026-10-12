@@ -8,11 +8,11 @@ use std::{
 use crate::shell::agent_surface::AgentSurface;
 use gpui::{
 	AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-	InspectorElementId, IntoElement, LayoutId, Pixels, ScrollHandle, WeakEntity, Window, point, px,
-	size,
+	InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, ScrollHandle, Styled,
+	WeakEntity, Window, point, px, size,
 };
 
-pub(super) const HEADER_HEIGHT: f32 = 34.;
+pub(super) const HEADER_HEIGHT: f32 = 28.;
 type Position = Rc<Cell<(Pixels, Pixels)>>;
 
 pub(crate) struct ReadingSpace {
@@ -207,7 +207,11 @@ impl Element for Group {
 		self.position.set((bounds.top(), top));
 		let sticky = top > bounds.top();
 		let header = self.header.take().expect("voice header prepaints once");
-		let mut header = header;
+		let mut header = if sticky {
+			gpui::div().w_full().bg(gpui::rgb(0x111113)).child(header).into_any_element()
+		} else {
+			header
+		};
 		header.layout_as_root(
 			size(
 				AvailableSpace::Definite(bounds.size.width),
