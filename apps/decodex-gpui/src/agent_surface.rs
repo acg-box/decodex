@@ -2521,6 +2521,7 @@ struct TimelineView {
 	read_at: Option<std::time::Instant>,
 	cache: std::collections::BTreeMap<String, AgentHistoryResult>,
 	scroll: std::collections::BTreeMap<String, ScrollHandle>,
+	voice_min_height: std::collections::BTreeMap<String, std::rc::Rc<std::cell::Cell<f32>>>,
 	follow_paused: std::collections::BTreeSet<String>,
 	expanded_progress: std::collections::BTreeSet<String>,
 	expanded_records: std::collections::BTreeSet<String>,

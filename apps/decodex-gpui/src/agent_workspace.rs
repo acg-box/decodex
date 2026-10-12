@@ -973,6 +973,12 @@ impl AgentSurface {
 			.entry(self.selected.clone().unwrap_or_default())
 			.or_default()
 			.clone();
+		let voice_min_height = self
+			.timeline
+			.voice_min_height
+			.entry(self.selected.clone().unwrap_or_default())
+			.or_default()
+			.clone();
 		let mut transcript = gpui::div()
 			.debug_selector(|| "workspace-transcript".into())
 			.id(SharedString::from(format!(
@@ -991,6 +997,7 @@ impl AgentSurface {
 				let content = if is_agent {
 					gpui::div()
 						.debug_selector(|| "conversation-content".into())
+						.min_h(gpui::px(voice_min_height.get()))
 						.pt(gpui::px(16.))
 						.pb(gpui::px(self.workspace.composer_overlay_height))
 						.px(gpui::px(ui_theme::CONVERSATION_INSET))
