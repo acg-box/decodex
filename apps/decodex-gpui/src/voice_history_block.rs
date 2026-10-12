@@ -7,6 +7,10 @@ use crate::{
 	ui_theme::{HOVER_FILL, TEXT_MUTED},
 };
 use gpui::{App, IntoElement, KeyDownEvent, RenderOnce, Role, SharedString, Window, prelude::*};
+#[path = "voice_history_sticky.rs"] mod sticky;
+use crate::shell::workspace_symbols::{self, Symbol};
+use sticky::Toggle as _;
+pub(crate) use sticky::Viewport;
 
 pub(crate) fn handoff(text: &str) -> Option<String> {
 	let body = text
@@ -69,6 +73,7 @@ pub(crate) struct VoiceBlock {
 	pub key: String,
 	pub title: String,
 	pub text: String,
+	pub viewport: Option<Viewport>,
 }
 impl RenderOnce for VoiceBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -80,84 +85,103 @@ impl RenderOnce for VoiceBlock {
 		let open = *expanded.read(cx);
 		let click = expanded.clone();
 		let keyboard = expanded.clone();
-		gpui::div()
+		let position = std::rc::Rc::new(std::cell::Cell::new((gpui::px(0.), gpui::px(0.))));
+		let click_position = position.clone();
+		let keyboard_position = position.clone();
+		let click_viewport = self.viewport.clone();
+		let keyboard_viewport = self.viewport.clone();
+		let header_key = self.key.clone();
+		let transcript_key = self.key.clone();
+		let header = gpui::div()
+			.id(SharedString::from(format!("voice-block-toggle-{}", self.key)))
+			.debug_selector(move || format!("voice-history-block-{header_key}"))
+			.role(Role::Button)
+			.aria_label(self.title.clone())
+			.aria_expanded(open)
+			.tab_index(0)
+			.rounded(gpui::px(6.))
+			.w_full()
+			.flex()
+			.items_center()
+			.text_size(gpui::px(12.))
+			.text_color(gpui::rgb(TEXT_MUTED))
+			.gap_2()
+			.px_3()
+			.h(gpui::px(sticky::HEADER_HEIGHT))
+			.cursor_pointer()
+			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.focus(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.child(workspace_symbols::icon(Symbol::Microphone))
+			.child(self.title)
+			.child(workspace_symbols::process_chevron(
+				SharedString::from(format!("voice-chevron-{}", self.key)),
+				open,
+			))
+			.on_click(move |_, _, cx| {
+				click_viewport.toggle(*click.read(cx), &click_position, cx);
+				click.update(cx, |open, cx| {
+					*open = !*open;
+					cx.notify();
+				})
+			})
+			.on_key_down(move |e: &KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&e.keystroke.key.as_str()) && !e.is_held {
+					keyboard_viewport.toggle(*keyboard.read(cx), &keyboard_position, cx);
+					keyboard.update(cx, |open, cx| {
+						*open = !*open;
+						cx.notify();
+					});
+					cx.stop_propagation();
+				}
+			});
+		let body = gpui::div()
 			.w_full()
 			.min_w_0()
-			.rounded(gpui::px(10.))
-			.overflow_hidden()
-			.border_1()
-			.border_color(gpui::rgba(0xffffff12))
-			.bg(gpui::rgba(0xffffff05))
-			.child(
-				gpui::div()
-					.id(SharedString::from(format!("voice-block-toggle-{}", self.key)))
-					.debug_selector(|| "voice-history-block".into())
-					.role(Role::Button)
-					.aria_label(self.title.clone())
-					.aria_expanded(open)
-					.tab_index(0)
-					.rounded(gpui::px(9.))
-					.w_full()
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap_2()
-					.px_3()
-					.py_3()
-					.cursor_pointer()
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-					.focus(|s| s.bg(gpui::rgba(HOVER_FILL)))
-					.child(self.title)
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(if open { "Hide transcript" } else { "Show transcript" }),
-					)
-					.on_click(move |_, _, cx| {
-						click.update(cx, |open, cx| {
-							*open = !*open;
-							cx.notify();
-						})
-					})
-					.on_key_down(move |e: &KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&e.keystroke.key.as_str()) && !e.is_held {
-							keyboard.update(cx, |open, cx| {
-								*open = !*open;
-								cx.notify();
-							});
-							cx.stop_propagation();
-						}
-					}),
-			)
+			.child(gpui::div().h(gpui::px(sticky::HEADER_HEIGHT)))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("voice-transcript-{}", self.key)),
 				open,
+				gpui::div().w_full().debug_selector(|| "voice-history-transcript".into()).child(
+					gpui::div()
+						.debug_selector(move || {
+							format!("voice-history-transcript-{transcript_key}")
+						})
+						.px_3()
+						.pb_3()
+						.pt_2()
+						.flex()
+						.flex_col()
+						.gap(gpui::px(crate::ui_theme::MESSAGE_GAP))
+						.children(transcript_turns(&self.text).into_iter().enumerate().map(
+							|(index, (role, text))| {
+								agent_surface::speech_bubble(
+									role,
+									&text,
+									&format!("voice-transcript-{}-{index}", self.key),
+									None,
+								)
+								.debug_selector(move || format!("voice-transcript-turn-{index}"))
+							},
+						))
+						.child(markdown::response_copy_button(
+							&format!("voice-copy-{}", self.key),
+							"Copy voice transcript",
+							self.text,
+						)),
+				),
+			));
+		sticky::Group {
+			body: body.into_any_element(),
+			header: Some(
 				gpui::div()
-					.debug_selector(|| "voice-history-transcript".into())
-					.px_3()
-					.pb_3()
-					.pt_2()
-					.flex()
-					.flex_col()
-					.gap(gpui::px(crate::ui_theme::MESSAGE_GAP))
-					.children(transcript_turns(&self.text).into_iter().enumerate().map(
-						|(index, (role, text))| {
-							agent_surface::speech_bubble(
-								role,
-								&text,
-								&format!("voice-transcript-{}-{index}", self.key),
-								None,
-							)
-							.debug_selector(move || format!("voice-transcript-turn-{index}"))
-						},
-					))
-					.child(markdown::response_copy_button(
-						&format!("voice-copy-{}", self.key),
-						"Copy voice transcript",
-						self.text,
-					)),
-			))
+					.debug_selector(|| "voice-history-block".into())
+					.w_full()
+					.child(header)
+					.into_any_element(),
+			),
+			open,
+			position,
+		}
 	}
 }
 
@@ -170,6 +194,7 @@ mod tests {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 			VoiceBlock {
 				key: "fixture".into(),
+				viewport: None,
 				title: "Voice conversation".into(),
 				text: "user: Hello\nassistant: Hi".into(),
 			}
@@ -181,14 +206,14 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear(cx);
 		});
-		assert!(visual.debug_bounds("voice-history-transcript").is_none());
-		let button = visual.debug_bounds("voice-history-block").unwrap();
+		assert!(visual.debug_bounds("voice-history-transcript-fixture").is_none());
+		let button = visual.debug_bounds("voice-history-block-fixture").unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.draw(cx).clear(cx);
 		});
-		assert!(visual.debug_bounds("voice-history-transcript").is_some());
+		assert!(visual.debug_bounds("voice-history-transcript-fixture").is_some());
 	}
 
 	#[test]

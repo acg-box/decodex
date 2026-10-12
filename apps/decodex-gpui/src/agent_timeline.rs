@@ -469,6 +469,7 @@ impl AgentSurface {
 						.into_any_element()
 				} else {
 					super::voice::history::VoiceBlock {
+						viewport: Some(self.voice_history_viewport(cx)),
 						key: serde_json::json!([
 							work.id,
 							work.codex_thread_id,
