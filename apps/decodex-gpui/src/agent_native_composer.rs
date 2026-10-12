@@ -10,9 +10,9 @@ use gpui::{
 
 use crate::{
 	shell::{
-		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, FocusMessage, GrowPanel,
-		GrowPanels, NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel,
-		ShrinkPanels, ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
+		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
+		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
+		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
 		agent_surface::AgentSurface,
 	},
 	ui_motion,
@@ -83,7 +83,6 @@ impl Render for ComposerPanel {
 			.capture_any_mouse_down(move |_, _, cx| {
 				focus_owner.update(cx, |s, _| s.workspace.focused_panel = None);
 			})
-			.on_action(move |action: &FocusMessage, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateSettings, _, cx| forward(parent, action, cx))

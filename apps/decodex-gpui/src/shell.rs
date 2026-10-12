@@ -102,7 +102,6 @@ gpui::actions!(
 		FocusPrevious,
 		ActivateDestination,
 		ActivateAgent,
-		FocusMessage,
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
@@ -809,17 +808,6 @@ impl Shell {
 
 		self.record_navigation(cx);
 		cx.notify();
-	}
-
-	pub(crate) fn focus_message(
-		&mut self,
-		_: &FocusMessage,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) {
-		if self.selected == Destination::Agent {
-			self.agent.update(cx, |agent, cx| agent.focus_message(window, cx));
-		}
 	}
 
 	fn activate_agent(&mut self, _: &ActivateAgent, _: &mut Window, cx: &mut Context<Self>) {
@@ -2174,7 +2162,6 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("cmd-l", FocusMessage, None),
 		KeyBinding::new("cmd-2", ActivateAgent, None),
 		KeyBinding::new("cmd-1", ActivateAgent, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
