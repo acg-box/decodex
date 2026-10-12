@@ -4,14 +4,12 @@ pub(crate) use conversations::{groups, tail_flush_turns};
 use crate::{
 	shell::agent_surface::{self, markdown},
 	ui_motion,
-	ui_theme::{HOVER_FILL, TEXT_MUTED},
 };
 use gpui::{App, IntoElement, KeyDownEvent, RenderOnce, Role, SharedString, Window, prelude::*};
 #[path = "voice_history_sticky.rs"] mod sticky;
 use crate::shell::workspace_symbols::{self, Symbol};
 use sticky::Toggle as _;
-pub(crate) use sticky::Viewport;
-use ui_motion::SmoothControl as _;
+pub(crate) use sticky::{ReadingSpace, Viewport};
 
 pub(crate) fn handoff(text: &str) -> Option<String> {
 	let body = text
@@ -89,6 +87,42 @@ impl Expansion {
 	}
 }
 
+fn voice_header(key: &str, title: String, open: bool) -> gpui::Stateful<gpui::Div> {
+	let header_key = key.to_owned();
+	gpui::div()
+		.id(SharedString::from(format!("voice-block-toggle-{}", key)))
+		.debug_selector(move || format!("voice-history-block-{header_key}"))
+		.role(Role::Button)
+		.aria_label(title.clone())
+		.aria_expanded(open)
+		.tab_index(0)
+		.rounded(gpui::px(4.))
+		.flex_none()
+		.w_full()
+		.bg(gpui::rgba(crate::ui_theme::PANEL_HEADER_TINT))
+		.flex()
+		.items_center()
+		.text_size(gpui::px(12.))
+		.font_weight(gpui::FontWeight::NORMAL)
+		.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+		.gap_2()
+		.px_3()
+		.h(gpui::px(sticky::HEADER_HEIGHT))
+		.cursor_pointer()
+		.hover(|s| s.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+		.focus(|s| s.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+		.active(|s| s.bg(gpui::rgba(crate::ui_theme::PRESSED_FILL)))
+		.child(
+			gpui::div().opacity(0.65).child(workspace_symbols::icon_sized(Symbol::Waveform, 12.)),
+		)
+		.child(title)
+		.child(gpui::div().flex_1())
+		.child(workspace_symbols::process_chevron(
+			SharedString::from(format!("voice-chevron-{}", key)),
+			open,
+		))
+}
+
 impl RenderOnce for VoiceBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let expanded = window.use_keyed_state(
@@ -111,34 +145,8 @@ impl RenderOnce for VoiceBlock {
 		let keyboard_position = position.clone();
 		let click_viewport = self.viewport.clone();
 		let keyboard_viewport = self.viewport.clone();
-		let header_key = self.key.clone();
 		let transcript_key = self.key.clone();
-		let header = gpui::div()
-			.id(SharedString::from(format!("voice-block-toggle-{}", self.key)))
-			.debug_selector(move || format!("voice-history-block-{header_key}"))
-			.role(Role::Button)
-			.aria_label(self.title.clone())
-			.aria_expanded(open)
-			.tab_index(0)
-			.rounded_full()
-			.flex_none()
-			.bg(gpui::rgb(0x18181c))
-			.flex()
-			.items_center()
-			.text_size(gpui::px(12.))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.gap_2()
-			.px_3()
-			.h(gpui::px(sticky::HEADER_HEIGHT))
-			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-			.focus(|s| s.bg(gpui::rgba(HOVER_FILL)))
-			.child(workspace_symbols::icon(Symbol::Microphone))
-			.child(self.title)
-			.child(workspace_symbols::process_chevron(
-				SharedString::from(format!("voice-chevron-{}", self.key)),
-				open,
-			))
+		let header = voice_header(&self.key, self.title, open)
 			.on_click(move |_, _, cx| {
 				click_viewport.toggle(click.read(cx).open, &click_position, cx);
 				click.update(cx, |state, cx| {
@@ -155,15 +163,16 @@ impl RenderOnce for VoiceBlock {
 					});
 					cx.stop_propagation();
 				}
-			})
-			.smooth();
+			});
 		let body = gpui::div()
 			.w_full()
 			.min_w_0()
 			.child(gpui::div().h(gpui::px(sticky::HEADER_HEIGHT)))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("voice-transcript-{}", self.key)),
-				open,
+				// Keep speech at its reading position until it is invisible. Then
+				// shrink the document, so bottom clamping cannot drag fading text.
+				open || opacity > 0.001,
 				gpui::div().w_full().debug_selector(|| "voice-history-transcript".into()).child(
 					gpui::div()
 						.relative()
@@ -172,7 +181,8 @@ impl RenderOnce for VoiceBlock {
 						.debug_selector(move || {
 							format!("voice-history-transcript-{transcript_key}")
 						})
-						.px_3()
+						.bg(gpui::rgba(0xffffff03))
+						.px_4()
 						.pb_3()
 						.pt_2()
 						.flex()
@@ -204,7 +214,10 @@ impl RenderOnce for VoiceBlock {
 					.flex()
 					.items_start()
 					.child(
-						gpui::div().debug_selector(|| "voice-history-block".into()).child(header),
+						gpui::div()
+							.w_full()
+							.debug_selector(|| "voice-history-block".into())
+							.child(header),
 					)
 					.into_any_element(),
 			),

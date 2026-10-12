@@ -216,8 +216,13 @@ impl AgentSurface {
 		let owner = cx.entity().downgrade();
 
 		cx.defer(move |cx| {
-			let Ok((child, bounds, enabled)) = owner.read_with(cx, |s, _| {
-				(s.native_composer.child, s.native_composer.bounds, s.native_composer.enabled)
+			let Ok((child, bounds, enabled, opacity)) = owner.read_with(cx, |s, _| {
+				(
+					s.native_composer.child,
+					s.native_composer.bounds,
+					s.native_composer.enabled,
+					s.workspace.arrival.progress(0.12),
+				)
 			}) else {
 				return;
 			};
@@ -233,7 +238,8 @@ impl AgentSurface {
 							}
 						}
 
-						glass.set_visible(enabled && bounds.is_some());
+						glass.set_opacity(opacity);
+						glass.set_visible(enabled && bounds.is_some() && opacity > 0.001);
 					}
 				});
 			}

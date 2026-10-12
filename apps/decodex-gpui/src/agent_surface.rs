@@ -2419,6 +2419,7 @@ impl Render for AgentSurface {
 }
 
 struct WorkspaceView {
+	arrival: crate::ui_loading::WorkspaceArrival,
 	new_conversation: Option<String>,
 	browsing: bool,
 	workspace_filter: Option<String>,
@@ -2463,6 +2464,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			arrival: Default::default(),
 			new_conversation: None,
 			browsing: false,
 			workspace_filter: None,
@@ -2521,7 +2523,7 @@ struct TimelineView {
 	read_at: Option<std::time::Instant>,
 	cache: std::collections::BTreeMap<String, AgentHistoryResult>,
 	scroll: std::collections::BTreeMap<String, ScrollHandle>,
-	voice_min_height: std::collections::BTreeMap<String, std::rc::Rc<std::cell::Cell<f32>>>,
+	voice_min_height: std::collections::BTreeMap<String, std::rc::Rc<voice::history::ReadingSpace>>,
 	follow_paused: std::collections::BTreeSet<String>,
 	expanded_progress: std::collections::BTreeSet<String>,
 	expanded_records: std::collections::BTreeSet<String>,
@@ -2691,7 +2693,7 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
-	history_entry_presented(entry, identity, metrics, None)
+	history_entry_presented(entry, identity, metrics, None, true)
 }
 
 fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
@@ -2712,6 +2714,7 @@ fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyEle
 		identity,
 		None,
 		streamed,
+		false,
 	)
 }
 
@@ -2720,6 +2723,7 @@ fn history_entry_presented(
 	identity: &str,
 	metrics: Option<AnyElement>,
 	streamed_body: Option<AnyElement>,
+	show_metadata: bool,
 ) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
@@ -2809,7 +2813,7 @@ fn history_entry_presented(
 						.enumerate()
 						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
 				)
-				.when(!user, |body| {
+				.when(!user && show_metadata, |body| {
 					body.child(
 						gpui::div()
 							.mt(gpui::px(METADATA_GAP))

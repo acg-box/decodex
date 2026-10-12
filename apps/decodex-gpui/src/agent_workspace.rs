@@ -483,8 +483,7 @@ impl AgentSurface {
 			.px(gpui::px(6.))
 			.pb(gpui::px(CONTROL_MARGIN))
 			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-			.gap_1()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL));
+			.gap_1();
 
 		panel = panel
 			.child(self.work_navigation(
@@ -973,12 +972,7 @@ impl AgentSurface {
 			.entry(self.selected.clone().unwrap_or_default())
 			.or_default()
 			.clone();
-		let voice_min_height = self
-			.timeline
-			.voice_min_height
-			.entry(self.selected.clone().unwrap_or_default())
-			.or_default()
-			.clone();
+		let voice_min_height = self.animate_voice_reading_space(&scroll, window, cx);
 		let mut transcript = gpui::div()
 			.debug_selector(|| "workspace-transcript".into())
 			.id(SharedString::from(format!(
@@ -997,7 +991,7 @@ impl AgentSurface {
 				let content = if is_agent {
 					gpui::div()
 						.debug_selector(|| "conversation-content".into())
-						.min_h(gpui::px(voice_min_height.get()))
+						.min_h(gpui::px(voice_min_height))
 						.pt(gpui::px(16.))
 						.pb(gpui::px(self.workspace.composer_overlay_height))
 						.px(gpui::px(ui_theme::CONVERSATION_INSET))
@@ -1085,7 +1079,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
-		if self.workspace_connecting() {
+		let connecting = self.workspace_connecting();
+		self.workspace.arrival.observe(!connecting);
+		if self.workspace.arrival.progress(0.12) < 1. && !connecting {
+			ui_motion::request_frame(window, cx);
+			cx.notify();
+		}
+		if connecting {
 			return gpui::div()
 				.debug_selector(|| "workspace-connecting".into())
 				.size_full()
@@ -1111,6 +1111,7 @@ impl AgentSurface {
 			.id("conversation-panel-focus")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
 			.relative()
+			.opacity(self.workspace.arrival.progress(0.12))
 			.flex_1()
 			.min_w_0()
 			.min_h_0()
@@ -1231,6 +1232,7 @@ impl AgentSurface {
 					.overflow_hidden()
 					.w_full()
 					.h(gpui::px(displayed_height))
+					.opacity(self.workspace.arrival.progress(0.06))
 					.when(displayed_height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
 			)
 			.when(!self.workspace.graph_expanded, |center| center.child(chat));
@@ -1250,6 +1252,7 @@ impl AgentSurface {
 				.w(gpui::px(right_width))
 				.h_full()
 				.overflow_hidden()
+				.opacity(self.workspace.arrival.progress(0.08))
 				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(cx))),
 		);
 		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
@@ -1261,11 +1264,12 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.flex_col()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.child(body);
 
 		self.workspace_resize_root(cx)
 			.size_full()
+			.relative()
+			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.flex()
 			.text_size(gpui::px(BODY_SIZE))
 			.font_family(FONT_FAMILY)
@@ -1273,6 +1277,20 @@ impl AgentSurface {
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
+			.when(self.workspace.arrival.progress(0.) < 1., |root| {
+				root.child(
+					gpui::div()
+						.absolute()
+						.inset_0()
+						.debug_selector(|| "workspace-arrival-overlay".into())
+						.opacity(1. - self.workspace.arrival.progress(0.))
+						.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+						.flex()
+						.items_center()
+						.justify_center()
+						.child(crate::ui_loading::loading("")),
+				)
+			})
 			.into_any_element()
 	}
 
