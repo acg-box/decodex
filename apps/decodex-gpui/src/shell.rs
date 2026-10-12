@@ -6750,12 +6750,10 @@ mod tests {
 			assert!(!s.agent.read(cx).workspace_connecting());
 		});
 		visual.dispatch_action(super::ReloadWorkspace);
-		shell.update(visual, |s, cx| {
-			assert!(
-				s.agent.read(cx).workspace_connecting(),
-				"reload must clear the snapshot even while its window dispatches the action"
-			);
-		});
+		shell.update(visual, |s, cx| assert!(!s.agent.read(cx).workspace_connecting()));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 	}
 
 	#[test]

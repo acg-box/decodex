@@ -106,7 +106,7 @@ pub(crate) fn workspace() -> Loading {
 	Loading { label: "Opening workspace", icon_only: true }
 }
 
-/// Fade each data surface once. Retained data and background refreshes do not replay it.
+/// Fade each new load. Refreshes that retain ready content do not replay it.
 #[derive(IntoElement)]
 pub(crate) struct Content {
 	key: SharedString,
@@ -141,6 +141,8 @@ impl Arrival {
 
 	fn progress(&mut self, ready: bool, now: Instant, reduced: bool) -> f32 {
 		if !ready {
+			// Retained refreshes stay ready; a cleared surface starts a new arrival.
+			self.started = None;
 			return 1.;
 		}
 		let started = *self.started.get_or_insert(now);
@@ -243,7 +245,7 @@ mod tests {
 		assert_eq!(state.stable_frames, 0, "a layout change invalidates readiness");
 	}
 	#[test]
-	fn data_arrives_once_without_replaying_refresh_or_delaying_reduced_motion() {
+	fn retained_content_stays_visible_but_an_explicit_reload_replays_arrival() {
 		let now = Instant::now();
 		let mut state = Arrival::default();
 		assert_eq!(state.progress(false, now, false), 1.);
@@ -253,7 +255,11 @@ mod tests {
 		let done = now + std::time::Duration::from_millis(320);
 		assert_eq!(state.progress(true, done, false), 1.);
 		assert_eq!(state.progress(false, done, false), 1.);
-		assert_eq!(state.progress(true, done, false), 1.);
+		assert_eq!(state.progress(true, done, false), 0.);
+		assert!(
+			(state.progress(true, done + std::time::Duration::from_millis(160), false) - 0.5).abs()
+				< 0.001
+		);
 		assert_eq!(Arrival::default().progress(true, now, true), 1.);
 	}
 }
