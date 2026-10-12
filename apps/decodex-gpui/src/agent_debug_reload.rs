@@ -15,6 +15,8 @@ impl AgentSurface {
 			cx.notify();
 			return false;
 		}
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.retry_native_composer();
 		self.generation += 1;
 		self.task = None;
 		// Cancel the read, not its last confirmed connection state. Resetting to

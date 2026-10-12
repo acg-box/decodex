@@ -777,47 +777,56 @@ impl AgentSurface {
 					.into_any_element(),
 			);
 		}
-		Some(
-			gpui::div()
-				.id("live-waveform")
-				.debug_selector(|| "live-waveform".into())
-				.role(Role::Image)
-				.aria_label(if voice.muted {
-					"Microphone muted"
-				} else {
-					"Live microphone waveform"
-				})
-				.w_full()
-				.min_w_0()
-				.h(gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.))
-				.px(gpui::px(8.))
-				.overflow_hidden()
-				.flex()
-				.items_center()
-				.justify_center()
-				.gap(gpui::px(2.))
-				.children((0_usize..32).map(|i| {
-					let distance = ((i as f32 - 15.5) / 15.5).abs();
-					let envelope = 0.25 + 0.75 * (1. - distance).powf(0.7);
-					let lag = (distance * 6.).round() as usize;
-					let level = voice.levels.iter().rev().nth(lag).copied().unwrap_or_default();
-					let target = if voice.muted {
-						2.
-					} else {
-						2. + 22. * level.clamp(0., 1.).sqrt() * envelope
-					};
-					let height = ui_motion::value(("live-wave-height", i), target, window, cx);
-					gpui::div()
-						.id(("live-wave", i))
-						.flex_none()
-						.w(gpui::px(2.5))
-						.h(gpui::px(height))
-						.rounded_full()
-						.opacity(if voice.muted { 0.35 } else { 0.3 + 0.7 * envelope })
-						.bg(gpui::rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
-				}))
-				.into_any_element(),
-		)
+		Some(Self::microphone_waveform(
+			"live-waveform",
+			"Live microphone waveform",
+			&voice.levels,
+			voice.muted,
+			window,
+			cx,
+		))
+	}
+
+	pub(super) fn microphone_waveform(
+		id: &'static str,
+		label: &'static str,
+		levels: &std::collections::VecDeque<f32>,
+		inactive: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		gpui::div()
+			.id(id)
+			.debug_selector(move || id.into())
+			.role(Role::Image)
+			.aria_label(if inactive { "Microphone inactive" } else { label })
+			.w_full()
+			.min_w_0()
+			.h(gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.))
+			.px(gpui::px(8.))
+			.overflow_hidden()
+			.flex()
+			.items_center()
+			.justify_center()
+			.gap(gpui::px(2.))
+			.children((0_usize..32).map(|i| {
+				let distance = ((i as f32 - 15.5) / 15.5).abs();
+				let envelope = 0.25 + 0.75 * (1. - distance).powf(0.7);
+				let lag = (distance * 6.).round() as usize;
+				let level = levels.iter().rev().nth(lag).copied().unwrap_or_default();
+				let target =
+					if inactive { 2. } else { 2. + 22. * level.clamp(0., 1.).sqrt() * envelope };
+				let height = ui_motion::value((id, i), target, window, cx);
+				gpui::div()
+					.id((id, i))
+					.flex_none()
+					.w(gpui::px(2.5))
+					.h(gpui::px(height))
+					.rounded_full()
+					.opacity(if inactive { 0.35 } else { 0.3 + 0.7 * envelope })
+					.bg(gpui::rgb(if inactive { TEXT_MUTED } else { BLUE }))
+			}))
+			.into_any_element()
 	}
 
 	pub(super) fn voice_toolbar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {

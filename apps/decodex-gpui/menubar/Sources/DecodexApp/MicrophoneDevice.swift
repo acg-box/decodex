@@ -29,7 +29,8 @@ enum MicrophoneDevice {
         for device in devices {
             guard scalar(device, kAudioDevicePropertyDeviceIsAlive) == 1,
                   scalar(device, kAudioDevicePropertyIsHidden) != 1,
-                  hasInputChannels(device) else { continue }
+                  !isPrivateAggregate(device),
+                  hasCaptureStreams(device) else { continue }
             var label: Unmanaged<CFString>?
             var labelSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             var labelProperty = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -48,15 +49,42 @@ enum MicrophoneDevice {
         return value
     }
 
-    nonisolated private static func hasInputChannels(_ device: AudioDeviceID) -> Bool {
-        var property = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+    nonisolated private static func isPrivateAggregate(_ device: AudioDeviceID) -> Bool {
+        guard scalar(device, kAudioDevicePropertyTransportType) == kAudioDeviceTransportTypeAggregate else { return false }
+        var property = AudioObjectPropertyAddress(mSelector: kAudioAggregateDevicePropertyComposition, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: Unmanaged<CFDictionary>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFDictionary>?>.size)
+        guard AudioObjectGetPropertyData(device, &property, 0, nil, &size, &value) == noErr, let value else { return false }
+        let composition = value.takeRetainedValue() as NSDictionary
+        return (composition[kAudioAggregateDeviceIsPrivateKey] as? NSNumber)?.boolValue == true
+    }
+
+    nonisolated private static func hasCaptureStreams(_ device: AudioDeviceID) -> Bool {
+        var property = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(device, &property, 0, nil, &size) == noErr,
-              size >= MemoryLayout<AudioBufferList>.size else { return false }
-        let storage = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
-        defer { storage.deallocate() }
-        guard AudioObjectGetPropertyData(device, &property, 0, nil, &size, storage) == noErr else { return false }
-        return UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self)).contains { $0.mNumberChannels > 0 }
+        guard AudioObjectGetPropertyDataSize(device, &property, 0, nil, &size) == noErr, size > 0 else { return false }
+        var streams = [AudioStreamID](repeating: 0, count: Int(size) / MemoryLayout<AudioStreamID>.size)
+        let status = streams.withUnsafeMutableBytes { AudioObjectGetPropertyData(device, &property, 0, nil, &size, $0.baseAddress!) }
+        guard status == noErr else { return false }
+        return hasCaptureInput(streams: streams.map {
+            (direction: scalar($0, kAudioStreamPropertyDirection), terminal: scalar($0, kAudioStreamPropertyTerminalType))
+        })
+    }
+
+    // VoiceProcessingIO adds echo-reference input streams to output devices.
+    // Their terminals are unknown or output terminals, not microphone inputs.
+    nonisolated static func hasCaptureInput(streams: [(direction: UInt32?, terminal: UInt32?)]) -> Bool {
+        let outputTerminals: Set<UInt32> = [kAudioStreamTerminalTypeSpeaker, kAudioStreamTerminalTypeHeadphones, kAudioStreamTerminalTypeLFESpeaker, kAudioStreamTerminalTypeReceiverSpeaker, kAudioStreamTerminalTypeHDMI, kAudioStreamTerminalTypeDisplayPort]
+        var unknownInput = false
+        for stream in streams where stream.direction == 1 {
+            guard let terminal = stream.terminal else { continue }
+            if terminal == 0 || terminal == 0x0200 {
+                unknownInput = true
+            } else if !outputTerminals.contains(terminal) && !(0x0300..<0x0400).contains(terminal) {
+                return true
+            }
+        }
+        return unknownInput && streams.allSatisfy { $0.direction == 1 }
     }
 
     nonisolated static func namedInput(_ name: String, in inputs: [(id: AudioDeviceID, name: String)]) throws -> AudioDeviceID {

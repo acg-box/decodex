@@ -103,6 +103,12 @@ impl Render for ComposerPanel {
 }
 
 impl AgentSurface {
+	pub(super) fn retry_native_composer(&mut self) {
+		// An explicit reload can recover a failed initial native-window creation.
+		// Keep an existing panel and its focus intact.
+		self.native_composer.failed = false;
+	}
+
 	pub(super) fn focus_native_message(&self, cx: &mut Context<Self>) -> bool {
 		let Some(child) = self.native_composer.child.filter(|_| self.native_composer.enabled)
 		else {
@@ -204,6 +210,11 @@ impl AgentSurface {
 				s.native_composer.child = result.ok().flatten();
 				s.native_composer.enabled = s.native_composer.child.is_some();
 				s.native_composer.failed = s.native_composer.child.is_none();
+				if s.native_composer.failed {
+					eprintln!(
+						"Decodex composer: native glass could not be created; Reload Workspace will retry."
+					);
+				}
 
 				cx.notify();
 			});

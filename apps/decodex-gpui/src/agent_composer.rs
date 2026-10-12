@@ -436,6 +436,7 @@ impl AgentSurface {
 								)),
 							|capsule| capsule.child(editor),
 						)
+						.children(self.dictation_waveform(window, cx))
 						.child(controls.child(self.composer_toolbar(cx)))
 				}
 			})
