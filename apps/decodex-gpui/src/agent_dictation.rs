@@ -6,7 +6,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{AnyElement, AsyncApp, Task, WeakEntity};
+use gpui::{AnyElement, AsyncApp, Task, WeakEntity, prelude::FluentBuilder as _};
 use tokio::runtime::Builder;
 use ui_theme::TEXT_MUTED;
 
@@ -294,6 +294,7 @@ impl AgentSurface {
 		Some(Self::microphone_waveform(
 			"dictation-waveform",
 			"Dictation microphone waveform",
+			5.,
 			&d.levels,
 			d.status != "Listening" || d.finishing || d.capture_ended,
 			window,
@@ -307,14 +308,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
-		let label = if d.status == "Listening" {
-			format!("Listening · {}s", d.started.elapsed().as_secs())
-		} else {
-			d.status.clone()
-		};
-
+		let listening = d.status == "Listening" && !d.finishing && !d.capture_ended;
 		Some(
 			gpui::div()
+				.id("dictation-controls")
+				.debug_selector(|| "dictation-controls".into())
+				.justify_between()
 				.flex_1()
 				.min_w_0()
 				.flex()
@@ -322,36 +321,43 @@ impl AgentSurface {
 				.gap(gpui::px(8.))
 				.text_size(gpui::px(11.))
 				.text_color(gpui::rgb(TEXT_MUTED))
-				.child(
-					gpui::div()
-						.id("dictation-status")
-						.flex_1()
-						.min_w_0()
-						.text_ellipsis()
-						.role(Role::Status)
-						.aria_label(label.clone())
-						.child(label),
-				)
-				.child(
-					gpui::div()
-						.flex_1()
-						.min_w_0()
-						.max_w(gpui::px(160.))
-						.children(self.dictation_waveform(window, cx)),
-				)
-				.child(self.composer_control(
-					"dictation-cancel",
-					"Cancel".into(),
-					"Cancel dictation and restore the draft",
-					|s, cx| s.cancel_dictation(cx),
-					cx,
+				.child(gpui::div().w(gpui::px(56.)).flex_none().flex().child(
+					self.composer_control(
+						"dictation-cancel",
+						"Cancel".into(),
+						"Cancel dictation and restore the draft",
+						|s, cx| s.cancel_dictation(cx),
+						cx,
+					),
 				))
-				.child(self.composer_control(
-					"dictation-finish",
-					"Done".into(),
-					"Finish dictation · Keep text in the draft",
-					|s, cx| s.finish_dictation(cx),
-					cx,
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.max_w(gpui::px(240.))
+						.flex()
+						.justify_center()
+						.when(listening, |d| d.children(self.dictation_waveform(window, cx)))
+						.when(!listening, |view| {
+							view.child(
+								gpui::div()
+									.id("dictation-status")
+									.min_w_0()
+									.text_ellipsis()
+									.role(Role::Status)
+									.aria_label(d.status.clone())
+									.child(d.status.clone()),
+							)
+						}),
+				)
+				.child(gpui::div().w(gpui::px(56.)).flex_none().flex().justify_end().child(
+					self.composer_control(
+						"dictation-finish",
+						"Done".into(),
+						"Finish dictation · Keep text in the draft",
+						|s, cx| s.finish_dictation(cx),
+						cx,
+					),
 				))
 				.into_any_element(),
 		)
@@ -475,6 +481,13 @@ mod tests {
 			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
 			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
 			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
+			let controls = visual.debug_bounds("dictation-controls").unwrap();
+			let wave_center = wave.origin.x + wave.size.width / 2.;
+			let controls_center = controls.origin.x + controls.size.width / 2.;
+			assert!((wave_center - controls_center).abs() < gpui::px(1.));
+			if width == 800. {
+				assert!(wave.size.width > gpui::px(160.));
+			}
 			assert!(
 				wave.origin.y >= toolbar.origin.y
 					&& wave.origin.y + wave.size.height <= toolbar.origin.y + toolbar.size.height,

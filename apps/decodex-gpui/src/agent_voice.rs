@@ -780,6 +780,7 @@ impl AgentSurface {
 		Some(Self::microphone_waveform(
 			"live-waveform",
 			"Live microphone waveform",
+			2.5,
 			&voice.levels,
 			voice.muted,
 			window,
@@ -790,6 +791,7 @@ impl AgentSurface {
 	pub(super) fn microphone_waveform(
 		id: &'static str,
 		label: &'static str,
+		bar_width: f32,
 		levels: &std::collections::VecDeque<f32>,
 		inactive: bool,
 		window: &mut Window,
@@ -819,8 +821,9 @@ impl AgentSurface {
 				let height = ui_motion::value((id, i), target, window, cx);
 				gpui::div()
 					.id((id, i))
-					.flex_none()
-					.w(gpui::px(2.5))
+					.flex_1()
+					.min_w(gpui::px(1.))
+					.max_w(gpui::px(bar_width))
 					.h(gpui::px(height))
 					.rounded_full()
 					.opacity(if inactive { 0.35 } else { 0.3 + 0.7 * envelope })
