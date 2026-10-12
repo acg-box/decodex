@@ -120,13 +120,16 @@ fn production_owner_keeps_capturing_through_system_route_changes() {
 fn prepared_modes_start_without_recording_during_preparation() {
 	let device = std::env::var("DECODEX_AUDIO_TEST_DEVICE_ID").unwrap().parse().unwrap();
 	let owner = Owner::new().unwrap();
-	for mode in [Mode::Dictation, Mode::Live] {
-		owner.commands.send(Command::Prepare(Key { device, mode })).unwrap();
-	}
-	let (reply, ready) = mpsc::sync_channel(1);
-	owner.commands.send(Command::CheckPrepared(reply)).unwrap();
-	assert!(ready.recv_timeout(Duration::from_secs(15)).unwrap(), "preparation must not record");
 	for mode in [Mode::Dictation, Mode::Live, Mode::Dictation, Mode::Live] {
+		// Modes share one graph slot. Prepare the mode under test before measuring
+		// warm startup; the mode-switch test measures cold construction separately.
+		owner.commands.send(Command::Prepare(Key { device, mode })).unwrap();
+		let (reply, ready) = mpsc::sync_channel(1);
+		owner.commands.send(Command::CheckPrepared(reply)).unwrap();
+		assert!(
+			ready.recv_timeout(Duration::from_secs(15)).unwrap(),
+			"preparation must not record"
+		);
 		let requested = Instant::now();
 		let mut session =
 			owner.start(Key { device, mode }, Arc::new(AtomicBool::new(false))).unwrap();
