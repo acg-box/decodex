@@ -32,8 +32,11 @@ final class VoiceMediaHost: NSObject {
                 }
             }
         case "devices":
-            let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
-            emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
+            do {
+                emit(["type":"devices", "inputs":try MicrophoneDevice.inputs().map { $0.name }])
+            } catch {
+                emit(["type":"devices", "inputs":[String](), "message":"Microphones could not be listed. Close this menu and try again."])
+            }
         case "dictate", "start":
             events.removeAll()
             captureCancelled = false
