@@ -2637,7 +2637,17 @@ mod tests {
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
 
 			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
+			s.snapshot.as_mut().unwrap().pending_events[0].id = 99;
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				unreachable!()
+			};
+			entries.last_mut().unwrap().text =
+				"Agent account requires recovery: RefreshQuota".into();
+			s.workspace.connection_details_expanded = true;
+			cx.notify();
 		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("connection-open-accounts").is_some());
 	}
 
 	#[gpui::test]
