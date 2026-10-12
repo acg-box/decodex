@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use gpui::{
 	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
-	Focusable, MouseButton, Pixels, Render, Subscription, Window, WindowBackgroundAppearance,
-	WindowBounds, WindowHandle, WindowKind, WindowOptions,
+	Focusable, MouseButton, Pixels, Render, Role, StatefulInteractiveElement as _, Subscription,
+	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
 	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
@@ -103,6 +103,24 @@ impl Render for ComposerPanel {
 }
 
 impl AgentSurface {
+	pub(super) fn focus_native_message(&self, cx: &mut Context<Self>) -> bool {
+		let Some(child) = self.native_composer.child.filter(|_| self.native_composer.enabled)
+		else {
+			return false;
+		};
+		cx.defer(move |cx| {
+			let _ = child.update(cx, |panel, window, cx| {
+				let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
+				window.focus(&focus, cx);
+				if let Some(glass) = &panel.glass {
+					glass.focus_text();
+				}
+				window.activate_window();
+			});
+		});
+		true
+	}
+
 	/// Called by the main shell; settings and other windows must not create composers.
 	pub(crate) fn prepare_native_composer(
 		&mut self,
@@ -245,6 +263,17 @@ impl AgentSurface {
 			.items_center()
 			.child(
 				gpui::div()
+					.id("native-composer-accessibility-entry")
+					.role(Role::Button)
+					.aria_label("Focus message editor")
+					.tab_index(0)
+					.on_click(cx.listener(|s, _, window, cx| s.focus_message(window, cx)))
+					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							s.focus_message(window, cx);
+							cx.stop_propagation();
+						}
+					}))
 					.relative()
 					.w_full()
 					.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
