@@ -1,5 +1,9 @@
 //! Keep each voice disclosure reachable within its own transcript bounds.
-use std::{cell::Cell, rc::Rc};
+use std::{
+	cell::{Cell, RefCell},
+	rc::Rc,
+	time::Instant,
+};
 
 use crate::shell::agent_surface::AgentSurface;
 use gpui::{
@@ -8,16 +12,89 @@ use gpui::{
 	size,
 };
 
-pub(super) const HEADER_HEIGHT: f32 = 32.;
+pub(super) const HEADER_HEIGHT: f32 = 44.;
 type Position = Rc<Cell<(Pixels, Pixels)>>;
+
+pub(crate) struct ReadingSpace {
+	height: RefCell<crate::ui_motion::Tween>,
+	reveal: RefCell<Option<(crate::ui_motion::Tween, bool)>>,
+}
+impl Default for ReadingSpace {
+	fn default() -> Self {
+		Self { height: RefCell::new(crate::ui_motion::Tween::new(0.)), reveal: RefCell::default() }
+	}
+}
+impl ReadingSpace {
+	pub(crate) fn get(&self) -> f32 {
+		self.height.borrow().sample(Instant::now())
+	}
+
+	pub(crate) fn set(&self, height: f32) {
+		*self.height.borrow_mut() = crate::ui_motion::Tween::new(height);
+		self.reveal.borrow_mut().take();
+	}
+
+	fn collapse(&self, height: f32) {
+		self.set(height);
+		self.height.borrow_mut().target(0., Instant::now());
+	}
+
+	fn reveal(&self, from: f32, to: f32) {
+		self.set(0.);
+		let mut motion = crate::ui_motion::Tween::new(from);
+		motion.target(to.min(0.), Instant::now());
+		*self.reveal.borrow_mut() = Some((motion, false));
+	}
+
+	pub(crate) fn advance(&self, scroll: &ScrollHandle, window: &mut Window, cx: &mut App) -> bool {
+		let now = Instant::now();
+		let mut moving = self.height.borrow().moving(now);
+		let mut reveal = self.reveal.borrow_mut();
+		if let Some((motion, finishing)) = reveal.as_mut() {
+			scroll.set_offset(point(
+				scroll.offset().x,
+				px(motion.sample(now).clamp(-f32::from(scroll.max_offset().y).max(0.), 0.)),
+			));
+			if motion.moving(now) || !*finishing {
+				moving = true;
+				// Apply the final offset once more after the disclosure's final
+				// height has reached layout, including a slow first frame.
+				*finishing = !motion.moving(now);
+			} else {
+				*reveal = None;
+			}
+		}
+		if moving {
+			crate::ui_motion::request_frame(window, cx);
+		}
+		moving
+	}
+}
 
 #[derive(Clone)]
 pub(crate) struct Viewport {
 	pub scroll: ScrollHandle,
-	pub min_height: Rc<Cell<f32>>,
+	pub min_height: Rc<ReadingSpace>,
 	pub owner: Option<WeakEntity<AgentSurface>>,
 }
 impl AgentSurface {
+	pub(in crate::shell::agent_surface) fn animate_voice_reading_space(
+		&mut self,
+		scroll: &ScrollHandle,
+		window: &mut Window,
+		cx: &mut gpui::Context<Self>,
+	) -> f32 {
+		let space = self
+			.timeline
+			.voice_min_height
+			.entry(self.selected.clone().unwrap_or_default())
+			.or_default();
+		if space.advance(scroll, window, cx) {
+			cx.notify();
+		}
+		space.get()
+	}
+
 	pub(in crate::shell::agent_surface) fn voice_history_viewport(
 		&self,
 		cx: &gpui::Context<Self>,
@@ -62,11 +139,16 @@ impl Toggle for Option<Viewport> {
 			let (group_top, header_top) = position.get();
 			let offset = viewport.scroll.offset();
 			let target = offset.y + header_top - group_top;
-			// Keep enough reading space after the last group to avoid the
-			// scroll container pushing its header down as the document shrinks.
-			// New content consumes this space; explicit latest navigation clears it.
-			viewport.min_height.set(f32::from(viewport.scroll.bounds().size.height - target));
+			// Reserve the first collapse frame, then release it with the disclosure.
+			// The last record settles at the natural bottom without a permanent gap.
+			viewport.min_height.collapse(f32::from(viewport.scroll.bounds().size.height - target));
 			viewport.scroll.set_offset(point(offset.x, target));
+		} else {
+			let (group_top, _) = position.get();
+			let from = viewport.scroll.offset().y;
+			viewport
+				.min_height
+				.reveal(from.into(), (from + viewport.scroll.bounds().top() - group_top).into());
 		}
 	}
 }
@@ -166,12 +248,15 @@ mod tests {
 	use gpui::{Context, Render, TestAppContext, VisualTestContext, prelude::*};
 
 	struct Fixture {
-		min_height: Rc<Cell<f32>>,
+		min_height: Rc<ReadingSpace>,
 		tail: f32,
 		scroll: ScrollHandle,
 	}
 	impl Render for Fixture {
-		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			if self.min_height.advance(&self.scroll, window, cx) {
+				cx.notify();
+			}
 			gpui::div().size_full().p_4().child(
 				gpui::div()
 					.id("test-voice-scroll")
@@ -257,7 +342,7 @@ mod tests {
 		assert!(visual.debug_bounds("voice-history-transcript-first").is_some());
 	}
 	#[gpui::test]
-	fn last_group_keeps_its_header_position_when_no_later_content_remains(cx: &mut TestAppContext) {
+	fn last_group_releases_reading_space_after_collapse(cx: &mut TestAppContext) {
 		let scroll = ScrollHandle::new();
 		let (_, visual) = cx.add_window_view(|_, _| Fixture {
 			scroll: scroll.clone(),
@@ -269,6 +354,11 @@ mod tests {
 		let header = visual.debug_bounds("voice-history-block-second").unwrap();
 		visual.simulate_click(header.center(), Default::default());
 		settle(visual);
+		assert_eq!(
+			visual.debug_bounds("voice-history-block-second").unwrap().top(),
+			scroll.bounds().top(),
+			"expanding a long call scrolls its header to the top"
+		);
 		scroll.set_offset(point(px(0.), px(-350.)));
 		draw(visual);
 		let pinned = visual.debug_bounds("voice-history-block-second").unwrap();
@@ -283,10 +373,8 @@ mod tests {
 		);
 		settle(visual);
 		let collapsed = visual.debug_bounds("voice-history-block-second").unwrap();
-		assert!(
-			(collapsed.top() - pinned.top()).abs() < px(1.),
-			"last header moved: {pinned:?} -> {collapsed:?}"
-		);
+		assert!(collapsed.bottom() < scroll.bounds().bottom());
+		assert_eq!(scroll.max_offset().y, px(0.), "collapsed history must not retain blank space");
 		assert!(visual.debug_bounds("voice-history-transcript-second").is_none());
 	}
 }

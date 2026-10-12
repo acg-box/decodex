@@ -106,6 +106,37 @@ pub(crate) fn workspace() -> Loading {
 	Loading { label: "Opening workspace", icon_only: true }
 }
 
+/// One clock for the first workspace reveal, including the native composer window.
+#[derive(Default)]
+pub(crate) struct WorkspaceArrival {
+	started: Option<Instant>,
+}
+impl WorkspaceArrival {
+	pub(crate) fn observe(&mut self, ready: bool) {
+		if ready {
+			self.started.get_or_insert_with(Instant::now);
+		} else {
+			self.started = None;
+		}
+	}
+
+	pub(crate) fn progress(&self, delay: f32) -> f32 {
+		self.progress_at(Instant::now(), delay, ui_motion::reduced())
+	}
+
+	fn progress_at(&self, now: Instant, delay: f32, reduced: bool) -> f32 {
+		let Some(started) = self.started else {
+			return 0.;
+		};
+		if reduced {
+			return 1.;
+		}
+		let t =
+			((now.saturating_duration_since(started).as_secs_f32() - delay) / 0.48).clamp(0., 1.);
+		t * t * (3. - 2. * t)
+	}
+}
+
 /// Fade each new load. Refreshes that retain ready content do not replay it.
 #[derive(IntoElement)]
 pub(crate) struct Content {
@@ -226,6 +257,24 @@ pub(crate) fn history(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn workspace_regions_reveal_in_place_and_refresh_does_not_restart_them() {
+		let mut arrival = WorkspaceArrival::default();
+		assert_eq!(arrival.progress(0.), 0.);
+		arrival.observe(true);
+		let start = arrival.started.unwrap();
+		assert_eq!(arrival.progress_at(start, 0., false), 0.);
+		let middle = start + std::time::Duration::from_millis(240);
+		let sidebar = arrival.progress_at(middle, 0., false);
+		let chat = arrival.progress_at(middle, 0.12, false);
+		assert!(chat > 0. && chat < sidebar && sidebar < 1.);
+		arrival.observe(true);
+		assert_eq!(arrival.started, Some(start));
+		assert_eq!(arrival.progress_at(start + std::time::Duration::from_secs(1), 0.12, false), 1.);
+		assert_eq!(arrival.progress_at(start, 0.12, true), 1.);
+		arrival.observe(false);
+		assert_eq!(arrival.progress(0.), 0.);
+	}
 	#[test]
 	fn initial_history_waits_for_scroll_and_layout_to_stop_changing() {
 		let mut state = Arrival::default();

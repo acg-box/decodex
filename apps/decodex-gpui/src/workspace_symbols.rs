@@ -11,8 +11,8 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 35]> = LazyLock::new(|| {
-	let sources: [&[u8]; 35] = [
+static IMAGES: LazyLock<[Arc<Image>; 36]> = LazyLock::new(|| {
+	let sources: [&[u8]; 36] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
@@ -48,6 +48,7 @@ static IMAGES: LazyLock<[Arc<Image>; 35]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/all-work.png"),
 		include_bytes!("../../../assets/workspace-symbols/arrange.png"),
 		include_bytes!("../../../assets/workspace-symbols/fit.png"),
+		include_bytes!("../../../assets/workspace-symbols/waveform.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
@@ -89,6 +90,7 @@ pub(super) enum Symbol {
 	AllWork,
 	Arrange,
 	Fit,
+	Waveform,
 }
 
 #[derive(gpui::IntoElement)]

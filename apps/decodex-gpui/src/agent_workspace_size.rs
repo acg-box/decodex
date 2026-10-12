@@ -266,6 +266,7 @@ impl AgentSurface {
 		}
 		gpui::div()
 			.id("left-panel-slot")
+			.opacity(self.workspace.arrival.progress(0.))
 			.debug_selector(|| "left-panel-slot".into())
 			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()

@@ -331,6 +331,7 @@ impl AgentSurface {
 		if delta.y == gpui::px(0.) {
 			return;
 		}
+		self.clear_voice_reading_space();
 
 		self.timeline.latest_follow_work = None;
 
