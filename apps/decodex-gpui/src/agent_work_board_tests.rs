@@ -427,3 +427,36 @@ fn work_status_matrix_prioritizes_live_execution(cx: &mut gpui::TestAppContext) 
 		}
 	});
 }
+
+#[gpui::test]
+fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let rows = s.factory_rows();
+		assert!(rows.len() > 4);
+		for (index, row) in rows.iter().enumerate() {
+			s.work_board.briefs.insert(
+				row.key.clone(),
+				Brief {
+					outcome: None,
+					resources: None,
+					relations: vec![],
+					metrics: Default::default(),
+					stamp: s.brief_stamp(row),
+					read_at: std::time::Instant::now(),
+				},
+			);
+			s.publish_usage();
+			if index + 1 < rows.len() {
+				assert!(s.work_board.usage.is_none(), "partial reads must not resize the strip");
+			}
+		}
+		let published = s.work_board.usage.as_ref().unwrap();
+		assert_eq!(published.len(), rows.len(), "missing token counters also complete a read");
+		let first = &rows[0];
+		s.work_board.briefs.get_mut(&first.key).unwrap().stamp = "expired".into();
+		s.publish_usage();
+		assert_eq!(s.work_board.usage.as_ref().unwrap().len(), rows.len());
+		assert_eq!(s.work_board.usage.as_ref().unwrap()[&first.key].0, first.thread);
+	});
+}

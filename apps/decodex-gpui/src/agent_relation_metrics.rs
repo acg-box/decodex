@@ -176,8 +176,14 @@ impl AgentSurface {
 			.find(|n| Some(&n.key) == self.work_board.view.picked_agent.as_ref())?;
 		let row = node.row.as_ref()?;
 		let labels = identity::labels(std::iter::once(node.key.clone()));
-		let tokens = self.metrics_for(node).tokens;
-		let share = percentage(fraction(tokens, self.metric_baselines(graph).0));
+		let tokens = self.published_metrics_for(node).tokens;
+		let total = graph
+			.nodes
+			.iter()
+			.filter_map(|node| self.published_metrics_for(node).tokens)
+			.map(u128::from)
+			.sum();
+		let share = percentage(fraction(tokens, total));
 		Some(
 			gpui::div()
 				.debug_selector(|| "agent-usage-popover".into())
@@ -255,6 +261,20 @@ impl AgentSurface {
 				)
 				.into_any_element(),
 		)
+	}
+
+	fn published_metrics_for(&self, node: &Node) -> Metrics {
+		node.row
+			.as_ref()
+			.and_then(|row| {
+				self.work_board
+					.usage
+					.as_ref()?
+					.get(&row.key)
+					.filter(|(thread, _)| thread == &row.thread)
+					.map(|(_, metrics)| *metrics)
+			})
+			.unwrap_or_default()
 	}
 
 	fn metrics_for(&self, node: &Node) -> Metrics {
@@ -347,8 +367,10 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let nodes: Vec<_> = graph.nodes.iter().filter(|n| n.row.is_some()).collect();
-		let mut ranked: Vec<_> =
-			nodes.iter().filter_map(|n| self.metrics_for(n).tokens.map(|v| (*n, v))).collect();
+		let mut ranked: Vec<_> = nodes
+			.iter()
+			.filter_map(|n| self.published_metrics_for(n).tokens.map(|v| (*n, v)))
+			.collect();
 		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
 		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
 		let labels = identity::labels(nodes.iter().map(|n| n.key.clone()));
@@ -365,7 +387,7 @@ impl AgentSurface {
 			let tip = format!(
 				"{label} · {}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
 				node.row.as_ref().expect("ranked nodes have rows").title,
-				self.metrics_for(node).label(),
+				self.published_metrics_for(node).label(),
 				percentage(Some(share))
 			);
 			distribution = distribution.child(
@@ -420,7 +442,7 @@ impl AgentSurface {
 		}
 		crate::ui_loading::content(
 			format!("graph-metrics-{}", self.selected.as_deref().unwrap_or_default()),
-			!ranked.is_empty(),
+			self.work_board.usage.is_some(),
 			self.relation_metrics_footer(graph, ranked.is_empty(), total, distribution),
 		)
 		.into_any_element()
