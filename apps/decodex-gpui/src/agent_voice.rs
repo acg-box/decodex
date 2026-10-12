@@ -369,6 +369,7 @@ impl AgentSurface {
 		session: &EntityId,
 		work: EntityId,
 	) {
+		self.feedback.clear();
 		self.voice = Some(VoiceUi {
 			options,
 			media,
@@ -922,18 +923,9 @@ impl AgentSurface {
 					.into_iter()
 					.flat_map(|v| &v.captions),
 			);
-		let mut captions: Vec<_> = captions.filter(|c| !c.text.is_empty()).collect();
-
-		// Keep completed order; duplex live user text stays above the live reply.
-		captions.sort_by_key(|c| {
-			if c.complete {
-				0
-			} else if c.role == "user" {
-				1
-			} else {
-				2
-			}
-		});
+		// Keep arrival order across completion and interruption. Sorting unfinished
+		// speakers moves an interruption above the reply it interrupted.
+		let captions: Vec<_> = captions.filter(|c| !c.text.is_empty()).collect();
 
 		if captions.is_empty() {
 			return None;
@@ -941,6 +933,7 @@ impl AgentSurface {
 
 		Some(
 			gpui::div()
+				.debug_selector(|| "live-voice-captions".into())
 				.flex()
 				.flex_col()
 				.children(captions.into_iter().enumerate().map(|(i, caption)| {
@@ -968,6 +961,10 @@ impl AgentSurface {
 							.into_any_element(),
 						),
 					)
+					.debug_selector({
+						let key = caption.key.clone();
+						move || format!("voice-caption-{key}")
+					})
 					.into_any_element()
 				}))
 				.into_any_element(),
@@ -1065,6 +1062,11 @@ fn append_caption_delta(event: &Value, captions: &mut Vec<Caption>, role: &'stat
 	if delta.is_empty() {
 		return;
 	}
+	// WebRTC emits both flat transcript events and identified turn events.
+	// Once a turn owns this speaker, its deltas are the only append source.
+	if captions.iter().any(|c| c.role == role && !c.complete && !c.turn.is_empty()) {
+		return;
+	}
 	if !captions.iter().any(|c| c.role == role && !c.complete) {
 		captions.push(Caption {
 			key: crate::shell::agent_surface::unique_command(),
@@ -1117,13 +1119,22 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 		let (Some(id), Some(role)) = (id, role) else { return };
 
 		if !captions.iter().any(|c| c.turn == id) {
-			captions.push(Caption {
-				key: crate::shell::agent_surface::unique_command(),
-				complete: false,
-				turn: id.into(),
-				role,
-				text: String::new(),
-			});
+			if let Some(caption) = captions
+				.iter_mut()
+				.rev()
+				.find(|c| c.turn.is_empty() && c.role == role && !c.complete)
+			{
+				// Adopt provisional text; the creation snapshot replaces that same caption.
+				caption.turn = id.into();
+			} else {
+				captions.push(Caption {
+					key: crate::shell::agent_surface::unique_command(),
+					complete: false,
+					turn: id.into(),
+					role,
+					text: String::new(),
+				});
+			}
 		}
 	}
 	// Frameless v3 finals can omit the turn ID, including a final with no deltas.
@@ -1219,7 +1230,7 @@ fn bound_caption(caption: &mut Caption) {
 #[cfg(test)]
 mod tests {
 	#[cfg(test)] use gpui::AppContext as _;
-	use gpui::{EntityInputHandler as _, Focusable as _, ParentElement};
+	use gpui::{EntityInputHandler as _, Focusable as _, InteractiveElement as _, ParentElement};
 	use raw_window_handle as _;
 
 	#[cfg(any(all(target_os = "macos", not(test)), any(not(target_os = "macos"), test)))]
@@ -1244,6 +1255,198 @@ mod tests {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| gpui::div().children(s.voice_toolbar(cx)))
 		}
+	}
+
+	struct VoiceHistoryView(Entity<AgentSurface>);
+	impl Render for VoiceHistoryView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			use gpui::Styled as _;
+			self.0.update(cx, |s, cx| {
+				let work = s
+					.snapshot
+					.as_ref()
+					.unwrap()
+					.work_items
+					.iter()
+					.find(|w| Some(&w.id) == s.selected.as_ref())
+					.unwrap()
+					.clone();
+				gpui::div()
+					.w_full()
+					.debug_selector(|| "voice-test-history".into())
+					.child(s.history_panel(&work, cx))
+			})
+		}
+	}
+
+	#[gpui::test]
+	fn native_history_renders_one_caption_block_and_keeps_interruption_order(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::shell::agent_surface::native_timeline::{Binding, Timeline};
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let work = s
+					.snapshot
+					.as_mut()
+					.unwrap()
+					.work_items
+					.iter_mut()
+					.find(|w| Some(&w.id) == s.selected.as_ref())
+					.unwrap();
+				work.codex_thread_id = Some("thread".into());
+				let id = work.id.clone();
+				let mut timeline = Timeline::default();
+				assert!(timeline.replace(
+					Binding {
+						work: id.clone(),
+						thread: "thread".into(),
+						account: "account".into()
+					},
+					decodex_protocol::AgentTimelinePage {
+						thread_id: "thread".into(),
+						entries: vec![],
+						next_cursor: None,
+						weather: Default::default(),
+						safety_buffering_turn_id: None,
+						active_realtime_session_at_page_start: None
+					}
+				));
+				s.timeline.native = timeline;
+				s.prepare_voice_ui(
+					Default::default(),
+					Media,
+					&EntityId::new("call").unwrap(),
+					EntityId::new(id).unwrap(),
+				);
+			});
+			VoiceHistoryView(surface)
+		});
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		for width in [360., 1000.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1200.)));
+			surface.update(visual, |s, cx| {
+				s.voice.as_mut().unwrap().captions.clear();
+				cx.notify();
+			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			let baseline = visual.debug_bounds("voice-test-history").unwrap().size.height;
+			surface.update(visual, |s, cx| {
+				s.voice.as_mut().unwrap().captions = [
+					("first", "user", true, "Count to ten"),
+					("reply", "assistant", false, "One, two, three"),
+					("interrupt", "user", false, "Stop"),
+				]
+				.into_iter()
+				.map(|(key, role, complete, text)| Caption {
+					key: key.into(),
+					turn: key.into(),
+					role,
+					complete,
+					text: text.into(),
+				})
+				.collect();
+				cx.notify();
+			});
+			for completed in [false, true] {
+				surface.update(visual, |s, cx| {
+					s.voice.as_mut().unwrap().captions[1].complete = completed;
+					cx.notify();
+				});
+				visual.update(|w, cx| w.draw(cx).clear(cx));
+				let first = visual.debug_bounds("voice-caption-first").unwrap();
+				let reply = visual.debug_bounds("voice-caption-reply").unwrap();
+				let interrupt = visual.debug_bounds("voice-caption-interrupt").unwrap();
+				assert!(
+					first.bottom() <= reply.top() && reply.bottom() <= interrupt.top(),
+					"Completion must not reorder or overlap speech"
+				);
+				let block = visual.debug_bounds("live-voice-captions").unwrap();
+				let total = visual.debug_bounds("voice-test-history").unwrap().size.height;
+				assert!(
+					total - baseline
+						<= block.size.height + gpui::px(crate::ui_theme::MESSAGE_GAP + 1.),
+					"The native history must not insert the live block twice"
+				);
+				assert!(block.right() <= gpui::px(width + 1.));
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn starting_media_retires_availability_feedback(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.feedback = "Checking voice availability…".into();
+			s.prepare_voice_ui(
+				Default::default(),
+				Media,
+				&EntityId::new("call").unwrap(),
+				EntityId::new("agent").unwrap(),
+			);
+			assert!(s.feedback.is_empty());
+			assert_eq!(s.voice.as_ref().unwrap().connection_status, "Preparing audio…");
+			let _ = s.retire_voice_media();
+			assert!(
+				s.feedback.is_empty(),
+				"Ending the call must not resurrect availability feedback"
+			);
+			cx.notify();
+		});
+	}
+
+	#[test]
+	fn mixed_webrtc_events_keep_one_caption_per_turn_without_fragment_tails() {
+		let mut captions = Vec::new();
+		for (id, role, first, rest, final_text) in [
+			("u1", "user", "Can", " you hear me?", "Can you hear me?"),
+			("a1", "assistant", "Yes", ", I can.", "Yes, I can."),
+			("u2", "user", "Count", " to ten", "Count to ten."),
+			("a2", "assistant", "One", ", two, three", "One, two, three"),
+			("u3", "user", "Stop", "", "Stop."),
+			("a3", "assistant", "Okay", ", stopped.", "Okay, stopped."),
+		] {
+			let kind = format!("{role}_transcript.added")
+				.replace("user_", "input_")
+				.replace("assistant_", "output_");
+			voice::update_caption(
+				&serde_json::json!({"type":kind,"item":{"text":first}}),
+				&mut captions,
+			);
+			let key = captions.last().unwrap().key.clone();
+			voice::update_caption(
+				&serde_json::json!({"type":"turn.created","turn":{"id":id,"role":role,"transcript":first}}),
+				&mut captions,
+			);
+			assert_eq!(
+				captions.last().unwrap().key,
+				key,
+				"Turn identity must adopt its provisional caption"
+			);
+			voice::update_caption(
+				&serde_json::json!({"type":kind,"item":{"text":rest}}),
+				&mut captions,
+			);
+			voice::update_caption(
+				&serde_json::json!({"type":"turn.delta","turn_id":id,"delta":rest}),
+				&mut captions,
+			);
+			assert_eq!(
+				captions.last().unwrap().text,
+				format!("{first}{rest}"),
+				"Parallel flat events must not double live text"
+			);
+			voice::update_caption(
+				&serde_json::json!({"type":"turn.done","turn":{"id":id,"role":role,"transcript":final_text}}),
+				&mut captions,
+			);
+		}
+		assert_eq!(captions.len(), 6);
+		assert!(captions.iter().all(|c| c.complete && !c.turn.is_empty()));
+		assert_eq!(captions[0].text, "Can you hear me?");
+		assert_eq!(captions[4].text, "Stop.");
 	}
 
 	#[test]
