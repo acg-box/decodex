@@ -281,7 +281,14 @@ mod tests {
 		draw(visual);
 		let pinned = visual.debug_bounds("voice-history-block-second").unwrap();
 		assert_eq!(pinned.top(), scroll.bounds().top());
+		let speech = visual.debug_bounds("voice-transcript-turn-10").unwrap();
 		visual.simulate_click(pinned.center(), Default::default());
+		draw(visual);
+		let closing_speech = visual.debug_bounds("voice-transcript-turn-10").unwrap();
+		assert!(
+			(closing_speech.top() - speech.top()).abs() < px(1.),
+			"the first collapsing frame must not flash the start of the transcript"
+		);
 		settle(visual);
 		let collapsed = visual.debug_bounds("voice-history-block-second").unwrap();
 		assert!(
