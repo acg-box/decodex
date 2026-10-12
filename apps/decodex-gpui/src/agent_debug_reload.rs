@@ -17,7 +17,13 @@ impl AgentSurface {
 		}
 		self.generation += 1;
 		self.task = None;
-		self.state = LoadState::Idle;
+		// Cancel the read, not its last confirmed connection state. Resetting to
+		// Idle briefly adds the disconnected footer and shifts the history layout.
+		if self.state == LoadState::Loading {
+			self.state = self.status_before_refresh.take().unwrap_or_else(|| {
+				if self.snapshot.is_some() { LoadState::Ready } else { LoadState::Idle }
+			});
+		}
 		// Keep the workspace frame and native composer mounted while data reloads.
 		// Clearing this snapshot briefly replaces the entire page with a loading screen.
 		self.history_task = None;
@@ -41,6 +47,42 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 	use gpui::AppContext as _;
+
+	#[gpui::test]
+	fn debug_reload_preserves_confirmed_connection_during_pending_reads(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			for (state, prior, ready) in [
+				(LoadState::Ready, None, true),
+				(LoadState::Loading, Some(LoadState::Ready), true),
+				(LoadState::Loading, None, true),
+				(LoadState::Stale, None, false),
+				(LoadState::Loading, Some(LoadState::Stale), false),
+			] {
+				s.state = state;
+				s.status_before_refresh = prior;
+				assert!(s.debug_reload(cx));
+				assert_eq!(s.command_connection_ready(), ready);
+				assert_ne!(s.state, LoadState::Loading, "the replacement read must be allowed");
+				// The next frame starts the replacement read with this retained state.
+				s.status_before_refresh = Some(s.state.clone());
+				s.state = LoadState::Loading;
+				assert_eq!(s.command_connection_ready(), ready);
+			}
+			s.state = LoadState::Ready;
+			s.apply_result(Ok(super::super::AgentSnapshotResult::Unavailable));
+			assert!(!s.command_connection_ready(), "real disconnection remains visible");
+			s.snapshot = None;
+			s.state = LoadState::Loading;
+			s.status_before_refresh = None;
+			assert!(s.debug_reload(cx));
+			assert_eq!(s.state, LoadState::Idle);
+			assert!(!s.command_connection_ready());
+		});
+	}
 
 	#[gpui::test]
 	fn reload_preserves_draft_selection_and_panel_preferences(cx: &mut gpui::TestAppContext) {
