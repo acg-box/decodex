@@ -41,8 +41,13 @@ impl AgentSurface {
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
 		{
-			return VoiceBlock { key: identity, title: "Voice conversation".into(), text }
-				.into_any_element();
+			return VoiceBlock {
+				viewport: Some(self.voice_history_viewport(cx)),
+				key: identity,
+				title: "Voice conversation".into(),
+				text,
+			}
+			.into_any_element();
 		}
 		let mut row = gpui::div()
 			.w_full()
@@ -343,8 +348,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
 		{
-			return VoiceBlock { key: identity.into(), title: "Voice conversation".into(), text }
-				.into_any_element();
+			return VoiceBlock {
+				viewport: Some(self.voice_history_viewport(cx)),
+				key: identity.into(),
+				title: "Voice conversation".into(),
+				text,
+			}
+			.into_any_element();
 		}
 
 		if kind == "agentMessage"

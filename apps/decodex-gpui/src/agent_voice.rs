@@ -959,7 +959,7 @@ impl AgentSurface {
 			})
 	}
 
-	pub(super) fn live_chat_caption(&self, work: &str) -> Option<AnyElement> {
+	pub(super) fn live_chat_caption(&self, work: &str, cx: &Context<Self>) -> Option<AnyElement> {
 		let retired: Vec<_> = self
 			.retired_voice_captions
 			.iter()
@@ -990,8 +990,9 @@ impl AgentSurface {
 				.flex_col()
 				.children(retired.into_iter().map(|call| {
 					super::voice::history::VoiceBlock {
+						viewport: Some(self.voice_history_viewport(cx)),
 						key: format!("retired-{}-{}", work, call.session.as_str()),
-						title: "Voice conversation · Ended".into(),
+						title: "Voice conversation".into(),
 						text: call
 							.captions
 							.iter()
@@ -1657,14 +1658,14 @@ mod tests {
 				},
 			});
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
-			assert!(s.live_chat_caption("agent").is_some());
+			assert!(s.live_chat_caption("agent", cx).is_some());
 			assert!(s.live_voice_owns_session("agent", "call"));
 			assert!(!s.live_voice_owns_session("agent", "other-call"));
 			assert!(!s.live_voice_owns_session("other-work", "call"));
 			let _ = s.retire_voice_media();
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 			assert!(
-				s.live_chat_caption("agent").is_some(),
+				s.live_chat_caption("agent", cx).is_some(),
 				"Do not clear speech before the closed native group arrives"
 			);
 			assert!(s.live_voice_owns_session("agent", "call"));
@@ -1680,11 +1681,11 @@ mod tests {
 			let start = s.timeline.native.entries.remove(0);
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 			assert!(
-				s.live_chat_caption("agent").is_some(),
+				s.live_chat_caption("agent", cx).is_some(),
 				"A partial native page must not discard the full retained call"
 			);
 			s.timeline.native.entries.insert(0, start);
-			assert!(s.live_chat_caption("agent").is_none());
+			assert!(s.live_chat_caption("agent", cx).is_none());
 			assert!(
 				!s.live_voice_owns_session("agent", "call"),
 				"Native group and live text must switch on the same page"
@@ -2278,17 +2279,17 @@ mod tests {
 			for sample in [saved_voice_history(None), saved_voice_history(Some("other-call"))] {
 				s.reconcile_voice_captions("agent", &sample);
 
-				assert!(s.live_chat_caption("agent").is_some());
+				assert!(s.live_chat_caption("agent", cx).is_some());
 			}
 
 			s.reconcile_voice_captions("other-work", &saved_voice_history(Some("call")));
 
-			assert!(s.live_chat_caption("agent").is_some());
+			assert!(s.live_chat_caption("agent", cx).is_some());
 
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(
-				s.live_chat_caption("agent").is_some(),
+				s.live_chat_caption("agent", cx).is_some(),
 				"Saving active speech must not remove its visible bubble"
 			);
 
@@ -2302,14 +2303,14 @@ mod tests {
 			s.reconcile_voice_captions("agent", &saved_voice_history(Some("call")));
 
 			assert!(
-				s.live_chat_caption("agent").is_some(),
+				s.live_chat_caption("agent", cx).is_some(),
 				"One receipt must not hide two captions"
 			);
-			assert!(s.live_chat_caption("other-work").is_none());
+			assert!(s.live_chat_caption("other-work", cx).is_none());
 
 			s.voice.as_mut().expect("voice").captions[0].role = "assistant";
 
-			assert!(s.live_chat_caption("agent").is_some());
+			assert!(s.live_chat_caption("agent", cx).is_some());
 
 			s.apply_voice_response(&EntityId::new("old-call").expect("id"), None, cx);
 
@@ -2320,10 +2321,10 @@ mod tests {
 
 			assert!(s.voice.is_none(), "A failed control connection must retire local media");
 			assert!(
-				s.live_chat_caption("agent").is_some(),
+				s.live_chat_caption("agent", cx).is_some(),
 				"Retired media must retain text until history arrives"
 			);
-			assert!(s.live_chat_caption("other-work").is_none());
+			assert!(s.live_chat_caption("other-work", cx).is_none());
 
 			let mut saved = saved_voice_history(Some("call"));
 
@@ -2340,7 +2341,7 @@ mod tests {
 			s.history = None;
 
 			assert!(
-				s.live_chat_caption("agent").is_none(),
+				s.live_chat_caption("agent", cx).is_none(),
 				"Pagination cannot resurrect accepted captions"
 			);
 			assert!(s.feedback.contains("service connection was lost"));

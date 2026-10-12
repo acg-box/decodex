@@ -138,7 +138,19 @@ impl AgentSurface {
 		work: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut body = agent_surface::history_entry(entry).into_any_element();
+		let mut body = if entry.kind == "user"
+			&& let Some(text) = super::voice::history::handoff(&entry.text)
+		{
+			super::voice::history::VoiceBlock {
+				key: format!("saved-{work}-{}", entry.id),
+				title: "Voice conversation".into(),
+				text,
+				viewport: Some(self.voice_history_viewport(cx)),
+			}
+			.into_any_element()
+		} else {
+			agent_surface::history_entry(entry).into_any_element()
+		};
 
 		if entry.kind == "assistant"
 			&& let Some(action) =

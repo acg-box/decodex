@@ -2179,7 +2179,7 @@ impl AgentSurface {
 
 		panel.when(self.native_agents.selected.is_none(), |p| {
 			p.relative()
-				.children(self.live_chat_caption(&work.id))
+				.children(self.live_chat_caption(&work.id, cx))
 				.children(self.live_voice_scroll_observer(&work.id, cx))
 		})
 	}
@@ -2751,6 +2751,7 @@ fn history_entry_presented(
 		&& let Some(text) = voice::history::handoff(&entry.text)
 	{
 		return gpui::div().w_full().child(voice::history::VoiceBlock {
+			viewport: None,
 			key: identity.into(),
 			title: "Voice conversation".into(),
 			text,

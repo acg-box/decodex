@@ -238,6 +238,11 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
+		surface.read_with(visual, |s, _| {
+			assert!(s.timeline.follow_paused.contains(&binding.work));
+			assert!(s.timeline.latest_follow_work.is_none());
+			assert!(s.timeline.navigation.is_none());
+		});
 		surface.update(visual, |s, cx| {
 			assert!(s.prepend_native_history(&binding, "older", page(entries[..2].to_vec(), None)));
 			cx.notify();
