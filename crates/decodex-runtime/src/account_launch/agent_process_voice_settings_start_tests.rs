@@ -110,6 +110,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 
 		if let Some(start) = starts.first() {
 			assert_eq!(start["params"]["version"], "v3");
+			assert_eq!(start["params"]["realtimeSessionId"], "voice");
 			assert_eq!(start["params"]["transport"]["type"], "webrtc");
 			assert_eq!(start["params"]["outputModality"], "audio");
 
