@@ -103,12 +103,7 @@ impl Transport {
 		std::thread::Builder::new()
 			.name("native-voice".into())
 			.spawn(move || match input {
-				Input::Device(id) => match Session::start(id, Mode::Live, stopped) {
-					Ok(session) => call.run(Audio::Device(session)),
-					Err(error) => call
-						.output
-						.send(serde_json::json!({"type":"error","message":error.message()})),
-				},
+				Input::Device(id) => call.run(Audio::Pending { device: id, cancelled: stopped }),
 				#[cfg(test)]
 				Input::Pcm(pcm) => call.run(Audio::Pcm(pcm)),
 			})
@@ -142,13 +137,29 @@ impl Drop for Transport {
 }
 
 enum Audio {
+	Pending {
+		device: u32,
+		cancelled: Arc<AtomicBool>,
+	},
 	Device(Session),
 	#[cfg(test)]
 	Pcm(Pcm),
 }
 impl Audio {
+	fn activate(&mut self) -> Result<(), AudioError> {
+		if let Self::Pending { device, cancelled } = self {
+			*self = Self::Device(Session::start(*device, Mode::Live, cancelled.clone())?);
+		}
+		let pcm = self.pcm();
+		for _ in 0..pcm.captured.slots() {
+			let _ = pcm.captured.pop();
+		}
+		Ok(())
+	}
+
 	fn state(&mut self) -> Option<Arc<State>> {
 		match self {
+			Self::Pending { .. } => None,
 			Self::Device(session) => Some(session.parts().0),
 			#[cfg(test)]
 			Self::Pcm(_) => None,
@@ -157,6 +168,7 @@ impl Audio {
 
 	fn pcm(&mut self) -> &mut Pcm {
 		match self {
+			Self::Pending { .. } => unreachable!("audio is activated before PCM delivery"),
 			Self::Device(session) => session.parts().1,
 			#[cfg(test)]
 			Self::Pcm(pcm) => pcm,
@@ -172,7 +184,7 @@ struct Call {
 	offer_pause: Option<OfferPause>,
 }
 impl Call {
-	fn run(mut self, mut audio: Audio) {
+	fn run(mut self, audio: Audio) {
 		let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_time().build()
 		else {
 			self.output.send(
@@ -183,25 +195,12 @@ impl Call {
 		if !matches!(self.ended.try_recv(), Err(oneshot::error::TryRecvError::Empty)) {
 			return;
 		}
-		let device = audio.state();
 		runtime.block_on(async {
-            let monitor = async {
-                loop {
-                    time::sleep(Duration::from_millis(50)).await;
-                    if let Some(device) = &device {
-                        if !device.running() {
-                            self.output.send(serde_json::json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."})); return;
-                        }
-                        self.level.store(device.level().to_bits(), Ordering::Relaxed);
-                    }
-                }
-            };
-            tokio::select! {
-                _ = self.ended => {},
-                _ = monitor => {},
-                _ = run(audio, self.requests, self.output.clone(), #[cfg(test)] self.offer_pause) => {},
-            }
-        });
+			tokio::select! {
+				_ = self.ended => {},
+				_ = run(audio, self.requests, self.output.clone(), self.level, #[cfg(test)] self.offer_pause) => {},
+			}
+		});
 	}
 }
 
@@ -228,6 +227,7 @@ async fn run(
 	audio: Audio,
 	commands: sync::mpsc::Receiver<Command>,
 	events: Events,
+	level: Arc<AtomicU32>,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) {
 	let factory = PeerConnectionFactory::default();
@@ -255,9 +255,10 @@ async fn run(
 	let result = run_media(
 		&factory,
 		&peer,
-		audio.pcm(),
+		&mut audio,
 		commands,
 		events.clone(),
+		level,
 		#[cfg(test)]
 		offer_pause,
 	)
@@ -304,11 +305,13 @@ async fn gather_audio_offer(
 async fn run_media(
 	factory: &PeerConnectionFactory,
 	peer: &Peer,
-	pcm: &mut Pcm,
+	audio: &mut Audio,
 	mut commands: sync::mpsc::Receiver<Command>,
 	events: Events,
+	level: Arc<AtomicU32>,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) -> Result<(), &'static str> {
+	let started = Instant::now();
 	let source = NativeAudioSource::new(AudioSourceOptions::default(), LIVE_SAMPLE_RATE, 1, 40);
 	let track = factory.create_audio_track("microphone", source.clone());
 
@@ -362,11 +365,7 @@ async fn run_media(
 	.map_err(|_| "The audio offer timed out.")?
 	.map_err(|_| "The audio offer could not be created.")?;
 
-	// Discard pre-connection capture accumulated while gathering ICE.
-	for _ in 0..pcm.captured.slots() {
-		let _ = pcm.captured.pop();
-	}
-
+	eprintln!("DecodexVoice offer_ready_ms={}", started.elapsed().as_millis());
 	events.send(serde_json::json!({"type":"offer","sdp":offer}));
 
 	let deadline = Instant::now() + Duration::from_secs(30);
@@ -382,6 +381,7 @@ async fn run_media(
 		tokio::select! {
 			command = commands.recv() => match command {
 				Some(Command::Answer(sdp)) => {
+					eprintln!("DecodexVoice answer_received_ms={}", started.elapsed().as_millis());
 					let answer = SessionDescription::parse(&sdp, SdpType::Answer).map_err(|_| "The audio answer was invalid.")?;
 
 					peer.0.set_remote_description(answer).await.map_err(|_| "The audio answer could not be applied.")?;
@@ -396,19 +396,33 @@ async fn run_media(
 			}} => {
 				let Some(decoded) = decoded else { return Err("The remote audio track ended."); };
 
-				for &sample in decoded.data.iter() { let _ = pcm.playback.push(f32::from(sample) / 32_768.0); }
+				if announced {
+					for &sample in decoded.data.iter() { let _ = audio.pcm().playback.push(f32::from(sample) / 32_768.0); }
+				}
 			},
 			_ = clock.tick() => {
 				if events.overflow.load(Ordering::Acquire) { return Err("Audio updates could not be delivered."); }
 
 				let connected = peer.0.connection_state() == PeerConnectionState::Connected && data.state() == DataChannelState::Open;
 
-				if !announced && connected { announced = true; events.send(serde_json::json!({"type":"connected"})); }
+				if !announced && connected {
+					let audio_start = Instant::now();
+					audio.activate().map_err(AudioError::message)?;
+					eprintln!("DecodexVoice ready_ms={} audio_start_ms={}", started.elapsed().as_millis(), audio_start.elapsed().as_millis());
+					announced = true;
+					events.send(serde_json::json!({"type":"connected"}));
+				}
 				if matches!(peer.0.connection_state(), PeerConnectionState::Failed | PeerConnectionState::Disconnected | PeerConnectionState::Closed)
 					|| matches!(data.state(), DataChannelState::Closed | DataChannelState::Closing) {
 					return Err("The audio connection was lost.");
 				}
 				if !announced && Instant::now() >= deadline { return Err("The audio connection timed out."); }
+				if !announced { continue; }
+				if let Some(device) = audio.state() {
+					if !device.running() { return Err("The audio device stopped. Select a device and start a new call."); }
+					level.store(device.level().to_bits(), Ordering::Relaxed);
+				}
+				let pcm = audio.pcm();
 				if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
 					for sample in frame.data.to_mut() {
 						let value = pcm.captured.pop().unwrap_or(0.0);
@@ -480,6 +494,15 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn remote_channel_loss_reports_failure_and_releases_buffers() {
 		call_lifecycle(true).await;
+	}
+
+	#[tokio::test]
+	async fn connecting_does_not_open_the_selected_audio_device() {
+		// An invalid device must not be touched until a peer answer connects.
+		let transport = Transport::start_device(u32::MAX).unwrap();
+		event(&transport, "offer").await;
+		assert_eq!(transport.level(), 0.);
+		drop(transport);
 	}
 
 	#[tokio::test]
