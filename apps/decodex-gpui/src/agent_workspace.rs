@@ -483,8 +483,7 @@ impl AgentSurface {
 			.px(gpui::px(6.))
 			.pb(gpui::px(CONTROL_MARGIN))
 			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-			.gap_1()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL));
+			.gap_1();
 
 		panel = panel
 			.child(self.work_navigation(
@@ -1265,12 +1264,12 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.flex_col()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.child(body);
 
 		self.workspace_resize_root(cx)
 			.size_full()
 			.relative()
+			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 			.flex()
 			.text_size(gpui::px(BODY_SIZE))
 			.font_family(FONT_FAMILY)

@@ -96,22 +96,24 @@ fn voice_header(key: &str, title: String, open: bool) -> gpui::Stateful<gpui::Di
 		.aria_label(title.clone())
 		.aria_expanded(open)
 		.tab_index(0)
-		.rounded(gpui::px(12.))
+		.rounded(gpui::px(4.))
 		.flex_none()
-		.min_w(gpui::px(224.))
-		.bg(gpui::rgb(0x25252c))
+		.w_full()
+		.border_b_1()
+		.border_color(gpui::rgba(0xffffff12))
+		.bg(gpui::rgb(0x17171b))
 		.flex()
 		.items_center()
-		.text_size(gpui::px(14.))
+		.text_size(gpui::px(13.))
 		.font_weight(gpui::FontWeight::MEDIUM)
 		.text_color(gpui::rgb(crate::ui_theme::TEXT))
 		.gap_2()
-		.px_4()
+		.px_3()
 		.h(gpui::px(sticky::HEADER_HEIGHT))
 		.cursor_pointer()
-		.hover(|s| s.bg(gpui::rgb(0x303039)))
-		.focus(|s| s.bg(gpui::rgb(0x303039)))
-		.active(|s| s.bg(gpui::rgb(0x202027)))
+		.hover(|s| s.bg(gpui::rgb(0x202026)))
+		.focus(|s| s.bg(gpui::rgb(0x202026)))
+		.active(|s| s.bg(gpui::rgb(0x1b1b21)))
 		.child(workspace_symbols::icon(Symbol::Waveform))
 		.child(title)
 		.child(gpui::div().flex_1())
@@ -168,7 +170,9 @@ impl RenderOnce for VoiceBlock {
 			.child(gpui::div().h(gpui::px(sticky::HEADER_HEIGHT)))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("voice-transcript-{}", self.key)),
-				open,
+				// Keep speech at its reading position until it is invisible. Then
+				// shrink the document, so bottom clamping cannot drag fading text.
+				open || opacity > 0.001,
 				gpui::div().w_full().debug_selector(|| "voice-history-transcript".into()).child(
 					gpui::div()
 						.relative()
@@ -209,7 +213,10 @@ impl RenderOnce for VoiceBlock {
 					.flex()
 					.items_start()
 					.child(
-						gpui::div().debug_selector(|| "voice-history-block".into()).child(header),
+						gpui::div()
+							.w_full()
+							.debug_selector(|| "voice-history-block".into())
+							.child(header),
 					)
 					.into_any_element(),
 			),

@@ -12,7 +12,7 @@ use gpui::{
 	size,
 };
 
-pub(super) const HEADER_HEIGHT: f32 = 44.;
+pub(super) const HEADER_HEIGHT: f32 = 34.;
 type Position = Rc<Cell<(Pixels, Pixels)>>;
 
 pub(crate) struct ReadingSpace {
@@ -370,6 +370,13 @@ mod tests {
 		assert!(
 			(closing_speech.top() - speech.top()).abs() < px(1.),
 			"the first collapsing frame must not flash the start of the transcript"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(140));
+		draw(visual);
+		let fading_speech = visual.debug_bounds("voice-transcript-turn-10").unwrap();
+		assert!(
+			(fading_speech.top() - speech.top()).abs() < px(1.),
+			"fading speech must not move while the last group's scroll range contracts"
 		);
 		settle(visual);
 		let collapsed = visual.debug_bounds("voice-history-block-second").unwrap();
