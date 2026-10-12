@@ -418,6 +418,8 @@ impl AgentSurface {
 			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
 		let voice_hidden: BTreeSet<_> =
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
+		let voice_tail_turns =
+			super::voice::history::tail_flush_turns(&self.timeline.native.entries);
 		let empty_reasoning = groups::empty_completed_reasoning(&self.timeline.native.entries);
 		let replied_turns: BTreeSet<_> = self
 			.timeline
@@ -436,7 +438,7 @@ impl AgentSurface {
 			if let Some(group) = voice_headers.get(&index) {
 				let entry = &self.timeline.native.entries
 					[group.anchor_index(&self.timeline.native.entries)];
-				if group.hidden() {
+				if group.hidden() || self.live_voice_owns_session(&work.id, &group.session) {
 					continue;
 				}
 				if !hidden.is_empty() {
@@ -481,7 +483,7 @@ impl AgentSurface {
 			}
 			if matches!(&entry.content,
 				AgentTimelineContent::TurnBoundary { completed: true, turn_id, status, error: None, .. }
-				if replied_turns.contains(turn_id)
+				if (replied_turns.contains(turn_id) || voice_tail_turns.contains(turn_id.as_str()))
 					&& !matches!(status.as_deref(), Some("interrupted" | "failed")))
 			{
 				continue;

@@ -102,6 +102,21 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 	result
 }
 
+pub(crate) fn tail_flush_turns(entries: &[AgentTimelineEntry]) -> std::collections::BTreeSet<&str> {
+	entries
+		.iter()
+		.filter_map(|entry| match &entry.content {
+			Content::Item { turn_id, kind, text, attachments, .. }
+				if kind == "userMessage"
+					&& attachments.is_empty()
+					&& text.contains("<source>transcript_tail_flush</source>")
+					&& super::handoff(text).is_some() =>
+				Some(turn_id.as_str()),
+			_ => None,
+		})
+		.collect()
+}
+
 fn normalized(text: &str) -> String {
 	text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
