@@ -52,6 +52,16 @@ impl Render for ComposerTip {
 }
 
 impl AgentSurface {
+	/// Move keyboard and accessibility focus into the current message editor.
+	pub(crate) fn focus_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		use gpui::Focusable as _;
+		#[cfg(all(target_os = "macos", not(test)))]
+		if self.focus_native_message(cx) {
+			return;
+		}
+		window.focus(&self.conversation_composer().focus_handle(cx), cx);
+	}
+
 	pub(super) fn running_turn(&self) -> Option<(EntityId, crate::shell::agent_surface::WireText)> {
 		if self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
 			self.snapshot

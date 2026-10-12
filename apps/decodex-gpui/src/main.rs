@@ -486,6 +486,8 @@ fn install_application_menu(cx: &mut App) {
 			MenuItem::action("Copy", Copy),
 			MenuItem::action("Paste", Paste),
 			MenuItem::action("Select All", SelectAll),
+			MenuItem::separator(),
+			MenuItem::action("Focus Message Editor", shell::FocusMessage),
 		]),
 		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
 	]);

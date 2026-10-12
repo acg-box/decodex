@@ -2974,6 +2974,26 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn focus_message_preserves_draft_and_routes_typing_to_current_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| s.focus_message(window, cx));
+			window.draw(cx).clear(cx);
+		});
+		visual.simulate_keystrokes("cmd-right !");
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft!");
+			assert!(!s.sending);
+		});
+	}
+
+	#[gpui::test]
 	fn context_usage_stays_inside_the_composer_toolbar(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {

@@ -102,6 +102,7 @@ gpui::actions!(
 		FocusPrevious,
 		ActivateDestination,
 		ActivateAgent,
+		FocusMessage,
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
@@ -808,6 +809,12 @@ impl Shell {
 
 		self.record_navigation(cx);
 		cx.notify();
+	}
+
+	fn focus_message(&mut self, _: &FocusMessage, window: &mut Window, cx: &mut Context<Self>) {
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, |agent, cx| agent.focus_message(window, cx));
+		}
 	}
 
 	fn activate_agent(&mut self, _: &ActivateAgent, _: &mut Window, cx: &mut Context<Self>) {
@@ -1795,6 +1802,7 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
 			.on_action(cx.listener(Self::activate_agent))
+			.on_action(cx.listener(Self::focus_message))
 			.on_action(cx.listener(Self::activate_health))
 			.on_action(cx.listener(Self::activate_settings))
 			.on_action(cx.listener(Self::toggle_sidebar))
@@ -2162,6 +2170,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
+		KeyBinding::new("cmd-l", FocusMessage, Some("Conversations")),
 		KeyBinding::new("cmd-2", ActivateAgent, None),
 		KeyBinding::new("cmd-1", ActivateAgent, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
