@@ -178,7 +178,14 @@ impl AgentSurface {
 			_ => {},
 		}
 
-		rows.into_any_element()
+		ui_loading::content(
+			format!("inspection-records-{work}"),
+			self.resources
+				.as_ref()
+				.is_some_and(|(owner, result)| owner == work && result.is_some()),
+			rows,
+		)
+		.into_any_element()
 	}
 }
 

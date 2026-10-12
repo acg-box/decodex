@@ -333,7 +333,12 @@ impl AgentSurface {
 					.child(metric_track(part, color, scale)),
 			);
 		}
-		body.into_any_element()
+		crate::ui_loading::content(
+			format!("node-metrics-{}", node.key),
+			metrics.tokens.is_some() || metrics.duration.is_some(),
+			body,
+		)
+		.into_any_element()
 	}
 
 	pub(in super::super) fn relation_metrics(
@@ -413,7 +418,12 @@ impl AgentSurface {
 					})),
 			);
 		}
-		self.relation_metrics_footer(graph, ranked.is_empty(), total, distribution)
+		crate::ui_loading::content(
+			format!("graph-metrics-{}", self.selected.as_deref().unwrap_or_default()),
+			!ranked.is_empty(),
+			self.relation_metrics_footer(graph, ranked.is_empty(), total, distribution),
+		)
+		.into_any_element()
 	}
 
 	fn relation_metrics_footer(

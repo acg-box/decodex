@@ -153,7 +153,11 @@ impl AgentSurface {
 					.debug_selector(|| "agent-resources-body".into())
 					.max_h(gpui::px(280.))
 					.overflow_y_scroll()
-					.child(body),
+					.child(ui_loading::content(
+						format!("resources-{work}"),
+						result.is_some(),
+						body,
+					)),
 			);
 		}
 

@@ -111,13 +111,15 @@ impl AgentSurface {
 		}
 		if selected {
 			if let Some(image) = &preview.image {
-				row = row.child(
+				row = row.child(ui_loading::content(
+					format!("media-{}-{turn}-{item}-{}", work.id, attachment.index),
+					true,
 					gpui::img(image.clone())
 						.debug_selector(|| "native-media-preview".into())
 						.max_w_full()
 						.max_h(gpui::px(420.0))
 						.object_fit(ObjectFit::Contain),
-				);
+				));
 			}
 
 			if preview.task.is_some() {
