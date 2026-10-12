@@ -51,7 +51,21 @@ impl AgentSurface {
 		let mut result = Vec::new();
 		let mut pending: Vec<&AgentActivityDto> = Vec::new();
 
-		for entry in &entries {
+		let voice_groups = super::voice::history::saved_groups(&entries);
+		let voice_hidden: std::collections::BTreeSet<_> =
+			voice_groups.iter().flat_map(|(indices, _)| indices.iter().skip(1).copied()).collect();
+		for (index, entry) in entries.iter().enumerate() {
+			if voice_hidden.contains(&index) {
+				continue;
+			}
+			if let Some((_, text)) = voice_groups.iter().find(|(indices, _)| indices[0] == index) {
+				if !pending.is_empty() {
+					result.push(self.progress_group(&pending, work, cx));
+					pending.clear();
+				}
+				result.push(self.saved_voice_history_entry(entry, &work.id, text.clone(), cx));
+				continue;
+			}
 			if super::startup_feature_warning(entry)
 				|| checklist_superseded(entry, entries.iter().copied())
 			{

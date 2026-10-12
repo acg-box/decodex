@@ -3612,6 +3612,22 @@ impl AccountService {
 					recovery: AccountSelectionRecovery::ResolveCredentialOperation,
 				}
 			})?;
+		// Keep the actionable reason when no account can be selected. A disabled
+		// or signed-out account is not a quota refresh failure.
+		let unavailable = preferred
+			.and_then(|id| accounts.iter().find(|a| &a.account_id == id))
+			.or_else(|| accounts.first())
+			.map(|account| AccountSelectionFailure {
+				account_id: Some(account.account_id.clone()),
+				recovery: self
+					.selection_candidate(account, now)
+					.err()
+					.unwrap_or(AccountSelectionRecovery::RefreshQuota),
+			})
+			.unwrap_or(AccountSelectionFailure {
+				account_id: preferred.cloned(),
+				recovery: AccountSelectionRecovery::ConfigureFixedAccount,
+			});
 		let mut available = accounts;
 
 		while let Some(account) =
@@ -3634,10 +3650,7 @@ impl AccountService {
 			available.retain(|entry| entry.account_id != account.account_id);
 		}
 
-		Err(AccountSelectionFailure {
-			account_id: preferred.cloned(),
-			recovery: AccountSelectionRecovery::RefreshQuota,
-		})
+		Err(unavailable)
 	}
 
 	fn agent_route_candidate<'a>(
@@ -7602,6 +7615,38 @@ mod tests {
 		));
 
 		(directory, store, service, account_id, shared)
+	}
+
+	#[tokio::test]
+	async fn unavailable_agent_route_preserves_credential_recovery_reason() {
+		let (_directory, store, service, account_id, _shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		service.set_callback_capability("fixture".into(), true);
+		let revision = service.inspect(&account_id).await.unwrap().account.revision;
+		let identity =
+			CommandIdentity::new("disable-route-test", b"disable fixture account").unwrap();
+		let AccountCommandReceiptClaim::Owned(lease) = store
+			.reserve_account_command(
+				&identity,
+				AccountCommandKind::SetEnabled,
+				account_id.as_str(),
+				Some(revision),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("disable owner")
+		};
+		service
+			.set_account_enabled_command(lease, &account_id, revision, false, |_, _| {
+				Ok(serde_json::json!({"disabled":true}))
+			})
+			.await
+			.unwrap();
+		let failure =
+			service.select_agent_route(Some(&account_id), OBSERVED_AT_MICROS).await.unwrap_err();
+		assert_eq!(failure.recovery, decodex_core::AccountSelectionRecovery::EnableAccount);
+		assert_eq!(failure.account_id.as_ref(), Some(&account_id));
 	}
 
 	#[tokio::test]

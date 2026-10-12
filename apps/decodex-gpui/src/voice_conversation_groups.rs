@@ -102,6 +102,38 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 	result
 }
 
+/// Group the saved fallback with the same call boundary as native history.
+/// System notices do not split a call; ordinary messages always do.
+pub(crate) fn saved_groups(
+	entries: &[&decodex_protocol::AgentHistoryEntryDto],
+) -> Vec<(Vec<usize>, String)> {
+	let mut groups: Vec<(Vec<usize>, String)> = Vec::new();
+	let mut session: Option<&str> = None;
+	for (index, entry) in entries.iter().enumerate() {
+		let voice = entry.receipt.as_ref().filter(|receipt| {
+			matches!(
+				(receipt.event_kind.as_str(), entry.kind.as_str()),
+				("voice_user", "user") | ("voice_assistant", "assistant")
+			)
+		});
+		if let Some(id) = voice.and_then(|receipt| receipt.voice_session_id.as_deref()) {
+			if session != Some(id) {
+				groups.push((Vec::new(), String::new()));
+				session = Some(id);
+			}
+			let (indices, text) = groups.last_mut().expect("call group");
+			indices.push(index);
+			if !text.is_empty() {
+				text.push('\n');
+			}
+			text.push_str(&format!("{}: {}", entry.kind, entry.text));
+		} else if entry.kind != "system" {
+			session = None;
+		}
+	}
+	groups
+}
+
 pub(crate) fn tail_flush_turns(entries: &[AgentTimelineEntry]) -> std::collections::BTreeSet<&str> {
 	entries
 		.iter()
@@ -181,6 +213,44 @@ mod tests {
 			attachments: vec![],
 		})
 	}
+	#[test]
+	fn saved_voice_groups_keep_calls_separate_without_grouping_normal_messages() {
+		let make = |id, kind: &str, session: Option<&str>| decodex_protocol::AgentHistoryEntryDto {
+			id,
+			kind: kind.into(),
+			text: format!("message {id}"),
+			created_at_micros: id,
+			native_source: None,
+			turn_id: None,
+			weather: vec![],
+			activity: None,
+			usage: None,
+			duration_ms: None,
+			receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+				voice_session_id: Some(session.into()),
+				event_kind: format!("voice_{kind}"),
+				delivered_turn_id: None,
+				disposed: true,
+			}),
+		};
+		let entries = [
+			make(1, "user", Some("a")),
+			make(2, "system", None),
+			make(3, "assistant", Some("a")),
+			make(4, "user", None),
+			make(5, "user", Some("b")),
+			make(6, "assistant", Some("b")),
+		];
+		let groups = saved_groups(&entries.iter().collect::<Vec<_>>());
+		assert_eq!(
+			groups,
+			vec![
+				(vec![0, 2], "user: message 1\nassistant: message 3".into()),
+				(vec![4, 5], "user: message 5\nassistant: message 6".into())
+			]
+		);
+	}
+
 	#[gpui::test]
 	fn expanded_call_stays_open_when_its_first_page_is_prepended(cx: &mut gpui::TestAppContext) {
 		use crate::shell::agent_surface::{

@@ -48,6 +48,32 @@ use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 
+fn open_connection_accounts(window: &mut Window, cx: &mut gpui::App) {
+	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
+		shell.update(cx, |shell, cx| {
+			shell.open_settings_window(crate::shell::Destination::Accounts, cx)
+		});
+	}
+}
+
+fn account_connection_message(detail: &str) -> Option<&'static str> {
+	let recovery = detail.strip_prefix("Agent account requires recovery: ");
+	Some(match recovery {
+		Some("RefreshQuota") =>
+			"Account availability could not be confirmed. Check usage in Accounts. Your draft is saved.",
+		Some("ConfigureFixedAccount") => "Select an account to continue. Your draft is saved.",
+		Some("EnableAccount") => "Enable the selected account to continue. Your draft is saved.",
+		Some("EnrollCredentials" | "RestoreProviderAgreement") =>
+			"Sign in again in Accounts to continue. Your draft is saved.",
+		Some("ResolveCredentialOperation" | "RepairCredentialStore") =>
+			"Account setup needs attention. Open Accounts to continue. Your draft is saved.",
+		Some("UpgradeCodex") => "This account requires a newer Codex runtime. Your draft is saved.",
+		_ if detail.contains("account has reached its usage limit") =>
+			"This account has reached its usage limit. Check Accounts for the reset time. Your draft is saved.",
+		_ => return None,
+	})
+}
+
 #[derive(Clone)]
 pub(super) struct PageView {
 	scope: Option<String>,
@@ -798,6 +824,42 @@ impl AgentSurface {
 		}
 
 		let detail = self.connection_failure_detail();
+		if !self.uncertain
+			&& let Some(message) = detail.and_then(account_connection_message)
+		{
+			return gpui::div()
+				.id("conversation-unavailable")
+				.debug_selector(|| "conversation-unavailable".into())
+				.role(Role::Status)
+				.aria_label(message)
+				.flex()
+				.flex_wrap()
+				.items_center()
+				.gap_2()
+				.text_size(gpui::px(11.))
+				.line_height(gpui::px(17.))
+				.text_color(gpui::rgb(TEXT_MUTED))
+				.child(message)
+				.child(
+					gpui::div()
+						.id("connection-open-accounts")
+						.debug_selector(|| "connection-open-accounts".into())
+						.role(Role::Button)
+						.aria_label("Open Accounts")
+						.tab_index(0)
+						.cursor_pointer()
+						.text_color(gpui::rgb(BLUE))
+						.child("Open Accounts")
+						.on_click(|_, window, cx| open_connection_accounts(window, cx))
+						.on_key_down(|event: &KeyDownEvent, window, cx| {
+							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+								open_connection_accounts(window, cx);
+								cx.stop_propagation();
+							}
+						}),
+				)
+				.into_any_element();
+		}
 		let title = if self.uncertain {
 			"Delivery unconfirmed · Sending paused"
 		} else {
@@ -2478,6 +2540,67 @@ mod tests {
 					cx,
 				)
 			})
+		}
+	}
+
+	#[test]
+	fn account_connection_notice_does_not_confuse_unknown_usage_with_exhaustion() {
+		let pending =
+			super::account_connection_message("Agent account requires recovery: RefreshQuota")
+				.unwrap();
+		assert!(pending.contains("could not be confirmed"));
+		assert!(!pending.contains("RefreshQuota"));
+		assert!(!pending.contains("retry"));
+		let exhausted =
+			super::account_connection_message("This Agent's account has reached its usage limit.")
+				.unwrap();
+		assert!(exhausted.contains("reset time"));
+		assert!(
+			super::account_connection_message(
+				"Agent process requires recovery: ProcessUnavailable"
+			)
+			.is_none()
+		);
+	}
+
+	#[gpui::test]
+	fn saved_voice_history_starts_collapsed_during_connection_failure(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			for work in &mut s.snapshot.as_mut().unwrap().work_items {
+				work.codex_thread_id = None;
+			}
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture")
+			};
+			let base = entries[0].clone();
+			*entries = (1..=4)
+				.map(|id| {
+					let mut entry = base.clone();
+					entry.id = id;
+					entry.kind = if id % 2 == 1 { "user" } else { "assistant" }.into();
+					entry.text = "Saved speech".into();
+					entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+						voice_session_id: Some(if id < 3 { "first" } else { "second" }.into()),
+						event_kind: format!("voice_{}", entry.kind),
+						delivered_turn_id: None,
+						disposed: true,
+					});
+					entry
+				})
+				.collect();
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		for (header, body) in [
+			("voice-history-block-saved-agent-1", "voice-history-transcript-saved-agent-1"),
+			("voice-history-block-saved-agent-3", "voice-history-transcript-saved-agent-3"),
+		] {
+			assert!(visual.debug_bounds(header).is_some());
+			assert!(visual.debug_bounds(body).is_none());
 		}
 	}
 
