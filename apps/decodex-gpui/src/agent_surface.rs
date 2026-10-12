@@ -896,7 +896,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.dictation.is_some() {
-			self.finish_dictation(cx);
+			self.send_dictation(cx);
 
 			return;
 		}

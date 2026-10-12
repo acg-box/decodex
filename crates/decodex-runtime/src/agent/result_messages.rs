@@ -108,7 +108,7 @@ pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
 }
 
 /// Select numeric provider facts without retaining unrelated notification content.
-pub(super) fn usage(params: &Value) -> Option<Value> {
+pub(crate) fn usage(params: &Value) -> Option<Value> {
 	let usage = &params["tokenUsage"];
 	let count = |path: &str| usage.pointer(path)?.as_i64().filter(|value| *value >= 0);
 

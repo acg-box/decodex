@@ -415,15 +415,20 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.gap(gpui::px(4.))
-					.when(self.native_agents.selected.is_none(), |d| {
-						d.child(self.composer_control(
-							"attach",
-							"+".into(),
-							"Attachments, skills and microphone",
-							|s, cx| s.toggle_composer_menu("attachments", cx),
-							cx,
-						))
-					});
+					.when(
+						self.native_agents.selected.is_none()
+							&& self.dictation.is_none()
+							&& self.voice.is_none(),
+						|d| {
+							d.child(self.composer_control(
+								"attach",
+								"+".into(),
+								"Attachments, skills and microphone",
+								|s, cx| s.toggle_composer_menu("attachments", cx),
+								cx,
+							))
+						},
+					);
 				if self.voice.is_some() {
 					capsule.child(controls.child(editor).child(self.composer_toolbar(window, cx)))
 				} else {
@@ -744,6 +749,8 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let dictation_action = self.dictation.is_some()
+			&& matches!(id, "send" | "dictation-cancel" | "dictation-finish");
 		let disabled = send && self.composer_unavailable_reason().is_some();
 		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
@@ -771,8 +778,6 @@ impl AgentSurface {
 					"delivery",
 					"effort",
 					"send",
-					"dictation-cancel",
-					"dictation-finish",
 					"voice-mute",
 					"voice-end",
 					"attachment-item",
@@ -803,6 +808,8 @@ impl AgentSurface {
 			.when(send, |d| {
 				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(gpui::rgb(0x515155))
 			})
+			.when(dictation_action, |d| d.w(gpui::px(26.)).h(gpui::px(26.)).px_0().rounded_full())
+			.when(dictation_action && send, |d| d.bg(gpui::rgba(0xffffff12)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.when(disabled, |d| d.opacity(0.35))
 			.when(!disabled, |d| d.cursor_pointer())
@@ -810,7 +817,9 @@ impl AgentSurface {
 				if disabled {
 					return d;
 				}
-				d.bg(if send {
+				d.bg(if send && dictation_action {
+					gpui::rgba(0xffffff20)
+				} else if send {
 					gpui::rgb(0x606064)
 				} else {
 					gpui::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
@@ -864,10 +873,8 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.native_agents.selected.is_some() {
+				mode: if self.native_agents.selected.is_some() || self.dictation.is_some() {
 					PrimaryMode::Send
-				} else if self.dictation.is_some() {
-					PrimaryMode::Done
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop
 				} else if self.composer.read(cx).content().trim().is_empty()
@@ -911,6 +918,8 @@ impl AgentSurface {
 				))
 				.into_any_element(),
 			"dictation" => workspace_symbols::icon_sized(Symbol::Microphone, 18.),
+			"dictation-cancel" => workspace_symbols::icon_sized(Symbol::Close, 14.),
+			"dictation-finish" => workspace_symbols::icon_sized(Symbol::Confirm, 14.),
 			"delivery" => gpui::div()
 				.w_full()
 				.flex()

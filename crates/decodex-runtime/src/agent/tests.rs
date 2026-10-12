@@ -2425,7 +2425,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 
 #[tokio::test]
 async fn native_usage_replay_restores_context_and_the_next_turn_baseline() {
-	let (mut coordinator, _sent, _directory) = fixture_with_history(serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"completed","items":[]}]}}})).await;
+	let (mut coordinator, _sent, _directory) = fixture_with_history(serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"completed","items":[]},{"id":"later-realtime-turn","status":"completed","items":[]}]}}})).await;
 	let first = coordinator.start_agent("agent", "Initial").await.unwrap();
 
 	complete(&mut coordinator, "agent").await;

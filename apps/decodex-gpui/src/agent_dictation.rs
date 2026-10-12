@@ -6,7 +6,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{AnyElement, AsyncApp, Task, WeakEntity};
+use gpui::{AnyElement, AsyncApp, Task, WeakEntity, prelude::FluentBuilder as _};
 use tokio::runtime::Builder;
 use ui_theme::TEXT_MUTED;
 
@@ -27,6 +27,7 @@ pub(super) struct DictationUi {
 	network_ready: bool,
 	capture_ended: bool,
 	finishing: bool,
+	send_after_finish: bool,
 	finish_sent: bool,
 	status: String,
 	levels: VecDeque<f32>,
@@ -72,6 +73,7 @@ impl AgentSurface {
 			network_ready: false,
 			capture_ended: false,
 			finishing: false,
+			send_after_finish: false,
 			finish_sent: false,
 			status: "Opening microphone…".into(),
 			levels: VecDeque::from(vec![0.; 40]),
@@ -145,6 +147,12 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	pub(super) fn send_dictation(&mut self, cx: &mut Context<Self>) {
+		let Some(dictation) = self.dictation.as_mut().filter(|d| !d.finishing) else { return };
+		dictation.send_after_finish = true;
+		self.finish_dictation(cx);
 	}
 
 	fn drain_dictation_media(&mut self, cx: &mut Context<Self>) -> Option<()> {
@@ -272,7 +280,13 @@ impl AgentSurface {
 		match status.phase {
 			DictationPhase::Listening => dictation.network_ready = true,
 			DictationPhase::Finalizing => dictation.status = "Final correction…".into(),
-			DictationPhase::Complete => self.dictation = None,
+			DictationPhase::Complete => {
+				let send = dictation.send_after_finish;
+				self.dictation = None;
+				if send {
+					self.submit(cx);
+				}
+			},
 			DictationPhase::Failed => {
 				self.feedback = status
 					.message
@@ -307,14 +321,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
-		let label = if d.status == "Listening" {
-			format!("Listening · {}s", d.started.elapsed().as_secs())
-		} else {
-			d.status.clone()
-		};
-
+		let finishing = d.finishing || d.capture_ended || d.status == "Final correction…";
 		Some(
 			gpui::div()
+				.id("dictation-controls")
+				.debug_selector(|| "dictation-controls".into())
 				.flex_1()
 				.min_w_0()
 				.flex()
@@ -323,38 +334,100 @@ impl AgentSurface {
 				.text_size(gpui::px(11.))
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(
-					gpui::div()
-						.id("dictation-status")
-						.flex_1()
-						.min_w_0()
-						.text_ellipsis()
-						.role(Role::Status)
-						.aria_label(label.clone())
-						.child(label),
+					gpui::div().flex_1().min_w_0().flex().justify_center().child(
+						gpui::div()
+							.w_full()
+							.when(!finishing && d.status == "Listening", |view| {
+								view.children(self.dictation_waveform(window, cx))
+							})
+							.when(!finishing && d.status != "Listening", |view| {
+								view.child(
+									gpui::div()
+										.id("dictation-status")
+										.min_w_0()
+										.text_ellipsis()
+										.role(Role::Status)
+										.aria_label(d.status.clone())
+										.child(d.status.clone()),
+								)
+							}),
+					),
 				)
-				.child(
-					gpui::div()
-						.flex_1()
-						.min_w_0()
-						.max_w(gpui::px(160.))
-						.children(self.dictation_waveform(window, cx)),
-				)
-				.child(self.composer_control(
-					"dictation-cancel",
-					"Cancel".into(),
-					"Cancel dictation and restore the draft",
-					|s, cx| s.cancel_dictation(cx),
-					cx,
-				))
-				.child(self.composer_control(
-					"dictation-finish",
-					"Done".into(),
-					"Finish dictation · Keep text in the draft",
-					|s, cx| s.finish_dictation(cx),
-					cx,
-				))
+				.child(self.dictation_actions(d, finishing, cx))
 				.into_any_element(),
 		)
+	}
+
+	fn dictation_actions(
+		&self,
+		d: &DictationUi,
+		finishing: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		gpui::div()
+			.id("dictation-actions")
+			.debug_selector(|| "dictation-actions".into())
+			.flex_none()
+			.flex()
+			.items_center()
+			.gap_0()
+			.p(gpui::px(1.))
+			.rounded_full()
+			.bg(gpui::rgba(0xffffff06))
+			.child(self.composer_control(
+				"dictation-cancel",
+				"".into(),
+				"Cancel dictation and restore the draft",
+				|s, cx| s.cancel_dictation(cx),
+				cx,
+			))
+			.child(if finishing {
+				gpui::div()
+					.id("dictation-finishing")
+					.debug_selector(|| "dictation-finishing".into())
+					.w(gpui::px(52.))
+					.h(gpui::px(26.))
+					.flex_none()
+					.flex()
+					.items_center()
+					.when(d.send_after_finish, |view| view.justify_end())
+					.role(Role::Status)
+					.aria_label(if d.send_after_finish {
+						"Finishing dictation before sending"
+					} else {
+						"Finishing dictation"
+					})
+					.child(
+						gpui::div()
+							.w(gpui::px(26.))
+							.flex()
+							.justify_center()
+							.child(crate::ui_loading::loading("")),
+					)
+					.into_any_element()
+			} else {
+				gpui::div()
+					.flex_none()
+					.flex()
+					.items_center()
+					.gap_0()
+					.child(self.composer_control(
+						"dictation-finish",
+						"".into(),
+						"Finish dictation · Keep text in the draft",
+						|s, cx| s.finish_dictation(cx),
+						cx,
+					))
+					.child(self.composer_control(
+						"send",
+						"".into(),
+						"Finish dictation and send · Enter",
+						|s, cx| s.submit(cx),
+						cx,
+					))
+					.into_any_element()
+			})
+			.into_any_element()
 	}
 }
 fn merge_draft(original: &str, transcript: &str) -> String {
@@ -431,6 +504,7 @@ mod tests {
 			network_ready: true,
 			capture_ended: false,
 			finishing: false,
+			send_after_finish: false,
 			finish_sent: false,
 			status: "Listening".into(),
 			levels: VecDeque::from(vec![0.; 40]),
@@ -475,6 +549,18 @@ mod tests {
 			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
 			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
 			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
+			let actions = visual.debug_bounds("dictation-actions").unwrap();
+			assert!((actions.left() - wave.right() - gpui::px(8.)).abs() < gpui::px(1.));
+			assert!(actions.size.width <= gpui::px(82.));
+			let cancel = visual.debug_bounds("composer-dictation-cancel").unwrap();
+			let done = visual.debug_bounds("composer-dictation-finish").unwrap();
+			let send = visual.debug_bounds("composer-send").unwrap();
+			assert!(done.origin.x - cancel.origin.x <= gpui::px(26.));
+			assert!(send.origin.x - done.origin.x <= gpui::px(26.));
+			assert!(visual.debug_bounds("composer-attach").is_none());
+			if width == 800. {
+				assert!(wave.size.width > gpui::px(160.));
+			}
 			assert!(
 				wave.origin.y >= toolbar.origin.y
 					&& wave.origin.y + wave.size.height <= toolbar.origin.y + toolbar.size.height,
@@ -484,6 +570,14 @@ mod tests {
 				wave.origin.x >= gpui::px(0.) && wave.origin.x + wave.size.width <= gpui::px(width)
 			);
 		}
+		surface.update(visual, |s, cx| s.finish_dictation(cx));
+		view.update(visual, |_, cx| cx.notify());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("dictation-finishing").is_some());
+		assert!(visual.debug_bounds("dictation-waveform").is_none());
+		assert!(visual.debug_bounds("composer-dictation-finish").is_none());
+		assert!(visual.debug_bounds("composer-send").is_none());
+		assert!(visual.debug_bounds("composer-dictation-cancel").is_some());
 		surface.update(visual, |s, cx| {
 			s.dictation = None;
 			cx.notify();
@@ -619,6 +713,89 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "My manual edit");
 		});
 	}
+	#[gpui::test]
+	fn dictation_send_waits_for_final_text_and_uses_ordinary_submission(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = None; // Prove ordinary send admission without issuing a network request.
+			s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+			s.dictation = Some(recording("Draft"));
+			let response = |phase, text| DictationStatus {
+				session_id: EntityId::new("dictation-test").unwrap(),
+				phase,
+				text: DictationBuffer::new(text).unwrap(),
+				message: None,
+			};
+			s.submit(cx);
+			assert!(s.dictation.as_ref().unwrap().send_after_finish);
+			assert!(!s.sending);
+			s.apply_dictation(response(DictationPhase::Finalizing, "partial"), cx);
+			assert!(s.dictation.is_some());
+			assert_ne!(s.feedback, "No service profile is configured.");
+			s.apply_dictation(response(DictationPhase::Complete, "Final correction."), cx);
+			assert!(s.dictation.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Draft Final correction.");
+			assert_eq!(s.feedback, "No service profile is configured.");
+			s.feedback.clear();
+			s.apply_dictation(response(DictationPhase::Complete, "duplicate"), cx);
+			assert!(s.feedback.is_empty());
+			assert_eq!(s.composer.read(cx).content(), "Draft Final correction.");
+		});
+	}
+
+	#[gpui::test]
+	fn dictation_send_does_not_send_after_failure_cancel_or_manual_edit(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = None;
+			for outcome in ["failure", "cancel", "edit", "done"] {
+				s.feedback.clear();
+				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+				s.dictation = Some(recording("Draft"));
+				if outcome == "done" {
+					s.finish_dictation(cx);
+				} else {
+					s.send_dictation(cx);
+				}
+				if outcome == "cancel" {
+					s.cancel_dictation(cx);
+				}
+				if outcome == "edit" {
+					s.composer.update(cx, |input, cx| input.set_content("Manual", cx));
+				}
+				s.apply_dictation(
+					DictationStatus {
+						session_id: EntityId::new("dictation-test").unwrap(),
+						phase: if outcome == "failure" {
+							DictationPhase::Failed
+						} else {
+							DictationPhase::Complete
+						},
+						text: DictationBuffer::new("Final").unwrap(),
+						message: None,
+					},
+					cx,
+				);
+				assert!(!s.sending);
+				assert_ne!(s.feedback, "No service profile is configured.");
+				assert_eq!(
+					s.composer.read(cx).content(),
+					match outcome {
+						"cancel" => "Draft",
+						"edit" => "Manual",
+						_ => "Draft Final",
+					}
+				);
+			}
+		});
+	}
+
 	#[gpui::test]
 	fn early_audio_waits_for_subscription_ready_and_drains_before_finish(
 		cx: &mut gpui::TestAppContext,

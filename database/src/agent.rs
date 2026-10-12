@@ -989,6 +989,18 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Read the latest retained context observation for the currently bound thread.
+	/// A later compaction hides the old sample until the provider reports usage again.
+	pub async fn read_agent_context_observation(
+		&self,
+		work_id: String,
+	) -> Result<Option<AgentInboxEvent>, StoreError> {
+		self.run(move |connection| {
+			connection.query_row("SELECT e.* FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND e.event_kind IN ('token_usage','context_compacted') AND json_extract(e.payload,'$.threadId')=w.codex_thread_id ORDER BY e.id DESC LIMIT 1", [work_id], event_row)
+				.optional().map(|event| event.filter(|event| event.event_kind == "token_usage")).map_err(|error| error::sqlite_error(error).into())
+		}).await
+	}
+
 	async fn insert_agent_event(
 		&self,
 		input: EnqueueAgentEvent,
