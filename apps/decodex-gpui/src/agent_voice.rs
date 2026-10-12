@@ -956,7 +956,7 @@ impl AgentSurface {
 			.flat_map(|v| &v.captions);
 		// Keep arrival order across completion and interruption. Sorting unfinished
 		// speakers moves an interruption above the reply it interrupted.
-		let captions: Vec<_> = captions.filter(|c| !c.text.is_empty()).collect();
+		let captions = presentation_captions(captions);
 
 		if captions.is_empty() && retired.is_empty() {
 			return None;
@@ -1042,6 +1042,20 @@ impl AgentSurface {
 			voice.follow = following;
 		}
 	}
+}
+
+fn presentation_captions<'a>(captions: impl Iterator<Item = &'a Caption>) -> Vec<Caption> {
+	let mut rows: Vec<Caption> = Vec::new();
+	for caption in captions.filter(|caption| !caption.text.is_empty()) {
+		if let Some(previous) = rows.last_mut().filter(|previous| previous.role == caption.role) {
+			previous.text.push_str("\n\n");
+			previous.text.push_str(&caption.text);
+			previous.complete = caption.complete;
+		} else {
+			rows.push(caption.clone());
+		}
+	}
+	rows
 }
 
 fn reconcile_captions(
@@ -1595,6 +1609,34 @@ mod tests {
 			);
 			cx.notify();
 		});
+	}
+
+	#[test]
+	fn consecutive_speech_appends_to_one_stable_bubble_until_the_speaker_changes() {
+		let mut captions = Vec::new();
+		for (id, role, text) in [
+			("u", "user", "Count to ten"),
+			("a1", "assistant", "One, two"),
+			("a2", "assistant", "Three, four"),
+			("stop", "user", "Stop"),
+			("a3", "assistant", "Okay"),
+		] {
+			voice::update_caption(
+				&serde_json::json!({"type":"turn.done","turn":{"id":id,"role":role,"transcript":text}}),
+				&mut captions,
+			);
+		}
+		let first = voice::presentation_captions(captions[..2].iter());
+		let continued = voice::presentation_captions(captions[..3].iter());
+		assert_eq!(continued.len(), 2);
+		assert_eq!(first[1].key, continued[1].key);
+		assert_eq!(continued[1].text, "One, two\n\nThree, four");
+		let interrupted = voice::presentation_captions(captions.iter());
+		assert_eq!(
+			interrupted.iter().map(|c| c.role).collect::<Vec<_>>(),
+			vec!["user", "assistant", "user", "assistant"]
+		);
+		assert_eq!(captions.len(), 5, "Presentation must not merge source turn identities");
 	}
 
 	#[test]
