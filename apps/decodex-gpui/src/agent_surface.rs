@@ -2044,12 +2044,8 @@ impl AgentSurface {
 			.child(self.native_timeline_panel(work, cx));
 
 		if self.native_history_active(work) {
-			return self.history_activity(
-				panel
-					.child(self.native_receipts_panel(work, false, cx))
-					.children(self.live_chat_caption(&work.id)),
-				work,
-			);
+			return self
+				.history_activity(panel.child(self.native_receipts_panel(work, false, cx)), work);
 		}
 		// Local records use a different grouping and must not flash before the
 		// native transcript arrives. They remain available after a failed read.
