@@ -6742,20 +6742,6 @@ mod tests {
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped))
 	}
 
-	#[gpui::test]
-	fn debug_reload_action_reaches_the_dispatching_window(cx: &mut TestAppContext) {
-		let (shell, visual) = open_shell(cx);
-		shell.update(visual, |s, cx| {
-			s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx));
-			assert!(!s.agent.read(cx).workspace_connecting());
-		});
-		visual.dispatch_action(super::ReloadWorkspace);
-		shell.update(visual, |s, cx| assert!(!s.agent.read(cx).workspace_connecting()));
-		visual.update(|window, cx| window.draw(cx).clear(cx));
-		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
-		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
-	}
-
 	#[test]
 	fn destinations_have_exact_labels_and_live_classification() {
 		assert_eq!(

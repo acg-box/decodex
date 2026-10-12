@@ -783,6 +783,12 @@ pub(super) struct Timeline {
 	seen_cursors: BTreeSet<String>,
 }
 impl Timeline {
+	pub(super) fn invalidate_read(&mut self) {
+		self.task = None;
+		self.epoch = self.epoch.wrapping_add(1);
+		self.recovered();
+	}
+
 	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &AgentTimelineContent> {
 		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
 	}

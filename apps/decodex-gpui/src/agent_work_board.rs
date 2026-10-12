@@ -15,6 +15,7 @@ pub(super) struct Board {
 	pub(super) briefs: BTreeMap<String, Brief>,
 	usage: Option<BTreeMap<String, (Option<String>, relations::metrics::Metrics)>>,
 	pub(super) brief_task: Option<gpui::Task<()>>,
+	reload_pending: BTreeSet<String>,
 }
 impl Board {
 	pub(super) fn focus_work(&mut self, id: &str) {
@@ -51,8 +52,8 @@ pub(super) struct Row {
 impl AgentSurface {
 	pub(super) fn debug_reload_graph(&mut self) {
 		self.work_board.brief_task = None;
-		self.work_board.briefs.clear();
-		self.work_board.usage = None;
+		// Keep visible values while forcing every brief to be read again.
+		self.work_board.reload_pending = self.work_board.briefs.keys().cloned().collect();
 	}
 
 	fn board_rows(&self) -> Vec<Row> {
@@ -247,6 +248,9 @@ impl AgentSurface {
 			return;
 		}
 		let rows = self.factory_rows();
+		if rows.iter().any(|row| self.work_board.reload_pending.contains(&row.key)) {
+			return;
+		}
 		let mut usage = BTreeMap::new();
 		for row in rows.iter().filter(|row| row.thread.is_some()) {
 			let Some(brief) = self
@@ -277,11 +281,12 @@ impl AgentSurface {
 		let requests: Vec<_> = rows
 			.into_iter()
 			.filter(|r| {
-				self.work_board.briefs.get(&r.key).is_none_or(|b| {
-					b.stamp != self.brief_stamp(r)
-						|| (r.group == 1 && b.read_at.elapsed().as_secs() >= 5)
-						|| b.read_at.elapsed().as_secs() >= 30
-				})
+				self.work_board.reload_pending.contains(&r.key)
+					|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
+						b.stamp != self.brief_stamp(r)
+							|| (r.group == 1 && b.read_at.elapsed().as_secs() >= 5)
+							|| b.read_at.elapsed().as_secs() >= 30
+					})
 			})
 			.take(4)
 			.map(|row| {
@@ -373,6 +378,7 @@ impl AgentSurface {
 				s.work_board.briefs.retain(|key, _| rows.iter().any(|r| &r.key == key));
 				for (key, brief) in results {
 					if rows.iter().any(|r| r.key == key && s.brief_stamp(r) == brief.stamp) {
+						s.work_board.reload_pending.remove(&key);
 						s.work_board.briefs.insert(key, brief);
 					}
 				}
