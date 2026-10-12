@@ -91,7 +91,7 @@ impl AgentSurface {
 				let _ = surface.update(cx, |s, cx| {
 					if let Some(response) = response {
 						s.apply_dictation(response, cx)
-					} else {
+					} else if s.dictation.is_some() {
 						s.dictation = None;
 						s.feedback="Dictation connection was lost. Your received text remains in the draft.".into();
 
@@ -382,9 +382,9 @@ async fn await_response(
 			return value;
 		}
 
-		let _ = surface.update(cx, |s, cx| {
-			s.drain_dictation_media(cx);
-		});
+		if surface.update(cx, |s, cx| s.drain_dictation_media(cx).is_none()).unwrap_or(true) {
+			return None;
+		}
 	}
 }
 
@@ -498,7 +498,11 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "Manual edit");
 		});
 
-		drop(waiting);
+		use futures_util::FutureExt as _;
+		assert!(
+			matches!(waiting.now_or_never(), Some(None)),
+			"Cancellation must release a pending subscription request"
+		);
 	}
 
 	#[gpui::test]

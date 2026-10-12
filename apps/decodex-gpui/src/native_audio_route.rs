@@ -109,6 +109,10 @@ impl Route {
 		read(&INPUT)
 	}
 
+	pub(super) fn is_default_input(&self) -> Result<bool, ()> {
+		Ok(self.selected == read(&INPUT)?)
+	}
+
 	pub(super) fn update(&mut self) -> Result<(bool, bool), ()> {
 		if !self.changed.swap(false, Ordering::AcqRel) {
 			return Ok((false, false));

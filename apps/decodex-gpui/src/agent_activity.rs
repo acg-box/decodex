@@ -97,16 +97,31 @@ impl AgentSurface {
 			.marks
 			.retain(|id, _| matches!(id, HistoryKey::Local(id) if saved.contains_key(id)));
 
+		let saved_entries = saved.values().copied().collect::<Vec<_>>();
+		let voice_groups = super::voice::history::saved_groups(&saved_entries);
+		let voice_hidden: BTreeSet<_> = voice_groups
+			.iter()
+			.flat_map(|(indices, _)| indices.iter().skip(1).map(|index| saved_entries[*index].id))
+			.collect();
+		self.timeline
+			.marks
+			.retain(|key, _| !matches!(key, HistoryKey::Local(id) if voice_hidden.contains(id)));
 		let mut current = None;
-
-		for entry in saved.values() {
-			if entry.kind == "user" || entry.kind == "instruction" {
+		for (index, entry) in saved_entries.iter().enumerate() {
+			if voice_hidden.contains(&entry.id) {
+				continue;
+			}
+			let voice = voice_groups.iter().find(|(indices, _)| indices[0] == index);
+			if voice.is_some() || entry.kind == "user" || entry.kind == "instruction" {
 				let mark =
 					self.timeline.marks.entry(HistoryKey::Local(entry.id)).or_insert_with(|| {
 						HistoryMark {
 							position: Rc::new(Cell::new(f32::INFINITY)),
 							hit_bounds: Rc::new(Cell::new(None)),
-							question: preview(&entry.text),
+							question: voice.map_or_else(
+								|| preview(&entry.text),
+								|(_, text)| format!("Voice conversation · {}", preview(text)),
+							),
 							time: format!(
 								"{} · {} UTC",
 								time::OffsetDateTime::from_unix_timestamp(
@@ -130,6 +145,25 @@ impl AgentSurface {
 					preview(&entry.text);
 			}
 		}
+	}
+
+	pub(super) fn saved_voice_history_entry(
+		&self,
+		entry: &AgentHistoryEntryDto,
+		work: &str,
+		text: String,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		self.anchor_history_row(
+			&HistoryKey::Local(entry.id),
+			super::voice::history::VoiceBlock {
+				key: format!("saved-{work}-{}", entry.id),
+				title: "Voice conversation".into(),
+				text,
+				viewport: Some(self.voice_history_viewport(cx)),
+			}
+			.into_any_element(),
+		)
 	}
 
 	pub(super) fn anchored_history_entry(

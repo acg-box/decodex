@@ -1,5 +1,5 @@
 #[path = "voice_conversation_groups.rs"] mod conversations;
-pub(crate) use conversations::{groups, tail_flush_turns};
+pub(crate) use conversations::{groups, saved_groups, tail_flush_turns};
 // Presentation of Codex realtime handoff envelopes. Stored messages stay unchanged.
 use crate::{
 	shell::agent_surface::{self, markdown},
