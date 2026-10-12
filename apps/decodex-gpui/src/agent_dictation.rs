@@ -8,7 +8,7 @@ use std::{
 
 use gpui::{AnyElement, AsyncApp, Task, WeakEntity};
 use tokio::runtime::Builder;
-use ui_theme::{BLUE, TEXT_MUTED};
+use ui_theme::TEXT_MUTED;
 
 use crate::shell::agent_surface::{
 	self, AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
@@ -29,7 +29,7 @@ pub(super) struct DictationUi {
 	finishing: bool,
 	finish_sent: bool,
 	status: String,
-	level: f32,
+	levels: VecDeque<f32>,
 	started: Instant,
 }
 impl AgentSurface {
@@ -74,7 +74,7 @@ impl AgentSurface {
 			finishing: false,
 			finish_sent: false,
 			status: "Opening microphone…".into(),
-			level: 0.,
+			levels: VecDeque::from(vec![0.; 40]),
 			started: Instant::now(),
 		});
 		self.dictation_task = Some(cx.spawn(async move |surface, cx| {
@@ -164,8 +164,8 @@ impl AgentSurface {
 
 			match event["type"].as_str() {
 				Some("level") => {
-					dictation.level =
-						event["value"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
+					dictation.levels.pop_front();
+					dictation.levels.push_back(event["value"].as_f64().unwrap_or_default().clamp(0., 1.) as f32);
 				},
 				Some("pcm") => {
 					if let Some(audio) =
@@ -180,8 +180,8 @@ impl AgentSurface {
 						return None;
 					}
 
-					dictation.level =
-						event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
+					dictation.levels.pop_front();
+					dictation.levels.push_back(event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32);
 
 					if dictation.audio.iter().map(|audio| audio.pcm().len()).sum::<usize>()
 						> decodex_protocol::MAX_DICTATION_BACKLOG_BYTES
@@ -285,7 +285,27 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn dictation_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn dictation_waveform(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let d = self.dictation.as_ref()?;
+		Some(Self::microphone_waveform(
+			"dictation-waveform",
+			"Dictation microphone waveform",
+			&d.levels,
+			d.status != "Listening" || d.finishing || d.capture_ended,
+			window,
+			cx,
+		))
+	}
+
+	pub(super) fn dictation_controls(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
 		let label = if d.status == "Listening" {
 			format!("Listening · {}s", d.started.elapsed().as_secs())
@@ -304,21 +324,6 @@ impl AgentSurface {
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(
 					gpui::div()
-						.h(gpui::px(12.))
-						.w(gpui::px(26.))
-						.flex()
-						.items_center()
-						.gap(gpui::px(2.))
-						.children((0..5).map(|i| {
-							gpui::div()
-								.w(gpui::px(2.))
-								.h(gpui::px(3. + d.level * 9. * (1. - (i as f32 - 2.).abs() / 4.)))
-								.rounded_full()
-								.bg(gpui::rgb(BLUE))
-						})),
-				)
-				.child(
-					gpui::div()
 						.id("dictation-status")
 						.flex_1()
 						.min_w_0()
@@ -326,6 +331,13 @@ impl AgentSurface {
 						.role(Role::Status)
 						.aria_label(label.clone())
 						.child(label),
+				)
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.max_w(gpui::px(160.))
+						.children(self.dictation_waveform(window, cx)),
 				)
 				.child(self.composer_control(
 					"dictation-cancel",
@@ -392,7 +404,7 @@ async fn await_response(
 mod tests {
 	use std::future;
 
-	#[cfg(test)] use gpui::AppContext as _;
+	#[cfg(test)] use gpui::{AppContext as _, EntityInputHandler as _};
 
 	use crate::shell::agent_surface::dictation::{
 		self, AgentSurface, Context, DictationAudio, DictationBuffer, DictationPhase,
@@ -421,9 +433,64 @@ mod tests {
 			finishing: false,
 			finish_sent: false,
 			status: "Listening".into(),
-			level: 0.,
+			levels: VecDeque::from(vec![0.; 40]),
 			started: Instant::now(),
 		}
+	}
+
+	struct DictationComposerView(gpui::Entity<AgentSurface>);
+	impl gpui::Render for DictationComposerView {
+		fn render(
+			&mut self,
+			window: &mut gpui::Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
+		}
+	}
+
+	#[gpui::test]
+	fn dictation_waveform_keeps_draft_visible_and_fits_narrow_composer(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+				s.dictation = Some(recording("Draft"));
+			});
+			DictationComposerView(surface)
+		});
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		for width in [320., 800.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(400.)));
+			visual.update(|window, cx| {
+				window.draw(cx).clear(cx);
+				let input = surface.read(cx).composer.clone();
+				input.update(cx, |input, cx| {
+					assert_eq!(input.content(), "Draft");
+					assert!(input.bounds_for_range(0..5, Default::default(), window, cx).is_some());
+				});
+			});
+			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
+			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
+			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
+			assert!(
+				wave.origin.y >= toolbar.origin.y
+					&& wave.origin.y + wave.size.height <= toolbar.origin.y + toolbar.size.height,
+				"dictation must not add a waveform row"
+			);
+			assert!(
+				wave.origin.x >= gpui::px(0.) && wave.origin.x + wave.size.width <= gpui::px(width)
+			);
+		}
+		surface.update(visual, |s, cx| {
+			s.dictation = None;
+			cx.notify();
+		});
+		view.update(visual, |_, cx| cx.notify());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("dictation-waveform").is_none());
 	}
 
 	#[gpui::test]

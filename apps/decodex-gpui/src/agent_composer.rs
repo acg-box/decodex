@@ -425,7 +425,7 @@ impl AgentSurface {
 						))
 					});
 				if self.voice.is_some() {
-					capsule.child(controls.child(editor).child(self.composer_toolbar(cx)))
+					capsule.child(controls.child(editor).child(self.composer_toolbar(window, cx)))
 				} else {
 					capsule
 						.when(
@@ -436,7 +436,7 @@ impl AgentSurface {
 								)),
 							|capsule| capsule.child(editor),
 						)
-						.child(controls.child(self.composer_toolbar(cx)))
+						.child(controls.child(self.composer_toolbar(window, cx)))
 				}
 			})
 	}
@@ -575,7 +575,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+	fn composer_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
 			use super::native_agents::NativeConnection;
 			let mut row = gpui::div()
@@ -652,7 +652,7 @@ impl AgentSurface {
 			return row.into_any_element();
 		}
 
-		if let Some(controls) = self.dictation_controls(cx) {
+		if let Some(controls) = self.dictation_controls(window, cx) {
 			return controls;
 		}
 		if let Some(controls) = self.voice_toolbar(cx) {

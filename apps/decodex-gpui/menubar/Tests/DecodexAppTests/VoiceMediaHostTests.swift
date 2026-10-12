@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import CoreAudio
+import AVFAudio
 @testable import DecodexApp
 
 @MainActor
@@ -54,6 +55,25 @@ final class VoiceMediaHostTests: XCTestCase {
             XCTAssertNil(value["device"])
             XCTAssertNil(host.poll())
         }
+    }
+
+    func testVoiceProcessingEchoStreamsAreNotMicrophones() {
+        XCTAssertFalse(MicrophoneDevice.hasCaptureInput(streams: [(0, kAudioStreamTerminalTypeSpeaker), (1, 0)]))
+        XCTAssertFalse(MicrophoneDevice.hasCaptureInput(streams: [(0, kAudioStreamTerminalTypeHeadphones), (1, kAudioStreamTerminalTypeHeadphones)]))
+        XCTAssertTrue(MicrophoneDevice.hasCaptureInput(streams: [(1, kAudioStreamTerminalTypeMicrophone), (0, kAudioStreamTerminalTypeHeadphones), (1, kAudioStreamTerminalTypeHeadphones)]))
+        XCTAssertTrue(MicrophoneDevice.hasCaptureInput(streams: [(1, 0)]))
+        XCTAssertTrue(MicrophoneDevice.hasCaptureInput(streams: [(1, 0x0201)]))
+        XCTAssertFalse(MicrophoneDevice.hasCaptureInput(streams: [(1, 0), (nil, nil)]))
+    }
+
+    func testHardwareCatalogStaysStableAfterVoiceProcessingPreparation() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["DECODEX_TEST_AUDIO_HARDWARE"] == "1", "Requires local audio hardware; does not start recording")
+        let before = Set(try MicrophoneDevice.inputs().map { $0.id })
+        try XCTSkipIf(before.isEmpty, "No microphone is connected")
+        let engine = AVAudioEngine()
+        try engine.inputNode.setVoiceProcessingEnabled(true)
+        defer { try? engine.inputNode.setVoiceProcessingEnabled(false) }
+        XCTAssertEqual(Set(try MicrophoneDevice.inputs().map { $0.id }), before)
     }
 
     func testDefaultMicrophoneKeepsSystemRouting() throws {
