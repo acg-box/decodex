@@ -12,6 +12,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-c6dbc3a3344bb9841270e6c1
+    resource: repo://crates/decodex-codex/examples/schema_fingerprint.rs
   - id: openwiki-source-94c4593cb5944bf1f2ecf050
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
@@ -20,14 +24,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
+  - id: openwiki-source-87eeaebc39a3d2229938f9d2
+    resource: repo://scripts/macos/build_codex_source.mts
+  - id: openwiki-source-0e02d239506d0285d4593872
+    resource: repo://scripts/macos/bundle_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T06:49:11.265Z
+    at: 2026-10-12T18:37:44.705Z
 ---
 
 # Runtime Architecture
@@ -68,6 +76,14 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
 The runtime lock and its exact source revision define the bundled implementation. Installed applications can still contain an older binary. Check the bundled artifact and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
+
+## Source runtime qualification
+
+[The runtime lock](../../codex-runtime.lock.json) selects the exact official upstream commit, source archive digest and adapter schema fingerprint. `build_codex_source.mts` verifies the official archive URL and digest, recreates the extracted source cache, then runs the upstream package builder with stable Rust and its locked Cargo graph. It supplies the selected commit as `STABLE_GIT_COMMIT` and rejects a build that changes the upstream Cargo lock or package identity.
+
+The builder checks the package version, target, variant and layout. It signs `CodexCLI.app`, the Code Mode helper and packaged `rg`, then verifies their signatures. `bundle_codex.mts` checks the executable version and generates experimental app-server schemas from that executable. The local `schema_fingerprint` example validates the adapter contract before the fingerprint is compared with the lock. The bundle records the source commit, executable digest and schema fingerprint as separate evidence.
+
+A matching schema confirms the admitted protocol structure. Qualify affected behavior with focused native fixtures before updating the lock. Keep source review, artifact qualification, PR delivery and installed-app acceptance separate.
 
 ## Protocol and safety
 

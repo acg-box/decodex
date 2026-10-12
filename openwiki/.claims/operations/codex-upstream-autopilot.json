@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:89b7657e308b6080a0a22c1e999e5d98891075bf9ef2b8f4af26bb903369b822",
+  "pageVersion": "sha256:1016034127c70eaf946fe59310d4ad2fdeebc7da46ac3f9fe53ae55320f416ad",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -65,10 +65,70 @@
           "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
         }
       ]
+    },
+    {
+      "id": "claim_67d1ef78b6ef43aab12447f1516d0b58",
+      "statement": "Source runtime qualification uses the exact official archive and digest, the stable locked upstream package build, stamped commit and package identity checks, followed by signing and verification of the app and packaged helpers.",
+      "evidence": [
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:eabdb676f3b26504d750d2f90200e6c812db6f1f5eded67cd285de07c44fb5cd"
+        },
+        {
+          "resource": "repo://scripts/macos/build_codex_source.mts#L18-L95",
+          "version": "repo-lines-v1:sha256:0ab0e956a926c8b55cc0d64776866adc34256fa51c388423ce7aa1bd6ec30a92:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxOWZjMzU4YjljYjlmN2Q4YTExMjkyNWEyNjM5OGVlYjAxMTBiYzQxZmNlYmYzMjc4MmM5NTZjMWZlMmE4ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b1a922f44f04b10a5264dad9d00b806",
+      "statement": "The bundler checks the actual executable version, generates experimental app-server schemas from that executable, validates the local adapter fingerprint and records source commit, executable digest and schema fingerprint together.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/examples/schema_fingerprint.rs#L13-L19",
+          "version": "repo-lines-v1:sha256:1b29834cbc164ea4580fd898ee83a93482cf8c935118316ebe5f1e6e9b224569:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGU3M2VkMjFhNjQwMjRiMWY4NmIxOGJjNjliYzRhYjViY2I4NmFmOTc2ZWZiNTZiMWE0N2Y2MTcyZWI1NmZmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2YxNDJmMGVhOTlhNGJiYTdmYzdlZDY5ZGZmYWE2M2I0NjRhZWM0MDI5ZGY4MzA5ZGI3OTU5ZGZmZGQ3NDcyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://scripts/macos/bundle_codex.mts#L42-L53",
+          "version": "repo-lines-v1:sha256:7f7152c75159e43256b681548f8c1bcc2cc91ae9ded0695a4dec7c3e187a5576:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzBiMGMyMmM1MWIzMTI2YjM0ZmZmYTczMjZiNjcwNjU5MjRkNWMzMDY4MjBjZWQxNWVhMzk3N2VlZDdhMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMTdlZGM0YzViOTMxNzMzZWRiY2RkYzdiODBhMjQyMDJlNzZjNDI3OGQ5MDBjNTNiMjg3OTBiOWE1YWVlMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjNTEyYjEzMzVjOTMxMzVmZWY0ZmQxYzFjNjVjNDQ1NTFiZjZhZjQ5OWQzNzY0YWQ0ZTQ3OTI1OWQyODRmZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_676596febf0d4591b34531158269edea",
+      "statement": "Agent continuation distinguishes actual user input from application tool output. Delegation, scheduled wakes and retries use empty input and decodex toolOutput with name, namespace and output; the encoder does not request retention.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1334",
+          "version": "repo-lines-v1:sha256:5c9dc39a4bfb9f0934f3f4b4ee3dd98c56ed5369a44f4d68353cd4bbbb8789e5:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ZDE3MDczMDIxNDc4MGEyOTI5YTZjMjdhYmY5MGMwOGExNDkwZjVlYzcyYWZlZTYzNTNhZDU3NTdmOWZhNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZmQwYWU4NGI2YTc4Mzk1Y2Y4NjA5ODhlZDMxYmM0NDllMjVkM2VhZTlhYTc2OGVhMDU4NWRjZDg3MTgyNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2Q3MzMzZTNhNWYwZTMyNDUwYjRmNjViMjc1YTAzOGYzMjkzNTYyNjViYjZjNGViNmRkOTNlOGFkYWM1NjQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L197",
+          "version": "repo-lines-v1:sha256:264a285f1dbfd26b6325ea4aca500d9e4ccf674476dedbbbd5fadcf63782450a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTY4YzAwZTEzZWM2MWI2YTU2NzQ4Mzc5N2IyNTMzZTZkZTRlNDM0OTIwYTEzZDNjYmEzMzIxMTJmYzE1M2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0fe48341c2be4d38acb35dead51cc8a8",
+      "statement": "The maintainer requires affected native behavior qualification separately from schema and installed acceptance; new optional product capabilities require a user decision, and a completed manual catch-up does not resume the automation.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L13",
+          "version": "repo-lines-v1:sha256:39621f94197a1cee74636cb2f7cad3ecab330cdbe698d7c9be9abdf1c5b412f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MGI3OWM0MTUwN2EwNmUwZDM4NTMwMzc3MGRhNmVjMWQ0YzRhZmY4ODJkODZiM2YxMGM4MDNmNWVmYzE3MDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMzY4ZmVmZDY3MjYyN2U3Y2MzMDBhZGZhY2IxZjBkZDE3N2MxYWQwYzExNGZlNGI3OTg2ZGUzNzRjOWNjMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhNjg5YzExZDRkODQ5NWFkNTdmYWViMDU2NDgzMDRlYWVjNDY0YWQxNmY1N2QzNzkyZjljNmM1MDJhMWZkZTcifQ"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L17-L23",
+          "version": "repo-lines-v1:sha256:fc2c1ce92d4161a5d1c148cc33183c0a4b428d53785065818a55988b0672fd42:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5YzYxNWFhYWFmYjQ3NzFjNDI1MWYzNjc1Y2RjMzZkMjE2Y2QwNWViODk3ZDNjNjQ0ZGI1ODU1OGY4ZWNkNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUwM2Y1NmE5ZWQ2NmY4YjM4NjVjMTMzYmY2Nzk1OWNlODExOThmYmU2NWFhYTE0NTVlZjNlMWJhZjAwMDJlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWE2ODljMTFkNGQ4NDk1YWQ1N2ZhZWIwNTY0ODMwNGVhZWM0NjRhZDE2ZjU3ZDM3OTJmOWM2YzUwMmExZmRlNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZiODk2MmI5NmYwNDhmMjliZDY0MzUyOTU4MjQzOGU3MmNiZGI3YzQzMjkzYzAwZjAyOWUwZTEzMmRkZWYwYiJ9"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L29-L31",
+          "version": "repo-lines-v1:sha256:5403d23a71a9d90fe02dddf5b9657dbef0b9d0361718988991b03cccc323d766:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGM3NjUzMWJmMmFlYjM1NDI1YzdiNzMyOTAyMzY3MjBmY2JmODBmNTE4MzZmMWU4ZjQ0MDdjN2MzZDVjM2YxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhNTdiZGZlZmRhNGM5ZTkyNmRjM2VlNWMyYTdkZTFkOWIwOTVjNTA3NjdiOGI5NzI1MzQ4Nzg4YmQxMzVlMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmFkYjJiMzhmNWQ4MDEwMDI1NmUxNWQ4ZTUzMTAwMmI1ZTcyZmUxMjRmMTkwOTVjMGMyZTQ3YmQ0YTNmOTE0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-12T18:37:44.705Z"
   }
 }
