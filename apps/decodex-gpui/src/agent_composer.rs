@@ -415,7 +415,7 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.gap(gpui::px(4.))
-					.when(self.native_agents.selected.is_none(), |d| {
+					.when(self.native_agents.selected.is_none() && self.dictation.is_none(), |d| {
 						d.child(self.composer_control(
 							"attach",
 							"+".into(),
@@ -771,8 +771,6 @@ impl AgentSurface {
 					"delivery",
 					"effort",
 					"send",
-					"dictation-cancel",
-					"dictation-finish",
 					"voice-mute",
 					"voice-end",
 					"attachment-item",
@@ -864,10 +862,8 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.native_agents.selected.is_some() {
+				mode: if self.native_agents.selected.is_some() || self.dictation.is_some() {
 					PrimaryMode::Send
-				} else if self.dictation.is_some() {
-					PrimaryMode::Done
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop
 				} else if self.composer.read(cx).content().trim().is_empty()
@@ -911,6 +907,8 @@ impl AgentSurface {
 				))
 				.into_any_element(),
 			"dictation" => workspace_symbols::icon_sized(Symbol::Microphone, 18.),
+			"dictation-cancel" => workspace_symbols::icon_sized(Symbol::Close, 16.),
+			"dictation-finish" => workspace_symbols::icon_sized(Symbol::Confirm, 16.),
 			"delivery" => gpui::div()
 				.w_full()
 				.flex()
