@@ -459,6 +459,20 @@ fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut gpui
 		}
 		let published = s.work_board.usage.as_ref().unwrap();
 		assert_eq!(published.len(), rows.len(), "missing token counters also complete a read");
+		s.debug_reload_graph();
+		assert_eq!(s.work_board.usage.as_ref().unwrap().len(), rows.len());
+		assert!(s.work_board.briefs.values().all(|brief| !brief.stamp.is_empty()));
+		assert_eq!(s.work_board.reload_pending.len(), rows.len());
+		for (index, row) in rows.iter().enumerate() {
+			s.work_board.briefs.get_mut(&row.key).unwrap().stamp = s.brief_stamp(row);
+			s.work_board.reload_pending.remove(&row.key);
+			s.publish_usage();
+			assert_eq!(
+				s.work_board.usage.as_ref().unwrap().len(),
+				rows.len(),
+				"reload batch {index} must retain the complete strip"
+			);
+		}
 		let first = &rows[0];
 		s.work_board.briefs.get_mut(&first.key).unwrap().source_thread = Some("replaced".into());
 		s.publish_usage();
