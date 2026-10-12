@@ -9,10 +9,22 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-c6dbc3a3344bb9841270e6c1
+    resource: repo://crates/decodex-codex/examples/schema_fingerprint.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-30c7edf894a639091ecbafc6
+    resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-87eeaebc39a3d2229938f9d2
+    resource: repo://scripts/macos/build_codex_source.mts
+  - id: openwiki-source-0e02d239506d0285d4593872
+    resource: repo://scripts/macos/bundle_codex.mts
+generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T06:49:11.265Z
+    at: 2026-10-12T18:37:44.705Z
 ---
 
 
@@ -40,6 +52,20 @@ Classify each relevant change:
 | Unsupported installed binary or unrelated platform | Record the boundary and defer the local consumer |
 
 Use the [current product scope](../decisions/upstream-product-scope.md). Retired local plugin management, embedded HTML widgets and provider recovery recording must not return merely because upstream supports them.
+
+## Qualify a source runtime
+
+The runtime lock can select an exact official source archive. Use the existing builder and bundler described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
+
+1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock.
+2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The bundler checks the executable version, generates experimental app-server schemas from that executable, validates them against the local adapter and compares the fingerprint with the lock. It records the source commit, executable digest and schema fingerprint together.
+3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
+
+## Preserve tool authority during continuation
+
+`AgentCoordinator::dispatch_input` sends direct root requests and saved user replies as user input. Delegation, scheduled wakes and capacity retries use an empty input array and a `decodex` tool output named `work_instruction`, `work_wake` or `capacity_retry`. A retry retains its native retry trigger. Rejection must not cause the application to replay this output as user input.
+
+The current tool-output encoder supplies only `name`, `namespace` and `output`. It does not request retention across compaction. Upstream support for retention does not authorize enabling it for every continuation. Keep selective retention as a separate optional decision. A proposal must show what useful output survives actual compaction and a cold resume, confirm its tool role and absence of duplicate insertion, and describe context cost and retention limits. Save that evidence in the automation directory; the repository wiki records the ownership boundary and procedure.
 
 ## Deliver small complete batches
 

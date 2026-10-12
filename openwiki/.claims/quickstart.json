@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:df93d0a23c9a68848b39260ee528081e3ea1b1b126c6afd1420d259906878e93",
+  "pageVersion": "sha256:5cbf223bc305eeb49ece812a665930d903719330a7cf432545fc538b26105b95",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:76bb391c3ba88728bb8101182c9ddb77201545eab2547629a22ef4c34fb4fc28"
+          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -45,7 +45,7 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L267-L284",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L271-L288",
           "version": "repo-lines-v1:sha256:3a3a45cc72f83096718b43dec5e0e0d509439b5e5588ee0de93d3b799715f312:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmY2YwMzAwZTE3NDI3NDJjZTZlNDBkNmMzZDhmNjdkODQ4ZTViOWNhODFjMmI4N2I0YjZiNGE0NDE3NTJmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
@@ -85,6 +85,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-12T18:37:44.705Z"
   }
 }

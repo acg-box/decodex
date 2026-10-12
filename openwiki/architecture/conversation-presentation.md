@@ -42,10 +42,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
-generated: { by: "codex", at: "2026-10-10T18:01:25.138Z" }
+generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T18:01:25.138Z
+    at: 2026-10-12T18:37:44.705Z
 ---
 
 
@@ -69,7 +69,7 @@ A first conversation read reserves a centered reading surface. Its shape is deli
 
 The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
 
-The composer reserves real space below the transcript viewport. History is clipped above that footer instead of extending behind a floating input. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. Live replaces the text editor slot with a compact waveform and restores the draft when the call ends.
+The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. Live replaces the text editor slot with a compact waveform and restores the draft when the call ends.
 
 ## Voice history and pagination
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3f94d6e4c87b3336b6d47fadeef53e7ca0d96a0e92bd40c32cff52ba08440e46",
+  "pageVersion": "sha256:afdf7813e514d7c46a0837427fc49924d6a4232236f3cf9a829ca97a71d598f3",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
-          "version": "repo-file-v1:sha256:d2d4eeddb49d6d9137e9098bf540f3a222b43c3a48894ff47fec5d2bc540f22c"
+          "version": "repo-file-v1:sha256:f76c822da29b6e58b4629f5b2744ae95fefdc03de0beacc61f9290f4cb4e7fe1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -101,7 +101,7 @@
       "statement": "Task preferences exposes explicit source- and revision-bound read/unread marks for the current root conversation; refresh never acknowledges results and uncertain writes are not automatically retried.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2277-L2344",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2290-L2357",
           "version": "repo-lines-v1:sha256:596cd93b2b2e2c805234c07eff265751d337438df3fa5739df2615f163492151:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
         },
         {
@@ -137,6 +137,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-12T18:37:44.705Z"
   }
 }
