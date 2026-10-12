@@ -378,7 +378,13 @@ impl AgentSurface {
 						} else {
 							"Finishing dictation"
 						})
-						.child(crate::ui_loading::loading(""))
+						.child(
+							gpui::div()
+								.w(gpui::px(28.))
+								.flex()
+								.justify_center()
+								.child(crate::ui_loading::loading("")),
+						)
 						.into_any_element()
 				} else {
 					gpui::div()
