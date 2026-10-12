@@ -126,8 +126,8 @@ impl Arrival {
 		if reduced {
 			return 1.;
 		}
-		let t = (now.saturating_duration_since(started).as_secs_f32() / 0.18).clamp(0., 1.);
-		1. - (1. - t).powi(3)
+		let t = (now.saturating_duration_since(started).as_secs_f32() / 0.32).clamp(0., 1.);
+		t * t * (3. - 2. * t)
 	}
 }
 impl RenderOnce for Content {
@@ -161,9 +161,9 @@ mod tests {
 		let mut state = Arrival::default();
 		assert_eq!(state.progress(false, now, false), 1.);
 		assert_eq!(state.progress(true, now, false), 0.);
-		let halfway = now + std::time::Duration::from_millis(90);
-		assert!((0.5..1.).contains(&state.progress(true, halfway, false)));
-		let done = now + std::time::Duration::from_millis(180);
+		let halfway = now + std::time::Duration::from_millis(160);
+		assert!((state.progress(true, halfway, false) - 0.5).abs() < 0.001);
+		let done = now + std::time::Duration::from_millis(320);
 		assert_eq!(state.progress(true, done, false), 1.);
 		assert_eq!(state.progress(false, done, false), 1.);
 		assert_eq!(state.progress(true, done, false), 1.);

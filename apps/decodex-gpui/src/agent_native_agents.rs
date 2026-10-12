@@ -69,6 +69,10 @@ struct NativeAgentTarget {
 }
 
 impl AgentSurface {
+	pub(super) fn native_agent_discovery_pending(&self) -> bool {
+		self.native_agents.task.is_some() && self.native_agents.next.is_none()
+	}
+
 	/// A conversation has one presentation regardless of which agent owns execution.
 	pub(super) fn conversation_work(&self) -> Option<super::AgentWorkItemDto> {
 		let mut work = self

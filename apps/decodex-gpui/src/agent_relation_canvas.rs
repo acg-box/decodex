@@ -1568,7 +1568,7 @@ impl AgentSurface {
 			.into_iter()
 			.find(|r| r.key == "release")
 			.expect("relation fixture owner");
-		self.work_board.briefs.insert(row.key.clone(),Brief{outcome:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
+		self.work_board.briefs.insert(row.key.clone(),Brief{source_thread:row.thread.clone(),outcome:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
 		for owner in ["flow", "verify"] {
 			let row = self
 				.board_rows()
@@ -1584,6 +1584,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					source_thread: row.thread.clone(),
 					outcome: None,
 					metrics: Default::default(),
 					stamp: self.brief_stamp(&row),

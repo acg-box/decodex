@@ -13,6 +13,7 @@ pub(super) struct Board {
 	focus: Option<String>,
 	view: relations::View,
 	pub(super) briefs: BTreeMap<String, Brief>,
+	usage: Option<BTreeMap<String, (Option<String>, relations::metrics::Metrics)>>,
 	pub(super) brief_task: Option<gpui::Task<()>>,
 }
 impl Board {
@@ -203,6 +204,7 @@ impl AgentSurface {
 }
 
 pub(super) struct Brief {
+	source_thread: Option<String>,
 	outcome: Option<(String, String)>,
 	resources: Option<Vec<decodex_protocol::AgentResourceDto>>,
 	relations: Vec<(String, decodex_protocol::AgentCollaborationDto)>,
@@ -233,6 +235,27 @@ impl AgentSurface {
 		.to_string()
 	}
 
+	// Publish a complete read together so partial batches cannot resize the usage strip.
+	fn publish_usage(&mut self) {
+		if self.native_agent_discovery_pending() {
+			return;
+		}
+		let rows = self.factory_rows();
+		let mut usage = BTreeMap::new();
+		for row in rows.iter().filter(|row| row.thread.is_some()) {
+			let Some(brief) = self
+				.work_board
+				.briefs
+				.get(&row.key)
+				.filter(|brief| brief.source_thread == row.thread)
+			else {
+				return;
+			};
+			usage.insert(row.key.clone(), (row.thread.clone(), brief.metrics));
+		}
+		self.work_board.usage = Some(usage);
+	}
+
 	pub(super) fn refresh_factory_briefs(&mut self, cx: &mut Context<Self>) {
 		if self.work_board.graph
 			|| !self.workspace.graph_visible
@@ -261,6 +284,12 @@ impl AgentSurface {
 			})
 			.collect();
 		if requests.is_empty() {
+			if self.work_board.usage.is_none() {
+				self.publish_usage();
+				if self.work_board.usage.is_some() {
+					cx.notify();
+				}
+			}
 			return;
 		}
 		let read = cx.background_executor().spawn(async move {
@@ -318,6 +347,7 @@ impl AgentSurface {
 					results.push((
 						row.key,
 						Brief {
+							source_thread: row.thread.clone(),
 							outcome,
 							stamp,
 							relations,
@@ -341,6 +371,7 @@ impl AgentSurface {
 					}
 				}
 				s.work_board.brief_task = None;
+				s.publish_usage();
 				cx.notify();
 			});
 		}));
