@@ -181,6 +181,9 @@ impl RenderOnce for VoiceBlock {
 						.debug_selector(move || {
 							format!("voice-history-transcript-{transcript_key}")
 						})
+						.border_l_1()
+						.border_b_1()
+						.border_color(gpui::rgba(0xffffff20))
 						.px_3()
 						.pb_3()
 						.pt_2()

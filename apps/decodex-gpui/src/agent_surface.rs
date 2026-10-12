@@ -2693,7 +2693,7 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
-	history_entry_presented(entry, identity, metrics, None)
+	history_entry_presented(entry, identity, metrics, None, true)
 }
 
 fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
@@ -2714,6 +2714,7 @@ fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyEle
 		identity,
 		None,
 		streamed,
+		false,
 	)
 }
 
@@ -2722,6 +2723,7 @@ fn history_entry_presented(
 	identity: &str,
 	metrics: Option<AnyElement>,
 	streamed_body: Option<AnyElement>,
+	show_metadata: bool,
 ) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
@@ -2811,7 +2813,7 @@ fn history_entry_presented(
 						.enumerate()
 						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
 				)
-				.when(!user, |body| {
+				.when(!user && show_metadata, |body| {
 					body.child(
 						gpui::div()
 							.mt(gpui::px(METADATA_GAP))
