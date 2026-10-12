@@ -11,6 +11,7 @@ use gpui::{App, IntoElement, KeyDownEvent, RenderOnce, Role, SharedString, Windo
 use crate::shell::workspace_symbols::{self, Symbol};
 use sticky::Toggle as _;
 pub(crate) use sticky::Viewport;
+use ui_motion::SmoothControl as _;
 
 pub(crate) fn handoff(text: &str) -> Option<String> {
 	let body = text
@@ -119,8 +120,9 @@ impl RenderOnce for VoiceBlock {
 			.aria_label(self.title.clone())
 			.aria_expanded(open)
 			.tab_index(0)
-			.rounded(gpui::px(6.))
-			.w_full()
+			.rounded_full()
+			.flex_none()
+			.bg(gpui::rgb(0x18181c))
 			.flex()
 			.items_center()
 			.text_size(gpui::px(12.))
@@ -153,7 +155,8 @@ impl RenderOnce for VoiceBlock {
 					});
 					cx.stop_propagation();
 				}
-			});
+			})
+			.smooth();
 		let body = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -197,9 +200,12 @@ impl RenderOnce for VoiceBlock {
 			body: body.into_any_element(),
 			header: Some(
 				gpui::div()
-					.debug_selector(|| "voice-history-block".into())
 					.w_full()
-					.child(header)
+					.flex()
+					.items_start()
+					.child(
+						gpui::div().debug_selector(|| "voice-history-block".into()).child(header),
+					)
 					.into_any_element(),
 			),
 			open,
