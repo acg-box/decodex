@@ -138,9 +138,10 @@ impl Device {
 			// Select the input before voice processing combines the input and output units.
 			// Changing CurrentDevice on bus 0 of the shared voice unit selects the output.
 			let unit: Retained<AUAudioUnit> = input.AUAudioUnit();
-			// Input-only capture must not depend on an aggregate containing the output
-			// device. Route observes system-default changes and selects the physical input.
-			let selected = if duplex { device } else { route.selected };
+			// Preserve the engine's aggregate for the system input. In particular,
+			// replacing the Bluetooth aggregate with its physical input can start
+			// an engine that never invokes its sink. Explicit other inputs still bind.
+			let selected = if !duplex && route.is_default_input()? { 0 } else { device };
 			if selected != 0 && unit.deviceID() != selected {
 				unit.setDeviceID_error(selected).map_err(|_| ())?;
 			}

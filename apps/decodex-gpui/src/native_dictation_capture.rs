@@ -80,6 +80,7 @@ fn run(
 	let mut first = true;
 	let mut bytes = Vec::with_capacity(9_600);
 	let mut healthy = true;
+	let mut last_audio = Instant::now();
 	loop {
 		if stopped.load(Ordering::Acquire) {
 			break;
@@ -94,7 +95,19 @@ fn run(
 			false
 		};
 		let (engine, pcm) = audio.parts();
+		let before = bytes.len();
 		drain_pcm(&mut pcm.captured, &mut bytes);
+		if bytes.len() > before {
+			last_audio = Instant::now();
+		} else if !final_buffer && last_audio.elapsed() >= Duration::from_secs(3) {
+			let message = if first {
+				"No audio arrived from the microphone. Check its connection or choose another input, then try again."
+			} else {
+				"The microphone stopped delivering audio. Your received text remains in the draft. Check its connection and try again."
+			};
+			healthy = events.try_send(json!({"type":"error","message":message})).is_ok();
+			break;
+		}
 		if first && !bytes.is_empty() {
 			first = false;
 			let elapsed = requested.elapsed().as_secs_f64() * 1_000.;
@@ -145,6 +158,32 @@ fn pcm16(sample: f32) -> i16 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	#[ignore = "Requires authorized microphone and DECODEX_AUDIO_TEST_DEVICE_ID"]
+	fn physical_capture_becomes_ready_and_finishes_without_sending_a_turn() {
+		let device = std::env::var("DECODEX_AUDIO_TEST_DEVICE_ID").unwrap().parse().unwrap();
+		let capture = Capture::start(device).unwrap();
+		let started = Instant::now();
+		let mut ready = false;
+		loop {
+			assert!(
+				started.elapsed() < Duration::from_secs(8),
+				"capture must not wait indefinitely"
+			);
+			if let Some(event) = capture.poll() {
+				assert_ne!(event["type"], "error", "{event}");
+				if event["type"] == "dictation_ready" {
+					ready = true;
+					capture.finish();
+				}
+				if event["type"] == "ended" {
+					assert!(ready);
+					break;
+				}
+			}
+			thread::sleep(Duration::from_millis(5));
+		}
+	}
 	#[test]
 	fn capture_burst_keeps_every_sample_within_the_wire_limit() {
 		let (mut input, mut captured) = rtrb::RingBuffer::new(19_200);
