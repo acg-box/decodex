@@ -2682,6 +2682,27 @@ fn history_entry_with_metrics(
 	history_entry_presented(entry, identity, metrics, None)
 }
 
+fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
+	history_entry_presented(
+		&AgentHistoryEntryDto {
+			native_source: None,
+			turn_id: None,
+			weather: Vec::new(),
+			receipt: None,
+			activity: None,
+			usage: None,
+			duration_ms: None,
+			id: 0,
+			kind: role.into(),
+			text: text.into(),
+			created_at_micros: 0,
+		},
+		identity,
+		None,
+		streamed,
+	)
+}
+
 fn history_entry_presented(
 	entry: &AgentHistoryEntryDto,
 	identity: &str,

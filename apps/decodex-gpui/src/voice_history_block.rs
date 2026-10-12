@@ -2,7 +2,7 @@
 pub(crate) use conversations::{groups, tail_flush_turns};
 // Presentation of Codex realtime handoff envelopes. Stored messages stay unchanged.
 use crate::{
-	shell::agent_surface::markdown,
+	shell::agent_surface::{self, markdown},
 	ui_motion,
 	ui_theme::{HOVER_FILL, TEXT_MUTED},
 };
@@ -40,19 +40,28 @@ pub(crate) fn handoff(text: &str) -> Option<String> {
 	Some(text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
 }
 
-fn transcript_markdown(text: &str) -> String {
-	text.lines()
-		.map(|line| {
-			if let Some(text) = line.strip_prefix("user: ") {
-				format!("**You:** {text}")
-			} else if let Some(text) = line.strip_prefix("assistant: ") {
-				format!("**Assistant:** {text}")
+fn transcript_turns(text: &str) -> Vec<(&str, String)> {
+	let mut turns: Vec<(&str, String)> = Vec::new();
+	for line in text.lines() {
+		let speech = line
+			.strip_prefix("user: ")
+			.map(|text| ("user", text))
+			.or_else(|| line.strip_prefix("assistant: ").map(|text| ("assistant", text)));
+		if let Some((role, text)) = speech {
+			if let Some(last) = turns.last_mut().filter(|last| last.0 == role) {
+				last.1.push_str("\n\n");
+				last.1.push_str(text);
 			} else {
-				line.to_owned()
+				turns.push((role, text.into()));
 			}
-		})
-		.collect::<Vec<_>>()
-		.join("\n\n")
+		} else if let Some(last) = turns.last_mut() {
+			last.1.push('\n');
+			last.1.push_str(line);
+		} else {
+			turns.push(("assistant", line.into()));
+		}
+	}
+	turns
 }
 
 #[derive(IntoElement)]
@@ -130,9 +139,19 @@ impl RenderOnce for VoiceBlock {
 					.px_3()
 					.pb_3()
 					.pt_2()
-					.child(markdown::render(
-						&transcript_markdown(&self.text),
-						&format!("voice-transcript-{}", self.key),
+					.flex()
+					.flex_col()
+					.gap(gpui::px(crate::ui_theme::MESSAGE_GAP))
+					.children(transcript_turns(&self.text).into_iter().enumerate().map(
+						|(index, (role, text))| {
+							agent_surface::speech_bubble(
+								role,
+								&text,
+								&format!("voice-transcript-{}-{index}", self.key),
+								None,
+							)
+							.debug_selector(move || format!("voice-transcript-turn-{index}"))
+						},
 					))
 					.child(markdown::response_copy_button(
 						&format!("voice-copy-{}", self.key),
@@ -172,6 +191,24 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
+	}
+
+	#[test]
+	fn transcript_turns_preserve_multiline_speech_and_merge_adjacent_speakers() {
+		assert_eq!(
+			transcript_turns(
+				"user: Hello\nsecond line\nassistant: Hi\nassistant: More\nuser: Stop"
+			),
+			vec![
+				("user", "Hello\nsecond line".into()),
+				("assistant", "Hi\n\nMore".into()),
+				("user", "Stop".into()),
+			]
+		);
+		assert_eq!(
+			transcript_turns("Unlabelled text"),
+			vec![("assistant", "Unlabelled text".into())]
+		);
 	}
 
 	#[test]

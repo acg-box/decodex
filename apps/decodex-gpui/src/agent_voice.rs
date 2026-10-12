@@ -753,6 +753,24 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let voice = self.voice.as_ref()?;
+		if !voice.connected {
+			return Some(
+				gpui::div()
+					.id("voice-waiting")
+					.debug_selector(|| "voice-waiting".into())
+					.h(gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.text_size(gpui::px(11.))
+					.role(Role::Status)
+					.w_full()
+					.min_w_0()
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.child("Microphone off until connected")
+					.into_any_element(),
+			);
+		}
 		Some(
 			gpui::div()
 				.id("live-waveform")
@@ -821,33 +839,35 @@ impl AgentSurface {
 						.aria_label(label.to_owned())
 						.child(label.to_owned()),
 				)
-				.child(self.composer_control(
-					"voice-mute",
-					if voice.muted { "Unmute" } else { "Mute" }.into(),
-					"Toggle microphone",
-					|s, cx| {
-						if let Some(voice) = &mut s.voice {
-							let muted = !voice.muted;
+				.children(voice.connected.then(|| {
+					self.composer_control(
+						"voice-mute",
+						if voice.muted { "Unmute" } else { "Mute" }.into(),
+						"Toggle microphone",
+						|s, cx| {
+							if let Some(voice) = &mut s.voice {
+								let muted = !voice.muted;
 
-							if voice
-								.media
-								.command(serde_json::json!({"operation":"mute","muted":muted}))
-							{
-								voice.muted = muted;
-							} else {
-								s.feedback = s.retire_voice_media().unwrap_or_else(|| {
-									"Voice stopped because the microphone control could not be updated.".into()
-								});
+								if voice
+									.media
+									.command(serde_json::json!({"operation":"mute","muted":muted}))
+								{
+									voice.muted = muted;
+								} else {
+									s.feedback = s.retire_voice_media().unwrap_or_else(|| {
+										"Voice stopped because the microphone control could not be updated.".into()
+									});
+								}
 							}
-						}
 
-						cx.notify();
-					},
-					cx,
-				))
+							cx.notify();
+						},
+						cx,
+					)
+				}))
 				.child(self.composer_control(
 					"voice-end",
-					"End".into(),
+					if voice.connected { "End" } else { "Cancel" }.into(),
 					"End voice call · Existing work continues",
 					|s, cx| {
 						let _ = s.retire_voice_media();
@@ -981,23 +1001,11 @@ impl AgentSurface {
 							.join("\n"),
 					}
 				}))
-				.children(captions.into_iter().enumerate().map(|(i, caption)| {
-					agent_surface::history_entry_presented(
-						&decodex_protocol::AgentHistoryEntryDto {
-							native_source: None,
-							turn_id: None,
-							weather: Vec::new(),
-							receipt: None,
-							activity: None,
-							usage: None,
-							duration_ms: None,
-							id: -(i as i64) - 1,
-							kind: caption.role.into(),
-							text: caption.text.clone(),
-							created_at_micros: 0,
-						},
+				.children(captions.into_iter().map(|caption| {
+					agent_surface::speech_bubble(
+						caption.role,
+						&caption.text,
 						&caption.key,
-						None,
 						Some(
 							agent_surface::text_reveal::StreamingText {
 								text: caption.text.clone(),
@@ -1380,6 +1388,40 @@ mod tests {
 					.child(s.history_panel(&work, cx))
 			})
 		}
+	}
+
+	#[gpui::test]
+	fn connecting_voice_has_no_active_waveform_or_microphone_control(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, _| {
+				s.prepare_voice_ui(
+					Default::default(),
+					Media,
+					&EntityId::new("waiting").unwrap(),
+					EntityId::new("agent").unwrap(),
+				)
+			});
+			VoiceComposerView(surface)
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("voice-waiting").is_some());
+		assert!(visual.debug_bounds("live-waveform").is_none());
+		assert!(visual.debug_bounds("composer-voice-mute").is_none());
+		assert!(visual.debug_bounds("composer-voice-end").is_some());
+		view.update(visual, |v, cx| {
+			v.0.update(cx, |s, cx| {
+				s.voice.as_mut().unwrap().connected = true;
+				cx.notify();
+			});
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("voice-waiting").is_none());
+		assert!(visual.debug_bounds("live-waveform").is_some());
+		assert!(visual.debug_bounds("composer-voice-mute").is_some());
 	}
 
 	#[gpui::test]
