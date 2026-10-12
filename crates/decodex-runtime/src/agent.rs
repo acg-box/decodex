@@ -104,7 +104,7 @@ pub struct AgentCoordinator {
 	config: AgentConfig,
 	loaded_threads: std::collections::HashSet<String>,
 	closing_resumes: std::collections::HashMap<String, ClosingResume>,
-	usage_replays: std::collections::HashMap<String, std::collections::HashSet<String>>,
+	usage_replays: std::collections::HashSet<String>,
 	pending_requests: std::collections::HashMap<RequestId, i64>,
 	connection_id: String,
 	pending_file_changes: PendingFileChanges,
@@ -559,7 +559,11 @@ impl AgentCoordinator {
 
 		let latest = turns.last().cloned();
 
-		self.usage_replays.insert(thread.into(), turns.into_iter().collect());
+		// Native replay reports the latest TokenCount owner, which can precede the
+		// newest turn (for example after realtime turns with no model usage).
+		// Admit one authoritative replay for this resumed thread. A new turn or
+		// connection revision invalidates this expectation.
+		self.usage_replays.insert(thread.into());
 
 		latest
 	}
@@ -1727,8 +1731,7 @@ impl AgentCoordinator {
 					let thread = exact(&params, "/threadId")?;
 					let turn = exact(&params, "/turnId")?;
 
-					if self.usage_replays.remove(&thread).is_some_and(|turns| turns.contains(&turn))
-					{
+					if self.usage_replays.remove(&thread) {
 						self.store
 							.restore_agent_usage(thread.clone(), turn.clone(), usage.to_string())
 							.await?;

@@ -10,6 +10,7 @@ mod dictation_capture;
 #[path = "native_voice_transport.rs"]
 mod transport;
 
+use gpui::prelude::FluentBuilder as _;
 #[cfg(all(target_os = "macos", not(test)))] use std::os::unix::ffi::OsStrExt as _;
 use std::{collections::BTreeSet, time::Duration};
 
@@ -773,14 +774,14 @@ impl AgentSurface {
 					.w_full()
 					.min_w_0()
 					.text_color(gpui::rgb(TEXT_MUTED))
-					.child("Microphone off until connected")
+					.aria_label("Connecting voice. Microphone off until connected")
+					.child(crate::ui_loading::loading(""))
 					.into_any_element(),
 			);
 		}
 		Some(Self::microphone_waveform(
 			"live-waveform",
 			"Live microphone waveform",
-			2.5,
 			&voice.levels,
 			voice.muted,
 			window,
@@ -791,13 +792,12 @@ impl AgentSurface {
 	pub(super) fn microphone_waveform(
 		id: &'static str,
 		label: &'static str,
-		bar_width: f32,
 		levels: &std::collections::VecDeque<f32>,
 		inactive: bool,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		gpui::div()
+		let panel = gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
 			.role(Role::Image)
@@ -810,25 +810,54 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.justify_center()
-			.gap(gpui::px(2.))
-			.children((0_usize..32).map(|i| {
-				let distance = ((i as f32 - 15.5) / 15.5).abs();
-				let envelope = 0.25 + 0.75 * (1. - distance).powf(0.7);
-				let lag = (distance * 6.).round() as usize;
-				let level = levels.iter().rev().nth(lag).copied().unwrap_or_default();
-				let target =
-					if inactive { 2. } else { 2. + 22. * level.clamp(0., 1.).sqrt() * envelope };
-				let height = ui_motion::value((id, i), target, window, cx);
-				gpui::div()
-					.id((id, i))
-					.flex_1()
-					.min_w(gpui::px(1.))
-					.max_w(gpui::px(bar_width))
-					.h(gpui::px(height))
-					.rounded_full()
-					.opacity(if inactive { 0.35 } else { 0.3 + 0.7 * envelope })
-					.bg(gpui::rgb(if inactive { TEXT_MUTED } else { BLUE }))
-			}))
+			.gap(gpui::px(2.));
+		let amplitudes: [f32; 7] = std::array::from_fn(|i| {
+			let level = levels.iter().rev().nth(i).copied().unwrap_or_default();
+			ui_motion::value(
+				(id, i),
+				if inactive { 0. } else { 22. * level.clamp(0., 1.).sqrt() },
+				window,
+				cx,
+			)
+		});
+		panel
+			.child(
+				gpui::canvas(
+					|_, _, _| (),
+					move |bounds, _, window, _| {
+						let width = f32::from(bounds.size.width);
+						let count = ((width + 2.) / 4.5).floor().max(1.) as usize;
+						let stride =
+							if count > 1 { (width - 2.5) / (count - 1) as f32 } else { 0. };
+						for i in 0..count {
+							let distance = if count > 1 {
+								(2. * i as f32 / (count - 1) as f32 - 1.).abs()
+							} else {
+								0.
+							};
+							let envelope = 0.25 + 0.75 * (1. - distance).powf(0.7);
+							let height =
+								2. + amplitudes[(distance * 6.).round() as usize] * envelope;
+							let alpha = if inactive { 0.35 } else { 0.3 + 0.7 * envelope };
+							let color = gpui::rgba(
+								((if inactive { TEXT_MUTED } else { BLUE }) << 8)
+									| (alpha * 255.) as u32,
+							);
+							let bar = gpui::Bounds::new(
+								bounds.origin
+									+ gpui::point(
+										gpui::px(i as f32 * stride),
+										(bounds.size.height - gpui::px(height)) / 2.,
+									),
+								gpui::size(gpui::px(2.5), gpui::px(height)),
+							);
+							window.paint_quad(gpui::fill(bar, color).corner_radii(gpui::px(1.25)));
+						}
+					},
+				)
+				.w_full()
+				.h_full(),
+			)
 			.into_any_element()
 	}
 
@@ -855,7 +884,7 @@ impl AgentSurface {
 						.id("voice-status")
 						.role(Role::Status)
 						.aria_label(label.to_owned())
-						.child(label.to_owned()),
+						.when(voice.connected && voice.muted, |view| view.child(label.to_owned())),
 				)
 				.children(voice.connected.then(|| {
 					self.composer_control(

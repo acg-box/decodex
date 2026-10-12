@@ -308,7 +308,6 @@ impl AgentSurface {
 		Some(Self::microphone_waveform(
 			"dictation-waveform",
 			"Dictation microphone waveform",
-			5.,
 			&d.levels,
 			d.status != "Listening" || d.finishing || d.capture_ended,
 			window,
@@ -338,7 +337,6 @@ impl AgentSurface {
 					gpui::div().flex_1().min_w_0().flex().justify_center().child(
 						gpui::div()
 							.w_full()
-							.max_w(gpui::px(240.))
 							.when(!finishing && d.status == "Listening", |view| {
 								view.children(self.dictation_waveform(window, cx))
 							})
@@ -355,61 +353,81 @@ impl AgentSurface {
 							}),
 					),
 				)
-				.child(self.composer_control(
-					"dictation-cancel",
-					"".into(),
-					"Cancel dictation and restore the draft",
-					|s, cx| s.cancel_dictation(cx),
-					cx,
-				))
-				.child(if finishing {
-					gpui::div()
-						.id("dictation-finishing")
-						.debug_selector(|| "dictation-finishing".into())
-						.w(gpui::px(64.))
-						.h(gpui::px(28.))
-						.flex_none()
-						.flex()
-						.items_center()
-						.when(d.send_after_finish, |view| view.justify_end())
-						.role(Role::Status)
-						.aria_label(if d.send_after_finish {
-							"Finishing dictation before sending"
-						} else {
-							"Finishing dictation"
-						})
-						.child(
-							gpui::div()
-								.w(gpui::px(28.))
-								.flex()
-								.justify_center()
-								.child(crate::ui_loading::loading("")),
-						)
-						.into_any_element()
-				} else {
-					gpui::div()
-						.flex_none()
-						.flex()
-						.items_center()
-						.gap(gpui::px(8.))
-						.child(self.composer_control(
-							"dictation-finish",
-							"".into(),
-							"Finish dictation · Keep text in the draft",
-							|s, cx| s.finish_dictation(cx),
-							cx,
-						))
-						.child(self.composer_control(
-							"send",
-							"".into(),
-							"Finish dictation and send · Enter",
-							|s, cx| s.submit(cx),
-							cx,
-						))
-						.into_any_element()
-				})
+				.child(self.dictation_actions(d, finishing, cx))
 				.into_any_element(),
 		)
+	}
+
+	fn dictation_actions(
+		&self,
+		d: &DictationUi,
+		finishing: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		gpui::div()
+			.id("dictation-actions")
+			.debug_selector(|| "dictation-actions".into())
+			.flex_none()
+			.flex()
+			.items_center()
+			.gap_0()
+			.p(gpui::px(1.))
+			.rounded_full()
+			.bg(gpui::rgba(0xffffff06))
+			.child(self.composer_control(
+				"dictation-cancel",
+				"".into(),
+				"Cancel dictation and restore the draft",
+				|s, cx| s.cancel_dictation(cx),
+				cx,
+			))
+			.child(if finishing {
+				gpui::div()
+					.id("dictation-finishing")
+					.debug_selector(|| "dictation-finishing".into())
+					.w(gpui::px(52.))
+					.h(gpui::px(26.))
+					.flex_none()
+					.flex()
+					.items_center()
+					.when(d.send_after_finish, |view| view.justify_end())
+					.role(Role::Status)
+					.aria_label(if d.send_after_finish {
+						"Finishing dictation before sending"
+					} else {
+						"Finishing dictation"
+					})
+					.child(
+						gpui::div()
+							.w(gpui::px(26.))
+							.flex()
+							.justify_center()
+							.child(crate::ui_loading::loading("")),
+					)
+					.into_any_element()
+			} else {
+				gpui::div()
+					.flex_none()
+					.flex()
+					.items_center()
+					.gap_0()
+					.child(self.composer_control(
+						"dictation-finish",
+						"".into(),
+						"Finish dictation · Keep text in the draft",
+						|s, cx| s.finish_dictation(cx),
+						cx,
+					))
+					.child(self.composer_control(
+						"send",
+						"".into(),
+						"Finish dictation and send · Enter",
+						|s, cx| s.submit(cx),
+						cx,
+					))
+					.into_any_element()
+			})
+			.into_any_element()
 	}
 }
 fn merge_draft(original: &str, transcript: &str) -> String {
@@ -531,11 +549,14 @@ mod tests {
 			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
 			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
 			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
+			let actions = visual.debug_bounds("dictation-actions").unwrap();
+			assert!((actions.left() - wave.right() - gpui::px(8.)).abs() < gpui::px(1.));
+			assert!(actions.size.width <= gpui::px(82.));
 			let cancel = visual.debug_bounds("composer-dictation-cancel").unwrap();
 			let done = visual.debug_bounds("composer-dictation-finish").unwrap();
 			let send = visual.debug_bounds("composer-send").unwrap();
-			assert!(done.origin.x - cancel.origin.x < gpui::px(40.));
-			assert!(send.origin.x - done.origin.x < gpui::px(40.));
+			assert!(done.origin.x - cancel.origin.x <= gpui::px(26.));
+			assert!(send.origin.x - done.origin.x <= gpui::px(26.));
 			assert!(visual.debug_bounds("composer-attach").is_none());
 			if width == 800. {
 				assert!(wave.size.width > gpui::px(160.));

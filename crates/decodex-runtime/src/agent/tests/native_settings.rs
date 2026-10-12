@@ -241,6 +241,6 @@ async fn resume_bootstrap_avoids_a_second_history_read_and_does_not_replay_input
 			.await
 			.is_none()
 	);
-	assert!(!agent.usage_replays.contains_key("thread"));
+	assert!(!agent.usage_replays.contains("thread"));
 	assert!(sent.try_recv().is_err());
 }
