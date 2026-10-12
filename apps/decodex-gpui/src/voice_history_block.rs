@@ -88,6 +88,7 @@ impl RenderOnce for VoiceBlock {
 					.aria_label(self.title.clone())
 					.aria_expanded(open)
 					.tab_index(0)
+					.rounded(gpui::px(9.))
 					.w_full()
 					.flex()
 					.items_center()

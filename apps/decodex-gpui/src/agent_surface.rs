@@ -2029,6 +2029,7 @@ impl AgentSurface {
 			return self.history_activity(
 				gpui::div().w_full().min_w_0().child(self.native_timeline_panel(work, cx)),
 				work,
+				cx,
 			);
 		}
 		let panel = gpui::div()
@@ -2044,8 +2045,11 @@ impl AgentSurface {
 			.child(self.native_timeline_panel(work, cx));
 
 		if self.native_history_active(work) {
-			return self
-				.history_activity(panel.child(self.native_receipts_panel(work, false, cx)), work);
+			return self.history_activity(
+				panel.child(self.native_receipts_panel(work, false, cx)),
+				work,
+				cx,
+			);
 		}
 		// Local records use a different grouping and must not flash before the
 		// native transcript arrives. They remain available after a failed read.
@@ -2122,10 +2126,10 @@ impl AgentSurface {
 			None => {},
 		}
 
-		self.history_activity(panel, work)
+		self.history_activity(panel, work, cx)
 	}
 
-	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto) -> Div {
+	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {
 		let active = matches!(
 			work.dispatch_state,
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
@@ -2163,7 +2167,9 @@ impl AgentSurface {
 		}
 
 		panel.when(self.native_agents.selected.is_none(), |p| {
-			p.children(self.live_chat_caption(&work.id))
+			p.relative()
+				.children(self.live_chat_caption(&work.id))
+				.children(self.live_voice_scroll_observer(&work.id, cx))
 		})
 	}
 

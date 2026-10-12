@@ -965,6 +965,7 @@ impl AgentSurface {
 		Some(
 			gpui::div()
 				.debug_selector(|| "live-voice-captions".into())
+				.gap(gpui::px(crate::ui_theme::MESSAGE_GAP))
 				.flex()
 				.flex_col()
 				.children(retired.into_iter().map(|call| {
@@ -1015,8 +1016,52 @@ impl AgentSurface {
 		)
 	}
 
+	pub(super) fn live_voice_scroll_observer(
+		&self,
+		work: &str,
+		cx: &Context<Self>,
+	) -> Option<AnyElement> {
+		let voice = self.voice.as_ref().filter(|v| v.work.as_str() == work && v.follow)?;
+		let session = voice.session.clone();
+		let scroll = self.timeline.scroll.get(work)?.clone();
+		let surface = cx.entity().downgrade();
+		Some(
+			gpui::canvas(
+				|_, _, _| {},
+				move |_, _, _, cx| {
+					// The new scroll range is available only after layout. A final wrapped
+					// line can grow after the render-time follow check has already settled.
+					if (scroll.offset().y + scroll.max_offset().y).abs() > gpui::px(0.5) {
+						let surface = surface.clone();
+						let session = session.clone();
+						cx.defer(move |cx| {
+							let _ = surface.update(cx, |s, cx| {
+								if s.voice.as_ref().is_some_and(|v| {
+									v.session == session
+										&& v.follow
+										&& s.selected.as_deref() == Some(v.work.as_str())
+								}) {
+									cx.notify();
+								}
+							});
+						});
+					}
+				},
+			)
+			.absolute()
+			.inset_0()
+			.into_any_element(),
+		)
+	}
+
 	pub(super) fn follow_voice_scroll(&self, window: &mut Window, cx: &mut Context<Self>) {
-		let Some(v) = self.voice.as_ref().filter(|v| v.follow) else { return };
+		let Some(v) = self
+			.voice
+			.as_ref()
+			.filter(|v| v.follow && self.selected.as_deref() == Some(v.work.as_str()))
+		else {
+			return;
+		};
 		let Some(scroll) = self.timeline.scroll.get(v.work.as_str()) else {
 			return;
 		};
@@ -1338,6 +1383,71 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn voice_follow_tracks_layout_growth_and_preserves_manual_reading(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			s.prepare_voice_ui(
+				Default::default(),
+				Media,
+				&EntityId::new("call").unwrap(),
+				EntityId::new("agent").unwrap(),
+			);
+			s.voice.as_mut().unwrap().captions = vec![Caption {
+				key: "growing".into(),
+				turn: "growing".into(),
+				role: "assistant",
+				complete: false,
+				text: "Hello".into(),
+			}];
+			cx.notify();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		for _ in 0..50 {
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
+		surface.update(visual, |s, cx| {
+			s.voice.as_mut().unwrap().captions[0].text =
+				"A long reply that wraps over multiple lines. ".repeat(80);
+			cx.notify();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(150));
+		for _ in 0..60 {
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
+		surface.update(visual, |s, cx| {
+			let scroll = &s.timeline.scroll["agent"];
+			assert!(scroll.max_offset().y > gpui::px(100.));
+			assert!(
+				(scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.),
+				"new wrapped lines must remain visible"
+			);
+			s.scroll_history(
+				&gpui::ScrollWheelEvent {
+					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(100.))),
+					..Default::default()
+				},
+				cx,
+			);
+			assert!(!s.voice.as_ref().unwrap().follow);
+		});
+		let before = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].offset());
+		surface.update(visual, |s, cx| {
+			s.voice.as_mut().unwrap().captions[0].text.push_str(&"More speech. ".repeat(80));
+			cx.notify();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(150));
+		for _ in 0..10 {
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
+		surface.read_with(visual, |s, _| assert_eq!(s.timeline.scroll["agent"].offset(), before));
+	}
+
+	#[gpui::test]
 	fn native_history_renders_one_caption_block_and_keeps_interruption_order(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1418,7 +1528,9 @@ mod tests {
 				let reply = visual.debug_bounds("voice-caption-reply").unwrap();
 				let interrupt = visual.debug_bounds("voice-caption-interrupt").unwrap();
 				assert!(
-					first.bottom() <= reply.top() && reply.bottom() <= interrupt.top(),
+					first.bottom() + gpui::px(crate::ui_theme::MESSAGE_GAP) <= reply.top()
+						&& reply.bottom() + gpui::px(crate::ui_theme::MESSAGE_GAP)
+							<= interrupt.top(),
 					"Completion must not reorder or overlap speech"
 				);
 				let block = visual.debug_bounds("live-voice-captions").unwrap();
