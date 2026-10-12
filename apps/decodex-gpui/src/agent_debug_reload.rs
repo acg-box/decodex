@@ -18,7 +18,8 @@ impl AgentSurface {
 		self.generation += 1;
 		self.task = None;
 		self.state = LoadState::Idle;
-		self.snapshot = None;
+		// Keep the workspace frame and native composer mounted while data reloads.
+		// Clearing this snapshot briefly replaces the entire page with a loading screen.
 		self.history_task = None;
 		self.history = None;
 		self.timeline.cache.clear();
@@ -57,8 +58,13 @@ mod tests {
 			let composer = s.composer.clone();
 			composer.update(cx, |input, cx| input.set_content("Unsent draft", cx));
 			let graph = s.workspace.graph_visible;
+			let snapshot = s.snapshot.clone();
+			let panels = s.workspace_panels();
 			assert!(s.debug_reload(cx));
-			assert!(s.snapshot.is_none());
+			assert_eq!(s.snapshot, snapshot, "reload must retain the workspace frame");
+			assert_eq!(s.workspace_panels(), panels);
+			assert!(!s.workspace_connecting());
+			assert!(s.history.is_none());
 			assert_eq!(s.selected, selected);
 			assert_eq!(s.composer, composer);
 			assert_eq!(s.composer.read(cx).content(), "Unsent draft");
