@@ -233,12 +233,18 @@ mod tests {
 			binding
 		});
 		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let marks = surface.read_with(visual, |s, _| {
+			assert_eq!(s.timeline.marks.len(), 1, "one call has one rail node");
+			s.timeline.marks.keys().cloned().collect::<Vec<_>>()
+		});
 		let button = visual.debug_bounds("voice-history-block").unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
 		surface.read_with(visual, |s, _| {
+			assert_eq!(s.timeline.marks.keys().cloned().collect::<Vec<_>>(), marks);
+			assert_eq!(s.timeline.selected.as_ref(), marks.first());
 			assert!(s.timeline.follow_paused.contains(&binding.work));
 			assert!(s.timeline.latest_follow_work.is_none());
 			assert!(s.timeline.navigation.is_none());

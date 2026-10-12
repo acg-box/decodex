@@ -665,6 +665,14 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn preserve_history_selection(&mut self) {
+		let scroll = self.timeline.scroll_for(self.selected.as_deref());
+		let index = self.active_history_index(&scroll);
+		// Disclosure changes layout, not the reader's navigation target. Wheel
+		// scrolling and explicit navigation release or replace this selection.
+		self.timeline.selected = self.timeline.marks.keys().nth(index).cloned();
+	}
+
 	fn active_history_index(&self, scroll: &ScrollHandle) -> usize {
 		let last = self.timeline.marks.len().saturating_sub(1);
 		let at_end = scroll.max_offset().y > gpui::px(0.)
@@ -919,6 +927,44 @@ mod tests {
 	};
 	#[cfg(test)] use decodex_protocol::AgentTimelineEntry;
 	#[cfg(test)] use decodex_protocol::AgentTimelinePage;
+
+	#[gpui::test]
+	fn disclosure_layout_keeps_rail_selection_until_reader_scrolls(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(300.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		surface.update(visual, |s, cx| {
+			let scroll = s.timeline.scroll["agent"].clone();
+			s.timeline.latest_follow_work = None;
+			s.timeline.selected = None;
+			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+			assert_eq!(s.timeline.marks.len(), 2);
+			for (index, mark) in s.timeline.marks.values().enumerate() {
+				mark.position.set(index as f32 * 500.);
+			}
+			assert_eq!(s.active_history_index(&scroll), 0);
+			s.preserve_history_selection();
+			let selected = s.timeline.selected.clone();
+			for position in [20., 800., 20.] {
+				s.timeline.marks.values().nth(1).unwrap().position.set(position);
+				assert_eq!(s.active_history_index(&scroll), 0);
+				assert_eq!(s.timeline.selected, selected);
+			}
+			s.scroll_history(
+				&gpui::ScrollWheelEvent {
+					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1.))),
+					..Default::default()
+				},
+				cx,
+			);
+			assert!(s.timeline.selected.is_none());
+			assert_eq!(s.active_history_index(&scroll), 1);
+		});
+	}
 
 	#[gpui::test]
 	fn history_hover_shows_without_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {

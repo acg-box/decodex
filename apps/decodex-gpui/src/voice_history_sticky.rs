@@ -4,8 +4,8 @@ use std::{cell::Cell, rc::Rc};
 use crate::shell::agent_surface::AgentSurface;
 use gpui::{
 	AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-	InspectorElementId, IntoElement, LayoutId, Pixels, ScrollHandle, WeakEntity, Window, point,
-	prelude::*, px, size,
+	InspectorElementId, IntoElement, LayoutId, Pixels, ScrollHandle, WeakEntity, Window, point, px,
+	size,
 };
 
 pub(super) const HEADER_HEIGHT: f32 = 32.;
@@ -45,6 +45,7 @@ impl Toggle for Option<Viewport> {
 		};
 		if let Some(owner) = &viewport.owner {
 			let _ = owner.update(cx, |surface, cx| {
+				surface.preserve_history_selection();
 				surface.timeline.latest_follow_work = None;
 				surface.timeline.navigation = None;
 				surface.timeline.wheel_scroll = None;
@@ -124,16 +125,7 @@ impl Element for Group {
 		self.position.set((bounds.top(), top));
 		let sticky = top > bounds.top();
 		let header = self.header.take().expect("voice header prepaints once");
-		let mut header = if sticky {
-			gpui::div()
-				.w_full()
-				.rounded(px(6.))
-				.bg(gpui::rgb(0x18181c))
-				.child(header)
-				.into_any_element()
-		} else {
-			header
-		};
+		let mut header = header;
 		header.layout_as_root(
 			size(
 				AvailableSpace::Definite(bounds.size.width),
@@ -171,7 +163,7 @@ impl Element for Group {
 #[cfg(test)]
 mod tests {
 	use super::{super::VoiceBlock, *};
-	use gpui::{Context, Render, TestAppContext, VisualTestContext};
+	use gpui::{Context, Render, TestAppContext, VisualTestContext, prelude::*};
 
 	struct Fixture {
 		min_height: Rc<Cell<f32>>,
