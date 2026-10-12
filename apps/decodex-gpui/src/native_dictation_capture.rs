@@ -1,4 +1,4 @@
-//! Dictation uses the same Apple voice-processing sink as Live, on one audio owner thread.
+//! Dictation captures raw Apple microphone input on the shared audio owner thread.
 #![cfg_attr(test, allow(dead_code))]
 use super::audio::owner::{self, AudioError, Mode, Session};
 use decodex_protocol::DictationAudio;

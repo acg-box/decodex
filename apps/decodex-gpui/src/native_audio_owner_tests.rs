@@ -144,3 +144,54 @@ fn prepared_modes_start_without_recording_during_preparation() {
 		session.pause().unwrap();
 	}
 }
+
+#[test]
+#[ignore = "Requires authorized microphone; checks the current default without changing routes"]
+fn default_dictation_delivers_pcm_after_prepared_engines_settle() {
+	let owner = Owner::new().unwrap();
+	owner.commands.send(Command::Prepare(Key { device: 0, mode: Mode::Dictation })).unwrap();
+	let (reply, cold) = mpsc::sync_channel(1);
+	owner.commands.send(Command::CheckCaptureChannels(reply)).unwrap();
+	let expected_channels = cold.recv_timeout(Duration::from_secs(15)).unwrap().unwrap();
+	for mode in [Mode::Dictation, Mode::Live] {
+		owner.commands.send(Command::Prepare(Key { device: 0, mode })).unwrap();
+	}
+	let (reply, ready) = mpsc::sync_channel(1);
+	owner.commands.send(Command::CheckPrepared(reply)).unwrap();
+	assert!(ready.recv_timeout(Duration::from_secs(15)).unwrap());
+	thread::sleep(Duration::from_secs(8));
+	for attempt in 0..5 {
+		let requested = Instant::now();
+		let mut session = owner
+			.start(Key { device: 0, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)))
+			.unwrap();
+		let (reply, channels) = mpsc::sync_channel(1);
+		owner.commands.send(Command::CheckCaptureChannels(reply)).unwrap();
+		assert_eq!(
+			channels.recv_timeout(Duration::from_secs(15)).unwrap(),
+			Some(expected_channels),
+			"live preparation must not add echo-reference channels to dictation"
+		);
+		let (state, pcm) = session.parts();
+		let mut samples = 0;
+		let until = Instant::now() + Duration::from_secs(4);
+		while Instant::now() < until {
+			assert!(state.running(), "capture stopped on attempt {attempt}");
+			while pcm.captured.pop().is_ok() {
+				samples += 1;
+			}
+			if samples >= 24_000 {
+				break;
+			}
+			thread::sleep(Duration::from_millis(5));
+		}
+		eprintln!(
+			"default_capture attempt={attempt} samples={samples} elapsed_ms={}",
+			requested.elapsed().as_millis()
+		);
+		session.pause().unwrap();
+		assert!(samples >= 24_000, "default capture did not deliver one second of audio");
+		drop(session);
+		thread::sleep(Duration::from_secs(2));
+	}
+}
