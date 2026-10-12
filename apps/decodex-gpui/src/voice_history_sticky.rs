@@ -14,6 +14,7 @@ type Position = Rc<Cell<(Pixels, Pixels)>>;
 #[derive(Clone)]
 pub(crate) struct Viewport {
 	pub scroll: ScrollHandle,
+	pub min_height: Rc<Cell<f32>>,
 	pub owner: Option<WeakEntity<AgentSurface>>,
 }
 impl AgentSurface {
@@ -23,6 +24,12 @@ impl AgentSurface {
 	) -> Viewport {
 		Viewport {
 			scroll: self.timeline.scroll_for(self.selected.as_deref()),
+			min_height: self
+				.timeline
+				.voice_min_height
+				.get(self.selected.as_deref().unwrap_or_default())
+				.cloned()
+				.unwrap_or_default(),
 			owner: Some(cx.entity().downgrade()),
 		}
 	}
@@ -52,10 +59,13 @@ impl Toggle for Option<Viewport> {
 		}
 		if open {
 			let (group_top, header_top) = position.get();
-			// Move the group's real start to the visible sticky header before it
-			// shrinks. The scroll container clamps to the new document height.
 			let offset = viewport.scroll.offset();
-			viewport.scroll.set_offset(point(offset.x, offset.y + header_top - group_top));
+			let target = offset.y + header_top - group_top;
+			// Keep enough reading space after the last group to avoid the
+			// scroll container pushing its header down as the document shrinks.
+			// New content consumes this space; explicit latest navigation clears it.
+			viewport.min_height.set(f32::from(viewport.scroll.bounds().size.height - target));
+			viewport.scroll.set_offset(point(offset.x, target));
 		}
 	}
 }
@@ -164,6 +174,8 @@ mod tests {
 	use gpui::{Context, Render, TestAppContext, VisualTestContext};
 
 	struct Fixture {
+		min_height: Rc<Cell<f32>>,
+		tail: f32,
 		scroll: ScrollHandle,
 	}
 	impl Render for Fixture {
@@ -179,6 +191,7 @@ mod tests {
 							.w_full()
 							.flex()
 							.flex_col()
+							.min_h(px(self.min_height.get()))
 							.gap_2()
 							.children(["first", "second"].into_iter().map(|key| VoiceBlock {
 								key: key.into(),
@@ -186,10 +199,11 @@ mod tests {
 								text: "user: Question\nassistant: A long answer.\n".repeat(12),
 								viewport: Some(Viewport {
 									scroll: self.scroll.clone(),
+									min_height: self.min_height.clone(),
 									owner: None,
 								}),
 							}))
-							.child(gpui::div().h(px(900.))),
+							.child(gpui::div().h(px(self.tail))),
 					),
 			)
 		}
@@ -209,7 +223,11 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let scroll = ScrollHandle::new();
-		let (_, visual) = cx.add_window_view(|_, _| Fixture { scroll: scroll.clone() });
+		let (_, visual) = cx.add_window_view(|_, _| Fixture {
+			scroll: scroll.clone(),
+			min_height: Rc::default(),
+			tail: 900.,
+		});
 		visual.simulate_resize(size(px(700.), px(480.)));
 		draw(visual);
 		let first = visual.debug_bounds("voice-history-block-first").unwrap();
@@ -245,5 +263,38 @@ mod tests {
 		assert!((collapsed.top() - pinned.top()).abs() < px(1.));
 		assert!(visual.debug_bounds("voice-history-transcript-second").is_none());
 		assert!(visual.debug_bounds("voice-history-transcript-first").is_some());
+	}
+	#[gpui::test]
+	fn last_group_keeps_its_header_position_when_no_later_content_remains(cx: &mut TestAppContext) {
+		let scroll = ScrollHandle::new();
+		let (_, visual) = cx.add_window_view(|_, _| Fixture {
+			scroll: scroll.clone(),
+			min_height: Rc::default(),
+			tail: 0.,
+		});
+		visual.simulate_resize(size(px(700.), px(480.)));
+		draw(visual);
+		let header = visual.debug_bounds("voice-history-block-second").unwrap();
+		visual.simulate_click(header.center(), Default::default());
+		settle(visual);
+		scroll.set_offset(point(px(0.), px(-350.)));
+		draw(visual);
+		let pinned = visual.debug_bounds("voice-history-block-second").unwrap();
+		assert_eq!(pinned.top(), scroll.bounds().top());
+		let speech = visual.debug_bounds("voice-transcript-turn-10").unwrap();
+		visual.simulate_click(pinned.center(), Default::default());
+		draw(visual);
+		let closing_speech = visual.debug_bounds("voice-transcript-turn-10").unwrap();
+		assert!(
+			(closing_speech.top() - speech.top()).abs() < px(1.),
+			"the first collapsing frame must not flash the start of the transcript"
+		);
+		settle(visual);
+		let collapsed = visual.debug_bounds("voice-history-block-second").unwrap();
+		assert!(
+			(collapsed.top() - pinned.top()).abs() < px(1.),
+			"last header moved: {pinned:?} -> {collapsed:?}"
+		);
+		assert!(visual.debug_bounds("voice-history-transcript-second").is_none());
 	}
 }

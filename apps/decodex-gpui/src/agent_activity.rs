@@ -508,7 +508,16 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	fn clear_voice_reading_space(&self) {
+		if let Some(height) =
+			self.selected.as_ref().and_then(|work| self.timeline.voice_min_height.get(work))
+		{
+			height.set(0.);
+		}
+	}
+
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
+		self.clear_voice_reading_space();
 		self.timeline.latest_follow_work = self.selected.clone();
 		self.timeline.selected = None;
 		self.timeline.navigation = None;
@@ -524,6 +533,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
+		self.clear_voice_reading_space();
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
@@ -548,11 +558,16 @@ impl AgentSurface {
 	}
 
 	pub(super) fn latest_button(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-		let visible = self
+		let voice_space = self
 			.selected
 			.as_ref()
-			.and_then(|id| self.timeline.scroll.get(id))
-			.is_some_and(|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.));
+			.and_then(|work| self.timeline.voice_min_height.get(work))
+			.is_some_and(|height| height.get() > 0.);
+		let visible =
+			voice_space
+				|| self.selected.as_ref().and_then(|id| self.timeline.scroll.get(id)).is_some_and(
+					|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.),
+				);
 		let working = self.conversation_work().is_some_and(|work| {
 			matches!(
 				work.dispatch_state,

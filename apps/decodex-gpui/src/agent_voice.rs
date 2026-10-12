@@ -369,6 +369,9 @@ impl AgentSurface {
 		session: &EntityId,
 		work: EntityId,
 	) {
+		if let Some(height) = self.timeline.voice_min_height.get(work.as_str()) {
+			height.set(0.);
+		}
 		self.feedback.clear();
 		self.voice = Some(VoiceUi {
 			options,
@@ -1433,12 +1436,16 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.workspace.graph_visible = false;
+			s.timeline.voice_min_height.entry("agent".into()).or_default().set(10_000.);
+
 			s.prepare_voice_ui(
 				Default::default(),
 				Media,
 				&EntityId::new("call").unwrap(),
 				EntityId::new("agent").unwrap(),
 			);
+			assert_eq!(s.timeline.voice_min_height["agent"].get(), 0.);
+
 			s.voice.as_mut().unwrap().captions = vec![Caption {
 				key: "growing".into(),
 				turn: "growing".into(),

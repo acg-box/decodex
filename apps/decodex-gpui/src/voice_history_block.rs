@@ -75,14 +75,34 @@ pub(crate) struct VoiceBlock {
 	pub text: String,
 	pub viewport: Option<Viewport>,
 }
+#[derive(Default)]
+struct Expansion {
+	open: bool,
+	closing_shift: gpui::Pixels,
+}
+impl Expansion {
+	fn flip(&mut self, position: &std::cell::Cell<(gpui::Pixels, gpui::Pixels)>) {
+		let (group_top, header_top) = position.get();
+		self.closing_shift = if self.open { header_top - group_top } else { gpui::px(0.) };
+		self.open = !self.open;
+	}
+}
+
 impl RenderOnce for VoiceBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let expanded = window.use_keyed_state(
 			SharedString::from(format!("voice-block-{}", self.key)),
 			cx,
-			|_, _| false,
+			|_, _| Expansion::default(),
 		);
-		let open = *expanded.read(cx);
+		let open = expanded.read(cx).open;
+		let closing_shift = expanded.read(cx).closing_shift;
+		let opacity = ui_motion::value(
+			SharedString::from(format!("voice-opacity-{}", self.key)),
+			if open { 1. } else { 0. },
+			window,
+			cx,
+		);
 		let click = expanded.clone();
 		let keyboard = expanded.clone();
 		let position = std::rc::Rc::new(std::cell::Cell::new((gpui::px(0.), gpui::px(0.))));
@@ -118,17 +138,17 @@ impl RenderOnce for VoiceBlock {
 				open,
 			))
 			.on_click(move |_, _, cx| {
-				click_viewport.toggle(*click.read(cx), &click_position, cx);
-				click.update(cx, |open, cx| {
-					*open = !*open;
+				click_viewport.toggle(click.read(cx).open, &click_position, cx);
+				click.update(cx, |state, cx| {
+					state.flip(&click_position);
 					cx.notify();
 				})
 			})
 			.on_key_down(move |e: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) && !e.is_held {
-					keyboard_viewport.toggle(*keyboard.read(cx), &keyboard_position, cx);
-					keyboard.update(cx, |open, cx| {
-						*open = !*open;
+					keyboard_viewport.toggle(keyboard.read(cx).open, &keyboard_position, cx);
+					keyboard.update(cx, |state, cx| {
+						state.flip(&keyboard_position);
 						cx.notify();
 					});
 					cx.stop_propagation();
@@ -143,6 +163,9 @@ impl RenderOnce for VoiceBlock {
 				open,
 				gpui::div().w_full().debug_selector(|| "voice-history-transcript".into()).child(
 					gpui::div()
+						.relative()
+						.top(-closing_shift)
+						.opacity(opacity)
 						.debug_selector(move || {
 							format!("voice-history-transcript-{transcript_key}")
 						})
