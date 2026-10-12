@@ -676,6 +676,9 @@ impl AgentSurface {
 
 			while let Some(event) = media.poll() {
 				if event["type"] == "devices" {
+					if let Some(message) = event["message"].as_str() {
+						self.feedback = message.to_owned();
+					}
 					self.audio_inputs = event["inputs"]
 						.as_array()
 						.map(|values| {
