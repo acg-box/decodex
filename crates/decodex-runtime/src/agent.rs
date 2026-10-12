@@ -19,6 +19,7 @@ mod native_turns;
 mod prompt_edit;
 mod reasoning;
 mod result_messages;
+pub(crate) use result_messages::usage as observed_usage;
 mod resume_recovery;
 mod task_history;
 mod turn_execution;

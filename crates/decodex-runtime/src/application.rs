@@ -6098,13 +6098,26 @@ async fn query_agent_history_page(
 		has_more,
 		next_before,
 		live,
-		usage: store
-			.read_agent_usage(id.into())
-			.await
-			.ok()
-			.flatten()
-			.and_then(|json| serde_json::from_str(&json).ok()),
+		usage: query_agent_usage(store, id).await,
 	}
+}
+
+// Retained observations are presentation facts, not a valid per-turn billing baseline.
+async fn query_agent_usage(
+	store: &SqliteStore,
+	id: &str,
+) -> Option<decodex_protocol::AgentUsageDto> {
+	if let Some(json) = store.read_agent_usage(id.into()).await.ok().flatten()
+		&& let Ok(usage) = serde_json::from_str(&json)
+	{
+		return Some(usage);
+	}
+
+	let observation = store.read_agent_context_observation(id.into()).await.ok().flatten()?;
+	let params = serde_json::from_str(&observation.payload).ok()?;
+	let usage = crate::agent::observed_usage(&params)?;
+
+	serde_json::from_value(usage).ok()
 }
 
 async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
@@ -7404,6 +7417,58 @@ mod tests {
 		assert_eq!(questions.len(), 1);
 		assert_eq!(questions[0].id, "old");
 		assert!(!questions[0].arrived_live);
+	}
+
+	#[tokio::test]
+	async fn agent_history_retains_context_without_restoring_invalid_turn_counters() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		for (source, thread, kind) in
+			[("usage", "thread", "token_usage"), ("other-thread", "unrelated", "token_usage")]
+		{
+			let tokens = if thread == "thread" { 1200 } else { 9999 };
+			let counts =
+				serde_json::json!({"totalTokens":tokens,"inputTokens":1000,"outputTokens":200});
+			store.record_agent_observation(decodex_database::EnqueueAgentEvent {
+				source_event_id: source.into(), work_item_id: "chosen".into(), event_kind: kind.into(),
+				payload: serde_json::json!({"threadId":thread,"turnId":"model-turn","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}}).to_string(),
+			}).await.unwrap();
+		}
+		store.validate_agent_usage_resume("thread".into(), None).await.unwrap();
+		drop(store);
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let owner = ProductStore::Available(store.clone());
+		let decodex_protocol::AgentHistoryResult::Available { usage: Some(usage), .. } =
+			super::query_agent_history(&owner, "chosen").await
+		else {
+			panic!("retained context")
+		};
+		assert_eq!(usage.context_tokens, 1200);
+		assert_eq!(usage.context_window, Some(128000));
+		assert!(store.read_agent_usage("chosen".into()).await.unwrap().is_none());
+		assert!(
+			store
+				.read_agent_turn_usage("thread".into(), "model-turn".into())
+				.await
+				.unwrap()
+				.is_none()
+		);
+		assert!(store.list_pending_agent_events(10).await.unwrap().is_empty());
+		store
+			.record_agent_observation(decodex_database::EnqueueAgentEvent {
+				source_event_id: "compaction".into(),
+				work_item_id: "chosen".into(),
+				event_kind: "context_compacted".into(),
+				payload: serde_json::json!({"threadId":"thread","turnId":"later-turn"}).to_string(),
+			})
+			.await
+			.unwrap();
+		assert!(super::query_agent_usage(&store, "chosen").await.is_none());
+		agent_query_work(&store, "empty").await;
+		assert!(super::query_agent_usage(&store, "empty").await.is_none());
 	}
 
 	#[tokio::test]
