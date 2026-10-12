@@ -301,7 +301,11 @@ impl AgentSurface {
 		))
 	}
 
-	pub(super) fn dictation_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn dictation_controls(
+		&self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
 		let label = if d.status == "Listening" {
 			format!("Listening · {}s", d.started.elapsed().as_secs())
@@ -327,6 +331,13 @@ impl AgentSurface {
 						.role(Role::Status)
 						.aria_label(label.clone())
 						.child(label),
+				)
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.max_w(gpui::px(160.))
+						.children(self.dictation_waveform(window, cx)),
 				)
 				.child(self.composer_control(
 					"dictation-cancel",
@@ -461,8 +472,14 @@ mod tests {
 					assert!(input.bounds_for_range(0..5, Default::default(), window, cx).is_some());
 				});
 			});
-			let wave = visual.debug_bounds("dictation-waveform").expect("dedicated waveform row");
+			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
 			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
+			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
+			assert!(
+				wave.origin.y >= toolbar.origin.y
+					&& wave.origin.y + wave.size.height <= toolbar.origin.y + toolbar.size.height,
+				"dictation must not add a waveform row"
+			);
 			assert!(
 				wave.origin.x >= gpui::px(0.) && wave.origin.x + wave.size.width <= gpui::px(width)
 			);
