@@ -163,7 +163,11 @@ impl AgentSurface {
 					.debug_selector(|| "integration-status".into())
 					.max_h(gpui::px(300.))
 					.overflow_y_scroll()
-					.child(text),
+					.child(ui_loading::content(
+						format!("integrations-{work}"),
+						result.is_some(),
+						text,
+					)),
 			);
 		}
 

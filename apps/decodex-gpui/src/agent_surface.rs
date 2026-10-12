@@ -2126,7 +2126,12 @@ impl AgentSurface {
 			None => {},
 		}
 
-		self.history_activity(panel, work, cx)
+		let ready = self.history.as_ref().is_some_and(|(id, _)| id == &work.id);
+		gpui::div().w_full().min_w_0().child(ui_loading::content(
+			format!("local-history-{}", work.id),
+			ready,
+			self.history_activity(panel, work, cx),
+		))
 	}
 
 	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {

@@ -600,7 +600,12 @@ impl AgentSurface {
 			panel = panel.child(ui_loading::loading("Loading review"));
 		}
 
-		panel.into_any_element()
+		ui_loading::content(
+			format!("guardian-detail-{row}"),
+			reader.is_some_and(|d| d.page.is_some()),
+			panel,
+		)
+		.into_any_element()
 	}
 
 	fn guardian_review_card(

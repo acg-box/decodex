@@ -170,7 +170,7 @@ impl AgentSurface {
 					.text_size(gpui::px(11.5))
 					.line_height(gpui::px(16.))
 					.text_color(gpui::rgb(TEXT))
-					.child(body)
+					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),

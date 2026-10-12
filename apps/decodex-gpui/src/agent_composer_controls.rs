@@ -134,7 +134,7 @@ impl AgentSurface {
 			palette = palette.child(row);
 		}
 
-		palette.into_any_element()
+		ui_loading::content("model-options", true, palette).into_any_element()
 	}
 }
 

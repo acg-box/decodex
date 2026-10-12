@@ -344,7 +344,12 @@ impl AgentSurface {
 			}
 		}
 
-		panel.into_any_element()
+		ui_loading::content(
+			format!("native-history-{}", work.id),
+			self.native_history_active(work),
+			panel,
+		)
+		.into_any_element()
 	}
 
 	fn process_history_body(

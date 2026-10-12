@@ -3467,35 +3467,41 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							)
 						})
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
-							list.child(
-								gpui::div()
-									.h(gpui::px(100.0))
-									.flex()
-									.flex_col()
-									.items_center()
-									.justify_center()
-									.gap_2()
-									.rounded(gpui::px(12.0))
-									.border_1()
-									.border_color(gpui::rgba(0xffffff0d))
-									.bg(gpui::rgba(0xffffff04))
-									.text_size(gpui::px(11.0))
-									.text_color(gpui::rgb(WB_TEXT_MUTED))
-									.debug_selector(|| "accounts-empty".into())
-									.child("No accounts added")
-									.child(
-										gpui::div()
-											.font_family(FONT_FAMILY)
-											.text_size(gpui::px(11.0))
-											.text_color(gpui::rgb(WB_TEXT_FAINT))
-											.child("Sign in above to add your first account."),
-									),
-							)
+							list.child(empty_accounts())
 						})
-						.children(rows),
+						.child(ui_loading::content(
+							"account-rows",
+							count > 0,
+							gpui::div().flex().flex_col().gap_2().children(rows),
+						)),
 				),
 		)
 		.into_any_element()
+}
+
+fn empty_accounts() -> impl IntoElement {
+	gpui::div()
+		.h(gpui::px(100.0))
+		.flex()
+		.flex_col()
+		.items_center()
+		.justify_center()
+		.gap_2()
+		.rounded(gpui::px(12.0))
+		.border_1()
+		.border_color(gpui::rgba(0xffffff0d))
+		.bg(gpui::rgba(0xffffff04))
+		.text_size(gpui::px(11.0))
+		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.debug_selector(|| "accounts-empty".into())
+		.child("No accounts added")
+		.child(
+			gpui::div()
+				.font_family(FONT_FAMILY)
+				.text_size(gpui::px(11.0))
+				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.child("Sign in above to add your first account."),
+		)
 }
 
 fn account_mode_button(
