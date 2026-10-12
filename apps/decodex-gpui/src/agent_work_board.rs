@@ -204,6 +204,7 @@ impl AgentSurface {
 }
 
 pub(super) struct Brief {
+	source_thread: Option<String>,
 	outcome: Option<(String, String)>,
 	resources: Option<Vec<decodex_protocol::AgentResourceDto>>,
 	relations: Vec<(String, decodex_protocol::AgentCollaborationDto)>,
@@ -246,7 +247,7 @@ impl AgentSurface {
 				.work_board
 				.briefs
 				.get(&row.key)
-				.filter(|brief| brief.stamp == self.brief_stamp(row))
+				.filter(|brief| brief.source_thread == row.thread)
 			else {
 				return;
 			};
@@ -346,6 +347,7 @@ impl AgentSurface {
 					results.push((
 						row.key,
 						Brief {
+							source_thread: row.thread.clone(),
 							outcome,
 							stamp,
 							relations,

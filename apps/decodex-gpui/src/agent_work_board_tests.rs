@@ -41,6 +41,7 @@ fn current_native_activity_creates_interaction_and_reverse_completion_edges(
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				source_thread: row.thread.clone(),
 				outcome: None,
 				metrics: Default::default(),
 				stamp: s.brief_stamp(&row),
@@ -171,6 +172,7 @@ fn native_reply_requires_observed_call_and_rejects_changed_binding(cx: &mut gpui
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				source_thread: row.thread.clone(),
 				outcome: None,
 				metrics: Default::default(),
 				resources: None,
@@ -346,6 +348,7 @@ fn outcome_preserves_current_requests_and_invalidates_old_turns(cx: &mut gpui::T
 		s.work_board.briefs.insert(
 			key.clone(),
 			Brief {
+				source_thread: row.thread.clone(),
 				outcome: Some(("old".into(), "failed".into())),
 				resources: None,
 				relations: vec![],
@@ -438,6 +441,7 @@ fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut gpui
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					source_thread: row.thread.clone(),
 					outcome: None,
 					resources: None,
 					relations: vec![],
@@ -446,6 +450,8 @@ fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut gpui
 					read_at: std::time::Instant::now(),
 				},
 			);
+			// A running task can change its stamp before other batches finish.
+			s.work_board.briefs.get_mut(&row.key).unwrap().stamp = "older-read".into();
 			s.publish_usage();
 			if index + 1 < rows.len() {
 				assert!(s.work_board.usage.is_none(), "partial reads must not resize the strip");
@@ -454,7 +460,7 @@ fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut gpui
 		let published = s.work_board.usage.as_ref().unwrap();
 		assert_eq!(published.len(), rows.len(), "missing token counters also complete a read");
 		let first = &rows[0];
-		s.work_board.briefs.get_mut(&first.key).unwrap().stamp = "expired".into();
+		s.work_board.briefs.get_mut(&first.key).unwrap().source_thread = Some("replaced".into());
 		s.publish_usage();
 		assert_eq!(s.work_board.usage.as_ref().unwrap().len(), rows.len());
 		assert_eq!(s.work_board.usage.as_ref().unwrap()[&first.key].0, first.thread);
