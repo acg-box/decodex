@@ -1,6 +1,7 @@
 //! Opt-in installed-native qualification with a local Responses fixture and no credentials.
 #[path = "agent_process_native_account_nudge_tests.rs"] pub(crate) mod account_nudge;
 
+#[path = "agent_process_native_archive_tests.rs"] mod archive;
 #[path = "agent_process_native_audio_tests.rs"] mod audio;
 #[path = "agent_process_native_capacity_tests.rs"] mod capacity;
 #[path = "agent_process_native_catalog_tests.rs"] mod catalog;

@@ -599,9 +599,31 @@ mod visibility_tests {
 			s.attachments = vec![file.clone()];
 			s.task_references = vec![reference.clone()];
 			let original = s.snapshot.clone().unwrap();
+			let scope = original
+				.work_items
+				.iter()
+				.find(|work| work.id == "release")
+				.unwrap()
+				.parent_goal_id
+				.clone();
+			assert!(
+				crate::shell::agent_surface::graph::Layout::new(&original, scope.as_deref())
+					.nodes
+					.iter()
+					.any(|node| node.id == "release")
+			);
 			let mut active = original.clone();
 			active.work_items.retain(|w| w.id != "release");
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert!(
+				!crate::shell::agent_surface::graph::Layout::new(
+					s.snapshot.as_ref().unwrap(),
+					scope.as_deref()
+				)
+				.nodes
+				.iter()
+				.any(|node| node.id == "release")
+			);
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
 			assert_eq!(s.composer.read(cx).content(), "Main draft");
@@ -614,6 +636,15 @@ mod visibility_tests {
 			);
 			assert!(!s.conversation_pages().iter().any(|(id, _, _)| id == "release"));
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(original)), cx);
+			assert!(
+				crate::shell::agent_surface::graph::Layout::new(
+					s.snapshot.as_ref().unwrap(),
+					scope.as_deref()
+				)
+				.nodes
+				.iter()
+				.any(|node| node.id == "release")
+			);
 			s.open_page("release", cx);
 			assert_eq!(s.composer.read(cx).content(), "Release draft");
 			assert_eq!(s.attachments, [file]);
