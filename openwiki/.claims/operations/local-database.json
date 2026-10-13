@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:18d9413e78a143e3c891a4c206351b2460b85d39382abaf97ce65b65d913ae4b",
+  "pageVersion": "sha256:d1d0265a9402ff3788260eaeb77a9efd28785f17584b68a6e69ebeb50fff01aa",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
       "statement": "The embedded migration ledger defines the ordered SQLite migration boundary; historical Pending Route receipts do not define the current synchronous Route API.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1090-L1098",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1093-L1101",
           "version": "repo-lines-v1:sha256:b510868f92b870dbd5e7d63f97672ac8d366337940f4c664ad8f8123788b4f71:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBhZTJjYWQ3MDY4YjdlMTllODhhZGU4YjEwNTI5MjIzNzc4OGJjMzdhMGZiNTRhNTYxNjRmOTAwNjQxMGEyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODAyOTZhM2MwNDc4ZjExMzFkMWMzNDU4MjRiMDlkOGMxMzBkODc2YWQzZDk3NzY2NjhkMjI2MTVjOTM1YjAzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2E4NmRjMjVjNDE1OGU3YjZmNzY1N2NjYzllZDZmZTMzYzVhZjM0ZjZjYmI1NDcxZGU2MzIwMTczMDU4NmVhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmZlNWM4ZjM5MzkxODU2ZjlkOTlhOGIzMDYxMzBmNmY4NGJlYzI2YjcyOWNkOWYwYjFhMWY1NTk4NGQ5YzcwMSJ9"
         },
         {
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L271-L288",
-          "version": "repo-lines-v1:sha256:3a3a45cc72f83096718b43dec5e0e0d509439b5e5588ee0de93d3b799715f312:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmY2YwMzAwZTE3NDI3NDJjZTZlNDBkNmMzZDhmNjdkODQ4ZTViOWNhODFjMmI4N2I0YjZiNGE0NDE3NTJmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "version": "repo-lines-v1:sha256:4c2c6c8cd9c86e4990b13a676d068d9423bc04cd687e42aca2d6ae1f08c642e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZGU4NTVjZjVjNjk2OTdiNWJlZTE1NjQyNzMwYjYzYzIwOWI3MWNjMjc4NWM3ZDFiNjczZWExOWNiYzhlZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -85,6 +85,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T06:10:39.973Z"
   }
 }

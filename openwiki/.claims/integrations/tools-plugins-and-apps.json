@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ba8af51daeb1a7fa82f3da2b75850aaf3fef32c40939944ff8257cd15f1e74e2",
+  "pageVersion": "sha256:d5ba6ac5b6aa8807c8d3a84f3adcb7124355028759ae2bb71708294645bcf427",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -51,7 +51,7 @@
       "statement": "DECODEX_SKILL_ROOTS is captured at service startup as an optional absolute path list and applied through native skills/extraRoots/set on fresh retained Agent processes; native discovery remains unchanged when the variable is absent.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1880-L1935",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1907-L1962",
           "version": "repo-lines-v1:sha256:aa3f2ea38c791996308791502e0e922f953c2f37d89d6157fc95d2ce15ffe781:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MGE3NmVlZTVjZjNiYWViN2VkZDA1MzQ1M2Q4OGE2ZDQ4ZTA1NDE1Y2JkOGZjNjI4ZjA2OWMxNzU1NGYxNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZDYyMjhiZjUwNjZjMTkxOWJiMGU2YzAxZDU3NTBiOGYxYWY5NWQxNzQ1NjEyOGQyN2E0YTFmMWExOTg2OWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyOGJkYjkwYTFkYTM4ZjJkZTVlMzQ4Mjk2OGUwNzUwMWJhNDJlMDljNjU2ZmQ3MTI0OWRhYmQxYmVhYWMyOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODFhMzNlNjdjNGNiNDNlZTJlMWUzODdkMTg1YjIwMWY5MzZjNjZjNWIyNzkzNzU2OWE1ZjViMjFlN2YyZTgifQ"
         },
         {
@@ -65,18 +65,18 @@
       "statement": "Local saved and effective connector approval/reviewer management commands are retired, while native integration observations and pending approval handling remain separate capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1298-L1310",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1318-L1330",
           "version": "repo-lines-v1:sha256:40a0f3b1227d26d1f5ceaaa950f6024931b6faa92546c64e30b839dfd0ccf17b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZWE1Y2JkNjM1Y2NkNzJiNTE2MTc0ZTRjOGYzZWQ3MTBmMThkNTI0M2VlZWVmNjI5M2FjMTU0NWIzZDQ5NTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZjhjNDQ0NjU4OTA2M2JmZGIxY2E1NjhjY2U0MDE2NGExYmYxMGFiYzc0MDZiYjMzNGM0ZmI4MjJjODBkNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjYzA5ZmIwMDlmZWY1MWFmYjFlZTdiY2FjZTZhNjM3Zjg4MTc0NWFiMjY3YzQ0M2JiMGQ3Y2FiYzg4OTg4NzMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:e443a61bf166e57ca4c4503fe88b3a80c030683129e754998d65a533c03b0fd8"
+          "version": "repo-file-v1:sha256:c8a55ade0493c8243b411ddd86245796483a7ea135b84a2cfb8d2a7c66a68244"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T06:10:39.973Z"
   }
 }

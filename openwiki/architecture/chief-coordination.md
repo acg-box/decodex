@@ -5,12 +5,18 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T18:37:44.705Z
+    at: 2026-10-13T06:10:39.973Z
 sources:
+  - id: openwiki-source-1e0b3343cd024646618a1f95
+    resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-f4bc7020783c49a911b7fb29
+    resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
@@ -19,13 +25,15 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-13T06:10:39.973Z" }
 ---
 
 # Agent coordination and native conversations
@@ -58,6 +66,18 @@ The current decision is to retain the existing inbox and direct native turn admi
 
 A future change must define a cutover before moving pending messages. Stop local dispatch for the exact source, reconcile every uncertain send against native history, and map each eligible user input to one stable native submission ID. Keep async answers and application evidence under their existing owners. Delete a local pending record only after the exact native submission or admitted turn is observed. On rollback, reconcile native admission before restoring local dispatch. Do not replay uncertain input or treat queue deletion as proof of delivery. Such a change must also preserve dependency checks and per-message execution settings; the current native queue API is not a drop-in replacement.
 
+## Archive synchronization
+
+Codex owns the archive state. The service reads the complete native archive across working directories, providers and source kinds. It removes a local work item from the active snapshot only when its exact native thread ID is in that archive. An empty title, a completed status or an unavailable thread is not permission to delete work.
+
+The archive catalog is cached for 15 seconds within the current native process generation. An incomplete or failed refresh retains the last confirmed catalog for that generation. A new process starts with no inherited archive observations. The service does not write a second archive flag into SQLite.
+
+The active snapshot supplies the work list and relationship graph. Filtering removes incident relationships, pending-event entries, context references and workspace membership from that view. Live descendants remain visible under their nearest visible ancestor. The stored work and original hierarchy remain intact; a later complete catalog can show them again after restoration in Codex.
+
+Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
+
+An unused local draft has no native archive state. Use the explicit service-owned cleanup command in [Commands and validation](../operations/commands-and-validation.md#discard-an-unused-local-draft). The service rejects cleanup when the target contains real work or references.
+
 ## Native child requests and approvals
 
 Native child requests resolve through verified thread-spawn ancestry to the owning local work item, with cycle and depth bounds. A fork alone does not establish child authority. Child approvals retain the child's native identity; child ownership does not grant local manager-tool authority.
@@ -76,7 +96,7 @@ Before-input branches use the existing canonical input and draft handback owner.
 
 ## Verification and navigation
 
-Run focused tests in `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs` and `agent_host.rs`. Distinguish fixture tests from live provider tests and retained historical receipts.
+Run focused tests in `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs`, `agent_host.rs` and `agent_visibility.rs`. The desktop archive tests in `agent_native_agents.rs` cover unrelated conversations, retired tabs and retained drafts. Distinguish fixture tests from live provider tests and retained historical receipts.
 
 See [Desktop workspace](desktop-workspace.md), [Subscription voice](../integrations/subscription-voice.md), and [Runtime architecture](runtime-architecture.md).
 

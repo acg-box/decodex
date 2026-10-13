@@ -4,12 +4,18 @@ title: "Commands and validation"
 description: "Commands and validation"
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-586227b5591e5f24cdfe6427
+    resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-2e9ba9281afc8bacff8a0775
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
   - id: openwiki-source-90188458ff8e2e5499bd7ca8
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-b7793decf9d7c9ba48e57e0f
@@ -24,10 +30,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
+generated: { by: "codex", at: "2026-10-13T06:10:39.973Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:59:08.643Z
+    at: 2026-10-13T06:10:39.973Z
 ---
 
 
@@ -67,6 +73,27 @@ python3 -m unittest tests/scripts/test_account_login_architecture.py
 ```
 
 The database gate uses an isolated owner-private root. It is not permission to reset the user's database. Ignored live-provider tests require their documented account and effect prerequisites; do not enable every ignored test as a routine check.
+
+## Discard an unused local draft
+
+Inspect the exact work ID with `decodex --output json agent status`. For a confirmed empty placeholder, use the owning service:
+
+```sh
+decodex --output json agent discard-empty --work-id LOCAL_DRAFT_ID --idempotency-key CLEANUP_ID
+```
+
+Replace both placeholders with explicit identities. The service refuses a root, a bound native thread, active or scheduled work, descendants, inbox history, dependencies, thread revisions and saved prompt input. The transaction removes only an unused local draft. Repeating cleanup for an absent ID succeeds without another effect. Do not remove live rows with direct SQLite writes.
+
+Archive a real conversation in Codex instead. The Decodex active view follows native archive membership and retains the local history. See [Archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
+
+The focused regression checks are:
+
+```sh
+cargo +stable test --locked -p decodex-database discard_empty_work
+cargo +stable test --locked -p decodex-runtime --lib agent_visibility
+cargo +stable test --locked -p decodex-codex archive_catalog
+cargo +stable test --locked -p decodex-gpui --bin decodex-gpui native_list_removes_retired_tabs
+```
 
 ## Prepare Codex components
 

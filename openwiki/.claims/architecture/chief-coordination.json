@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:deeb6739fc918f570b694286a1af75ff350a73267fc8559f1f282265d654c221",
+  "pageVersion": "sha256:39413232527c19e3b5ce81e16d2e3fc1697ffbf64308ce6a6f95644418ac35d0",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -22,7 +22,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:f3df76fdcd9e673a98186efd0338be90a4dfaeeee70ab6c0d35bb14efaf1253e"
+          "version": "repo-file-v1:sha256:2e3e9f83bda1b1bf29cbf057783c8482aa70f028333e9dfbde0ef4dfb5ee91a3"
         }
       ]
     },
@@ -83,10 +83,52 @@
           "version": "repo-lines-v1:sha256:1ea02dbeef8b03693f39b1e725de08cb63039fc0e8a9c58c86b4232fe651d15b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMmY5YzhmYzhiZDEwMTc4ODkwNGU4ZjljMDAyZTE1M2M2MTdjNzY2MjM4MmM5NzM3ZTYxNTE5MjZiZWExMjg0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMzg3NmVjMTI4YjNmNzNjYjQwNTg5MGE5Yjc0MmUxNWQxZTk4Nzc4YzdiODhmZGU5ZTI4NTVmNDZiNzMxM2QxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NjkwMzZiMDFiZmEyZDAzN2JmZDA5ZWU0ZWNkYWEzMzU3MGU5NjY1ZDcwNDkzOTZiNGE5ZWVjNmE1YTdiZjE1In0"
         }
       ]
+    },
+    {
+      "id": "claim_4ef9e107102341d4818fc9a88714e021",
+      "statement": "The service filters exact native archive members from the shared active Agent snapshot without deleting local work, retains live descendants under their nearest visible ancestor, and removes incident view references.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L29-L68",
+          "version": "repo-lines-v1:sha256:6f5e5d8ce8163c955bbca251948584c58fa55d2a88bc87b63dfb38166bc6fa79:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NGE4ZWM3YzlhZjc5OTE5NGQxMDY2YTU1ZTYyY2ExYmI1MDBlNTE5N2RjNzRlY2UwN2RmZDM4YTRkNzllZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L506-L536",
+          "version": "repo-lines-v1:sha256:8bc53a53328d72a97cc0210d21f3aec9226524b27bace4937bf34bcd1f5f213b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0MzA1Njg1MTI0YjA0ZjhhYmM0MjdkODM3MDk5ODdmYTQ0MzliMWVjYThmNDUxM2ZhODliZmQyZTg1NTJkOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ZThiYmUxN2EwYjlkMTlhYzIzNjU5ODJiN2NmZTI2YTZkZTE5NmYyNjVmYjhiNDZhYjFhNTgyYTVlNmQ5ZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODIyYTE1M2EwYzAxYTE3Mjg2YjYwMjJmMGU2M2FlNzE5ZGVmMDZlYWFiM2IxY2ZkZDc3NDI4YzYxOWJhZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMzU5NjY0NDRhZDBkYjE2MmVjNzQxNjQzMDMxZWU0NjI5MjQxM2Y4NGFhNGJkNmRhY2ZmZWY1M2YxMDU4YzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7965622a86494894b6afb8d5ce59a27b",
+      "statement": "The native archive catalog refreshes at most once per 15 seconds within a process generation; failed refreshes retain confirmed membership, and a different generation clears that cache.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L294-L310",
+          "version": "repo-lines-v1:sha256:47bf7f3220f9185cc1c4462aaefa0726b0b427452aa93e44865a1a01beff2145:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZWU3YzFiMjg0ZmQ4NGU0ZjIwMDI1ZTEzZGQxYWI5NGU2ZjFjMzZlYjcxNjRlYThhYjBmZDUzOTVhYWE5ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYzAwZGE5MWFkOThiMzU3NGQ2ZDY5OWNiMTQ3MGNlZDI4YWYzYmJiOWVhZGFlZmNhNDVlYzY4MzU4M2YyYjYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L9-L27",
+          "version": "repo-lines-v1:sha256:cd9658b81ee9b811ff88c50fc01291d1155eb01664c21840b9871c839b8cd73e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDg1ODIyNTYzYTE0NDhhZWZhYzUzZjQ0OWMwNDM3ZjIwOTFmMmExZGI1NTY1NThjNWM4MDU1ODI0NzBmZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5NDg5MTA4YjAyYTNhNGQzZWNiOTY5MjBjZjBiMzRkNWNjMWQxYmZjMzQ3OWUyMmIwOTgyYmUxYjNlYzFkMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOGM4MjFlYWRjOWU2Y2E5YzBmOGQ3OWI2MmZmZjZkYzllY2ZlOWFjNjkzNzdkZGQ5ZWYxMjhhMDEyYTI5MDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b8b69a5e1f9f42c29a77513b1ef3b32d",
+      "statement": "The desktop removes only affected native conversation tabs after complete child-list reconciliation or owner removal and preserves drafts and unrelated native conversation state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs#L213-L334",
+          "version": "repo-lines-v1:sha256:ef9bd63df7036bb20396a1d9127b5ec2b810d82238038317f91dc319bd45cde5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMmEyNTcwYWE2M2ZmNjMzZDY2MzllZTE1Njg4YThiN2M3ZTk4MDkyMGE3NTlmNmFiYTZiMzQxZDhjYTcwODYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzYzQ0OWRhY2EyODlmYzNkMWYyMjMzNDVlMTQzY2FkNmM1OTllMDQ1ZjdkODY1MjY1YzIxZmNkYWEwZmI3NWQ1In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1468-L1471",
+          "version": "repo-lines-v1:sha256:4c459e075f47c6e04c75bc6ec5d1a750a824d68be3116bad55e21526c50f6a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzJmNGRlNGYwY2ZlNWVhMGYyNjEzZDBkZWI5ZTA4ZWM2YjRkODUwNGY2MGQxZGVjMjg1ZGI3NGExMWM5NjEzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmE0MmVmNWU4YjgyYzIyYmQzMWU1YTZlNzViNTMwOTE0YzE0MDIxNjg0YjkzMzRkMmQ2YWU5YjE1YjQ3N2MwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzE2YmY3M2E5YzM2MDYwODA4OTk0ZWY3ZGJiYmNhMTE2ODI2Yzg3MzQwOTYyZmYwMTI1YTJiYWNmYTdkMGIzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWMyNTZkMDc2OTNmNjYzY2U2MjY2MGE5MmYwMzNkMjA4OTllMDJhMmE0MGJhZWU1ZjVkYzVlYzEyNGMxYTdhMyJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T06:10:39.973Z"
   }
 }

@@ -25,7 +25,7 @@ sources:
 generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T18:37:44.705Z
+    at: 2026-10-13T06:10:39.973Z
 ---
 
 # OpenWiki quickstart
