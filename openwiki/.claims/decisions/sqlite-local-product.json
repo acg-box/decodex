@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2873cccf6efc356f1969e45e3a515274d33b95ca3db8bbccea21cc2186e48e79",
+  "pageVersion": "sha256:da1518f0a2fb1d85c8ede73bd898b6d1956401c9ca38fe077442d13660b7cd7e",
   "claims": [
     {
       "id": "claim_0943befab78d47f4ab01fd80e6a28bbb",
@@ -25,14 +25,14 @@
       "statement": "The active Rust workspace retains a separate database transfer tool and no separate decodexd application member.",
       "evidence": [
         {
-          "resource": "repo://Cargo.toml#L1-L17",
-          "version": "repo-lines-v1:sha256:b0f7086ea344358e740219ac15ba92349e1845b2744da478dffef5ce67c8ea2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
+          "resource": "repo://Cargo.toml#L1-L18",
+          "version": "repo-lines-v1:sha256:ea30382ff4bbba8bbb26badd2064bd7ad27ccf8e4bd3d06a5e4d2914e8ddc387:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

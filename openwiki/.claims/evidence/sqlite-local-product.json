@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:acd96194e5809b0a83d18eb9ab69ca8f80151febd8a8bebb3cca6a90b4994dc9",
+  "pageVersion": "sha256:9ed592423bb4a11bec24adbf61cc515d2f32001d91b2516e5aacadf95f66324a",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
       "statement": "The local protocol version is defined by CURRENT_VERSION; RouteAccount is a synchronous service-owned command with credential-negative completion or refusal rather than Pending-route diagnostics.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L267-L282",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L271-L286",
           "version": "repo-lines-v1:sha256:68a265a2067cb43650e1d2368becf5d2d3a6d52d30f8995c99526198a985005d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmY2YwMzAwZTE3NDI3NDJjZTZlNDBkNmMzZDhmNjdkODQ4ZTViOWNhODFjMmI4N2I0YjZiNGE0NDE3NTJmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwODdkMDgzYjA3MzM2OTA3M2M2MGQyNTczODg2MmUwNzM1NjdmNjRhNmViZDViYmQ2MWI1ZTM2ZTBhMTFkNjQifQ"
         },
         {
@@ -36,13 +36,13 @@
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:a39b03ac438618ab9e01858f393bca83ca6aa52d301e3fee1fa71645967b8f62"
+          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

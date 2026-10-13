@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7580ec7543ace2aecced862fa9917dafddd04723e3159ce9b80dc607d5d5c57f",
+  "pageVersion": "sha256:09de575c46de33824ac1420017f15991f13726875040a315d3be498ea82a9e9c",
   "claims": [
     {
       "id": "claim_0a3f727a31ee46ffb4817dbb5d71e57d",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:887d1064fa00aa14b649e930f20dd6478a4337050fb33366440c88dea5b0aab7"
+          "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
         },
         {
           "resource": "repo://database/src/migrations.rs",
@@ -19,6 +19,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

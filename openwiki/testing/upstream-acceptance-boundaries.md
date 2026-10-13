@@ -6,6 +6,10 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
+    resource: repo://crates/decodex-components/tests/development.rs
+  - id: openwiki-source-08dbb31668b58707418687d2
+    resource: repo://crates/decodex-components/tests/official_release.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
@@ -32,14 +36,12 @@ sources:
     resource: repo://Makefile.toml
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
     resource: repo://scripts/macos/build_codex_source.test.mts
-  - id: openwiki-source-0e02d239506d0285d4593872
-    resource: repo://scripts/macos/bundle_codex.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
+generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:36:56.884Z
+    at: 2026-10-13T03:59:08.643Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -50,6 +52,7 @@ verified:
 | --- | --- | --- |
 | Source/consumer reconciliation | A capability has a current owner or an explicit retirement | Successful execution |
 | Focused unit or socket fixture | The checked local contract and failure case | An external provider or real desktop interaction |
+| Component integrity and repair | Exact archive, signed executable, helper revision, generated schema and cache recovery | All native behavior or a working public app-update feed |
 | Installed-native isolated fixture | The named binary's behavior with the supplied synthetic environment | Every account, feature flag or platform |
 | Signed desktop acceptance | The recorded artifact and exact interactions | Installation, notarization, public release or all UI surfaces |
 | PR merge and remote readback | Code is in the specified main history | The user's installed app contains it |
@@ -73,6 +76,16 @@ Choose the smallest test that can fail for the changed behavior. Preserve comple
 ## Source extraction and build caches
 
 `node --test scripts/macos/build_codex_source.test.mts` checks official source selection and extracts an archive with old timestamps into an existing source cache. The extraction test verifies that obsolete files are removed, archive content is restored, and file timestamps become newer than a simulated cached-build time. This checks the extractor contract. Qualify the resulting package, generated schema and affected native behavior separately.
+
+## Component migration
+
+`decodex-components` tests cover exact official source selection, release baseline coverage, download interruption and retry, hash refusal, atomic replacement, failed publication preservation and damaged cache handling. The ignored official package test uses an isolated store to exercise failed network access, retry, offline reuse and schema repair with a real signed Release. That fixture is not the production pin.
+
+The ignored development test takes a qualified package through `DECODEX_TEST_DEVELOPMENT_RUNTIME`. It verifies exact executable bytes after import, repairs damaged executable and schema files from the local archive, rejects a different commit and keeps the previous selection after an import failure. Run the affected native consumer fixtures against the component-store executable as a separate check. Matching hashes can carry forward evidence for the same artifact; matching a version string or schema alone cannot.
+
+Formal release selection must retain the currently reviewed fixes. The pin tool rejects an official Release that does not contain the development baseline; reviewers must also establish affected behavior and schema compatibility. No test fixture or successful package download authorizes a lower baseline.
+
+The signed stage test checks that the app contains the runtime requirement and Sparkle, excludes bundled Codex executables and schemas, and rejects a missing production pin before changing an existing stage. It does not install the app, prove a public update feed, or establish live provider and physical audio acceptance.
 
 ## Terminal errors and external context
 

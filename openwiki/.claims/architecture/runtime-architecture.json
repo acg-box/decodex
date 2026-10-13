@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:61f1a1ba0833b18787b9af7b68c99ed0ed1f2a62972c2c257bf7fa29c1fab83f",
+  "pageVersion": "sha256:ccb93a625c31c7f9d760aae97d7179967cd36dd687569d48c065111e453c72b5",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
       "statement": "The active product service runs as decodex serve from the CLI executable, while the macOS bundle contains a decodex helper rather than a separate decodexd executable.",
       "evidence": [
         {
-          "resource": "repo://Cargo.toml#L1-L17",
-          "version": "repo-lines-v1:sha256:b0f7086ea344358e740219ac15ba92349e1845b2744da478dffef5ce67c8ea2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
+          "resource": "repo://Cargo.toml#L1-L18",
+          "version": "repo-lines-v1:sha256:ea30382ff4bbba8bbb26badd2064bd7ad27ccf8e4bd3d06a5e4d2914e8ddc387:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNGUxMDJjODYxZjk5NGQyYWFjZTkxMTRkMzkyZGJjMTYyMTkwZTAwYmU4ZmUzNTdkNDcyMTUwY2E0Mzk2MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGJmYTY2MDdmODg2ZGU1ZTY0MzIxZDJkNzJiNjJiYTQyYmI2MTFjNzU3MTAzNWI5OWQ5MTkzMTRkNTdlN2EifQ"
         },
         {
           "resource": "repo://apps/decodex-cli/src/lib.rs",
@@ -16,7 +16,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:114c7964c387ccfe668b14036b092a5d68529cd73e0f6d506cf515c384b7c09c"
+          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
         }
       ]
     },
@@ -25,11 +25,11 @@
       "statement": "GPUI supervises its bundled service through a parent-lifetime channel, while typed clients reject incompatible protocol versions instead of opening product storage directly.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs#L455-L499",
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs#L478-L522",
           "version": "repo-lines-v1:sha256:6da85f00185c9515c44a81b9a4a2a228c450e0fa72b919f8069a6b847df66aea:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNWFmYjgzNTA3MWUxYTc2YmFlNDlmYTBiZWVmYjYwN2RjNGFjNGQxNjUzMmI2YjU5YmYzZTM5YjljNWE2Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYjcyMzQ2NzYxODM3YzczODA0YmM4YWQ5NjRkMmI4OGU0Zjc3NGRmNWZmZjc2YzM2MjRlYTM5YjliYmM2YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmYzYyNGFlOWNkZDNkNjMxYWRhZDcxYzgxMGEyMjNiNjMyZTk0MGQ3NTgxODIyZGVkYzBiYzQ4Y2EyMjVjYTAifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/client_lifecycle.rs#L1048-L1060",
+          "resource": "repo://apps/decodex-gpui/src/client_lifecycle.rs#L1070-L1082",
           "version": "repo-lines-v1:sha256:e730ee0cb44b1c4ae1c87a6c36d03c6f1331bac286b45cc2e5e5d7748c37d43c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYTBkZmUwZjk0YTlmZmQ0MDRkZGEyNGMyZWQ3ZDIyOTA4MTIwNmZmMTE1ZmIxOTE5ZjhlZDNhY2IwMjIzNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzM0ODNhOGY0ZDNhM2Q0YTc3OTMxOTNiYzM1YjI3ZDNiY2ZlMjU0OTI0ZWM2MGE4YjZmM2NlZmQ5NjJmZTQifQ"
         },
         {
@@ -44,7 +44,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:a39b03ac438618ab9e01858f393bca83ca6aa52d301e3fee1fa71645967b8f62"
+          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
         }
       ]
     },
@@ -77,12 +77,12 @@
       "statement": "The source-runtime builder verifies an exact official upstream archive URL and digest, recreates its extracted source cache, builds with stable Rust and the locked upstream Cargo graph, stamps the selected commit, and rejects Cargo-lock or package-identity changes.",
       "evidence": [
         {
-          "resource": "repo://codex-runtime.lock.json#L1-L13",
-          "version": "repo-lines-v1:sha256:dec846f126d04ebaddca0425d3416ed3d776126e08b0822aca9a5cbfe3d4abdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:dec846f126d04ebaddca0425d3416ed3d776126e08b0822aca9a5cbfe3d4abdf"
         },
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L18-L70",
-          "version": "repo-lines-v1:sha256:7b5e7a374bafa81852ae7751671acd4ddcfad05f0843e01fc3268032639ae5ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxOWZjMzU4YjljYjlmN2Q4YTExMjkyNWEyNjM5OGVlYjAxMTBiYzQxZmNlYmYzMjc4MmM5NTZjMWZlMmE4ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3Y2EzNTM5ZmEzMTI4NGZmODNkNWMyN2EwZmQ3ZjlmYjhiZmVjMDQzOGNhM2QxYzlmOWExODg0ZDRjNDZiOWEifQ"
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
         }
       ]
     },
@@ -91,22 +91,18 @@
       "statement": "The source-runtime builder packages and signs CodexCLI.app, the Code Mode helper and rg, then verifies their strict signatures.",
       "evidence": [
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L71-L100",
+          "resource": "repo://scripts/macos/build_codex_source.mts#L68-L97",
           "version": "repo-lines-v1:sha256:8a204d821243396d162a31ae18b074bb39e60f3238efe057e9256ae39258ec29:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmNTk4ZDVjMjAyZWYzNDdhNTZjOTk1NDk2YTQxMjJjN2FjNjI5N2U2OTJlOTdiN2FmYjIzZDA4YzE3ODhiYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4OGMxY2FhMmViN2YzZjMxMzc1MTU3ZDJhZmVmNjRlNWUzZWIzOTllY2IzMWYxZWMzN2IxZGU3YzIwOTNlNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
     {
       "id": "claim_6c576bd92d31451f9b900ac878cb3dcc",
-      "statement": "The bundler checks the actual executable version, generates its experimental app-server schemas, validates the local adapter fingerprint against the lock, and records the source commit, executable digest and schema fingerprint separately.",
+      "statement": "The component store verifies package signatures and the reported CLI version, generates schemas from the actual executable, checks its executable and schema hashes, and records the requirement in the installed component directory.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/examples/schema_fingerprint.rs#L13-L19",
-          "version": "repo-lines-v1:sha256:1b29834cbc164ea4580fd898ee83a93482cf8c935118316ebe5f1e6e9b224569:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGU3M2VkMjFhNjQwMjRiMWY4NmIxOGJjNjliYzRhYjViY2I4NmFmOTc2ZWZiNTZiMWE0N2Y2MTcyZWI1NmZmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2YxNDJmMGVhOTlhNGJiYTdmYzdlZDY5ZGZmYWE2M2I0NjRhZWM0MDI5ZGY4MzA5ZGI3OTU5ZGZmZGQ3NDcyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
-        },
-        {
-          "resource": "repo://scripts/macos/bundle_codex.mts#L42-L53",
-          "version": "repo-lines-v1:sha256:7f7152c75159e43256b681548f8c1bcc2cc91ae9ded0695a4dec7c3e187a5576:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzBiMGMyMmM1MWIzMTI2YjM0ZmZmYTczMjZiNjcwNjU5MjRkNWMzMDY4MjBjZWQxNWVhMzk3N2VlZDdhMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMTdlZGM0YzViOTMxNzMzZWRiY2RkYzdiODBhMjQyMDJlNzZjNDI3OGQ5MDBjNTNiMjg3OTBiOWE1YWVlMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjNTEyYjEzMzVjOTMxMzVmZWY0ZmQxYzFjNjVjNDQ1NTFiZjZhZjQ5OWQzNzY0YWQ0ZTQ3OTI1OWQyODRmZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-components/src/install.rs",
+          "version": "repo-file-v1:sha256:ddb7aa26dd4e129d62927480d066b2a7c8bd1ad918d1ab9ea8aa16cdefbdae6e"
         }
       ]
     },
@@ -115,18 +111,64 @@
       "statement": "The source extractor replaces the owned source cache and refreshes file modification times instead of restoring archived timestamps, while preserving the Cargo build directory for dependency reuse.",
       "evidence": [
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L27-L69",
-          "version": "repo-lines-v1:sha256:772ddad0774a538b5375bfb018154d35cc092d1a73eeb2c0594e01f3bbea808c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NmI4NDM4MjZiNjUyYThhNjgxMjYwNGYyNDk2OGZlOGVmMGMwMDQ1N2EzNmM5ZTU5Y2U0YTY5YjkyZDYxZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NGM2YTAwZWMwNTBjM2VhZWE3MDU5NzI5NWNiNTZlZTdkMWI5OTY1OGFlYjY4MWQ1NGMxNzNiZjMxYTM3OTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmZjIzMzIzMGVlMWMyZDMzOWYyYWNmNGY2MDdjZTlkMTUzYWUwNjcyN2U4M2ExNTJhMTY0M2JiMzM2ZjExNDQifQ"
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
         },
         {
-          "resource": "repo://scripts/macos/build_codex_source.test.mts#L23-L48",
-          "version": "repo-lines-v1:sha256:272c7d8edb5fd85fade59d34ba5cefb0b6d5a5d446bf5fa0bdfab7ff54206228:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2MmRkNzQyZWUxMWIzNWQ0MTA5YzU3MTViNDIwNmMwZjk2YzRkOTRjYTAwMGEyMzdiN2RmYzA4YTkxMTcxNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiZmI1MDQzNjg1YWIxOThiMGVhMGJlYTA2ZGNjNjg1ZmNiYjVkNWE4MmIyNjk1MzA3YTM4MGU2NDExMTA3N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://scripts/macos/build_codex_source.test.mts",
+          "version": "repo-file-v1:sha256:ef9f82467f6b594ec71c610c52af333a158715d454f342b270f794b427dc14b2"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d7b665a911942b1beeb28bea3c9435d",
+      "statement": "Development artifact preparation is explicit and retains the reviewed source commit and schema, while production staging selects an official release whose qualification covers the development baseline; neither app startup nor staging compiles Codex.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/pin.rs",
+          "version": "repo-file-v1:sha256:7c437f97869fbf5501d28f221091d0d45a4202f9aa3aaaf5898ef702c590e771"
+        },
+        {
+          "resource": "repo://scripts/macos/prepare_codex.mts",
+          "version": "repo-file-v1:sha256:4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b"
+        },
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
+        }
+      ]
+    },
+    {
+      "id": "claim_b358d69615d74f39a18c7e277c5a8ebc",
+      "statement": "The shared component store retries failed downloads three times and atomically publishes verified replacements, retaining older versions and the previous directory when repair fails.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/install.rs",
+          "version": "repo-file-v1:sha256:ddb7aa26dd4e129d62927480d066b2a7c8bd1ad918d1ab9ea8aa16cdefbdae6e"
+        }
+      ]
+    },
+    {
+      "id": "claim_73dcdb7a2e184168a61a8f862c83d99e",
+      "statement": "Settings starts component preparation when the desktop is created, exposes progress and retry, and delegates application updates to Sparkle; the owned local service waits for its pinned component without spending connection retry attempts.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/bundled_daemon.rs",
+          "version": "repo-file-v1:sha256:0c2c0365e34e200a446c9da200d50614ac0b9e70d06a670b65506561ab89bc77"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/client_lifecycle.rs",
+          "version": "repo-file-v1:sha256:03a13e7b0272a54a6ba8697e22aea6a2cae50ff014b87da802e3460b5b058c49"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
+          "version": "repo-file-v1:sha256:6af26e0fcf62138cd48a89eb7eace6cea5a363a184014d8b4ea8a5ac6301cd53"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T03:36:56.884Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

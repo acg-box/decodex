@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5a995f6d0c1692824fa5cb0600a24a2cf7a2a28ae483d2fe00a8ba019f975ef3",
+  "pageVersion": "sha256:91987af08fec64ebbace083c4a9f4e1a0a4e8524a4125a50091d1f4e2696bcfc",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:887d1064fa00aa14b649e930f20dd6478a4337050fb33366440c88dea5b0aab7"
+          "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
         },
         {
           "resource": "repo://rust-toolchain.toml",
@@ -26,11 +26,11 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:114c7964c387ccfe668b14036b092a5d68529cd73e0f6d506cf515c384b7c09c"
+          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:a39b03ac438618ab9e01858f393bca83ca6aa52d301e3fee1fa71645967b8f62"
+          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
         }
       ]
     },
@@ -51,10 +51,42 @@
           "version": "repo-file-v1:sha256:abac020709eaf6841f79b701bdbd20a0024680b59aebb301a24cf0f395f86f5f"
         }
       ]
+    },
+    {
+      "id": "claim_6cf28f4d51e445f693f8ef59deced63b",
+      "statement": "The prepare-codex task explicitly reuses, repairs, builds or imports the pinned development component, while pin-codex verifies an official Release and writes a separate requirement after checking the current development baseline.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/pin.rs",
+          "version": "repo-file-v1:sha256:7c437f97869fbf5501d28f221091d0d45a4202f9aa3aaaf5898ef702c590e771"
+        },
+        {
+          "resource": "repo://scripts/macos/prepare_codex.mts",
+          "version": "repo-file-v1:sha256:4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b"
+        }
+      ]
+    },
+    {
+      "id": "claim_1a7288bd92f249079d23c00f412cd4f9",
+      "statement": "Application staging embeds the selected runtime requirement and Sparkle without Codex binaries or schemas; release staging requires an official Release requirement that covers the current baseline, and staging does not install the app.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
+        },
+        {
+          "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
+          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

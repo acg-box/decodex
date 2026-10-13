@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a0d301593c6e4eb5f7060f2ef030f105de434913e0e370de5dafaa4705b82a98",
+  "pageVersion": "sha256:5c324e34ceaed8d444bccfee4cbe665d26d324013190faec6154235b95a3af05",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         }
       ]
     },
@@ -42,7 +42,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2553e3166eabc1ba878d31bb85abe7963b53909a01a93fde75d6b84d8b786c41"
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         }
       ]
     },
@@ -71,26 +71,22 @@
       "statement": "Source runtime qualification uses an exact official archive and digest, refreshes extracted source timestamps to prevent stale local Cargo artifact reuse, builds with stable Rust and locked dependencies, checks the stamped commit and package identity, and signs and verifies the app and packaged helpers.",
       "evidence": [
         {
-          "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:dec846f126d04ebaddca0425d3416ed3d776126e08b0822aca9a5cbfe3d4abdf"
-        },
-        {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L19-L100",
-          "version": "repo-lines-v1:sha256:69e549dcc6c6fc446eec58938c592675d56f4f6977091d4c60472e69c93d672d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxMmEyYzRiOWYxYzQ5Zjg4MGQ2NDM3MDc3YzkzZDE5NTI4ZTBhN2YxNzI0MmUzMDhhMDA0YjY5NjU4YTViZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzY2UzMzVjZGJhMjRmZmQzOGRmZWUwZDM1YWUwZmZjNTY1OTRkOGY0MWYyMDdlODAxOTVlN2E1M2M5YjMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
         }
       ]
     },
     {
       "id": "claim_2b1a922f44f04b10a5264dad9d00b806",
-      "statement": "The bundler checks the actual executable version, generates experimental app-server schemas from that executable, validates the local adapter fingerprint and records source commit, executable digest and schema fingerprint together.",
+      "statement": "The shared component store checks the actual executable version and generated schemas, verifies archive and executable hashes, and records them with the source requirement after qualification.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/examples/schema_fingerprint.rs#L13-L19",
-          "version": "repo-lines-v1:sha256:1b29834cbc164ea4580fd898ee83a93482cf8c935118316ebe5f1e6e9b224569:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGU3M2VkMjFhNjQwMjRiMWY4NmIxOGJjNjliYzRhYjViY2I4NmFmOTc2ZWZiNTZiMWE0N2Y2MTcyZWI1NmZmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2YxNDJmMGVhOTlhNGJiYTdmYzdlZDY5ZGZmYWE2M2I0NjRhZWM0MDI5ZGY4MzA5ZGI3OTU5ZGZmZGQ3NDcyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://crates/decodex-components/src/development.rs",
+          "version": "repo-file-v1:sha256:49942d7a307248fb3c23833b5c068271de5df86fa7439a927cda094b26b8f869"
         },
         {
-          "resource": "repo://scripts/macos/bundle_codex.mts#L42-L53",
-          "version": "repo-lines-v1:sha256:7f7152c75159e43256b681548f8c1bcc2cc91ae9ded0695a4dec7c3e187a5576:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzBiMGMyMmM1MWIzMTI2YjM0ZmZmYTczMjZiNjcwNjU5MjRkNWMzMDY4MjBjZWQxNWVhMzk3N2VlZDdhMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMTdlZGM0YzViOTMxNzMzZWRiY2RkYzdiODBhMjQyMDJlNzZjNDI3OGQ5MDBjNTNiMjg3OTBiOWE1YWVlMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjNTEyYjEzMzVjOTMxMzVmZWY0ZmQxYzFjNjVjNDQ1NTFiZjZhZjQ5OWQzNzY0YWQ0ZTQ3OTI1OWQyODRmZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-components/src/install.rs",
+          "version": "repo-file-v1:sha256:ddb7aa26dd4e129d62927480d066b2a7c8bd1ad918d1ab9ea8aa16cdefbdae6e"
         }
       ]
     },
@@ -113,22 +109,32 @@
       "statement": "The maintainer requires affected native behavior qualification separately from schema and installed acceptance; new optional product capabilities require a user decision, and a completed manual catch-up does not resume the automation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L13",
-          "version": "repo-lines-v1:sha256:39621f94197a1cee74636cb2f7cad3ecab330cdbe698d7c9be9abdf1c5b412f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MGI3OWM0MTUwN2EwNmUwZDM4NTMwMzc3MGRhNmVjMWQ0YzRhZmY4ODJkODZiM2YxMGM4MDNmNWVmYzE3MDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMzY4ZmVmZDY3MjYyN2U3Y2MzMDBhZGZhY2IxZjBkZDE3N2MxYWQwYzExNGZlNGI3OTg2ZGUzNzRjOWNjMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhNjg5YzExZDRkODQ5NWFkNTdmYWViMDU2NDgzMDRlYWVjNDY0YWQxNmY1N2QzNzkyZjljNmM1MDJhMWZkZTcifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+        }
+      ]
+    },
+    {
+      "id": "claim_d818b7a1160d4389a9121f7acc460225",
+      "statement": "Official Release pinning resolves the upstream tag and asset digest, rejects a Release that does not contain the current development baseline, and writes a separate verified requirement for release staging; behavioral qualification remains required in addition to ancestry.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L17-L23",
-          "version": "repo-lines-v1:sha256:fc2c1ce92d4161a5d1c148cc33183c0a4b428d53785065818a55988b0672fd42:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5YzYxNWFhYWFmYjQ3NzFjNDI1MWYzNjc1Y2RjMzZkMjE2Y2QwNWViODk3ZDNjNjQ0ZGI1ODU1OGY4ZWNkNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUwM2Y1NmE5ZWQ2NmY4YjM4NjVjMTMzYmY2Nzk1OWNlODExOThmYmU2NWFhYTE0NTVlZjNlMWJhZjAwMDJlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWE2ODljMTFkNGQ4NDk1YWQ1N2ZhZWIwNTY0ODMwNGVhZWM0NjRhZDE2ZjU3ZDM3OTJmOWM2YzUwMmExZmRlNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZiODk2MmI5NmYwNDhmMjliZDY0MzUyOTU4MjQzOGU3MmNiZGI3YzQzMjkzYzAwZjAyOWUwZTEzMmRkZWYwYiJ9"
+          "resource": "repo://crates/decodex-components/src/pin.rs",
+          "version": "repo-file-v1:sha256:7c437f97869fbf5501d28f221091d0d45a4202f9aa3aaaf5898ef702c590e771"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L29-L31",
-          "version": "repo-lines-v1:sha256:5403d23a71a9d90fe02dddf5b9657dbef0b9d0361718988991b03cccc323d766:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGM3NjUzMWJmMmFlYjM1NDI1YzdiNzMyOTAyMzY3MjBmY2JmODBmNTE4MzZmMWU4ZjQ0MDdjN2MzZDVjM2YxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhNTdiZGZlZmRhNGM5ZTkyNmRjM2VlNWMyYTdkZTFkOWIwOTVjNTA3NjdiOGI5NzI1MzQ4Nzg4YmQxMzVlMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmFkYjJiMzhmNWQ4MDEwMDI1NmUxNWQ4ZTUzMTAwMmI1ZTcyZmUxMjRmMTkwOTVjMGMyZTQ3YmQ0YTNmOTE0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T03:36:56.884Z"
+    "at": "2026-10-13T03:59:08.643Z"
   }
 }

@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Runtime architecture"
-description: "Service, native execution, desktop bundle and persistent state ownership."
+description: "Service ownership, fixed Codex components, shared acquisition and app updates."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-13T03:59:08.643Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -10,14 +13,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
+  - id: openwiki-source-cfb92e5db8b3a39d51f6a057
+    resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
-  - id: openwiki-source-c6dbc3a3344bb9841270e6c1
-    resource: repo://crates/decodex-codex/examples/schema_fingerprint.rs
   - id: openwiki-source-94c4593cb5944bf1f2ecf050
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
+  - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
+    resource: repo://crates/decodex-components/src/install.rs
+  - id: openwiki-source-2d990e4e2bc233a95b4894b9
+    resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
@@ -28,16 +35,13 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
     resource: repo://scripts/macos/build_codex_source.test.mts
-  - id: openwiki-source-0e02d239506d0285d4593872
-    resource: repo://scripts/macos/bundle_codex.mts
+  - id: openwiki-source-58e225584250806d8658ea09
+    resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-13T03:36:56.884Z
+generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
 ---
 
 # Runtime Architecture
@@ -77,17 +81,19 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 
 Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
-The runtime lock and its exact source revision define the bundled implementation. Installed applications can still contain an older binary. Check the bundled artifact and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
+The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
 
-## Source runtime qualification
+## Components and app updates
 
-[The runtime lock](../../codex-runtime.lock.json) selects the exact official upstream commit, source archive digest and adapter schema fingerprint. `build_codex_source.mts` verifies the official archive URL and digest, recreates the extracted source cache, then runs the upstream package builder with stable Rust and its locked Cargo graph. It supplies the selected commit as `STABLE_GIT_COMMIT` and rejects a build that changes the upstream Cargo lock or package identity.
+`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Updates & Components shows the selected component, progress, errors and Retry. Sparkle owns the separate Decodex application update flow.
 
-The extractor refreshes file modification times instead of restoring the archive timestamps. This prevents Cargo from accepting stale local source artifacts after extraction. The Cargo build directory remains available for dependency reuse.
+Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 
-The builder checks the package version, target, variant and layout. It signs `CodexCLI.app`, the Code Mode helper and packaged `rg`, then verifies their signatures. `bundle_codex.mts` checks the executable version and generates experimental app-server schemas from that executable. The local `schema_fingerprint` example validates the adapter contract before the fingerprint is compared with the lock. The bundle records the source commit, executable digest and schema fingerprint as separate evidence.
+Development keeps [the reviewed source requirement](../../codex-runtime.lock.json). `cargo make prepare-codex` explicitly builds or imports its qualified artifact. The source builder uses the common checked download path, stable Rust and the unchanged upstream Cargo lock. Its extractor refreshes source modification times while retaining the dependency build cache, so historical archive timestamps cannot select stale local objects. The app does not compile Codex.
 
-A matching schema confirms the admitted protocol structure. Qualify affected behavior with focused native fixtures before updating the lock. Keep source review, artifact qualification, PR delivery and installed-app acceptance separate.
+Development artifacts use the same package verification and installation path. A local receipt binds archive and executable hashes to the fixed source commit and expected schema. CLI and Code Mode helper commit checks reject a different revision. A new artifact becomes selectable only after its installation verifies. Hashes and schema are integrity evidence; affected native regression tests still establish behavior.
+
+Production staging selects a separate official Release requirement. Release pinning requires the Release to contain the current development baseline, and behavioral qualification must cover retained fixes. An older official Release is not a fallback. Packaging includes the requirement and Sparkle, but no Codex binary or schemas. See [Commands and validation](../operations/commands-and-validation.md).
 
 ## Protocol and safety
 
