@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T06:36:14.837Z
+    at: 2026-10-13T07:13:39.526Z
 sources:
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
@@ -35,7 +35,7 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-13T06:36:14.837Z" }
+generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
 ---
 
 # Agent coordination and native conversations
@@ -70,13 +70,13 @@ A future change must define a cutover before moving pending messages. Stop local
 
 ## Archive synchronization
 
-Codex owns the archive state. The service reads the complete native archive across working directories, providers and source kinds. It removes a local work item from the active snapshot only when its exact native thread ID is in that archive. An empty title, a completed status or an unavailable thread is not permission to delete work.
+Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides that work; a positive active observation restores it. An absent ID, an empty title or a completed status does not authorize deletion.
 
-The reader follows native pagination to completion without a fixed page-count ceiling. Each response keeps the transport frame limit, the whole read has a deadline, and retained IDs and cursors consume a bounded budget. Unrelated preview text does not consume that retained-state budget. A malformed or incomplete catalog cannot change visibility.
+The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Transport frame limits, a whole-read deadline and a retained-ID and cursor budget bound the operation. Valid positive observations from completed pages remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility.
 
-The archive catalog refreshes in the background at most once per 15 seconds within the current native process generation. Work snapshots use the last confirmed catalog without waiting for the native read. An incomplete or failed refresh retains that catalog. A new process starts with no inherited archive observations, and a late result from an earlier process cannot replace it. The service does not write a second archive flag into SQLite.
+Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
-The active snapshot supplies the work list and relationship graph. Filtering removes incident relationships, pending-event entries, context references and workspace membership from that view. Live descendants remain visible under their nearest visible ancestor. The stored work and original hierarchy remain intact; a later complete catalog can show them again after restoration in Codex.
+The active snapshot supplies the work list and relationship graph. Filtering removes incident relationships, pending-event entries, context references and workspace membership from that view. Live descendants remain visible under their nearest visible ancestor. The stored work and original hierarchy remain intact; a later positive active observation shows them again after restoration in Codex, without an application restart.
 
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 

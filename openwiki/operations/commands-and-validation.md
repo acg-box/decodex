@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Commands and validation"
-description: "Commands and validation"
+description: "Repository command authority and source, native and desktop acceptance boundaries."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-13T07:14:35.295Z
 sources:
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
@@ -12,6 +15,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
+  - id: openwiki-source-95a7168e447de14b4b758f16
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
@@ -30,10 +35,7 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-13T06:10:39.973Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-13T06:10:39.973Z
+generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
 ---
 
 
@@ -94,6 +96,18 @@ cargo +stable test --locked -p decodex-runtime --lib agent_visibility
 cargo +stable test --locked -p decodex-codex archive_catalog
 cargo +stable test --locked -p decodex-gpui --bin decodex-gpui native_list_removes_retired_tabs
 ```
+
+## Native archive refresh qualification
+
+Use the already available pinned Codex executable for the opt-in cross-process check:
+
+```sh
+DECODEX_TEST_CODEX_BINARY=/absolute/path/to/codex cargo +stable nextest run --locked -p decodex-runtime --lib --run-ignored only -E 'test(installed_native_archive_roundtrip)'
+```
+
+The test creates a private native home and a loopback Responses fixture. It adds 10,300 unrelated archive records, then runs two archive and unarchive cycles through two retained native processes. It checks exact identity, active descendants, restored hierarchy and the absence of additional model turns. Neither process restarts during those cycles. The command does not install a runtime or use the user's conversation store.
+
+The GPUI `archived_selection_parks_exact_draft_and_restores_it_on_unarchive` check covers the list projection, relationship graph and original draft, including attachments and references. These checks support the source build; they do not prove that an older installed app contains the change. Use a freshly built app for interactive acceptance and keep installation separate.
 
 ## Prepare Codex components
 
