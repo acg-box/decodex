@@ -4,6 +4,8 @@ title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
@@ -14,16 +16,28 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-283a40a004fda23504fad7e1
+    resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
+  - id: openwiki-source-5af40fd50adccf5d93ff82a0
+    resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
+  - id: openwiki-source-30c7edf894a639091ecbafc6
+    resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-64d7588c1af50398568a792e
+    resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
+  - id: openwiki-source-0e02d239506d0285d4593872
+    resource: repo://scripts/macos/bundle_codex.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-13T02:44:02.282Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T06:49:11.265Z
+    at: 2026-10-13T02:44:02.282Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -53,6 +67,14 @@ The embedded MCP HTML viewer and local plugin management are retired. Their old 
 ## Proportionate validation
 
 Choose the smallest test that can fail for the changed behavior. Preserve complete failure output and the actual artifact identity. Do not rerun long desktop or physical-provider flows to remove every historical open statement. Use isolated, task-owned fixtures that satisfy the runtime path rules, and remove owned test processes and data when done. Documentation consolidation alone does not justify a fresh model call, application launch or complete Rust rebuild.
+
+## Terminal errors and external context
+
+The terminal projection retains the native turn status and bounds its error details. Capacity retry requires an exact failed-turn readback with `serverOverloaded`. The `quota_other_errors_and_missing_history_do_not_schedule_capacity_retries` test includes the `other` error classification. The `failed_turn_keeps_public_reason_and_explicit_bounds` test checks the public failure reason and its size and privacy limits.
+
+`inject_external_context` sends a `function_call_output` through `thread/inject_items`. The `uncertain_context_injection_or_following_turn_is_not_replayed_after_restart` test checks a lost injection response and a lost follow-up response. Recovery keeps the outcome unknown and does not replay either request.
+
+These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
 ## Native branch and credential fixtures
 
