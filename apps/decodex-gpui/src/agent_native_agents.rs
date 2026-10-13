@@ -1537,7 +1537,35 @@ mod tests {
 
 #[cfg(test)]
 mod archive_visibility_tests {
-	use super::{AgentSurface, NativeConnection};
+	use super::{AgentSnapshotResult, AgentSurface, NativeConnection};
+	#[gpui::test]
+	fn repeated_archive_snapshot_keeps_surviving_conversation_connected(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			for work in &mut s.snapshot.as_mut().unwrap().work_items {
+				work.codex_thread_id = Some(format!("thread-{}", work.id));
+			}
+			s.composer_manager = Some("agent".into());
+			s.selected = Some("flow".into());
+			let mut active = s.snapshot.clone().unwrap();
+			active.work_items.retain(|w| w.id != "agent");
+			active
+				.work_items
+				.iter_mut()
+				.filter(|w| w.parent_goal_id.as_deref() == Some("agent"))
+				.for_each(|w| w.parent_goal_id = None);
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active.clone())), cx);
+			s.native_agents.selected = Some(("flow".into(), "thread-flow".into()));
+			s.native_agents.connection = NativeConnection::Ready;
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert_eq!(s.native_agents.selected, Some(("flow".into(), "thread-flow".into())));
+			assert!(matches!(s.native_agents.connection, NativeConnection::Ready));
+		});
+	}
+
 	#[gpui::test]
 	fn removing_an_unrelated_owner_keeps_the_open_native_conversation(
 		cx: &mut gpui::TestAppContext,

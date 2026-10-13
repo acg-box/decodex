@@ -553,3 +553,118 @@ mod background_read_tests {
 		assert!(panel.feedback.is_empty());
 	}
 }
+
+#[cfg(test)]
+mod visibility_tests {
+	use crate::shell::agent_surface::{
+		AgentSnapshotResult, AgentSurface, Context, drafts::tests::profiles,
+	};
+	use decodex_protocol::{AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto};
+
+	fn fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
+		s.visual_workspace_fixture(cx);
+		let snapshot = s.snapshot.as_mut().unwrap();
+		snapshot.work_items.retain(|w| matches!(w.id.as_str(), "agent" | "release"));
+		snapshot.dependencies.clear();
+		snapshot.pending_events.clear();
+		for work in &mut snapshot.work_items {
+			work.codex_thread_id = Some(format!("thread-{}", work.id));
+			work.kind = AgentWorkKindDto::Manager;
+		}
+	}
+
+	#[gpui::test]
+	fn archived_selection_parks_exact_draft_and_restores_it_on_unarchive(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = profiles();
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.bind_drafts(Some(&profile), cx);
+			fixture(s, cx);
+			s.open_page("agent", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Main draft", cx));
+			s.open_page("release", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Release draft", cx));
+			let file = AgentAttachmentDto {
+				path: decodex_protocol::ConversationWorkingDirectory::new("/tmp/kept.png").unwrap(),
+				image: true,
+				skill_name: None,
+			};
+			let reference = AgentTaskReferenceDto {
+				work_id: decodex_protocol::EntityId::new("agent").unwrap(),
+				thread_id: decodex_protocol::WireText::new("thread-agent").unwrap(),
+				title: decodex_protocol::WireText::new("Main").unwrap(),
+			};
+			s.attachments = vec![file.clone()];
+			s.task_references = vec![reference.clone()];
+			let original = s.snapshot.clone().unwrap();
+			let mut active = original.clone();
+			active.work_items.retain(|w| w.id != "release");
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Main draft");
+			assert!(s.attachments.is_empty() && s.task_references.is_empty());
+			assert_eq!(s.draft_profiles.texts["release"], "Release draft");
+			assert_eq!(s.draft_profiles.files["release"].as_slice(), std::slice::from_ref(&file));
+			assert_eq!(
+				s.draft_profiles.tasks["release"].as_slice(),
+				std::slice::from_ref(&reference)
+			);
+			assert!(!s.conversation_pages().iter().any(|(id, _, _)| id == "release"));
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(original)), cx);
+			s.open_page("release", cx);
+			assert_eq!(s.composer.read(cx).content(), "Release draft");
+			assert_eq!(s.attachments, [file]);
+			assert_eq!(s.task_references, [reference]);
+			assert!(s.draft_owner_available());
+		});
+	}
+
+	#[gpui::test]
+	fn archived_root_cannot_retarget_an_initial_editor(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			fixture(s, cx);
+			s.composer_manager = None;
+			s.composer.update(cx, |input, cx| input.set_content("Root draft", cx));
+			let mut active = s.snapshot.clone().unwrap();
+			active.work_items.retain(|w| w.id == "release");
+			active.work_items[0].parent_goal_id = None;
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert_eq!(s.selected.as_deref(), Some("release"));
+			assert_eq!(s.composer_manager.as_deref(), Some("release"));
+			assert!(s.composer.read(cx).content().is_empty());
+			assert_eq!(s.draft_profiles.texts["agent"], "Root draft");
+		});
+	}
+
+	#[gpui::test]
+	fn no_active_conversation_keeps_draft_without_starting_replacement(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			fixture(s, cx);
+			s.composer_manager = None;
+			s.composer.update(cx, |input, cx| input.set_content("Keep root draft", cx));
+			let original = s.snapshot.clone().unwrap();
+			s.apply_refreshed_snapshot(Err(()), cx);
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
+			let mut active = original.clone();
+			active.work_items.clear();
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert!(s.selected.is_none());
+			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
+			assert!(s.composer_unavailable_reason().is_some());
+			assert!(s.build_submission("Keep root draft", cx).is_err());
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(original)), cx);
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
+			assert!(s.draft_owner_available());
+		});
+	}
+}

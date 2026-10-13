@@ -782,6 +782,11 @@ impl AgentSurface {
 		if self.connection_initializing() {
 			return Some("Connecting to Codex…");
 		}
+		if !self.draft_owner_available() {
+			return Some(
+				"This draft's conversation is unavailable. Select a conversation before sending.",
+			);
+		}
 
 		let selected = self.selected.as_deref()?;
 		let snapshot = self.snapshot.as_ref()?;

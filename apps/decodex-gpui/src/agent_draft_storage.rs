@@ -434,7 +434,7 @@ impl AgentSurface {
 		})
 	}
 
-	pub(super) fn remember_draft_document(&mut self, cx: &Context<Self>) {
+	pub(in super::super) fn remember_draft_document(&mut self, cx: &Context<Self>) {
 		let Some(profile) = self.draft_profiles.active.as_ref() else {
 			if self.composer_manager.is_some() {
 				self.draft_profiles.storage.error = Some(
