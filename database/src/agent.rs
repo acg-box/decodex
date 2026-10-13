@@ -158,6 +158,26 @@ pub struct AgentTurnMetrics {
 }
 
 impl SqliteStore {
+	/// Discard an unused local draft, never an executed or referenced conversation.
+	pub async fn discard_empty_agent_work(&self, id: String) -> Result<(), StoreError> {
+		bounded(&id, 512)?;
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let Some(work) = tx.query_row("SELECT * FROM agent_work_items WHERE id=?1", [&id], work_row).optional().map_err(error::sqlite_error)? else { return Ok(()); };
+			if work.parent_goal_id.is_none() || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
+				return Err(StoreError::InvalidInput("only an unused local draft can be discarded"));
+			}
+			let referenced: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 UNION ALL SELECT 1 FROM agent_prompt_inputs WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_prompt_input_chunks WHERE work_item_id=?1)", [&id], |row| row.get(0)).map_err(error::sqlite_error)?;
+			if referenced { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
+			tx.execute("DELETE FROM agent_root_settings WHERE root_id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM agent_tool_versions WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM agent_managers WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM agent_work_items WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
+			Ok(())
+		}).await
+	}
+
 	/// Read only usage fields from exact completed-turn receipts, without transcript text.
 	pub async fn read_agent_turn_metrics(
 		&self,
@@ -1675,6 +1695,35 @@ mod tests {
 			)
 			.await
 			.unwrap();
+	}
+
+	#[tokio::test]
+	async fn discard_empty_work_preserves_root_bound_history_and_dependencies() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("discard.sqlite3")).unwrap();
+		store.create_agent_work_item(item("root", None)).await.unwrap();
+		for id in ["empty", "bound", "history", "dependency", "dependent"] {
+			store.create_agent_work_item(item(id, Some("root"))).await.unwrap();
+		}
+		store.bind_agent_thread("bound".into(), "native".into()).await.unwrap();
+		store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "saved-input".into(),
+				work_item_id: "history".into(),
+				event_kind: "user_message".into(),
+				payload: "{\"text\":\"Keep this input\"}".into(),
+			})
+			.await
+			.unwrap();
+		store.add_agent_dependency("dependent".into(), "dependency".into()).await.unwrap();
+		store.discard_empty_agent_work("empty".into()).await.unwrap();
+		store.discard_empty_agent_work("empty".into()).await.unwrap();
+		assert!(store.get_agent_work_item("empty".into()).await.is_err());
+		for id in ["root", "bound", "history", "dependency", "dependent"] {
+			assert!(store.discard_empty_agent_work(id.into()).await.is_err(), "must retain {id}");
+			assert!(store.get_agent_work_item(id.into()).await.is_ok());
+		}
+		assert_eq!(store.read_agent_work_events("history".into(), 10).await.unwrap().len(), 1);
 	}
 
 	#[tokio::test]

@@ -510,13 +510,16 @@ impl ServiceApplication {
 			None => None,
 		};
 		let result = query_agent_snapshot(&self.store).await;
-		let after = match &self.agent {
-			Some(agent) => agent.runtime_source().await,
-			None => None,
-		};
 		let mut result = result;
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
+			if let Some(agent) = &self.agent {
+				agent.retain_active_work(snapshot).await;
+			}
+			let after = match &self.agent {
+				Some(agent) => agent.runtime_source().await,
+				None => None,
+			};
 			snapshot.runtime_source = if before == after { after } else { None };
 			snapshot.connection_initializing = initializing
 				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());

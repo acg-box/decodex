@@ -7,6 +7,7 @@ use std::{collections::HashSet, env, error::Error, path::Path, time::Duration};
 
 use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
+#[cfg(target_os = "macos")] use decodex_components as _;
 use futures_util as _;
 use libc as _;
 use reqwest as _;

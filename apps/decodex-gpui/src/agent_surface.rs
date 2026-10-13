@@ -1465,7 +1465,7 @@ impl AgentSurface {
 					_ => true,
 				};
 
-				surface.apply_result(result);
+				surface.apply_refreshed_snapshot(result, cx);
 				if surface.connection_initializing() {
 					cx.notify();
 					return;
@@ -1496,6 +1496,42 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	fn apply_refreshed_snapshot(
+		&mut self,
+		result: Result<AgentSnapshotResult, ()>,
+		cx: &mut Context<Self>,
+	) {
+		let owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let removed = matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
+			if !self.is_new_conversation()
+				&& [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
+					.any(|id| self.snapshot.as_ref().is_some_and(|previous|
+						previous.work_items.iter().any(|work| &work.id == id))
+						&& !snapshot.work_items.iter().any(|work| &work.id == id)));
+
+		if removed {
+			self.stop_voice(cx);
+			// Bind an initial root editor before replacing the snapshot that identifies it.
+			self.composer_manager = owner;
+			self.remember_draft_document(cx);
+		}
+		self.remember_native_draft(cx);
+		self.apply_result(result);
+
+		if removed {
+			if let Some(selected) = self.selected.clone() {
+				// Use normal navigation to park the outgoing draft and restore the target's.
+				self.open_page(&selected, cx);
+			} else {
+				self.close_native_agent(cx);
+				self.history = None;
+				self.request = None;
+				self.request_task = None;
+			}
+			self.remember_draft_document(cx);
+		}
 	}
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {

@@ -25,8 +25,8 @@ use unicode_segmentation as _;
 use unicode_width as _;
 #[cfg(target_os = "macos")]
 use {
-	block2 as _, libwebrtc as _, objc2_audio_toolbox as _, objc2_avf_audio as _,
-	objc2_core_audio_types as _, rtrb as _,
+	block2 as _, decodex_components as _, libwebrtc as _, objc2_audio_toolbox as _,
+	objc2_avf_audio as _, objc2_core_audio_types as _, rtrb as _,
 };
 
 use decodex_protocol::WeatherForecast;

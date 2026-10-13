@@ -22,6 +22,13 @@ use decodex_protocol::{
 /// Explicit Agent operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum AgentCommand {
+	/// Discard an unused local draft; refuses conversations with a thread or history.
+	DiscardEmpty {
+		#[arg(long)]
+		work_id: String,
+		#[arg(long)]
+		idempotency_key: Option<String>,
+	},
 	/// Cancel one pending model-capacity retry shown in history or status.
 	CancelRetry {
 		#[arg(long)]
@@ -250,6 +257,8 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
 	let (action, key) = match command {
+		AgentCommand::DiscardEmpty { work_id, idempotency_key } =>
+			(AgentActionDto::DiscardEmptyWork { work_id: identity(work_id)? }, idempotency_key),
 		AgentCommand::CancelRetry { work_id, event_id, idempotency_key } => {
 			if event_id <= 0 {
 				return Err("retry cancellation requires a positive event identity");
