@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8099798b71f9dcd0395fd9fdb42089eef4a3949b76c88eb7d9fcf44536d58d81",
+  "pageVersion": "sha256:8022d7dae90d02a8bb352f3cf68076b15264b52beae5eb3676bd2fae9a0d513e",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -73,10 +73,68 @@
           "version": "repo-file-v1:sha256:69c8dc7ce60ce7308be8eea518d1200d5f675fdc3ec011d5cbc753845f6b3933"
         }
       ]
+    },
+    {
+      "id": "claim_04a49f4bde47450b94aac685284576f5",
+      "statement": "The terminal projection retains native status and bounded error details; capacity retry requires exact failed-turn readback with serverOverloaded, and existing tests cover Other errors plus public failure size and privacy limits.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L232-L385",
+          "version": "repo-lines-v1:sha256:4085122edd2761423797b9888d0473da9cd5cc2fd115b994034d6982e262ab8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkYjExMmI2ZTkwZjcyZWVkNTc2MjE1YTY1NWU1YzU3OWZlMzQ4ODRkMzFlMTEwNWZiNWMxZjg0NTQ4YjRjZWJiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ODlhOWIwYTBmNDcwYjY5ZmM4ZDU0YmJlMjJiNWM5MmQ0NmM5Y2U5MWQ0NTliYjVlYjcwYTJiOWY2YWQzNWE2In0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs#L9-L38",
+          "version": "repo-lines-v1:sha256:6ad3d595fd482444599d887a9122f62c9a98d14f65423657fea051e381d9d46a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZTVhZDE4OTI3NDRhZjZjODhmN2E3ZTBmNzRiYWY5YmQ4OTI4NTliMmI4YmFlOWQxZmZlMDAzNThmZTg2ZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMWM1NTZmNWRkZWZmYzUxYTJkYzVlNTYzYTMwYjQxZmJiODZiZDZiNzQxMjM2ZTY5ZGJiNDRkNTY2ZTk5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliYjllZjIyNTQxZDQyYWQ4ODFmYWNkNGVjMDNkNzllZmQyZWY5MDhmNzJiZGRmYThiN2YwMTc3YmQxMmE4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmMzhkMDkzZTQ0ODNiMWNjMzVkYTNjNTI5YmUwODZlNWFmNDczOTc5YTMwMjRjNGIxOTVmNWE5NmZiMTIyMTgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs#L238-L271",
+          "version": "repo-lines-v1:sha256:7dfaef33f20b965ea0cfebe46de2f73ee1c17e9833d4a5c9bacbe0ae451318c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZDM0OGU4Y2E2ZTgwNjlhMDUyNzY0ZDcwZjM4MWI3NmFlODcxYTNhMDdkZjc4N2IyZjBjYmE5OTkzNjAzYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5YTY3N2NmNzUxYjQxMTcxYmNjOTYwN2UzNWUyODE1MmRhMTQ4Zjg0NWFmZWVlODU0MTgzMWIxZGExYTY4YzcifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs#L660-L690",
+          "version": "repo-lines-v1:sha256:0bebe01a77d862102d9ccc16c22f1d5162abbe62ddfc85f5e1ae8c1cec2d05d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MThjM2YxMzAyMzIxYWJiZTUzYWI4YjljN2E5M2YzM2UxZDBkM2Q0MDYzNmRmNjZhMzI2MzBlM2I2ZDAzMGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2643304f62594633b72523875e7dd751",
+      "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1340-L1355",
+          "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L234-L287",
+          "version": "repo-lines-v1:sha256:278f4534b98290da78d0bfa76f0bc12e9049d5752bfadbc9ef8fc7564176e733:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNmNiODE2OGJiNDM0NTg3YTJmNDllZWU2N2QwNzE3ODFmYzMwMmQ4MmQyZWIxMzliNmRjMjBmYWI1OTZlZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZmQ3YTYwNWY5YzE2ODliODZmMTU4NjZlYjJmZWVhZTUxYTZhMGI3YTg4NGY5NGFlZGY5NTgzNzI1NmY1MmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNTc5NTNkMDc4MmY3ZTgzMDIzZmFjYzhiMjA0MzBhMmQzNWQ4OTY3OTljMDUzYTAxMTUzYTNmYWVhOWQ3YjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_66593dbb193345228f7adadf2c4612c9",
+      "statement": "The synthetic local terminal-error and external-context tests are a separate evidence layer from qualification of the selected source runtime and from installed-application acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:e18f022aa2893bee091f1e513b4eaea01406a6b969b2fa168f5a8cee92ce2202"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs#L238-L271",
+          "version": "repo-lines-v1:sha256:7dfaef33f20b965ea0cfebe46de2f73ee1c17e9833d4a5c9bacbe0ae451318c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZDM0OGU4Y2E2ZTgwNjlhMDUyNzY0ZDcwZjM4MWI3NmFlODcxYTNhMDdkZjc4N2IyZjBjYmE5OTkzNjAzYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5YTY3N2NmNzUxYjQxMTcxYmNjOTYwN2UzNWUyODE1MmRhMTQ4Zjg0NWFmZWVlODU0MTgzMWIxZGExYTY4YzcifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L234-L287",
+          "version": "repo-lines-v1:sha256:278f4534b98290da78d0bfa76f0bc12e9049d5752bfadbc9ef8fc7564176e733:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOTQ4NGVlZGYzNjRmYjhjMTJmMWViOThmYmY2YTliNGY2NTBmNDI3ODc0YThkNzM1OTAxMGFhZGU0MzFiYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNmNiODE2OGJiNDM0NTg3YTJmNDllZWU2N2QwNzE3ODFmYzMwMmQ4MmQyZWIxMzliNmRjMjBmYWI1OTZlZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZmQ3YTYwNWY5YzE2ODliODZmMTU4NjZlYjJmZWVhZTUxYTZhMGI3YTg4NGY5NGFlZGY5NTgzNzI1NmY1MmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNTc5NTNkMDc4MmY3ZTgzMDIzZmFjYzhiMjA0MzBhMmQzNWQ4OTY3OTljMDUzYTAxMTUzYTNmYWVhOWQ3YjAifQ"
+        },
+        {
+          "resource": "repo://scripts/macos/bundle_codex.mts#L44-L52",
+          "version": "repo-lines-v1:sha256:e02ee9a856f7bb4bbd1f44f7017089fdd53d34d904b7524de853d7425264b00c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjViNWFjOTY0ZjFjMjkzNmEzNGM3NGE5MjNhMjM3MWE0YmIyMzczMjM3NGRlNDJkNmYyZGU3ZTYxMDcyNDdiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg1OGM5MmIwMjg3ODA0YTU4Mjk1Y2E3YTJhODg3NzI1MmE2YjE5YzQwNjQ5ODQ3NDVjNDBiOTM3MWY5NTBiNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWM5NDM3NjkwZmJmZjlhOGFkNGYwMTliN2M1YmFhYWU3ZDdiZmJhZDNhNWU3NmI1NTA5MjViNGExODMzMTA0NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTAxN2VkYzRjNWI5MzE3MzNlZGJjZGRjN2I4MGEyNDIwMmU3NmM0Mjc4ZDkwMGM1M2IyODc5MGI5YTVhZWUwYyJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-13T02:44:02.282Z"
   }
 }

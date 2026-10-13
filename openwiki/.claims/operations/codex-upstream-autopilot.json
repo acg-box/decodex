@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1016034127c70eaf946fe59310d4ad2fdeebc7da46ac3f9fe53ae55320f416ad",
+  "pageVersion": "sha256:f131a6400b9c942628837c1dfd02a1968b7efc76c3ecd7b327e41a9ed3efae25",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -72,7 +72,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:eabdb676f3b26504d750d2f90200e6c812db6f1f5eded67cd285de07c44fb5cd"
+          "version": "repo-file-v1:sha256:e18f022aa2893bee091f1e513b4eaea01406a6b969b2fa168f5a8cee92ce2202"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts#L18-L95",
@@ -129,6 +129,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T02:44:02.282Z"
   }
 }
