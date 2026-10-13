@@ -30,14 +30,20 @@ pub(crate) async fn read(
             return conversation(&value,thread);
         }
 
-        let value = client.request("thread/list",serde_json::json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
+        let value = client.request("thread/list",serde_json::json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"archived":false,"modelProviders":[],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
         let data = value["data"].as_array()?;
 
         if data.len()>100 {return None;}
 
-        let agents = data.iter().filter_map(observation).collect();
+        let agents = data.iter().map(observation).collect::<Option<Vec<_>>>()?;
 
-        Some(NativeAgentsResult::Available { agents, next_cursor: value["nextCursor"].as_str().map(str::to_owned) })
+        let next_cursor = match value.get("nextCursor") {
+            Some(Value::Null) => None,
+            Some(Value::String(cursor)) if !cursor.is_empty() && cursor.len() <= 4_096 => Some(cursor.clone()),
+            _ => return None,
+        };
+
+        Some(NativeAgentsResult::Available { agents, next_cursor })
     }).await;
 
 	result.ok().flatten().unwrap_or(NativeAgentsResult::Unavailable)

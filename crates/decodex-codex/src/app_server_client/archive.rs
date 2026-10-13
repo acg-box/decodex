@@ -20,6 +20,15 @@ pub enum ThreadArchiveState {
 }
 
 impl AppServerClient {
+	/// Read the complete native archive once for a group of local work bindings.
+	/// Failure leaves visibility unchanged; absence is never treated as deletion.
+	pub async fn archived_threads(&self) -> Result<HashSet<String>, ClientError> {
+		let mut budget = MAX_FRAME_BYTES;
+		time::timeout(Duration::from_secs(8), self.archive_catalog(None, true, None, &mut budget))
+			.await
+			.map_err(|_| ClientError::Io)?
+	}
+
 	/// Inspect both lists with explicit provider/source filters and bounded pagination.
 	/// An incomplete scan is an error, never evidence that a thread is absent.
 	pub async fn thread_archive_state(
@@ -62,42 +71,42 @@ impl AppServerClient {
 		archived: bool,
 		budget: &mut usize,
 	) -> Result<bool, ClientError> {
+		Ok(self.archive_catalog(Some(cwd), archived, Some(thread), budget).await?.contains(thread))
+	}
+
+	async fn archive_catalog(
+		&self,
+		cwd: Option<&str>,
+		archived: bool,
+		target: Option<&str>,
+		budget: &mut usize,
+	) -> Result<HashSet<String>, ClientError> {
 		let mut cursor: Option<String> = None;
 		let mut cursors = HashSet::new();
 		let mut ids = HashSet::new();
-
 		for _ in 0..100 {
-			let page = self.request("thread/list", serde_json::json!({
-				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],"cwd":cwd,
-                // Archive membership is native state; do not rescan every rollout on each UI poll.
-                "useStateDbOnly":true,
-				// An empty sourceKinds list means interactive sources, not all sources.
+			let mut params = serde_json::json!({
+				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],
+				"useStateDbOnly":true,
 				"sourceKinds":["cli","vscode","exec","appServer","subAgent","subAgentReview","subAgentCompact","subAgentThreadSpawn","subAgentOther","unknown"]
-			})).await?;
-
+			});
+			if let Some(cwd) = cwd {
+				params["cwd"] = serde_json::json!(cwd);
+			}
+			let page = self.request("thread/list", params).await?;
 			*budget =
 				budget.checked_sub(page.to_string().len()).ok_or(ClientError::CapacityExceeded)?;
-
 			let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
-
 			if data.len() > 100 {
 				return Err(ClientError::InvalidFrame);
 			}
-
-			let mut found = false;
-
 			for item in data {
 				let id = item["id"].as_str().ok_or(ClientError::InvalidFrame)?;
-
 				valid_id(id)?;
-
 				if !ids.insert(id.to_owned()) {
 					return Err(ClientError::InvalidFrame);
 				}
-
-				found |= id == thread;
 			}
-
 			let next = match page.get("nextCursor") {
 				Some(Value::Null) => None,
 				Some(Value::String(next))
@@ -105,18 +114,11 @@ impl AppServerClient {
 					Some(next.clone()),
 				_ => return Err(ClientError::InvalidFrame),
 			};
-
-			if found {
-				return Ok(true);
+			if target.is_some_and(|id| ids.contains(id)) || next.is_none() {
+				return Ok(ids);
 			}
-
-			let Some(next) = next else {
-				return Ok(false);
-			};
-
-			cursor = Some(next);
+			cursor = next;
 		}
-
 		Err(ClientError::CapacityExceeded)
 	}
 
@@ -169,6 +171,60 @@ mod tests {
 
 	fn page(ids: &[&str], next: Value) -> Value {
 		serde_json::json!({"data":ids.iter().map(|id|serde_json::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
+	}
+
+	async fn inspect_catalog(
+		pages: Vec<Value>,
+	) -> Result<std::collections::HashSet<String>, ClientError> {
+		let (local, remote) = io::duplex(65_536);
+		let (r, w) = io::split(local);
+		let (client, _events) = AppServerClient::from_io(r, w);
+		let server = tokio::spawn(async move {
+			let (r, mut w) = io::split(remote);
+			let mut lines = BufReader::new(r).lines();
+			for page in pages {
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "thread/list");
+				assert_eq!(request["params"]["archived"], true);
+				assert_eq!(request["params"]["useStateDbOnly"], true);
+				assert_eq!(request["params"]["sourceKinds"].as_array().unwrap().len(), 10);
+				assert!(
+					request["params"].get("projectId").is_none(),
+					"unassigned threads must be included"
+				);
+				w.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":page}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+			}
+		});
+		let result = client.archived_threads().await;
+		client.close();
+		server.await.unwrap();
+		result
+	}
+
+	#[tokio::test]
+	async fn archive_catalog_reads_all_pages_and_rejects_partial_results() {
+		let result = inspect_catalog(vec![
+			page(&["first"], serde_json::json!("next")),
+			page(&["second"], Value::Null),
+		])
+		.await
+		.unwrap();
+		assert_eq!(result, std::collections::HashSet::from(["first".into(), "second".into()]));
+		for pages in [
+			vec![page(&["first"], serde_json::json!("next"))],
+			vec![
+				page(&["first"], serde_json::json!("loop")),
+				page(&["second"], serde_json::json!("loop")),
+			],
+		] {
+			assert!(inspect_catalog(pages).await.is_err());
+		}
 	}
 
 	async fn inspect(pages: Vec<Value>) -> Result<ThreadArchiveState, ClientError> {

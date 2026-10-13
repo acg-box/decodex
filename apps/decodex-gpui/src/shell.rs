@@ -7656,7 +7656,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for (index, expected) in
-			[(0, Destination::Settings), (2, Destination::Accounts), (3, Destination::Health)]
+			[(0, Destination::Settings), (3, Destination::Accounts), (4, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 

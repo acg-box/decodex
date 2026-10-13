@@ -1465,6 +1465,9 @@ impl AgentSurface {
 					_ => true,
 				};
 
+				if changed {
+					surface.remember_native_draft(cx);
+				}
 				surface.apply_result(result);
 				if surface.connection_initializing() {
 					cx.notify();

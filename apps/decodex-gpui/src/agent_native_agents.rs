@@ -211,24 +211,54 @@ impl AgentSurface {
 	}
 
 	pub(super) fn invalidate_native_agents(&mut self, next: &AgentSnapshotDto) {
-		if self.snapshot.as_ref().is_some_and(|previous| {
-			previous.runtime_source != next.runtime_source
-				|| previous.work_items.iter().any(|old| {
-					old.codex_thread_id.is_some()
-						&& next
-							.work_items
-							.iter()
-							.find(|new| new.id == old.id)
-							.is_none_or(|new| new.codex_thread_id != old.codex_thread_id)
-				})
-		}) {
-			self.reset_native_agents();
-
+		let Some(previous) = &self.snapshot else {
+			return;
+		};
+		if previous.runtime_source != next.runtime_source {
 			self.restore_native_parent();
+			self.reset_native_agents();
 			self.native_agents.timelines.clear();
 			self.workspace.pages.retain(|p| !self.native_agents.pages.contains_key(p));
 			self.native_agents.pages.clear();
+			return;
 		}
+		let removed: BTreeSet<_> = previous
+			.work_items
+			.iter()
+			.filter(|old| {
+				old.codex_thread_id.is_some()
+					&& next
+						.work_items
+						.iter()
+						.find(|new| new.id == old.id)
+						.is_none_or(|new| new.codex_thread_id != old.codex_thread_id)
+			})
+			.map(|work| work.id.clone())
+			.collect();
+		if removed.is_empty() {
+			return;
+		}
+		if self.native_agents.selected.as_ref().is_some_and(|(owner, _)| removed.contains(owner)) {
+			self.restore_native_parent();
+			self.native_agents.detail = None;
+			self.native_agents.detail_task = None;
+			self.native_agents.next_detail = None;
+		}
+		if self.native_agents.pending.as_ref().is_some_and(|target| removed.contains(&target.work))
+		{
+			if let Some(target) = self.native_agents.pending.take() {
+				self.native_agents.uncertain.insert(target);
+			}
+			self.native_agents.send_task = None;
+		}
+		self.native_agents.task = None;
+		self.native_agents.next = None;
+		self.native_agents.lists.retain(|owner, _| !removed.contains(owner));
+		self.native_agents.timelines.retain(|(owner, _), _| !removed.contains(owner));
+		self.workspace.pages.retain(|page| {
+			self.native_agents.pages.get(page).is_none_or(|(owner, _)| !removed.contains(owner))
+		});
+		self.native_agents.pages.retain(|_, (owner, _)| !removed.contains(owner));
 	}
 
 	fn restore_native_parent(&mut self) {
@@ -241,16 +271,66 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn close_native_agent(&mut self, cx: &mut Context<Self>) {
+	pub(super) fn remember_native_draft(&mut self, cx: &mut Context<Self>) {
 		if let (Some(target), Some(input)) = (&self.native_agents.editor, &self.native_agents.input)
 		{
 			self.native_agents.drafts.insert(target.clone(), input.read(cx).content().into());
 		}
+	}
+
+	pub(super) fn close_native_agent(&mut self, cx: &mut Context<Self>) {
+		self.remember_native_draft(cx);
 
 		self.restore_native_parent();
 		self.native_agents.detail = None;
 		self.native_agents.detail_task = None;
 		self.native_agents.next_detail = None;
+	}
+
+	fn apply_native_list(
+		&mut self,
+		owner: String,
+		list: Vec<NativeAgentDto>,
+		cx: &mut Context<Self>,
+	) {
+		let mut active: BTreeSet<_> = list.iter().map(|agent| agent.thread_id.clone()).collect();
+		if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
+			snapshot.work_items.iter().find(|work| work.id == owner)?.codex_thread_id.clone()
+		}) {
+			active.insert(root);
+		}
+		if self
+			.native_agents
+			.selected
+			.as_ref()
+			.is_some_and(|(work, thread)| work == &owner && !active.contains(thread.as_str()))
+		{
+			self.close_native_agent(cx);
+		}
+		if self
+			.native_agents
+			.pending
+			.as_ref()
+			.is_some_and(|target| target.work == owner && !active.contains(target.thread.as_str()))
+		{
+			if let Some(target) = self.native_agents.pending.take() {
+				self.native_agents.uncertain.insert(target);
+			}
+			self.native_agents.send_task = None;
+		}
+		self.native_agents
+			.timelines
+			.retain(|(work, thread), _| work != &owner || active.contains(thread.as_str()));
+		self.workspace.pages.retain(|page| {
+			self.native_agents
+				.pages
+				.get(page)
+				.is_none_or(|(work, thread)| work != &owner || active.contains(thread.as_str()))
+		});
+		self.native_agents
+			.pages
+			.retain(|_, (work, thread)| work != &owner || active.contains(thread.as_str()));
+		self.native_agents.lists.insert(owner, list);
 	}
 
 	pub(super) fn poll_native_agents(&mut self, cx: &mut Context<Self>) {
@@ -358,7 +438,7 @@ impl AgentSurface {
 								continue;
 							};
 							if s.native_agents.lists.get(&owner) != Some(&list) {
-								s.native_agents.lists.insert(owner, list);
+								s.apply_native_list(owner, list, cx);
 
 								changed = true;
 							}
@@ -866,6 +946,51 @@ mod tests {
 			can_input: Some(true),
 			active_turn: None,
 		}
+	}
+
+	#[gpui::test]
+	fn native_list_removes_retired_tabs_and_preserves_conversation_drafts(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			bind_fixture(s, profile, cx);
+			s.composer.update(cx, |input, cx| input.set_content("Parent draft", cx));
+			s.enter_native_conversation("agent", "child-a", cx);
+			s.conversation_composer().clone().update(cx, |input, cx| {
+				input.set_content("Child A draft", cx);
+			});
+			s.enter_native_conversation("agent", "child-b", cx);
+			s.conversation_composer().clone().update(cx, |input, cx| {
+				input.set_content("Child B draft", cx);
+			});
+			s.apply_native_list(
+				"agent".into(),
+				vec![NativeAgentDto {
+					thread_id: "child-b".into(),
+					parent_thread_id: "parent".into(),
+					title: "Live child".into(),
+					task: String::new(),
+					status: "idle".into(),
+				}],
+				cx,
+			);
+			assert_eq!(s.native_agents.selected, Some(("agent".into(), "child-b".into())));
+			assert_eq!(s.conversation_composer().read(cx).content(), "Child B draft");
+			assert!(!s.workspace.pages.contains(&"native:agent:child-a".into()));
+			assert!(s.workspace.pages.contains(&"native:agent:child-b".into()));
+			s.apply_native_list("agent".into(), vec![], cx);
+			assert!(s.native_agents.selected.is_none());
+			assert_eq!(s.conversation_composer().read(cx).content(), "Parent draft");
+			assert!(!s.workspace.pages.contains(&"native:agent:child-b".into()));
+			s.enter_native_conversation("agent", "child-b", cx);
+			assert_eq!(s.conversation_composer().read(cx).content(), "Child B draft");
+			s.enter_native_conversation("agent", "parent", cx);
+			s.apply_native_list("agent".into(), vec![], cx);
+			assert_eq!(s.native_agents.selected, Some(("agent".into(), "parent".into())));
+		});
 	}
 
 	#[gpui::test]
@@ -1406,6 +1531,41 @@ mod tests {
 				s.native_agents.input.as_ref().unwrap().read(cx).content(),
 				"Not dispatched"
 			);
+		});
+	}
+}
+
+#[cfg(test)]
+mod archive_visibility_tests {
+	use super::{AgentSurface, NativeConnection};
+	#[gpui::test]
+	fn removing_an_unrelated_owner_keeps_the_open_native_conversation(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			for work in &mut s.snapshot.as_mut().unwrap().work_items {
+				work.codex_thread_id = Some(format!("thread-{}", work.id));
+			}
+			s.native_agents.selected = Some(("agent".into(), "native-child".into()));
+			s.native_agents.connection = NativeConnection::Ready;
+			for owner in ["agent", "flow"] {
+				s.native_agents.lists.insert(owner.into(), vec![]);
+				s.native_agents
+					.pages
+					.insert(format!("page-{owner}"), (owner.into(), format!("child-{owner}")));
+				s.workspace.pages.push(format!("page-{owner}"));
+			}
+			let mut next = s.snapshot.clone().unwrap();
+			next.work_items.retain(|w| w.id != "flow");
+			s.invalidate_native_agents(&next);
+			assert_eq!(s.native_agents.selected, Some(("agent".into(), "native-child".into())));
+			assert!(matches!(s.native_agents.connection, NativeConnection::Ready));
+			assert!(s.native_agents.lists.contains_key("agent"));
+			assert!(!s.native_agents.lists.contains_key("flow"));
+			assert!(s.workspace.pages.iter().any(|p| p == "page-agent"));
+			assert!(!s.workspace.pages.iter().any(|p| p == "page-flow"));
 		});
 	}
 }

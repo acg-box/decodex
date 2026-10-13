@@ -35,6 +35,7 @@ mod agent_skill_roots;
 mod agent_skills;
 mod agent_transcript;
 mod agent_usage_estimate;
+mod agent_visibility;
 mod agent_voice;
 mod agent_voice_settings;
 mod application;
