@@ -896,11 +896,11 @@ impl AgentHost {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 
-						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..});
 
-						if !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
+						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
-						let suppress_wake = history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
+						let suppress_wake = defer_dispatch || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
 
 						self.recaps.note_input(&request.action);
 
@@ -1444,6 +1444,13 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			AgentActionDto::DiscardEmptyWork { work_id } => {
+				self.store
+					.discard_empty_agent_work(work_id.as_str().into())
+					.await
+					.map_err(|_| "The draft contains work and cannot be discarded")?;
+				Ok(work_id.as_str().into())
+			},
 			action @ (AgentActionDto::AddWorkspace { .. }
 			| AgentActionDto::NewConversation { .. }) =>
 				self.handle_workspace_action(&key, action, active).await,

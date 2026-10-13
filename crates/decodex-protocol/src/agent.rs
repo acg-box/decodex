@@ -380,6 +380,11 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Discard an exact unused local draft. Bound threads and retained work are rejected.
+	DiscardEmptyWork {
+		/// Local draft selected for cleanup.
+		work_id: EntityId,
+	},
 	/// Register a folder without starting a conversation or agent.
 	AddWorkspace {
 		/// Stable folder identity supplied by the desktop.

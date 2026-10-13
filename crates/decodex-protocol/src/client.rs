@@ -3562,7 +3562,8 @@ impl<T> CompletedOneShot<T> {
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
 		AgentActionDto::AddWorkspace { workspace_id, .. } => workspace_id,
-		AgentActionDto::NewConversation { work_id, .. } => work_id,
+		AgentActionDto::NewConversation { work_id, .. }
+		| AgentActionDto::DiscardEmptyWork { work_id } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
 		AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
 		AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
