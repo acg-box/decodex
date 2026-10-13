@@ -1,9 +1,9 @@
 {
   "version": "0.0.0",
-  "upstreamCommit": "b3c3bad9760fc2214fab2e93659c240d147e6168",
+  "upstreamCommit": "0c329ad2c9d5a2592128a1d536c66e16f9397e46",
   "source": {
-    "url": "https://codeload.github.com/openai/codex/tar.gz/b3c3bad9760fc2214fab2e93659c240d147e6168",
-    "sha256": "06ea7c50a41a6529c13c6756a11476f73dc78b04d5bcefdbd3bf7596b3cbe9c2"
+    "url": "https://codeload.github.com/openai/codex/tar.gz/0c329ad2c9d5a2592128a1d536c66e16f9397e46",
+    "sha256": "6251735a131fd49698fb463cb434e5b09435fa55bce7b891de584816e1b49867"
   },
   "targets": {
     "aarch64-apple-darwin": {
