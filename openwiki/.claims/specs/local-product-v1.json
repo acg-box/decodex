@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3cada83579aa3bc0e81146c2605d9ade17e8bdb29afc7c0ecd39dd3f9a5e2359",
+  "pageVersion": "sha256:327e34cf2c67d5af5e757e979bde98f4a6bcda146038c8789d65fb59e345889b",
   "claims": [
     {
       "id": "claim_43cc36a83ec3487a92f18c719c5bdd1a",
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -64,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -103,6 +103,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:10:39.973Z"
+    "at": "2026-10-13T07:37:30.807Z"
   }
 }

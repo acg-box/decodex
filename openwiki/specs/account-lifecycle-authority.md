@@ -10,10 +10,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+  - id: openwiki-source-63bea5f3704fcd7e4b161192
+    resource: repo://database/src/account_lifecycle.rs
+generated: { by: "codex", at: "2026-10-13T07:37:30.807Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T18:37:44.705Z
+    at: 2026-10-13T07:37:30.807Z
 ---
 
 # Account lifecycle authority
@@ -42,10 +44,12 @@ A generation-bound refresh callback may return a registry successor only for the
 
 Enable/disable, order, selection, logout and manual recovery are service-owned operations. Durable state must survive restart; a timeout after a provider effect is not a fresh attempt authorization. Route, ordinary conversation account continuity, Agent account rotation, Reset Card redemption and weekly activation have different state owners and must not be conflated.
 
+An explicit logout can recover from a refresh that was rejected by the provider or from access rejected after refresh. It reuses the exact recovery-operation link used by verified reauthentication. Preparation and commit require the same account revision and credential binding. The failed refresh keeps its original reason and becomes superseded only after the logout commits. Pending effects and ambiguous provider outcomes remain blocked.
+
 Current startup preserves SQLite migrations and user state. Historical disposable-store instructions do not apply. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Agent coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
 
 For imported native PAT accounts and their separate identity recheck path, read [account routing and recovery](../operations/accounts-and-routing.md).
 
 ## Tests
 
-Use AccountService, shared-auth coordinator, account-login and SQLite lifecycle tests for exact revision, refresh-race, receipt and restart behavior. Live authentication, provider quota and actual application ownership require separate acceptance evidence.
+Use AccountService, shared-auth coordinator, account-login and SQLite lifecycle tests for exact revision, refresh-race, receipt and restart behavior. The rejected-refresh logout regression covers direct and command execution, durable command replay, and startup reconciliation. The ambiguous-refresh regression verifies that logout leaves credentials intact. Live authentication, provider quota and actual application ownership require separate acceptance evidence.

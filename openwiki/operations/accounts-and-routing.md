@@ -28,12 +28,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
+  - id: openwiki-source-63bea5f3704fcd7e4b161192
+    resource: repo://database/src/account_lifecycle.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
+generated: { by: "codex", at: "2026-10-13T07:37:30.807Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T06:10:39.973Z
+    at: 2026-10-13T07:37:30.807Z
 ---
 
 # Account routing and recovery
@@ -43,6 +45,12 @@ verified:
 `AccountService` owns account credentials, route selection and refresh coordination. Clients submit typed commands and receive credential-free results. Current Route is a synchronous service transaction: it holds route/account locks, checks revisions and native liveness, refreshes when needed, compares the exact shared-auth source, reads back and records authoritative completion or refusal.
 
 Same-account refresh converges on one token lineage. If native Codex rotates first, Decodex can adopt the valid non-older same-account winner instead of writing back a losing token or making another provider refresh. A live unrelated credential owner or changed source can reject a route. Stored observations are not authorization to redirect unrelated account APIs.
+
+## Sign out after a rejected refresh
+
+A rejected credential refresh does not require another login before Sign out. The service links the logout to the exact failed refresh and rechecks the current account revision and credential binding. When logout commits, it marks that failure as superseded and retains its original reason in the operation journal. A repeated logout command returns its saved result.
+
+An operation that is still pending or has an ambiguous provider result continues to block logout. Resolve that operation through its existing recovery flow. Removing a Decodex account does not change the shared Codex login.
 
 ## Imported ChatGPT personal access tokens
 
