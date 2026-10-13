@@ -8,7 +8,7 @@ import { extractSourceArchive, validateSource } from './build_codex_source.mts';
 
 test('source builds require the exact official commit archive', () => {
   const upstreamCommit = 'a'.repeat(40);
-  const lock = { version: '0.0.0', upstreamCommit, source: {
+  const lock = { version: '0.0.0', upstreamCommit, targets: {}, source: {
     url: `https://codeload.github.com/openai/codex/tar.gz/${upstreamCommit}`, sha256: 'b'.repeat(64),
   } };
   assert.doesNotThrow(() => validateSource(lock));

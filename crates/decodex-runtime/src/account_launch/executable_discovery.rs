@@ -1,4 +1,4 @@
-//! Packaged apps use their pinned runtime; development falls back to installed Codex.
+//! Desktop and development builds select the same verified component cache.
 use std::{
 	env,
 	ffi::OsString,
@@ -7,68 +7,22 @@ use std::{
 
 pub(super) fn find(requested: &Path) -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
-	if requested == Path::new("codex")
-		&& let Some(contents) = bundled_contents()
-	{
-		// A broken packaged runtime must not silently switch to an unrelated installation.
-		return Some(contents.join("Resources/CodexRuntime/CodexCLI.app/Contents/MacOS/codex"));
-	}
-	#[cfg(not(target_os = "macos"))]
-	let applications = Vec::new();
-	#[cfg(target_os = "macos")]
-	let mut applications = Vec::new();
-
-	#[cfg(target_os = "macos")]
 	if requested == Path::new("codex") {
-		if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
-			applications.push(PathBuf::from(home).join("Applications"));
-		}
-
-		applications.push(PathBuf::from("/Applications"));
+		let lock = decodex_components::RuntimeLock::embedded().ok()?;
+		return decodex_components::ComponentStore::for_user()
+			.ok()?
+			.paths(&lock)
+			.ok()
+			.map(|runtime| runtime.executable);
 	}
-
-	select(requested, &applications, env::var_os("PATH"))
+	select(requested, env::var_os("PATH"))
 }
 
-#[cfg(target_os = "macos")]
-pub(super) fn bundled_contents() -> Option<PathBuf> {
-	bundle_contents_for(&env::current_exe().ok()?)
-}
-
-#[cfg(any(target_os = "macos", test))]
-fn bundle_contents_for(executable: &Path) -> Option<PathBuf> {
-	let owner = executable.parent()?;
-	if !matches!(owner.file_name()?.to_str()?, "Helpers" | "MacOS") {
-		return None;
-	}
-	let contents = owner.parent()?;
-	if contents.file_name()? != "Contents" || contents.parent()?.extension()? != "app" {
-		return None;
-	}
-	Some(contents.to_owned())
-}
-
-fn select(requested: &Path, applications: &[PathBuf], path: Option<OsString>) -> Option<PathBuf> {
-	// An explicit executable path remains an explicit selection, including in native tests.
+fn select(requested: &Path, path: Option<OsString>) -> Option<PathBuf> {
+	// Explicit executables remain available to callers and native acceptance fixtures.
 	if requested.components().count() > 1 {
 		return Some(requested.to_owned());
 	}
-	if requested == Path::new("codex") {
-		for directory in applications {
-			for relative in [
-				"ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-				"Codex.app/Contents/Resources/codex",
-				"ChatGPT.app/Contents/Resources/codex",
-			] {
-				let candidate = directory.join(relative);
-
-				if candidate.is_file() {
-					return Some(candidate);
-				}
-			}
-		}
-	}
-
 	env::split_paths(&path?)
 		.map(|directory| directory.join(requested))
 		.find(|candidate| candidate.is_file())
@@ -76,86 +30,29 @@ fn select(requested: &Path, applications: &[PathBuf], path: Option<OsString>) ->
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, slice};
+	use super::*;
+	use std::fs;
 
-	use crate::account_launch::process::executable_discovery::{self, Path, env};
-
+	#[cfg(target_os = "macos")]
 	#[test]
-	fn packaged_runtime_is_relative_to_the_running_app() {
-		for executable in ["Helpers/decodex", "MacOS/decodex-gpui"] {
-			assert_eq!(
-				executable_discovery::bundle_contents_for(
-					&Path::new("/Moved/Renamed.app/Contents").join(executable)
-				),
-				Some("/Moved/Renamed.app/Contents".into())
-			);
-		}
-		assert!(
-			executable_discovery::bundle_contents_for(Path::new("/repo/target/release/decodex"))
-				.is_none()
-		);
+	fn development_and_packaged_processes_select_the_same_pinned_runtime() {
+		let lock = decodex_components::RuntimeLock::embedded().expect("embedded lock");
+		let expected = decodex_components::ComponentStore::for_user()
+			.expect("store")
+			.paths(&lock)
+			.ok()
+			.map(|runtime| runtime.executable);
+		assert_eq!(find(Path::new("codex")), expected);
 	}
 
 	#[test]
-	fn app_wins_over_path_and_works_without_shell_path() {
+	fn named_tools_use_path_and_explicit_paths_are_preserved() {
 		let root = tempfile::tempdir().unwrap();
-		let app = root.path().join("Applications");
-		let bundled =
-			app.join("ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex");
-
-		fs::create_dir_all(bundled.parent().unwrap()).unwrap();
-		fs::write(&bundled, b"fixture").unwrap();
-
-		let bin = root.path().join("bin");
-
-		fs::create_dir(&bin).unwrap();
-		fs::write(bin.join("codex"), b"fixture").unwrap();
-
-		let path = env::join_paths([bin]).unwrap();
-
-		assert_eq!(
-			executable_discovery::select(Path::new("codex"), slice::from_ref(&app), Some(path)),
-			Some(bundled.clone())
-		);
-		assert_eq!(executable_discovery::select(Path::new("codex"), &[app], None), Some(bundled));
-	}
-
-	#[test]
-	fn missing_app_uses_path_and_explicit_paths_are_preserved() {
-		let root = tempfile::tempdir().unwrap();
-		let binary = root.path().join("codex");
-
+		let binary = root.path().join("tool");
 		fs::write(&binary, b"fixture").unwrap();
-
 		let path = env::join_paths([root.path()]).unwrap();
-
-		assert_eq!(
-			executable_discovery::select(
-				Path::new("codex"),
-				&[root.path().join("Applications")],
-				Some(path)
-			),
-			Some(binary.clone())
-		);
-		assert_eq!(executable_discovery::select(&binary, &[], None), Some(binary));
-		assert_eq!(executable_discovery::select(Path::new("codex"), &[], None), None);
-	}
-
-	#[test]
-	fn standalone_codex_app_is_supported_without_changing_other_programs() {
-		let root = tempfile::tempdir().unwrap();
-		let binary = root.path().join("Codex.app/Contents/Resources/codex");
-
-		fs::create_dir_all(binary.parent().unwrap()).unwrap();
-		fs::write(&binary, b"fixture").unwrap();
-
-		assert_eq!(
-			executable_discovery::select(Path::new("codex"), &[root.path().to_owned()], None),
-			Some(binary)
-		);
-		assert_eq!(
-			executable_discovery::select(Path::new("python3"), &[root.path().to_owned()], None),
-			None
-		);
+		assert_eq!(select(Path::new("tool"), Some(path)), Some(binary.clone()));
+		assert_eq!(select(&binary, None), Some(binary));
+		assert_eq!(select(Path::new("tool"), None), None);
 	}
 }

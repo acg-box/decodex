@@ -7,6 +7,7 @@ members = [
 	"crates/decodex-account-login",
 	"crates/decodex-app-client-ffi",
 	"crates/decodex-codex",
+	"crates/decodex-components",
 	"crates/decodex-core",
 	"crates/decodex-protocol",
 	"crates/decodex-runtime",
@@ -27,6 +28,7 @@ version     = "0.2.0"
 [workspace.dependencies]
 decodex-account-login = { path = "crates/decodex-account-login" }
 decodex-codex         = { path = "crates/decodex-codex" }
+decodex-components    = { path = "crates/decodex-components" }
 decodex-core          = { path = "crates/decodex-core" }
 decodex-database      = { path = "database" }
 decodex-protocol      = { path = "crates/decodex-protocol" }
@@ -58,6 +60,7 @@ rtrb                   = { version = "~0.4" }
 rusqlite               = { version = "~0.40", features = ["bundled"] }
 rustix                 = { version = "~1.1", features = ["fs"] }
 security-framework     = { version = "~3.7", default-features = false, features = ["OSX_10_15"] }
+semver                 = { version = "~1.0" }
 serde                  = { version = "~1.0", features = ["derive"] }
 serde_json             = { version = "~1.0" }
 sha1                   = { version = "~0.11" }

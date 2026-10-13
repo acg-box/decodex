@@ -1586,6 +1586,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "decodex-components"
+version = "0.2.0"
+dependencies = [
+ "decodex-codex",
+ "reqwest 0.13.5",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+]
+
+[[package]]
 name = "decodex-core"
 version = "0.2.0"
 dependencies = [
@@ -1637,6 +1650,7 @@ name = "decodex-gpui"
 version = "0.2.0"
 dependencies = [
  "block2 0.6.2",
+ "decodex-components",
  "decodex-protocol",
  "futures-util",
  "gpui",
@@ -1706,6 +1720,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "decodex-account-login",
  "decodex-codex",
+ "decodex-components",
  "decodex-core",
  "decodex-database",
  "decodex-protocol",

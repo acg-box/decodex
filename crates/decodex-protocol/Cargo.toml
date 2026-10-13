@@ -9,7 +9,7 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-base64           = { workspace = true }
+base64            = { workspace = true }
 decodex-core      = { workspace = true }
 futures-util      = { workspace = true }
 percent-encoding  = { workspace = true }

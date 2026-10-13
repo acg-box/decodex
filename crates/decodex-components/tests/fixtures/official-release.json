@@ -1,0 +1,13 @@
+{
+  "version": "0.162.1",
+  "tag": "rust-v0.162.1",
+  "upstreamCommit": "092d3acd6bec3e3a14bdc7e7a2810ab628ab759d",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.162.1/codex-provisioned-package-aarch64-apple-darwin.tar.gz",
+      "sha256": "41e3107cf5552381535ff6a11650412f5d9eeff4a9d1566c404a05941125ee9d",
+      "executableSha256": "945b9c9703bd5f666a56b3389abb2702852a845ffb1c63b882e3d5e7844466d6",
+      "schemaSha256": "bef459a3c5f6515a9cbf706e60e92711f32af3d45eb54dedb1b1940e8e701cf9"
+    }
+  }
+}

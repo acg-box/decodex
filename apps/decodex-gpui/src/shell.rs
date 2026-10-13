@@ -183,7 +183,7 @@ pub(crate) struct Shell {
 	connection: ConnectionView,
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
-	settings_focus: [FocusHandle; 4],
+	settings_focus: [FocusHandle; 5],
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
 	agent: Entity<AgentSurface>,
@@ -2560,6 +2560,7 @@ fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
 		shell.poll_reset_cards(cx);
+		shell.settings.update(cx, |settings, cx| settings.poll_updates(cx));
 
 		let accounts = shell.accounts_controller.snapshot();
 
@@ -5800,6 +5801,7 @@ fn settings_navigation(
 	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+		(Destination::Settings, Some(SettingsCategory::Updates), "Updates & Components"),
 		(Destination::Accounts, None, "Accounts"),
 		(Destination::Health, None, "Diagnostics"),
 	]
@@ -7683,6 +7685,7 @@ mod tests {
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Updates)),
 			(Destination::Accounts, None),
 			(Destination::Health, None),
 		]

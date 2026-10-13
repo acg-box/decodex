@@ -1,13 +1,14 @@
 // Build the exact reviewed upstream commit with its native package builder.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export type SourceLock = {
   version: string;
   upstreamCommit: string;
   source: { url: string; sha256: string };
+  targets: Record<string, { schemaSha256: string }>;
 };
 
 export async function digest(path: string): Promise<string> {
@@ -37,15 +38,10 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
   const cache = join(root, 'target/codex-source', lock.upstreamCommit);
   mkdirSync(cache, { recursive: true });
   const archive = join(cache, 'source.tar.gz');
-  if (!existsSync(archive)) {
-    const partial = `${archive}.partial`;
-    try {
-      execFileSync('curl', ['--fail', '--location', '--retry', '2', '--output', partial, lock.source.url], { stdio: 'inherit' });
-      if (await digest(partial) !== lock.source.sha256) throw new Error('Codex source archive digest mismatch.');
-      renameSync(partial, archive);
-    } finally { rmSync(partial, { force: true }); }
-  }
-  if (await digest(archive) !== lock.source.sha256) throw new Error('Cached Codex source archive digest mismatch.');
+  const requirement = join(cache, 'source-requirement.json');
+  writeFileSync(requirement, JSON.stringify(lock));
+  execFileSync('cargo', ['+stable', 'run', '--locked', '--quiet', '-p', 'decodex-components', '--',
+    'source', requirement, archive], { cwd: root, stdio: 'inherit' });
   const source = join(cache, 'source');
   // Recreate only this script's source cache; never trust edits left in an extracted tree.
   extractSourceArchive(archive, source);
@@ -68,6 +64,7 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
       || metadata.variant !== 'codex' || metadata.layoutVersion !== 1) {
     throw new Error('Built Codex package identity mismatch.');
   }
+  rmSync(runtime, { recursive: true, force: true });
   mkdirSync(runtime, { recursive: true });
   execFileSync('ditto', [packageDir, runtime]);
   const app = join(runtime, 'CodexCLI.app');

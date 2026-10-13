@@ -11,10 +11,15 @@ declares the desired configuration; inspect the native definition for its curren
 status. Preserve the user's pause decision. A source-review batch, schema check
 or manifest status does not authorize activation.
 
-Development follows official Codex main at an exact reviewed commit. Necessary
-runtime and compatibility updates can merge after qualification without waiting
-for a stable tag. The actual runtime artifact must match that commit. Tag creation,
-release cadence, installation and publication are outside this task.
+Development can use official Codex main at a fixed reviewed commit before a
+Release exists. The actual artifact and its helpers must be qualified, preserve
+the fixes already merged into Decodex, and pass the applicable native regressions.
+Formal Decodex releases use official Codex Releases and must preserve the current
+merged baseline. An older Release is not an automatic fallback. Development
+artifacts are prepared explicitly; app packaging and startup do not compile Codex.
+Both use the same component verification and cache repair. The
+[maintainer prompt](prompts/maintainer.md) owns the qualification and merge
+requirements. Tag creation, installation and publication remain outside this task.
 
 The maintainer reads consecutive official Codex commits and traces relevant
 behavior into current Decodex consumers. It checks merged and concurrent work

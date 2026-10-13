@@ -28,30 +28,30 @@ test -f "$contents/Resources/StatusBarIcon.png"
 test -s "$contents/Resources/StatusBarIcon-22.png"
 test -s "$contents/Resources/StatusBarIcon-22@2x.png"
 test ! -e "$contents/Library/LoginItems"
-test -d "$contents/Resources/CodexRuntime/CodexCLI.app"
-test -x "$contents/Resources/CodexRuntime/CodexCLI.app/Contents/MacOS/codex"
-test "$("$contents/Resources/CodexRuntime/bin/codex" --version)" = "codex-cli $(python3 -c 'import json; print(json.load(open("codex-runtime.lock.json"))["version"])')"
-test -s "$contents/Resources/CodexSchema/ClientRequest.json"
-python3 - "$contents/Resources/CodexRuntime" <<'PY'
-import hashlib
+test ! -e "$contents/Resources/CodexRuntime"
+test ! -e "$contents/Resources/CodexSchema"
+test -d "$contents/Frameworks/Sparkle.framework"
+python3 - "$contents" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-runtime = Path(sys.argv[1])
+contents = Path(sys.argv[1])
 lock = json.loads(Path("codex-runtime.lock.json").read_text())
-evidence = json.loads((runtime / "decodex-runtime-evidence.json").read_text())
-assert evidence["upstreamCommit"] == lock["upstreamCommit"]
-assert evidence["schemaSha256"] == lock["targets"]["aarch64-apple-darwin"]["schemaSha256"]
-with (runtime / "CodexCLI.app/Contents/MacOS/codex").open("rb") as image:
-    assert evidence["executableSha256"] == hashlib.file_digest(image, "sha256").hexdigest()
+assert lock["source"]["url"].endswith(lock["upstreamCommit"])
+assert json.loads((contents / "Resources/codex-runtime.lock.json").read_text()) == lock
 PY
-codesign --verify --strict "$contents/Resources/CodexRuntime/bin/codex-code-mode-host"
-codesign --verify --strict "$contents/Resources/CodexRuntime/codex-path/rg"
-codesign --verify --deep --strict "$contents/Resources/CodexRuntime/CodexCLI.app"
+if DECODEX_BUILD_CHANNEL=release DECODEX_RUNTIME_LOCK_PATH="$stage_root/missing-release.json" \
+    DECODEX_APP_STAGE_DIR="$stage_root" scripts/macos/stage_decodex_app.sh >"$stage_root/missing-release.log" 2>&1; then
+  echo "Release packaging accepted a missing official release pin." >&2
+  exit 1
+fi
+test -x "$contents/MacOS/decodex-gpui"
+test "$(plutil -extract SUFeedURL raw "$info")" = 'https://github.com/acg-box/decodex/releases/latest/download/appcast.xml'
+codesign --verify --deep --strict "$contents/Frameworks/Sparkle.framework"
 test "$(find "$contents/MacOS" -type f | wc -l | tr -d ' ')" = 1
 test "$(find "$contents/Helpers" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
-test "$(find "$contents/Frameworks" -type f | wc -l | tr -d ' ')" = 2
+test "$(find "$contents/Frameworks" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
 
 test -n "$(plutil -extract NSMicrophoneUsageDescription raw "$info")"
 codesign -d --entitlements :- "$app_path" 2>/dev/null | python3 -c 'import plistlib, sys; assert plistlib.loads(sys.stdin.buffer.read())["com.apple.security.device.audio-input"] is True'
@@ -101,6 +101,9 @@ nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_open_login_items_settings' >/dev/null
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_app_was_launched_as_login_item' >/dev/null
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_destroy' >/dev/null
+nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_update_create' >/dev/null
+nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_update_check' >/dev/null
+nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_update_destroy' >/dev/null
 nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decodex_app_native_client_create' >/dev/null
 nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decodex_reset_card_journal_v2' >/dev/null
 

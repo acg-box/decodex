@@ -4,6 +4,7 @@
 //! Swift menu-bar panel only after it applies an authoritative protocol readback.
 
 #[path = "settings_power.rs"] mod power;
+#[path = "settings_updates.rs"] mod updates;
 
 use gpui::{
 	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
@@ -43,12 +44,14 @@ pub(crate) enum SettingsCategory {
 	#[default]
 	General,
 	Appearance,
+	Updates,
 }
 impl SettingsCategory {
 	pub(crate) fn title(self) -> &'static str {
 		match self {
 			Self::General => "General",
 			Self::Appearance => "Appearance",
+			Self::Updates => "Updates & Components",
 		}
 	}
 }
@@ -69,6 +72,7 @@ enum DesktopPreference {
 }
 
 pub(crate) struct SettingsSurface {
+	updates: updates::Updates,
 	pub(crate) category: SettingsCategory,
 	power: PowerSettings,
 	snapshot: DesktopSettingsSnapshot,
@@ -86,6 +90,7 @@ impl SettingsSurface {
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
+			updates: updates::Updates::new(),
 			power: Default::default(),
 			category: SettingsCategory::General,
 			snapshot,
@@ -743,6 +748,7 @@ impl SettingsSurface {
 		let group = || gpui::div().flex().flex_col().gap(gpui::px(2.));
 
 		match self.category {
+			SettingsCategory::Updates => self.updates_content(cx),
 			SettingsCategory::General => gpui::div()
 				.flex()
 				.flex_col()

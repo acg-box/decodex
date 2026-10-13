@@ -8,8 +8,11 @@ let package = Package(
 	products: [
 		.library(name: "DecodexMenuBar", type: .dynamic, targets: ["DecodexApp", "DecodexTransport"]),
 	],
+	dependencies: [
+		.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+	],
 	targets: [
-		.target(name: "DecodexApp"),
+		.target(name: "DecodexApp", dependencies: [.product(name: "Sparkle", package: "Sparkle")]),
         .target(name: "DecodexTransport"),
 		.testTarget(name: "DecodexAppTests", dependencies: ["DecodexApp", "DecodexTransport"]),
 	],
