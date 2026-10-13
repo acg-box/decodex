@@ -54,6 +54,49 @@ const INSTANCE: &str = "publication-a";
 struct BoundedRecoveryProbe {
 	attempts: AtomicUsize,
 }
+
+struct PreparingRecoveryProbe {
+	polls: AtomicUsize,
+}
+impl AppOwnedDaemonRecovery for PreparingRecoveryProbe {
+	fn preparing_components(&self) -> bool {
+		self.polls.load(Ordering::SeqCst) < 8
+	}
+
+	fn recover_transport(&self) -> bool {
+		self.polls.fetch_add(1, Ordering::SeqCst);
+		true
+	}
+}
+
+#[tokio::test]
+async fn component_preparation_keeps_all_connection_attempts_available() {
+	let temporary = TempDir::new().expect("temporary directory");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let owner = Arc::new(PreparingRecoveryProbe { polls: AtomicUsize::new(0) });
+	lifecycle.supervise_app_owned_daemon(owner);
+	let failures =
+		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let mut io = FakeIo::new(root, failures);
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
+	assert_eq!(io.attempts, 5);
+	assert_eq!(io.delays.len(), 7 + 4);
+}
+
+#[tokio::test]
+async fn component_preparation_remains_cancellable_before_any_connection() {
+	let temporary = TempDir::new().expect("temporary directory");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	lifecycle.supervise_app_owned_daemon(Arc::new(PreparingRecoveryProbe {
+		polls: AtomicUsize::new(0),
+	}));
+	let mut io = FakeIo::new(root, vec![]);
+	io.cancel_backoff = true;
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+	assert_eq!(io.attempts, 0);
+}
 impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
 	fn recover_transport(&self) -> bool {
 		self.attempts.fetch_add(1, Ordering::SeqCst) < 2

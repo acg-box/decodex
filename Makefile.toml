@@ -194,6 +194,15 @@ args = [
 	"build",
 ]
 
+# Prepare the fixed development commit once, or import an explicitly supplied qualified runtime.
+[tasks.prepare-codex]
+command = "node"
+args = ["--experimental-strip-types", "scripts/macos/prepare_codex.mts"]
+
+[tasks.pin-codex]
+command = "cargo"
+args = ["run", "--locked", "--package", "decodex-components", "--", "pin", "codex-runtime.release.lock.json", "codex-runtime.lock.json"]
+
 # Format
 # | task           | type      | cwd |
 # | -------------- | --------- | --- |

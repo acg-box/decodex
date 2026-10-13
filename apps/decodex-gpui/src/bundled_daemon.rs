@@ -354,12 +354,17 @@ impl BundledDaemonSupervisor {
 			let executable =
 				std::env::current_exe().map_err(|_| BundledDaemonFailure::NotBundled)?;
 			let daemon = bundled_daemon_path(&executable)?;
-			let guard = BundledDaemonGuard::launch_macos(&daemon, None)?;
+			let preparing_runtime = !required_runtime_is_installed();
+			let guard = if preparing_runtime {
+				None
+			} else {
+				Some(BundledDaemonGuard::launch_macos(&daemon, None)?)
+			};
 
 			Ok(Some(Arc::new(Self {
 				daemon,
 				environment: None,
-				state: Mutex::new(SupervisorState { guard: Some(guard), restarts: 0 }),
+				state: Mutex::new(SupervisorState { guard, restarts: 0, preparing_runtime }),
 			})))
 		}
 
@@ -373,6 +378,16 @@ impl BundledDaemonSupervisor {
 	/// Return whether this supervisor retains authority for a later bounded attempt.
 	pub(crate) fn recover_transport(&self) -> bool {
 		let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+		#[cfg(target_os = "macos")]
+		if state.preparing_runtime {
+			if !required_runtime_is_installed() {
+				return true;
+			}
+			state.preparing_runtime = false;
+			state.guard =
+				BundledDaemonGuard::launch_macos(&self.daemon, self.environment.as_ref()).ok();
+			return true;
+		}
 
 		if state.restarts >= MAX_RECOVERY_RESTARTS {
 			return false;
@@ -413,7 +428,11 @@ impl BundledDaemonSupervisor {
 		Ok(Arc::new(Self {
 			daemon,
 			environment: Some(environment),
-			state: Mutex::new(SupervisorState { guard: Some(guard), restarts: 0 }),
+			state: Mutex::new(SupervisorState {
+				guard: Some(guard),
+				restarts: 0,
+				preparing_runtime: false,
+			}),
 		}))
 	}
 
@@ -445,6 +464,10 @@ impl BundledDaemonSupervisor {
 }
 
 impl AppOwnedDaemonRecovery for BundledDaemonSupervisor {
+	fn preparing_components(&self) -> bool {
+		self.state.lock().unwrap_or_else(PoisonError::into_inner).preparing_runtime
+	}
+
 	fn recover_transport(&self) -> bool {
 		self.recover_transport()
 	}
@@ -547,6 +570,14 @@ impl Drop for BundledDaemonGuard {
 struct SupervisorState {
 	guard: Option<BundledDaemonGuard>,
 	restarts: u8,
+	preparing_runtime: bool,
+}
+
+#[cfg(target_os = "macos")]
+fn required_runtime_is_installed() -> bool {
+	decodex_components::RuntimeLock::embedded()
+		.and_then(|lock| decodex_components::ComponentStore::for_user()?.installed(&lock))
+		.is_ok_and(|runtime| runtime.is_some())
 }
 
 struct BundledDaemonOwner {

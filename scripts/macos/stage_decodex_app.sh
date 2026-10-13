@@ -34,6 +34,20 @@ verify_signing_team() {
 	fi
 }
 
+# Packaging selects a requirement; it never builds or embeds Codex.
+case "${DECODEX_BUILD_CHANNEL:-development}" in
+    development) RUNTIME_LOCK="$ROOT/codex-runtime.lock.json" ;;
+    release)
+        RUNTIME_LOCK=${DECODEX_RUNTIME_LOCK_PATH:-"$ROOT/codex-runtime.release.lock.json"}
+        # Validate against this checkout's reviewed baseline before changing the stage.
+        env -u DECODEX_RUNTIME_LOCK_PATH cargo +stable run --locked --quiet -p decodex-components -- \
+            check-release "$RUNTIME_LOCK" "$ROOT/codex-runtime.lock.json"
+        ;;
+    *) echo "DECODEX_BUILD_CHANNEL must be development or release." >&2; exit 2 ;;
+esac
+DECODEX_RUNTIME_LOCK_PATH=$RUNTIME_LOCK
+export DECODEX_RUNTIME_LOCK_PATH
+
 BUILD_ROOT=$(cargo +stable metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
 
 case "$APP" in
@@ -43,22 +57,39 @@ case "$APP" in
 esac
 rm -rf -- "$APP"
 mkdir -p "$MACOS" "$RESOURCES" "$FRAMEWORKS" "$HELPERS"
-node --experimental-strip-types "$ROOT/scripts/macos/bundle_codex.mts" "$CONTENTS" "$SIGN_IDENTITY"
-DECODEX_BUNDLED_RUNTIME_EVIDENCE="$RESOURCES/CodexRuntime/decodex-runtime-evidence.json"
-export DECODEX_BUNDLED_RUNTIME_EVIDENCE
+cp "$RUNTIME_LOCK" "$RESOURCES/codex-runtime.lock.json"
 
 cargo +stable build --locked --release --bin decodex-gpui
 cargo +stable build --locked --release --bin decodex
 cargo +stable build --locked --release -p decodex-app-client-ffi --lib
-SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar --show-bin-path)
-swift build --package-path "$MENU_BAR_PACKAGE" -c release --product DecodexMenuBar
+SWIFT_BIN=$(swift build --package-path "$MENU_BAR_PACKAGE" --force-resolved-versions -c release --product DecodexMenuBar --show-bin-path)
+swift build --package-path "$MENU_BAR_PACKAGE" --force-resolved-versions -c release --product DecodexMenuBar
 
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
 cp "$BUILD_ROOT/release/decodex-gpui" "$MACOS/decodex-gpui"
 cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"
 cp "$BUILD_ROOT/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
+SPARKLE_FRAMEWORK=$(find "$MENU_BAR_PACKAGE/.build/artifacts" -type d -path '*/macos-arm64_x86_64/Sparkle.framework' -print -quit)
+test -n "$SPARKLE_FRAMEWORK"
+ditto "$SPARKLE_FRAMEWORK" "$FRAMEWORKS/Sparkle.framework"
+# Re-sign nested Sparkle code before its enclosing framework for library validation.
+for sparkle_code in \
+    "$FRAMEWORKS/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" \
+    "$FRAMEWORKS/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" \
+    "$FRAMEWORKS/Sparkle.framework/Versions/B/Autoupdate" \
+    "$FRAMEWORKS/Sparkle.framework/Versions/B/Updater.app" \
+    "$FRAMEWORKS/Sparkle.framework"
+do
+    codesign --force --preserve-metadata=identifier,entitlements --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$sparkle_code"
+done
+if [ -n "${DECODEX_SPARKLE_PUBLIC_KEY:-}" ]; then
+	plutil -insert SUPublicEDKey -string "$DECODEX_SPARKLE_PUBLIC_KEY" "$CONTENTS/Info.plist"
+fi
+plutil -insert SUEnableAutomaticChecks -bool false "$CONTENTS/Info.plist"
+plutil -insert SUAutomaticallyUpdate -bool false "$CONTENTS/Info.plist"
 mkdir -p "$RESOURCES/ThirdPartyNotices"
+cp "$MENU_BAR_PACKAGE/.build/checkouts/Sparkle/LICENSE" "$RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
 cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"
 cp "$ROOT/assets/licenses/codex-LICENSE.txt" "$RESOURCES/ThirdPartyNotices/codex-LICENSE.txt"
 cp "$ROOT/assets/licenses/codex-NOTICE.txt" "$RESOURCES/ThirdPartyNotices/codex-NOTICE.txt"

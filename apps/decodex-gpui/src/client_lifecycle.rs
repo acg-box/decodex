@@ -54,6 +54,10 @@ const CLIENT_CACHE_SCHEMA_GENERATION: u64 = 1;
 const HISTORY_PAGE_CACHE_SCHEMA_GENERATION: u32 = 1;
 
 pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
+	/// Component acquisition does not consume connection-recovery attempts.
+	fn preparing_components(&self) -> bool {
+		false
+	}
 	/// Attempt recovery and report whether this exact owner retains later restart authority.
 	fn recover_transport(&self) -> bool;
 }
@@ -373,6 +377,21 @@ impl ClientLifecycle {
 		self.run_with_io(&mut TokioIo { session: None }).await
 	}
 
+	async fn wait_for_components<I: LifecycleIo>(&mut self, io: &mut I) -> bool {
+		while self.app_owned_daemon.as_ref().is_some_and(|owner| owner.preparing_components()) {
+			if let Some(owner) = &self.app_owned_daemon {
+				owner.recover_transport();
+				if !owner.preparing_components() {
+					break;
+				}
+			}
+			if io.backoff(Duration::from_millis(250), &self.cancellation).await.is_err() {
+				return false;
+			}
+		}
+		true
+	}
+
 	async fn run_with_io<I>(&mut self, io: &mut I) -> RunResult
 	where
 		I: LifecycleIo,
@@ -381,6 +400,9 @@ impl ClientLifecycle {
 			return RunResult::Quarantined;
 		}
 		if self.cancellation.is_cancelled() {
+			return self.finish_shutdown().await;
+		}
+		if !self.wait_for_components(io).await {
 			return self.finish_shutdown().await;
 		}
 

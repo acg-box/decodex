@@ -9,22 +9,24 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
-    resource: repo://codex-runtime.lock.json
-  - id: openwiki-source-c6dbc3a3344bb9841270e6c1
-    resource: repo://crates/decodex-codex/examples/schema_fingerprint.rs
+  - id: openwiki-source-75f737a722500e44692521ca
+    resource: repo://crates/decodex-components/src/development.rs
+  - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
+    resource: repo://crates/decodex-components/src/install.rs
+  - id: openwiki-source-2d990e4e2bc233a95b4894b9
+    resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
-  - id: openwiki-source-0e02d239506d0285d4593872
-    resource: repo://scripts/macos/bundle_codex.mts
-generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
+  - id: openwiki-source-3b57179b92b257bc3fff51a1
+    resource: repo://scripts/macos/stage_decodex_app.sh
+generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:36:56.884Z
+    at: 2026-10-13T03:59:08.643Z
 ---
 
 
@@ -38,7 +40,7 @@ The checked-in prompt requires the automation to remain paused during manual cat
 
 ## Review the delta against real consumers
 
-Start from current Decodex main and inspect merged changes, open PRs and related active work. Record the official upstream revision, the installed Codex binary and its actual supported schema separately. Development follows official upstream main, not stable tags. Freeze the exact main commit for each review and qualification batch, and qualify the matching runtime artifact, helpers, provenance and schema before updating the lock. A prerelease label alone is not a reason to wait or ask again. Read consecutive incremental batches from a verified cursor. An upstream commit is discovery evidence, not automatic permission to add a product feature.
+Start from current Decodex main and inspect merged changes, open PRs and related active work. Record the official upstream revision, the installed Codex binary and its actual supported schema separately. Development can follow a fixed, reviewed official upstream commit before a Release exists. Formal Decodex releases use official Codex Releases that preserve the current merged baseline. Freeze the exact main commit for each review and qualification batch, and qualify the matching runtime artifact, helpers, provenance and schema before updating the lock. A prerelease label alone is not a reason to wait or ask again. Read consecutive incremental batches from a verified cursor. An upstream commit is discovery evidence, not automatic permission to add a product feature.
 
 Read the changed source and tests, then trace each change to current consumers. A title, path classification or schema alone does not establish compatibility. Record tests read separately from tests executed. Leave unresolved source, tests or impact unreviewed; do not advance the contiguous cursor past those items. Keep pending implementation separate from completed review.
 
@@ -55,11 +57,19 @@ Use the [current product scope](../decisions/upstream-product-scope.md). Retired
 
 ## Qualify a source runtime
 
-The runtime lock can select an exact official source archive. Use the existing builder and bundler described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
+The runtime lock can select an exact official source archive. Use the explicit development preparation command and shared component store described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
 
 1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
-2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The bundler checks the executable version, generates experimental app-server schemas from that executable, validates them against the local adapter and compares the fingerprint with the lock. It records the source commit, executable digest and schema fingerprint together.
+2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The component store checks the executable and helper commit, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
+
+## Select an official Release
+
+Use `DECODEX_CODEX_RELEASE=<exact-version> cargo make pin-codex` to prepare `codex-runtime.release.lock.json`. The command resolves the official tag and asset digest, verifies the downloaded package and schema, and rejects a Release that does not contain the current development baseline. Do not lower the baseline or label old code as a newer artifact to make this check pass.
+
+The ancestry check preserves source inclusion; it does not prove behavior. Verify affected native regressions and retained fixes against the actual package and helpers before approving a Release requirement. Source review, the local development artifact, the selected Release and the installed application remain separate identities.
+
+`DECODEX_BUILD_CHANNEL=release scripts/macos/stage_decodex_app.sh` requires the official Release requirement to cover the current baseline. Ordinary staging uses the development requirement. Both embed a requirement and use the same runtime cache logic; they do not embed Codex. See [Commands and validation](commands-and-validation.md).
 
 ## Preserve tool authority during continuation
 

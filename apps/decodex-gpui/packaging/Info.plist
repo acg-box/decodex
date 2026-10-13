@@ -36,5 +36,7 @@
 	<string>Decodex uses your microphone when you start voice input or a live conversation.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/acg-box/decodex/releases/latest/download/appcast.xml</string>
 </dict>
 </plist>

@@ -1,0 +1,18 @@
+[package]
+authors.workspace    = true
+description          = "Verified Codex components for development and official releases."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-components"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-codex = { workspace = true }
+reqwest       = { workspace = true }
+semver        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+sha2          = { workspace = true }
+tempfile      = { workspace = true }
