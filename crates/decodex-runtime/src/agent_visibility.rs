@@ -1,10 +1,13 @@
 //! Native archive state controls the active projection, never the retained work history.
 use std::{
 	collections::{HashMap, HashSet},
+	sync::Arc,
 	time::{Duration, Instant},
 };
 
+use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::AgentSnapshotDto;
+use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub(crate) struct ArchiveVisibility {
@@ -14,6 +17,28 @@ pub(crate) struct ArchiveVisibility {
 }
 
 impl ArchiveVisibility {
+	pub async fn refresh(cache: &Arc<Mutex<Self>>, generation: &str, client: AppServerClient) {
+		let mut state = cache.lock().await;
+		if !state.refresh_due(generation, Instant::now()) {
+			return;
+		}
+		let cache = cache.clone();
+		let generation = generation.to_owned();
+		// The bounded native read can outlive a desktop snapshot request.
+		// Refresh separately so ordinary queries use the last confirmed view.
+		tokio::spawn(async move {
+			if let Ok(archived) = client.archived_threads().await {
+				cache.lock().await.apply(&generation, archived);
+			}
+		});
+	}
+
+	pub fn apply(&mut self, generation: &str, archived: HashSet<String>) {
+		if self.generation.as_deref() == Some(generation) {
+			self.archived = archived;
+		}
+	}
+
 	pub fn refresh_due(&mut self, generation: &str, now: Instant) -> bool {
 		if self.generation.as_deref() != Some(generation) {
 			*self = Self { generation: Some(generation.into()), ..Self::default() };
@@ -70,14 +95,51 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 #[cfg(test)]
 mod tests {
 	use super::{ArchiveVisibility, retain_active};
+	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_protocol::{
 		AgentDependencyDto, AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto,
 		AgentWorkKindDto, AgentWorkStatusDto, WorkspaceDto,
 	};
 	use std::{
 		collections::HashSet,
+		sync::Arc,
 		time::{Duration, Instant},
 	};
+	use tokio::sync::{Mutex, mpsc};
+
+	#[tokio::test]
+	async fn slow_native_archive_read_does_not_block_snapshots_or_duplicate_refresh() {
+		let cache = Arc::new(Mutex::new(ArchiveVisibility::default()));
+		let (incoming, input) = mpsc::channel(8);
+		let (output, mut outgoing) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, input, output).unwrap();
+		tokio::time::timeout(
+			Duration::from_secs(1),
+			ArchiveVisibility::refresh(&cache, "process", client.clone()),
+		)
+		.await
+		.expect("snapshot scheduling must not wait for the native response");
+		let request = outgoing.recv().await.unwrap();
+		assert!(cache.lock().await.archived.is_empty());
+		ArchiveVisibility::refresh(&cache, "process", client).await;
+		assert!(outgoing.try_recv().is_err(), "one refresh per interval");
+		incoming
+			.send(Ok(serde_json::json!({
+				"id":request["id"],"result":{"data":[{"id":"archived"}],"nextCursor":null}
+			})))
+			.await
+			.unwrap();
+		tokio::time::timeout(Duration::from_secs(1), async {
+			loop {
+				if cache.lock().await.archived.contains("archived") {
+					break;
+				}
+				tokio::task::yield_now().await;
+			}
+		})
+		.await
+		.expect("the completed catalog becomes visible to later snapshots");
+	}
 
 	fn work(id: &str, parent: Option<&str>) -> AgentWorkItemDto {
 		AgentWorkItemDto {
@@ -154,5 +216,9 @@ mod tests {
 		assert!(cache.archived.contains("old"), "a failed refresh retains confirmed state");
 		assert!(cache.refresh_due("second", now + Duration::from_secs(16)));
 		assert!(cache.archived.is_empty(), "another process cannot inherit archive observations");
+		cache.apply("first", HashSet::from(["stale".into()]));
+		assert!(cache.archived.is_empty(), "a previous process cannot publish a late refresh");
+		cache.apply("second", HashSet::from(["current".into()]));
+		assert!(cache.archived.contains("current"));
 	}
 }

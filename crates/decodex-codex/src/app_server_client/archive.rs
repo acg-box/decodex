@@ -84,7 +84,7 @@ impl AppServerClient {
 		let mut cursor: Option<String> = None;
 		let mut cursors = HashSet::new();
 		let mut ids = HashSet::new();
-		for _ in 0..100 {
+		loop {
 			let mut params = serde_json::json!({
 				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],
 				"useStateDbOnly":true,
@@ -94,8 +94,6 @@ impl AppServerClient {
 				params["cwd"] = serde_json::json!(cwd);
 			}
 			let page = self.request("thread/list", params).await?;
-			*budget =
-				budget.checked_sub(page.to_string().len()).ok_or(ClientError::CapacityExceeded)?;
 			let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 			if data.len() > 100 {
 				return Err(ClientError::InvalidFrame);
@@ -103,6 +101,11 @@ impl AppServerClient {
 			for item in data {
 				let id = item["id"].as_str().ok_or(ClientError::InvalidFrame)?;
 				valid_id(id)?;
+				// The transport bounds each response. Bound retained identities here;
+				// unrelated previews must not cap the number of archive pages.
+				*budget = budget
+					.checked_sub(id.len() + std::mem::size_of::<String>())
+					.ok_or(ClientError::CapacityExceeded)?;
 				if !ids.insert(id.to_owned()) {
 					return Err(ClientError::InvalidFrame);
 				}
@@ -117,9 +120,13 @@ impl AppServerClient {
 			if target.is_some_and(|id| ids.contains(id)) || next.is_none() {
 				return Ok(ids);
 			}
+			*budget = budget
+				.checked_sub(
+					next.as_ref().map_or(0, |cursor| cursor.len() + std::mem::size_of::<String>()),
+				)
+				.ok_or(ClientError::CapacityExceeded)?;
 			cursor = next;
 		}
-		Err(ClientError::CapacityExceeded)
 	}
 
 	/// Submit one explicit restore. Native unarchive is not idempotent: callers must
@@ -225,6 +232,20 @@ mod tests {
 		] {
 			assert!(inspect_catalog(pages).await.is_err());
 		}
+	}
+
+	#[tokio::test]
+	async fn large_archive_is_not_truncated_by_page_count_or_unrelated_preview_bytes() {
+		let pages = (0..103).map(|page| serde_json::json!({
+			"data": (0..100).map(|item| serde_json::json!({
+				"id": format!("thread-{page}-{item}"),
+				"preview": "x".repeat(900)
+			})).collect::<Vec<_>>(),
+			"nextCursor": if page == 102 { Value::Null } else { serde_json::json!(format!("page-{}", page + 1)) }
+		})).collect();
+		let archived = inspect_catalog(pages).await.unwrap();
+		assert_eq!(archived.len(), 10_300);
+		assert!(archived.contains("thread-102-99"));
 	}
 
 	async fn inspect(pages: Vec<Value>) -> Result<ThreadArchiveState, ClientError> {

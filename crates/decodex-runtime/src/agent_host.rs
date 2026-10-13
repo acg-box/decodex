@@ -298,12 +298,13 @@ impl AgentHost {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return;
 		};
-		let mut cache = self.archive_visibility.lock().await;
-		if cache.refresh_due(generation.as_str(), std::time::Instant::now())
-			&& let Ok(archived) = client.archived_threads().await
-		{
-			cache.archived = archived;
-		}
+		crate::agent_visibility::ArchiveVisibility::refresh(
+			&self.archive_visibility,
+			generation.as_str(),
+			client,
+		)
+		.await;
+		let cache = self.archive_visibility.lock().await;
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
 			crate::agent_visibility::retain_active(snapshot, &cache.archived);
 		}
