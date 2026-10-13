@@ -24,6 +24,13 @@ export function validateSource(lock: SourceLock): void {
   }
 }
 
+export function extractSourceArchive(archive: string, source: string): void {
+  // Refresh mtimes so Cargo cannot reuse artifacts from an older source tree.
+  rmSync(source, { recursive: true, force: true });
+  mkdirSync(source);
+  execFileSync('tar', ['-xmzf', archive, '--strip-components=1', '-C', source]);
+}
+
 export async function buildSource(root: string, lock: SourceLock, runtime: string, identity: string): Promise<void> {
   validateSource(lock);
   if (!identity || identity === '-') throw new Error('Source runtime requires the app signing identity.');
@@ -41,9 +48,7 @@ export async function buildSource(root: string, lock: SourceLock, runtime: strin
   if (await digest(archive) !== lock.source.sha256) throw new Error('Cached Codex source archive digest mismatch.');
   const source = join(cache, 'source');
   // Recreate only this script's source cache; never trust edits left in an extracted tree.
-  rmSync(source, { recursive: true, force: true });
-  mkdirSync(source);
-  execFileSync('tar', ['-xzf', archive, '--strip-components=1', '-C', source]);
+  extractSourceArchive(archive, source);
   const cargo = join(cache, 'cargo-stable-locked');
   writeFileSync(cargo, '#!/bin/sh\nexec cargo +stable "$@" --locked\n', { mode: 0o700 });
   const packageDir = join(cache, 'package');
