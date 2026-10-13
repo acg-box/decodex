@@ -266,9 +266,9 @@ pub struct AccountOperation {
 	pub target: Option<CredentialBinding>,
 	/// Stable reason that required manual recovery, when present.
 	pub recovery_code: Option<String>,
-	/// Exact ambiguous refresh that this verified reauthentication can replace.
+	/// Exact failed refresh that this recovery operation can replace.
 	pub recovery_operation_id: Option<AccountOperationId>,
-	/// Exact verified reauthentication that replaced this ambiguity.
+	/// Exact recovery operation that replaced this failed refresh.
 	pub superseded_by_operation_id: Option<AccountOperationId>,
 }
 

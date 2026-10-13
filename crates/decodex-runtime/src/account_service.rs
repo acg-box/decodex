@@ -2218,7 +2218,7 @@ impl AccountService {
 		let preparation_outcome = match recovery_operation_id {
 			Some(recovery_operation_id) =>
 				self.store
-					.prepare_account_reauthentication_takeover(&preparation, recovery_operation_id)
+					.prepare_account_recovery_takeover(&preparation, recovery_operation_id)
 					.await?,
 			None => self.store.prepare_account_operation(&preparation).await?,
 		};
@@ -3026,7 +3026,7 @@ impl AccountService {
 			target: None,
 			provider: expected.provider.clone(),
 		};
-		let phase = accepted_phase(self.store.prepare_account_operation(&preparation).await?)?;
+		let phase = accepted_phase(self.prepare_logout(&account, &preparation).await?)?;
 
 		if phase == AccountOperationPhase::Prepared {
 			match self.credentials.delete(account_id, &expected) {
@@ -3124,7 +3124,7 @@ impl AccountService {
 				provider: credential.provider.clone(),
 			};
 
-			match self.store.prepare_account_operation(&preparation).await? {
+			match self.prepare_logout(&account, &preparation).await? {
 				AccountLifecycleMutationOutcome::Applied(mutation)
 				| AccountLifecycleMutationOutcome::Replayed(mutation) => phase = Some(mutation.phase),
 				AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
@@ -3152,6 +3152,26 @@ impl AccountService {
 			build_response,
 		)
 		.await
+	}
+
+	async fn prepare_logout(
+		&self,
+		account: &AccountRecord,
+		preparation: &AccountOperationPreparation,
+	) -> Result<AccountLifecycleMutationOutcome, AccountLifecycleError> {
+		if let Some(recovery) = account.unsettled_operation.as_ref()
+			&& recovery.kind == AccountOperationKind::Refresh
+			&& recovery.phase == AccountOperationPhase::RecoveryRequired
+			&& matches!(
+				recovery.recovery_code.as_deref(),
+				Some("provider_refresh_rejected" | "provider_access_rejected_after_refresh")
+			) {
+			return Ok(self
+				.store
+				.prepare_account_recovery_takeover(preparation, &recovery.operation_id)
+				.await?);
+		}
+		Ok(self.store.prepare_account_operation(preparation).await?)
 	}
 
 	async fn complete_logout_command<F>(
@@ -8041,6 +8061,118 @@ mod tests {
 			service.api_credential_for_observation(&account_id, Duration::ZERO).await,
 			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
 		));
+	}
+
+	#[tokio::test]
+	async fn rejected_refresh_allows_logout_and_durable_command_replay() {
+		for use_command in [false, true] {
+			let (_directory, store, service, account_id, shared) =
+				independently_owned_observation_service(Err(CredentialRefreshError::Rejected))
+					.await;
+			let recovery_id = AccountOperationId::new("22000000-0000-4000-8000-000000000043")
+				.expect("refresh identity");
+			assert!(
+				service.refresh_for_observation(recovery_id.clone(), &account_id, 1).await.is_err()
+			);
+			let logout_id = AccountOperationId::new("22000000-0000-4000-8000-000000000044")
+				.expect("logout identity");
+			if use_command {
+				let command =
+					CommandIdentity::new("logout-after-rejection", b"remove exact account")
+						.expect("command identity");
+				let AccountCommandReceiptClaim::Owned(lease) = store
+					.reserve_account_command(
+						&command,
+						AccountCommandKind::Logout,
+						account_id.as_str(),
+						Some(1),
+					)
+					.await
+					.expect("reserve logout")
+				else {
+					panic!("new logout receipt")
+				};
+				let response = service
+					.logout_command(lease, logout_id.clone(), &account_id, 1, |result| {
+						let account = result.expect("logout must succeed after rejected refresh");
+						Ok(
+							serde_json::json!({"revision":account.revision, "tombstoned":account.tombstoned}),
+						)
+					})
+					.await
+					.expect("complete logout command");
+				assert_eq!(response, serde_json::json!({"revision":2,"tombstoned":true}));
+				let AccountCommandReceiptClaim::Replayed(replayed) = store
+					.reserve_account_command(
+						&command,
+						AccountCommandKind::Logout,
+						account_id.as_str(),
+						Some(1),
+					)
+					.await
+					.expect("replay logout")
+				else {
+					panic!("terminal logout receipt")
+				};
+				assert_eq!(response, replayed);
+			} else {
+				let account = service
+					.logout(logout_id.clone(), &account_id, 1)
+					.await
+					.expect("logout after rejected refresh");
+				assert!(account.tombstoned);
+			}
+			assert!(service.list().await.expect("remaining accounts").is_empty());
+			let recovery = store.read_account_operation(&recovery_id).await.unwrap().unwrap();
+			assert_eq!(recovery.recovery_code.as_deref(), Some("provider_refresh_rejected"));
+			assert_eq!(recovery.superseded_by_operation_id, Some(logout_id));
+			assert_eq!(shared.current_tokens().0, "shared-access");
+			assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+			let restarted = AccountService::new(
+				store.clone(),
+				Arc::new(SqliteCredentialStore::new(store)),
+				Arc::new(UnusedCredentialRefresher),
+			);
+			assert!(restarted.reconcile_startup().await.unwrap().manual_recovery.is_empty());
+			assert!(restarted.list().await.unwrap().is_empty());
+		}
+	}
+
+	#[tokio::test]
+	async fn ambiguous_refresh_still_blocks_logout_without_changing_credentials() {
+		let (_directory, store, service, account_id, _shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Ambiguous)).await;
+		let recovery_id = AccountOperationId::new("22000000-0000-4000-8000-000000000043")
+			.expect("refresh identity");
+		assert!(
+			service.refresh_for_observation(recovery_id.clone(), &account_id, 1).await.is_err()
+		);
+		let before = service.load_account(&account_id).await.unwrap();
+		let logout_id = AccountOperationId::new("22000000-0000-4000-8000-000000000044")
+			.expect("logout identity");
+		assert!(matches!(
+			service.logout(logout_id.clone(), &account_id, 1).await,
+			Err(AccountLifecycleError::OperationRejected(
+				decodex_database::AccountLifecycleRejection::OperationUnsettled
+			))
+		));
+		assert_eq!(service.load_account(&account_id).await.unwrap(), before);
+		assert!(
+			service
+				.credentials
+				.read_exact(&account_id, before.credential.as_ref().unwrap())
+				.is_ok()
+		);
+		assert!(store.read_account_operation(&logout_id).await.unwrap().is_none());
+		assert!(
+			store
+				.read_account_operation(&recovery_id)
+				.await
+				.unwrap()
+				.unwrap()
+				.superseded_by_operation_id
+				.is_none()
+		);
 	}
 
 	#[tokio::test]

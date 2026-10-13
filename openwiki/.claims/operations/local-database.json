@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d1d0265a9402ff3788260eaeb77a9efd28785f17584b68a6e69ebeb50fff01aa",
+  "pageVersion": "sha256:01225faceaa7269c3552a2354a89a75be35a1e43674e0b6fa1f407593aa7de64",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -85,6 +85,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:10:39.973Z"
+    "at": "2026-10-13T07:37:30.807Z"
   }
 }

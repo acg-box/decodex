@@ -326,8 +326,8 @@ impl SqliteStore {
 		.await
 	}
 
-	/// Prepare a verified credential replacement beside one exact ambiguous refresh.
-	pub async fn prepare_account_reauthentication_takeover(
+	/// Prepare a verified sign-in or sign-out beside one exact failed refresh.
+	pub async fn prepare_account_recovery_takeover(
 		&self,
 		preparation: &AccountOperationPreparation,
 		recovery_operation_id: &AccountOperationId,
@@ -335,9 +335,7 @@ impl SqliteStore {
 		validate_preparation(preparation)?;
 
 		if preparation.operation_id == *recovery_operation_id {
-			return Err(StoreError::InvalidInput(
-				"account reauthentication recovery identity is invalid",
-			));
+			return Err(StoreError::InvalidInput("account recovery identity is invalid"));
 		}
 
 		let preparation = preparation.clone();
@@ -1346,7 +1344,7 @@ fn prepare_operation_sync(
 	}
 	if let Some(recovery_operation_id) = recovery_operation_id {
 		if let Some(rejection) =
-			validate_reauthentication_takeover_sync(connection, preparation, recovery_operation_id)?
+			validate_recovery_takeover_sync(connection, preparation, recovery_operation_id)?
 		{
 			return Ok(rejection);
 		}
@@ -1485,7 +1483,24 @@ fn enrollment_rejection_sync(
 		.then_some(AccountLifecycleRejection::StaleAccount))
 }
 
-fn validate_reauthentication_takeover_sync(
+fn recovery_action_matches(
+	kind: AccountOperationKind,
+	target: Option<&CredentialBinding>,
+	recovery: &AccountOperation,
+) -> bool {
+	match kind {
+		AccountOperationKind::Refresh => target.is_some(),
+		AccountOperationKind::Logout =>
+			target.is_none()
+				&& matches!(
+					recovery.recovery_code.as_deref(),
+					Some("provider_refresh_rejected" | "provider_access_rejected_after_refresh")
+				),
+		_ => false,
+	}
+}
+
+fn validate_recovery_takeover_sync(
 	connection: &Connection,
 	preparation: &AccountOperationPreparation,
 	recovery_operation_id: &AccountOperationId,
@@ -1500,17 +1515,17 @@ fn validate_reauthentication_takeover_sync(
 		}));
 	};
 	let actual = mutation_for(connection, &recovery.account_id, recovery.phase)?;
-	let exact_ambiguity = preparation.kind == AccountOperationKind::Refresh
-		&& preparation.target.is_some()
-		&& recovery.account_id == preparation.account_id
-		&& recovery.kind == AccountOperationKind::Refresh
-		&& recovery.phase == AccountOperationPhase::RecoveryRequired
-		&& recovery.target.is_none()
-		&& recovery.recovery_code.is_some()
-		&& recovery.recovery_operation_id.is_none()
-		&& recovery.superseded_by_operation_id.is_none()
-		&& recovery.expected_account_revision == preparation.expected_account_revision
-		&& recovery.expected == preparation.expected;
+	let exact_ambiguity =
+		recovery_action_matches(preparation.kind, preparation.target.as_ref(), &recovery)
+			&& recovery.account_id == preparation.account_id
+			&& recovery.kind == AccountOperationKind::Refresh
+			&& recovery.phase == AccountOperationPhase::RecoveryRequired
+			&& recovery.target.is_none()
+			&& recovery.recovery_code.is_some()
+			&& recovery.recovery_operation_id.is_none()
+			&& recovery.superseded_by_operation_id.is_none()
+			&& recovery.expected_account_revision == preparation.expected_account_revision
+			&& recovery.expected == preparation.expected;
 
 	if !exact_ambiguity {
 		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
@@ -1615,7 +1630,7 @@ fn commit_account_operation(
 ) -> Result<Option<AccountLifecycleRejection>, StoreError> {
 	let now = crate::unix_micros().map_err(StoreError::from)?;
 
-	if let Some(rejection) = validate_reauthentication_takeover_commit(connection, operation)? {
+	if let Some(rejection) = validate_recovery_takeover_commit(connection, operation)? {
 		return Ok(Some(rejection));
 	}
 
@@ -1630,7 +1645,7 @@ fn commit_account_operation(
 		return Ok(rejection);
 	}
 
-	record_reauthentication_supersession(connection, operation, now)?;
+	record_recovery_supersession(connection, operation, now)?;
 
 	Ok(None)
 }
@@ -1837,7 +1852,7 @@ fn commit_account_logout(
 	Ok(None)
 }
 
-fn validate_reauthentication_takeover_commit(
+fn validate_recovery_takeover_commit(
 	connection: &Connection,
 	operation: &AccountOperation,
 ) -> Result<Option<AccountLifecycleRejection>, StoreError> {
@@ -1847,21 +1862,22 @@ fn validate_reauthentication_takeover_commit(
 	let Some(recovery) = read_operation_sync(connection, recovery_operation_id)? else {
 		return Ok(Some(AccountLifecycleRejection::OperationMissing));
 	};
-	let exact_ambiguity = operation.kind == AccountOperationKind::Refresh
-		&& recovery.account_id == operation.account_id
-		&& recovery.kind == AccountOperationKind::Refresh
-		&& recovery.phase == AccountOperationPhase::RecoveryRequired
-		&& recovery.target.is_none()
-		&& recovery.recovery_code.is_some()
-		&& recovery.recovery_operation_id.is_none()
-		&& recovery.superseded_by_operation_id.is_none()
-		&& recovery.expected_account_revision == operation.expected_account_revision
-		&& recovery.expected == operation.expected;
+	let exact_ambiguity =
+		recovery_action_matches(operation.kind, operation.target.as_ref(), &recovery)
+			&& recovery.account_id == operation.account_id
+			&& recovery.kind == AccountOperationKind::Refresh
+			&& recovery.phase == AccountOperationPhase::RecoveryRequired
+			&& recovery.target.is_none()
+			&& recovery.recovery_code.is_some()
+			&& recovery.recovery_operation_id.is_none()
+			&& recovery.superseded_by_operation_id.is_none()
+			&& recovery.expected_account_revision == operation.expected_account_revision
+			&& recovery.expected == operation.expected;
 
 	Ok((!exact_ambiguity).then_some(AccountLifecycleRejection::StaleOperation))
 }
 
-fn record_reauthentication_supersession(
+fn record_recovery_supersession(
 	connection: &Connection,
 	operation: &AccountOperation,
 	now: i64,
@@ -1881,7 +1897,7 @@ fn record_reauthentication_supersession(
 		)
 		.map_err(sql_error)?;
 
-	if changed == 1 { Ok(()) } else { Err(incompatible("account reauthentication supersession")) }
+	if changed == 1 { Ok(()) } else { Err(incompatible("account recovery supersession")) }
 }
 
 fn set_operation_target_sync(

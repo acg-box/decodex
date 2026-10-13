@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:027817ae4fa12e15f415fe609feac0de23cc4f4caa0eb0bb7cff1fc3ae56a272",
+  "pageVersion": "sha256:e719f87a96d5c7dfa5cd4e5dabfdcd26ce45b155dae33169ce9f0e62a29f5ae8",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:a32d5e62bec60b7e22385e422ed08ec60d3373b5ee466891cb288807e9f84aea"
+          "version": "repo-file-v1:sha256:0731404813f74b138616e28dcf01d56cd587132db38da0dfee1e0689c6bc3422"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -63,10 +63,28 @@
           "version": "repo-lines-v1:sha256:c75d33058a3baf0eaf01ee78c218b7d6c73f168dd81a3f1b5652f0c514ed39cd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlMmRkNTEyMWFkOTQ2OTM0ZmUyMDQxODg4ZWE4OWU2MzJhMTIzZDM0ZjljODgxMDBhNTAyODk5YjQyMzJkMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMDUwYjhmOTk4MDRmODE2Mjk4NmNiYzZhYWFlOThiODUxZjlkMGMzZDVlZjJlZDM4NDNjZDJhMmFmZjMwYWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyNjYyMTE4NTBhNzA5NDEwODlkZmY3MTI2YWI1MzAyZTAwYzhmYWE2NDRhMTcwMjMyNGI0Njg1ZTBmYzkyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyOTVmNjc1YjJlOGY5MzlmMGI4ZjRlMDQzMjUyNzMyNDllYzdmMmY5ODJkNjgxMWFiMjNjYTMzNmMzMmNlMmQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_765878d8fe204628bd8a0bf63f53f277",
+      "statement": "Explicit logout reuses the exact recovery-operation link for known rejected refreshes and records supersession only at commit; pending and ambiguous refreshes remain blocked.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L2994-L3180",
+          "version": "repo-lines-v1:sha256:aefd9f6f9e4c8b9f61fb8c3838dbf8641e2fca437ee33683938319c17e2220f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
+        },
+        {
+          "resource": "repo://database/src/account_lifecycle.rs#L1486-L1560",
+          "version": "repo-lines-v1:sha256:121eef2cf6ad3bd298587c864424399c4fd4dfa5398f9c16a95b38886d3eb3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGFhZGIxNjVlZjIyZmFmZTY3ZTJhMDYyNjdmOTU4ZTk4MzNlZTdiYmRlOWVmZWE2YjU5OTQ0ODY1MDFjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNjJhYjlmNzZiYjZjMzVmYjIxNmE3OGNlZWEyOGQ0ODQ4ZWYwYjRlYjNjZGE5YjA0ZTM5MDAzMjRlYTYwMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NTgyMTZmZWZlNzQ3ZGYxMzA2OWIzNWZlZjVkNDFjNjE3MWNjNTE0Yzk3MTFiMGIzMDZjY2UwYzExMDFkMzEifQ"
+        },
+        {
+          "resource": "repo://database/src/account_lifecycle.rs#L1853-L1910",
+          "version": "repo-lines-v1:sha256:425e37a5351f4e4abbfe751e1d061188ec9f955ef8315ef968fb99450ba67fb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YmJhZjVjNWFjMDFiM2EwNTQzYWQwNzQ2MGQ2MWM5MDhmNzNhMGNkZWIzMmVlOTU0MTU5ODJmMzk5ZDU2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOWQyZTAzNmU3NGNhYjJkYjI4NzA2OWUzZTEzOWRmZjY5YTFiZGVkZDBiZjJmYTFiZTVmMGMwYTQ2ZWJkNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmOGJjNThhNjI3OTYxODlhZWQyNTJmN2EyY2U2YzA4NDZjM2FiYTY3OWRmMjkwOWFiYzc3ZDQ2ZjY1NTMxYzQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T07:37:30.807Z"
   }
 }
