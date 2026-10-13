@@ -546,7 +546,7 @@ impl Shell {
 			rejection: None,
 			can_manage: true,
 			can_route: true,
-			route_reopen_notice: false,
+			route_success_alias: None,
 		};
 
 		self.seed_account_activity();

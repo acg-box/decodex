@@ -33,7 +33,7 @@ pub(crate) struct AccountsSnapshot {
 	pub(crate) rejection: Option<AccountCommandRejectionDto>,
 	pub(crate) can_manage: bool,
 	pub(crate) can_route: bool,
-	pub(crate) route_reopen_notice: bool,
+	pub(crate) route_success_alias: Option<String>,
 }
 impl AccountsSnapshot {
 	/// Short-lived serialization/readback is not a loss of account capability.
@@ -390,7 +390,7 @@ impl AccountsController {
 				state.upsert_account((**account).clone());
 
 				state.routing = Some(routing.clone());
-				state.route_reopen_notice = true;
+				state.route_success_alias = Some(account.alias.as_str().to_owned());
 
 				state.sort_accounts();
 			},
@@ -614,7 +614,7 @@ struct State {
 	accounts: Vec<AccountDto>,
 	routing: Option<AccountRoutingControlDto>,
 	rejection: Option<AccountCommandRejectionDto>,
-	route_reopen_notice: bool,
+	route_success_alias: Option<String>,
 }
 impl State {
 	const fn new() -> Self {
@@ -632,7 +632,7 @@ impl State {
 			accounts: Vec::new(),
 			routing: None,
 			rejection: None,
-			route_reopen_notice: false,
+			route_success_alias: None,
 		}
 	}
 
@@ -656,7 +656,7 @@ impl State {
 			rejection: self.rejection,
 			can_manage: idle,
 			can_route: idle,
-			route_reopen_notice: self.route_reopen_notice,
+			route_success_alias: self.route_success_alias.clone(),
 		}
 	}
 
@@ -717,7 +717,7 @@ impl State {
 			causation_id: None::<CausationId>,
 			payload,
 		});
-		self.route_reopen_notice = false;
+		self.route_success_alias = None;
 		self.rejection = None;
 		self.command = AccountCommandState::Sending;
 
@@ -799,7 +799,7 @@ impl State {
 				self.upsert_account((**account).clone());
 
 				self.routing = Some(routing.clone());
-				self.route_reopen_notice = true;
+				self.route_success_alias = Some(account.alias.as_str().to_owned());
 
 				self.sort_accounts();
 
@@ -1043,7 +1043,7 @@ mod tests {
 			let snapshot = controller.snapshot();
 
 			assert_eq!(snapshot.routing, Some(routing));
-			assert!(snapshot.route_reopen_notice);
+			assert_eq!(snapshot.route_success_alias.as_deref(), Some(first.alias.as_str()));
 			assert_eq!(snapshot.command, before, "broadcast is not a matching command result");
 			assert!(!snapshot.can_manage);
 			assert_eq!(controller.select_balanced(), Err(AccountInputError::Busy));
@@ -1162,7 +1162,7 @@ mod tests {
 		let routed_snapshot = controller.snapshot();
 
 		assert_eq!(routed_snapshot.routing, Some(routed));
-		assert!(routed_snapshot.route_reopen_notice);
+		assert_eq!(routed_snapshot.route_success_alias.as_deref(), Some(second.alias.as_str()));
 	}
 
 	#[test]
