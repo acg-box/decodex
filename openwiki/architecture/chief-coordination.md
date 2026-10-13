@@ -5,12 +5,14 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T06:30:22.602Z
+    at: 2026-10-13T06:36:14.837Z
 sources:
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-d0b9aaf952250307abc4342e
+    resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
@@ -33,7 +35,7 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-13T06:10:39.973Z" }
+generated: { by: "codex", at: "2026-10-13T06:36:14.837Z" }
 ---
 
 # Agent coordination and native conversations
@@ -70,7 +72,9 @@ A future change must define a cutover before moving pending messages. Stop local
 
 Codex owns the archive state. The service reads the complete native archive across working directories, providers and source kinds. It removes a local work item from the active snapshot only when its exact native thread ID is in that archive. An empty title, a completed status or an unavailable thread is not permission to delete work.
 
-The archive catalog is cached for 15 seconds within the current native process generation. An incomplete or failed refresh retains the last confirmed catalog for that generation. A new process starts with no inherited archive observations. The service does not write a second archive flag into SQLite.
+The reader follows native pagination to completion without a fixed page-count ceiling. Each response keeps the transport frame limit, the whole read has a deadline, and retained IDs and cursors consume a bounded budget. Unrelated preview text does not consume that retained-state budget. A malformed or incomplete catalog cannot change visibility.
+
+The archive catalog refreshes in the background at most once per 15 seconds within the current native process generation. Work snapshots use the last confirmed catalog without waiting for the native read. An incomplete or failed refresh retains that catalog. A new process starts with no inherited archive observations, and a late result from an earlier process cannot replace it. The service does not write a second archive flag into SQLite.
 
 The active snapshot supplies the work list and relationship graph. Filtering removes incident relationships, pending-event entries, context references and workspace membership from that view. Live descendants remain visible under their nearest visible ancestor. The stored work and original hierarchy remain intact; a later complete catalog can show them again after restoration in Codex.
 

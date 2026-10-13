@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "pages": {
     "/openwiki/architecture/chief-coordination.md": {
-      "pageVersion": "sha256:28e46c1ae8882b10078e2115462aa7c750bcb030b1e0ed41020eebaa92c45862",
+      "pageVersion": "sha256:53ba7e4567114c5ab660ceb98aecc00f18df1c66b1b43472a706d6dbe9c6cd66",
       "completedBy": "codex",
-      "completedRunId": "636610e4-d762-445c-9b53-dc0b9ee24e13",
-      "gitHead": "e0ef4294bb308ecbb9649ba5a149f1e9045ca90c",
-      "sourceFingerprint": "sha256:dd9e3e01b1f2a1ea74a4d7fbd3d754f71ca42251d8bcd4dfe62d6408bb1be783"
+      "completedRunId": "623ce395-c434-46a1-bc6c-273ed46e19fb",
+      "gitHead": "d1b0fe4e5f8ff4632245d3fe678f2cb024ce3c48",
+      "sourceFingerprint": "sha256:8e49a03f7bdbfa725f8d5714e0da41f290238d31548ab8ef8831588d86d31923"
     },
     "/openwiki/architecture/conversation-presentation.md": {
       "gitHead": "c11c68b7a8ed688fe22cbf6dcd7beabb9e7038ab",
@@ -268,11 +268,11 @@
       "completedRunId": "64085da3-2250-4e8c-81d1-c1ec7b00e82f"
     },
     "/openwiki/specs/execution-coordinator-authority.md": {
-      "gitHead": "2f57c2a449aee7e0b8602d9a20c766b71be7e776",
-      "sourceFingerprint": "sha256:63138eca7d4046cdf8e172895e873ba2402d69d72f2cfc902ecdfe2509023af9",
-      "pageVersion": "sha256:11d958484d4cc5882010df62d1fb2603dbabe9acc7e0ce46003c158c5b44f99a",
+      "gitHead": "d1b0fe4e5f8ff4632245d3fe678f2cb024ce3c48",
+      "sourceFingerprint": "sha256:1816567a578998b21998035ce73a67012494b1a08e40bc0cf98737432787d912",
+      "pageVersion": "sha256:45cfbe20f6b2e97e5a997a6777f0d7ecf9a0b89450ecaf96f8a619f57d5ddbea",
       "completedBy": "codex",
-      "completedRunId": "64085da3-2250-4e8c-81d1-c1ec7b00e82f"
+      "completedRunId": "33bc6087-04f2-4a3d-ba36-a8bcdb6736ec"
     },
     "/openwiki/specs/local-product-v1.md": {
       "gitHead": "2f57c2a449aee7e0b8602d9a20c766b71be7e776",
@@ -394,11 +394,11 @@
       "completedRunId": "0240b2f5-a5d9-4232-8e4a-e44d8dcfc7fc"
     },
     "/openwiki/workflows/conversations-and-recovery.md": {
+      "gitHead": "e0ef4294bb308ecbb9649ba5a149f1e9045ca90c",
+      "sourceFingerprint": "sha256:dd9e3e01b1f2a1ea74a4d7fbd3d754f71ca42251d8bcd4dfe62d6408bb1be783",
       "pageVersion": "sha256:578267875d2f8f1de20dfbd90cb59ad7dd5bfac73e0c19ca24712f1f6114bf83",
       "completedBy": "codex",
-      "completedRunId": "636610e4-d762-445c-9b53-dc0b9ee24e13",
-      "gitHead": "e0ef4294bb308ecbb9649ba5a149f1e9045ca90c",
-      "sourceFingerprint": "sha256:dd9e3e01b1f2a1ea74a4d7fbd3d754f71ca42251d8bcd4dfe62d6408bb1be783"
+      "completedRunId": "636610e4-d762-445c-9b53-dc0b9ee24e13"
     },
     "/openwiki/workflows/models-and-settings.md": {
       "gitHead": "a9b45e0b417cd41d8c5794e2b840f9fa2b653b3f",

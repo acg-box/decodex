@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:28e46c1ae8882b10078e2115462aa7c750bcb030b1e0ed41020eebaa92c45862",
+  "pageVersion": "sha256:53ba7e4567114c5ab660ceb98aecc00f18df1c66b1b43472a706d6dbe9c6cd66",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -22,7 +22,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:2e3e9f83bda1b1bf29cbf057783c8482aa70f028333e9dfbde0ef4dfb5ee91a3"
+          "version": "repo-file-v1:sha256:9c085f3ffc23fe60da8d093c3621def883d4a1c6844e8306c3ed8d873d1f0622"
         }
       ]
     },
@@ -89,7 +89,7 @@
       "statement": "The service filters exact native archive members from the shared active Agent snapshot without deleting local work, retains live descendants under their nearest visible ancestor, and removes incident view references.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L29-L68",
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L54-L93",
           "version": "repo-lines-v1:sha256:6f5e5d8ce8163c955bbca251948584c58fa55d2a88bc87b63dfb38166bc6fa79:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NGE4ZWM3YzlhZjc5OTE5NGQxMDY2YTU1ZTYyY2ExYmI1MDBlNTE5N2RjNzRlY2UwN2RmZDM4YTRkNzllZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
         },
         {
@@ -100,15 +100,15 @@
     },
     {
       "id": "claim_7965622a86494894b6afb8d5ce59a27b",
-      "statement": "The native archive catalog refreshes at most once per 15 seconds within a process generation; failed refreshes retain confirmed membership, and a different generation clears that cache.",
+      "statement": "The native archive catalog refreshes in the background at most once per 15 seconds within a process generation without delaying work snapshots; failures retain confirmed membership, a different generation clears the cache, and late results from earlier generations are ignored.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L294-L310",
-          "version": "repo-lines-v1:sha256:47bf7f3220f9185cc1c4462aaefa0726b0b427452aa93e44865a1a01beff2145:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZWU3YzFiMjg0ZmQ4NGU0ZjIwMDI1ZTEzZGQxYWI5NGU2ZjFjMzZlYjcxNjRlYThhYjBmZDUzOTVhYWE5ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYzAwZGE5MWFkOThiMzU3NGQ2ZDY5OWNiMTQ3MGNlZDI4YWYzYmJiOWVhZGFlZmNhNDVlYzY4MzU4M2YyYjYifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L294-L312",
+          "version": "repo-lines-v1:sha256:128d78456709a7649f69d1829521b8c98286d349eb3e69230b30881af5b0bde3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZWU3YzFiMjg0ZmQ4NGU0ZjIwMDI1ZTEzZGQxYWI5NGU2ZjFjMzZlYjcxNjRlYThhYjBmZDUzOTVhYWE5ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiZjhhODQ5YTY5ZjZlZDI1NDVjMjRlOGY2ZmUwYjY0MzBmMzY1NzRjOGJhYTBjZDMzNDExMWIxNjU5YzAyOWMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L9-L27",
-          "version": "repo-lines-v1:sha256:cd9658b81ee9b811ff88c50fc01291d1155eb01664c21840b9871c839b8cd73e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDg1ODIyNTYzYTE0NDhhZWZhYzUzZjQ0OWMwNDM3ZjIwOTFmMmExZGI1NTY1NThjNWM4MDU1ODI0NzBmZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5NDg5MTA4YjAyYTNhNGQzZWNiOTY5MjBjZjBiMzRkNWNjMWQxYmZjMzQ3OWUyMmIwOTgyYmUxYjNlYzFkMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOGM4MjFlYWRjOWU2Y2E5YzBmOGQ3OWI2MmZmZjZkYzllY2ZlOWFjNjkzNzdkZGQ5ZWYxMjhhMDEyYTI5MDEifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L19-L51",
+          "version": "repo-lines-v1:sha256:af61fb3993914fa20fa2969d9160c2e8dcc6d96ba05a4510c14ad254daef954e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MjQ5OTBkMGZiYmViMzZjOTQ4YzYyZGRjODE5NDAyNzJkOTcyNjg0NzdiOTM1YmYwMWVhOGM2YWVjY2ZmMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0Y2EzYmFiNTdkMDNlZjEwNTc3MzUwMjBlNjY4ZjY2NWFhYmZlNmVkYzViYzBiMGEyZDk5ODEzMDE3ZTQxM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNzU0MmI3OTZlOTY0YTljNTg0MzJkMmIwZWE2ZGU5YjcyOTg3ZGNjZmFmNzY4MDU0YTMzZTEwNzczZmIxOGMifQ"
         }
       ]
     },
@@ -125,10 +125,28 @@
           "version": "repo-lines-v1:sha256:4a48e1e063697b59ab7e0089756a1453d5e6b2458db21fab49982a07791fb663:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZmE1ZTAyOWRjMjgyOTc3ZTU0NjI5ZTBiY2Y0OGJiM2IzMjVhY2VlY2ViZDAxYTlhNmM5MmY0NjE4YzJmNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ODg4MjhlYWY1MzAzZjc4MmVkOTAxMmQ5MjY5ZjI4ZTMxNzA1ODJhODBhMTNiNWRmYzRkZjYwOWFjN2U5MDUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_ce97995117c94275be0222bdb533ebd4",
+      "statement": "Native archive discovery follows pagination without a fixed page-count ceiling while preserving per-response transport limits, a whole-read deadline, and a bounded retained-ID and cursor budget; incomplete or malformed catalogs cannot update visibility.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs#L22-L29",
+          "version": "repo-lines-v1:sha256:01a402e6541d61e07d44ded01a1bd0c460623a608bde8574963b02fea12421af:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGU5NmU1YjQyZWU4MGYwNmI0Yjk2MTM2MDFjNDU5MzQ2OWU0OTFkNDk2Y2Q0NTI2ODNmMmFmZjY5NWQ4MmRjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTljODEwYTFhOTI0ZmU0YmJmMjRmYzE3MTM3NDk2YmQ1NWVjMWRmYzMxMTIxMWVjNWRmY2UxYzg1ZGNhYzk4MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGRiNjM3MGIwOTQxZTQ5YjEzZjI4OWZkMTJiOTdlODY3ZmU4NzM5MmM1NjZhMmZiY2Y1ZjE5OWYyYzA1ZGIwMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDRiMWM4ZjFlNWU4YmFlZWU0ZGUwNTFhMDNmMTE2MzA1YjVlMmY4NzQwYjA4NDRiMzk4MmRmMDdlNTdjZGQ1MiJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/archive.rs#L77-L130",
+          "version": "repo-lines-v1:sha256:2287780dacd5af418a07164ba7dc13b914880293c3ea1d3d1717ecb27be2d16e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NmE0MjI3YzA3ZWQxZWUwZmE2MDExYzBmMThkMjdjYWM1NWYxNTQxMjU2NzRkMGI5MDAxZDM0Njk1NmFhNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ZjI4MzcyOGEwNWZlNmI5NDk0YTA0YzE3ZjhjOTdjMjM5MzljN2Y1YmJmMTkzZjlmOGMxMzQ1NTA0OGZjYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzOTJjNmVjYTU1NWMwYjlhYjE3MzEyYTVjZGIwYTE4MzJiOGFlODIyZGQ3NjQzMjFmMGEzM2QyYTA0ODE0OTgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L20-L40",
+          "version": "repo-lines-v1:sha256:b83d8bed2a78ae290e50df268a85db3b063efcc4fb1216b060a8e947a22edcbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjNTQ5MzU5OGE3ODZlMzdlODk0MGVkMTg1N2JlOTEzYjYzN2Y1MThkODZmYWU2MGJiOGFkYWU3YzFjMmU2ZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkNTFlOGY0NWY4NDI5OTYxMDNkZDg5MzEwODZhYmFkODA5ZmVlMTJiMWIyNjE5ZTI0ZjYwNGI1NjQxMmVkYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxYWI5ZDk2ZWQ1ZjU4YjhhNDU0NDE3NjY0ZWU2ZjQ4NTMzZjQwZDgwZmYxYTAxYjQ2N2YxZGNkODBlY2VlY2IifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:30:22.602Z"
+    "at": "2026-10-13T06:36:14.837Z"
   }
 }
