@@ -30,14 +30,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
+  - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
+    resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-0e02d239506d0285d4593872
     resource: repo://scripts/macos/bundle_codex.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-13T02:44:02.282Z" }
+generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T02:44:02.282Z
+    at: 2026-10-13T03:36:56.884Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -67,6 +69,10 @@ The embedded MCP HTML viewer and local plugin management are retired. Their old 
 ## Proportionate validation
 
 Choose the smallest test that can fail for the changed behavior. Preserve complete failure output and the actual artifact identity. Do not rerun long desktop or physical-provider flows to remove every historical open statement. Use isolated, task-owned fixtures that satisfy the runtime path rules, and remove owned test processes and data when done. Documentation consolidation alone does not justify a fresh model call, application launch or complete Rust rebuild.
+
+## Source extraction and build caches
+
+`node --test scripts/macos/build_codex_source.test.mts` checks official source selection and extracts an archive with old timestamps into an existing source cache. The extraction test verifies that obsolete files are removed, archive content is restored, and file timestamps become newer than a simulated cached-build time. This checks the extractor contract. Qualify the resulting package, generated schema and affected native behavior separately.
 
 ## Terminal errors and external context
 

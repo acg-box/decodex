@@ -26,16 +26,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
+  - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
+    resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-0e02d239506d0285d4593872
     resource: repo://scripts/macos/bundle_codex.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
+generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T02:44:02.282Z
+    at: 2026-10-13T03:36:56.884Z
 ---
 
 # Runtime Architecture
@@ -80,6 +82,8 @@ The runtime lock and its exact source revision define the bundled implementation
 ## Source runtime qualification
 
 [The runtime lock](../../codex-runtime.lock.json) selects the exact official upstream commit, source archive digest and adapter schema fingerprint. `build_codex_source.mts` verifies the official archive URL and digest, recreates the extracted source cache, then runs the upstream package builder with stable Rust and its locked Cargo graph. It supplies the selected commit as `STABLE_GIT_COMMIT` and rejects a build that changes the upstream Cargo lock or package identity.
+
+The extractor refreshes file modification times instead of restoring the archive timestamps. This prevents Cargo from accepting stale local source artifacts after extraction. The Cargo build directory remains available for dependency reuse.
 
 The builder checks the package version, target, variant and layout. It signs `CodexCLI.app`, the Code Mode helper and packaged `rg`, then verifies their signatures. `bundle_codex.mts` checks the executable version and generates experimental app-server schemas from that executable. The local `schema_fingerprint` example validates the adapter contract before the fingerprint is compared with the lock. The bundle records the source commit, executable digest and schema fingerprint as separate evidence.
 
