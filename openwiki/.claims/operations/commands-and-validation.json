@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6535683d25e01afb447b07bfd9ae5c1c0490ecb31a85fc2d1e9daa020e0b1803",
+  "pageVersion": "sha256:5d3bfad9a7e6f9cf2b771f2a78101c18ef0c07a2796e392ff47f410294a9119f",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -93,7 +93,7 @@
           "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1446-L1454",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1448-L1456",
           "version": "repo-lines-v1:sha256:b70e31578866d930e476716273df97922fe6e05772b5029ff4fcd7a1e3e0994f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRjMzRlN2E1ZDZhNzg1MmVkNmI5YjQwY2Q1Yjk2MzgzNDFiMjMyNDk2YjI3YzY0Nzc1NDM2YWU4NjRjYjdlYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0MDQ3ZmRlMGE5MDI5MDllMmI5YmVlYzhiMzJlMmQzNTdlN2VkNzNjMjg5Y2Y2N2Q0NTY5ZDUyMzZkNTE0YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWY5NDA5MzllMmUzZTEwZDk1OTQzNjEwNGU5MjU0ZjViYzI4NmQ4MTE0ZjZiYzkxYjJkMGE5MzE2NGYzMTU1OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDA0ZDQ3YmZkODczODFhYmY2NGU1Y2NmYzFlNGEwMjQ1ZWFlMGU4YTNmNzM0ZjM0NDYxOTliMjMwOWU4YmY4OCJ9"
         },
         {
@@ -101,10 +101,20 @@
           "version": "repo-lines-v1:sha256:381e6dc1f5502f53c1c1828f5f5c7f3dfcb8efd54b709d8002e2681207df4584:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzZTRhNjZmMzg2ZjI4ODhkM2FkMWE3NDdkMDVmYzA0ZGIyNTkxZDJlOGU3ODY1YjVmNzAwOTk5OWM2OGM4YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3YTc1OGNkYzdmMGU1ZjUyNmYyM2M3OWE4OWZlNzJiNzAzMmQ5MmVjOGMxYzE2YjgxMmMyNGM1OWJjMzAwMDUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_66e7e92f9f0c47a3bbe41fdce4db3234",
+      "statement": "The opt-in native archive qualification uses an explicit Codex binary, a temporary native home, a loopback Responses fixture and 10,300 unrelated archive records to verify two archive and unarchive cycles across retained processes without restarting or starting extra model turns.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+          "version": "repo-file-v1:sha256:a9d75f83ae3593c93f982a3ad4edb0a30d972d22fb266b3d2f048aefe6822199"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:10:39.973Z"
+    "at": "2026-10-13T07:14:35.295Z"
   }
 }

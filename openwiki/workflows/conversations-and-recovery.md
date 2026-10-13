@@ -4,6 +4,8 @@ title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-6512b631b67649d924c16ba3
+    resource: repo://apps/decodex-gpui/src/agent_archive.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
@@ -28,18 +30,22 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-dc292a3cdb3064363ab29907
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
+  - id: openwiki-source-95a7168e447de14b4b758f16
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
+  - id: openwiki-source-f4bc7020783c49a911b7fb29
+    resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-10-13T06:29:42.042Z" }
+generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T06:30:22.602Z
+    at: 2026-10-13T07:14:35.295Z
 ---
 
 # Conversation input, history and recovery
@@ -62,7 +68,7 @@ Codex owns archive state. A confirmed archive removes the bound work from the ac
 
 When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to Main. A failed snapshot read does not trigger this transition.
 
-After Codex restores the original thread, the active view can show its original relationships again. Opening that conversation restores its saved draft. Native child tabs follow the same complete-list rule and retain their own draft when removed from the active view. An archive refresh does not delete accepted input or replay an uncertain command.
+After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved draft under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own draft when removed from the active view. An archive refresh does not delete accepted input or replay an uncertain command.
 
 ## Edit or branch at an earlier input
 

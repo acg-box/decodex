@@ -302,6 +302,7 @@ impl AgentHost {
 			&self.archive_visibility,
 			generation.as_str(),
 			client,
+			snapshot.work_items.iter().filter_map(|work| work.codex_thread_id.clone()).collect(),
 		)
 		.await;
 		let cache = self.archive_visibility.lock().await;

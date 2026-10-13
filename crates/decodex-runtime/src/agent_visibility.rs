@@ -5,7 +5,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, ThreadArchiveState};
 use decodex_protocol::AgentSnapshotDto;
 use tokio::sync::Mutex;
 
@@ -14,12 +14,19 @@ pub(crate) struct ArchiveVisibility {
 	pub generation: Option<String>,
 	pub checked_at: Option<Instant>,
 	pub archived: HashSet<String>,
+	refreshing: bool,
+	threads: HashSet<String>,
 }
 
 impl ArchiveVisibility {
-	pub async fn refresh(cache: &Arc<Mutex<Self>>, generation: &str, client: AppServerClient) {
+	pub async fn refresh(
+		cache: &Arc<Mutex<Self>>,
+		generation: &str,
+		client: AppServerClient,
+		threads: HashSet<String>,
+	) {
 		let mut state = cache.lock().await;
-		if !state.refresh_due(generation, Instant::now()) {
+		if !state.refresh_due(generation, &threads, Instant::now()) {
 			return;
 		}
 		let cache = cache.clone();
@@ -27,26 +34,49 @@ impl ArchiveVisibility {
 		// The bounded native read can outlive a desktop snapshot request.
 		// Refresh separately so ordinary queries use the last confirmed view.
 		tokio::spawn(async move {
-			if let Ok(archived) = client.archived_threads().await {
-				cache.lock().await.apply(&generation, archived);
-			}
+			let observed = client.observe_thread_archives(&threads).await;
+			cache.lock().await.apply(&generation, observed);
 		});
 	}
 
-	pub fn apply(&mut self, generation: &str, archived: HashSet<String>) {
+	pub fn apply(&mut self, generation: &str, observed: HashMap<String, ThreadArchiveState>) {
 		if self.generation.as_deref() == Some(generation) {
-			self.archived = archived;
+			for (id, state) in observed {
+				match state {
+					ThreadArchiveState::Active => {
+						self.archived.remove(&id);
+					},
+					ThreadArchiveState::Archived => {
+						self.archived.insert(id);
+					},
+					ThreadArchiveState::NotFound | ThreadArchiveState::Changed => {},
+				}
+			}
+			self.refreshing = false;
 		}
 	}
 
-	pub fn refresh_due(&mut self, generation: &str, now: Instant) -> bool {
+	pub fn refresh_due(
+		&mut self,
+		generation: &str,
+		threads: &HashSet<String>,
+		now: Instant,
+	) -> bool {
 		if self.generation.as_deref() != Some(generation) {
 			*self = Self { generation: Some(generation.into()), ..Self::default() };
 		}
-		if self.checked_at.is_some_and(|at| now.duration_since(at) < Duration::from_secs(15)) {
+		if self.refreshing
+			|| (self.threads == *threads
+				&& self
+					.checked_at
+					.is_some_and(|at| now.duration_since(at) < Duration::from_secs(5)))
+		{
 			return false;
 		}
 		self.checked_at = Some(now);
+		self.refreshing = true;
+		self.threads = threads.clone();
+		self.archived.retain(|id| threads.contains(id));
 		true
 	}
 }
@@ -95,13 +125,13 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 #[cfg(test)]
 mod tests {
 	use super::{ArchiveVisibility, retain_active};
-	use decodex_codex::app_server_client::AppServerClient;
+	use decodex_codex::app_server_client::{AppServerClient, ThreadArchiveState};
 	use decodex_protocol::{
 		AgentDependencyDto, AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto,
 		AgentWorkKindDto, AgentWorkStatusDto, WorkspaceDto,
 	};
 	use std::{
-		collections::HashSet,
+		collections::{HashMap, HashSet},
 		sync::Arc,
 		time::{Duration, Instant},
 	};
@@ -113,16 +143,25 @@ mod tests {
 		let (incoming, input) = mpsc::channel(8);
 		let (output, mut outgoing) = mpsc::channel(8);
 		let (client, _events) = AppServerClient::from_framed(1, input, output).unwrap();
+		let threads = HashSet::from(["archived".to_owned()]);
 		tokio::time::timeout(
 			Duration::from_secs(1),
-			ArchiveVisibility::refresh(&cache, "process", client.clone()),
+			ArchiveVisibility::refresh(&cache, "process", client.clone(), threads.clone()),
 		)
 		.await
 		.expect("snapshot scheduling must not wait for the native response");
 		let request = outgoing.recv().await.unwrap();
 		assert!(cache.lock().await.archived.is_empty());
-		ArchiveVisibility::refresh(&cache, "process", client).await;
+		ArchiveVisibility::refresh(&cache, "process", client, threads).await;
 		assert!(outgoing.try_recv().is_err(), "one refresh per interval");
+		incoming
+			.send(Ok(serde_json::json!({
+				"id":request["id"],"result":{"data":[],"nextCursor":null}
+			})))
+			.await
+			.unwrap();
+		let request = outgoing.recv().await.unwrap();
+		assert_eq!(request["params"]["archived"], true);
 		incoming
 			.send(Ok(serde_json::json!({
 				"id":request["id"],"result":{"data":[{"id":"archived"}],"nextCursor":null}
@@ -209,16 +248,38 @@ mod tests {
 	fn archive_cache_is_scoped_to_generation_and_does_not_repoll_each_snapshot() {
 		let now = Instant::now();
 		let mut cache = ArchiveVisibility::default();
-		assert!(cache.refresh_due("first", now));
+		let threads = HashSet::from(["old".into(), "current".into()]);
+		assert!(cache.refresh_due("first", &threads, now));
 		cache.archived.insert("old".into());
-		assert!(!cache.refresh_due("first", now + Duration::from_secs(1)));
-		assert!(cache.refresh_due("first", now + Duration::from_secs(15)));
+		assert!(!cache.refresh_due("first", &threads, now + Duration::from_secs(1)));
+		assert!(
+			!cache.refresh_due("first", &threads, now + Duration::from_secs(15)),
+			"an unfinished scan must not overlap a later refresh"
+		);
+		cache.apply("first", HashMap::new());
+		assert!(cache.refresh_due("first", &threads, now + Duration::from_secs(15)));
 		assert!(cache.archived.contains("old"), "a failed refresh retains confirmed state");
-		assert!(cache.refresh_due("second", now + Duration::from_secs(16)));
+		assert!(cache.refresh_due("second", &threads, now + Duration::from_secs(16)));
 		assert!(cache.archived.is_empty(), "another process cannot inherit archive observations");
-		cache.apply("first", HashSet::from(["stale".into()]));
+		cache.apply("first", HashMap::from([("stale".into(), ThreadArchiveState::Archived)]));
 		assert!(cache.archived.is_empty(), "a previous process cannot publish a late refresh");
-		cache.apply("second", HashSet::from(["current".into()]));
+		cache.apply("second", HashMap::from([("current".into(), ThreadArchiveState::Archived)]));
 		assert!(cache.archived.contains("current"));
+		cache.apply("second", HashMap::from([("current".into(), ThreadArchiveState::Active)]));
+		assert!(cache.archived.is_empty(), "positive active membership restores the same binding");
+	}
+
+	#[test]
+	fn archive_new_bindings_refresh_without_waiting_and_unknown_bindings_keep_their_state() {
+		let now = Instant::now();
+		let mut cache = ArchiveVisibility::default();
+		let threads = HashSet::from(["old".into()]);
+		assert!(cache.refresh_due("process", &threads, now));
+		cache.apply("process", HashMap::from([("old".into(), ThreadArchiveState::Archived)]));
+		assert!(!cache.refresh_due("process", &threads, now + Duration::from_secs(1)));
+		let expanded = HashSet::from(["old".into(), "new".into()]);
+		assert!(cache.refresh_due("process", &expanded, now + Duration::from_secs(1)));
+		cache.apply("process", HashMap::from([("new".into(), ThreadArchiveState::Active)]));
+		assert!(cache.archived.contains("old"), "missing evidence must not unarchive a binding");
 	}
 }

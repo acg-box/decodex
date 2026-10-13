@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:578267875d2f8f1de20dfbd90cb59ad7dd5bfac73e0c19ca24712f1f6114bf83",
+  "pageVersion": "sha256:14f969ea189fc3cda4ad1c74654dd189de4bcd6efbbec8b56a0ac157933e4c2e",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -155,10 +155,28 @@
           "version": "repo-lines-v1:sha256:b2cb8aed8d35b12a848e6b9bcacd7c405de98c34fd2e518b6435a70c5a3021ac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZTA2MTdhMDQ5YWU1NDc1ZDVhOTJjY2I4MjY1OGIzNjZjYzgzMGRiMDlhZTRjM2YzZWZkOWY5YjdjYzM2MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MTJhNzA2ZDNjNTlhMjQ5NjgyYjczZGM1MTJlNGQxMmI3MmNhOGYyNzIyMDE3MTFhZDQ3ZWRhOTEwMDEyMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2YTY3NDBiMjYwZjE4MWJiNGI1NjI3MDg3YTBmYThhNTIxY2RiOWYyNDQ2YjY5OTIyN2ZjMWRhYmE4MzNiNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3NDg2ZDViYTI3ZDAwOWRkYzgwOTAxN2ZkOTQyY2ZkMTJkMmM0YmYwY2NjZjI1ODg3OGQ4YmMyODEyYzI3OWQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_0ae08050cc714c98a809b16951326ecf",
+      "statement": "After native unarchive, a positive active-list observation restores the original local work relationship without an application restart; opening that work restores the draft under its original work and thread identities.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L577-L642",
+          "version": "repo-lines-v1:sha256:7f55ca2ecf3a846548c678dc2eb604fe5c8962f500bb3bca2ed8c07c1ea08818:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5MDMyMmViYTI2YjFhNDRjOWZmMzEwZWEzZTJmYjI0NTMzNzMzMzgyODdjODE3NzcwNzFhNjQ1ZTUyYjI5OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NmMzZTJkMzQ4ZGY4M2Y1ZmMxZGM1MGZkMWIzNjQ1MWRkMWU2Yzk2MWI1YjRhZDU3MjBhOWIwMjMzM2EzNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMjY5YmEwZDUyODQyMzY4Y2EyMjAxYjQ0ZjIxM2E5YzA0YmY5OTM2MWI4MThjOWMyMzUzOGNmMzUxZDYyODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjIyNjY1NGU2ZjE4Y2RiMTE3M2RiMmRiZGNhOTM0MGE5ZjI5M2NmNTViYjliZDE5ZTFhNTRlZjA3OTQ4OWMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+          "version": "repo-file-v1:sha256:a9d75f83ae3593c93f982a3ad4edb0a30d972d22fb266b3d2f048aefe6822199"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L42-L56",
+          "version": "repo-lines-v1:sha256:2cf635d301ab19ddfa2a35dc43bceaf184971122ee9a88dfdbc33a2d01c26c49:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiNWQ2YjAxOTZkNjFkY2MwZGMxMzZhODE3YzgzZWU1NzkyZjA2ZmQ3NDBjNWJlZWIyZmRlYzkxNTE3NmQ3MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYjVmODUwYmU4YTU3Y2I0ZWFhNjJhZjNhYWJiZjJlOTBmN2I5NjYzMDcxM2Y2ZTQxMDEzYjkwYzMxOGNkMWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0NzUxMmM5MzIzZDAwYmU0MjdiNGNkOWRjMDEzMGNiNjE3M2IxYTRkNmQ3YTNhZjUyN2I3N2M0NDFjYjI0YjIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:30:22.602Z"
+    "at": "2026-10-13T07:14:35.295Z"
   }
 }
