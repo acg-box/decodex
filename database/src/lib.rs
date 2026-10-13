@@ -834,7 +834,8 @@ mod tests {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
-		let (account_id, provider, current, ambiguous_id) = seed_ambiguous_refresh(&store).await;
+		let (account_id, provider, current, ambiguous_id) =
+			seed_refresh_recovery(&store, "provider_refresh_ambiguous").await;
 		let reauthentication_id =
 			AccountOperationId::new(OPERATION_THREE).expect("reauthentication operation");
 		let target = CredentialBinding {
@@ -845,7 +846,7 @@ mod tests {
 			writer_operation_id: reauthentication_id.clone(),
 		};
 		let prepared = store
-			.prepare_account_reauthentication_takeover(
+			.prepare_account_recovery_takeover(
 				&AccountOperationPreparation {
 					operation_id: reauthentication_id.clone(),
 					account_id,
@@ -925,6 +926,72 @@ mod tests {
 				.expect("read unsettled operations")
 				.is_empty()
 		);
+	}
+
+	#[tokio::test]
+	async fn logout_recovery_accepts_only_exact_rejected_refreshes() {
+		for (reason, revision, accepted) in [
+			("provider_refresh_rejected", 1, true),
+			("provider_access_rejected_after_refresh", 1, true),
+			("provider_refresh_rejected", 2, false),
+			("provider_refresh_ambiguous", 1, false),
+		] {
+			let directory = tempfile::tempdir().expect("temporary directory");
+			let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+				.expect("initialize store");
+			let (account_id, provider, current, recovery_id) =
+				seed_refresh_recovery(&store, reason).await;
+			let logout_id = AccountOperationId::new(OPERATION_THREE).expect("logout identity");
+			let outcome = store
+				.prepare_account_recovery_takeover(
+					&AccountOperationPreparation {
+						operation_id: logout_id.clone(),
+						account_id: account_id.clone(),
+						kind: AccountOperationKind::Logout,
+						display_label: None,
+						enabled: None,
+						expected_account_revision: Some(revision),
+						expected: Some(current),
+						target: None,
+						provider,
+					},
+					&recovery_id,
+				)
+				.await
+				.expect("prepare logout recovery");
+			if !accepted {
+				assert!(matches!(outcome, AccountLifecycleMutationOutcome::Rejected { .. }));
+				assert!(store.read_account_operation(&logout_id).await.unwrap().is_none());
+				continue;
+			}
+			assert!(matches!(outcome, AccountLifecycleMutationOutcome::Applied(_)));
+			assert!(
+				store
+					.read_account_operation(&recovery_id)
+					.await
+					.unwrap()
+					.unwrap()
+					.superseded_by_operation_id
+					.is_none()
+			);
+			store
+				.delete_credential(&fixture_key(1, DIGEST_ONE, OPERATION_ONE))
+				.expect("remove exact credential");
+			for (from, to) in [
+				(AccountOperationPhase::Prepared, AccountOperationPhase::StoreApplied),
+				(AccountOperationPhase::StoreApplied, AccountOperationPhase::Committed),
+			] {
+				assert!(matches!(
+					store.advance_account_operation(&logout_id, from, to, None).await.unwrap(),
+					AccountLifecycleMutationOutcome::Applied(_)
+				));
+			}
+			let recovery = store.read_account_operation(&recovery_id).await.unwrap().unwrap();
+			assert_eq!(recovery.recovery_code.as_deref(), Some(reason));
+			assert_eq!(recovery.superseded_by_operation_id, Some(logout_id));
+			assert!(store.read_unsettled_account_operations(512).await.unwrap().is_empty());
+			assert!(store.read_account_registry(None, 512).await.unwrap().is_empty());
+		}
 	}
 
 	async fn enroll_lifecycle_fixture(store: &SqliteStore) -> AccountId {
@@ -1063,8 +1130,9 @@ mod tests {
 		));
 	}
 
-	async fn seed_ambiguous_refresh(
+	async fn seed_refresh_recovery(
 		store: &SqliteStore,
+		recovery_code: &str,
 	) -> (AccountId, ProviderIdentity, CredentialBinding, AccountOperationId) {
 		let (account_id, enrollment_id, provider, current) = account_fixture();
 
@@ -1137,7 +1205,7 @@ mod tests {
 				&ambiguous_id,
 				AccountOperationPhase::ProviderEffectPending,
 				AccountOperationPhase::RecoveryRequired,
-				Some("provider_refresh_ambiguous"),
+				Some(recovery_code),
 			)
 			.await
 			.expect("preserve ambiguous provider effect");
