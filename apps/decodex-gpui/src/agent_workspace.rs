@@ -56,6 +56,41 @@ fn open_connection_accounts(window: &mut Window, cx: &mut gpui::App) {
 	}
 }
 
+fn account_connection_notice(message: &'static str) -> AnyElement {
+	gpui::div()
+		.id("conversation-unavailable")
+		.debug_selector(|| "conversation-unavailable".into())
+		.role(Role::Status)
+		.aria_label(message)
+		.flex()
+		.flex_wrap()
+		.items_center()
+		.gap_2()
+		.text_size(gpui::px(11.))
+		.line_height(gpui::px(17.))
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.child(message)
+		.child(
+			gpui::div()
+				.id("connection-open-accounts")
+				.debug_selector(|| "connection-open-accounts".into())
+				.role(Role::Button)
+				.aria_label("Open Accounts")
+				.tab_index(0)
+				.cursor_pointer()
+				.text_color(gpui::rgb(BLUE))
+				.child("Open Accounts")
+				.on_click(|_, window, cx| open_connection_accounts(window, cx))
+				.on_key_down(|event: &KeyDownEvent, window, cx| {
+					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+						open_connection_accounts(window, cx);
+						cx.stop_propagation();
+					}
+				}),
+		)
+		.into_any_element()
+}
+
 fn account_connection_message(detail: &str) -> Option<&'static str> {
 	let recovery = detail.strip_prefix("Agent account requires recovery: ");
 	Some(match recovery {
@@ -827,38 +862,7 @@ impl AgentSurface {
 		if !self.uncertain
 			&& let Some(message) = detail.and_then(account_connection_message)
 		{
-			return gpui::div()
-				.id("conversation-unavailable")
-				.debug_selector(|| "conversation-unavailable".into())
-				.role(Role::Status)
-				.aria_label(message)
-				.flex()
-				.flex_wrap()
-				.items_center()
-				.gap_2()
-				.text_size(gpui::px(11.))
-				.line_height(gpui::px(17.))
-				.text_color(gpui::rgb(TEXT_MUTED))
-				.child(message)
-				.child(
-					gpui::div()
-						.id("connection-open-accounts")
-						.debug_selector(|| "connection-open-accounts".into())
-						.role(Role::Button)
-						.aria_label("Open Accounts")
-						.tab_index(0)
-						.cursor_pointer()
-						.text_color(gpui::rgb(BLUE))
-						.child("Open Accounts")
-						.on_click(|_, window, cx| open_connection_accounts(window, cx))
-						.on_key_down(|event: &KeyDownEvent, window, cx| {
-							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-								open_connection_accounts(window, cx);
-								cx.stop_propagation();
-							}
-						}),
-				)
-				.into_any_element();
+			return account_connection_notice(message);
 		}
 		let title = if self.uncertain {
 			"Delivery unconfirmed · Sending paused"
