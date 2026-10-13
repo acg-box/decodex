@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:afdf7813e514d7c46a0837427fc49924d6a4232236f3cf9a829ca97a71d598f3",
+  "pageVersion": "sha256:578267875d2f8f1de20dfbd90cb59ad7dd5bfac73e0c19ca24712f1f6114bf83",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -101,7 +101,7 @@
       "statement": "Task preferences exposes explicit source- and revision-bound read/unread marks for the current root conversation; refresh never acknowledges results and uncertain writes are not automatically retried.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2290-L2357",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2326-L2393",
           "version": "repo-lines-v1:sha256:596cd93b2b2e2c805234c07eff265751d337438df3fa5739df2615f163492151:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
         },
         {
@@ -133,10 +133,32 @@
           "version": "repo-file-v1:sha256:48b865a3e823354994bbd39796567e1f15887f75e69ba3aff42e781aac32475c"
         }
       ]
+    },
+    {
+      "id": "claim_cc866e79cad140bda674c375b40eef33",
+      "statement": "When a refreshed active snapshot removes the selected conversation or composer owner, the desktop stops voice input, preserves the draft under its original owner, uses normal navigation to restore the next conversation's draft, and blocks sending when the retained owner is unavailable.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L437-L479",
+          "version": "repo-lines-v1:sha256:abedc81dbdc03d8d942cfabaa52f67c833a34ca9c1a4ee9885eb57b8c6a9ee3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxNTc4ZTMzOTczODBlZDJmYzI3MjY0NTIxMTdhYzIxYzEzOTBkODc5M2ViM2JiMjFmNzU2MTY5ZDBjNTc0MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmN2FjN2ZiYjc1MDM1ZTk4MDQ4MWI4NjkwN2U1ZGM2OTY0MzE0MmZjMjJlMGU2OTQ2NDY2YTQ1NDg1MDdmMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNzJjMjkxMDY3M2MxZDNlYmY4ZGRiMjNlNjg3YzQ3YjE2ODc2ZTBkMWQ2MGM4MWRhYjU4MGUwMzlmOWY0ZmEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1501-L1535",
+          "version": "repo-lines-v1:sha256:4a48e1e063697b59ab7e0089756a1453d5e6b2458db21fab49982a07791fb663:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZmE1ZTAyOWRjMjgyOTc3ZTU0NjI5ZTBiY2Y0OGJiM2IzMjVhY2VlY2ViZDAxYTlhNmM5MmY0NjE4YzJmNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ODg4MjhlYWY1MzAzZjc4MmVkOTAxMmQ5MjY5ZjI4ZTMxNzA1ODJhODBhMTNiNWRmYzRkZjYwOWFjN2U5MDUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L348-L387",
+          "version": "repo-lines-v1:sha256:3be44bfbcc6f12e910c30046e94fcd7df358425805491082e11320b607e3406c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmODQxY2VlYmQ5YzY0NDJmZTIwMmFmNTU0OGFjNmI3ZGUwY2JmM2ViYjZhMmU0ZDg4MGJiYTA5Zjk0NmNlOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4N2U0ZGI1NjBmMTU3YTc3YzcwZmZkNjcyNTc2MzE5MmJlZTYzM2RiMzc0ZDczMWZhNmYxYThjNWRjZjhlNGUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L782-L791",
+          "version": "repo-lines-v1:sha256:b2cb8aed8d35b12a848e6b9bcacd7c405de98c34fd2e518b6435a70c5a3021ac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZTA2MTdhMDQ5YWU1NDc1ZDVhOTJjY2I4MjY1OGIzNjZjYzgzMGRiMDlhZTRjM2YzZWZkOWY5YjdjYzM2MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MTJhNzA2ZDNjNTlhMjQ5NjgyYjczZGM1MTJlNGQxMmI3MmNhOGYyNzIyMDE3MTFhZDQ3ZWRhOTEwMDEyMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2YTY3NDBiMjYwZjE4MWJiNGI1NjI3MDg3YTBmYThhNTIxY2RiOWYyNDQ2YjY5OTIyN2ZjMWRhYmE4MzNiNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3NDg2ZDViYTI3ZDAwOWRkYzgwOTAxN2ZkOTQyY2ZkMTJkMmM0YmYwY2NjZjI1ODg3OGQ4YmMyODEyYzI3OWQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-13T06:30:22.602Z"
   }
 }

@@ -20,6 +20,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-830a575f82404942511da59b
@@ -34,10 +36,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-13T06:29:42.042Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T18:37:44.705Z
+    at: 2026-10-13T06:30:22.602Z
 ---
 
 # Conversation input, history and recovery
@@ -53,6 +55,14 @@ The Agent composer and the separate ordinary History workbench share recovery me
 `agent_draft_storage`, `agent_draft_recovery` and `ClientDraftStore` preserve unsent input and copies needed for conflict or uncertain-operation recovery. They are not a permanent archive of accepted edits. Shared-store conflicts retain the local edit and the competing saved copy; explicit recovery and export make the distinction visible. Quit can be cancelled while the conflict remains unresolved.
 
 Persist input before dispatch. A lost response can mean that an operation ran. Check the exact saved receipt or native history before changing its state; do not resend an uncertain command. A later observation from another task, account or generation cannot settle it. Native closing-thread recovery resumes the existing conversation and keeps delivery evidence.
+
+## Native archive changes
+
+Codex owns archive state. A confirmed archive removes the bound work from the active list and graph, while the service keeps its stored history and original relationships. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
+
+When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to Main. A failed snapshot read does not trigger this transition.
+
+After Codex restores the original thread, the active view can show its original relationships again. Opening that conversation restores its saved draft. Native child tabs follow the same complete-list rule and retain their own draft when removed from the active view. An archive refresh does not delete accepted input or replay an uncertain command.
 
 ## Edit or branch at an earlier input
 
