@@ -30,7 +30,7 @@ enum Recovery {
 	LoginItems,
 }
 struct Notice {
-	title: &'static str,
+	title: SharedString,
 	detail: String,
 	recovery: Recovery,
 	color: u32,
@@ -38,11 +38,11 @@ struct Notice {
 }
 impl Notice {
 	fn key(&self) -> (String, String) {
-		(self.title.to_owned(), self.identity.as_ref().unwrap_or(&self.detail).clone())
+		(self.title.to_string(), self.identity.as_ref().unwrap_or(&self.detail).clone())
 	}
 
-	fn new(title: &'static str, detail: impl Into<String>, recovery: Recovery) -> Self {
-		Self { title, detail: detail.into(), recovery, color: AMBER, identity: None }
+	fn new(title: impl Into<SharedString>, detail: impl Into<String>, recovery: Recovery) -> Self {
+		Self { title: title.into(), detail: detail.into(), recovery, color: AMBER, identity: None }
 	}
 
 	fn error(mut self) -> Self {
@@ -182,15 +182,8 @@ impl Shell {
 	fn account_notifications(&self, notices: &mut Vec<Notice>) {
 		let snapshot = &self.accounts;
 
-		if snapshot.route_reopen_notice {
-			notices.push(
-				Notice::new(
-					"Account routing",
-					"Route succeeded. You can reopen ChatGPT or Codex now.",
-					Recovery::Accounts,
-				)
-				.info(),
-			);
+		if let Some(alias) = &snapshot.route_success_alias {
+			notices.push(Notice::new(format!("Switched to {alias}."), "", Recovery::None).info());
 		}
 
 		if let Some(detail) = &self.account_status {
@@ -476,9 +469,11 @@ impl Shell {
 									.justify_between()
 									.child(
 										gpui::div()
+											.flex_1()
+											.min_w_0()
 											.text_size(gpui::px(11.))
 											.text_color(gpui::rgb(notice.color))
-											.child(notice.title),
+											.child(notice.title.clone()),
 									)
 									.child(
 										gpui::div()
@@ -489,6 +484,7 @@ impl Shell {
 											.aria_label(format!("Dismiss {}", notice.title))
 											.tab_index(0)
 											.size(gpui::px(22.))
+											.flex_shrink_0()
 											.flex()
 											.items_center()
 											.justify_center()
@@ -504,13 +500,15 @@ impl Shell {
 											.child(workspace_symbols::icon(Symbol::Close)),
 									),
 							)
-							.child(
-								gpui::div()
-									.text_size(gpui::px(11.))
-									.line_height(gpui::px(17.))
-									.text_color(gpui::rgb(notice.color))
-									.child(notice.detail),
-							)
+							.when(!notice.detail.is_empty(), |d| {
+								d.child(
+									gpui::div()
+										.text_size(gpui::px(11.))
+										.line_height(gpui::px(17.))
+										.text_color(gpui::rgb(notice.color))
+										.child(notice.detail),
+								)
+							})
 							.when(!matches!(notice.recovery, Recovery::None), |d| {
 								d.child(self.notification_action(index, notice.recovery, cx))
 							})
@@ -626,7 +624,10 @@ mod tests {
 		let (fixture, visual) = cx.add_window_view(|window, cx| {
 			let shell = cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped));
 
-			shell.update(cx, |s, _| s.account_status = Some("Fixture account warning".into()));
+			shell.update(cx, |s, _| {
+				s.accounts.route_success_alias = Some("Build reserve".into());
+				s.account_status = Some("Fixture account warning".into());
+			});
 
 			let subscription = cx.observe(&shell, |_, _, cx| cx.notify());
 
