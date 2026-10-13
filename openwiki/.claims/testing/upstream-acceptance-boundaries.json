@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8022d7dae90d02a8bb352f3cf68076b15264b52beae5eb3676bd2fae9a0d513e",
+  "pageVersion": "sha256:8bcec2c84d48071e6657509236156b3657c8d651dbdbdf396ead1299954dae0f",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:e18f022aa2893bee091f1e513b4eaea01406a6b969b2fa168f5a8cee92ce2202"
+          "version": "repo-file-v1:sha256:dec846f126d04ebaddca0425d3416ed3d776126e08b0822aca9a5cbfe3d4abdf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs#L238-L271",
@@ -131,10 +131,20 @@
           "version": "repo-lines-v1:sha256:e02ee9a856f7bb4bbd1f44f7017089fdd53d34d904b7524de853d7425264b00c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjViNWFjOTY0ZjFjMjkzNmEzNGM3NGE5MjNhMjM3MWE0YmIyMzczMjM3NGRlNDJkNmYyZGU3ZTYxMDcyNDdiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg1OGM5MmIwMjg3ODA0YTU4Mjk1Y2E3YTJhODg3NzI1MmE2YjE5YzQwNjQ5ODQ3NDVjNDBiOTM3MWY5NTBiNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWM5NDM3NjkwZmJmZjlhOGFkNGYwMTliN2M1YmFhYWU3ZDdiZmJhZDNhNWU3NmI1NTA5MjViNGExODMzMTA0NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTAxN2VkYzRjNWI5MzE3MzNlZGJjZGRjN2I4MGEyNDIwMmU3NmM0Mjc4ZDkwMGM1M2IyODc5MGI5YTVhZWUwYyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_9f55632c09da4ba190f57775c76bb7a5",
+      "statement": "The source extraction regression checks that re-extraction removes obsolete files, restores archive content, and refreshes file timestamps beyond a simulated cached-build time.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/build_codex_source.test.mts#L23-L48",
+          "version": "repo-lines-v1:sha256:272c7d8edb5fd85fade59d34ba5cefb0b6d5a5d446bf5fa0bdfab7ff54206228:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2MmRkNzQyZWUxMWIzNWQ0MTA5YzU3MTViNDIwNmMwZjk2YzRkOTRjYTAwMGEyMzdiN2RmYzA4YTkxMTcxNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiZmI1MDQzNjg1YWIxOThiMGVhMGJlYTA2ZGNjNjg1ZmNiYjVkNWE4MmIyNjk1MzA3YTM4MGU2NDExMTA3N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T02:44:02.282Z"
+    "at": "2026-10-13T03:36:56.884Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f131a6400b9c942628837c1dfd02a1968b7efc76c3ecd7b327e41a9ed3efae25",
+  "pageVersion": "sha256:a0d301593c6e4eb5f7060f2ef030f105de434913e0e370de5dafaa4705b82a98",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -68,15 +68,15 @@
     },
     {
       "id": "claim_67d1ef78b6ef43aab12447f1516d0b58",
-      "statement": "Source runtime qualification uses the exact official archive and digest, the stable locked upstream package build, stamped commit and package identity checks, followed by signing and verification of the app and packaged helpers.",
+      "statement": "Source runtime qualification uses an exact official archive and digest, refreshes extracted source timestamps to prevent stale local Cargo artifact reuse, builds with stable Rust and locked dependencies, checks the stamped commit and package identity, and signs and verifies the app and packaged helpers.",
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:e18f022aa2893bee091f1e513b4eaea01406a6b969b2fa168f5a8cee92ce2202"
+          "version": "repo-file-v1:sha256:dec846f126d04ebaddca0425d3416ed3d776126e08b0822aca9a5cbfe3d4abdf"
         },
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L18-L95",
-          "version": "repo-lines-v1:sha256:0ab0e956a926c8b55cc0d64776866adc34256fa51c388423ce7aa1bd6ec30a92:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxOWZjMzU4YjljYjlmN2Q4YTExMjkyNWEyNjM5OGVlYjAxMTBiYzQxZmNlYmYzMjc4MmM5NTZjMWZlMmE4ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://scripts/macos/build_codex_source.mts#L19-L100",
+          "version": "repo-lines-v1:sha256:69e549dcc6c6fc446eec58938c592675d56f4f6977091d4c60472e69c93d672d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxMmEyYzRiOWYxYzQ5Zjg4MGQ2NDM3MDc3YzkzZDE5NTI4ZTBhN2YxNzI0MmUzMDhhMDA0YjY5NjU4YTViZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzY2UzMzVjZGJhMjRmZmQzOGRmZWUwZDM1YWUwZmZjNTY1OTRkOGY0MWYyMDdlODAxOTVlN2E1M2M5YjMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -129,6 +129,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T02:44:02.282Z"
+    "at": "2026-10-13T03:36:56.884Z"
   }
 }

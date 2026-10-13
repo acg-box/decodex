@@ -21,10 +21,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-0e02d239506d0285d4593872
     resource: repo://scripts/macos/bundle_codex.mts
-generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
+generated: { by: "codex", at: "2026-10-13T03:36:56.884Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T02:44:02.282Z
+    at: 2026-10-13T03:36:56.884Z
 ---
 
 
@@ -57,7 +57,7 @@ Use the [current product scope](../decisions/upstream-product-scope.md). Retired
 
 The runtime lock can select an exact official source archive. Use the existing builder and bundler described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
 
-1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock.
+1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
 2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The bundler checks the executable version, generates experimental app-server schemas from that executable, validates them against the local adapter and compares the fingerprint with the lock. It records the source commit, executable digest and schema fingerprint together.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
 

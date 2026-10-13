@@ -23,11 +23,11 @@
       "completedRunId": "6d164118-e240-476c-93ab-b94de1346d6a"
     },
     "/openwiki/architecture/runtime-architecture.md": {
-      "pageVersion": "sha256:d3f314997b06f50748945da25138586c90cfac4915d507349228c030c9e1b931",
+      "pageVersion": "sha256:61f1a1ba0833b18787b9af7b68c99ed0ed1f2a62972c2c257bf7fa29c1fab83f",
       "completedBy": "codex",
-      "completedRunId": "f06a674a-30e7-4837-8163-b08eceaace99",
-      "gitHead": "98ebdad5e59a10f8579ff691ab92bed109bd2831",
-      "sourceFingerprint": "sha256:443c8899b76671a39fb008be677a0a84f4fc81b1628637d95ed6d4e6e7c36a27"
+      "completedRunId": "3dd8cf82-fe79-413d-8716-f4d05730c548",
+      "gitHead": "b69096ad80231140016a504797de4449ec1cdae0",
+      "sourceFingerprint": "sha256:f23950e137a32915fd018b5d9f0bdef374dc57e1ea3d061d8d8b57351fc5ce24"
     },
     "/openwiki/decisions/adaptive-program-extension-architecture.md": {
       "gitHead": "a9b45e0b417cd41d8c5794e2b840f9fa2b653b3f",
@@ -191,11 +191,11 @@
       "completedRunId": "6d164118-e240-476c-93ab-b94de1346d6a"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
-      "pageVersion": "sha256:f131a6400b9c942628837c1dfd02a1968b7efc76c3ecd7b327e41a9ed3efae25",
+      "pageVersion": "sha256:a0d301593c6e4eb5f7060f2ef030f105de434913e0e370de5dafaa4705b82a98",
       "completedBy": "codex",
-      "completedRunId": "f06a674a-30e7-4837-8163-b08eceaace99",
-      "gitHead": "98ebdad5e59a10f8579ff691ab92bed109bd2831",
-      "sourceFingerprint": "sha256:443c8899b76671a39fb008be677a0a84f4fc81b1628637d95ed6d4e6e7c36a27"
+      "completedRunId": "3dd8cf82-fe79-413d-8716-f4d05730c548",
+      "gitHead": "b69096ad80231140016a504797de4449ec1cdae0",
+      "sourceFingerprint": "sha256:f23950e137a32915fd018b5d9f0bdef374dc57e1ea3d061d8d8b57351fc5ce24"
     },
     "/openwiki/operations/commands-and-validation.md": {
       "gitHead": "a9b45e0b417cd41d8c5794e2b840f9fa2b653b3f",
@@ -380,11 +380,11 @@
       "completedRunId": "0240b2f5-a5d9-4232-8e4a-e44d8dcfc7fc"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
-      "pageVersion": "sha256:8022d7dae90d02a8bb352f3cf68076b15264b52beae5eb3676bd2fae9a0d513e",
+      "pageVersion": "sha256:8bcec2c84d48071e6657509236156b3657c8d651dbdbdf396ead1299954dae0f",
       "completedBy": "codex",
-      "completedRunId": "f06a674a-30e7-4837-8163-b08eceaace99",
-      "gitHead": "98ebdad5e59a10f8579ff691ab92bed109bd2831",
-      "sourceFingerprint": "sha256:443c8899b76671a39fb008be677a0a84f4fc81b1628637d95ed6d4e6e7c36a27"
+      "completedRunId": "3dd8cf82-fe79-413d-8716-f4d05730c548",
+      "gitHead": "b69096ad80231140016a504797de4449ec1cdae0",
+      "sourceFingerprint": "sha256:f23950e137a32915fd018b5d9f0bdef374dc57e1ea3d061d8d8b57351fc5ce24"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fed6847dc5338d241daa3049364e5df9398f1519",
