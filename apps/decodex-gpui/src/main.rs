@@ -22,6 +22,7 @@ mod health_query;
 mod history_pager;
 mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_quit;
+#[cfg(target_os = "macos")] mod native_reopen;
 mod native_updater;
 mod panel_preferences;
 mod settings_surface;
@@ -103,6 +104,8 @@ fn main() {
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
 		install_native_quit_preflight(cx);
+		#[cfg(target_os = "macos")]
+		assert!(native_reopen::install(), "Cannot attach workspace reopen to GPUI");
 
 		let profile = ClientProfile::load_default(None);
 		let agent_profile = profile.as_ref().ok().cloned();
