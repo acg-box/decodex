@@ -5,7 +5,7 @@ description: "Service ownership, fixed Codex components, shared acquisition and 
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:59:08.643Z
+    at: 2026-10-14T02:59:25.564Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -31,6 +31,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
+  - id: openwiki-source-52d3ef4824079f66e9063566
+    resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
@@ -41,7 +43,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
+generated: { by: "codex", at: "2026-10-14T02:59:25.564Z" }
 ---
 
 # Runtime Architecture
@@ -74,6 +76,8 @@ The GUI installer links the user CLI to the bundled helper. The standalone servi
 ## Native runtime and coordination
 
 Codex app-server owns provider threads and execution. Decodex adds durable work relationships and protocol projections. Agent shares a retained account-bound process across its related work; ordinary conversation sessions keep their own runtime/account bindings. Historical Program aggregates are a read-only compatibility surface, not a restored execution lane. Native child approvals resolve through verified ancestry. Account routing, subscription usage, Reset Card redemption, and weekly activation stay service-owned.
+
+Decodex resolves child requests through the verified native parent chain. The integration does not maintain a second child-admission lifecycle.
 
 Retired repository/GitHub effect orchestration does not return through a wiki update. Historical records remain readable; a historical operation shape is not live execution authority.
 
