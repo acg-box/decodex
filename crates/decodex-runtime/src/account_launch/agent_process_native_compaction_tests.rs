@@ -188,6 +188,98 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 	backend.abort();
 }
 
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated partial compaction qualification"]
+async fn installed_native_discards_partial_compaction_output_after_restart() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+
+	assert!(std::path::Path::new(&binary).is_absolute());
+
+	const ORIGINAL: &str = "ORIGINAL_ASSISTANT_EVIDENCE";
+	const PARTIAL: &str = "DISCARDED_PARTIAL_SUMMARY";
+	let home = tempfile::tempdir().unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let bodies = Arc::new(Mutex::new(Vec::new()));
+	let backend = tokio::spawn(native_tests::serve_fixture_frames(
+		listener,
+		Arc::new(AtomicUsize::new(0)),
+		None,
+		Some(bodies.clone()),
+		|serial| {
+			let id = format!("partial-compaction-{serial}");
+			let text = match serial {
+				1 => PARTIAL,
+				2 => SUMMARY,
+				_ => ORIGINAL,
+			};
+			let output = serde_json::json!({"type":"message","role":"assistant","id":id,"content":[{"type":"output_text","text":text}]});
+			let mut frames = vec![
+				serde_json::json!({"type":"response.created","response":{"id":id}}),
+				serde_json::json!({"type":"response.output_item.done","item":output}),
+			];
+
+			if serial == 1 {
+				frames.push(serde_json::json!({"type":"response.incomplete","response":{"id":id,"incomplete_details":{"reason":"max_output_tokens"}}}));
+			} else {
+				let tokens = if serial == 0 { 250_000 } else { 100 };
+
+				frames.push(serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens}}}));
+			}
+
+			frames
+		},
+	));
+
+	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"Fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\nstream_max_retries = 0\n")).unwrap();
+
+	time::timeout(Duration::from_secs(60), async {
+		let mut session = NativeSession::start(&binary, home.path());
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
+
+		start_turn(&session.client, &thread, "Inspect the original state.").await;
+		completed(&mut session, &thread).await;
+		start_turn(&session.client, &thread, "Continue after compaction.").await;
+
+		let mut errors = 0;
+
+		loop {
+			let ServerEvent::Notification { method, params } = session.events.recv().await.unwrap() else { continue };
+
+			if params["threadId"] != thread { continue; }
+			if method == "error" { errors += 1; }
+			if method == "turn/completed" {
+				assert_eq!(params["turn"]["status"], "failed");
+
+				break;
+			}
+		}
+
+		assert_eq!(errors, 1);
+		assert_eq!(bodies.lock().unwrap().len(), 2);
+
+		drop(session);
+
+		let mut reopened = NativeSession::start(&binary, home.path());
+
+		reopened.client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
+		start_turn(&reopened.client, &thread, "Retry after restart.").await;
+		completed(&mut reopened, &thread).await;
+
+		let bodies = bodies.lock().unwrap();
+
+		assert_eq!(bodies.len(), 4, "cold resume retries compaction before continuing");
+
+		let retry = bodies[2]["input"].as_array().unwrap();
+
+		assert!(retry.iter().any(|item| item["role"] == "assistant" && item.to_string().contains(ORIGINAL)), "original evidence must survive");
+		assert!(!retry.iter().any(|item| item.to_string().contains(PARTIAL)), "failed summaries must not enter durable history");
+	}).await.expect("partial compaction recovery deadline");
+
+	backend.abort();
+}
+
 async fn start_turn(client: &AppServerClient, thread: &str, text: &str) {
 	client
 		.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":text}]}))
