@@ -23,10 +23,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
+generated: { by: "codex", at: "2026-10-14T02:32:34.699Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:59:08.643Z
+    at: 2026-10-14T02:32:34.699Z
 ---
 
 
@@ -87,6 +87,6 @@ Match checks to the changed behavior. Use isolated system-temporary fixtures, re
 
 ## Notifications and historical records
 
-Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. When enabled by the current operator decision, use the configured daily schedule. After about 30 minutes of active work, stop taking new work and save a continuation; this is not a hard process timeout. Record pending CI for the next run rather than waiting indefinitely.
+Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. When enabled by the current operator decision, run once daily without a task-defined duration limit. Continue across small review and delivery batches until the fixed upstream target and its required repair, artifact qualification, PR, CI and merge work are complete. End early only when a concrete blocker requires user input or an external change. Save the exact continuation and pending CI head, preserve active processes and changes, and prevent overlapping runs.
 
 The automation directory's `state.json` owns the current reviewed cursor, next unreviewed commit, pending adaptations, PRs and separate baseline-audit queue. Apply the latest explicit operator decision; neither old pause notes nor old resumption notes determine current host state. Complete or repair existing PRs first; avoid overlapping runs and duplicate implementation.

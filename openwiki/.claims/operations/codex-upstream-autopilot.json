@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5c324e34ceaed8d444bccfee4cbe665d26d324013190faec6154235b95a3af05",
+  "pageVersion": "sha256:2e4d4d7479c0c571836b93b05ff3b0bc3adb98a68a6fd11f0badcb9b85e189f6",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
@@ -32,17 +32,17 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
     {
       "id": "claim_6b8f885058714b72a0b0af451249105f",
-      "statement": "The daily maintenance prompt limits automatic implementation to retained capabilities, requires user selection for new features and uses an approximate 30-minute active-work boundary with durable continuation.",
+      "statement": "The daily maintenance prompt limits automatic implementation to retained capabilities, requires user selection for new features, and runs once daily without a task-defined duration limit until the fixed target and required qualification and delivery work are complete or a concrete blocker requires user input or an external change.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
@@ -110,7 +110,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         }
       ]
     },
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:0b47a3d356ce69ead58214d344eb76a890c2283929edf4aa0b318758c12be234"
+          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
@@ -135,6 +135,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T03:59:08.643Z"
+    "at": "2026-10-14T02:32:34.699Z"
   }
 }
