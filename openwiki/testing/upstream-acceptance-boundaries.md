@@ -4,8 +4,12 @@ title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
@@ -22,6 +26,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
+  - id: openwiki-source-4e8482c0f2dbe370858a1b11
+    resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
+  - id: openwiki-source-fe4da151d2112b589ec8679c
+    resource: repo://crates/decodex-runtime/src/agent_context_settings_tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-283a40a004fda23504fad7e1
@@ -44,7 +52,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-14T03:59:49.047Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -99,6 +110,23 @@ The terminal projection retains the native turn status and bounds its error deta
 These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
 Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. When an incomplete response reports usage, check that spending increases without replacing the context baseline or causing another compaction. Missing or malformed usage must not become an estimated charge. Compare the previous component and the proposed component with the same fixture.
+
+## Context defaults and selected retention
+
+Settings tests cover the shared configuration contract, not a separate local compaction engine:
+
+| Check owner | Contract |
+| --- | --- |
+| `context_preferences_tests` | A threshold-only async table does not enable the feature; only a versioned boolean edit for the two supported preferences is admitted |
+| `context_settings_bind_source_version_and_report_uncertain_readback` | A changed source or stale review cannot write; async tables retain their threshold; saved user off remains distinct from an effective project override; failed readback does not trigger another write |
+| `context_picker_sends_once_then_reads_effective_override_after_lost_reply` | A GPUI click dispatches once; the lost reply leads to a settings read and uncertain feedback instead of automatic replay |
+| `installed_native_context_preferences_share_config_and_preserve_thresholds` | The named native binary, production launch arguments and an isolated home share one config file; explicit off, boolean/table forms, threshold preservation and stale manual-edit refusal are checked |
+
+The last fixture requires `DECODEX_TEST_CODEX_BINARY` and is ignored by default. Its name does not establish installed-app acceptance. It reads and writes only its system-temporary configuration. The preferences apply to new conversations; loaded conversations keep their settings. No configuration fixture establishes a real-provider speed or cost benefit.
+
+`delegated_instructions_keep_tool_authority_on_creation_and_followup` checks that initial delegation and explicit follow-up use empty user input and a `work_instruction` tool output with `retain: true`. Direct user input keeps its user role. The dispatch encoder leaves wakes, capacity retries and other external results unselected. The uncertain-delegation and injection tests check that lost results are not replayed as user input after recovery.
+
+For native retention qualification, use the exact selected artifact and include disabled-feature and unselected-output controls, compaction, cold resume, tool provenance and duplicate-insertion checks. Native configuration, eligibility and budget still own preservation. For background compaction, also check reuse of prepared work, newer suffixes, cancellation and cold recovery. Keep these native behavior results separate from local configuration tests and real-provider latency or request-cost measurements. Record dated results and artifact identities in the native automation directory.
 
 ## Native branch and credential fixtures
 

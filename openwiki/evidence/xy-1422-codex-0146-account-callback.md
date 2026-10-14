@@ -9,6 +9,9 @@ sources:
   - id: openwiki-source-893c832a870570c6aae3b312
     resource: repo://crates/decodex-runtime/src/account_launch/protocol.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Current scope

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:662feb09d4a540d357066bef4672869b8ee68f26482fc387ea6e75d34f2d9eb0",
+  "pageVersion": "sha256:6249ebea08da6110669f2baf5a2a2e9b3b00d3946ab706b183d8468b4c95ac82",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -101,7 +101,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1340-L1355",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1346-L1361",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:73afcba55ae05e4545da839de0763e0087050aaed6417b8791045d9593d7d6aa"
+          "version": "repo-file-v1:sha256:56dbbf0e8bc8a5dd01ea5bf51fac915d6fa54241a3e7f73a0028dbf743221903"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -128,7 +128,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
-          "version": "repo-file-v1:sha256:3c62710f3c8c2dd4eeb70c24883d884d512a8f727ad3ba45aecef6fe92efe138"
+          "version": "repo-file-v1:sha256:8df134bfceb6a56e86e3760859326597662657d0c9c599910a7794bfe6aacb81"
         }
       ]
     },
@@ -187,10 +187,56 @@
           "version": "repo-file-v1:sha256:c8109b579d4b765e2d1fb25e2c686f6c0ffecc1e3e1a5625f1230bf85802cfb7"
         }
       ]
+    },
+    {
+      "id": "claim_5ee4e517726f462ea2b638411853877a",
+      "statement": "Shared context-default regressions check source and file-version fences, explicit off values, async threshold-table preservation, saved user values versus project overrides, and one save followed by readback after an uncertain result.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
+          "version": "repo-file-v1:sha256:fbf90ab98d21e42b9ad97a9a84ba4756020d766fd5cb509260fc5bfe0c07a86e"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs",
+          "version": "repo-file-v1:sha256:4c35a917947da20855fc25e3db4b90fcecfcdd9c528e1a30d08ed7a567023f30"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+          "version": "repo-file-v1:sha256:b5f93b8786f30af8d819c4eed9beeaadf8f4f18148031cd27370e18b589cee97"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings_tests.rs",
+          "version": "repo-file-v1:sha256:97fec0bd09e63ea73ff4566b4d78275034bfb9316b6d58c6d0c35af10b254659"
+        }
+      ]
+    },
+    {
+      "id": "claim_87d7258ad6cd4388b562127709773d06",
+      "statement": "The named-native context configuration fixture is ignored by default, requires DECODEX_TEST_CODEX_BINARY, uses production launch arguments with a temporary home, and checks both boolean and async-table preferences without proving installed-app or real-provider acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+          "version": "repo-file-v1:sha256:b5f93b8786f30af8d819c4eed9beeaadf8f4f18148031cd27370e18b589cee97"
+        }
+      ]
+    },
+    {
+      "id": "claim_7211de2ff37642dfb26b759882fec18c",
+      "statement": "The delegation regression distinguishes direct user input from initial and follow-up work_instruction outputs that request native retention; the dispatch encoder does not select scheduled wakes or capacity retries for retention.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1352",
+          "version": "repo-lines-v1:sha256:5d9d5c881f9272bfdc31d9ab28409b08964324cfa88db2cde6f693ee24ada2ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NTIzNjQ0MTgxNDAyZGRiY2RiN2I0MWEzYzc2YTFhNzE1NzAyNGZiNzc2NjAxNTBjODQxN2Q2MWIxMTBlOTU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDZlMjExMmYyNDE4ZWYzNjk3OWYzOWVhMDUyNmJhNGUxOGU0ZmE0MTQ2NTQyM2ZhYjMzZmNmMzcyMmQ2MzhlIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L225",
+          "version": "repo-lines-v1:sha256:e1d4f11ba438bae38d2131128c30705172e9801e9898ee301fbb6f15559e8583:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0YjU0YjRmOTA4ZmRjY2E2YzJhMDE0N2UzZTNmOWQwNDNhZDExNTczYjFmODg3YTZmZTk4ZGM2YzhiMzYxNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzMyYmUwNGE1MTRjNDA3OWRmMDcyOTdjM2QwYjlmY2I0OTljYzBlOWM0NDRmZmEwMDA0MDZhODI0MDA2OGEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T03:59:49.047Z"
+    "at": "2026-10-14T05:36:25.710Z"
   }
 }

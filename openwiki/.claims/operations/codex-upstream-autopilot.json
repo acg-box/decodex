@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2e4d4d7479c0c571836b93b05ff3b0bc3adb98a68a6fd11f0badcb9b85e189f6",
+  "pageVersion": "sha256:cc62ee6bece5deadc6f728f58102c2d15918f6736b0d698df96cddead718fe26",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -92,15 +92,15 @@
     },
     {
       "id": "claim_676596febf0d4591b34531158269edea",
-      "statement": "Agent continuation distinguishes actual user input from application tool output. Delegation, scheduled wakes and retries use empty input and decodex toolOutput with name, namespace and output; the encoder does not request retention.",
+      "statement": "Agent continuation distinguishes user input from application tool output: initial delegation and explicit follow-up work_instruction outputs request native retention while scheduled wakes, capacity retries and other external results remain unselected and keep tool authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1334",
-          "version": "repo-lines-v1:sha256:5c9dc39a4bfb9f0934f3f4b4ee3dd98c56ed5369a44f4d68353cd4bbbb8789e5:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ZDE3MDczMDIxNDc4MGEyOTI5YTZjMjdhYmY5MGMwOGExNDkwZjVlYzcyYWZlZTYzNTNhZDU3NTdmOWZhNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZmQwYWU4NGI2YTc4Mzk1Y2Y4NjA5ODhlZDMxYmM0NDllMjVkM2VhZTlhYTc2OGVhMDU4NWRjZDg3MTgyNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2Q3MzMzZTNhNWYwZTMyNDUwYjRmNjViMjc1YTAzOGYzMjkzNTYyNjViYjZjNGViNmRkOTNlOGFkYWM1NjQifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1352",
+          "version": "repo-lines-v1:sha256:5d9d5c881f9272bfdc31d9ab28409b08964324cfa88db2cde6f693ee24ada2ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NTIzNjQ0MTgxNDAyZGRiY2RiN2I0MWEzYzc2YTFhNzE1NzAyNGZiNzc2NjAxNTBjODQxN2Q2MWIxMTBlOTU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDZlMjExMmYyNDE4ZWYzNjk3OWYzOWVhMDUyNmJhNGUxOGU0ZmE0MTQ2NTQyM2ZhYjMzZmNmMzcyMmQ2MzhlIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L197",
-          "version": "repo-lines-v1:sha256:264a285f1dbfd26b6325ea4aca500d9e4ccf674476dedbbbd5fadcf63782450a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTY4YzAwZTEzZWM2MWI2YTU2NzQ4Mzc5N2IyNTMzZTZkZTRlNDM0OTIwYTEzZDNjYmEzMzIxMTJmYzE1M2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMifQ"
+          "version": "repo-lines-v1:sha256:0652d893d61f12ffa3971d885f6c527ced1c25fcd7286fc9d9be2c8df6a1cc35:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYTY4YzAwZTEzZWM2MWI2YTU2NzQ4Mzc5N2IyNTMzZTZkZTRlNDM0OTIwYTEzZDNjYmEzMzIxMTJmYzE1M2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMifQ"
         }
       ]
     },
@@ -131,10 +131,24 @@
           "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
         }
       ]
+    },
+    {
+      "id": "claim_fb662583cf1e43789bf83833ad049cf1",
+      "statement": "Context defaults in task preferences and manual config.toml edits share the native user configuration; versioned boolean writes preserve async threshold tables, expose project overrides and do not reload loaded conversations.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L141-L173",
+          "version": "repo-lines-v1:sha256:8ca25a5ee7b94b2ca3a5369dba40d8ebaf7ecd943f297c00a0cd7d0cb01432f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YTVkN2IxMDNmYzM1MWY5NTc1ZmE2ODgwZjlhYTdlYTE4NzY0YjQzNWM2MmRjY2FhNTIxYTRlZjcwZjA1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3OGMyMjE2ZDJhNTYxYzc0NWNlMTYxZWYwODMzNTUxM2JkNjE5OTJiMmVmOGFkOTk0ZjJlZDgyNGJiNmQzZGYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L11-L140",
+          "version": "repo-lines-v1:sha256:ff9f4d5d56b7903155a4ed2bcd23c0ca8ddc7f9540a7d48a2dfaf8ae4626f7fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxNzc0M2U5YWE5NzI5M2I1ZjUzNDY2Mjk2OTVkM2I4M2E0NWM5ZDczYWFmMTI0OTgzMGEzZmIxYzNiMWQ1N2Y3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZDdiNDg4ZDgyNzNiNmFhMWViYTFlMmFjN2ZkMzJmZDc2MTIyM2UyMDJmNWNjMDkwOTkxMTQ1YjNkYTUxYTIyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYjNjMWM5OTdjNjQ1Yjc1ZDMzMTg5NTRlY2JlZjU3YmM4NzdkNjA0ZjJkM2U5M2YxN2ZmY2Y5OGVlMzVmOGVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T02:32:34.699Z"
+    "at": "2026-10-14T05:36:25.710Z"
   }
 }

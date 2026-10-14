@@ -13,6 +13,9 @@ sources:
   - id: openwiki-source-f803d54b7400ecfa8c7f5247
     resource: repo://crates/decodex-runtime/src/account_login.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Service-owned account login

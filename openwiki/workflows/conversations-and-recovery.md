@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-56b561d7e6dd906d218aa9d1
+    resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -43,6 +45,9 @@ sources:
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
 generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Conversation input, history and recovery

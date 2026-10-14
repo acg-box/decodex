@@ -9,6 +9,9 @@ sources:
   - id: openwiki-source-0184655e2e99000280ce7bbe
     resource: repo://database/src/lib.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Current scope

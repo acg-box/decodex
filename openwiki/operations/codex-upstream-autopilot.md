@@ -5,10 +5,14 @@ description: "Incremental upstream review against retained consumers, native own
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-75f737a722500e44692521ca
     resource: repo://crates/decodex-components/src/development.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
@@ -23,7 +27,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-14T02:32:34.699Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 
@@ -72,7 +79,17 @@ The ancestry check preserves source inclusion; it does not prove behavior. Verif
 
 `AgentCoordinator::dispatch_input` sends direct root requests and saved user replies as user input. Delegation, scheduled wakes and capacity retries use an empty input array and a `decodex` tool output named `work_instruction`, `work_wake` or `capacity_retry`. A retry retains its native retry trigger. Rejection must not cause the application to replay this output as user input.
 
-The current tool-output encoder supplies only `name`, `namespace` and `output`. It does not request retention across compaction. Upstream support for retention does not authorize enabling it for every continuation. Keep selective retention as a separate optional decision. A proposal must show what useful output survives actual compaction and a cold resume, confirm its tool role and absence of duplicate insertion, and describe context cost and retention limits. Save that evidence in the automation directory; the repository wiki records the ownership boundary and procedure.
+The encoder adds `retain: true` only to `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions. Scheduled wakes, capacity retries and other external results do not request retention. The output keeps its application tool role. Native feature configuration and the native retention budget decide whether it survives compaction; the annotation does not force preservation.
+
+Validate selected retention against the exact native artifact. Check compaction and cold resume, tool provenance, absence of duplicate insertion, and the disabled-feature and unselected-output controls. Save the dated qualification receipt in the automation directory. This wiki records the ownership boundary and reusable procedure.
+
+## Configure native context defaults
+
+Task preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. Both use the native off default when no enabled value is present. A configured preference does not bypass native runtime eligibility or capacity limits.
+
+The settings owner reads the user layer and effective project configuration, then writes one versioned boolean through native `config/batchWrite`. It preserves an existing async threshold table and distinguishes the saved user value from a higher-priority override. The write does not reload the configuration of loaded conversations; it changes defaults for new conversations. A lost reply requires readback, not automatic replay.
+
+Background compaction can prepare work before foreground compaction needs it. Extra or discarded requests can add cost. Native fixtures establish behavior under their recorded conditions; they do not establish a real-provider latency or cost benefit. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
 ## Deliver small complete batches
 

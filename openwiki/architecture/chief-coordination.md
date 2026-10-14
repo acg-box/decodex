@@ -7,12 +7,16 @@ verified:
   - by: openwiki/0.7.2
     at: 2026-10-14T05:36:25.710Z
 sources:
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-d0b9aaf952250307abc4342e
     resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
@@ -27,6 +31,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-30c7edf894a639091ecbafc6
+    resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -35,7 +41,7 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 ---
 
 # Agent coordination and native conversations

@@ -8,7 +8,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Current execution boundary
@@ -25,8 +28,10 @@ Use [Runtime architecture](../architecture/runtime-architecture.md), [Agent coor
 
 # Stateless Execution Coordination
 
-Status: normative current owner composition plus the accepted Candidate-5 Quick Task
-target. Candidate-5 implementation and integrated acceptance remain pending.
+Historical status: this superseded design described the proposed owner composition and
+Candidate-5 Quick Task target. Its pending implementation and acceptance statements belong
+to that record, not to the current product. Do not use the database replacement instructions,
+version pins or dispatch gates in this section as current operating instructions.
 
 The coordinator is not a schema owner. Its domain records are not schema migration
 records. The one latest schema contains only final current relations and omits the retired

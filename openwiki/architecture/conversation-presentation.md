@@ -4,6 +4,10 @@ title: Conversation presentation and motion
 description: Bounded chat layout, grouped voice history, incremental loading, and adaptive streamed text in the native desktop.
 tags: [desktop, conversation, motion]
 sources:
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
@@ -40,9 +44,11 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
-generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 verified:
   - by: openwiki/0.7.2
     at: 2026-10-14T05:36:25.710Z
