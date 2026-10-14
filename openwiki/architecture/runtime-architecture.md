@@ -5,7 +5,7 @@ description: "Service ownership, fixed Codex components, shared acquisition and 
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T02:59:25.564Z
+    at: 2026-10-14T03:59:49.047Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
