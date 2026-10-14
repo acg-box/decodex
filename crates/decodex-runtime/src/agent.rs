@@ -1329,6 +1329,12 @@ impl AgentCoordinator {
 			params["input"] = serde_json::json!([]);
 			params["toolOutput"] =
 				serde_json::json!({"name":name,"namespace":"decodex","output":prompt});
+
+			// Only durable delegation instructions request retention. Native configuration
+			// and its retention budget own preservation; wakes and retries stay transient.
+			if name == "work_instruction" {
+				params["toolOutput"]["retain"] = serde_json::json!(true);
+			}
 		}
 
 		Ok((params, external))

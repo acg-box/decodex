@@ -183,7 +183,7 @@ async fn delegated_instructions_keep_tool_authority_on_creation_and_followup() {
 		assert_eq!(turn["params"]["turnTrigger"], "goal");
 		assert_eq!(
 			turn["params"]["toolOutput"],
-			serde_json::json!({"name":"work_instruction","namespace":"decodex","output":prompt})
+			serde_json::json!({"name":"work_instruction","namespace":"decodex","output":prompt,"retain":true})
 		);
 	}
 
