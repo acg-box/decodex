@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:323d0ef379d1c5d6c7ae05129538d732e2e0379a04e29088ac8035107e6bec83",
+  "pageVersion": "sha256:6d584e22ac252dd5314f393ecf4c60afdedd5db4ee4f3f7045d9a34e680d96f1",
   "claims": [
     {
       "id": "claim_a3c49fc4897341d8af55579dc54de44e",
@@ -8,10 +8,10 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:c14e0e2d3761869cc0811b3629149be27d47685ea1aec34ffdd9698eba168faa"
+          "version": "repo-file-v1:sha256:ad4174b72fcdb6d1a36be8f4ddcd20974ed544da0985415c4acad13f86cd898f"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L271-L288",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L275-L292",
           "version": "repo-lines-v1:sha256:4c2c6c8cd9c86e4990b13a676d068d9423bc04cd687e42aca2d6ae1f08c642e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZGU4NTVjZjVjNjk2OTdiNWJlZTE1NjQyNzMwYjYzYzIwOWI3MWNjMjc4NWM3ZDFiNjczZWExOWNiYzhlZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         }
       ]
@@ -33,6 +33,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T06:10:39.973Z"
+    "at": "2026-10-14T05:36:25.710Z"
   }
 }

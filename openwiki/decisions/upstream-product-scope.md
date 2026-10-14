@@ -4,6 +4,8 @@ title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
@@ -12,6 +14,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-ecdf4586908bb6226955607a
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-830a575f82404942511da59b
@@ -20,8 +26,12 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
+  - id: openwiki-source-b2869e6da778a74cb6afc667
+    resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-e2f4e298ab0a4c683b92158d
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
+  - id: openwiki-source-4e8482c0f2dbe370858a1b11
+    resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-d8df4be72e86f8bd3d65cce8
@@ -30,11 +40,15 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
+  - id: openwiki-source-30c7edf894a639091ecbafc6
+    resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 verified:
   - by: openwiki/0.7.2
     at: 2026-10-14T05:36:25.710Z

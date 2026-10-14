@@ -6,6 +6,10 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
+  - id: openwiki-source-0a61b25348131fe1bb6e1d12
+    resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
@@ -16,6 +20,8 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-94c4593cb5944bf1f2ecf050
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
@@ -28,8 +34,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
+  - id: openwiki-source-4e8482c0f2dbe370858a1b11
+    resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
+  - id: openwiki-source-f2860995fd89f9170b5406cb
+    resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-30c7edf894a639091ecbafc6
+    resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
@@ -40,7 +54,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-14T02:59:25.564Z" }
+generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 verified:
   - by: openwiki/0.7.2
     at: 2026-10-14T05:36:25.710Z
