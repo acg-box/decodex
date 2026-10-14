@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7fdf33dab3e374b967d516ebaecbaec9bfac13a723fb367541bc05151136396e",
+  "pageVersion": "sha256:662feb09d4a540d357066bef4672869b8ee68f26482fc387ea6e75d34f2d9eb0",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:38f51e021005167219ee35a3bf1deacdf635b4ca468c6e62ef168ba70388d0ba"
+          "version": "repo-file-v1:sha256:73afcba55ae05e4545da839de0763e0087050aaed6417b8791045d9593d7d6aa"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -165,10 +165,32 @@
           "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
         }
       ]
+    },
+    {
+      "id": "claim_0f47a82aebb649b69f9934a61b569ea7",
+      "statement": "Agent usage keeps cumulative spending and native last-request context separate; native usage and prediction qualification must test these distinct boundaries, while the local prediction inheritance fixture does not cover every native compaction threshold.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs",
+          "version": "repo-file-v1:sha256:68aa1c261977f05143f8bb9f85d50db66d414ad9b16d738d84656a5fe70ef643"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+          "version": "repo-file-v1:sha256:1702990d1d598a4c7c50dee1470a0838554d82f256d68edd65b7334b0d787508"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
+          "version": "repo-file-v1:sha256:e9063f0a7ad4da51eb0dbd3db312470b7515cfd77dfcb29580361a3f3b323ccc"
+        },
+        {
+          "resource": "repo://database/src/agent_output.rs",
+          "version": "repo-file-v1:sha256:c8109b579d4b765e2d1fb25e2c686f6c0ffecc1e3e1a5625f1230bf85802cfb7"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T02:59:25.564Z"
+    "at": "2026-10-14T03:59:49.047Z"
   }
 }

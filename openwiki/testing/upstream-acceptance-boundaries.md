@@ -18,6 +18,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-ea794ca791dfc854f2ec0a89
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -30,18 +32,22 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
+  - id: openwiki-source-74145d84eb83d80ec3062595
+    resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
+  - id: openwiki-source-a6440a3d3a3c3121fd4c553f
+    resource: repo://database/src/agent_output.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-13T03:59:08.643Z" }
+generated: { by: "codex", at: "2026-10-14T03:59:49.047Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T02:59:25.564Z
+    at: 2026-10-14T03:59:49.047Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -95,6 +101,8 @@ The terminal projection retains the native turn status and bounds its error deta
 
 These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
+Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. When an incomplete response reports usage, check that spending increases without replacing the context baseline or causing another compaction. Missing or malformed usage must not become an estimated charge. Compare the previous component and the proposed component with the same fixture.
+
 ## Native branch and credential fixtures
 
 The ignored local-socket fixture can select native branch qualification with `DECODEX_TEST_NATIVE_FORK`. It requires an explicitly selected native binary, matching isolated `HOME` and `DECODEX_TEST_ACCOUNT_HOME`, and its fixture marker. The provider and accounts are synthetic. It checks an empty branch before the first input, an inclusive branch after that turn, preserved source history, distinct native identities, repeated-command readback and canonical draft handback. It asserts that branch creation and recovery do not add model requests.
@@ -108,6 +116,8 @@ PAT tests separately cover versioned import, native identity hydration, optional
 The ignored read-state fixture checks explicit read/unread marks, stale-revision refusal, persistence after a cold reopen and unavailable receipts for ephemeral threads. Reading metadata does not acknowledge it or make a model request.
 
 The ignored prediction fixture checks parent context and tool-catalog inheritance, cancellation before inference, cleanup, absence from durable history and unchanged parent metadata. Prediction inherits tools and permissions; it is not the isolated recap path. This capability does not add automatic suggestions or a new product entrypoint.
+
+For a runtime change to prediction compaction, also test a fork above the compaction threshold. Check pre-turn, tool-continuation and post-turn boundaries in both native history modes. The prediction must preserve its inherited context while the parent retains normal compaction. Check context-limit failures and model-requested context resets separately. The local inheritance fixture alone does not cover these cases.
 
 The native launch fixture checks description-first Code Mode, child context defaults and fork-prefix preservation while retaining boolean and table forms of the user's multi-agent selection. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
 

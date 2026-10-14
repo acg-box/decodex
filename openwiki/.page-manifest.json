@@ -23,11 +23,11 @@
       "completedRunId": "619130ae-d2a1-43d9-a4b0-326764c3091e"
     },
     "/openwiki/architecture/runtime-architecture.md": {
-      "pageVersion": "sha256:71a41aba95d580a3f355e3cdb6a4f1b80ff3b1868d9e72e65d700d78a7fc7215",
+      "pageVersion": "sha256:0168cc51a01505d9de0a19fdc977b89aa8841261bc39e11a7bc7c25d6daf3f19",
       "completedBy": "codex",
-      "completedRunId": "dd0f2b1e-53a0-444d-a72d-a9a9401820f7",
-      "gitHead": "8da91384bc57fb18475f178894dedf19583b9389",
-      "sourceFingerprint": "sha256:1103e3fefdac01bc7ff3edb2ab68ca7310584581b4fe091ff82e6639042e71bc"
+      "completedRunId": "631744c9-2b61-42d5-b190-43efafb15e36",
+      "gitHead": "fe308fe16634557add286c86fb5ea2fd70740906",
+      "sourceFingerprint": "sha256:9c1a67f6f47839bf4a19db408630d35eed9b57c55ad61b65ee62d55df2a607c0"
     },
     "/openwiki/decisions/adaptive-program-extension-architecture.md": {
       "gitHead": "a9b45e0b417cd41d8c5794e2b840f9fa2b653b3f",
@@ -380,11 +380,11 @@
       "completedRunId": "0240b2f5-a5d9-4232-8e4a-e44d8dcfc7fc"
     },
     "/openwiki/testing/upstream-acceptance-boundaries.md": {
-      "pageVersion": "sha256:7fdf33dab3e374b967d516ebaecbaec9bfac13a723fb367541bc05151136396e",
+      "pageVersion": "sha256:662feb09d4a540d357066bef4672869b8ee68f26482fc387ea6e75d34f2d9eb0",
       "completedBy": "codex",
-      "completedRunId": "dd0f2b1e-53a0-444d-a72d-a9a9401820f7",
-      "gitHead": "8da91384bc57fb18475f178894dedf19583b9389",
-      "sourceFingerprint": "sha256:1103e3fefdac01bc7ff3edb2ab68ca7310584581b4fe091ff82e6639042e71bc"
+      "completedRunId": "631744c9-2b61-42d5-b190-43efafb15e36",
+      "gitHead": "fe308fe16634557add286c86fb5ea2fd70740906",
+      "sourceFingerprint": "sha256:9c1a67f6f47839bf4a19db408630d35eed9b57c55ad61b65ee62d55df2a607c0"
     },
     "/openwiki/workflows/approvals-and-native-ownership.md": {
       "gitHead": "fed6847dc5338d241daa3049364e5df9398f1519",
