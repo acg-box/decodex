@@ -257,7 +257,7 @@ impl SqliteStore {
 		self.transition_generation(
 			generation_id,
 			expected_revision,
-			ProcessGenerationState::Starting,
+			&[ProcessGenerationState::Starting],
 			ProcessGenerationState::Ready,
 		)
 		.await
@@ -268,10 +268,17 @@ impl SqliteStore {
 		generation_id: &ProcessGenerationId,
 		expected_revision: i64,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
+		// Initialization failure and an incomplete shutdown still leave an owned
+		// child to retire. Readiness is not a prerequisite for exact termination.
 		self.transition_generation(
 			generation_id,
 			expected_revision,
-			ProcessGenerationState::Ready,
+			&[
+				ProcessGenerationState::Starting,
+				ProcessGenerationState::Ready,
+				ProcessGenerationState::Stopping,
+				ProcessGenerationState::DeathUnknown,
+			],
 			ProcessGenerationState::Stopping,
 		)
 		.await
@@ -428,7 +435,7 @@ impl SqliteStore {
 		&self,
 		generation_id: &ProcessGenerationId,
 		expected_revision: i64,
-		expected_state: ProcessGenerationState,
+		expected_states: &'static [ProcessGenerationState],
 		target_state: ProcessGenerationState,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
@@ -444,9 +451,8 @@ impl SqliteStore {
 				return Ok(ProcessGenerationMutationOutcome::Replayed(mutation(current)));
 			}
 			if current.revision != expected_revision
-				|| current.state != expected_state
-				|| (target_state == ProcessGenerationState::Ready
-					&& current.process_identity.is_none())
+				|| !expected_states.contains(&current.state)
+				|| current.process_identity.is_none()
 			{
 				return Ok(rejected(ProcessGenerationRejection::StaleGeneration, current));
 			}
@@ -454,7 +460,8 @@ impl SqliteStore {
 			let revision = expected_revision + 1;
 
 			connection.execute(
-				"UPDATE process_generations SET state = ?1, revision = ?2, updated_at_micros = ?3
+				"UPDATE process_generations SET state = ?1, revision = ?2, updated_at_micros = ?3,
+				 authority_loss_reason = NULL
 				 WHERE generation_id = ?4",
 				rusqlite::params![target_state.as_sql(), revision, now, current.generation_id.as_str()],
 			).map_err(sql_error)?;
