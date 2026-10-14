@@ -20,24 +20,25 @@ use crate::{
 	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult,
 	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
 	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
-	AgentCapabilitiesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
-	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
-	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
-	AgentRequestResult, AgentResourcesResult, AgentSavedAppSettingsResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, CURRENT_VERSION, ConversationCreationReceiptRequest,
-	ConversationCreationReceiptResult, ConversationExecutionOverrides,
-	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
-	ConversationListSize, ConversationModelReviewResult, ConversationModelSettingsResult,
-	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
-	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationUnavailableReason,
-	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
-	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
-	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
+	AgentCapabilitiesResult, AgentContextSettingsResult, AgentGuardianDetailResult,
+	AgentGuardianReviewsResult, AgentHistoryResult, AgentHookSettingsState,
+	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveReviewerState,
+	AgentMediaRequest, AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult,
+	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState,
+	AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
+	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
+	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
+	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
+	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
+	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
+	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
+	ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
 	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
 	ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
@@ -2190,6 +2191,12 @@ pub enum QueryPayload {
 		work_id: EntityId,
 	},
 
+	/// Read native context defaults for new conversations.
+	GetAgentContextSettings {
+		/// Owning task.
+		work_id: EntityId,
+	},
+
 	/// Read connector exposure for an owned task.
 	GetAgentAppExposure {
 		/// Task identity.
@@ -3116,6 +3123,8 @@ pub enum QueryResultPayload {
 	AgentVoiceSettings(AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.
 	AgentSearchSettings(AgentSearchSettingsResult),
+	/// Native context defaults and user preferences.
+	AgentContextSettings(AgentContextSettingsResult),
 	/// Enabled native skills for the exact requested source.
 	AgentSkills(AgentSkillsResult),
 	/// Native connector exposure configuration.

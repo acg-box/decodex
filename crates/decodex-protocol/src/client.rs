@@ -27,27 +27,27 @@ use crate::{
 	AccountResetCardOperationResult, AccountSelectionModeDto, AccountsResult, AgentActionDto,
 	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult, AgentAppUiCall,
 	AgentAppUiCallReview, AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest,
-	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentExecutionOverrides,
-	AgentGuardianDetailResult, AgentGuardianReviewsResult, AgentHistoryResult,
-	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
-	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
-	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
-	AgentResourcesResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
-	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
-	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello,
-	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CommandResultEnvelope, CorrelationId, DictationRequest, DictationStatus,
-	DoctorReport, EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
-	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
-	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
-	NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
-	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
-	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
-	ResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
-	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
+	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentContextSettingsResult,
+	AgentExecutionOverrides, AgentGuardianDetailResult, AgentGuardianReviewsResult,
+	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
+	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
+	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
+	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentRequestResult, AgentResourcesResult, AgentSearchSettingsResult, AgentSkillsResult,
+	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
+	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
+	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
+	CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope, CorrelationId,
+	DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
+	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
+	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
+	McpLoginStatus, NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult,
+	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
+	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
+	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
+	ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -792,6 +792,43 @@ impl AgentClient {
 		match completed.value {
 			QueryResultPayload::AgentSearchSettings(result) => {
 				if let AgentSearchSettingsResult::Available { work_id: actual, .. } = &result
+					&& actual != &work_id
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read the current task's context defaults for new conversations.
+	pub async fn context_settings(
+		&self,
+		work_id: EntityId,
+	) -> Result<AgentContextSettingsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(35),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(35),
+			transport.query_inner(
+				"agent-context-settings",
+				QueryPayload::GetAgentContextSettings { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
+		close_one_shot_socket(completed.socket).await;
+
+		match completed.value {
+			QueryResultPayload::AgentContextSettings(result) => {
+				if let AgentContextSettingsResult::Available { work_id: actual, .. } = &result
 					&& actual != &work_id
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -2110,6 +2147,7 @@ impl AgentClient {
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
+			| AgentActionDto::SetContextPreference { .. }
 			| AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
 			AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
@@ -3588,6 +3626,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::EditNativeGoal { work_id, .. }
 		| AgentActionDto::SetVoicePreference { work_id, .. }
 		| AgentActionDto::SetSearchPreference { work_id, .. }
+		| AgentActionDto::SetContextPreference { work_id, .. }
 		| AgentActionDto::SetAppSetting { work_id, .. }
 		| AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
 		AgentActionDto::Start(start) | AgentActionDto::StartConfigured { start, .. } =>

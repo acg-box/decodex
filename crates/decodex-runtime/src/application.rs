@@ -87,17 +87,18 @@ use decodex_protocol::{
 	AccountUnsettledOperationDto, AccountsResult, AgentActivityDetailCursor,
 	AgentAppExposureResult, AgentAppSettingsResult, AgentAppUiCallReview, AgentAppUiReceiptResult,
 	AgentAppUiResult, AgentArchiveResult, AgentAsyncQuestionDto, AgentCapabilitiesResult,
-	AgentDependencyDto, AgentDispatchStateDto, AgentGuardianDetailResult, AgentHookSettingsState,
-	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveMessageKind,
-	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentMisalignmentDto,
-	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState,
-	AgentReadStateResult, AgentRequestText, AgentResourcesResult, AgentSavedAppSettingsResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
-	AgentTranscriptResult, AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId,
-	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	AgentContextSettingsResult, AgentDependencyDto, AgentDispatchStateDto,
+	AgentGuardianDetailResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
+	AgentIntegrationsResult, AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest,
+	AgentMediaResult, AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
+	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
+	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestText,
+	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
+	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
+	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
@@ -565,18 +566,25 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_voice_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentVoiceSettings(match &self.agent {
-			Some(agent) => agent.voice_settings(work).await,
-			None => AgentVoiceSettingsResult::Unavailable,
-		})
-	}
-
-	async fn query_search_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentSearchSettings(match &self.agent {
-			Some(agent) => agent.search_settings(work).await,
-			None => AgentSearchSettingsResult::Unavailable,
-		})
+	async fn query_native_preferences(&self, query: &QueryPayload) -> QueryResultPayload {
+		match query {
+			QueryPayload::GetAgentVoiceSettings { work_id } =>
+				QueryResultPayload::AgentVoiceSettings(match &self.agent {
+					Some(agent) => agent.voice_settings(work_id.as_str()).await,
+					None => AgentVoiceSettingsResult::Unavailable,
+				}),
+			QueryPayload::GetAgentSearchSettings { work_id } =>
+				QueryResultPayload::AgentSearchSettings(match &self.agent {
+					Some(agent) => agent.search_settings(work_id.as_str()).await,
+					None => AgentSearchSettingsResult::Unavailable,
+				}),
+			QueryPayload::GetAgentContextSettings { work_id } =>
+				QueryResultPayload::AgentContextSettings(match &self.agent {
+					Some(agent) => agent.context_settings(work_id.as_str()).await,
+					None => AgentContextSettingsResult::Unavailable,
+				}),
+			_ => unreachable!("native preference query routing"),
+		}
 	}
 
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
@@ -2770,12 +2778,11 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentPromptInputUpload { .. } =>
 				self.query_prompt_input(&query.payload).await,
 			QueryPayload::GetAgentRecap { work_id } => self.query_recap(work_id.clone()).await,
-			QueryPayload::GetAgentVoiceSettings { work_id } =>
-				self.query_voice_settings(work_id.as_str()).await,
+			settings @ (QueryPayload::GetAgentVoiceSettings { .. }
+			| QueryPayload::GetAgentSearchSettings { .. }
+			| QueryPayload::GetAgentContextSettings { .. }) => self.query_native_preferences(settings).await,
 			QueryPayload::GetAgentSkills { target, filter } =>
 				self.query_skills(query.query_id.as_str(), target, filter.as_str()).await,
-			QueryPayload::GetAgentSearchSettings { work_id } =>
-				self.query_search_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetAgentInputReceipts { work_id, after } =>

@@ -9,6 +9,7 @@ mod agent_app_settings;
 mod agent_app_ui;
 mod agent_app_ui_call;
 mod agent_archive;
+mod agent_context_settings;
 mod agent_execution;
 mod agent_guardian;
 mod agent_hooks;
@@ -98,6 +99,9 @@ pub use self::{
 		MAX_AGENT_APP_UI_CALL_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	},
 	agent_archive::AgentArchiveResult,
+	agent_context_settings::{
+		AgentContextFeature, AgentContextPreference, AgentContextSettingsResult,
+	},
 	agent_execution::AgentExecutionOverrides,
 	agent_guardian::{
 		AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,

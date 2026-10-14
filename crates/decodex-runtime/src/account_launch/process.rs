@@ -1,4 +1,8 @@
 #[cfg(all(test, target_os = "macos"))]
+#[path = "../agent_context_settings_native_tests.rs"]
+mod context_preferences_native_tests;
+
+#[cfg(all(test, target_os = "macos"))]
 #[path = "process_native_control_tests.rs"]
 pub(crate) mod native_control_tests;
 

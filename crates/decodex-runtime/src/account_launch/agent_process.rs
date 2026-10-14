@@ -336,6 +336,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 			|| app_server_client::is_app_tool_exposure_write(params)
 			|| app_server_client::is_realtime_voice_write(params)
 			|| app_server_client::is_search_mode_write(params)
+			|| app_server_client::is_context_preference_write(params)
 		{
 			Ok(())
 		} else {
