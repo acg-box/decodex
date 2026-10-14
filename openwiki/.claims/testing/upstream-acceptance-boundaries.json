@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6249ebea08da6110669f2baf5a2a2e9b3b00d3946ab706b183d8468b4c95ac82",
+  "pageVersion": "sha256:655c64cf86eb1f4a54e49de8379faf2ad7c2b036fd8ab123a8d9bee128d1010d",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:56dbbf0e8bc8a5dd01ea5bf51fac915d6fa54241a3e7f73a0028dbf743221903"
+          "version": "repo-file-v1:sha256:3eaaa2bf0b81953f13541f4f6662908a52f990b35a237f7a870c17d07fc8b96e"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -233,10 +233,20 @@
           "version": "repo-lines-v1:sha256:e1d4f11ba438bae38d2131128c30705172e9801e9898ee301fbb6f15559e8583:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0YjU0YjRmOTA4ZmRjY2E2YzJhMDE0N2UzZTNmOWQwNDNhZDExNTczYjFmODg3YTZmZTk4ZGM2YzhiMzYxNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmY2Q1NTQ2NmEyMjc2MzJmM2EwY2RlOWM3OGI0NDFhMDhiNTg3NWRjYzZjYmI4YWYwZjEwNmYzMmY1MzI3NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzMyYmUwNGE1MTRjNDA3OWRmMDcyOTdjM2QwYjlmY2I0OTljYzBlOWM0NDRmZmEwMDA0MDZhODI0MDA2OGEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_dce7624e35774deb9b0978678373be2c",
+      "statement": "The opt-in installed_native_discards_partial_compaction_output_after_restart fixture runs an explicitly selected CLI with a loopback provider and temporary home, then checks that a cold-resume compaction retry retains original assistant evidence and excludes a failed partial summary.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs#L192-L281",
+          "version": "repo-lines-v1:sha256:44f8f8c00046e81e1cdf5fdc48a7949dfb933c7ee4fdf47e85638a46d0c13766:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNGQ1M2I1NGI1NmUwNjcxNWQyMzg5ZDU1NzBiODYxZTY4M2UzNzRlZjMzZGViZTc2NWQzZDBlZGE0MjdmZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2YzhmZjUwNzFjZmE3ZGMzOTc4ZDA4YmI3YzlhY2Y2YTNjNjkwOGQwMWM5NWMxMzUwODMwMjkxMGQzY2E0OGQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-14T20:39:39.547Z"
   }
 }

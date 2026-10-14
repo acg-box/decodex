@@ -14,6 +14,8 @@ sources:
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
     resource: repo://crates/decodex-components/tests/official_release.rs
+  - id: openwiki-source-aee901c2feaee74f17637372
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
@@ -52,10 +54,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+generated: { by: "codex", at: "2026-10-14T20:39:39.547Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:36:25.710Z
+    at: 2026-10-14T20:39:39.547Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -110,6 +112,20 @@ The terminal projection retains the native turn status and bounds its error deta
 These local tests use synthetic transport. For a runtime change to incomplete responses or final recording, also qualify the selected native runtime. Count provider requests and inspect the terminal status for ordinary sampling and compaction. Cover SSE and WebSocket responses, and keep interrupted-response and content-filter controls separate. Use the upstream regression test to check input that arrives while a turn records its final batch. Keep these results separate from installed-app acceptance.
 
 Keep reported spending and current context separate. The Agent stores cumulative token counters and derives turn usage from their differences. Context comes from the native last-request counters. When an incomplete response reports usage, check that spending increases without replacing the context baseline or causing another compaction. Missing or malformed usage must not become an estimated charge. Compare the previous component and the proposed component with the same fixture.
+
+## Failed compaction and cold resume
+
+`installed_native_discards_partial_compaction_output_after_restart` selects an absolute CLI path through `DECODEX_TEST_CODEX_BINARY`. Its loopback Responses provider uses the local compaction path. The provider sends a partial assistant summary and then `response.incomplete`. After the failed turn, the fixture restarts app-server and retries compaction. It checks that the retry retains the original assistant evidence and excludes the failed summary from durable history.
+
+Run the same fixture against the previous component and the proposed component, and record each executable hash with the result:
+
+```sh
+DECODEX_TEST_CODEX_BINARY="$QUALIFIED_CODEX_BINARY" cargo +stable nextest run \
+  --locked --all-features -p decodex-runtime --lib --run-ignored only \
+  -E 'test(installed_native_discards_partial_compaction_output_after_restart)'
+```
+
+The fixture is ignored by default. It checks the named CLI with synthetic input and a system-temporary home. The separate compaction fixtures check successful checkpoint continuation and preservation of the incoming prompt after a failure. These checks do not establish all provider paths, installed-app acceptance or a release. Keep dated execution and artifact receipts in the native automation directory.
 
 ## Context defaults and selected retention
 
