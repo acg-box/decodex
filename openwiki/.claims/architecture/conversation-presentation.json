@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3a73aee75357a0e87decad57756bcbf323adf99a8991d1ac43c776e4ea8ee4fc",
+  "pageVersion": "sha256:ab97ea9ac76dca26221cb4baa4b8287a6b1ce4fda2cecf57a0bafbc5d8924406",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -69,11 +69,11 @@
       "statement": "The transcript and composer use an 880-point conversation width and 16-point side insets. The composer overlays the bottom of the conversation, its measured height supplies scroll-content bottom padding, and the workbench editor caps editable height at six lines.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1044-L1070",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1053-L1079",
           "version": "repo-lines-v1:sha256:89cd0b76ff2e4536ff12db927762ffbbab543029e3b670659064f7846a77c247:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MzliYTM2NmJkZDA3YjMwOTJlMDc0ZTFlMDU5NDQyNzA0Y2RkMThiYTVmODkwODE4NGY4MWZkNzQwMGE3OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3MTEwYzNhYjkzZTk3ODk4Zjk5ZDZhZTNlMzQ3NWMyY2JlNmNlMDc1MzAxNmM5NDZiNDgxZGVmNjU1MDgwZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MjE3MGZmMTQ0NTI0NTgxZDE2NWQ1NGJhZGVjYWZjNTVjOGE4ZDFmMjZjZDk2Zjc4ZDc0ODdhZGQwOTRhMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMTYwNjE4M2E1YzA5MzE3Mzg4OWQwMzNjM2U5ZmY1NWJhMzgzMzQ3YzVmNjQxZmJhMzJiYWMzOGVmNzdiYjYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1209-L1237",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1218-L1246",
           "version": "repo-lines-v1:sha256:9433a473b93f021323915d1ddc0ba9ec42722f6da4717f37a82befc16e3cbab3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjOTFmZTI1N2JmZjFjZjE0Zjg0MjM3YTBhZTQzZDc4YzVhYjlkMDM4ZGI4M2RmMThkMzZkZWM1MTUzODVhNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOWUxYjljZjNkYTE0ZTgwZmNkMjdiYWRhMWY0NWM3YjlhZDNhNjJhM2VkZjVkODViODFjZTExNDY0Njk4MzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNTc2ZDNlYzk4ZTZmNmVhOGE4NzVkM2Y3OWE0YzY0OTg5ZGJiYTBkZTE4NjE3MjE0ZjQ2NDJhNTY3Mzk2ZmUifQ"
         },
         {
@@ -141,7 +141,7 @@
           "version": "repo-lines-v1:sha256:8cf57332ee0a616ff4c701cfd7792f8a5172c4425022efd6d4cfe2c38631ee79:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYzcxMDkzNjZmNTQ1MjQzNTE2MTdhNTM1MTNlNTE5YTc4NGY2NWI3ODc0ZGYzYTA5OWQ0MmQzZmQ0YzMzN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MDM1ZTViMTAxNjg5MDBmOGVmMWQxNGEzOTljYjg1YzcwODg5ODc2Mjc0NDcwYTc0NGIyMDBmZjQ0ODMwMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzIyM2M2ZTVkZmFiZTg4ZTVkNWRlOTEzMjE1ZjFhM2JlZTc0NTNiNGVlYTI5MmEyZTAwNjI1ZTgzMzllMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlNzY2ZDNkNGNkY2Q4NDFlNTNjMmM4Y2JiZDliMDUyYWQ3MzVhNGE5MTM3OGI3YThmOWY1MTEyMjE3ZTg0ZTUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2025-L2048",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2067-L2090",
           "version": "repo-lines-v1:sha256:ca96565e1c444e2a960a8026f8ba592c034b5c31b7b7c3093f6fd24b6e25f9e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNDIzOTM1NTE4NmIwZTAxNWFkYTZhNDM5NDIyNjgxZjdkZjE1ZjQ5OThiZmE2NDdiMTQzYzRlZjI3YmRhZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDU3MWQ4YzE1ZTJhYzE0ZGFjYjk0NjUwZjFiOTk0YTY5Y2I5MDMzZTg3NDZjZGFiYWVmMTBiMzlhZDZkY2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmMjZlMWZlNjY1MTAzNWIwMDM1NzU0MGQ3NzhhNDliMDQyY2I3NTdmMzUyMDE0NjRiZGEzMzk5ODQ1M2RlNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlOTcwNDMyZjQ5MTg4MjcxYmY4OTNkY2VkYmQ1M2YyY2NhNmQzMzQ5ZjNjYjVkNDJiN2NjOGQwMjVjYjNiN2QifQ"
         }
       ]
@@ -155,14 +155,32 @@
           "version": "repo-file-v1:sha256:3a888afd5334ef76e377710aff030b6f718a89cf171389a9864817ccffa27d58"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2290-L2357",
-          "version": "repo-lines-v1:sha256:596cd93b2b2e2c805234c07eff265751d337438df3fa5739df2615f163492151:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2332-L2400",
+          "version": "repo-lines-v1:sha256:1ee9762791481ef1728d3c1981539365baa1e55d021ea1b8866d059813d3106d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMWI3OGJiY2RlMzZmOTBlOWQ5YWU2NTY5ZTAxMjNiMjlkZDc4MDc3NzhmZjMxYTNmMzAxN2E2ZjZkZjVmODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNjZjODQ1MWQ2NzI4ZDhhOTUyMzcxOWNmMzNjM2U5OGFlMzlhNTU2N2MxMDY5YzEwZjM2YWQ2ZGJmNmUzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTczOGRmY2Q4NTE0MjA4MTEyNTQ0MzI4M2FlNTMxNDdmOTM0ODEyMTY4Yzc1NjI4MzVjMGZkNjc1NzYzODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e906375c6484e4cb7e00fcc80f7277b",
+      "statement": "Task preferences exposes native Context defaults for background compaction and selected delegation-instruction retention, shows effective and saved user values, writes native configuration, applies changes to new conversations, and refreshes after an unconfirmed save without automatically retrying.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:e46680600cb98655e02c76fc0b4574c91cbb9c71ba538077dddd9bc145ea3cbd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
+          "version": "repo-file-v1:sha256:fbf90ab98d21e42b9ad97a9a84ba4756020d766fd5cb509260fc5bfe0c07a86e"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T18:37:44.705Z"
+    "at": "2026-10-14T05:36:25.710Z"
   }
 }

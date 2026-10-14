@@ -37,7 +37,7 @@ sources:
 generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T06:49:11.265Z
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Product scope and native ownership
@@ -70,7 +70,15 @@ Eligible root conversations expose native read receipts in task preferences. Rea
 
 The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
 
-Native launch policy enables description-first tool ordering, full-fork prefix preservation and model-specific subagent context defaults. The native configuration still selects Code Mode hosting transport. Decodex does not add a universal retain flag to submitted application tool outputs. See [Runtime architecture](../architecture/runtime-architecture.md) and [Acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+Native launch policy enables description-first tool ordering, full-fork prefix preservation and model-specific subagent context defaults. The native configuration still selects Code Mode hosting transport.
+
+Background compaction and retention of delegation instructions are configurable native additions. Task preferences > Context defaults reads and writes the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
+
+Decodex requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
+
+The context panel does not expose a switch to hide native collaboration tools, and launch policy does not force that native option. Replacing the model's native collaboration surface remains a separate product decision. Persistent Decodex work records and native subagent execution keep their current owners.
+
+See [Runtime architecture](../architecture/runtime-architecture.md#context-defaults), [Agent coordination](../architecture/chief-coordination.md) and [Acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
 
 ## Adoption and evidence
 

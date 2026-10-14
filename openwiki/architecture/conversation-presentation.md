@@ -45,7 +45,7 @@ sources:
 generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T18:37:44.705Z
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 
@@ -84,6 +84,12 @@ Saved edit recovery and history refresh/source controls live in Details. The nor
 ## Conversation read status
 
 Task preferences shows the native read receipt for an eligible root conversation. Reading history or refreshing the receipt does not acknowledge a result. Mark as read and Mark as unread submit the displayed revision with a source-bound review token. A replaced source discards the observation; a rejected or uncertain write refreshes status without replay. Missing receipts remain unavailable. Native read state stays separate from Dock handoff and attention state.
+
+## Context defaults
+
+Task preferences includes a Context defaults panel for background compaction and retention of delegation instructions. The panel reads the native effective project default and the saved user value. Its On and Off actions write the same native configuration file that manual config edits use. An override remains visible as a different effective project default.
+
+These defaults apply to new conversations. Saving them does not restart a loaded conversation or claim that an in-progress task has switched behavior. An unconfirmed save triggers a fresh read and requires another explicit choice before a new write. See [Runtime architecture](runtime-architecture.md#context-defaults) for the configuration keys and native limits.
 
 ## Floating controls and motion
 
