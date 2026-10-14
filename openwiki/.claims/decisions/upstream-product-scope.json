@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:df5ca925408f37b08b84bc653102ee9bf88420d0df461099e3292eb9c3e6aa69",
+  "pageVersion": "sha256:926488b30f316d92f0a8fa7630adf991b5aa3ed36a0611776405348d2aeebc9c",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,7 +17,7 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L732-L773",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L733-L774",
           "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
@@ -113,10 +113,64 @@
           "version": "repo-file-v1:sha256:623090d06ca0c9c75418b406db1f2299e73eca2b3aa5e32c3cff29fe0b95f67e"
         }
       ]
+    },
+    {
+      "id": "claim_ce2bf115c4114bce94986dd3fc89e9e9",
+      "statement": "Background compaction and selected delegation-output retention are available through Context defaults, share native config.toml with manual edits, respect explicit off and project overrides, and apply defaults without restarting loaded conversations.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:e46680600cb98655e02c76fc0b4574c91cbb9c71ba538077dddd9bc145ea3cbd"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+          "version": "repo-file-v1:sha256:b5f93b8786f30af8d819c4eed9beeaadf8f4f18148031cd27370e18b589cee97"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f8c8a882cfc49fcbe2ad7d42a33ef9d",
+      "statement": "Only work_instruction outputs request native retention; wakes, capacity retries and injected external result batches remain unselected while delegation inputs retain tool authority.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
+          "version": "repo-file-v1:sha256:8df134bfceb6a56e86e3760859326597662657d0c9c599910a7794bfe6aacb81"
+        }
+      ]
+    },
+    {
+      "id": "claim_1187b419c32c4487976467e111a8ca3f",
+      "statement": "The native context panel exposes only async compaction and client tool-output retention and does not expose or admit writes to multi_agent_v2.disable_native_tools; production launch arguments do not force that option.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:e46680600cb98655e02c76fc0b4574c91cbb9c71ba538077dddd9bc145ea3cbd"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs",
+          "version": "repo-file-v1:sha256:4c35a917947da20855fc25e3db4b90fcecfcdd9c528e1a30d08ed7a567023f30"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
+          "version": "repo-file-v1:sha256:0b121ccf804628b0524901b8e6042ee327b46836f48bd644a48ec253ec6f4d5d"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-14T05:36:25.710Z"
   }
 }

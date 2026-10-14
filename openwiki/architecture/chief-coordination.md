@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T07:13:39.526Z
+    at: 2026-10-14T05:36:25.710Z
 sources:
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
@@ -47,6 +47,14 @@ Agent is the user's primary agent for general-purpose work: discussion, research
 The GPUI composer sends typed commands to the service-owned `AgentHost`. The host persists accepted input under a stable command identity. `AgentCoordinator` binds work items to native Codex threads, dispatches exact turns, observes results, and records decisions in SQLite. Codex owns native thread history and provider execution; Decodex owns work relationships and presentation.
 
 `agent/instructions.md` defines the behavioral policy. A worker finishing is evidence for the Agent to assess, not automatic parent-goal completion. Dependencies require accepted, resolved work. Review starts after an artifact exists; a review does not grant execution permission. Continuation can invalidate previous acceptance.
+
+## Delegation instructions and native subagents
+
+Decodex worker tools create persistent work records and dispatch their bound native conversations. Native Codex subagents remain a separate execution owner. Their requests and approvals follow verified native ancestry. The desktop presents both forms of work without turning a native child into a local manager.
+
+Decodex marks only its `work_instruction` tool outputs for native retention. This includes the initial delegated instruction and an explicit follow-up instruction. These inputs keep the `decodex` tool namespace and do not become user or developer messages. Ordinary `work_wake` notifications, capacity retries and injected external result batches do not request retention.
+
+Codex honors that request only when `features.retain_client_tool_outputs` is enabled and the output fits its shared retention budget. Preservation is bounded; it does not replace work records, delivery receipts or recovery checks. The Context defaults panel uses native configuration for this setting. See [Runtime architecture](runtime-architecture.md#context-defaults).
 
 ## Persistence and recovery
 

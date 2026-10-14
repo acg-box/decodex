@@ -45,9 +45,6 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-10-14T03:59:49.047Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-14T03:59:49.047Z
 ---
 
 # Upstream integration acceptance boundaries

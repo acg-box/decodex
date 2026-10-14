@@ -1688,7 +1688,7 @@ async fn resolving_prerequisite_releases_authorized_unbound_worker_once() {
 	assert_eq!(turn["params"]["input"], serde_json::json!([]));
 	assert_eq!(
 		turn["params"]["toolOutput"],
-		serde_json::json!({"name":"work_instruction","namespace":"decodex","output":"Use the result"})
+		serde_json::json!({"name":"work_instruction","namespace":"decodex","output":"Use the result","retain":true})
 	);
 }
 

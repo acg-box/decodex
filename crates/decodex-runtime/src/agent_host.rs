@@ -24,9 +24,9 @@ use crate::{
 	AgentConfig, AgentCoordinator, AgentError,
 	account_observation::AccountObservationService,
 	agent::{AgentInputExtras, misalignment, native_subagents, timeline, timeline::media},
-	agent_app_exposure, agent_capabilities, agent_detail, agent_hooks, agent_integrations,
-	agent_live_settings, agent_model_settings, agent_models, agent_native_goal, agent_permissions,
-	agent_read_state,
+	agent_app_exposure, agent_capabilities, agent_context_settings, agent_detail, agent_hooks,
+	agent_integrations, agent_live_settings, agent_model_settings, agent_models, agent_native_goal,
+	agent_permissions, agent_read_state,
 	agent_recap::Recaps,
 	agent_resources, agent_search_settings, agent_skills,
 	agent_transcript::Transcripts,
@@ -47,14 +47,15 @@ use decodex_database::{
 };
 use decodex_protocol::{
 	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
-	AgentAttachmentDto, AgentCapabilitiesResult, AgentHookSettingsState, AgentIntegrationsResult,
-	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
-	AgentModelSettingsResult, AgentNativeGoalResult, AgentPermissionState, AgentReadStateResult,
-	AgentRequestedDecision, AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText,
-	McpLoginPhase, McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
+	AgentAttachmentDto, AgentCapabilitiesResult, AgentContextFeature, AgentContextSettingsResult,
+	AgentHookSettingsState, AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest,
+	AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
+	AgentPermissionState, AgentReadStateResult, AgentRequestedDecision, AgentResourcesResult,
+	AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult, AgentStartDto,
+	AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
+	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
+	McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
 };
 use prompt_edit::Reviews;
 use weather::CachedWeather;
@@ -1319,6 +1320,37 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn context_settings(&self, work: &str) -> AgentContextSettingsResult {
+		agent_context_settings::read(|| async {
+			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+
+			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+		})
+		.await
+	}
+
+	async fn set_context_preference(
+		&self,
+		work: &str,
+		review: &str,
+		feature: AgentContextFeature,
+		enabled: bool,
+	) -> Result<String, AgentHostError> {
+		agent_context_settings::write(
+			|| async {
+				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+
+				self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+			},
+			review,
+			feature,
+			enabled,
+		)
+		.await?;
+
+		Ok(work.into())
+	}
+
 	async fn handle_settings(
 		&self,
 		key: &str,
@@ -1367,6 +1399,14 @@ impl AgentHost {
 			AgentActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
+			AgentActionDto::SetContextPreference { work_id, review_token, feature, enabled } =>
+				self.set_context_preference(
+					work_id.as_str(),
+					review_token.as_str(),
+					feature,
+					enabled,
+				)
+				.await,
 			AgentActionDto::SetSearchPreference { work_id, review_token, mode } =>
 				self.set_search_preference(work_id.as_str(), review_token.as_str(), mode.as_str())
 					.await,
@@ -1475,6 +1515,7 @@ impl AgentHost {
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
+			| AgentActionDto::SetContextPreference { .. }
 			| AgentActionDto::SetAppToolExposure { .. }
 			| AgentActionDto::ConfirmAppUiTool { .. }
 			| AgentActionDto::AcknowledgeAppUiCall { .. }

@@ -43,9 +43,6 @@ sources:
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
 generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-13T07:14:35.295Z
 ---
 
 # Conversation input, history and recovery

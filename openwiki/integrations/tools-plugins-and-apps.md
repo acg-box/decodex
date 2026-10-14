@@ -21,9 +21,6 @@ sources:
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-13T06:10:39.973Z
 ---
 
 # Native tools and connection ownership

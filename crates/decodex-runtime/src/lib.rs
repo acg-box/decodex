@@ -16,6 +16,7 @@ mod agent_app_exposure;
 mod agent_app_ui_receipt;
 mod agent_capabilities;
 mod agent_config_settings;
+mod agent_context_settings;
 mod agent_detail;
 mod agent_guardian;
 mod agent_hooks;

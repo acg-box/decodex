@@ -7,6 +7,7 @@
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_capabilities.rs"] mod capabilities;
 #[path = "agent_composer.rs"] mod composer;
+#[path = "agent_context_settings.rs"] mod context_settings;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_debug_reload.rs"] mod debug_reload;
@@ -141,6 +142,7 @@ pub(crate) struct AgentSurface {
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	search_settings: search_settings::Panel,
+	context_settings: context_settings::Panel,
 	skills: Picker,
 	recap: recap::Panel,
 	prompt_edit: prompt_edit::Panel,
@@ -324,6 +326,7 @@ impl AgentSurface {
 			voice_task: None,
 			voice_settings: Default::default(),
 			search_settings: Default::default(),
+			context_settings: Default::default(),
 			skills: Default::default(),
 			recap: Default::default(),
 			prompt_edit: Default::default(),
@@ -1269,6 +1272,7 @@ impl AgentSurface {
 		self.reset_app_exposure();
 		self.reset_voice_settings();
 		self.reset_search_settings();
+		self.reset_context_settings();
 		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_prompt_edit();
@@ -1398,6 +1402,7 @@ impl AgentSurface {
 		self.reset_app_exposure();
 		self.reset_voice_settings();
 		self.reset_search_settings();
+		self.reset_context_settings();
 		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_prompt_edit();
@@ -1554,6 +1559,7 @@ impl AgentSurface {
 				self.invalidate_app_exposure(&snapshot);
 				self.invalidate_voice_settings(&snapshot);
 				self.invalidate_search_settings(&snapshot);
+				self.invalidate_context_settings(&snapshot);
 				self.invalidate_recap(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
@@ -2388,6 +2394,7 @@ impl AgentSurface {
 					.child(self.integrations_panel(work, cx))
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.search_settings_panel(work, cx))
+					.child(self.context_settings_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))

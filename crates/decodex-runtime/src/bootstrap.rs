@@ -809,6 +809,19 @@ async fn bootstrap_macos_account_runtime(
 
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
+		// The process fixture scripts refresh and liveness without an installed Codex.
+		// Keep its capability in the service and store under the same attestation owner.
+		let _ = service
+			.attest_callback_capability(decodex_database::CodexAccountCapabilityAttestation {
+				build_identity: "process-fixture".into(),
+				executable_sha256: "1".repeat(64),
+				schema_sha256: "2".repeat(64),
+				callback_profile_sha256: "3".repeat(64),
+				login_chatgpt_auth_tokens: true,
+				refresh_callback: true,
+			})
+			.await;
+
 		None
 	} else {
 		AccountApiRuntime::new(

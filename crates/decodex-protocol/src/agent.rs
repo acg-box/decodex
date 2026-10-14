@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	AgentAppSettingEdit, AgentAppUiCall, AgentAsyncQuestionDto, AgentExecutionOverrides,
-	AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
+	AgentAppSettingEdit, AgentAppUiCall, AgentAsyncQuestionDto, AgentContextFeature,
+	AgentExecutionOverrides, AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
 	AgentToolExposureSurface, ConversationModel, ConversationReasoningEffort,
 	ConversationWorkingDirectory, EntityId, HistoryText, PromptForkBoundary, PromptInputUpload,
 	Sha256Digest, WeatherForecast, WireText,
@@ -553,6 +553,18 @@ pub enum AgentActionDto {
 		review_token: WireText,
 		/// Explicit supported search selection.
 		mode: WireText,
+	},
+
+	/// Save one reviewed context preference for new conversations.
+	SetContextPreference {
+		/// Owning task.
+		work_id: EntityId,
+		/// Current source and native configuration identity.
+		review_token: WireText,
+		/// Selected native feature.
+		feature: AgentContextFeature,
+		/// Explicit enabled or disabled selection.
+		enabled: bool,
 	},
 
 	/// Acknowledge an unknown outcome without replaying or changing that outcome.

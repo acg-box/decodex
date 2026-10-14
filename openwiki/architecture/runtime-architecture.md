@@ -3,9 +3,6 @@ type: Reference
 title: "Runtime architecture"
 description: "Service ownership, fixed Codex components, shared acquisition and app updates."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-14T03:59:49.047Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -44,6 +41,9 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-10-14T02:59:25.564Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-14T05:36:25.710Z
 ---
 
 # Runtime Architecture
@@ -86,6 +86,34 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
 The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
+
+## Context defaults
+
+Task preferences > Context defaults exposes two native settings. The panel reads the saved user value and the effective project default through the current account-bound app-server. It writes one boolean with the native file path and version from that observation, then reads the result again. It does not store a second preference in SQLite or add a launch argument that forces either setting on.
+
+The same values can be edited in native `config.toml`:
+
+```toml
+[features]
+async_compaction = true
+retain_client_tool_outputs = true
+```
+
+`false` explicitly disables a setting. An absent value keeps the native default, which is off for these two experimental features. Project or managed configuration can override a saved user preference. The panel reports both values when they differ. A changed file or source requires a fresh review; an unconfirmed save is not retried automatically.
+
+To set the native async threshold, replace its boolean with the table form:
+
+```toml
+[features.async_compaction]
+enabled = true
+model_async_compact_threshold_percent = 65
+```
+
+Changing the On or Off choice preserves an existing threshold table. Defaults apply to new conversations. Loaded conversations keep their configuration; the service does not restart or resume them to apply a preference.
+
+Background compaction prepares a native summary before context fills. Native runtime eligibility and thresholds decide whether work starts. An enabled configuration value does not prove that a running conversation is using background compaction, or that hosted latency or cost improved.
+
+Tool-output retention selects only Decodex delegation instructions. The producer sends `retain: true` for `work_instruction` while preserving its tool authority. Codex decides whether to keep it under `retain_client_tool_outputs` and its retention budget. Ordinary results, wakes and retries do not all become permanent context. See [Agent coordination](chief-coordination.md#delegation-instructions-and-native-subagents).
 
 ## Components and app updates
 

@@ -7,6 +7,7 @@ mod app_link_settings;
 mod app_tool_exposure;
 mod archive;
 mod attachments;
+mod context_preferences;
 mod dispatch_refusal;
 mod goals;
 mod history;
@@ -50,6 +51,7 @@ pub use self::{
 	},
 	archive::ThreadArchiveState,
 	attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult},
+	context_preferences::{CONTEXT_FEATURES, NativeContextSettings, is_context_preference_write},
 	dispatch_refusal::{NativeDispatchRefusal, classify_dispatch_refusal},
 	goals::{
 		NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus, is_goal_attachment_write,

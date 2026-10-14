@@ -24,9 +24,6 @@ sources:
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
 generated: { by: "codex", at: "2026-10-14T02:32:34.699Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-14T02:32:34.699Z
 ---
 
 
