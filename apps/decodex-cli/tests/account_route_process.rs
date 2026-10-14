@@ -50,8 +50,7 @@ struct Fixture {
 }
 impl Fixture {
 	fn new() -> Self {
-		let parent = PathBuf::from(env::var_os("HOME").expect("read process fixture parent"));
-		let temporary = tempfile::tempdir_in(parent).expect("create owner-private process fixture");
+		let temporary = tempfile::tempdir().expect("create owner-private process fixture");
 		let home = temporary.path().canonicalize().expect("canonicalize process fixture");
 		let root = DecodexRoot::from_home(&home).expect("type process fixture root");
 		let paths = root.paths();
