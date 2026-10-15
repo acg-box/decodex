@@ -61,26 +61,40 @@ fn percentage(value: Option<f32>) -> String {
 	}
 }
 fn metric_track(value: Option<f32>, color: u32, scale: f32) -> AnyElement {
-	gpui::div()
-		.w_full()
-		.flex()
-		.gap(gpui::px(1.5 * scale))
-		.children((0..12).map(|i| {
-			let filled = (value.unwrap_or(0.) * 12. - i as f32).clamp(0., 1.);
-			gpui::div()
-				.flex_1()
-				.h(gpui::px(3. * scale))
-				.rounded(gpui::px(scale))
-				.overflow_hidden()
-				.bg(gpui::rgba(0xffffff10))
-				.child(
-					gpui::div()
-						.h_full()
-						.w(gpui::relative(filled))
-						.bg(gpui::rgba((color << 8) | 0xc8)),
-				)
-		}))
-		.into_any_element()
+	// Decorative segments share one layout box; their fill does not affect layout.
+	gpui::canvas(
+		|_, _, _| {},
+		move |bounds, (), window, _| {
+			let gap = gpui::px(1.5 * scale);
+			let width = ((bounds.size.width - gap * 11.) / 12.).max(gpui::px(0.));
+			for i in 0..12 {
+				let segment = gpui::Bounds::new(
+					bounds.origin + gpui::point((width + gap) * i as f32, gpui::px(0.)),
+					gpui::size(width, bounds.size.height),
+				);
+				let mut track = gpui::fill(segment, gpui::rgba(0xffffff10));
+				track.corner_radii = gpui::Corners::all(gpui::px(scale));
+				window.paint_quad(track);
+				let filled = (value.unwrap_or(0.) * 12. - i as f32).clamp(0., 1.);
+				if filled > 0. {
+					let clip = gpui::ContentMask {
+						bounds: gpui::Bounds::new(
+							segment.origin,
+							gpui::size(width * filled, segment.size.height),
+						),
+					};
+					window.with_content_mask(Some(clip), |window| {
+						let mut fill = gpui::fill(segment, gpui::rgba((color << 8) | 0xc8));
+						fill.corner_radii = gpui::Corners::all(gpui::px(scale));
+						window.paint_quad(fill);
+					});
+				}
+			}
+		},
+	)
+	.w_full()
+	.h(gpui::px(3. * scale))
+	.into_any_element()
 }
 
 fn usage_label(id: String, title: String, share: String) -> AnyElement {
@@ -287,7 +301,7 @@ impl AgentSurface {
 			.unwrap_or_default()
 	}
 
-	fn metric_baselines(&self, graph: &Graph) -> (u128, u128) {
+	pub(super) fn metric_baselines(&self, graph: &Graph) -> (u128, u128) {
 		graph.nodes.iter().map(|n| self.metrics_for(n)).fold((0, 0), |(tokens, time), m| {
 			(
 				tokens + u128::from(m.tokens.unwrap_or(0)),
@@ -296,9 +310,13 @@ impl AgentSurface {
 		})
 	}
 
-	pub(super) fn node_metrics(&self, node: &Node, graph: &Graph, scale: f32) -> AnyElement {
+	pub(super) fn node_metrics(
+		&self,
+		node: &Node,
+		baselines: (u128, u128),
+		scale: f32,
+	) -> AnyElement {
 		let metrics = self.metrics_for(node);
-		let baselines = self.metric_baselines(graph);
 		let mut body = gpui::div().w_full().flex().gap(gpui::px(12. * scale));
 		for (value, baseline, color, label, meaning) in [
 			(

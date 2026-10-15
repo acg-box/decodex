@@ -265,8 +265,8 @@ impl AgentSurface {
 		})
 	}
 
-	pub(super) fn relation_controls(&self, cx: &mut Context<Self>) -> AnyElement {
-		let scale = self.relation_scale(&self.relation_graph());
+	fn relation_controls(&self, graph: &Graph, cx: &mut Context<Self>) -> AnyElement {
+		let scale = self.relation_scale(graph);
 		let cluster = || {
 			crate::ui_theme::floating_group()
 				.h(gpui::px(28.))
@@ -470,7 +470,7 @@ impl AgentSurface {
 		canvas = self.relation_node_layer(canvas, graph, cx);
 
 		canvas
-			.child(self.relation_controls(cx))
+			.child(self.relation_controls(graph, cx))
 			.children(self.picked_metric_card(graph, cx))
 			.child(
 				gpui::div()
@@ -1018,6 +1018,7 @@ impl AgentSurface {
 		let neighborhood = self.relation_neighborhood(graph);
 		let labels =
 			identity::labels(graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()));
+		let baselines = self.metric_baselines(graph);
 
 		for node in &graph.nodes {
 			let (selected, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
@@ -1038,6 +1039,7 @@ impl AgentSurface {
 
 			let view = self
 				.relation_node_surface(node, graph, selected, faded, labels.get(&node.key), cx)
+				.when(node.row.is_some(), |d| d.child(self.node_metrics(node, baselines, scale)))
 				.on_mouse_down(
 					MouseButton::Left,
 					cx.listener(move |s, e: &MouseDownEvent, _, cx| {
@@ -1294,7 +1296,6 @@ impl AgentSurface {
 						}),
 				)
 			})
-			.when(node.row.is_some(), |d| d.child(self.node_metrics(node, graph, scale)))
 	}
 
 	fn relation_node_tooltip(&self, node: &Node) -> String {
