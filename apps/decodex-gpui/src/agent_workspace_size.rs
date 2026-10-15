@@ -221,8 +221,14 @@ impl AgentSurface {
 		if self.workspace.graph_expanded {
 			return available;
 		}
-		let height =
-			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.));
+		// Question choices can make the composer taller than a normal draft.
+		// Retain a readable transcript and usable timeline above that overlay.
+		let chat_minimum = (self.workspace.composer_overlay_height + 160.).max(240.);
+		let height = self
+			.workspace
+			.graph_panel_height
+			.clamp(120., 640.)
+			.min((available.1 - chat_minimum).max(38.));
 		(available.0, height.min(available.1))
 	}
 
@@ -491,6 +497,34 @@ mod tests {
 					),
 					(230., 270., 300.)
 				);
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn dock_resize_reserves_reading_space_above_a_tall_question(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_panel_height = 640.;
+		});
+		for overlay in [95., 235., 320.] {
+			visual.update(|window, cx| {
+				surface.update(cx, |s, _| {
+					s.workspace.composer_overlay_height = overlay;
+					let (_, dock_height) = s.workspace_graph_size(window, true);
+					let reading_height = f32::from(window.viewport_size().height)
+						- workspace_size::WINDOW_CONTROLS_CLEARANCE
+						- dock_height
+						- overlay;
+					assert!(reading_height >= 160., "a question must not consume the timeline");
+					assert_eq!(
+						s.workspace.graph_panel_height, 640.,
+						"retain the preferred Dock size"
+					);
+				})
 			});
 		}
 	}
