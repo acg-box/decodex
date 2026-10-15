@@ -263,6 +263,7 @@ impl RenderOnce for Disclosure {
 		gpui::div()
 			.w_full()
 			.h(gpui::px(height))
+			.when(!self.visible && height <= 0.1, |slot| slot.hidden())
 			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
 			.flex_none()
 			.overflow_hidden()

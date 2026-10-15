@@ -1,7 +1,7 @@
 //! Nonblocking questions offer direct replies without taking over the message composer.
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{AnyElement, AppContext as _, Bounds, KeyDownEvent, Point};
+use gpui::{AnyElement, AppContext as _, Bounds, KeyDownEvent, Point, prelude::FluentBuilder as _};
 
 use crate::{
 	shell::agent_surface::{
@@ -329,11 +329,10 @@ impl AgentSurface {
 				.min_w_0()
 				.flex()
 				.flex_col()
-				.pb_2()
-				.mb_1()
-				.border_b_1()
-				.border_color(gpui::rgba(0xffffff14))
+				.pt_1()
+				.pb_1()
 				.child(panel)
+				.child(gpui::div().h(gpui::px(1.)).mx_2().mt_2().bg(gpui::rgba(0xffffff14)))
 				.into_any_element(),
 		)
 	}
@@ -370,12 +369,19 @@ impl AgentSurface {
 			gpui::div()
 				.flex()
 				.items_start()
+				.px_2()
 				.gap_3()
-				.mb_2()
+				.when(!question.options.is_empty(), |header| header.mb_2())
 				.child(
 					gpui::div()
+						.id(SharedString::from(format!("async-question-title-{}", question.id)))
+						.role(Role::Heading)
+						.aria_level(3)
+						.aria_label(question.title.clone())
 						.flex_1()
 						.min_w_0()
+						.pt(gpui::px(2.5))
+						.whitespace_normal()
 						.font_weight(gpui::FontWeight::MEDIUM)
 						.child(question.title.clone()),
 				)
