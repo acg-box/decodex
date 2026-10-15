@@ -218,7 +218,6 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
-	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -374,7 +373,6 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
-			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -2659,10 +2657,10 @@ fn floating_window_controls(
 			let (left, right) = agent.topbar_insets(_window);
 			gpui::div()
 				.absolute()
-				.top_0()
-				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
-				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
-				.h_full()
+				.top(gpui::px(CONTROL_MARGIN))
+				.left(gpui::px(left))
+				.right(gpui::px(right))
+				.h(gpui::px(CONTROL_GROUP_HEIGHT))
 				.flex()
 				.items_center()
 				.justify_center()
@@ -2679,36 +2677,27 @@ fn floating_window_controls(
 	});
 	gpui::div()
 		.id("floating-window-controls")
+		.debug_selector(|| "window-drag-region".into())
 		.role(Role::Navigation)
 		.aria_label("Window controls")
 		.absolute()
-		.top(gpui::px(CONTROL_MARGIN))
-		.left(gpui::px(CONTROL_MARGIN))
-		.right(gpui::px(CONTROL_MARGIN))
-		.h(gpui::px(CONTROL_GROUP_HEIGHT))
+		.top_0()
+		.left_0()
+		.right_0()
+		.h(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+		.p(gpui::px(CONTROL_MARGIN))
 		.flex()
 		.items_center()
 		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
-		.on_mouse_down(
-			MouseButton::Left,
-			cx.listener(|shell, _, _, _| shell.titlebar_drag_pending = true),
-		)
-		.on_mouse_up(
-			MouseButton::Left,
-			cx.listener(|shell, _, _, _| shell.titlebar_drag_pending = false),
-		)
-		.on_mouse_move(cx.listener(|shell, _, window, _| {
-			if shell.titlebar_drag_pending {
-				shell.titlebar_drag_pending = false;
-
+		.on_mouse_down(MouseButton::Left, |event, window, cx| {
+			// AppKit must receive the press, before a fast first movement leaves the header.
+			if event.click_count == 2 {
+				window.titlebar_double_click();
+			} else {
 				window.start_window_move();
 			}
-		}))
-		.on_click(|event, window, _| {
-			if event.click_count() == 2 {
-				window.titlebar_double_click();
-			}
+			cx.stop_propagation();
 		})
 		.child(
 			ui_theme::floating_group()
@@ -2847,6 +2836,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 
 	gpui::div()
 		.id(("agent-panel-control", index))
+		.debug_selector(move || format!("agent-panel-control-{index}"))
 		.role(Role::Button)
 		.when(enabled, |el| el.tab_index(0))
 		.aria_label(label)
@@ -7833,7 +7823,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn conversation_title_passes_mouse_down_to_window_drag_region(cx: &mut TestAppContext) {
+	fn titlebar_drag_covers_margins_and_title_but_excludes_buttons(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
@@ -7842,10 +7832,27 @@ mod tests {
 		visual.run_until_parked();
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 		let title = visual.debug_bounds("workspace-conversation-header").unwrap();
-		visual.simulate_mouse_down(title.center(), gpui::MouseButton::Left, Default::default());
-		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
-		visual.simulate_mouse_up(title.center(), gpui::MouseButton::Left, Default::default());
-		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		let region = visual.debug_bounds("window-drag-region").unwrap();
+		assert_eq!(region.top(), gpui::px(0.));
+		assert_eq!(region.left(), gpui::px(0.));
+		assert_eq!(region.size.height, gpui::px(super::WINDOW_CONTROLS_CLEARANCE));
+		for point in [
+			title.center(),
+			gpui::point(region.center().x, gpui::px(3.)),
+			gpui::point(region.center().x, region.bottom() - gpui::px(3.)),
+			gpui::point(gpui::px(3.), region.center().y),
+			gpui::point(region.right() - gpui::px(3.), region.center().y),
+		] {
+			assert!(region.contains(&point), "{point:?}");
+		}
+		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
+		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
+		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(sidebar.center(), gpui::MouseButton::Left, Default::default());
+		assert_ne!(
+			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0),
+			before
+		);
 	}
 
 	#[gpui::test]
