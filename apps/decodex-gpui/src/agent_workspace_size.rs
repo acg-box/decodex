@@ -198,11 +198,6 @@ impl AgentSurface {
 		tween.sample(now)
 	}
 
-	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
-		// Match the actual conversation column, including animated sidebar widths.
-		(self.workspace_sidebar_width(window), self.agent_tree_width(window))
-	}
-
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible
 			|| self.workspace.chat_expanded

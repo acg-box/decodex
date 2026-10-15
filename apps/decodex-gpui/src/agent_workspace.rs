@@ -2521,7 +2521,7 @@ fn preview_tip(_: &mut Window, cx: &mut gpui::App) -> gpui::AnyView {
 mod tests {
 	use std::thread;
 
-	use gpui::{AppContext as _, Focusable as _, ParentElement as _, Styled as _};
+	use gpui::{AppContext as _, Focusable as _};
 
 	use crate::shell::agent_surface::workspace::{
 		AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
@@ -3028,23 +3028,9 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 	}
-	struct WorkspaceWithTabs(gpui::Entity<AgentSurface>);
-
-	impl gpui::Render for WorkspaceWithTabs {
-		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			gpui::div()
-				.size_full()
-				.flex()
-				.flex_col()
-				.child(self.0.update(cx, |surface, cx| surface.work_context(window, cx)))
-				.child(self.0.clone())
-		}
-	}
-
 	#[gpui::test]
 	fn reopening_a_closing_tab_keeps_it_and_close_returns_to_main(cx: &mut gpui::TestAppContext) {
-		let surface = cx.new(AgentSurface::new);
-		let (_, visual) = cx.add_window_view(|_, _| WorkspaceWithTabs(surface.clone()));
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
