@@ -68,6 +68,9 @@ impl ArchiveVisibility {
 			if self.initial_pending.as_ref().is_some_and(HashSet::is_empty) {
 				self.initial_pending = None;
 			}
+			crate::startup_trace::archive_pending(
+				self.initial_pending.as_ref().map_or(0, HashSet::len),
+			);
 			self.refreshing = false;
 			self.checked_at = Some(Instant::now());
 		}
