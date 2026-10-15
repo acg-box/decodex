@@ -62,7 +62,7 @@ use crate::{
 };
 use composer_input::{Copy, Cut, Paste, SelectAll};
 use decodex_protocol::{ClientFailure, ClientProfile};
-use shell::{ReloadWorkspace, SettingsWindow};
+use shell::{CloseWindow, ReloadWorkspace};
 use ui_theme::window_material;
 
 gpui::actions!(
@@ -70,8 +70,6 @@ gpui::actions!(
 	[
 		/// Quit the application and release its owned services.
 		Quit,
-		/// Close the main window while keeping the menu bar available.
-		CloseWindow,
 		/// Minimize the active main window.
 		Minimize,
 		/// Hide the application windows.
@@ -358,20 +356,6 @@ fn compose_lifecycle(
 }
 
 fn hide_main_window(cx: &mut App) {
-	// On macOS GPUI's active_window is the main window, which can differ from
-	// the key Settings window when attached composer windows are present.
-	let settings = cx
-		.windows()
-		.into_iter()
-		.filter_map(|w| w.downcast::<SettingsWindow>())
-		.find(|w| w.is_active(cx) == Some(true));
-
-	if let Some(window) = settings {
-		let _ = window.update(cx, |_, window, _| window.remove_window());
-
-		return;
-	}
-
 	#[cfg(target_os = "macos")]
 	{
 		let _ = cx;

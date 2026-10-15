@@ -100,6 +100,8 @@ gpui::actions!(
 	[
 		/// Reload workspace reads without restarting execution.
 		ReloadWorkspace,
+		/// Close Settings or hide the workspace while keeping the menu bar available.
+		CloseWindow,
 		FocusNext,
 		FocusPrevious,
 		ActivateDestination,
@@ -107,7 +109,6 @@ gpui::actions!(
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
-		CloseSettings,
 		RefreshHealth,
 		ToggleSidebar,
 		ShrinkPanel,
@@ -1975,7 +1976,7 @@ impl Render for SettingsWindow {
 			.bg(gpui::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
-			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
+			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
 			}))
@@ -2173,8 +2174,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 
 	cx.bind_keys([
-		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
+		KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow")),
+		KeyBinding::new("escape", CloseWindow, Some("SettingsWindow")),
 	]);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
@@ -7711,6 +7712,10 @@ mod tests {
 	#[gpui::test]
 	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+		// Match startup ordering: the menu binds its global close action after the shell.
+		visual.update(|_, cx| {
+			cx.bind_keys([gpui::KeyBinding::new("cmd-w", shell::CloseWindow, None)])
+		});
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels());
 
 		visual.simulate_keystrokes("cmd-,");
@@ -7728,7 +7733,8 @@ mod tests {
 			assert_eq!(s.settings_window.unwrap(), handle);
 			assert_eq!(s.agent.read(cx).workspace_panels(), before);
 		});
-		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.simulate_keystrokes("cmd-w");
 		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
 		visual.update(|window, cx| {
 			assert_eq!(
