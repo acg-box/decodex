@@ -166,6 +166,7 @@ impl AgentSurface {
 	}
 
 	fn apply_drafts(&mut self, restored: Drafts, cx: &mut Context<Self>) {
+		self.async_question_editor = None;
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
 
 		self.draft_profiles.threads = restored.threads;

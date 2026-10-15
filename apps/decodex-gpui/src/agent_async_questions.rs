@@ -1,4 +1,4 @@
-//! Nonblocking questions offer direct replies without taking over the message composer.
+//! Questions share the input surface while retaining a separate answer draft.
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{AnyElement, AppContext as _, Bounds, KeyDownEvent, Point, prelude::FluentBuilder as _};
@@ -16,21 +16,157 @@ use crate::{
 };
 use decodex_protocol::{AgentAsyncQuestionDto, DesktopQuestionDraft, HistoryText, WireText};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct QuestionTarget {
 	work: String,
 	thread: String,
 	question: String,
 }
 
+pub(super) struct Editor {
+	target: QuestionTarget,
+	profile: Option<agent_surface::ClientProfile>,
+	input: agent_surface::Entity<crate::composer_input::ComposerInput>,
+}
+
 #[derive(Clone)]
 enum QuestionAction {
 	Send { answer: String, visible: Rc<Cell<bool>> },
-	RestoreDraft(String),
 	Skip,
 }
 
 impl AgentSurface {
+	fn composer_question_target(&self) -> Option<QuestionTarget> {
+		if self.native_agents.selected.is_some() {
+			return None;
+		}
+		let (id, AgentHistoryResult::Available { questions, questions_recovering: false, .. }) =
+			self.history.as_ref()?
+		else {
+			return None;
+		};
+		let question = questions.first()?;
+		let work = self.conversation_work()?;
+		if id != &work.id {
+			return None;
+		}
+		Some(QuestionTarget {
+			work: work.id,
+			thread: work.codex_thread_id?,
+			question: question.id.clone(),
+		})
+	}
+
+	pub(super) fn async_question_composer(
+		&self,
+	) -> Option<&agent_surface::Entity<crate::composer_input::ComposerInput>> {
+		let editor = self.async_question_editor.as_ref()?;
+		(self.composer_question_target().as_ref() == Some(&editor.target)
+			&& editor.profile == self.profile)
+			.then_some(&editor.input)
+	}
+
+	pub(super) fn sync_question_editor(&mut self, cx: &mut Context<Self>) {
+		let target = self.composer_question_target();
+		if self.async_question_editor.as_ref().map(|e| &e.target) == target.as_ref()
+			&& self.async_question_editor.as_ref().is_none_or(|e| e.profile == self.profile)
+		{
+			return;
+		}
+		self.async_question_editor = None;
+		let Some(target) = target else {
+			return;
+		};
+		let saved = self
+			.restored_question_drafts
+			.iter()
+			.find(|d| {
+				d.work_id.as_str() == target.work
+					&& d.thread_id.as_str() == target.thread
+					&& d.question_id.as_str() == target.question
+			})
+			.and_then(saved_custom_answer)
+			.unwrap_or_default()
+			.to_owned();
+		let input = cx.new(|cx| {
+			crate::composer_input::ComposerInput::message(
+				36,
+				"Type your own answer…",
+				"Question answer",
+				cx,
+			)
+		});
+		input.update(cx, |input, cx| input.set_content(&saved, cx));
+		let saved_target = target.clone();
+		let profile = self.profile.clone();
+		cx.subscribe(&input, move |surface, input, event, cx| {
+			if *event != crate::composer_input::ComposerEvent::Changed || surface.profile != profile
+			{
+				return;
+			}
+			let answer = input.read(cx).content().to_owned();
+			surface.store_question_answer(&saved_target, &answer);
+			surface.save_draft_document(cx);
+			cx.notify();
+		})
+		.detach();
+		self.async_question_editor = Some(Editor { target, profile: self.profile.clone(), input });
+	}
+
+	fn store_question_answer(&mut self, target: &QuestionTarget, text: &str) {
+		self.restored_question_drafts.retain(|d| {
+			d.work_id.as_str() != target.work
+				|| d.thread_id.as_str() != target.thread
+				|| d.question_id.as_str() != target.question
+		});
+		if text.is_empty() {
+			return;
+		}
+		let (Ok(work_id), Ok(thread_id), Ok(question_id)) = (
+			EntityId::new(&target.work),
+			WireText::new(&target.thread),
+			WireText::new(&target.question),
+		) else {
+			return;
+		};
+		self.restored_question_drafts.push(DesktopQuestionDraft {
+			work_id,
+			thread_id,
+			question_id,
+			text: text.into(),
+			custom: None,
+			selected: None,
+			collapsed: false,
+		});
+	}
+
+	pub(super) fn submit_question_answer(&mut self, cx: &mut Context<Self>) -> bool {
+		self.sync_question_editor(cx);
+		let Some(editor) = &self.async_question_editor else {
+			return false;
+		};
+		let target = editor.target.clone();
+		let answer = editor.input.read(cx).content().trim().to_owned();
+		if answer.is_empty() {
+			return true;
+		}
+		let Some(source) = self.pending_async_question(&target) else {
+			return true;
+		};
+		if let Err(message) = decodex_protocol::agent_async_question_reply(source, &answer) {
+			self.feedback = message;
+			cx.notify();
+			return true;
+		}
+		let (Ok(work_id), Ok(question_id), Ok(answer)) =
+			(EntityId::new(target.work), WireText::new(target.question), HistoryText::new(answer))
+		else {
+			return true;
+		};
+		self.execute(AgentActionDto::AnswerQuestion { work_id, question_id, answer }, None, cx);
+		true
+	}
+
 	pub(super) fn prune_async_question_drafts(&mut self, work: &str, history: &AgentHistoryResult) {
 		let AgentHistoryResult::Available {
 			questions,
@@ -73,29 +209,12 @@ impl AgentSurface {
 		&mut self,
 		target: &QuestionTarget,
 		action: &QuestionAction,
-		window: &mut Window,
+		_window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
 		let Some(source) = self.pending_async_question(target) else {
 			return;
 		};
-		if let QuestionAction::RestoreDraft(answer) = action {
-			if self.composer_manager.clone().or_else(|| self.root_id()).as_deref()
-				!= Some(&target.work)
-				|| self.native_agents.selected.is_some()
-			{
-				return;
-			}
-			if self.composer.update(cx, |input, cx| input.append_saved_text(answer, cx)) {
-				self.focus_message(window, cx);
-			} else {
-				self.feedback =
-					"Finish composing or make room in the message before adding this answer."
-						.into();
-				cx.notify();
-			}
-			return;
-		}
 		if self.sending || self.uncertain {
 			return;
 		}
@@ -130,7 +249,6 @@ impl AgentSurface {
 				};
 				AgentActionDto::SkipQuestion { work_id, thread_id, question_id }
 			},
-			QuestionAction::RestoreDraft(_) => return,
 		};
 		// Direct replies never consume or clear the ordinary message draft.
 		self.execute(command, None, cx);
@@ -146,7 +264,6 @@ impl AgentSurface {
 	) -> gpui::Stateful<gpui::Div> {
 		let tooltip = match action {
 			QuestionAction::Send { .. } => "Send answer",
-			QuestionAction::RestoreDraft(_) => "Restore saved answer",
 			QuestionAction::Skip => "Skip question",
 		};
 		let target = target.clone();
@@ -235,20 +352,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn update_question_placeholder(&self, cx: &mut Context<Self>) {
-		if self.native_agents.selected.is_some() {
-			return;
-		}
-		let pending = self.conversation_work().is_some_and(|work| {
-			matches!(&self.history, Some((id, AgentHistoryResult::Available {
-				questions, questions_recovering: false, ..
-			})) if id == &work.id && !questions.is_empty())
+		self.composer.update(cx, |input, cx| {
+			input.set_placeholder(agent_surface::prompts::session_quote(), cx)
 		});
-		let placeholder = if pending {
-			"Type your own answer…".into()
-		} else {
-			agent_surface::prompts::session_quote()
-		};
-		self.composer.update(cx, |input, cx| input.set_placeholder(placeholder, cx));
 	}
 
 	pub(super) fn composer_question_panel(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -313,7 +419,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_3();
-		for question in questions {
+		for question in questions.iter().take(1) {
 			if let Some(card) = self.async_question_card(work, question, cx) {
 				panel = panel.child(card);
 			}
@@ -390,30 +496,6 @@ impl AgentSurface {
 		for (index, option) in question.options.iter().enumerate() {
 			card = card.child(self.async_choice_button(&target, index, option, cx));
 		}
-		for saved in &self.restored_question_drafts {
-			if saved.work_id.as_str() == target.work
-				&& saved.thread_id.as_str() == target.thread
-				&& saved.question_id.as_str() == target.question
-				&& let Some(answer) = saved_custom_answer(saved)
-			{
-				card = card.child(
-					self.question_button(
-						&target,
-						QuestionAction::RestoreDraft(answer.into()),
-						format!("async-restore-{}", question.id),
-						"Restore saved answer".into(),
-						cx,
-					)
-					.p_2()
-					.flex()
-					.gap_2()
-					.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
-					.child(gpui::div().flex_1().min_w_0().child(answer.to_owned()))
-					.child(workspace_symbols::icon_sized(Symbol::Plus, 12.))
-					.smooth(),
-				);
-			}
-		}
 		Some(card.into_any_element())
 	}
 }
@@ -442,7 +524,6 @@ mod tests {
 		PendingCommand,
 	};
 	use decodex_protocol::{DesktopQuestionDraft, EntityId, WireText};
-	use gpui::Focusable as _;
 	use std::{cell::Cell, rc::Rc};
 
 	fn settle_choices(visual: &mut gpui::VisualTestContext) {
@@ -522,19 +603,52 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 		settle_choices(visual);
-		let append = visual.debug_bounds("async-restore-q1").unwrap();
-		visual.simulate_click(append.center(), gpui::Modifiers::default());
-		visual.update(|window, cx| {
-			surface.read_with(cx, |s, cx| {
-				assert_eq!(s.composer.read(cx).content(), "Please keep it concise. Markdown");
-				assert!(s.composer.focus_handle(cx).is_focused(window));
-				assert!(s.feedback.is_empty());
-				assert!(!s.sending);
-			})
-		});
-		visual.simulate_keystrokes("cmd-z");
+		assert!(visual.debug_bounds("async-restore-q1").is_none());
 		surface.read_with(visual, |s, cx| {
-			assert_eq!(s.composer.read(cx).content(), "Please keep it concise.")
+			assert_eq!(s.composer.read(cx).content(), "Please keep it concise.");
+			assert_eq!(s.conversation_composer().read(cx).content(), "Markdown");
+			assert_ne!(s.conversation_composer().entity_id(), s.composer.entity_id());
+		});
+	}
+
+	#[gpui::test]
+	fn free_answer_is_separate_and_restores_the_ordinary_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			let (_, AgentHistoryResult::Available { questions, .. }) = s.history.as_mut().unwrap()
+			else {
+				panic!("fixture")
+			};
+			questions[0].options.clear();
+			s.composer.update(cx, |input, cx| input.set_content("Keep my ordinary draft", cx));
+			s.sync_question_editor(cx);
+			assert!(s.conversation_composer().read(cx).content().is_empty());
+			s.submit(cx);
+			assert!(s.feedback.is_empty(), "an empty answer must never send the ordinary draft");
+			s.conversation_composer()
+				.clone()
+				.update(cx, |input, cx| input.set_content("For the librarians", cx));
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.restored_question_drafts[0].text, "For the librarians");
+			s.submit(cx);
+			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(
+				s.conversation_composer().read(cx).content(),
+				"For the librarians",
+				"a failed send retains the answer"
+			);
+			assert_eq!(s.composer.read(cx).content(), "Keep my ordinary draft");
+			let (_, AgentHistoryResult::Available { questions, .. }) = s.history.as_mut().unwrap()
+			else {
+				panic!("fixture")
+			};
+			questions.clear();
+			s.sync_question_editor(cx);
+			assert_eq!(s.conversation_composer().entity_id(), s.composer.entity_id());
+			assert_eq!(s.conversation_composer().read(cx).content(), "Keep my ordinary draft");
 		});
 	}
 
@@ -585,12 +699,6 @@ mod tests {
 				s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =
 					Some("new-thread".into());
 				s.perform_question_action(&target(), &action, window, cx);
-				s.perform_question_action(
-					&target(),
-					&QuestionAction::RestoreDraft("Markdown".into()),
-					window,
-					cx,
-				);
 				assert!(s.feedback.is_empty());
 				assert!(s.composer.read(cx).content().is_empty());
 				assert!(!s.sending);

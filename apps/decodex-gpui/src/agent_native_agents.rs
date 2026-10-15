@@ -149,7 +149,7 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() {
 			self.native_agents.input.as_ref().unwrap_or(&self.composer)
 		} else {
-			&self.composer
+			self.async_question_composer().unwrap_or(&self.composer)
 		}
 	}
 

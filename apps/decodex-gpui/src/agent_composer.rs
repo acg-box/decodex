@@ -421,16 +421,17 @@ impl AgentSurface {
 				}
 			}))
 			.on_drop(cx.listener(|s, paths: &ExternalPaths, _, cx| {
-				if s.native_agents.selected.is_none() {
+				if s.native_agents.selected.is_none() && s.async_question_composer().is_none() {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}
 			}))
 			.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
 				d.child(self.composer_question_panel(cx))
 			})
-			.when(self.native_agents.selected.is_none(), |d| {
-				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
-			})
+			.when(
+				self.native_agents.selected.is_none() && self.async_question_composer().is_none(),
+				|d| d.children(self.attachment_row(cx)).children(self.task_reference_row(cx)),
+			)
 			.map(|capsule| {
 				let controls = gpui::div()
 					.id("composer-action-row")
@@ -443,7 +444,8 @@ impl AgentSurface {
 					.when(
 						self.native_agents.selected.is_none()
 							&& self.dictation.is_none()
-							&& self.voice.is_none(),
+							&& self.voice.is_none()
+							&& self.async_question_composer().is_none(),
 						|d| {
 							d.child(self.composer_control(
 								"attach",
@@ -754,17 +756,21 @@ impl AgentSurface {
 			))
 			.child(gpui::div().flex_1())
 			.children(self.usage_line(cx))
-			.child(self.composer_control_with_window(
-				"dictation",
-				"".into(),
-				"Dictate into the draft",
-				|s, w, cx| s.start_dictation(w, cx),
-				cx,
-			))
+			.when(self.async_question_composer().is_none(), |row| {
+				row.child(self.composer_control_with_window(
+					"dictation",
+					"".into(),
+					"Dictate into the draft",
+					|s, w, cx| s.start_dictation(w, cx),
+					cx,
+				))
+			})
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
-				if self.interrupting.is_some() {
+				if self.async_question_composer().is_some() {
+					"Send answer · Enter"
+				} else if self.interrupting.is_some() {
 					"Stopping response"
 				} else if self.awaiting_start(cx) {
 					"Starting response"
@@ -779,6 +785,10 @@ impl AgentSurface {
 					"Send · Enter"
 				},
 				|s, window, cx| {
+					if s.async_question_composer().is_some() {
+						s.submit(cx);
+						return;
+					}
 					if s.awaiting_start(cx) || s.interrupting.is_some() {
 						return;
 					}
@@ -942,7 +952,10 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.native_agents.selected.is_some() || self.dictation.is_some() {
+				mode: if self.native_agents.selected.is_some()
+					|| self.dictation.is_some()
+					|| self.async_question_composer().is_some()
+				{
 					PrimaryMode::Send
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop

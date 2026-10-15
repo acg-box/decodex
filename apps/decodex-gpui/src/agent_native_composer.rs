@@ -50,11 +50,21 @@ struct ComposerPanel {
 	parent: AnyWindowHandle,
 	glass: Option<GlassPanel>,
 	_observation: Subscription,
+	input_focus: Option<gpui::FocusHandle>,
 }
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.downgrade();
-		let capsule = self.owner.update(cx, |s, cx| s.render_composer_capsule(true, window, cx));
+		let capsule = self.owner.update(cx, |s, cx| {
+			s.sync_question_editor(cx);
+			let focus = s.conversation_composer().focus_handle(cx);
+			if self.input_focus.as_ref().is_some_and(|old| old != &focus && old.is_focused(window))
+			{
+				window.focus(&focus, cx);
+			}
+			self.input_focus = Some(focus);
+			s.render_composer_capsule(true, window, cx)
+		});
 		let parent = self.parent;
 		let focus_owner = self.owner.clone();
 
@@ -370,7 +380,13 @@ fn create_panel(
 					.detach();
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
-					ComposerPanel { owner, parent, glass: None, _observation: observation }
+					ComposerPanel {
+						owner,
+						parent,
+						glass: None,
+						_observation: observation,
+						input_focus: None,
+					}
 				})
 			},
 		)

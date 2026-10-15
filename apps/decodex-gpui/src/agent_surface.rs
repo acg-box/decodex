@@ -248,6 +248,7 @@ pub(crate) struct AgentSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	async_question_editor: Option<async_questions::Editor>,
 	question_notices: QuestionNotices,
 	restored_question_drafts: Vec<DesktopQuestionDraft>,
 	accounts: Vec<(String, String)>,
@@ -424,6 +425,7 @@ impl AgentSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			async_question_editor: None,
 			question_notices: Default::default(),
 			restored_question_drafts: Vec::new(),
 			profile: None,
@@ -897,6 +899,10 @@ impl AgentSurface {
 		if self.dictation.is_some() {
 			self.send_dictation(cx);
 
+			return;
+		}
+
+		if self.submit_question_answer(cx) {
 			return;
 		}
 
@@ -2447,6 +2453,13 @@ impl AgentSurface {
 
 impl Render for AgentSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		use gpui::Focusable as _;
+		let old_focus = self.conversation_composer().focus_handle(cx);
+		self.sync_question_editor(cx);
+		let focus = self.conversation_composer().focus_handle(cx);
+		if old_focus != focus && old_focus.is_focused(window) {
+			window.focus(&focus, cx);
+		}
 		self.observe_recap_focus(window, cx);
 
 		self.render_workspace(window, cx)
