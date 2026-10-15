@@ -14,10 +14,10 @@ use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTE
 use crate::{
 	shell::{
 		agent_surface::{
-			self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto,
-			Context, FluentBuilder, InteractiveElement, IntoElement, ParentElement, Render,
-			SharedString, StatefulInteractiveElement, Styled, Window, markdown, native_timeline,
-			ui_theme, workspace,
+			self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, FluentBuilder,
+			InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+			StatefulInteractiveElement, Styled, Window, markdown, native_timeline, ui_theme,
+			workspace,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -599,12 +599,9 @@ impl AgentSurface {
 				|| self.selected.as_ref().and_then(|id| self.timeline.scroll.get(id)).is_some_and(
 					|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.),
 				);
-		let working = self.conversation_work().is_some_and(|work| {
-			matches!(
-				work.dispatch_state,
-				AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
-			) && !self.thread_in_use(&work.id)
-		});
+		let working = self
+			.conversation_work()
+			.is_some_and(|work| self.response_in_progress(&work) && !self.thread_in_use(&work.id));
 		let width =
 			ui_motion::value("jump-latest-width", if working { 56. } else { 28. }, window, cx);
 		let clock =
@@ -737,9 +734,7 @@ impl AgentSurface {
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
 		let positions: Vec<_> =
 			self.timeline.marks.values().map(|mark| mark.position.clone()).collect();
-		let working = self
-			.conversation_work()
-			.is_some_and(|work| work.dispatch_state == AgentDispatchStateDto::Running);
+		let working = self.conversation_work().is_some_and(|work| self.response_in_progress(&work));
 		let last = positions.len() - 1;
 		let current = self.active_history_index(&scroll);
 		let active_position = ui_motion::value(
@@ -1981,6 +1976,41 @@ phase: None,
 				s.timeline.marks[&HistoryKey::Local(1)].position.get()
 			);
 		});
+	}
+
+	#[gpui::test]
+	fn streaming_follow_uses_the_current_layout_without_a_catch_up_frame(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(500.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+				entries[1].text = "A line of streamed output.\n\n".repeat(40);
+			}
+			s.follow_latest_after_send(cx);
+		});
+		for _ in 0..8 {
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+		}
+		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
+		for lines in [42, 43, 48, 50, 45] {
+			surface.update(visual, |s, cx| {
+				if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+					entries[1].text = "A line of streamed output.\n\n".repeat(lines);
+				}
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert!(
+				(scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.),
+				"new content must be anchored before its first paint: offset {:?}, max {:?}",
+				scroll.offset(),
+				scroll.max_offset()
+			);
+		}
 	}
 
 	#[gpui::test]

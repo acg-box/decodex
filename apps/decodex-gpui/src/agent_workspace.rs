@@ -1450,19 +1450,10 @@ impl AgentSurface {
 			&& let Some(scroll) =
 				self.selected.as_ref().and_then(|work| self.timeline.scroll.get(work))
 		{
-			let current = f32::from(scroll.offset().y);
-			let target = -f32::from(scroll.max_offset().y);
-
-			if (target - current).abs() > 0.5 {
-				scroll.set_offset(gpui::point(
-					gpui::px(0.),
-					gpui::px(current + (target - current) * 0.22),
-				));
-
-				ui_motion::request_frame(window, cx);
-			} else {
-				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(target)));
-			}
+			// GPUI resolves this against the new content height before painting.
+			// Chasing last frame's maximum makes each streamed line fall and rebound.
+			// Explicit navigation keeps its own animation in animate_history_scroll.
+			scroll.scroll_to_bottom();
 		}
 	}
 

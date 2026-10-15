@@ -2179,12 +2179,10 @@ impl AgentSurface {
 	}
 
 	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {
-		let active = matches!(
-			work.dispatch_state,
-			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
-		) || (self.native_agents.selected.is_none()
-			&& self.selected.as_ref() == Some(&work.id)
-			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+		let active = self.response_in_progress(work)
+			|| (self.native_agents.selected.is_none()
+				&& self.selected.as_ref() == Some(&work.id)
+				&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));

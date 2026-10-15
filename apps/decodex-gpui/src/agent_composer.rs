@@ -94,7 +94,9 @@ impl AgentSurface {
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
 
-		if work.dispatch_state != AgentDispatchStateDto::Running {
+		if work.dispatch_state != AgentDispatchStateDto::Running
+			|| self.current_turn_completed(work)
+		{
 			return None;
 		}
 
@@ -1564,6 +1566,63 @@ mod tests {
 				s.attachments[0].path.as_str(),
 				folder.canonicalize().unwrap().to_str().unwrap()
 			);
+		});
+	}
+
+	#[gpui::test]
+	fn native_completion_stops_response_ui_before_the_snapshot_catches_up(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::shell::agent_surface::native_timeline::Binding;
+		use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			work.active_turn_id = Some("turn".into());
+			work.dispatch_state = AgentDispatchStateDto::Running;
+			let work = work.clone();
+			s.timeline.native.binding = Some(Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			});
+			assert!(s.response_in_progress(&work));
+			assert!(s.stop_button(cx));
+
+			for status in ["completed", "interrupted", "failed"] {
+				s.timeline.native.entries = vec![AgentTimelineEntry {
+					position: 1,
+					content: AgentTimelineContent::TurnBoundary {
+						turn_id: "turn".into(),
+						completed: true,
+						status: Some(status.into()),
+						duration_ms: None,
+						usage_summary: None,
+						usage: None,
+						error: None,
+					},
+				}];
+				assert!(!s.response_in_progress(&work));
+				assert!(s.running_turn().is_none());
+				assert!(!s.stop_button(cx));
+			}
+
+			let mut newer = work.clone();
+			newer.active_turn_id = Some("next-turn".into());
+			assert!(s.response_in_progress(&newer), "an old completion must not stop new work");
+			s.timeline.native.binding.as_mut().unwrap().thread = "other-thread".into();
+			assert!(s.response_in_progress(&work), "completion belongs to its exact conversation");
 		});
 	}
 

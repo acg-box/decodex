@@ -224,6 +224,25 @@ impl AgentSurface {
 			})
 	}
 
+	/// Native turn completion can arrive before the next work-state snapshot.
+	pub(super) fn current_turn_completed(&self, work: &AgentWorkItemDto) -> bool {
+		self.native_history_active(work)
+			&& work.active_turn_id.as_ref().is_some_and(|turn| {
+				self.timeline.native.entries.iter().rev().any(|entry| {
+					matches!(&entry.content, AgentTimelineContent::TurnBoundary {
+						turn_id, completed: true, ..
+					} if turn_id == turn)
+				})
+			})
+	}
+
+	pub(super) fn response_in_progress(&self, work: &AgentWorkItemDto) -> bool {
+		matches!(
+			work.dispatch_state,
+			super::AgentDispatchStateDto::Running | super::AgentDispatchStateDto::Dispatching
+		) && !self.current_turn_completed(work)
+	}
+
 	pub(super) fn native_history_loading(&self, work: &AgentWorkItemDto) -> bool {
 		if self.timeline.native.show_saved
 			|| self.native_history_active(work)

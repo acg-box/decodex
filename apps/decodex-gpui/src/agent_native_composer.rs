@@ -71,6 +71,15 @@ impl Render for ComposerPanel {
 					let height = f32::from(bounds.size.height).max(42.);
 					let _ = owner.update(cx, |s, cx| {
 						if (s.native_composer.height - height).abs() > 0.5 {
+							// Reserve the same new height in the transcript before its next
+							// layout. Waiting for the parent's footer measurement adds a
+							// second scroll correction to every question animation frame.
+							if s.native_composer.enabled && s.native_composer.bounds.is_some() {
+								s.workspace.composer_overlay_height =
+									(s.workspace.composer_overlay_height + height
+										- s.native_composer.height)
+										.max(0.);
+							}
 							s.native_composer.height = height;
 
 							cx.notify();
