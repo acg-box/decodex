@@ -219,6 +219,7 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
+	titlebar_drag_pending: bool,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -374,6 +375,7 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
+			titlebar_drag_pending: false,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -2650,12 +2652,40 @@ fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize)
 fn floating_window_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
-	_window: &Window,
+	window: &mut Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	// Arm on the header, then hand off on the first held movement. Listen at
+	// window scope so a quick movement outside the header still starts the drag.
+	let drag = cx.listener(|shell, event: &gpui::MouseMoveEvent, window, cx| {
+		if std::mem::take(&mut shell.titlebar_drag_pending)
+			&& event.pressed_button == Some(MouseButton::Left)
+		{
+			window.start_window_move();
+			cx.stop_propagation();
+		}
+	});
+	let release = cx.listener(|shell, _: &gpui::MouseUpEvent, _, _| {
+		shell.titlebar_drag_pending = false;
+	});
+	let pointer_events = gpui::canvas(
+		|_, _, _| (),
+		move |_, (), window, _| {
+			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
+				if phase == gpui::DispatchPhase::Capture {
+					drag(event, window, cx);
+				}
+			});
+			window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, window, cx| {
+				if phase == gpui::DispatchPhase::Capture {
+					release(event, window, cx);
+				}
+			});
+		},
+	);
 	let conversation_header = (shell.selected == Destination::Agent).then(|| {
 		shell.agent.update(cx, |agent, cx| {
-			let (left, right) = agent.topbar_insets(_window);
+			let (left, right) = agent.topbar_insets(window);
 			gpui::div()
 				.absolute()
 				.top(gpui::px(CONTROL_MARGIN))
@@ -2672,7 +2702,7 @@ fn floating_window_controls(
 						.max_w(gpui::px(360.))
 						.w_full()
 						.min_w_0()
-						.child(agent.work_context(_window, cx)),
+						.child(agent.work_context(window, cx)),
 				)
 		})
 	});
@@ -2691,14 +2721,20 @@ fn floating_window_controls(
 		.items_center()
 		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
-		.on_mouse_down(MouseButton::Left, |event, window, cx| {
-			// AppKit must receive the press, before a fast first movement leaves the header.
-			if event.click_count == 2 {
+		.on_mouse_down(
+			MouseButton::Left,
+			cx.listener(|shell, _, _, cx| {
+				shell.titlebar_drag_pending = true;
+				cx.stop_propagation();
+			}),
+		)
+		.on_mouse_down_out(cx.listener(|shell, _, _, _| {
+			shell.titlebar_drag_pending = false;
+		}))
+		.on_click(|event, window, _| {
+			if event.click_count() == 2 {
 				window.titlebar_double_click();
-			} else {
-				window.start_window_move();
 			}
-			cx.stop_propagation();
 		})
 		.child(
 			ui_theme::floating_group()
@@ -2709,6 +2745,7 @@ fn floating_window_controls(
 		)
 		.child(topbar_controls(shell, presentation, cx))
 		.children(conversation_header)
+		.child(pointer_events.absolute().size_full())
 		.into_any_element()
 }
 
@@ -7850,10 +7887,20 @@ mod tests {
 			gpui::point(region.right() - gpui::px(3.), region.center().y),
 		] {
 			assert!(region.contains(&point), "{point:?}");
+			visual.simulate_mouse_down(point, gpui::MouseButton::Left, Default::default());
+			assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending), "{point:?}");
+			// Release beyond the header must disarm it as well.
+			visual.simulate_mouse_up(
+				gpui::point(point.x, region.bottom() + gpui::px(60.)),
+				gpui::MouseButton::Left,
+				Default::default(),
+			);
+			assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
 		}
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
 		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());
+		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
 		visual.simulate_mouse_up(sidebar.center(), gpui::MouseButton::Left, Default::default());
 		assert_ne!(
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0),
