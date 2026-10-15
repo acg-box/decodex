@@ -2192,17 +2192,20 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		panel = panel.child(Working {
-			key: format!(
-				"working-{}-{}",
-				work.id,
-				work.codex_thread_id.as_deref().unwrap_or_default()
-			),
-			turn: (active
-				&& (self.native_agents.selected.is_some()
-					|| self.composer_unavailable_reason().is_none()))
-			.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
-		});
+		// Message spacing belongs between messages. The work signal owns only
+		// its animated footprint, followed by a small shared reading gap.
+		panel =
+			gpui::div().w_full().flex().flex_col().pb(gpui::px(16.)).child(panel).child(Working {
+				key: format!(
+					"working-{}-{}",
+					work.id,
+					work.codex_thread_id.as_deref().unwrap_or_default()
+				),
+				turn: (active
+					&& (self.native_agents.selected.is_some()
+						|| self.composer_unavailable_reason().is_none()))
+				.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
+			});
 
 		if active
 			&& self.native_history_active(work)

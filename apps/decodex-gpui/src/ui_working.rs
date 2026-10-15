@@ -1,5 +1,4 @@
-//! A stationary work signal with the original cloud particles. Visibility never changes the
-//! transcript's height.
+//! A stationary work signal whose space closes with its opacity after work ends.
 use std::{
 	f32::consts::PI,
 	sync::{Arc, LazyLock},
@@ -39,19 +38,22 @@ impl RenderOnce for Working {
 			ui_motion::request_frame(window, cx);
 		}
 
-		// Reserve tail space instead of shrinking a row on completion. Keep 12
-		// points below the signal, in addition to the composer's own top gap.
+		// Use one transition for both visibility and space. Keep the artwork at
+		// its natural size instead of squeezing it as the slot closes.
 		gpui::div()
 			.id("work-status-slot")
 			.debug_selector(|| "work-status-slot".into())
-			.h(gpui::px(40.))
+			.relative()
+			.h(gpui::px(32. * opacity))
 			.flex_none()
-			.pt(gpui::px(4.))
-			.pb(gpui::px(12.))
+			.overflow_hidden()
 			.when(opacity > 0., |slot| {
 				slot.child(
 					gpui::div()
 						.id("pixel-work-status")
+						.absolute()
+						.top(gpui::px(4.))
+						.left_0()
 						.role(Role::Status)
 						.aria_label("Working")
 						.flex()
@@ -221,15 +223,20 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn status_visibility_never_resizes_its_slot(cx: &mut gpui::TestAppContext) {
+	fn finished_work_releases_its_slot(cx: &mut gpui::TestAppContext) {
 		let (signal, visual) = cx.add_window_view(|_, _| Signal(false));
-		for active in [false, true, false] {
+		for (active, height) in [(false, 0.), (true, 32.), (false, 0.)] {
 			signal.update(visual, |s, cx| {
 				s.0 = active;
 				cx.notify();
 			});
 			visual.update(|window, cx| window.draw(cx).clear(cx));
-			assert_eq!(visual.debug_bounds("work-status-slot").unwrap().size.height, gpui::px(40.));
+			std::thread::sleep(Duration::from_millis(220));
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert_eq!(
+				visual.debug_bounds("work-status-slot").unwrap().size.height,
+				gpui::px(height)
+			);
 		}
 	}
 }

@@ -188,6 +188,75 @@ mod tests {
 	};
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
 
+	#[gpui::test]
+	fn completed_answer_stays_close_to_the_composer(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.timeline.native.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into(),
+				},
+				AgentTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![decodex_protocol::AgentTimelineEntry {
+						position: 0,
+						content: decodex_protocol::AgentTimelineContent::Item {
+							turn_id: "turn".into(),
+							item_id: "answer".into(),
+							kind: "agentMessage".into(),
+							text: "A paragraph in the completed response.\n\n".repeat(40),
+							truncated: false,
+							phase: None,
+							collaboration: None,
+							app_ui: false,
+							activity: None,
+							attachments: vec![],
+						},
+					}],
+					next_cursor: None,
+					weather: Default::default(),
+					safety_buffering_turn_id: None,
+					active_realtime_session_at_page_start: None,
+				},
+			);
+			s.timeline.native.input_receipts.result = Some(page("agent", None, None));
+			let (_, decodex_protocol::AgentHistoryResult::Available { entries, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			entries.clear();
+			s.timeline.latest_follow_work = s.selected.clone();
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		for _ in 0..4 {
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
+		let answer = visual.debug_bounds("native-promotion-content").unwrap();
+		let footer = visual.debug_bounds("floating-composer").unwrap();
+		let gap = footer.top() - answer.bottom() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP);
+		assert!(
+			gap >= gpui::px(16.) && gap <= gpui::px(28.),
+			"completed response must retain only normal reading space, got {gap:?}"
+		);
+	}
+
 	fn page(work: &str, id: Option<i64>, next_after: Option<i64>) -> AgentInputReceiptsResult {
 		AgentInputReceiptsResult::Available {
 			work_id: EntityId::new(work).unwrap(),
