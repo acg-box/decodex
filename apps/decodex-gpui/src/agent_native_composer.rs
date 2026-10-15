@@ -53,11 +53,6 @@ struct ComposerPanel {
 }
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		if let Some(glass) = &mut self.glass {
-			// The composer's keyboard focus owns its material, independently of
-			// the workspace style and application-wide animation cadence.
-			glass.set_style(window.is_window_active());
-		}
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| s.render_composer_capsule(true, window, cx));
 		let parent = self.parent;
