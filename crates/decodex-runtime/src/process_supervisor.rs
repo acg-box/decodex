@@ -2165,6 +2165,67 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn termination_retires_owned_children_before_readiness_and_after_incomplete_shutdown() {
+		for state in ["starting", "ready", "stopping", "death_unknown"] {
+			let directory = tempfile::tempdir().unwrap();
+			let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+			let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+			let control = ProcessGenerationControl::start(store).await.unwrap();
+			let child = tests::supervisor_child_fixture(directory.path());
+			let identity = process_platform::inspect_process_identity(
+				child.process_id(),
+				&control.inner.boot_id,
+			)
+			.unwrap()
+			.unwrap();
+			let generation =
+				ProcessGenerationId::new("42000000-0000-4000-8000-000000000001").unwrap();
+			let connection = Connection::open(root.paths().product_database_file()).unwrap();
+			connection
+				.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
+				.unwrap();
+			connection.execute(
+				"UPDATE process_generations SET intended_boot_id=?1, bound_boot_id=?1, process_id=?2, process_start_id=?3, process_group_id=?4, session_id=?5, runner_identity=?6, state=?7, authority_loss_reason=?8",
+				rusqlite::params![identity.boot_id.as_str(), identity.process_id, identity.process_start_id.as_str(), identity.process_group_id, identity.session_id, format!("sha256:{}", "a".repeat(64)), state, (state == "death_unknown").then_some("termination_unproved")],
+			).unwrap();
+			let mut supervision = control.reserve_supervision(&generation).unwrap();
+			control
+				.replace_owned(
+					generation.as_str().into(),
+					OwnedGeneration {
+						process_group_id: identity.process_group_id,
+						child,
+						identity: Some(identity.clone()),
+						revision: 3,
+						leader_exited: false,
+					},
+				)
+				.unwrap();
+			supervision.retain();
+			drop(supervision);
+
+			assert_eq!(
+				control.terminate_exact(&generation, 2, Duration::from_secs(2)).await.unwrap(),
+				ProcessGenerationTermination::StaleGeneration,
+			);
+			assert_eq!(
+				control.terminate_exact(&generation, 3, Duration::from_secs(2)).await.unwrap(),
+				ProcessGenerationTermination::PositiveDeathRecorded,
+				"an owned {state} process must not block all future connection attempts",
+			);
+			assert!(
+				process_platform::process_group_id_is_quiescent(identity.process_group_id).unwrap()
+			);
+			assert!(!control.owns(&generation).unwrap());
+			assert!(!control.supervises(&generation).unwrap());
+			assert_eq!(
+				control.find_generation(&generation).await.unwrap().unwrap().state,
+				decodex_core::ProcessGenerationState::Dead,
+			);
+		}
+	}
+
+	#[tokio::test]
 	async fn termination_store_failures_preserve_ownership_until_positive_death() {
 		for blocked_state in ["stopping", "dead"] {
 			let directory = tempfile::tempdir().unwrap();
