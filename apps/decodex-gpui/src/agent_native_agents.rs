@@ -265,7 +265,7 @@ impl AgentSurface {
 		if let Some(target) = self.native_agents.selected.take()
 			&& let Some(parent) = self.native_agents.parent_timeline.take()
 		{
-			self.timeline.native.task = None;
+			self.timeline.native.cancel_read();
 			let child = std::mem::replace(&mut self.timeline, *parent);
 			self.native_agents.timelines.insert(target, child);
 		}
@@ -499,7 +499,7 @@ impl AgentSurface {
 
 		self.history_task = None;
 		self.older_task = None;
-		self.timeline.native.task = None;
+		self.timeline.native.cancel_read();
 		let view =
 			self.native_agents.timelines.remove(&(owner.into(), thread.into())).unwrap_or_default();
 		self.native_agents.parent_timeline =

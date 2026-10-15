@@ -738,7 +738,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
+	fn history_feedback_keeps_height_and_reading_position(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::native_timeline::Pagination;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(700.)));
@@ -765,7 +767,7 @@ mod tests {
 				AgentTimelinePage {
 					thread_id: "thread".into(),
 					entries: (0..4).map(row).collect(),
-					next_cursor: None,
+					next_cursor: Some("older".into()),
 					weather: Default::default(),
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
@@ -814,6 +816,8 @@ mod tests {
 				window.draw(cx).clear(cx);
 			});
 
+			assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
+			assert!(visual.debug_bounds("native-timeline-retry").is_none());
 			assert_eq!(
 				scroll.max_offset(),
 				maximum,
@@ -824,6 +828,29 @@ mod tests {
 				offset,
 				"background refresh must preserve reading position"
 			);
+		}
+
+		for pagination in [Pagination::Loading, Pagination::Failed, Pagination::Idle] {
+			surface.update(visual, |s, cx| {
+				s.timeline.native.pagination = pagination;
+				s.timeline.native.task = (pagination == Pagination::Loading)
+					.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			if pagination == Pagination::Loading {
+				for delay in [300, 16] {
+					thread::sleep(std::time::Duration::from_millis(delay));
+					visual.update(|window, cx| window.draw(cx).clear(cx));
+				}
+				assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
+			}
+			assert_eq!(
+				visual.debug_bounds("native-timeline-retry").is_some(),
+				pagination == Pagination::Failed
+			);
+			assert_eq!(scroll.max_offset(), maximum, "pagination feedback must not resize history");
+			assert_eq!(scroll.offset(), offset, "pagination feedback must not move the reader");
 		}
 	}
 

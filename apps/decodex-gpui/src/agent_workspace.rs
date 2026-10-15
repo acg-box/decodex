@@ -1141,6 +1141,7 @@ impl AgentSurface {
 			.relative()
 			.flex()
 			.child(self.anchored_native_viewport(transcript.into_any_element(), scroll.clone()))
+			.when(is_agent, |viewport| viewport.children(self.native_pagination_feedback(cx)))
 			.into_any_element()
 	}
 

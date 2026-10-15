@@ -119,7 +119,7 @@ impl AgentSurface {
 				&& self.timeline.native.notice.is_none()
 				&& self.timeline.native.task.is_none()
 				&& !self.native_pagination_settling()
-				&& self.timeline.native.can_retry(std::time::Instant::now());
+				&& self.timeline.native.can_prefetch_older(std::time::Instant::now());
 		}
 		self.history_prefetch_needed()
 			&& self.timeline.older_retry_after.is_none_or(|at| at <= std::time::Instant::now())
@@ -144,7 +144,7 @@ impl AgentSurface {
 			&& self.timeline.native.older_cursor.is_some()
 			&& self.timeline.native.task.is_none()
 			&& !self.native_pagination_settling()
-			&& self.timeline.native.can_retry(std::time::Instant::now())
+			&& self.timeline.native.can_prefetch_older(std::time::Instant::now())
 		{
 			self.load_native_timeline_page(&binding.work, &binding.thread, true, underfilled, cx);
 		}
@@ -293,29 +293,10 @@ impl AgentSurface {
 					.into_any_element();
 			}
 
-			let binding = self.timeline.native.binding.as_ref().expect("matching binding").clone();
-
 			if self.timeline.native.browsing_window {
 				panel = panel.child(agent_surface::muted(
 					"Showing an earlier history window. Open Details to refresh the conversation.",
 				));
-			}
-			if self.timeline.native.older_cursor.is_some() {
-				panel = panel.child(
-					self.workspace_action(
-						"native-timeline-older".into(),
-						if self.timeline.native.task.is_some() {
-							"Loading earlier history…"
-						} else {
-							"Load earlier history · up to 15 records"
-						}
-						.into(),
-						move |s, cx| {
-							s.load_native_timeline(&binding.work, &binding.thread, true, cx)
-						},
-						cx,
-					),
-				);
 			}
 			if self.timeline.native.opening_session.is_some() {
 				panel = panel.child(agent_surface::muted(
@@ -354,6 +335,37 @@ impl AgentSurface {
 			panel,
 		)
 		.into_any_element()
+	}
+
+	pub(super) fn native_pagination_feedback(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		let binding = self.timeline.native.binding.as_ref().filter(|binding| {
+			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
+		})?;
+		let feedback = if self.timeline.native.pagination == Pagination::Failed {
+			let binding = binding.clone();
+			self.workspace_action(
+				"native-timeline-retry".into(),
+				"Retry".into(),
+				move |s, cx| s.load_native_timeline(&binding.work, &binding.thread, true, cx),
+				cx,
+			)
+		} else {
+			ui_loading::pagination(self.timeline.native.pagination == Pagination::Loading)
+				.into_any_element()
+		};
+
+		Some(
+			gpui::div()
+				.id(SharedString::from(format!(
+					"history-feedback-{}",
+					self.conversation_page().unwrap_or_default()
+				)))
+				.absolute()
+				.top(gpui::px(4.))
+				.right(gpui::px(8.))
+				.child(feedback)
+				.into_any_element(),
+		)
 	}
 
 	fn process_history_body(
@@ -642,6 +654,7 @@ impl AgentSurface {
 		};
 
 		if older {
+			self.timeline.native.pagination = Pagination::Loading;
 			self.timeline.native.prefetch_requested = false;
 			if !fill_viewport {
 				self.timeline.follow_paused.insert(work.into());
@@ -730,6 +743,8 @@ impl AgentSurface {
 
 					if accepted {
 						s.timeline.native.recovered();
+					} else if s.timeline.native.pagination == Pagination::Loading {
+						s.timeline.native.failed(None, std::time::Instant::now());
 					} else {
 						s.timeline.native.safety_buffering_turn_id = None;
 						s.timeline.native.notice = Some(
@@ -756,6 +771,14 @@ pub(super) struct Binding {
 	pub account: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum Pagination {
+	#[default]
+	Idle,
+	Loading,
+	Failed,
+}
+
 #[derive(Default)]
 pub(super) struct Timeline {
 	preview: Preview,
@@ -770,6 +793,7 @@ pub(super) struct Timeline {
 	summary: Vec<AgentTimelineContent>,
 	pub older_cursor: Option<String>,
 	pub prefetch_requested: bool,
+	pagination: Pagination,
 	pub opening_session: Option<String>,
 	requested: Option<(String, String)>,
 	requested_turn: Option<String>,
@@ -784,9 +808,17 @@ pub(super) struct Timeline {
 	seen_cursors: BTreeSet<String>,
 }
 impl Timeline {
-	pub(super) fn invalidate_read(&mut self) {
+	pub(super) fn cancel_read(&mut self) {
 		self.task = None;
 		self.epoch = self.epoch.wrapping_add(1);
+		if self.pagination == Pagination::Loading {
+			self.pagination = Pagination::Idle;
+		}
+	}
+
+	pub(super) fn invalidate_read(&mut self) {
+		self.cancel_read();
+		self.pagination = Pagination::Idle;
 		self.recovered();
 	}
 
@@ -804,6 +836,11 @@ impl Timeline {
 
 	fn can_retry(&self, now: std::time::Instant) -> bool {
 		!self.browsing_window && self.retry_at.is_none_or(|at| now >= at)
+	}
+
+	fn can_prefetch_older(&self, now: std::time::Instant) -> bool {
+		// An older display window can still page backward after its newest rows are trimmed.
+		self.pagination == Pagination::Idle && self.retry_at.is_none_or(|at| now >= at)
 	}
 
 	fn retry_after_turn_change(&mut self, turn: Option<&str>) {
@@ -826,6 +863,13 @@ impl Timeline {
 		result: Option<decodex_protocol::AgentTimelineResult>,
 		now: std::time::Instant,
 	) {
+		if self.pagination == Pagination::Loading {
+			// Keep the verified page and cursor so the reader can retry in place.
+			self.pagination = Pagination::Failed;
+
+			return;
+		}
+
 		self.clear_page();
 
 		self.unsupported =
@@ -878,6 +922,7 @@ impl Timeline {
 		self.summary.clear();
 
 		self.older_cursor = None;
+		self.pagination = Pagination::Idle;
 		self.opening_session = None;
 
 		self.seen_cursors.clear();
@@ -946,6 +991,7 @@ impl Timeline {
 		self.weather = page.weather;
 		self.entries = page.entries;
 		self.older_cursor = page.next_cursor;
+		self.pagination = Pagination::Idle;
 		self.opening_session = page.active_realtime_session_at_page_start;
 
 		self.seen_cursors.clear();
@@ -1006,6 +1052,7 @@ impl Timeline {
 		}
 
 		self.older_cursor = page.next_cursor;
+		self.pagination = Pagination::Idle;
 
 		self.viewport.retain(&self.entries);
 
@@ -1059,7 +1106,7 @@ mod tests {
 
 	use crate::shell::agent_surface::native_timeline::{
 		AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
-		AgentTimelinePage, Binding, EntityId, Timeline,
+		AgentTimelinePage, Binding, EntityId, Pagination, Timeline, wire_test_support,
 	};
 
 	#[gpui::test]
@@ -1139,6 +1186,150 @@ mod tests {
 
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
 		assert!(visual.debug_bounds("saved-local-history").is_some());
+	}
+
+	#[gpui::test]
+	fn earlier_history_stays_quiet_and_retries_the_failed_cursor(cx: &mut gpui::TestAppContext) {
+		use futures_util::{SinkExt as _, StreamExt as _};
+		use tokio_tungstenite::tungstenite::Message;
+
+		use decodex_protocol::{
+			AgentTimelineResult, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
+			QueryResultPayload, ServerId, ServerMessage,
+		};
+
+		let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+			let mut cursors = Vec::new();
+
+			while cursors.len() < 2 {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query")
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&text).unwrap()
+				else {
+					panic!("query")
+				};
+				let QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } = query.payload
+				else {
+					socket.close(None).await.unwrap();
+					continue;
+				};
+
+				assert_eq!(thread_id.as_str(), "thread");
+				cursors.push(cursor.unwrap().as_str().to_owned());
+
+				let result = if cursors.len() == 1 {
+					AgentTimelineResult::Unavailable
+				} else {
+					AgentTimelineResult::Available {
+						work_id,
+						account_id: EntityId::new("account").unwrap(),
+						page: page(vec![boundary(9, false)], None, None),
+					}
+				};
+				let message = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentTimeline(result),
+				});
+
+				socket
+					.send(Message::Text(serde_json::to_string(&message).unwrap().into()))
+					.await
+					.unwrap();
+			}
+
+			cursors
+		});
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(700.)));
+
+		let binding = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			s.profile = None;
+
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+
+			work.codex_thread_id = Some("thread".into());
+
+			let binding = Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+
+			assert!(
+				s.timeline
+					.native
+					.replace(binding.clone(), page(vec![boundary(10, true)], Some("older"), None))
+			);
+			cx.notify();
+			binding
+		});
+
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("native-timeline-older").is_none());
+
+		surface.update(visual, |s, cx| {
+			s.profile = Some(profile);
+			s.timeline.native.prefetch_requested = true;
+			s.timeline.follow_paused.insert(binding.work.clone());
+			s.timeline.scroll[&binding.work].set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+			// The same automatic path must work while browsing beyond the retained window.
+			s.timeline.native.browsing_window = true;
+			assert!(s.prefetch_native_history(cx));
+			assert_eq!(s.timeline.native.pagination, Pagination::Loading);
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
+		for delay in [300, 16] {
+			std::thread::sleep(std::time::Duration::from_millis(delay));
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+		}
+		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
+
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.timeline.native.entries, vec![boundary(10, true)]);
+			assert_eq!(s.timeline.native.binding.as_ref(), Some(&binding));
+			assert_eq!(s.timeline.native.older_cursor.as_deref(), Some("older"));
+			assert_eq!(s.timeline.native.pagination, Pagination::Failed);
+			assert!(s.timeline.native.notice.is_none());
+			assert!(!s.history_viewport_fill_ready());
+
+			s.timeline.native.prefetch_requested = true;
+			s.prefetch_native_history(cx);
+			assert!(s.timeline.native.task.is_none(), "failure waits for an explicit retry");
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
+
+		let retry = visual.debug_bounds("native-timeline-retry").unwrap();
+
+		visual.simulate_click(retry.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		assert_eq!(server.join().unwrap(), vec!["older", "older"]);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.timeline.native.entries, vec![boundary(9, false), boundary(10, true)]);
+			assert_eq!(s.timeline.native.pagination, Pagination::Idle);
+			assert!(s.timeline.native.older_cursor.is_none());
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
+		assert!(visual.debug_bounds("native-timeline-retry").is_none());
 	}
 
 	#[gpui::test]
@@ -1609,6 +1800,7 @@ mod tests {
 		assert_eq!(state.older_cursor, None);
 		assert!(state.browsing_window);
 		assert!(!state.can_retry(std::time::Instant::now()));
+		assert!(state.can_prefetch_older(std::time::Instant::now()));
 
 		state.reset();
 
