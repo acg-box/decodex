@@ -25,7 +25,8 @@ pub enum ThreadArchiveState {
 impl AppServerClient {
 	/// Observe only the requested bindings, stopping when every identity is found.
 	/// Positive observations survive a later page failure or deadline. An absent
-	/// identity has no observation and must keep its previous visibility.
+	/// identity has no observation after an incomplete scan and must keep its
+	/// previous visibility. Only two complete lists establish NotFound.
 	pub async fn observe_thread_archives(
 		&self,
 		threads: &HashSet<String>,
@@ -60,7 +61,11 @@ impl AppServerClient {
 			}
 			Ok::<_, ClientError>(())
 		};
-		let _ = time::timeout(Duration::from_secs(8), scan).await;
+		if matches!(time::timeout(Duration::from_secs(8), scan).await, Ok(Ok(()))) {
+			for id in pending {
+				observed.insert(id, ThreadArchiveState::NotFound);
+			}
+		}
 		observed
 	}
 
@@ -277,6 +282,48 @@ mod tests {
 			assert_eq!(observed.get("target"), Some(&expected));
 			assert_eq!(observed.len(), 2);
 		}
+		client.close();
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn complete_archive_lists_confirm_absent_bindings() {
+		let (local, remote) = io::duplex(65_536);
+		let (r, w) = io::split(local);
+		let (client, _events) = AppServerClient::from_io(r, w);
+		let server = tokio::spawn(async move {
+			let (r, mut w) = io::split(remote);
+			let mut lines = BufReader::new(r).lines();
+			for (archived, ids) in [(false, vec!["active"]), (true, vec!["archived"])] {
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["params"]["archived"], archived);
+				w.write_all(
+					format!(
+						"{}\n",
+						serde_json::json!({"id":request["id"],"result":page(&ids, Value::Null)})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			}
+		});
+		let observed = client
+			.observe_thread_archives(&std::collections::HashSet::from([
+				"active".into(),
+				"archived".into(),
+				"missing".into(),
+			]))
+			.await;
+		assert_eq!(
+			observed,
+			std::collections::HashMap::from([
+				("active".into(), ThreadArchiveState::Active),
+				("archived".into(), ThreadArchiveState::Archived),
+				("missing".into(), ThreadArchiveState::NotFound),
+			])
+		);
 		client.close();
 		server.await.unwrap();
 	}
