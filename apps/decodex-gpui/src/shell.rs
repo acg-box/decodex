@@ -222,6 +222,7 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
+	titlebar_drag_pending: bool,
 	#[cfg(test)]
 	titlebar_drag_requests: usize,
 	navigation: navigation::NavigationHistory,
@@ -379,6 +380,7 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
+			titlebar_drag_pending: false,
 			#[cfg(test)]
 			titlebar_drag_requests: 0,
 			navigation: navigation::NavigationHistory::new(),
@@ -2659,6 +2661,41 @@ fn floating_window_controls(
 	presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	// Match GPUI's platform titlebar: hand off on the first held movement.
+	// Capture at window scope so fast motion can leave the header before delivery.
+	let drag = cx.listener(|shell, event: &gpui::MouseMoveEvent, window, cx| {
+		if event.pressed_button == Some(MouseButton::Left)
+			&& std::mem::take(&mut shell.titlebar_drag_pending)
+		{
+			#[cfg(not(test))]
+			window_drag::start(window);
+			#[cfg(test)]
+			{
+				let _ = window;
+				shell.titlebar_drag_requests += 1;
+			}
+			cx.stop_propagation();
+		}
+	});
+	let release = cx.listener(|shell, _: &gpui::MouseUpEvent, _, _| {
+		shell.titlebar_drag_pending = false;
+	});
+	let pointer_events = gpui::canvas(
+		|_, _, _| (),
+		move |_, (), window, _| {
+			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
+				if phase == gpui::DispatchPhase::Capture {
+					drag(event, window, cx);
+				}
+			});
+			window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, window, cx| {
+				if phase == gpui::DispatchPhase::Capture {
+					release(event, window, cx);
+				}
+			});
+		},
+	);
+
 	gpui::div()
 		.id("floating-window-controls")
 		.debug_selector(|| "window-drag-region".into())
@@ -2677,22 +2714,19 @@ fn floating_window_controls(
 		.window_control_area(WindowControlArea::Drag)
 		.on_mouse_down(
 			MouseButton::Left,
-			cx.listener(|_shell, event: &gpui::MouseDownEvent, window, cx| {
-				// AppKit owns the complete gesture from its original press. Button
-				// hitboxes prevent their presses from reaching this background.
+			cx.listener(|shell, _, _, cx| {
+				shell.titlebar_drag_pending = true;
 				cx.stop_propagation();
-				if event.click_count == 2 {
-					window.titlebar_double_click();
-				} else {
-					#[cfg(not(test))]
-					window_drag::start(window);
-					#[cfg(test)]
-					{
-						_shell.titlebar_drag_requests += 1;
-					}
-				}
 			}),
 		)
+		.on_mouse_down_out(cx.listener(|shell, _, _, _| {
+			shell.titlebar_drag_pending = false;
+		}))
+		.on_click(|event, window, _| {
+			if event.click_count() == 2 {
+				window.titlebar_double_click();
+			}
+		})
 		.child(
 			ui_theme::floating_group()
 				.pl(gpui::px(74.0))
@@ -2701,6 +2735,7 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
+		.child(pointer_events.absolute().size_full())
 		.into_any_element()
 }
 
@@ -7836,18 +7871,31 @@ mod tests {
 				let before = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
 				visual.simulate_mouse_down(point, gpui::MouseButton::Left, Default::default());
 				assert_eq!(
-					shell.read_with(visual, |s, _| s.titlebar_drag_requests),
-					before + usize::from(!buttons.iter().any(|button| button.contains(&point))),
+					shell.read_with(visual, |s, _| s.titlebar_drag_pending),
+					!buttons.iter().any(|button| button.contains(&point)),
 					"{point:?}"
 				);
+				assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), before);
 				// Release outside the controls so the sweep does not activate them.
 				visual.simulate_mouse_up(
 					gpui::point(point.x, region.bottom() + gpui::px(60.)),
 					gpui::MouseButton::Left,
 					Default::default(),
 				);
+				assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
 			}
 		}
+		let outside = gpui::point(region.center().x, region.bottom() + gpui::px(60.));
+		visual.simulate_mouse_down(region.center(), gpui::MouseButton::Left, Default::default());
+		// A queued hover must not consume the pending gesture before held motion.
+		visual.simulate_mouse_move(region.center(), None, Default::default());
+		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		let before = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
+		visual.simulate_mouse_move(outside, gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(outside, gpui::MouseButton::Left, Default::default());
+		assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), before + 1);
+		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		visual.simulate_mouse_up(outside, gpui::MouseButton::Left, Default::default());
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
 		let drag_requests = shell.read_with(visual, |s, _| s.titlebar_drag_requests);

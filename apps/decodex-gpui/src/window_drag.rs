@@ -1,4 +1,4 @@
-//! Enter AppKit window tracking without holding GPUI's platform-window mutex.
+//! Hand the current held movement to AppKit, as GPUI's native titlebar does.
 
 #[cfg(target_os = "macos")]
 pub(crate) fn start(window: &gpui::Window) {
@@ -19,7 +19,7 @@ pub(crate) fn start(window: &gpui::Window) {
 		write_trace(
 			path,
 			&format!(
-				"press type={:?} modifiers={:?} event_window={} window={} movable={} active={} pressed={} age_ms={:.3} position={:?} frame={:?}",
+				"handoff type={:?} modifiers={:?} event_window={} window={} movable={} active={} pressed={} timestamp={:.6} age_ms={:.3} position={:?} frame={:?}",
 				event.r#type(),
 				event.modifierFlags(),
 				event.windowNumber(),
@@ -27,14 +27,14 @@ pub(crate) fn start(window: &gpui::Window) {
 				native.isMovable(),
 				NSApplication::sharedApplication(main_thread).isActive(),
 				NSEvent::pressedMouseButtons(),
+				event.timestamp(),
 				(NSProcessInfo::processInfo().systemUptime() - event.timestamp()) * 1_000.,
 				event.locationInWindow(),
 				native.frame()
 			),
 		);
 	}
-	// AppKit may call windowDidMove during tracking. That callback needs GPUI's
-	// platform mutex, so do not enter through MacWindow::start_window_move.
+	// Keep GPUI's platform mutex free for native callbacks during the handoff.
 	let started = std::time::Instant::now();
 	native.performWindowDragWithEvent(&event);
 	if let Some(path) = trace.as_ref() {
