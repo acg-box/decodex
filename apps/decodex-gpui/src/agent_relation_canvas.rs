@@ -1367,21 +1367,25 @@ fn paint_relation_grid(
 	window: &mut gpui::Window,
 ) {
 	let spacing = grid_spacing(scale);
-	let mut x = pan.0.rem_euclid(spacing);
-	while x < f32::from(bounds.size.width) {
-		let mut y = pan.1.rem_euclid(spacing);
-		while y < f32::from(bounds.size.height) {
-			window.paint_quad(gpui::fill(
-				gpui::Bounds::new(
-					bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
-					gpui::size(gpui::px(1.), gpui::px(1.)),
-				),
-				gpui::rgba(0xffffff28),
-			));
-			y += spacing;
+	// Grid dots never overlap. Give the whole background one draw order instead
+	// of inserting thousands of independent bounds into the scene's order tree.
+	window.paint_layer(bounds, |window| {
+		let mut x = pan.0.rem_euclid(spacing);
+		while x < f32::from(bounds.size.width) {
+			let mut y = pan.1.rem_euclid(spacing);
+			while y < f32::from(bounds.size.height) {
+				window.paint_quad(gpui::fill(
+					gpui::Bounds::new(
+						bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
+						gpui::size(gpui::px(1.), gpui::px(1.)),
+					),
+					gpui::rgba(0xffffff28),
+				));
+				y += spacing;
+			}
+			x += spacing;
 		}
-		x += spacing;
-	}
+	});
 }
 
 fn status_lamp(color: u32, running: bool, scale: f32, clock: std::time::Instant) -> AnyElement {
