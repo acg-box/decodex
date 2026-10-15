@@ -425,6 +425,9 @@ impl Tween {
 	}
 
 	pub(crate) fn sample(&self, now: Instant) -> f32 {
+		if self.from == self.to || now.duration_since(self.started) >= self.duration {
+			return self.to;
+		}
 		self.sample_with_motion(now, reduced())
 	}
 
@@ -449,7 +452,7 @@ impl Tween {
 	}
 
 	pub(crate) fn moving(&self, now: Instant) -> bool {
-		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
+		self.from != self.to && now.duration_since(self.started) < self.duration && !reduced()
 	}
 }
 

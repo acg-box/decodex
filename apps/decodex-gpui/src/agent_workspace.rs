@@ -1157,7 +1157,6 @@ impl AgentSurface {
 		self.workspace.arrival.observe(!connecting);
 		if self.workspace.arrival.progress(0.12) < 1. && !connecting {
 			ui_motion::request_frame(window, cx);
-			cx.notify();
 		}
 		if connecting {
 			return gpui::div()
@@ -1461,8 +1460,6 @@ impl AgentSurface {
 				));
 
 				ui_motion::request_frame(window, cx);
-
-				cx.notify();
 			} else {
 				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(target)));
 			}

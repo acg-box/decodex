@@ -87,8 +87,6 @@ impl RenderOnce for ScrollArea {
 
 				if moving {
 					ui_motion::request_frame(window, cx);
-
-					cx.notify();
 				} else {
 					s.motion = None;
 				}
