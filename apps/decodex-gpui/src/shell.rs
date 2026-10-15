@@ -7817,6 +7817,20 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn startup_title_waits_for_workspace_readiness(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("workspace-conversation-header").is_none());
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx));
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("workspace-conversation-header").is_some());
+	}
+
+	#[gpui::test]
 	fn conversation_title_passes_mouse_down_to_window_drag_region(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {

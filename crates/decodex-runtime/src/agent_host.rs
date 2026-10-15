@@ -308,7 +308,9 @@ impl AgentHost {
 		.await;
 		let cache = self.archive_visibility.lock().await;
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
-			crate::agent_visibility::retain_active(snapshot, &cache.archived);
+			cache.project(snapshot);
+		} else {
+			snapshot.connection_initializing = true;
 		}
 	}
 

@@ -1798,7 +1798,7 @@ impl AgentSurface {
 		window: &Window,
 		_cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		if self.is_new_conversation() && !self.workspace.browsing {
+		if self.workspace_connecting() || (self.is_new_conversation() && !self.workspace.browsing) {
 			return gpui::div().into_any_element();
 		}
 		let title = if self.workspace.browsing {
@@ -1836,6 +1836,7 @@ impl AgentSurface {
 		) > available;
 		gpui::div()
 			.id("current-conversation-title")
+			.opacity(self.workspace.arrival.progress(0.12))
 			.when(truncated, |title| {
 				title.tooltip(move |_, cx| {
 					cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into()

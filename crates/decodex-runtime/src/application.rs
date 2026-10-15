@@ -522,7 +522,7 @@ impl ServiceApplication {
 				None => None,
 			};
 			snapshot.runtime_source = if before == after { after } else { None };
-			snapshot.connection_initializing = initializing
+			snapshot.connection_initializing |= initializing
 				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 
 			if !snapshot.is_valid() {
