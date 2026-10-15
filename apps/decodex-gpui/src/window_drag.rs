@@ -3,7 +3,8 @@
 #[cfg(target_os = "macos")]
 pub(crate) fn start(window: &gpui::Window) {
 	use objc2::MainThreadMarker;
-	use objc2_app_kit::{NSApplication, NSView};
+	use objc2_app_kit::{NSApplication, NSEvent, NSView};
+	use objc2_foundation::NSProcessInfo;
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 	let Some(main_thread) = MainThreadMarker::new() else { return };
@@ -18,12 +19,15 @@ pub(crate) fn start(window: &gpui::Window) {
 		write_trace(
 			path,
 			&format!(
-				"press type={:?} modifiers={:?} event_window={} window={} movable={} position={:?} frame={:?}",
+				"press type={:?} modifiers={:?} event_window={} window={} movable={} active={} pressed={} age_ms={:.3} position={:?} frame={:?}",
 				event.r#type(),
 				event.modifierFlags(),
 				event.windowNumber(),
 				native.windowNumber(),
 				native.isMovable(),
+				NSApplication::sharedApplication(main_thread).isActive(),
+				NSEvent::pressedMouseButtons(),
+				(NSProcessInfo::processInfo().systemUptime() - event.timestamp()) * 1_000.,
 				event.locationInWindow(),
 				native.frame()
 			),

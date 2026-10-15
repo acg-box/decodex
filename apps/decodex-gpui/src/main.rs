@@ -281,11 +281,16 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 
 			if let Some(button) = native.standardWindowButton(NSWindowButton::CloseButton) {
 				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
-
-				window.set_traffic_light_position(gpui::point(
-					gpui::px(16.0),
-					gpui::px(center_y - button.frame().size.height as f32 / 2.0),
-				));
+				let frame = button.frame();
+				let y = f64::from(center_y) - frame.size.height / 2.0;
+				// A move also publishes a bounds change. Keep the native titlebar
+				// geometry stable while WindowServer owns the drag.
+				if frame.origin.x != 16.0 || frame.origin.y != y {
+					window.set_traffic_light_position(gpui::point(
+						gpui::px(16.0),
+						gpui::px(y as f32),
+					));
+				}
 			}
 		}
 	});

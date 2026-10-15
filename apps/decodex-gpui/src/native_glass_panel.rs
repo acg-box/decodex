@@ -155,8 +155,14 @@ impl GlassPanel {
 		));
 
 		if self.frame != Some(frame) {
-			self.native.setFrame_display(frame, false);
-			if let Some(content) = self.native.contentView() {
+			// AppKit moves attached children with their parent. Do not submit the
+			// same screen position again or resize Metal during a parent drag.
+			let place = self.native.frame() != frame;
+			let resize = self.frame.is_none_or(|previous| previous.size != frame.size);
+			if place {
+				self.native.setFrame_display(frame, false);
+			}
+			if resize && let Some(content) = self.native.contentView() {
 				self.glass.setFrame(content.bounds());
 				// Call the resize hook, not setFrame:, so the drawable and GPUI
 				// viewport use the same size. The foreground has one layout owner.
@@ -166,7 +172,7 @@ impl GlassPanel {
 
 			self.frame = Some(frame);
 
-			return true;
+			return place || resize;
 		}
 
 		false

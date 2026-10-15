@@ -38,7 +38,7 @@ objc2-app-kit          = { workspace = true, features = ["NSEvent"] }
 objc2-audio-toolbox    = { workspace = true, features = ["AUAudioUnit"] }
 objc2-avf-audio        = { workspace = true }
 objc2-core-audio-types = { workspace = true }
-objc2-foundation       = { workspace = true, features = ["NSNotification", "NSOperation", "block2"] }
+objc2-foundation       = { workspace = true, features = ["NSNotification", "NSOperation", "NSProcessInfo", "block2"] }
 rtrb                   = { workspace = true }
 
 [dev-dependencies]
