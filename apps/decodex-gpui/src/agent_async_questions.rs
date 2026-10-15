@@ -1,12 +1,17 @@
 //! Nonblocking model questions are explicit user messages, not approval callbacks.
 use std::{cell::RefCell, collections::BTreeMap, mem};
 
-use gpui::{AnyElement, AppContext as _, Bounds, Focusable, KeyDownEvent, Point};
+use crate::{
+	ui_motion::{self, SmoothControl as _},
+	ui_theme,
+};
+use gpui::{AnyElement, AppContext as _, Bounds, Focusable, KeyDownEvent, Point, RenderOnce};
 
 use crate::shell::agent_surface::{
 	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ComposerInput,
 	Context, Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-	StatefulInteractiveElement, Styled, SubmitComposer, Window,
+	StatefulInteractiveElement, Styled, SubmitComposer, Window, workspace_symbols,
+	workspace_symbols::Symbol,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -19,6 +24,43 @@ pub(super) struct ChoiceDraft {
 	selected: Option<String>,
 	custom: Option<Entity<ComposerInput>>,
 	visible: RefCell<BTreeMap<String, std::rc::Rc<std::cell::Cell<bool>>>>,
+}
+
+#[derive(IntoElement)]
+struct QuestionChoice {
+	id: SharedString,
+	selected: bool,
+	index: usize,
+	row: gpui::Stateful<gpui::Div>,
+}
+impl RenderOnce for QuestionChoice {
+	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+		let selected = ui_motion::value(self.id, f32::from(self.selected), window, cx);
+		self.row
+			.bg(gpui::rgba(0xffffff00 | (selected * 10.) as u32))
+			.child(
+				gpui::div()
+					.absolute()
+					.left(gpui::px(8.))
+					.top(gpui::px(5.))
+					.w(gpui::px(16.))
+					.flex()
+					.justify_center()
+					.text_size(gpui::px(10.5))
+					.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+					.opacity(0.65 * (1. - selected))
+					.child((self.index + 1).to_string()),
+			)
+			.child(
+				gpui::div()
+					.absolute()
+					.left(gpui::px(10. + 2. * (1. - selected)))
+					.top(gpui::px(8.))
+					.opacity(selected)
+					.child(workspace_symbols::icon_sized(Symbol::Confirm, 12.)),
+			)
+			.smooth()
+	}
 }
 
 impl AgentSurface {
@@ -198,6 +240,9 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		if self.sending || self.uncertain {
+			return;
+		}
 		let Some(current) = self.async_question_inputs.get(key).cloned() else {
 			return;
 		};
@@ -251,25 +296,30 @@ impl AgentSurface {
 			state.visible.borrow_mut().insert(option.into(), visible.clone());
 		}
 
-		let label = option.unwrap_or("Other (write an answer)").to_owned();
+		let label = option.unwrap_or("Something else…").to_owned();
 		let option = option.map(str::to_owned);
 		let key_option = option.clone();
 		let owner = key.clone();
 		let key_owner = key.clone();
 		let selector = format!("async-option-{}-{index}", key.1);
 
-		gpui::div()
+		let row = gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
 			.relative()
 			.min_w_0()
 			.whitespace_normal()
-			.role(Role::Button)
+			.role(Role::RadioButton)
+			.aria_toggled(if selected { gpui::Toggled::True } else { gpui::Toggled::False })
 			.tab_index(0)
 			.aria_label(label.clone())
-			.p_2()
+			.py(gpui::px(4.))
+			.pl(gpui::px(32.))
+			.pr(gpui::px(10.))
+			.min_h(gpui::px(28.))
 			.rounded(gpui::px(6.0))
-			.bg(gpui::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+			.hover(|style| style.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+			.focus_visible(|style| style.bg(gpui::rgba(ui_theme::PRESSED_FILL)))
 			.cursor_pointer()
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.select_async_choice(&owner, option.as_deref(), window, cx)
@@ -277,7 +327,11 @@ impl AgentSurface {
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if matches!(event.keystroke.key.as_str(), "enter" | "space") {
 					if !event.is_held {
-						s.select_async_choice(&key_owner, key_option.as_deref(), window, cx);
+						if event.keystroke.key == "enter" && event.keystroke.modifiers.platform {
+							s.answer_async_question(&key_owner.0, &key_owner.1, cx);
+						} else {
+							s.select_async_choice(&key_owner, key_option.as_deref(), window, cx);
+						}
 					}
 
 					cx.stop_propagation();
@@ -302,8 +356,14 @@ impl AgentSurface {
 				)
 				.absolute()
 				.inset_0(),
-			)
-			.into_any_element()
+			);
+		QuestionChoice {
+			id: format!("async-selection-{}-{}-{index}", key.0, key.1).into(),
+			selected,
+			index,
+			row,
+		}
+		.into_any_element()
 	}
 
 	fn answer_async_question(&mut self, work: &str, question: &str, cx: &mut Context<Self>) {
@@ -388,7 +448,14 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label("Skip question")
-			.p_2()
+			.px_3()
+			.py(gpui::px(5.))
+			.rounded(gpui::px(6.))
+			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.hover(|style| {
+				style.bg(gpui::rgba(ui_theme::HOVER_FILL)).text_color(gpui::rgb(ui_theme::TEXT))
+			})
+			.focus_visible(|style| style.bg(gpui::rgba(ui_theme::PRESSED_FILL)))
 			.cursor_pointer()
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if !s.sending && !s.uncertain {
@@ -404,7 +471,8 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child("Skip question")
+			.child("Skip")
+			.smooth()
 			.into_any_element()
 	}
 
@@ -424,11 +492,8 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let collapsed = self.collapsed_async_questions.contains(work);
-		let label = if collapsed {
-			format!("Show questions ({count})")
-		} else {
-			"Return to message".into()
-		};
+		let label =
+			if collapsed { format!("Show questions ({count})") } else { "Answer later".into() };
 		let owner = work.to_owned();
 		let key_owner = owner.clone();
 
@@ -438,7 +503,13 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label.clone())
-			.p_2()
+			.px_2()
+			.py_1()
+			.text_size(gpui::px(11.))
+			.rounded(gpui::px(5.))
+			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.hover(|style| style.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+			.focus_visible(|style| style.bg(gpui::rgba(ui_theme::PRESSED_FILL)))
 			.cursor_pointer()
 			.on_click(
 				cx.listener(move |s, _, window, cx| s.toggle_async_questions(&owner, window, cx)),
@@ -449,7 +520,12 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(label)
+			.child(if collapsed {
+				gpui::div().child(label).into_any_element()
+			} else {
+				workspace_symbols::icon_sized(Symbol::Close, 12.)
+			})
+			.smooth()
 			.into_any_element()
 	}
 
@@ -458,12 +534,25 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		for (key, state) in &self.async_question_choices {
-			if key.0 == work.id {
-				state.visible.borrow_mut().clear();
-			}
-		}
+		self.render_async_questions(work, None, cx)
+			.unwrap_or_else(|| gpui::div().into_any_element())
+	}
 
+	pub(super) fn async_question_item_panel(
+		&self,
+		work: &AgentWorkItemDto,
+		item: &str,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		self.render_async_questions(work, Some(item), cx)
+	}
+
+	fn render_async_questions(
+		&self,
+		work: &AgentWorkItemDto,
+		source: Option<&str>,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
 		let Some((
 			id,
 			AgentHistoryResult::Available {
@@ -474,106 +563,193 @@ impl AgentSurface {
 			},
 		)) = &self.history
 		else {
-			return gpui::div().into_any_element();
+			return None;
 		};
-
-		if id != &work.id {
-			return gpui::div().into_any_element();
+		if id != &work.id || *questions_recovering {
+			return None;
 		}
-
-		let mut panel = gpui::div().flex().flex_col().gap_3();
-
-		if *questions_recovering || questions.is_empty() {
-			return gpui::div().into_any_element();
+		// The native message owns its question card. Only questions whose source
+		// is outside the retained history page need a separate answer panel.
+		let questions: Vec<_> = questions.iter().filter(|question| {
+            let item = question_source(&question.id);
+            if let Some(source) = source {
+                item.as_deref() == Some(source)
+            } else {
+                !self.timeline.native.entries.iter().any(|entry| matches!(&entry.content,
+                    decodex_protocol::AgentTimelineContent::Item { item_id, kind, truncated: false, attachments, .. }
+                    if kind == "agentMessage" && attachments.is_empty() && item.as_ref() == Some(item_id)))
+            }
+        }).collect();
+		if questions.is_empty() {
+			return None;
 		}
-
-		panel = panel.child(self.async_question_toggle(&work.id, questions.len(), cx));
-
+		for question in &questions {
+			if let Some(state) =
+				self.async_question_choices.get(&(work.id.clone(), question.id.clone()))
+			{
+				state.visible.borrow_mut().clear();
+			}
+		}
+		let mut panel = gpui::div().w_full().max_w(gpui::px(600.)).flex().flex_col().gap_3();
 		if self.collapsed_async_questions.contains(&work.id) {
-			return panel.into_any_element();
+			return Some(
+				panel
+					.items_start()
+					.child(self.async_question_toggle(&work.id, questions.len(), cx))
+					.into_any_element(),
+			);
 		}
-
 		for question in questions {
-			let key = (work.id.clone(), question.id.clone());
-			let Some(input) = self.async_question_inputs.get(&key) else {
-				continue;
-			};
-			let mut card = gpui::div()
-				.p_3()
-				.rounded(gpui::px(8.0))
-				.border_1()
-				.border_color(gpui::rgba(0xffffff18))
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(question.title.clone());
-
-			for (index, option) in question.options.iter().enumerate() {
-				card = card.child(self.async_choice_button(
-					&key,
-					index,
-					Some(option),
-					input.read(cx).content() == option,
-					cx,
-				));
+			if let Some(card) = self.async_question_card(work, question, cx) {
+				panel = panel.child(card);
 			}
-
-			if !question.options.is_empty() {
-				card = card.child(
-					self.async_choice_button(
-						&key,
-						question.options.len(),
-						None,
-						self.async_question_choices
-							.get(&key)
-							.is_some_and(|state| state.selected.is_none()),
-						cx,
-					),
-				);
-			}
-
-			let owner = work.id.clone();
-			let question_id = question.id.clone();
-			let enter_owner = owner.clone();
-			let enter_question = question_id.clone();
-			let send_selector = format!("async-send-{question_id}");
-			let key_owner = owner.clone();
-			let key_question = question_id.clone();
-
-			card = card
-				.key_context("AsyncQuestion")
-				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-					s.handle_async_question_key(event, &key_owner, &key_question, cx);
-				}))
-				.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
-					s.answer_async_question(&enter_owner, &enter_question, cx);
-					cx.stop_propagation();
-				}))
-				.child(gpui::div().h(gpui::px(40.0)).child(input.clone()))
-				.child(
-					gpui::div()
-						.id(SharedString::from(format!("async-send-{question_id}")))
-						.debug_selector(move || send_selector)
-						.role(Role::Button)
-						.tab_index(0)
-						.aria_label("Send answer")
-						.p_2()
-						.cursor_pointer()
-						.on_click(cx.listener(move |s, _, _, cx| {
-							s.answer_async_question(&owner, &question_id, cx)
-						}))
-						.child("Send answer"),
-				);
-			panel = panel.child(card.child(self.async_question_skip(work, &question.id, cx)));
 		}
-
-		if *questions_truncated {
+		if *questions_truncated && source.is_none() {
 			panel = panel.child(agent_surface::muted(
 				"More questions are available after these are answered.",
 			));
 		}
+		Some(panel.into_any_element())
+	}
 
-		panel.into_any_element()
+	fn async_question_card(
+		&self,
+		work: &AgentWorkItemDto,
+		question: &AgentAsyncQuestionDto,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let key = (work.id.clone(), question.id.clone());
+		let input = self.async_question_inputs.get(&key)?;
+		let custom = question.options.is_empty()
+			|| self.async_question_choices.get(&key).is_none_or(|state| {
+				state
+					.selected
+					.as_deref()
+					.is_none_or(|selected| selected != input.read(cx).content())
+			});
+		let busy = self.sending || self.uncertain;
+		let can_send = !busy && !input.read(cx).content().trim().is_empty();
+		let mut card = gpui::div().flex().flex_col().gap(gpui::px(2.)).child(
+			gpui::div()
+				.flex()
+				.items_start()
+				.gap_3()
+				.mb_2()
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.font_weight(gpui::FontWeight::MEDIUM)
+						.child(question.title.clone()),
+				)
+				.child(self.async_question_toggle(&work.id, 1, cx)),
+		);
+		for (index, option) in question.options.iter().enumerate() {
+			card = card.child(self.async_choice_button(
+				&key,
+				index,
+				Some(option),
+				!custom && input.read(cx).content() == option,
+				cx,
+			));
+		}
+		if !question.options.is_empty() {
+			card = card.child(self.async_choice_button(
+				&key,
+				question.options.len(),
+				None,
+				custom,
+				cx,
+			));
+		}
+		let owner = work.id.clone();
+		let question_id = question.id.clone();
+		let enter_owner = owner.clone();
+		let enter_question = question_id.clone();
+		let key_owner = owner.clone();
+		let key_question = question_id.clone();
+		card = card
+			.key_context("AsyncQuestion")
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				s.handle_async_question_key(event, &key_owner, &key_question, cx);
+			}))
+			.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
+				s.answer_async_question(&enter_owner, &enter_question, cx);
+				cx.stop_propagation();
+			}))
+			.child(ui_motion::disclosure(
+				SharedString::from(format!("async-custom-{}-{}", work.id, question.id)),
+				custom,
+				gpui::div().pt_2().h(gpui::px(48.)).child(input.clone()),
+			))
+			.child(self.async_question_actions(work, question, can_send, cx));
+		Some(card.into_any_element())
+	}
+
+	fn async_question_actions(
+		&self,
+		work: &AgentWorkItemDto,
+		question: &AgentAsyncQuestionDto,
+		can_send: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let owner = work.id.clone();
+		let question_id = question.id.clone();
+		let button_owner = owner.clone();
+		let button_question = question_id.clone();
+		let send_selector = format!("async-send-{question_id}");
+		let busy = self.sending || self.uncertain;
+		gpui::div()
+			.flex()
+			.items_center()
+			.gap_2()
+			.mt_2()
+			.child(
+				gpui::div()
+					.id(SharedString::from(format!("async-send-{question_id}")))
+					.debug_selector(move || send_selector)
+					.role(Role::Button)
+					.tab_index(0)
+					.aria_label("Send answer")
+					.aria_description(if can_send {
+						"Send the selected answer"
+					} else if busy {
+						"Waiting for delivery confirmation"
+					} else {
+						"Write an answer first"
+					})
+					.px(gpui::px(10.))
+					.h(gpui::px(28.))
+					.min_w(gpui::px(82.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.gap(gpui::px(8.))
+					.rounded(gpui::px(6.))
+					.bg(gpui::rgba(0xffffff12))
+					.text_color(gpui::rgb(ui_theme::TEXT))
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.opacity(if can_send { 1. } else { 0.45 })
+					.cursor_pointer()
+					.focus_visible(|style| style.bg(gpui::rgba(ui_theme::PRESSED_FILL)))
+					.on_click(cx.listener(move |s, _, _, cx| {
+						s.answer_async_question(&owner, &question_id, cx)
+					}))
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+						if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+							if !event.is_held {
+								s.answer_async_question(&button_owner, &button_question, cx);
+							}
+							cx.stop_propagation();
+						}
+					}))
+					.child(if self.sending { "Sending…" } else { "Send" })
+					.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
+					.smooth()
+					.enabled(can_send),
+			)
+			.child(self.async_question_skip(work, &question.id, cx))
+			.into_any_element()
 	}
 }
 
@@ -599,6 +775,11 @@ impl AgentSurface {
 			cx.stop_propagation();
 		}
 	}
+}
+
+fn question_source(id: &str) -> Option<String> {
+	let (kind, source, _): (String, String, usize) = serde_json::from_str(id).ok()?;
+	(kind == "request_user_input_async").then_some(source)
 }
 
 #[cfg(test)]
@@ -680,6 +861,51 @@ mod tests {
 			assert!(!s.sending);
 		});
 	}
+	#[gpui::test]
+	fn async_question_card_follows_its_native_source_across_history_pages(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			let (_, history) = s.history.as_mut().unwrap();
+			let AgentHistoryResult::Available { questions, .. } = history else {
+				panic!("fixture history");
+			};
+			questions[0].id = decodex_protocol::agent_async_question_id("question-source", 0);
+			let history = history.clone();
+			s.prepare_async_question_inputs("root", &history, cx);
+			let work = s.snapshot.as_ref().unwrap().work_items[0].clone();
+			assert!(s.render_async_questions(&work, None, cx).is_some());
+			s.timeline.native.entries.push(decodex_protocol::AgentTimelineEntry {
+				position: 1,
+				content: decodex_protocol::AgentTimelineContent::Item {
+					turn_id: "turn".into(),
+					item_id: "question-source".into(),
+					kind: "agentMessage".into(),
+					phase: Some("final_answer".into()),
+					text: "Choose a format".into(),
+					truncated: false,
+					collaboration: None,
+					activity: None,
+					app_ui: false,
+					attachments: vec![],
+				},
+			});
+			assert!(s.async_question_item_panel(&work, "question-source", cx).is_some());
+			assert!(s.async_question_item_panel(&work, "other-message", cx).is_none());
+			assert!(
+				s.render_async_questions(&work, None, cx).is_none(),
+				"one answer card at its source, no duplicate footer"
+			);
+			s.timeline.native.entries.clear();
+			assert!(
+				s.render_async_questions(&work, None, cx).is_some(),
+				"paging out the source must not hide a pending question"
+			);
+		});
+	}
+
 	#[gpui::test]
 	fn async_question_drafts_survive_refresh_and_other_work(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -806,10 +1032,8 @@ mod tests {
 			input
 		});
 
-		visual.update(|window, cx| {
-			window.focus(&input.focus_handle(cx), cx);
-			window.draw(cx).clear(cx);
-		});
+		let option = visual.debug_bounds("async-option-q1-1").unwrap();
+		visual.simulate_click(option.center(), gpui::Modifiers::default());
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
@@ -1022,7 +1246,13 @@ mod tests {
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		surface.update(visual, install_question_fixture);
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			s.async_question_choices.get_mut(&("root".into(), "q1".into())).unwrap().selected =
+				None;
+			s.async_question_inputs[&("root".into(), "q1".into())]
+				.update(cx, |input, cx| input.set_content("My answer", cx));
+		});
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));

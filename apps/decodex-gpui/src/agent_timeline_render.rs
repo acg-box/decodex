@@ -344,6 +344,15 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			(message.text.as_str(), message.truncated)
 		});
 
+		if kind == "agentMessage" && !truncated && attachments.is_empty() {
+			if let Some(panel) = self.async_question_item_panel(work, item_id, cx) {
+				return panel;
+			}
+			if text.is_empty() {
+				return gpui::div().into_any_element();
+			}
+		}
+
 		if kind == "userMessage"
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
