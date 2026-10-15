@@ -1054,11 +1054,10 @@ impl AgentSurface {
 						&caption.text,
 						&caption.key,
 						Some(
-							agent_surface::text_reveal::StreamingText {
-								already_visible: false,
-								text: caption.text.clone(),
-								key: caption.key.clone(),
-							}
+							agent_surface::text_reveal::StreamingText::caption(
+								caption.text.clone(),
+								caption.key.clone(),
+							)
 							.into_any_element(),
 						),
 					)

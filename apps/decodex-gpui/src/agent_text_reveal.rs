@@ -10,20 +10,37 @@ use crate::{
 
 #[derive(gpui::IntoElement)]
 pub(super) struct StreamingText {
-	pub text: String,
-	pub key: String,
-	pub already_visible: bool,
+	text: String,
+	key: String,
+	output: bool,
+	complete: bool,
+}
+impl StreamingText {
+	pub(super) fn output(text: String, key: String, complete: bool) -> Self {
+		Self { text, key, output: true, complete }
+	}
+
+	pub(super) fn caption(text: String, key: String) -> Self {
+		Self { text, key, output: false, complete: false }
+	}
 }
 impl RenderOnce for StreamingText {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(SharedString::from(self.key.clone()), cx, |_, _| {
-			if self.already_visible {
-				ui_motion::TextReveal::settled(&self.text, Instant::now())
+			if self.output {
+				ui_motion::TextReveal::output(&self.text, self.complete, Instant::now())
 			} else {
 				ui_motion::TextReveal::new(Instant::now())
 			}
 		});
-		let (end, moving) = state.update(cx, |state, _| state.sample(&self.text, Instant::now()));
+		let (end, moving) = state.update(cx, |state, _| {
+			let now = Instant::now();
+			let sample = state.sample(&self.text, now);
+			if self.complete {
+				state.finish(now);
+			}
+			sample
+		});
 
 		if moving {
 			ui_motion::request_frame(window, cx);

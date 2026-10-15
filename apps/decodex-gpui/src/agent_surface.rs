@@ -2139,14 +2139,11 @@ impl AgentSurface {
 								(message.kind == AgentLiveMessageKind::ReasoningSummary)
 									.then(|| muted("Reasoning summary")),
 							)
-							.child(StreamingText {
-								already_visible: false,
-								text: message.text.clone(),
-								key: format!(
-									"live-{}-{}-{}",
-									work.id, message.turn_id, message.item_id
-								),
-							})
+							.child(StreamingText::output(
+								message.text.clone(),
+								format!("live-{}-{}-{}", work.id, message.turn_id, message.item_id),
+								false,
+							))
 							.when(message.truncated, |row| {
 								row.child(muted(
 									"Partial output shortened; waiting for saved result.",

@@ -21,6 +21,10 @@ use crate::{
 };
 use decodex_protocol::{AgentLiveMessageDto, AgentLiveMessageKind, AgentTimelineAttachment};
 
+fn output_key(work: &AgentWorkItemDto, turn: &str, item: &str) -> String {
+	serde_json::json!(["output", work.id, work.codex_thread_id, turn, item]).to_string()
+}
+
 impl AgentSurface {
 	pub(in super::super) fn native_live_rows(&self, work: &AgentWorkItemDto) -> Vec<AnyElement> {
 		let saved_live = self
@@ -46,13 +50,10 @@ impl AgentSurface {
 				continue;
 			}
 
-			let key = format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id);
-			let streamed = StreamingText {
-				text: markdown::response_text(&message.text),
-				key: key.clone(),
-				already_visible: false,
-			}
-			.into_any_element();
+			let key = output_key(work, &message.turn_id, &message.item_id);
+			let streamed =
+				StreamingText::output(markdown::response_text(&message.text), key.clone(), false)
+					.into_any_element();
 			let body = if message.kind == AgentLiveMessageKind::AgentMessage {
 				let entry = self.native_message_entry(
 					work,
@@ -71,18 +72,26 @@ impl AgentSurface {
 					.child(streamed)
 			};
 			rows.push(
-				body.debug_selector({
-					let selector = match message.kind {
-						AgentLiveMessageKind::ReasoningSummary => "native-live-reasoning-summary",
-						AgentLiveMessageKind::Plan => "native-live-plan",
-						AgentLiveMessageKind::AgentMessage => "native-live-output",
-					};
-					move || selector.into()
-				})
-				.children(message.truncated.then(|| {
-					agent_surface::muted("Partial output shortened; waiting for saved result.")
-				}))
-				.into_any_element(),
+				gpui::div()
+					.id(SharedString::from(key))
+					.w_full()
+					.child(
+						body.debug_selector({
+							let selector = match message.kind {
+								AgentLiveMessageKind::ReasoningSummary =>
+									"native-live-reasoning-summary",
+								AgentLiveMessageKind::Plan => "native-live-plan",
+								AgentLiveMessageKind::AgentMessage => "native-live-output",
+							};
+							move || selector.into()
+						})
+						.children(message.truncated.then(|| {
+							agent_surface::muted(
+								"Partial output shortened; waiting for saved result.",
+							)
+						})),
+					)
+					.into_any_element(),
 			);
 		}
 
@@ -170,7 +179,12 @@ impl AgentSurface {
 
 		gpui::div()
 			.debug_selector(move || selector)
-			.id(SharedString::from(identity.clone()))
+			.id(SharedString::from(match &entry.content {
+				AgentTimelineContent::Item { kind, turn_id, item_id, .. }
+					if kind == "agentMessage" =>
+					output_key(work, turn_id, item_id),
+				_ => identity.clone(),
+			}))
 			.w_full()
 			.min_w_0()
 			.child(content)
@@ -455,35 +469,25 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				body = body.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 			}
 
-			body = if draft.is_some() {
-				body.child(agent_surface::history_entry_presented(
-					&message,
-					identity,
-					None,
-					Some(
-						StreamingText {
-							text: markdown::response_text(text),
-							key: identity.into(),
-							// Keep the visible prefix when the persisted row takes over.
-							already_visible: true,
-						}
-						.into_any_element(),
-					),
-					true,
-				))
-			} else {
-				let last_reply = self.timeline.native.entries.iter().rev().find_map(|entry| {
-					match &entry.content {
-						AgentTimelineContent::Item { turn_id: turn, item_id, kind, .. }
-							if turn == turn_id && kind == "agentMessage" =>
-							Some(item_id),
-						_ => None,
-					}
+			let last_reply =
+				self.timeline.native.entries.iter().rev().find_map(|entry| match &entry.content {
+					AgentTimelineContent::Item { turn_id: turn, item_id, kind, .. }
+						if turn == turn_id && kind == "agentMessage" =>
+						Some(item_id),
+					_ => None,
 				});
-				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.timeline.native.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
-
-				body.child(super::super::history_entry_with_metrics(&message, identity, metrics))
-			};
+			let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.timeline.native.entries.iter().find(|entry| matches!(&entry.content, AgentTimelineContent::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
+			let streamed = (kind == "agentMessage").then(|| {
+				StreamingText::output(
+					markdown::response_text(text),
+					output_key(work, turn_id, item_id),
+					draft.is_none(),
+				)
+				.into_any_element()
+			});
+			body = body.child(agent_surface::history_entry_presented(
+				&message, identity, metrics, streamed, true,
+			));
 
 			if kind == "agentMessage"
 				&& let Some(action) = self.voice_read_action(
@@ -1051,7 +1055,7 @@ mod tests {
 			entry
 		});
 		visual.update(|w, cx| w.draw(cx).clear(cx));
-		std::thread::sleep(std::time::Duration::from_millis(160));
+		std::thread::sleep(std::time::Duration::from_millis(750));
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let live = visual.debug_bounds("native-live-output").unwrap();
 		surface.update(visual, |s, cx| {
