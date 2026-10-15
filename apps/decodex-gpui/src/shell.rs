@@ -5963,13 +5963,14 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			// Install the accessibility adapter before the first key-window notification.
 			focus: false,
 			show: false,
-			..Default::default()
+			..ui_motion::window_options()
 		},
 		{
 			let owner = owner.clone();
 
 			move |window, cx| {
 				cx.new(|cx| {
+					ui_motion::observe_activation(window, cx);
 					{
 						window.on_next_frame(|window, _| window_material::configure(window));
 						cx.observe_window_appearance(window, |_, window, _| {

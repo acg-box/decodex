@@ -27,6 +27,7 @@ mod native_updater;
 mod panel_preferences;
 mod settings_surface;
 mod shell;
+mod ui_frame;
 mod ui_loading;
 mod ui_motion;
 mod ui_preferences;
@@ -134,12 +135,13 @@ fn main() {
 					window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
 					focus: false,
 					show: false,
-					..Default::default()
+					..ui_motion::window_options()
 				},
 				move |window, cx| {
 					let account_login = account_login.clone();
 
 					cx.new(|cx| {
+						ui_motion::observe_activation(window, cx);
 						Shell::new(window, cx, initial_connection)
 							.with_account_login(account_login)
 							.with_agent_profile(agent_profile, cx)

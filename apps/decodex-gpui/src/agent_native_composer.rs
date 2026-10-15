@@ -330,10 +330,11 @@ fn create_panel(
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,
 				focus: false,
-				..Default::default()
+				..ui_motion::window_options()
 			},
-			move |_, cx| {
+			move |window, cx| {
 				cx.new(|cx| {
+					ui_motion::observe_activation(window, cx);
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
 					ComposerPanel { owner, parent, glass: None, _observation: observation }

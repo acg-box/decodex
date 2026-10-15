@@ -38,7 +38,7 @@ impl RenderOnce for OverflowLabel {
 		};
 		let width =
 			f32::from(window.text_system().shape_line(text.clone(), font_size, &[run], None).width);
-		let active = window.is_window_active();
+		let active = crate::ui_motion::application_active();
 		let start = window.use_keyed_state(self.id.clone(), cx, |_, _| (Instant::now(), active));
 		start.update(cx, |state, _| {
 			if !active || state.1 != active {
@@ -84,7 +84,10 @@ impl RenderOnce for OverflowLabel {
 						}
 						let distance =
 							(f32::from(line.width) - f32::from(visible.size.width)).max(0.);
-						let x = if window.is_window_active() && !reduced && distance > 1. {
+						let x = if crate::ui_motion::application_active()
+							&& !reduced
+							&& distance > 1.
+						{
 							ui_motion::request_frame(window, cx);
 							offset(start.read(cx).0.elapsed().as_secs_f32(), distance)
 						} else {

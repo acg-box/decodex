@@ -8,6 +8,10 @@ pub(crate) use text_reveal::TextReveal;
 
 use std::time::{Duration, Instant};
 
+pub(crate) use crate::ui_frame::{
+	application_active, observe_activation, request_frame, window_options,
+};
+
 use gpui::{
 	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
 	Window,
@@ -501,18 +505,6 @@ pub(crate) fn reduced() -> bool {
 	false
 }
 
-/// Keep animation cadence shared by a workspace and its attached controls.
-pub(crate) fn request_frame(window: &Window, cx: &mut App) {
-	#[cfg(all(target_os = "macos", not(test)))]
-	if crate::ui_theme::native_glass_panel::request_workspace_frame(window, cx) {
-		return;
-	}
-
-	let _ = cx;
-
-	window.request_animation_frame();
-}
-
 /// Animate a native overlay as one composited surface, including its shadow.
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn native_presence(
@@ -695,7 +687,7 @@ impl RenderOnce for AgentRailStatus {
 			cx,
 			|_, _| Instant::now(),
 		);
-		let intensity = if busy && window.is_window_active() && !reduced() {
+		let intensity = if busy && application_active() && !reduced() {
 			request_frame(window, cx);
 			0.82 + 0.18
 				* (clock.read(cx).elapsed().as_secs_f32() * std::f32::consts::TAU / 2.4).cos()

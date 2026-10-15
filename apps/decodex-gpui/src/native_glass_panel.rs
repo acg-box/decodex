@@ -2,7 +2,7 @@
 //! UI state and event handlers remain in GPUI; AppKit owns only composition.
 use std::{env, ptr};
 
-use gpui::{App, Bounds, Pixels, Window, WindowBackgroundAppearance};
+use gpui::{Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
 	self,
 	rc::Retained,
@@ -250,46 +250,6 @@ pub(crate) fn available() -> bool {
 	AnyClass::get(c"NSGlassEffectView").is_some()
 		&& env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none()
 		&& !reduced_transparency()
-}
-
-/// Attached controls share the workspace's interaction, but GPUI treats only
-/// the key window as active and throttles other windows' animation callbacks.
-/// Schedule through the key child's display link without moving keyboard focus.
-pub(crate) fn request_workspace_frame(window: &Window, cx: &mut App) -> bool {
-	if window.is_window_active() {
-		return false;
-	}
-
-	let Some(parent) = native(window) else { return false };
-	// GPUI's macOS active_window() returns mainWindow, not keyWindow. The
-	// workspace deliberately remains main while its composer owns the keyboard.
-	let active = unsafe {
-		let app: Retained<AnyObject> =
-			objc2::msg_send![AnyClass::get(c"NSApplication").expect("AppKit"), sharedApplication];
-		let key: Option<Retained<NSWindow>> = objc2::msg_send![&*app, keyWindow];
-
-		key.filter(|key| key.parentWindow().is_some_and(|owner| ptr::eq(&*owner, &*parent)))
-			.and_then(|key| {
-				ATTACHED_WINDOWS.with(|windows| {
-					windows.borrow().get(&(&*key as *const NSWindow as usize)).copied()
-				})
-			})
-	};
-	let Some(active) = active else { return false };
-	let entity = window.current_view();
-
-	cx.defer(move |cx| {
-		if active
-			.update(cx, |_, window, _| {
-				window.on_next_frame(move |_, cx| cx.notify(entity));
-			})
-			.is_err()
-		{
-			cx.notify(entity);
-		}
-	});
-
-	true
 }
 
 fn reduced_transparency() -> bool {

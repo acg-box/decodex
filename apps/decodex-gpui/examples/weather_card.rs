@@ -1,4 +1,5 @@
 //! Native component preview using an actual saved tool response, not live weather.
+#[path = "../src/ui_frame.rs"] mod ui_frame;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
 use futures_util as _;
@@ -87,15 +88,18 @@ fn main() {
 					title: Some("Decodex · Weather preview".into()),
 					..Default::default()
 				}),
-				..Default::default()
+				..ui_frame::window_options()
 			},
-			|_, cx| {
-				cx.new(|_| Preview {
-					forecast: WeatherForecast::parse(include_str!(
-						"fixtures/singapore-weather.txt"
-					))
-					.expect("captured weather format"),
-					copied: false,
+			|window, cx| {
+				cx.new(|cx| {
+					ui_frame::observe_activation(window, cx);
+					Preview {
+						forecast: WeatherForecast::parse(include_str!(
+							"fixtures/singapore-weather.txt"
+						))
+						.expect("captured weather format"),
+						copied: false,
+					}
 				})
 			},
 		)

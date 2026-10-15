@@ -44,6 +44,7 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+#[path = "../ui_frame.rs"] mod ui_frame;
 #[allow(dead_code)]
 #[path = "../ui_loading.rs"]
 mod ui_loading;

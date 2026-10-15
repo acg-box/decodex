@@ -1174,7 +1174,7 @@ impl AgentSurface {
 								),
 							);
 						}
-						if show_flow && !reduce_motion && window.is_window_active() {
+						if show_flow && !reduce_motion && crate::ui_motion::application_active() {
 							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
 							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
 							animate = true;
@@ -1388,7 +1388,8 @@ fn status_lamp(color: u32, running: bool, scale: f32, clock: std::time::Instant)
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, cx| {
-			let animate = running && !crate::ui_motion::reduced() && window.is_window_active();
+			let animate =
+				running && !crate::ui_motion::reduced() && crate::ui_motion::application_active();
 			let phase = (clock.elapsed().as_secs_f32() / 2.8).fract();
 			if animate {
 				let alpha = (24. + 32. * (phase * std::f32::consts::TAU).sin().abs()) as u32;

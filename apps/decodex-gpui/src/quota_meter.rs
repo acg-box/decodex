@@ -56,7 +56,7 @@ pub(super) struct QuotaMeter {
 	pub(super) fill: Option<ResetFill>,
 }
 impl RenderOnce for QuotaMeter {
-	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let now = Instant::now();
 		let reduced = ui_motion::reduced();
 		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now, reduced));
@@ -70,7 +70,7 @@ impl RenderOnce for QuotaMeter {
 				.as_ref()
 				.is_some_and(|fill| now.saturating_duration_since(fill.started) < FILL_DURATION)
 		{
-			window.request_animation_frame();
+			crate::ui_motion::request_frame(window, cx);
 		}
 
 		let color = if observed.is_some() { quota_color(value) } else { WB_TEXT_FAINT };

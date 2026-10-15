@@ -10,6 +10,7 @@ mod native_quit;
 #[cfg(target_os = "macos")]
 #[path = "../native_reopen.rs"]
 mod native_reopen;
+#[path = "../ui_frame.rs"] mod ui_frame;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
