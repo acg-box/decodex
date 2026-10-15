@@ -624,6 +624,13 @@ impl SettingsSurface {
 					("Off", Preference { blinking: false, ..current }),
 				],
 			),
+			(
+				"Cursor animation",
+				vec![
+					("On", Preference { animated: true, ..current }),
+					("Off", Preference { animated: false, ..current }),
+				],
+			),
 		];
 
 		gpui::div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {

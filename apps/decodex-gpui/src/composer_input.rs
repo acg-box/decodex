@@ -187,6 +187,7 @@ impl ComposerInput {
 		}
 
 		self.content.clear();
+		self.cursor.reset_motion();
 
 		self.native_part = None;
 
@@ -207,6 +208,7 @@ impl ComposerInput {
 		}
 
 		self.native_part = None;
+		self.cursor.reset_motion();
 
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
