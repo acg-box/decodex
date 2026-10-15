@@ -102,6 +102,9 @@ impl Shell {
 
 		gpui::div()
 			.id(if forward { "navigate-forward" } else { "navigate-back" })
+			.debug_selector(move || {
+				if forward { "navigate-forward" } else { "navigate-back" }.into()
+			})
 			.role(Role::Button)
 			.aria_label(label)
 			.when(!enabled, |el| {

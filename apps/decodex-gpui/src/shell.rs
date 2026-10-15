@@ -12,7 +12,6 @@ mod native_status;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
-#[path = "window_drag.rs"] mod window_drag;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
 pub(crate) use status::{
@@ -220,7 +219,8 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
-	titlebar_drag: Option<window_drag::WindowDrag>,
+	#[cfg(test)]
+	titlebar_drag_requests: usize,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -376,7 +376,8 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
-			titlebar_drag: None,
+			#[cfg(test)]
+			titlebar_drag_requests: 0,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -2655,35 +2656,6 @@ fn floating_window_controls(
 	presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	// Arm on the header, then hand off on the first held movement. Listen at
-	// window scope so a quick movement outside the header still starts the drag.
-	let drag = cx.listener(|shell, event: &gpui::MouseMoveEvent, window, cx| {
-		if event.pressed_button == Some(MouseButton::Left)
-			&& let Some(drag) = shell.titlebar_drag.take()
-		{
-			drag.start(window);
-			cx.stop_propagation();
-		}
-	});
-	let release = cx.listener(|shell, _: &gpui::MouseUpEvent, _, _| {
-		shell.titlebar_drag = None;
-	});
-	let pointer_events = gpui::canvas(
-		|_, _, _| (),
-		move |_, (), window, _| {
-			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
-				if phase == gpui::DispatchPhase::Capture {
-					drag(event, window, cx);
-				}
-			});
-			window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, window, cx| {
-				if phase == gpui::DispatchPhase::Capture {
-					release(event, window, cx);
-				}
-			});
-		},
-	);
-
 	gpui::div()
 		.id("floating-window-controls")
 		.debug_selector(|| "window-drag-region".into())
@@ -2702,19 +2674,22 @@ fn floating_window_controls(
 		.window_control_area(WindowControlArea::Drag)
 		.on_mouse_down(
 			MouseButton::Left,
-			cx.listener(|shell, _, _, cx| {
-				shell.titlebar_drag = window_drag::WindowDrag::capture();
+			cx.listener(|_shell, event: &gpui::MouseDownEvent, window, cx| {
+				// AppKit owns the complete gesture from its original press. Button
+				// hitboxes prevent their presses from reaching this background.
 				cx.stop_propagation();
+				if event.click_count == 2 {
+					window.titlebar_double_click();
+				} else {
+					#[cfg(not(test))]
+					window.start_window_move();
+					#[cfg(test)]
+					{
+						_shell.titlebar_drag_requests += 1;
+					}
+				}
 			}),
 		)
-		.on_mouse_down_out(cx.listener(|shell, _, _, _| {
-			shell.titlebar_drag = None;
-		}))
-		.on_click(|event, window, _| {
-			if event.click_count() == 2 {
-				window.titlebar_double_click();
-			}
-		})
 		.child(
 			ui_theme::floating_group()
 				.pl(gpui::px(74.0))
@@ -2723,7 +2698,6 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
-		.child(pointer_events.absolute().size_full())
 		.into_any_element()
 }
 
@@ -2779,6 +2753,7 @@ fn topbar_controls(
 		.child(
 			gpui::div()
 				.id("open-settings")
+				.debug_selector(|| "open-settings".into())
 				.role(Role::Button)
 				.aria_label("Open settings")
 				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings · Command-,")).into())
@@ -7842,30 +7817,39 @@ mod tests {
 		assert_eq!(region.top(), gpui::px(0.));
 		assert_eq!(region.left(), gpui::px(0.));
 		assert_eq!(region.size.height, gpui::px(super::WINDOW_CONTROLS_CLEARANCE));
-		for point in [
-			region.center(),
-			gpui::point(gpui::px(220.), region.center().y),
-			gpui::point(region.right() - gpui::px(160.), region.center().y),
-			gpui::point(region.center().x, gpui::px(3.)),
-			gpui::point(region.center().x, region.bottom() - gpui::px(3.)),
-			gpui::point(gpui::px(3.), region.center().y),
-			gpui::point(region.right() - gpui::px(3.), region.center().y),
-		] {
-			assert!(region.contains(&point), "{point:?}");
-			visual.simulate_mouse_down(point, gpui::MouseButton::Left, Default::default());
-			assert!(shell.read_with(visual, |s, _| s.titlebar_drag.is_some()), "{point:?}");
-			// Release beyond the header must disarm it as well.
-			visual.simulate_mouse_up(
-				gpui::point(point.x, region.bottom() + gpui::px(60.)),
-				gpui::MouseButton::Left,
-				Default::default(),
-			);
-			assert!(!shell.read_with(visual, |s, _| s.titlebar_drag.is_some()));
+		let buttons = [
+			"agent-panel-control-0",
+			"navigate-back",
+			"navigate-forward",
+			"agent-panel-control-1",
+			"agent-panel-control-2",
+			"status-toggle",
+			"open-settings",
+		]
+		.map(|selector| visual.debug_bounds(selector).unwrap());
+		for y in [1, 9, 22, 35, 43] {
+			for x in (1..f32::from(region.size.width) as usize).step_by(32) {
+				let point = gpui::point(gpui::px(x as f32), gpui::px(y as f32));
+				let before = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
+				visual.simulate_mouse_down(point, gpui::MouseButton::Left, Default::default());
+				assert_eq!(
+					shell.read_with(visual, |s, _| s.titlebar_drag_requests),
+					before + usize::from(!buttons.iter().any(|button| button.contains(&point))),
+					"{point:?}"
+				);
+				// Release outside the controls so the sweep does not activate them.
+				visual.simulate_mouse_up(
+					gpui::point(point.x, region.bottom() + gpui::px(60.)),
+					gpui::MouseButton::Left,
+					Default::default(),
+				);
+			}
 		}
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
+		let drag_requests = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
 		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());
-		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag.is_some()));
+		assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), drag_requests);
 		visual.simulate_mouse_up(sidebar.center(), gpui::MouseButton::Left, Default::default());
 		assert_ne!(
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0),
