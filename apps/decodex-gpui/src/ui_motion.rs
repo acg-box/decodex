@@ -661,31 +661,51 @@ mod tests {
 	}
 }
 
-/// A status indicator, not a fabricated completion percentage.
+/// The title's first grapheme carries state without adding a badge or changing layout.
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
 	pub id: String,
 	pub state: String,
 	pub label: String,
-	pub expanded: bool,
 }
 impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let busy = matches!(
-			self.state.as_str(),
-			"Running" | "Starting" | "running" | "working" | "active"
+		let (color, busy) = match self.state.as_str() {
+			"Running" | "Starting" | "running" | "working" | "active" =>
+				(crate::ui_theme::BLUE, true),
+			"Needs you" | "Needs attention" | "Blocked" => (crate::ui_theme::AMBER, false),
+			"failed" | "systemError" | "Failed" => (crate::ui_theme::ERROR, false),
+			"Completed" | "completed" | "Resolved" => (crate::ui_theme::GREEN, false),
+			_ => (crate::ui_theme::TEXT, false),
+		};
+		let mut channels = [0.; 3];
+		for (index, channel) in channels.iter_mut().enumerate() {
+			*channel = value(
+				gpui::SharedString::from(format!("rail-color-{}-{index}", self.id)),
+				((color >> (16 - index * 8)) & 255) as f32 / 255.,
+				window,
+				cx,
+			);
+		}
+		// No completion percentage exists for a model turn. A quiet change in
+		// the letter's ink indicates activity without implying measured progress.
+		let clock = window.use_keyed_state(
+			gpui::SharedString::from(format!("rail-activity-{}", self.id)),
+			cx,
+			|_, _| Instant::now(),
 		);
-		let attention = matches!(
-			self.state.as_str(),
-			"Needs you" | "Needs attention" | "Blocked" | "failed" | "systemError"
-		);
-
-		let color = if attention {
-			crate::ui_theme::AMBER
-		} else if busy {
-			crate::ui_theme::BLUE
+		let intensity = if busy && window.is_window_active() && !reduced() {
+			request_frame(window, cx);
+			0.82 + 0.18
+				* (clock.read(cx).elapsed().as_secs_f32() * std::f32::consts::TAU / 2.4).cos()
 		} else {
-			crate::ui_theme::TEXT_MUTED
+			1.
+		};
+		let ink = gpui::Rgba {
+			r: channels[0] * intensity,
+			g: channels[1] * intensity,
+			b: channels[2] * intensity,
+			a: 1.,
 		};
 
 		use unicode_segmentation::UnicodeSegmentation as _;
@@ -697,7 +717,7 @@ impl RenderOnce for AgentRailStatus {
 		let run = gpui::TextRun {
 			len: initial.len(),
 			font,
-			color: gpui::rgb(color).into(),
+			color: ink.into(),
 			background_color: None,
 			underline: None,
 			strikethrough: None,
@@ -709,46 +729,6 @@ impl RenderOnce for AgentRailStatus {
 				.width,
 		);
 		let inset = ((crate::ui_theme::CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
-		let ring_opacity =
-			1. - value("rail-label-expansion", if self.expanded { 1. } else { 0. }, window, cx);
-		let clock = window.use_keyed_state("agent-rail-clock", cx, |_, _| Instant::now());
-		let phase = if busy && ring_opacity > 0.01 && !reduced() {
-			request_frame(window, cx);
-			clock.read(cx).elapsed().as_secs_f32() * 2.2
-		} else {
-			0.
-		};
-		let ring = gpui::canvas(
-			|_, _, _| (),
-			move |bounds, _, window, _| {
-				if !busy && !attention {
-					return;
-				}
-				let mut path = gpui::PathBuilder::stroke(gpui::px(2.2));
-				for i in 0..=32 {
-					let angle = phase
-						+ i as f32 / 32. * std::f32::consts::TAU * if busy { 0.64 } else { 0.82 };
-					let p = bounds.center()
-						+ gpui::point(gpui::px(angle.cos() * 10.), gpui::px(angle.sin() * 10.));
-					if i == 0 {
-						path.move_to(p);
-					} else {
-						path.line_to(p);
-					}
-				}
-				if let Ok(path) = path.build() {
-					window.paint_path(
-						path,
-						gpui::rgba((color << 8) | if busy || attention { 230 } else { 55 }),
-					);
-				}
-			},
-		)
-		.size(gpui::px(24.))
-		.absolute()
-		.left(gpui::px(2.))
-		.top(gpui::px(2.))
-		.opacity(ring_opacity);
 		let title_id = gpui::SharedString::from(format!("left-title-{}", self.id));
 		gpui::div()
 			.debug_selector(|| "conversation-name".into())
@@ -761,18 +741,16 @@ impl RenderOnce for AgentRailStatus {
 			.pl(gpui::px(inset))
 			.pr(gpui::px(inset))
 			.text_size(gpui::px(12.5))
-			.child(ring)
 			.child(
 				gpui::div()
+					.id(gpui::SharedString::from(format!("conversation-mark-{}", self.id)))
 					.debug_selector(move || format!("conversation-mark-{}", self.id))
+					.role(gpui::Role::Status)
+					.aria_label(self.state)
 					.w(gpui::px(initial_width))
 					.flex_none()
 					.font_weight(gpui::FontWeight::SEMIBOLD)
-					.text_color(gpui::rgb(if busy || attention {
-						color
-					} else {
-						crate::ui_theme::TEXT
-					}))
+					.text_color(ink)
 					.child(initial),
 			)
 			.child(

@@ -680,7 +680,6 @@ impl AgentSurface {
 					id: id.clone(),
 					state: self.conversation_status(&id),
 					label: label.clone(),
-					expanded: self.workspace.sidebar_visible || self.workspace.sidebar_peek,
 				});
 			if closable {
 				let close = id.clone();
