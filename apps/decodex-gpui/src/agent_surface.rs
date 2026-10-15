@@ -540,8 +540,6 @@ impl AgentSurface {
 					if matches!(history, AgentHistoryResult::Available { .. }) {
 						surface.acknowledge_open_handoff(&id);
 					}
-					cx.notify();
-
 					if surface
 						.history
 						.as_ref()
@@ -1295,6 +1293,7 @@ impl AgentSurface {
 
 		self.timeline.native = Default::default();
 		self.timeline.native.epoch = epoch;
+		self.timeline.native_cache.clear();
 		self.generation += 1;
 		self.refresh_failures = 0;
 		self.task = None;
@@ -1438,6 +1437,7 @@ impl AgentSurface {
 		};
 
 		self.status_before_refresh = Some(self.state.clone());
+		let background = self.state == LoadState::Ready && self.snapshot.is_some();
 		self.state = LoadState::Loading;
 		self.generation += 1;
 
@@ -1491,7 +1491,9 @@ impl AgentSurface {
 			});
 		}));
 
-		cx.notify();
+		if !background {
+			cx.notify();
+		}
 	}
 
 	fn apply_refreshed_snapshot(
@@ -1591,11 +1593,7 @@ impl AgentSurface {
 					}) {
 					self.feedback.clear();
 				}
-				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
-					!= snapshot.runtime_source.as_ref()
-				{
-					self.timeline.native.reset();
-				}
+				self.invalidate_native_timeline(&snapshot);
 				if !self.is_new_conversation()
 					&& !self
 						.selected
@@ -2546,6 +2544,7 @@ impl Default for WorkspaceView {
 #[derive(Default)]
 struct TimelineView {
 	native: Timeline,
+	native_cache: std::collections::BTreeMap<(String, String), Timeline>,
 	marks: std::collections::BTreeMap<HistoryKey, HistoryMark>,
 	marks_work: Option<(String, bool)>,
 	marks_revision: Option<(u64, u64)>,

@@ -164,10 +164,7 @@ impl AgentSurface {
 			return;
 		};
 
-		if self.timeline.native.requested.as_ref() != Some(&(work.clone(), thread.clone())) {
-			self.timeline.native.reset();
-			self.timeline.native.viewport.request_latest();
-		}
+		self.activate_native_timeline(&work, &thread);
 
 		let selected = self.conversation_work();
 		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
@@ -177,6 +174,47 @@ impl AgentSurface {
 		if self.timeline.native.can_retry(std::time::Instant::now()) {
 			self.load_native_timeline(&work, &thread, false, cx);
 		}
+	}
+
+	fn activate_native_timeline(&mut self, work: &str, thread: &str) {
+		let target = (work.to_owned(), thread.to_owned());
+		if self.timeline.native.requested.as_ref() == Some(&target) {
+			return;
+		}
+		self.timeline.native.cancel_read();
+		let epoch = self.timeline.native.epoch;
+		let next = self.timeline.native_cache.remove(&target).unwrap_or_default();
+		let previous = mem::replace(&mut self.timeline.native, next);
+		if let Some(binding) = &previous.binding {
+			self.timeline
+				.native_cache
+				.insert((binding.work.clone(), binding.thread.clone()), previous);
+		}
+		// Only a new conversation starts at the bottom. Reopening retains the
+		// verified page and viewport while the ordinary refresh runs in the background.
+		if self.timeline.native.binding.is_none() {
+			self.timeline.native.viewport.request_latest();
+		}
+		self.timeline.native.epoch = epoch;
+		self.timeline.native.requested = Some(target);
+	}
+
+	pub(super) fn invalidate_native_timeline(
+		&mut self,
+		snapshot: &agent_surface::AgentSnapshotDto,
+	) {
+		if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
+			!= snapshot.runtime_source.as_ref()
+		{
+			self.timeline.native.reset();
+			self.timeline.native_cache.clear();
+		}
+		self.timeline.native_cache.retain(|(id, thread), _| {
+			snapshot
+				.work_items
+				.iter()
+				.any(|work| &work.id == id && work.codex_thread_id.as_ref() == Some(thread))
+		});
 	}
 
 	pub(super) fn native_history_active(&self, work: &AgentWorkItemDto) -> bool {
@@ -1105,8 +1143,9 @@ mod tests {
 	use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::native_timeline::{
-		AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentTimelineEntry,
-		AgentTimelinePage, Binding, EntityId, Pagination, Timeline, wire_test_support,
+		AgentHistoryResult, AgentSnapshotResult, AgentSurface, AgentTimelineContent,
+		AgentTimelineEntry, AgentTimelinePage, Binding, EntityId, Pagination, Timeline,
+		wire_test_support,
 	};
 
 	#[gpui::test]
@@ -1563,6 +1602,59 @@ mod tests {
 
 	fn binding() -> Binding {
 		Binding { work: "work".into(), thread: "thread".into(), account: "account".into() }
+	}
+
+	#[gpui::test]
+	fn returning_to_an_open_conversation_keeps_verified_native_history(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			for work in &mut s.snapshot.as_mut().unwrap().work_items {
+				work.codex_thread_id = Some(format!("thread-{}", work.id));
+			}
+			s.activate_native_timeline("agent", "thread-agent");
+			let mut first = page(vec![boundary(1, true)], Some("older"), None);
+			first.thread_id = "thread-agent".into();
+			assert!(s.timeline.native.replace(
+				Binding {
+					work: "agent".into(),
+					thread: "thread-agent".into(),
+					account: "account".into(),
+				},
+				first,
+			));
+			let revision = s.timeline.native.revision;
+			let epoch = s.timeline.native.epoch;
+			s.timeline.native.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+			s.open_page("release", cx);
+			assert!(s.timeline.native.binding.is_none());
+			assert!(
+				s.timeline.native_cache[&("agent".into(), "thread-agent".into())].task.is_none()
+			);
+			s.open_page("agent", cx);
+			assert_eq!(s.timeline.native.entries, vec![boundary(1, true)]);
+			assert_eq!(s.timeline.native.older_cursor.as_deref(), Some("older"));
+			assert_eq!(s.timeline.native.revision, revision);
+			assert!(s.timeline.native.epoch > epoch);
+			assert!(!s.native_history_loading(&s.conversation_work().unwrap()));
+
+			// Rebinding and changing the runtime cannot reveal another source's cache.
+			s.open_page("release", cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			snapshot.work_items[0].codex_thread_id = Some("replacement".into());
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
+			assert!(s.timeline.native_cache.is_empty());
+			s.open_page("agent", cx);
+			assert!(s.timeline.native.entries.is_empty());
+			s.timeline
+				.native_cache
+				.insert(("agent".into(), "replacement".into()), Timeline::default());
+			snapshot.runtime_source = Some(EntityId::new("another-runtime").unwrap());
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+			assert!(s.timeline.native_cache.is_empty());
+		});
 	}
 	fn boundary(position: u64, completed: bool) -> AgentTimelineEntry {
 		AgentTimelineEntry {

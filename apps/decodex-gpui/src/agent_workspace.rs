@@ -397,6 +397,7 @@ impl AgentSurface {
 		{
 			self.open_page(&root, cx);
 		}
+		self.timeline.native_cache.retain(|(work, _), _| work != id);
 
 		cx.notify();
 	}
