@@ -1105,6 +1105,12 @@ impl AgentSurface {
 						let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
 						s.work_board.view.origin =
 							(f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+						if s.workspace.panel_drag.is_some() {
+							// A manual panel resize reveals the same canvas. Re-fitting on
+							// every pixel also reshapes and rasterizes every node's text.
+							s.work_board.view.camera_fixed = true;
+							s.work_board.view.zoom = Some(scale);
+						}
 						if s.work_board.view.viewport != size
 							|| s.work_board.view.node_count != node_count
 						{
@@ -1112,8 +1118,8 @@ impl AgentSurface {
 							s.work_board.view.viewport = size;
 							if !s.work_board.view.camera_fixed {
 								s.fit_relations();
+								cx.notify();
 							}
-							cx.notify();
 						}
 					});
 				},
@@ -1605,6 +1611,40 @@ impl AgentSurface {
 #[cfg(test)]
 mod fit_tests {
 	use super::*;
+	#[gpui::test]
+	fn panel_resize_keeps_the_graph_camera_until_an_explicit_fit(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.work_board.graph = false;
+			s.workspace.graph_visible = true;
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let camera =
+			surface.read_with(visual, |s, _| (s.work_board.view.zoom, s.work_board.view.pan));
+		assert!(camera.0.is_some());
+		for height in [240., 380., 200.] {
+			surface.update(visual, |s, cx| {
+				s.workspace.panel_drag =
+					Some((crate::shell::agent_surface::workspace_size::Panel::Bottom, 0., 0.));
+				s.workspace.graph_panel_height = height;
+				cx.notify();
+			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			surface.read_with(visual, |s, _| {
+				assert_eq!((s.work_board.view.zoom, s.work_board.view.pan), camera);
+			});
+		}
+		surface.update(visual, |s, _| {
+			s.workspace.panel_drag = None;
+			s.fit_relations();
+			assert_ne!((s.work_board.view.zoom, s.work_board.view.pan), camera);
+		});
+	}
+
 	#[gpui::test]
 	fn usage_selection_preserves_camera_and_toggles(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
