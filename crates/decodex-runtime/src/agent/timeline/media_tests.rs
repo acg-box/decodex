@@ -404,6 +404,28 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
 }
 
+#[test]
+fn generated_file_reference_preserves_attachment_without_using_stale_inline_bytes() {
+	for result in [None, Some(""), Some("AQID")] {
+		let mut item = serde_json::json!({
+			"type":"imageGeneration", "fileId":"stored-image-private", "savedPath":null
+		});
+
+		if let Some(result) = result {
+			item["result"] = serde_json::json!(result);
+		}
+
+		let (parts, omitted) = attachments::project(&item);
+
+		assert!(!omitted);
+		assert_eq!(parts.len(), 1);
+		assert_eq!(parts[0].source, decodex_protocol::AgentTimelineAttachmentSource::Stored);
+		assert_eq!(parts[0].label, "Generated image");
+		assert!(!serde_json::to_string(&parts).unwrap().contains("stored-image-private"));
+		assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
+	}
+}
+
 #[tokio::test]
 async fn relative_media_requires_an_absolute_admitted_process_directory() {
 	let directory = tempfile::tempdir().unwrap();
