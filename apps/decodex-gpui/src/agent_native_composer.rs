@@ -19,7 +19,6 @@ use crate::{
 	ui_theme::{
 		BODY_SIZE, FONT_FAMILY, TEXT,
 		native_glass_panel::{self, GlassPanel},
-		window_material::GlassStyle,
 	},
 };
 
@@ -54,6 +53,11 @@ struct ComposerPanel {
 }
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		if let Some(glass) = &mut self.glass {
+			// The composer's keyboard focus owns its material, independently of
+			// the workspace style and application-wide animation cadence.
+			glass.set_style(window.is_window_active());
+		}
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| s.render_composer_capsule(true, window, cx));
 		let parent = self.parent;
@@ -241,12 +245,11 @@ impl AgentSurface {
 			if let Some(child) = child {
 				let _ = child.update(cx, |panel, window, cx| {
 					if let Some(glass) = &mut panel.glass {
-						if enabled && let Some(bounds) = bounds {
-							glass.set_style(GlassStyle::configured() == GlassStyle::Clear);
-
-							if glass.place(bounds) {
-								window.bounds_changed(cx);
-							}
+						if enabled
+							&& let Some(bounds) = bounds
+							&& glass.place(bounds)
+						{
+							window.bounds_changed(cx);
 						}
 
 						glass.set_opacity(opacity);
