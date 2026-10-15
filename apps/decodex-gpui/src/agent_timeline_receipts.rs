@@ -16,10 +16,7 @@ use crate::{
 	},
 	ui_loading,
 };
-use decodex_protocol::{
-	AgentHistoryEntryDto, AgentHistorySourceDto, AgentLiveMessageDto, AgentLiveMessageKind,
-	AgentTimelineEntry,
-};
+use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
 
 impl AgentSurface {
 	fn earlier_local_records(&self, available: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -50,7 +47,7 @@ impl AgentSurface {
 			rows.extend(self.native_input_receipts_panel(work, cx));
 		}
 
-		let Some((_, AgentHistoryResult::Available { entries, live, next_before, .. })) =
+		let Some((_, AgentHistoryResult::Available { entries, next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return gpui::div()
@@ -150,7 +147,6 @@ impl AgentSurface {
 			return gpui::div().flex().flex_col().gap_2().children(rows).into_any_element();
 		}
 
-		rows.extend(self.native_live_receipts(live));
 		let empty = rows.is_empty();
 		gpui::div()
 			.flex()
@@ -226,51 +222,6 @@ impl AgentSurface {
 				cx.notify();
 			}))
 			.into_any_element()
-	}
-
-	fn native_live_receipts(&self, live: &[AgentLiveMessageDto]) -> Vec<AnyElement> {
-		let mut rows = Vec::new();
-
-		for message in live {
-			if self.timeline.native.entries.iter().any(|entry| match &entry.content {
-				AgentTimelineContent::Item { turn_id, item_id, .. } =>
-					turn_id == &message.turn_id && item_id == &message.item_id,
-				AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
-					turn_id == &message.turn_id,
-				_ => false,
-			}) {
-				continue;
-			}
-
-			rows.push(
-				gpui::div()
-					.debug_selector({
-						let selector = match message.kind {
-							AgentLiveMessageKind::ReasoningSummary =>
-								"native-live-reasoning-summary",
-							AgentLiveMessageKind::Plan => "native-live-plan",
-							AgentLiveMessageKind::AgentMessage => "native-live-output",
-						};
-
-						move || selector.into()
-					})
-					.child(agent_surface::muted(match message.kind {
-						AgentLiveMessageKind::ReasoningSummary => "Reasoning summary",
-						AgentLiveMessageKind::AgentMessage => "Assistant · In progress",
-						AgentLiveMessageKind::Plan => "Proposed plan · In progress",
-					}))
-					.child(markdown::render(
-						&message.text,
-						&format!("live-{}-{}", message.turn_id, message.item_id),
-					))
-					.children(message.truncated.then(|| {
-						agent_surface::muted("Partial output shortened; waiting for saved result.")
-					}))
-					.into_any_element(),
-			);
-		}
-
-		rows
 	}
 }
 

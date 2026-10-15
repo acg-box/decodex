@@ -2140,6 +2140,7 @@ impl AgentSurface {
 									.then(|| muted("Reasoning summary")),
 							)
 							.child(StreamingText {
+								already_visible: false,
 								text: message.text.clone(),
 								key: format!(
 									"live-{}-{}-{}",

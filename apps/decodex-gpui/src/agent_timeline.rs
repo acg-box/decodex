@@ -18,7 +18,6 @@ use crate::{
 		self, AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
 		Context, EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
 		SharedString, Styled, StyledImage, Task, WireText, auth_recovery_entry, markdown,
-		text_reveal::StreamingText,
 	},
 	ui_loading, ui_motion,
 };
@@ -368,18 +367,7 @@ impl AgentSurface {
 			panel = self.append_native_history_rows(panel, work, cx);
 			panel = panel.children(self.send_previews(&work.id));
 
-			if let Some(messages) = self.streamed_output(work) {
-				for message in messages.iter().filter(|message| {
-                    work.active_turn_id.as_deref() == Some(&message.turn_id)
-                        && !self.timeline.native.entries.iter().any(|entry| matches!(&entry.content,
-                            AgentTimelineContent::Item{ turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
-                }) {
-                    panel = panel.child(StreamingText {
-                        text: markdown::response_text(&message.text),
-                        key: format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id),
-                    });
-                }
-			}
+			panel = panel.children(self.native_live_rows(work));
 		}
 
 		ui_loading::history(

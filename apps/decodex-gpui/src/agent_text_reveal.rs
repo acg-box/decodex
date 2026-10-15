@@ -12,11 +12,16 @@ use crate::{
 pub(super) struct StreamingText {
 	pub text: String,
 	pub key: String,
+	pub already_visible: bool,
 }
 impl RenderOnce for StreamingText {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(SharedString::from(self.key.clone()), cx, |_, _| {
-			ui_motion::TextReveal::new(Instant::now())
+			if self.already_visible {
+				ui_motion::TextReveal::settled(&self.text, Instant::now())
+			} else {
+				ui_motion::TextReveal::new(Instant::now())
+			}
 		});
 		let (end, moving) = state.update(cx, |state, _| state.sample(&self.text, Instant::now()));
 

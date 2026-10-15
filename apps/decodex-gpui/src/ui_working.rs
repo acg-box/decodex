@@ -1,12 +1,14 @@
-//! A quiet, stationary work signal. Visibility never changes the transcript's height.
+//! A stationary work signal with the original cloud particles. Visibility never changes the
+//! transcript's height.
 use std::{
-	f32::consts::TAU,
+	f32::consts::PI,
 	sync::{Arc, LazyLock},
 	time::Instant,
 };
 
 use gpui::{
-	App, Image, ImageFormat, IntoElement, RenderOnce, Role, SharedString, Window, prelude::*,
+	App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels, RenderOnce,
+	Role, SharedString, Window, prelude::*,
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
@@ -32,6 +34,7 @@ impl RenderOnce for Working {
 		let active = self.turn.is_some();
 		let (opacity, moving, elapsed) = state.update(cx, |s, _| s.sample(active, now));
 		let reduced = ui_motion::reduced();
+		let time = elapsed;
 		if moving || (active && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
@@ -59,11 +62,72 @@ impl RenderOnce for Working {
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
 						.text_color(gpui::rgb(TEXT_MUTED))
-						.child(gpui::img(CLOUD.clone()).size(gpui::px(24.)).opacity(if reduced {
-							0.9
-						} else {
-							0.84 + 0.10 * (elapsed * TAU / 2.6).cos()
-						}))
+						.child(
+							gpui::div()
+								.relative()
+								.w(gpui::px(32.))
+								.h(gpui::px(24.))
+								.flex_none()
+								.child(
+									gpui::img(CLOUD.clone())
+										.absolute()
+										.top_0()
+										.left_0()
+										.size(gpui::px(24.))
+										.opacity(0.9),
+								)
+								.child(
+									gpui::canvas(
+										|_, _, _| (),
+										move |bounds, _, window, _| {
+											for index in 0..10 {
+												let (x, y, edge, alpha) = particle(
+													if reduced { 1.4 } else { time },
+													index,
+												);
+
+												let b = Bounds::new(
+													bounds.origin
+														+ gpui::point(gpui::px(x), gpui::px(y)),
+													gpui::size(gpui::px(edge), gpui::px(edge)),
+												);
+
+												paint_particle(
+													window,
+													b,
+													gpui::linear_gradient(
+														155.,
+														gpui::linear_color_stop(
+															gpui::rgba(0xe8f3f8ff).opacity(alpha),
+															0.,
+														),
+														gpui::linear_color_stop(
+															gpui::rgba(0x9ec8d9ff)
+																.opacity(alpha * 0.7),
+															1.,
+														),
+													),
+												);
+
+												let rim = Bounds::new(
+													b.origin,
+													gpui::size(b.size.width, gpui::px(0.35)),
+												);
+
+												paint_particle(
+													window,
+													rim,
+													gpui::rgba(0xf1fcffff)
+														.opacity(alpha * 0.55)
+														.into(),
+												);
+											}
+										},
+									)
+									.absolute()
+									.size_full(),
+								),
+						)
 						.child("Working"),
 				)
 			})
@@ -91,6 +155,43 @@ impl Motion {
 			self.opacity.moving(now),
 			now.duration_since(self.started).as_secs_f32(),
 		)
+	}
+}
+
+fn smooth(value: f32) -> f32 {
+	let t = value.clamp(0., 1.);
+
+	t * t * (3. - 2. * t)
+}
+
+// Staggered births hide recycling at zero alpha. Every particle only travels outwards.
+fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
+	let p = (time / 2.8 + index as f32 / 10.).rem_euclid(1.);
+	let lane = (index % 4) as f32;
+	let seed = ((index * 7) % 11) as f32 / 10.;
+	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
+	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.) + (p * PI).sin() * 0.7 * (seed - 0.5);
+	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
+
+	(x, y, 1.5, alpha)
+}
+
+// paint_quad snaps to device pixels. Paths retain subpixel travel and antialiased edges.
+fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background) {
+	let mut path = PathBuilder::fill();
+
+	path.add_polygon(
+		&[
+			bounds.origin,
+			bounds.origin + gpui::point(bounds.size.width, gpui::px(0.)),
+			bounds.origin + gpui::point(bounds.size.width, bounds.size.height),
+			bounds.origin + gpui::point(gpui::px(0.), bounds.size.height),
+		],
+		true,
+	);
+
+	if let Ok(path) = path.build() {
+		window.paint_path(path, color);
 	}
 }
 

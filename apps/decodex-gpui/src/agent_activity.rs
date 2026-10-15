@@ -548,19 +548,14 @@ impl AgentSurface {
 	}
 
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
-		self.clear_voice_reading_space();
-		self.timeline.latest_follow_work = self.selected.clone();
-		self.timeline.selected = None;
-		self.timeline.navigation = None;
+		self.timeline.latest_follow_work = None;
 		self.timeline.older_scroll_anchor = None;
-
 		if let Some(work) = &self.selected {
-			self.timeline.follow_paused.remove(work);
 			self.timeline.scroll.entry(work.clone()).or_default();
 		}
-
-		self.set_voice_follow(true);
-		cx.notify();
+		// Sending is a short navigation transition. Once it settles, streaming
+		// follows the current layout exactly instead of easing after every token.
+		self.jump_to_latest(cx);
 	}
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
@@ -1990,7 +1985,7 @@ phase: None,
 			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
 				entries[1].text = "A line of streamed output.\n\n".repeat(40);
 			}
-			s.follow_latest_after_send(cx);
+			s.timeline.latest_follow_work = Some("agent".into());
 		});
 		for _ in 0..8 {
 			visual.update(|window, cx| window.draw(cx).clear(cx));
@@ -2090,12 +2085,13 @@ phase: None,
 			s.follow_latest_after_send(cx);
 
 			assert!(s.timeline.selected.is_none());
-			assert!(s.timeline.navigation.is_none());
-			assert!(!s.timeline.follow_paused.contains("agent"));
+			assert!(s.timeline.navigation.as_ref().is_some_and(|motion| motion.id.is_none()));
+			assert!(s.timeline.latest_follow_work.is_none());
+			assert!(s.timeline.follow_paused.contains("agent"));
 		});
 
-		// Let time-based panel transitions settle before checking the final scroll extent.
-		thread::sleep(std::time::Duration::from_millis(240));
+		// Let the sending transition settle before checking continuous bottom-follow.
+		thread::sleep(std::time::Duration::from_millis(300));
 
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear(cx));

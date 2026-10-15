@@ -97,6 +97,18 @@ mod tests {
 		assert!(!reveal.sample(&text, now + Duration::from_secs(2)).1);
 	}
 	#[test]
+	fn promoted_output_keeps_its_prefix_and_animates_only_new_text() {
+		let now = Instant::now();
+		let prefix = "An existing paragraph.\n\n";
+		let mut reveal = TextReveal::settled(prefix, now);
+		assert_eq!(reveal.sample(prefix, now), (prefix.len(), false));
+		let text = format!("{prefix}{}", "New text. ".repeat(12));
+		let (first, moving) = reveal.sample(&text, now);
+		assert!(moving && first >= prefix.len() && first < text.len());
+		assert_eq!(reveal.sample(&text, now + Duration::from_millis(120)), (text.len(), false));
+	}
+
+	#[test]
 	fn corrections_do_not_replay_or_slice_invalid_text() {
 		let now = Instant::now();
 		let mut reveal = TextReveal::new(now);

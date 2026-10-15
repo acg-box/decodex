@@ -137,6 +137,69 @@ mod tests {
 	};
 
 	#[gpui::test]
+	fn live_output_has_one_row_until_its_exact_saved_item_arrives(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{AgentHistoryResult, AgentTimelineContent, AgentTimelineEntry};
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut work = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|w| w.id == "agent")
+				.unwrap()
+				.clone();
+			work.active_turn_id = Some("current".into());
+			let message = AgentLiveMessageDto {
+				kind: Default::default(),
+				turn_id: "current".into(),
+				item_id: "answer".into(),
+				text: "A single live answer.".into(),
+				truncated: false,
+			};
+			if let Some((_, AgentHistoryResult::Available { live, .. })) = &mut s.history {
+				live.push(message.clone());
+			}
+			s.output_stream = OutputStream {
+				owner: Some(work.id.clone()),
+				ready: true,
+				messages: vec![message],
+				..Default::default()
+			};
+			assert_eq!(
+				s.native_live_rows(&work).len(),
+				1,
+				"history and the output stream share one live row"
+			);
+			let saved = |turn: &str, item: &str| AgentTimelineEntry {
+				position: 0,
+				content: AgentTimelineContent::Item {
+					turn_id: turn.into(),
+					item_id: item.into(),
+					kind: "agentMessage".into(),
+					text: "A single live answer.".into(),
+					truncated: false,
+					phase: None,
+					app_ui: false,
+					activity: None,
+					attachments: vec![],
+					collaboration: None,
+				},
+			};
+			s.timeline.native.entries.push(saved("older", "answer"));
+			s.timeline.native.entries.push(saved("current", "commentary"));
+			assert_eq!(s.native_live_rows(&work).len(), 1, "other items do not hide this answer");
+			s.timeline.native.entries.push(saved("current", "answer"));
+			assert!(
+				s.native_live_rows(&work).is_empty(),
+				"saved item takes over without a second copy"
+			);
+		});
+	}
+
+	#[gpui::test]
 	fn output_is_visible_only_for_its_owner_and_current_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 

@@ -19,9 +19,76 @@ use crate::{
 	ui_loading,
 	ui_theme::{HOVER_FILL, TEXT_MUTED, USER_MESSAGE_ACTION_SIZE},
 };
-use decodex_protocol::{AgentLiveMessageDto, AgentTimelineAttachment};
+use decodex_protocol::{AgentLiveMessageDto, AgentLiveMessageKind, AgentTimelineAttachment};
 
 impl AgentSurface {
+	pub(in super::super) fn native_live_rows(&self, work: &AgentWorkItemDto) -> Vec<AnyElement> {
+		let saved_live = self
+			.history
+			.as_ref()
+			.filter(|(owner, _)| owner == &work.id)
+			.and_then(|(_, history)| match history {
+				AgentHistoryResult::Available { live, .. } => Some(live.as_slice()),
+				_ => None,
+			})
+			.unwrap_or_default();
+		let live = self.streamed_output(work).unwrap_or(saved_live);
+		let mut rows = Vec::new();
+
+		for message in live {
+			if self.timeline.native.entries.iter().any(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, item_id, .. } =>
+					turn_id == &message.turn_id && item_id == &message.item_id,
+				AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =>
+					turn_id == &message.turn_id,
+				_ => false,
+			}) {
+				continue;
+			}
+
+			let key = format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id);
+			let streamed = StreamingText {
+				text: markdown::response_text(&message.text),
+				key: key.clone(),
+				already_visible: false,
+			}
+			.into_any_element();
+			let body = if message.kind == AgentLiveMessageKind::AgentMessage {
+				let entry = self.native_message_entry(
+					work,
+					&message.turn_id,
+					&message.text,
+					"agentMessage",
+				);
+				agent_surface::history_entry_presented(&entry, &key, None, Some(streamed), true)
+			} else {
+				gpui::div()
+					.child(agent_surface::muted(if message.kind == AgentLiveMessageKind::Plan {
+						"Proposed plan · In progress"
+					} else {
+						"Reasoning summary"
+					}))
+					.child(streamed)
+			};
+			rows.push(
+				body.debug_selector({
+					let selector = match message.kind {
+						AgentLiveMessageKind::ReasoningSummary => "native-live-reasoning-summary",
+						AgentLiveMessageKind::Plan => "native-live-plan",
+						AgentLiveMessageKind::AgentMessage => "native-live-output",
+					};
+					move || selector.into()
+				})
+				.children(message.truncated.then(|| {
+					agent_surface::muted("Partial output shortened; waiting for saved result.")
+				}))
+				.into_any_element(),
+			);
+		}
+
+		rows
+	}
+
 	pub(super) fn native_summary_row(
 		&self,
 		work: &AgentWorkItemDto,
@@ -389,14 +456,20 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			}
 
 			body = if draft.is_some() {
-				body.child(StreamingText {
-					text: markdown::response_text(text),
-					key: identity.into(),
-				})
-				.child(markdown::response_copy_button(
-					&format!("copy-response-{identity}"),
-					"Copy response",
-					text.to_owned(),
+				body.child(agent_surface::history_entry_presented(
+					&message,
+					identity,
+					None,
+					Some(
+						StreamingText {
+							text: markdown::response_text(text),
+							key: identity.into(),
+							// Keep the visible prefix when the persisted row takes over.
+							already_visible: true,
+						}
+						.into_any_element(),
+					),
+					true,
 				))
 			} else {
 				let last_reply = self.timeline.native.entries.iter().rev().find_map(|entry| {
@@ -921,6 +994,91 @@ mod tests {
 			assert_eq!(reply.id, 0);
 			assert_eq!(reply.text, "Echo");
 		});
+	}
+
+	#[gpui::test]
+	fn live_answer_keeps_its_bounds_when_saved_and_completed(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{AgentHistoryResult, AgentLiveMessageDto, AgentLiveMessageKind};
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+		let text = "One received paragraph.\n\nAnother received paragraph.";
+		let entry = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.timeline.native.replace(
+				Binding {
+					work: work.id.clone(),
+					thread: "native-thread".into(),
+					account: "account".into(),
+				},
+				AgentTimelinePage {
+					thread_id: "native-thread".into(),
+					entries: vec![],
+					next_cursor: None,
+					weather: Default::default(),
+					safety_buffering_turn_id: None,
+					active_realtime_session_at_page_start: None,
+				},
+			);
+			let (_, AgentHistoryResult::Available { entries, live, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			entries.clear();
+			*live = vec![AgentLiveMessageDto {
+				kind: AgentLiveMessageKind::AgentMessage,
+				turn_id: "turn".into(),
+				item_id: "message".into(),
+				text: text.into(),
+				truncated: false,
+			}];
+			let mut entry = rendered_entries()[1].clone();
+			if let AgentTimelineContent::Item { text: saved, truncated, .. } = &mut entry.content {
+				*saved = text.into();
+				*truncated = false;
+			}
+			cx.notify();
+			entry
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		std::thread::sleep(std::time::Duration::from_millis(160));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let live = visual.debug_bounds("native-live-output").unwrap();
+		surface.update(visual, |s, cx| {
+			s.timeline.native.entries.push(entry);
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("native-live-output").is_none());
+		assert_eq!(
+			visual.debug_bounds("native-promotion-content").unwrap(),
+			live,
+			"saving must not replay text or change the response footprint"
+		);
+		surface.update(visual, |s, cx| {
+			let (_, AgentHistoryResult::Available { live, .. }) = s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			live.clear();
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		assert_eq!(
+			visual.debug_bounds("native-promotion-content").unwrap(),
+			live,
+			"the response footer must not change height on completion"
+		);
 	}
 
 	#[gpui::test]
