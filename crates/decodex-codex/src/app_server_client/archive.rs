@@ -24,7 +24,8 @@ pub enum ThreadArchiveState {
 
 impl AppServerClient {
 	/// Observe only the requested bindings, stopping when every identity is found.
-	/// Positive observations survive a later page failure or deadline. An absent
+	/// Positive observations survive a later page failure or deadline. Each page
+	/// has a deadline so a progressing large catalog can finish. An absent
 	/// identity has no observation after an incomplete scan and must keep its
 	/// previous visibility. Only two complete lists establish NotFound.
 	pub async fn observe_thread_archives(
@@ -61,7 +62,7 @@ impl AppServerClient {
 			}
 			Ok::<_, ClientError>(())
 		};
-		if matches!(time::timeout(Duration::from_secs(8), scan).await, Ok(Ok(()))) {
+		if scan.await.is_ok() {
 			for id in pending {
 				observed.insert(id, ThreadArchiveState::NotFound);
 			}
@@ -150,7 +151,9 @@ impl AppServerClient {
 			if let Some(cwd) = cwd {
 				params["cwd"] = serde_json::json!(cwd);
 			}
-			let page = self.request("thread/list", params).await?;
+			let page = time::timeout(Duration::from_secs(8), self.request("thread/list", params))
+				.await
+				.map_err(|_| ClientError::Io)??;
 			let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 			if data.len() > 100 {
 				return Err(ClientError::InvalidFrame);
@@ -287,21 +290,27 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn complete_archive_lists_confirm_absent_bindings() {
+	async fn progressing_archive_lists_confirm_absent_bindings_after_eight_seconds() {
 		let (local, remote) = io::duplex(65_536);
 		let (r, w) = io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let server = tokio::spawn(async move {
 			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
-			for (archived, ids) in [(false, vec!["active"]), (true, vec!["archived"])] {
+			for (archived, ids, next) in [
+				(false, vec!["active"], Value::Null),
+				(true, vec!["archived"], serde_json::json!("last")),
+				(true, vec![], Value::Null),
+			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 				assert_eq!(request["params"]["archived"], archived);
+				// Every page progresses within its deadline, but the catalog takes nine seconds.
+				tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 				w.write_all(
 					format!(
 						"{}\n",
-						serde_json::json!({"id":request["id"],"result":page(&ids, Value::Null)})
+						serde_json::json!({"id":request["id"],"result":page(&ids, next)})
 					)
 					.as_bytes(),
 				)
