@@ -1714,6 +1714,69 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
+	fn workspace_layout_does_not_reserve_rows_for_another_workspace(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			let template = s.snapshot.as_ref().unwrap().work_items[0].clone();
+			let work = |id: &str, parent: Option<&str>| {
+				let mut item = template.clone();
+				item.id = id.into();
+				item.parent_goal_id = parent.map(str::to_owned);
+				item.codex_thread_id = None;
+				item
+			};
+			let mut previous = None;
+			for count in [2, 7] {
+				let snapshot = s.snapshot.as_mut().unwrap();
+				snapshot.work_items = vec![
+					work("root", None),
+					work("a-reading", Some("root")),
+					work("b-project", Some("root")),
+					work("c-reading", Some("root")),
+				];
+				let mut project = vec!["b-project".into()];
+				for i in 0..count {
+					let id = format!("project-child-{i}");
+					snapshot.work_items.push(work(&id, Some("b-project")));
+					project.push(id);
+				}
+				snapshot.workspaces = vec![
+					decodex_protocol::WorkspaceDto {
+						id: "reading".into(),
+						name: "Reading".into(),
+						directory: "/tmp/reading".into(),
+						work_ids: vec!["a-reading".into(), "c-reading".into()],
+					},
+					decodex_protocol::WorkspaceDto {
+						id: "project".into(),
+						name: "Project".into(),
+						directory: "/tmp/project".into(),
+						work_ids: project,
+					},
+				];
+				let graph = s.relation_graph();
+				let node = |key: &str| graph.nodes.iter().find(|n| n.key == key).unwrap();
+				let first = node("a-reading");
+				let last = node("c-reading");
+				assert_eq!(last.y - first.y, 96., "another workspace must not leave empty rows");
+				assert_eq!(last.x, first.x);
+				let relative = (last.x - first.x, last.y - first.y);
+				if let Some(previous) = previous {
+					assert_eq!(relative, previous);
+				}
+				previous = Some(relative);
+				assert_eq!(
+					node("b-project").y,
+					(node("project-child-0").y + node(&format!("project-child-{}", count - 1)).y)
+						/ 2.
+				);
+				assert_eq!(graph.nodes.len(), count + 4);
+				assert_eq!(graph.edges.len(), count + 3);
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn workspace_frames_preserve_global_graph_and_do_not_overlap(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
