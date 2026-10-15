@@ -14,7 +14,9 @@ use crate::{
 	ui_motion::{self, SmoothControl as _},
 	ui_theme,
 };
-use decodex_protocol::{AgentAsyncQuestionDto, DesktopQuestionDraft, HistoryText, WireText};
+use decodex_protocol::{
+	AgentAsyncQuestionDto, DesktopQuestionDraft, HistoryText, IdempotencyKey, WireText,
+};
 
 #[derive(Clone, PartialEq, Eq)]
 struct QuestionTarget {
@@ -27,6 +29,11 @@ pub(super) struct Editor {
 	target: QuestionTarget,
 	profile: Option<agent_surface::ClientProfile>,
 	input: agent_surface::Entity<crate::composer_input::ComposerInput>,
+}
+
+pub(super) struct Submission {
+	target: QuestionTarget,
+	key: IdempotencyKey,
 }
 
 #[derive(Clone)]
@@ -45,16 +52,60 @@ impl AgentSurface {
 		else {
 			return None;
 		};
-		let question = questions.first()?;
 		let work = self.conversation_work()?;
 		if id != &work.id {
 			return None;
 		}
-		Some(QuestionTarget {
-			work: work.id,
-			thread: work.codex_thread_id?,
-			question: question.id.clone(),
+		let thread = work.codex_thread_id?;
+		questions.iter().find_map(|question| {
+			let target = QuestionTarget {
+				work: work.id.clone(),
+				thread: thread.clone(),
+				question: question.id.clone(),
+			};
+			(!self.question_submitted(&target)).then_some(target)
 		})
+	}
+
+	fn question_submitted(&self, target: &QuestionTarget) -> bool {
+		self.async_question_submissions.iter().any(|submission| &submission.target == target)
+	}
+
+	pub(super) fn begin_question_submission(
+		&mut self,
+		action: &AgentActionDto,
+		key: &IdempotencyKey,
+		cx: &Context<Self>,
+	) {
+		let (work, question) = match action {
+			AgentActionDto::AnswerQuestion { work_id, question_id, .. }
+			| AgentActionDto::SkipQuestion { work_id, question_id, .. } => (work_id, question_id),
+			_ => return,
+		};
+		let Some(thread) = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|w| w.id == work.as_str()))
+			.and_then(|w| w.codex_thread_id.clone())
+		else {
+			return;
+		};
+		let target = QuestionTarget {
+			work: work.as_str().into(),
+			thread,
+			question: question.as_str().into(),
+		};
+		if let Some(editor) = self.async_question_editor.as_ref().filter(|e| e.target == target) {
+			let answer = editor.input.read(cx).content().to_owned();
+			self.store_question_answer(&target, &answer);
+		}
+		// Close on submission, before transport and history refresh can race the
+		// next streamed response. Keep the answer draft until history confirms it.
+		self.async_question_submissions.push(Submission { target, key: key.clone() });
+	}
+
+	pub(super) fn restore_question_submission(&mut self, key: Option<&IdempotencyKey>) {
+		self.async_question_submissions.retain(|submission| Some(&submission.key) != key);
 	}
 
 	pub(super) fn async_question_composer(
@@ -184,6 +235,12 @@ impl AgentSurface {
 		else {
 			return;
 		};
+		self.async_question_submissions.retain(|submission| {
+			submission.target.work != work
+				|| (owner.codex_thread_id.as_deref() == Some(submission.target.thread.as_str())
+					&& (*questions_truncated
+						|| questions.iter().any(|q| q.id == submission.target.question)))
+		});
 		// Old custom answers remain recoverable until their native question is resolved.
 		self.restored_question_drafts.retain(|saved| {
 			saved.work_id.as_str() != work
@@ -194,7 +251,9 @@ impl AgentSurface {
 	}
 
 	fn pending_async_question(&self, target: &QuestionTarget) -> Option<&AgentAsyncQuestionDto> {
-		if !self.conversation_matches(&target.work, &target.thread) {
+		if self.question_submitted(target)
+			|| !self.conversation_matches(&target.work, &target.thread)
+		{
 			return None;
 		}
 		let (owner, AgentHistoryResult::Available { questions, questions_recovering: false, .. }) =
@@ -395,6 +454,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
+		let target = self.composer_question_target()?;
 		let (
 			id,
 			AgentHistoryResult::Available {
@@ -407,9 +467,10 @@ impl AgentSurface {
 		else {
 			return None;
 		};
-		if id != &work.id || questions.is_empty() {
+		if id != &work.id || target.work != work.id {
 			return None;
 		}
+		let question = questions.iter().find(|q| q.id == target.question)?;
 		let mut panel = gpui::div()
 			.id("composer-question-options")
 			.w_full()
@@ -419,10 +480,8 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_3();
-		for question in questions.iter().take(1) {
-			if let Some(card) = self.async_question_card(work, question, cx) {
-				panel = panel.child(card);
-			}
+		if let Some(card) = self.async_question_card(work, question, cx) {
+			panel = panel.child(card);
 		}
 		if *questions_truncated {
 			panel = panel.child(agent_surface::muted(
@@ -523,7 +582,9 @@ mod tests {
 		AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, Context,
 		PendingCommand,
 	};
-	use decodex_protocol::{DesktopQuestionDraft, EntityId, WireText};
+	use decodex_protocol::{
+		AgentActionDto, DesktopQuestionDraft, EntityId, HistoryText, IdempotencyKey, WireText,
+	};
 	use std::{cell::Cell, rc::Rc};
 
 	fn settle_choices(visual: &mut gpui::VisualTestContext) {
@@ -538,6 +599,107 @@ mod tests {
 
 	fn target() -> QuestionTarget {
 		QuestionTarget { work: "root".into(), thread: "thread".into(), question: "q1".into() }
+	}
+
+	fn answer_command() -> AgentActionDto {
+		AgentActionDto::AnswerQuestion {
+			work_id: EntityId::new("root").unwrap(),
+			question_id: WireText::new("q1").unwrap(),
+			answer: HistoryText::new("Markdown").unwrap(),
+		}
+	}
+
+	fn pending_reply(s: &AgentSurface, key: &IdempotencyKey) -> PendingCommand {
+		PendingCommand {
+			recovery: None,
+			key: Some(key.clone()),
+			steer: None,
+			execution_intent: None,
+			epoch: s.command_epoch,
+			draft: None,
+			owner: Some("root".into()),
+			attachments: None,
+			references: None,
+		}
+	}
+
+	#[gpui::test]
+	fn submitted_question_closes_before_acceptance_and_stale_history(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		let key = IdempotencyKey::new("reply-before-history").unwrap();
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this ordinary draft", cx));
+			cx.notify();
+		});
+		settle_choices(visual);
+		let expanded = visual.debug_bounds("agent-composer").unwrap().size.height;
+		assert!(visual.debug_bounds("async-option-q1-0").is_some());
+		surface.update(visual, |s, cx| {
+			s.begin_question_submission(&answer_command(), &key, cx);
+			s.sending = true;
+			s.sync_question_editor(cx);
+			assert!(s.composer_question_target().is_none());
+			assert_eq!(s.conversation_composer().entity_id(), s.composer.entity_id());
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		assert!(
+			visual.debug_bounds("async-option-q1-0").is_none(),
+			"remove choices before any server response"
+		);
+		settle_choices(visual);
+		assert!(visual.debug_bounds("agent-composer").unwrap().size.height < expanded);
+		surface.update(visual, |s, cx| {
+			s.finish_command(
+				pending_reply(s, &key),
+				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("root").unwrap() }),
+				cx,
+			);
+			let (_, stale) = s.history.clone().unwrap();
+			s.prune_async_question_drafts("root", &stale);
+			assert!(
+				s.composer_question_target().is_none(),
+				"a stale read must not reopen an accepted question"
+			);
+			assert_eq!(s.composer.read(cx).content(), "Keep this ordinary draft");
+			s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =
+				Some("another-thread".into());
+			assert!(s.composer_question_target().is_some(), "submission belongs to one thread");
+			s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id = Some("thread".into());
+			let mut fresh = stale;
+			if let AgentHistoryResult::Available { questions, .. } = &mut fresh {
+				questions.clear();
+			}
+			s.prune_async_question_drafts("root", &fresh);
+			assert!(s.async_question_submissions.is_empty());
+		});
+	}
+
+	#[gpui::test]
+	fn failed_question_submission_restores_answer_without_replacing_ordinary_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			s.composer.update(cx, |input, cx| input.set_content("Ordinary draft", cx));
+			s.sync_question_editor(cx);
+			s.conversation_composer()
+				.clone()
+				.update(cx, |input, cx| input.set_content("My custom answer", cx));
+			let key = IdempotencyKey::new("failed-question").unwrap();
+			s.begin_question_submission(&answer_command(), &key, cx);
+			s.sync_question_editor(cx);
+			assert!(s.composer_question_target().is_none());
+			s.finish_command(pending_reply(s, &key), Err("Nothing was sent".into()), cx);
+			s.sync_question_editor(cx);
+			assert_eq!(s.conversation_composer().read(cx).content(), "My custom answer");
+			assert_eq!(s.composer.read(cx).content(), "Ordinary draft");
+			assert!(s.pending_async_question(&target()).is_some());
+		});
 	}
 
 	#[gpui::test]
@@ -566,6 +728,10 @@ mod tests {
 				"one click reaches submission"
 			);
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+			assert!(
+				s.composer_question_target().is_some(),
+				"a rejected preflight must keep the question open"
+			);
 			s.feedback.clear();
 		});
 		visual.simulate_event(gpui::KeyDownEvent {

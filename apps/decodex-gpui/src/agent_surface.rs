@@ -249,6 +249,7 @@ pub(crate) struct AgentSurface {
 	question_timers: std::collections::BTreeMap<i64, QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	async_question_editor: Option<async_questions::Editor>,
+	async_question_submissions: Vec<async_questions::Submission>,
 	question_notices: QuestionNotices,
 	restored_question_drafts: Vec<DesktopQuestionDraft>,
 	accounts: Vec<(String, String)>,
@@ -426,6 +427,7 @@ impl AgentSurface {
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
 			async_question_editor: None,
+			async_question_submissions: Vec::new(),
 			question_notices: Default::default(),
 			restored_question_drafts: Vec::new(),
 			profile: None,
@@ -1078,6 +1080,7 @@ impl AgentSurface {
 		}
 
 		self.submission.unconfirmed.push(key.clone());
+		self.begin_question_submission(&action, &key, cx);
 
 		self.submission.waiting = Some(QueuedCommand { profile, action, key, pending });
 
@@ -1133,6 +1136,13 @@ impl AgentSurface {
 		}
 
 		self.sending = false;
+		if !matches!(
+			&result,
+			Ok(AgentCommandResponse::Accepted { .. }
+				| AgentCommandResponse::PotentiallyDispatched { .. })
+		) {
+			self.restore_question_submission(pending.key.as_ref());
+		}
 
 		self.finish_send_preview(
 			&pending,
@@ -1238,6 +1248,7 @@ impl AgentSurface {
 
 	fn cancel_queued_command(&mut self, cx: &Context<Self>) {
 		if let Some(queued) = self.submission.waiting.take() {
+			self.restore_question_submission(Some(&queued.key));
 			self.remove_command_draft_fence(&queued.pending);
 			self.retain_failed_command_draft(&queued.pending, false, cx);
 			self.submission.unconfirmed.retain(|key| key != &queued.key);
@@ -1299,6 +1310,7 @@ impl AgentSurface {
 		}
 
 		self.question_notices = Default::default();
+		self.async_question_submissions.clear();
 
 		self.bind_drafts(profile.as_ref(), cx);
 
