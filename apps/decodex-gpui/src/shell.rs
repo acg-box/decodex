@@ -12,6 +12,9 @@ mod native_status;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
+#[cfg(not(test))]
+#[path = "window_drag.rs"]
+mod window_drag;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
 pub(crate) use status::{
@@ -2682,7 +2685,7 @@ fn floating_window_controls(
 					window.titlebar_double_click();
 				} else {
 					#[cfg(not(test))]
-					window.start_window_move();
+					window_drag::start(window);
 					#[cfg(test)]
 					{
 						_shell.titlebar_drag_requests += 1;
