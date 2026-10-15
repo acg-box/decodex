@@ -184,6 +184,14 @@ mod tests {
 		assert!(pending.connection_initializing, "do not reveal an unfiltered first snapshot");
 		ArchiveVisibility::refresh(&cache, "process", client, threads).await;
 		assert!(outgoing.try_recv().is_err(), "one refresh per interval");
+		assert_eq!(request["method"], "thread/read");
+		incoming
+			.send(Ok(serde_json::json!({
+				"id":request["id"],"result":{"thread":{"id":"archived","cwd":"/workspace"}}
+			})))
+			.await
+			.unwrap();
+		let request = outgoing.recv().await.unwrap();
 		incoming
 			.send(Ok(serde_json::json!({
 				"id":request["id"],"result":{"data":[],"nextCursor":null}
