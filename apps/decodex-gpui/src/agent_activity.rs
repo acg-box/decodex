@@ -687,16 +687,17 @@ impl AgentSurface {
 	) -> AnyElement {
 		// Reserve a stable gutter while histories load or agents change.
 		gpui::div()
+			.relative()
 			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
-			.pb(gpui::px(ui_motion::value(
-				"history-rail-bottom",
-				self.workspace.composer_overlay_height,
-				window,
-				cx,
-			)))
 			.flex_none()
 			.overflow_hidden()
-			.child(self.history_rail(window, cx))
+			.child(
+				gpui::div()
+					.absolute()
+					.inset_0()
+					.bottom(gpui::px(self.workspace.composer_overlay_height))
+					.child(self.history_rail(window, cx)),
+			)
 			.into_any_element()
 	}
 
@@ -754,18 +755,15 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let spacing = ((f32::from(scroll.bounds().size.height)
-			- self.workspace.composer_overlay_height
-			- 32.0)
-			/ positions.len() as f32)
-			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
 			.debug_selector(|| "conversation-history-rail".into())
 			.w(gpui::px(44.0))
 			.flex_none()
 			.h_full()
-			.py_4()
+			// Keep the first tick below the conversation's expand control.
+			.pt(gpui::px(36.))
+			.pb_4()
 			.flex()
 			.flex_col()
 			.justify_center()
@@ -793,8 +791,11 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label(format!("Jump to: {}", mark.question))
 					.w_full()
-					.flex_none()
-					.h(gpui::px(spacing))
+					// Size the hit target and its tick together in the current layout.
+					// Reading the previous scroll bounds lags behind a Dock resize.
+					.flex_1()
+					.min_h_0()
+					.max_h(gpui::px(11.))
 					.cursor_pointer()
 					.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
 						if *hovered {
@@ -1468,6 +1469,68 @@ phase: None,
 				activity::current_mark(&positions, -activity::navigation_offset(*position, 3_000.)),
 				index
 			);
+		}
+	}
+
+	#[gpui::test]
+	fn dock_resize_keeps_rail_targets_and_history_geometry_in_sync(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history");
+			};
+			*entries = (0..36)
+				.map(|id| {
+					let mut entry = entries[0].clone();
+					entry.id = id;
+					entry.text =
+						format!("Reading note {id}: keep this message at its original size.");
+					entry
+				})
+				.collect();
+			s.workspace.panel_drag = Some((super::super::workspace_size::Panel::Bottom, 0., 0.));
+			s.workspace.graph_visible = true;
+			s.workspace.graph_panel_height = 120.;
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		thread::sleep(std::time::Duration::from_millis(400));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let positions = surface.read_with(visual, |s, _| {
+			s.timeline.marks.values().map(|mark| mark.position.get()).collect::<Vec<_>>()
+		});
+		for height in [560., 240., 480., 120.] {
+			surface.update(visual, |s, cx| {
+				s.workspace.panel_drag =
+					Some((super::super::workspace_size::Panel::Bottom, 0., 0.));
+				s.workspace.graph_panel_height = height;
+				cx.notify();
+			});
+			// Check the first frame at the new size, before any follow-up notification.
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			let rail = visual.debug_bounds("conversation-history-rail").unwrap();
+			let targets = surface.read_with(visual, |s, _| {
+				s.timeline
+					.marks
+					.iter()
+					.enumerate()
+					.map(|(index, (id, mark))| {
+						assert!((mark.position.get() - positions[index]).abs() < 0.5);
+						let bounds = mark.hit_bounds.get().unwrap();
+						assert!(bounds.origin.y >= rail.origin.y + gpui::px(35.5));
+						assert!(bounds.bottom() <= rail.bottom() - gpui::px(15.5));
+						assert!(bounds.size.height > gpui::px(0.));
+						(id.clone(), bounds)
+					})
+					.collect::<Vec<_>>()
+			});
+			for (id, bounds) in targets.iter().step_by(7) {
+				visual.simulate_click(bounds.center(), Default::default());
+				surface
+					.read_with(visual, |s, _| assert_eq!(s.timeline.selected.as_ref(), Some(id)));
+			}
 		}
 	}
 

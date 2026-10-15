@@ -1050,7 +1050,10 @@ impl AgentSurface {
 				"transcript-{}",
 				self.selected.as_deref().unwrap_or("agent")
 			)))
-			.flex_1()
+			// The viewport owns its size; history must not participate in the
+			// surrounding flex containers' intrinsic-size measurements.
+			.absolute()
+			.inset_0()
 			.min_w_0()
 			.min_h_0()
 			.overflow_hidden()
