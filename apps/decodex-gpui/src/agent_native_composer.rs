@@ -120,6 +120,9 @@ impl AgentSurface {
 		};
 		cx.defer(move |cx| {
 			let _ = child.update(cx, |panel, window, cx| {
+				// This is an explicit focus action. Making a child key alone does
+				// not activate a hidden or background application on macOS.
+				cx.activate(true);
 				let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
 				window.focus(&focus, cx);
 				if let Some(glass) = &panel.glass {
