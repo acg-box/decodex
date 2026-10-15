@@ -114,7 +114,7 @@ impl AgentSurface {
 								.gap(gpui::px(2.))
 								.child(
 									gpui::div()
-										.text_size(gpui::px(12.))
+										.text_size(gpui::px(ui_theme::BODY_SIZE))
 										.whitespace_nowrap()
 										.text_ellipsis()
 										.child(full.clone()),
@@ -232,7 +232,7 @@ pub(super) fn effort_indicator(level: &str) -> AnyElement {
 		.flex()
 		.items_center()
 		.gap(gpui::px(7.))
-		.child(gpui::div().text_size(gpui::px(11.)).child(level_label(level)))
+		.child(gpui::div().child(level_label(level)))
 		.into_any_element()
 }
 

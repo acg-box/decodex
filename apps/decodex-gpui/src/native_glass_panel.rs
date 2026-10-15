@@ -176,6 +176,10 @@ impl GlassPanel {
 		self.native.makeFirstResponder(Some(&self.foreground));
 	}
 
+	pub(crate) fn set_title(&self, title: &str) {
+		self.native.setTitle(&NSString::from_str(title));
+	}
+
 	pub(crate) fn set_opacity(&self, opacity: f32) {
 		unsafe {
 			let _: () = objc2::msg_send![&*self.native, setAlphaValue: f64::from(opacity)];

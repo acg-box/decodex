@@ -36,6 +36,9 @@
 #[path = "agent_native_composer.rs"]
 mod native_composer;
 #[path = "agent_native_goal.rs"] mod native_goal;
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "agent_native_model_menu.rs"]
+mod native_model_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -136,6 +139,8 @@ enum LoadState {
 pub(crate) struct AgentSurface {
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_composer: native_composer::NativeComposer,
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_model_menu: native_model_menu::NativeModelMenu,
 	voice: Option<VoiceUi>,
 	retired_voice_captions: Vec<CaptionHistory>,
 	voice_task: Option<Task<()>>,
@@ -361,6 +366,8 @@ impl AgentSurface {
 			menu_trigger_bounds: Default::default(),
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_composer: Default::default(),
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_model_menu: Default::default(),
 			composer_menu: None,
 			escape_stop: None,
 			interrupting: None,

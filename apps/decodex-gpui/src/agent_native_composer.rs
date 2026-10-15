@@ -79,8 +79,18 @@ impl Render for ComposerPanel {
 				}
 			})
 			.id("native-composer-focus-panel")
-			.capture_any_mouse_down(move |_, _, cx| {
-				focus_owner.update(cx, |s, _| s.workspace.focused_panel = None);
+			.capture_any_mouse_down(move |event, _, cx| {
+				focus_owner.update(cx, |s, cx| {
+					s.workspace.focused_panel = None;
+					if s.composer_menu == Some("model")
+						&& !s
+							.menu_trigger_bounds
+							.get("model")
+							.is_some_and(|b| b.contains(&event.position))
+					{
+						s.dismiss_composer_menu(cx);
+					}
+				});
 			})
 			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
@@ -336,6 +346,19 @@ fn create_panel(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					cx.observe_window_activation(
+						window,
+						|panel: &mut ComposerPanel, window, cx| {
+							if !window.is_window_active() && !ui_motion::application_active() {
+								panel.owner.update(cx, |s, cx| {
+									if s.composer_menu == Some("model") {
+										s.dismiss_composer_menu(cx);
+									}
+								});
+							}
+						},
+					)
+					.detach();
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
 					ComposerPanel { owner, parent, glass: None, _observation: observation }
