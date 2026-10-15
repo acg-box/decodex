@@ -121,8 +121,11 @@ impl Cursor {
 		let shape = Preference::configured().shape;
 		let (offset, size) = match shape {
 			Shape::Bar => (
-				gpui::point(gpui::px(0.), gpui::px(1.)),
-				gpui::size(gpui::px(1.5), gpui::px(ui_theme::BODY_LINE_HEIGHT - 2.)),
+				gpui::point(
+					gpui::px(0.),
+					gpui::px((ui_theme::BODY_LINE_HEIGHT - ui_theme::BODY_SIZE) / 2.),
+				),
+				gpui::size(gpui::px(2.), gpui::px(ui_theme::BODY_SIZE)),
 			),
 			Shape::Block => (Point::default(), cell.size),
 			Shape::Underline => (
@@ -157,7 +160,7 @@ impl Cursor {
 		} else {
 			let mut quad = gpui::fill(target, color);
 			if shape == Shape::Bar {
-				quad.corner_radii = gpui::Corners::all(gpui::px(0.75));
+				quad.corner_radii = gpui::Corners::all(gpui::px(1.));
 			}
 			window.paint_quad(quad);
 		}
