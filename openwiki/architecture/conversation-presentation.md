@@ -51,7 +51,7 @@ sources:
 generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:36:25.710Z
+    at: 2026-10-15T20:50:23.059Z
 ---
 
 
@@ -86,6 +86,12 @@ Completed calls with no transcript and no failure are hidden from history and it
 The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch waits for anchor restoration. It can fill an underfilled viewport; once content fills the viewport, further prefetch requires upward-scroll intent.
 
 Saved edit recovery and history refresh/source controls live in Details. The normal transcript contains the active editor or a compact notice for an unresolved operation, rather than a permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+
+## Generated image attachments
+
+The runtime keeps a generated image attachment when the native item contains a `fileId`. It uses the existing Stored attachment description and does not copy that identity into public history fields. A file reference takes precedence over a transitional `result`, including nonempty stale bytes.
+
+The media reader currently supports inline generated image bytes. It reports file references as unsupported. It does not interpret `savedPath` as a service-host file because that path can belong to another execution environment. The regression tests cover file-only and transitional records, inline bytes, and same-named host paths. These checks do not establish live image generation or desktop visual acceptance.
 
 ## Conversation read status
 

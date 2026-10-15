@@ -20,8 +20,15 @@ pub(super) fn project(item: &Value) -> (Vec<AgentTimelineAttachment>, bool) {
 			"Image from execution environment",
 			AgentTimelineAttachmentSource::Unknown,
 		)),
-		Some("imageGeneration") => {
-			if item["result"].as_str().is_some_and(|result| !result.is_empty()) {
+		Some("imageGeneration") =>
+			if item["fileId"].is_string() {
+				one(make(
+					0,
+					"imageGeneration",
+					"Generated image",
+					AgentTimelineAttachmentSource::Stored,
+				))
+			} else if item["result"].as_str().is_some_and(|result| !result.is_empty()) {
 				one(make(
 					0,
 					"imageGeneration",
@@ -37,8 +44,7 @@ pub(super) fn project(item: &Value) -> (Vec<AgentTimelineAttachment>, bool) {
 				))
 			} else {
 				(vec![], false)
-			}
-		},
+			},
 		_ => (vec![], false),
 	}
 }

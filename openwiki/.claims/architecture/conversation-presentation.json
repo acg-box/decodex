@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:13c5e08f07eab138fc9311464d6d919566c51d33ae6323552e35a27ce5b839ae",
+  "pageVersion": "sha256:3693e4bd678d4ea1d2579836ccd8433ed51ed36f17a8dba39aa2954151cad85e",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -177,10 +177,38 @@
           "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
         }
       ]
+    },
+    {
+      "id": "claim_941a8c0e37434f32b1dd6845cf663876",
+      "statement": "Generated image attachments with a native fileId use the existing Stored description; fileId takes precedence over transitional inline result bytes, and the public attachment fields omit the file identity.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/attachments.rs#L22-L48",
+          "version": "repo-lines-v1:sha256:50d43ba9a9de61450cb9544751a5f52e770df193aa0ddab327e1c9a047b57603:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZjkwYmRlZDNjZmE1NWRiMzk1NmJmMjg3YTM1NmM0M2E2MDlmNGMxM2Q4ZWQ0ZjEwODIxNmQ2OTczNDVkZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyZDJiNTJiNTc5ZWRjOWQwNTM3Y2I5ZDlkMzQ1Y2U1YTAxM2Q1NTJjN2U1NzAxYjFlNjEyOGIzZDc4YjNlYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2Mzg5NDcwZDc4YjIxNjEzYzE1MGQ2Y2EyZWExZTg2OTExNGUzYTRhMDQ5MDc1OTUzMjEzYjI2OWIwY2NmY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs#L407-L427",
+          "version": "repo-lines-v1:sha256:5309a755e16c4da604e8f45440200971936897e2b48749200eeec3a89620dcae:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyY2Q0ZGI0OGEzNTBlOGYwYjQ3OTQ0YzQ2ZTNmZmRiYmExMzJkMjI5MGE5MWQ3MDEyYjU2ZWI0NmM4YWI0ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjOGU1M2M0YTM5OGZhZDI5NGU5MzNiNDhlOWFhNmU2ZDllZjYzYTczOGMxZDIxOTE4OWZlZjc5OWNhNmVlMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0MGQ2ZmJiZjc3MDYwNWY1YzY4OGVlMjdlMzAzNWJiNDM4Njc4ODVlZmJlZjlmMzBmZDYyNzhiYTk3OWI5MjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f413d60440f649478b800a767e29e5af",
+      "statement": "The generated-image media reader supports inline bytes, rejects native file references, and does not substitute a service-host savedPath for native media.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/media.rs#L141-L157",
+          "version": "repo-lines-v1:sha256:cdcd5483d6da6c0446a69e5b601468429e4d6315f63569251f8106dc696396a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmNjc2YTI3OTc2ODA1MDU1YjY0MTVkNjExOTQzZjk1ZTU1MmU3M2MzNGViMGYwZjU3ZjY3NDE4MWM2NzMzODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjNjYxYmQyYzI2ZjNhMzg0ZjE5ODY2ODY3ODVmZjgzOGIyZjk1MmZkMTJmODAxNjRhMmRiMjM3NmYzOWVkNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmZGZmYjBkM2RjNDM5YjIxYTM2N2M2NjU5Njc0YThhYjE1N2IwZTM0MzFjM2M4NjAzNTBmZDk0NTNkNWRkNjYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs#L361-L405",
+          "version": "repo-lines-v1:sha256:c0481432ff24fee5cc143947297aa8b2bc9ea8ece1f2e64790f227bac0a6bb0c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDY1ZjAzODY3NWQ5NmEzNWZhNjYwY2JjMGIxYWIzYmU0NjVmODk4ZjZjYjlmYmI3YmI5MGNhODliNWMzMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5ODc3MDAxOWZlZTNlNWU5ZWM4MWY0Mzk5ZWM5M2I1NjljZTRjMWU0YjM2YjI2MTEzYTM2YmU1ZDRlYWJiNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4MGQ5MGU5M2I3YmU0NzdkZTIyYTY4NjY2YjRmNTdlMWQ0YWY0NDQ1NzExYWY5YWEzMjQ1NDM4MmU3ZmNhMTQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-15T20:50:23.059Z"
   }
 }

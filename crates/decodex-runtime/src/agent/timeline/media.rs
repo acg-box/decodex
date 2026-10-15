@@ -139,6 +139,10 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, AgentMed
 		// read remote environments; never substitute a same-named service-host file.
 		Some("imageView") => Err(AgentMediaResult::Unsupported),
 		Some("imageGeneration") if index == 0 => {
+			// Native GeneratedImageRef selects fileId before a transitional result.
+			if item["fileId"].is_string() {
+				return Err(AgentMediaResult::Unsupported);
+			}
 			// savedPath can belong to a remote executor. The native result bytes
 			// retain exact item ownership without interpreting that path locally.
 			let data = item["result"]
