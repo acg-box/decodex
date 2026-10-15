@@ -1,13 +1,15 @@
 //! Opt-in, bounded GPUI frame measurements. No conversation content is recorded.
 //! Set DECODEX_FRAME_TRACE to an output path before launching a release build.
 use std::{
-	env, fs, thread,
+	env, fs,
+	sync::{Arc, Mutex},
+	thread,
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use gpui::profiler::{self, FrameEvent, FrameTimingCollector};
 
-pub(crate) fn start() {
+pub(crate) fn start(cx: &mut gpui::App) {
 	let Some(path) = env::var_os("DECODEX_FRAME_TRACE") else { return };
 	let start = Instant::now();
 	let started_at_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis());
@@ -15,6 +17,26 @@ pub(crate) fn start() {
 	profiler::set_trace_enabled(true);
 
 	let mut collector = FrameTimingCollector::new();
+	let activity = Arc::new(Mutex::new(Vec::new()));
+	let observations = activity.clone();
+	cx.spawn(async move |cx| {
+		while start.elapsed() < Duration::from_secs(60) {
+			let sample = cx.update(|cx| {
+				let windows: Vec<_> = cx.windows().into_iter().filter_map(|handle| {
+					handle.update(cx, |_, window, _| {
+						#[cfg(all(target_os = "macos", not(test)))]
+						let glass = crate::ui_theme::native_glass_panel::observed_style(window);
+						#[cfg(any(not(target_os = "macos"), test))]
+						let glass = None::<isize>;
+						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass})
+					}).ok()
+				}).collect();
+				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "windows": windows})
+			});
+			observations.lock().expect("frame activity").push(sample);
+			cx.background_executor().timer(Duration::from_millis(100)).await;
+		}
+	}).detach();
 
 	thread::spawn(move || {
 		// Collect for one minute, then stop completely. The GPUI ring is bounded.
@@ -50,7 +72,7 @@ pub(crate) fn start() {
 				}))
 			})
 			.collect();
-		let report = serde_json::json!({"schema": 2, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Animation intervals exclude idle gaps.", "frames": rows, "presentations": presentations});
+		let report = serde_json::json!({"schema": 3, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity")});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");

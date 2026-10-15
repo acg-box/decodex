@@ -17,6 +17,16 @@ thread_local! {
 	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, gpui::AnyWindowHandle>> = Default::default();
 }
 
+/// Read the native material for opt-in frame diagnostics.
+pub(crate) fn observed_style(window: &Window) -> Option<isize> {
+	let content = native(window)?.contentView()?;
+	let class = AnyClass::get(c"NSGlassEffectView")?;
+	content.subviews().iter().find_map(|view| unsafe {
+		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
+		glass.then(|| objc2::msg_send![&*view, style])
+	})
+}
+
 /// Retains the installed glass so style updates cannot mistake it for a window backdrop.
 pub(crate) struct GlassPanel {
 	glass: Retained<NSView>,

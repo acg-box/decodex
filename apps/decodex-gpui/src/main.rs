@@ -86,8 +86,6 @@ struct QuitPreflight(bool);
 impl Global for QuitPreflight {}
 
 fn main() {
-	frame_trace::start();
-
 	let application = gpui_platform::application();
 	let main_window: Rc<RefCell<Option<WindowHandle<Shell>>>> = Rc::new(RefCell::new(None));
 
@@ -101,6 +99,7 @@ fn main() {
 		}
 	});
 	application.run(move |cx: &mut App| {
+		frame_trace::start(cx);
 		shell::bind_keys(cx);
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
