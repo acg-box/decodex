@@ -138,6 +138,8 @@ impl Shell {
 					cx.stop_propagation();
 				}
 			}))
+			.relative()
+			.child(self.titlebar.control())
 			.child(workspace_symbols::icon(if forward { Symbol::Forward } else { Symbol::Back }))
 			.smooth()
 			.enabled(enabled)

@@ -127,7 +127,9 @@ fn main() {
 						traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
 					}),
 					window_background: WindowBackgroundAppearance::Blurred,
-					app_owns_titlebar_drag: true,
+					// AppKit owns blank titlebar drags. Native control hit targets keep
+					// GPUI buttons interactive without a client-initiated drag session.
+					app_owns_titlebar_drag: false,
 					window_bounds: Some(WindowBounds::Windowed(bounds)),
 					window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
 					focus: false,

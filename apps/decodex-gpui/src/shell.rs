@@ -7,14 +7,12 @@
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
+#[path = "native_titlebar.rs"] mod native_titlebar;
 #[path = "shell_navigation.rs"] mod navigation;
 #[path = "ordinary_drafts.rs"] mod ordinary_drafts;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
-#[cfg(not(test))]
-#[path = "window_drag.rs"]
-mod window_drag;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
 pub(crate) use status::{
@@ -222,9 +220,7 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
-	titlebar_drag_pending: bool,
-	#[cfg(test)]
-	titlebar_drag_requests: usize,
+	titlebar: native_titlebar::Titlebar,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -380,9 +376,7 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
-			titlebar_drag_pending: false,
-			#[cfg(test)]
-			titlebar_drag_requests: 0,
+			titlebar: Default::default(),
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -2661,40 +2655,7 @@ fn floating_window_controls(
 	presentation: &ConnectionPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	// Match GPUI's platform titlebar: hand off on the first held movement.
-	// Capture at window scope so fast motion can leave the header before delivery.
-	let drag = cx.listener(|shell, event: &gpui::MouseMoveEvent, window, cx| {
-		if event.pressed_button == Some(MouseButton::Left)
-			&& std::mem::take(&mut shell.titlebar_drag_pending)
-		{
-			#[cfg(not(test))]
-			window_drag::start(window);
-			#[cfg(test)]
-			{
-				let _ = window;
-				shell.titlebar_drag_requests += 1;
-			}
-			cx.stop_propagation();
-		}
-	});
-	let release = cx.listener(|shell, _: &gpui::MouseUpEvent, _, _| {
-		shell.titlebar_drag_pending = false;
-	});
-	let pointer_events = gpui::canvas(
-		|_, _, _| (),
-		move |_, (), window, _| {
-			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
-				if phase == gpui::DispatchPhase::Capture {
-					drag(event, window, cx);
-				}
-			});
-			window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, window, cx| {
-				if phase == gpui::DispatchPhase::Capture {
-					release(event, window, cx);
-				}
-			});
-		},
-	);
+	shell.titlebar.begin_frame();
 
 	gpui::div()
 		.id("floating-window-controls")
@@ -2712,20 +2673,11 @@ fn floating_window_controls(
 		.items_center()
 		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
-		.on_mouse_down(
-			MouseButton::Left,
-			cx.listener(|shell, _, _, cx| {
-				shell.titlebar_drag_pending = true;
+		.when(!cfg!(target_os = "macos"), |header| {
+			header.on_mouse_down(MouseButton::Left, |_, window, cx| {
+				window.start_window_move();
 				cx.stop_propagation();
-			}),
-		)
-		.on_mouse_down_out(cx.listener(|shell, _, _, _| {
-			shell.titlebar_drag_pending = false;
-		}))
-		.on_click(|event, window, _| {
-			if event.click_count() == 2 {
-				window.titlebar_double_click();
-			}
+			})
 		})
 		.child(
 			ui_theme::floating_group()
@@ -2735,7 +2687,7 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
-		.child(pointer_events.absolute().size_full())
+		.child(shell.titlebar.sync())
 		.into_any_element()
 }
 
@@ -2769,10 +2721,10 @@ fn topbar_controls(
 				.child(agent_panel_control(shell, 2, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
-			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
+			controls.child(topbar_sessions_toggle(shell, left_sidebar_visible, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
-			controls.child(topbar_inspector_toggle(inspector_visible, cx))
+			controls.child(topbar_inspector_toggle(shell, inspector_visible, cx))
 		})
 		.when(
 			matches!(shell.selected, Destination::Agent | Destination::Conversations),
@@ -2843,6 +2795,8 @@ fn topbar_controls(
 				.on_click(cx.listener(|shell, _, _, cx| {
 					shell.open_settings_window(Destination::Settings, cx);
 				}))
+				.relative()
+				.child(shell.titlebar.bordered_control(1.))
 				.child(workspace_symbols::icon(workspace_symbols::Symbol::Settings))
 				.smooth(),
 		)
@@ -2917,6 +2871,8 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				cx.stop_propagation();
 			}
 		}))
+		.relative()
+		.child(shell.titlebar.control())
 		.child(
 			gpui::div()
 				.flex()
@@ -6238,7 +6194,11 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.into_any_element()
 }
 
-fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn topbar_sessions_toggle(
+	shell: &Shell,
+	left_sidebar_visible: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
 	gpui::div()
 		.id("toggle-left-sidebar")
 		.role(Role::Button)
@@ -6276,11 +6236,17 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
 		}))
+		.relative()
+		.child(shell.titlebar.bordered_control(1.))
 		.child("Sessions")
 		.into_any_element()
 }
 
-fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn topbar_inspector_toggle(
+	shell: &Shell,
+	inspector_visible: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
 	gpui::div()
 		.id("toggle-inspector")
 		.role(Role::Button)
@@ -6314,6 +6280,8 @@ fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> 
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
 		}))
+		.relative()
+		.child(shell.titlebar.bordered_control(1.))
 		.child("Context")
 		.into_any_element()
 }
@@ -6570,6 +6538,8 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 				.font_weight(FontWeight::SEMIBOLD)
 				.text_size(gpui::px(11.0))
 				.text_color(gpui::rgb(WB_TEXT))
+				.relative()
+				.child(shell.titlebar.control())
 				.child("Sessions")
 				.when_some(refresh_status, |element, status| {
 					element.child(
@@ -7843,7 +7813,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn titlebar_drag_covers_blank_space_but_excludes_buttons(cx: &mut TestAppContext) {
+	fn native_titlebar_excludes_only_the_visible_control_bounds(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
@@ -7865,42 +7835,18 @@ mod tests {
 			"open-settings",
 		]
 		.map(|selector| visual.debug_bounds(selector).unwrap());
-		for y in [1, 9, 22, 35, 43] {
-			for x in (1..f32::from(region.size.width) as usize).step_by(32) {
-				let point = gpui::point(gpui::px(x as f32), gpui::px(y as f32));
-				let before = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
-				visual.simulate_mouse_down(point, gpui::MouseButton::Left, Default::default());
-				assert_eq!(
-					shell.read_with(visual, |s, _| s.titlebar_drag_pending),
-					!buttons.iter().any(|button| button.contains(&point)),
-					"{point:?}"
-				);
-				assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), before);
-				// Release outside the controls so the sweep does not activate them.
-				visual.simulate_mouse_up(
-					gpui::point(point.x, region.bottom() + gpui::px(60.)),
-					gpui::MouseButton::Left,
-					Default::default(),
-				);
-				assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
-			}
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert_eq!(controls.len(), buttons.len());
+		for bounds in buttons {
+			assert!(
+				controls.contains(&bounds),
+				"native control must match {bounds:?}: {controls:?}"
+			);
 		}
-		let outside = gpui::point(region.center().x, region.bottom() + gpui::px(60.));
-		visual.simulate_mouse_down(region.center(), gpui::MouseButton::Left, Default::default());
-		// A queued hover must not consume the pending gesture before held motion.
-		visual.simulate_mouse_move(region.center(), None, Default::default());
-		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
-		let before = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
-		visual.simulate_mouse_move(outside, gpui::MouseButton::Left, Default::default());
-		visual.simulate_mouse_move(outside, gpui::MouseButton::Left, Default::default());
-		assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), before + 1);
-		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
-		visual.simulate_mouse_up(outside, gpui::MouseButton::Left, Default::default());
+		assert!(!controls.iter().any(|bounds| bounds.contains(&region.center())));
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
-		let drag_requests = shell.read_with(visual, |s, _| s.titlebar_drag_requests);
 		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());
-		assert_eq!(shell.read_with(visual, |s, _| s.titlebar_drag_requests), drag_requests);
 		visual.simulate_mouse_up(sidebar.center(), gpui::MouseButton::Left, Default::default());
 		assert_ne!(
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0),
