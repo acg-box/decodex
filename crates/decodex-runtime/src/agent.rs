@@ -1679,7 +1679,13 @@ impl AgentCoordinator {
 				turn_id: exact(params, "/turnId")?,
 				item_id: exact(params, if completed { "/item/id" } else { "/itemId" })?,
 				kind: kind.into(),
-				text: exact(params, if completed { "/item/text" } else { "/delta" })?,
+				// Native final messages and deltas may be empty. Identity fields must
+				// be nonempty, but an empty text value can clear a retained draft.
+				text: params
+					.pointer(if completed { "/item/text" } else { "/delta" })
+					.and_then(Value::as_str)
+					.ok_or_else(|| AgentError::Invalid("missing output text".into()))?
+					.to_owned(),
 				completed,
 			})
 			.await?;

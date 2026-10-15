@@ -1013,11 +1013,25 @@ impl AgentHost {
 				self.mcp_login.disconnect(Some(generation)).await;
 			}
 
-			if let Some(event) = event
-				&& let Err(error) = agent.handle_event(event).await
-				&& event_failure_needs_attention(closed, &error)
-			{
-				self.record_error(root, "event_processing_failed").await;
+			if let Some(event) = event {
+				let method = match &event {
+					ServerEvent::Notification { method, .. }
+					| ServerEvent::Request { method, .. } => method.clone(),
+					ServerEvent::Closed(_) => "connection closed".into(),
+					ServerEvent::UnmatchedResponse { .. } => "unmatched response".into(),
+				};
+				if let Err(error) = agent.handle_event(event).await
+					&& event_failure_needs_attention(closed, &error)
+				{
+					let detail = format!("{method}: {}", diagnostic(&error));
+					let _ = self
+						.store
+						.record_agent_event_failure(
+							root.clone(),
+							detail.chars().take(1_024).collect(),
+						)
+						.await;
+				}
 			}
 
 			if closed {
@@ -1919,6 +1933,16 @@ impl AgentHost {
 	}
 
 	async fn record_error(&self, root: &str, kind: &str) {
+		if kind == "event_processing_failed" {
+			let _ = self
+				.store
+				.record_agent_event_failure(
+					root.into(),
+					"Native configuration observation could not be saved.".into(),
+				)
+				.await;
+			return;
+		}
 		if kind == "reconnection_needs_attention" {
 			let _ = self
 				.store
@@ -2050,6 +2074,8 @@ impl AgentHost {
 				let phase = crate::startup_trace::Phase::new("recover_persisted");
 				if active.1.recover_persisted().await.is_err() {
 					self.record_error(&root.id, "recovery_needs_attention").await;
+				} else {
+					let _ = self.store.resolve_agent_event_failure(root.id.clone()).await;
 				}
 
 				drop(phase);

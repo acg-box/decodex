@@ -1083,7 +1083,24 @@ impl SqliteStore {
 		root: String,
 		detail: String,
 	) -> Result<(), StoreError> {
-		self.record_agent_delivery_notice(root, detail, "wake_failed").await
+		self.record_agent_processing_notice(root, detail, "wake_failed").await
+	}
+
+	/// Keep the event-loop diagnostic until persisted native state is reconciled.
+	pub async fn record_agent_event_failure(
+		&self,
+		root: String,
+		detail: String,
+	) -> Result<(), StoreError> {
+		self.record_agent_processing_notice(root, detail, "event_processing_failed").await
+	}
+
+	/// Recovery does not resolve user decisions, delivery receipts, or work outcomes.
+	pub async fn resolve_agent_event_failure(&self, root: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Native event processing recovered after persisted state reconciliation.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='event_processing_failed' AND disposition IS NULL", rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			Ok(())
+		}).await
 	}
 
 	/// Record an attested external writer without treating it as an execution failure.
@@ -1092,10 +1109,10 @@ impl SqliteStore {
 		root: String,
 		detail: String,
 	) -> Result<(), StoreError> {
-		self.record_agent_delivery_notice(root, detail, "thread_in_use_needs_attention").await
+		self.record_agent_processing_notice(root, detail, "thread_in_use_needs_attention").await
 	}
 
-	async fn record_agent_delivery_notice(
+	async fn record_agent_processing_notice(
 		&self,
 		root: String,
 		detail: String,
@@ -1110,7 +1127,7 @@ impl SqliteStore {
 			let same: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?3 AND payload=?2 AND disposition IS NULL)",rusqlite::params![root,payload,kind],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			if !same {
-				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current delivery diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current processing diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND (event_kind=?3 OR (?3<>'event_processing_failed' AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention'))) AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?,kind]).map_err(error::sqlite_error)?;
 
 				let previous:i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&root],|row|row.get(0)).map_err(error::sqlite_error)?;
 				let source = serde_json::json!(["agent_delivery",root,previous]).to_string();
@@ -2509,6 +2526,49 @@ mod tests {
 		store.record_agent_delivery_failure("agent".into(), "Later failure".into()).await.unwrap();
 
 		assert_eq!(store.read_agent_work_events("agent".into(), 10).await.unwrap().len(), 4);
+	}
+
+	#[tokio::test]
+	async fn event_processing_recovery_preserves_input_and_separate_delivery_failures() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+		store.create_agent_work_item(item("agent", None)).await.unwrap();
+		let input = store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: "saved-input".into(),
+				work_item_id: "agent".into(),
+				event_kind: "user_message".into(),
+				payload: r#"{"text":"continue"}"#.into(),
+			})
+			.await
+			.unwrap();
+		store
+			.record_agent_delivery_failure("agent".into(), "Delivery unavailable".into())
+			.await
+			.unwrap();
+		for _ in 0..2 {
+			store
+				.record_agent_event_failure(
+					"agent".into(),
+					"item/completed: missing output text".into(),
+				)
+				.await
+				.unwrap();
+		}
+		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 3);
+		store.resolve_agent_event_failure("agent".into()).await.unwrap();
+		let pending = store.list_pending_agent_events(10).await.unwrap();
+		assert_eq!(pending.len(), 2);
+		assert!(
+			pending.iter().any(|event| event.id == input.id && event.delivered_turn_id.is_none())
+		);
+		assert!(pending.iter().any(|event| event.event_kind == "wake_failed"));
+		store.record_agent_event_failure("agent".into(), "Later failure".into()).await.unwrap();
+		let events = store.read_agent_work_events("agent".into(), 10).await.unwrap();
+		assert_eq!(
+			events.iter().filter(|event| event.event_kind == "event_processing_failed").count(),
+			2
+		);
 	}
 
 	#[tokio::test]
