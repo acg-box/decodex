@@ -703,7 +703,7 @@ impl AgentSurface {
 			parked,
 			execution,
 			execution_revision,
-			questions: self.capture_async_drafts(cx)?,
+			questions: self.restored_question_drafts.clone(),
 			uncertain: self.uncertain || self.sending || pending.is_some(),
 			pending,
 		})
@@ -1814,10 +1814,7 @@ mod tests {
 				Some(ConversationReasoningEffort::new("provider-defined-effort").unwrap())
 			);
 			assert_eq!(s.restored_question_drafts.len(), 1);
-			assert!(
-				s.async_question_inputs.is_empty(),
-				"native history must admit question restoration"
-			);
+			assert_eq!(s.restored_question_drafts[0].custom.as_deref(), Some("Alternative"));
 			assert!(s.uncertain && !s.sending && s.submission.command.is_none());
 			assert_eq!(s.submission.unconfirmed[0].as_str(), "original-command");
 			assert!(!s.draft_owner_available());

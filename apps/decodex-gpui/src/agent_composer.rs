@@ -39,7 +39,7 @@ use crate::{
 use controls::{PrimaryMark, PrimaryMode};
 use decodex_protocol::AgentAttachmentDto;
 
-struct ComposerTip(String);
+pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		crate::ui_motion::tooltip_surface(gpui::div())
@@ -335,6 +335,7 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
+		self.update_question_placeholder(cx);
 		let editor = gpui::div()
 			.id("composer-editor-area")
 			.debug_selector(|| "composer-editor-area".into())
@@ -403,6 +404,9 @@ impl AgentSurface {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}
 			}))
+			.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
+				d.child(self.composer_question_panel(cx))
+			})
 			.when(self.native_agents.selected.is_none(), |d| {
 				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
 			})

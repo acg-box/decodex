@@ -345,7 +345,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		});
 
 		if kind == "agentMessage" && !truncated && attachments.is_empty() {
-			if let Some(panel) = self.async_question_item_panel(work, item_id, cx) {
+			if let Some(panel) = self.async_question_item_text(work, item_id) {
 				return panel;
 			}
 			if text.is_empty() {

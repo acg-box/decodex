@@ -94,7 +94,6 @@ use crate::{
 	ui_working::Working,
 };
 use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
-use async_questions::ChoiceDraft;
 use capabilities::CatalogContext;
 use creation_setup::DEFAULT_MODEL;
 use decodex_protocol::{
@@ -246,10 +245,6 @@ pub(crate) struct AgentSurface {
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	question_notices: QuestionNotices,
 	restored_question_drafts: Vec<DesktopQuestionDraft>,
-	collapsed_async_questions: std::collections::BTreeSet<String>,
-	async_question_threads: std::collections::BTreeMap<String, String>,
-	async_question_choices: std::collections::BTreeMap<(String, String), ChoiceDraft>,
-	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	accounts: Vec<(String, String)>,
 }
 impl AgentSurface {
@@ -424,10 +419,6 @@ impl AgentSurface {
 			question_inputs: Default::default(),
 			question_notices: Default::default(),
 			restored_question_drafts: Vec::new(),
-			collapsed_async_questions: Default::default(),
-			async_question_threads: Default::default(),
-			async_question_choices: Default::default(),
-			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
 			state: LoadState::Idle,
@@ -591,7 +582,7 @@ impl AgentSurface {
 						}
 
 						surface.reconcile_voice_captions(&id, &history);
-						surface.prepare_async_question_inputs(&id, &history, cx);
+						surface.prune_async_question_drafts(&id, &history);
 						surface.timeline.cache.insert(id.clone(), history.clone());
 
 						surface.history = Some((id, history));
@@ -1927,7 +1918,6 @@ impl AgentSurface {
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
-			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
 	}
 

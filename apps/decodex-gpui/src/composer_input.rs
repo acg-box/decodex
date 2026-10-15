@@ -162,9 +162,11 @@ impl ComposerInput {
 		text: impl Into<SharedString>,
 		cx: &mut Context<Self>,
 	) {
-		self.placeholder = text.into();
-
-		cx.notify();
+		let text = text.into();
+		if self.placeholder != text {
+			self.placeholder = text;
+			cx.notify();
+		}
 	}
 
 	pub(crate) fn is_composing(&self) -> bool {
@@ -209,6 +211,25 @@ impl ComposerInput {
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
+	}
+
+	/// Restore saved text as one undoable edit, without replacing a selection.
+	pub(crate) fn append_saved_text(&mut self, value: &str, cx: &mut Context<Self>) -> bool {
+		if self.is_composing() || self.native_part.is_some() || value.is_empty() {
+			return false;
+		}
+		let addition = if self.content.is_empty() || self.content.ends_with(char::is_whitespace) {
+			value.into()
+		} else {
+			format!(" {value}")
+		};
+		let available = MAX_COMPOSER_BYTES.saturating_sub(self.content.len());
+		if bounded_input(&addition, available) != addition {
+			return false;
+		}
+		let end = self.content.len();
+		self.replace_bytes(end..end, &addition, false, None, cx);
+		true
 	}
 
 	pub(crate) fn set_streaming_content(&mut self, value: &str, cx: &mut Context<Self>) {
@@ -898,6 +919,35 @@ mod multiline_tests {
 	use crate::composer_input::{
 		self, ClipboardItem, ComposerInput, Paste, Redo, Undo, bind_keys, text, ui_theme,
 	};
+
+	#[gpui::test]
+	fn restored_text_preserves_selection_text_and_undo(cx: &mut gpui::TestAppContext) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		visual.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.set_content("My 草稿", cx);
+				input.selected_range = 0..2;
+				assert!(input.append_saved_text("Markdown", cx));
+				assert_eq!(input.content(), "My 草稿 Markdown");
+				input.undo(&Undo, window, cx);
+				assert_eq!(input.content(), "My 草稿");
+				assert_eq!(input.selected_range, 0..2);
+				input.redo(&Redo, window, cx);
+				assert_eq!(input.content(), "My 草稿 Markdown");
+				input.marked_range = Some(0..2);
+				assert!(!input.append_saved_text("PDF", cx));
+				assert_eq!(input.marked_range, Some(0..2));
+				input.marked_range = None;
+				input.set_content(&"x".repeat(composer_input::MAX_COMPOSER_BYTES - 3), cx);
+				let before = input.content().to_owned();
+				assert!(!input.append_saved_text("界", cx));
+				assert_eq!(input.content(), before);
+				input.set_content("Keep my line break.\n", cx);
+				assert!(input.append_saved_text("Markdown", cx));
+				assert_eq!(input.content(), "Keep my line break.\nMarkdown");
+			})
+		});
+	}
 
 	#[gpui::test]
 	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {

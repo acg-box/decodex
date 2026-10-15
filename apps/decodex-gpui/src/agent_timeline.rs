@@ -93,7 +93,7 @@ impl AgentSurface {
 		self.timeline.read_at = Some(std::time::Instant::now());
 
 		self.observe_question_notices(&history);
-		self.prepare_async_question_inputs(work, &history, cx);
+		self.prune_async_question_drafts(work, &history);
 		self.timeline.cache.insert(work.into(), history.clone());
 
 		self.history = Some((work.into(), history));
