@@ -8012,7 +8012,7 @@ pub(crate) mod tests {
 			assert_ne!(process_group, 0);
 
 			drop(quarantine);
-			wait_until_process_is_dead(process_group);
+			wait_until_process_is_dead(i32::try_from(process_group).unwrap());
 			wait_for_flag(&lifecycle.exited, Duration::from_secs(3));
 			wait_for_flag(&lifecycle.joined, Duration::from_secs(3));
 		}
