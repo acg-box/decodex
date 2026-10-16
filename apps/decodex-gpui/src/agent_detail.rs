@@ -532,17 +532,34 @@ mod tests {
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, complete_tool_history);
 		visual.update(|w, cx| w.draw(cx).clear(cx));
+		// The completion header becomes clickable after its entrance transition.
+		for _ in 0..32 {
+			if visual.debug_bounds("turn-process-finishing").is_none() {
+				break;
+			}
+			thread::sleep(std::time::Duration::from_millis(16));
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
+		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 
+		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 
-		thread::sleep(std::time::Duration::from_millis(250));
+		for _ in 0..20 {
+			thread::sleep(std::time::Duration::from_millis(16));
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
-
-		let arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+		assert!(
+			visual.debug_bounds("archived-process-content").is_some(),
+			"toggle {toggle:?}; transcript {:?}; group {:?}",
+			visual.debug_bounds("workspace-transcript"),
+			visual.debug_bounds("turn-process-block")
+		);
+		let arrow = visual.debug_bounds("tool-chevron-bounds").expect("expanded tool arrow");
 
 		assert!(
 			arrow.right() <= standalone_arrow.right(),
