@@ -822,6 +822,7 @@ impl AgentSurface {
 					};
 
 					if accepted {
+						s.retire_native_output();
 						s.timeline.native.recovered();
 					} else if s.timeline.native.pagination == Pagination::Loading {
 						s.timeline.native.failed(None, std::time::Instant::now());
