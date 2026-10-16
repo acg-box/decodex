@@ -436,6 +436,7 @@ impl AgentSurface {
 		let owner = work.id.clone();
 		let selection = geometry.clone();
 		let selected_key = key.clone();
+		let arrival = self.timeline.native.arrivals.active(entry).then_some(entry.position);
 
 		let row = PaginationLayout {
 			child: row,
@@ -457,6 +458,13 @@ impl AgentSurface {
 				let Some(bounds) = bounds.first() else {
 					return;
 				};
+				if let Some(position) = arrival {
+					crate::frame_trace::row_layout(
+						position,
+						bounds.size.height.into(),
+						scroll.offset().y.into(),
+					);
+				}
 				#[cfg(test)]
 				geometry
 					.borrow_mut()

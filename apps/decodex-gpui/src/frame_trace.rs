@@ -2,16 +2,45 @@
 //! Set DECODEX_FRAME_TRACE to an output path before launching a release build.
 use std::{
 	env, fs,
-	sync::{Arc, Mutex},
+	sync::{Arc, Mutex, OnceLock},
 	thread,
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use gpui::profiler::{self, FrameEvent, FrameTimingCollector};
 
+static ROWS: OnceLock<(Instant, Mutex<Vec<serde_json::Value>>)> = OnceLock::new();
+
+/// Trace row presentation alongside frame timing, without message content.
+pub(crate) fn row_arrival(position: u64, phase: &str, progress: f32, height: f32) {
+	record_row(position, phase, Some(progress), height, None);
+}
+
+pub(crate) fn row_layout(position: u64, height: f32, scroll_offset: f32) {
+	record_row(position, "layout", None, height, Some(scroll_offset));
+}
+
+fn record_row(
+	position: u64,
+	phase: &str,
+	progress: Option<f32>,
+	height: f32,
+	scroll_offset: Option<f32>,
+) {
+	if !profiler::trace_enabled() {
+		return;
+	}
+	let Some((start, rows)) = ROWS.get() else { return };
+	let mut rows = rows.lock().expect("row frame measurements");
+	if rows.len() < 8_192 {
+		rows.push(serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}));
+	}
+}
+
 pub(crate) fn start(cx: &mut gpui::App) {
 	let Some(path) = env::var_os("DECODEX_FRAME_TRACE") else { return };
 	let start = Instant::now();
+	let _ = ROWS.set((start, Mutex::new(Vec::new())));
 	let started_at_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis());
 
 	profiler::set_trace_enabled(true);
@@ -72,7 +101,9 @@ pub(crate) fn start(cx: &mut gpui::App) {
 				}))
 			})
 			.collect();
-		let report = serde_json::json!({"schema": 3, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity")});
+		let arrivals =
+			ROWS.get().map(|(_, rows)| rows.lock().expect("row frame measurements").clone());
+		let report = serde_json::json!({"schema": 4, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");

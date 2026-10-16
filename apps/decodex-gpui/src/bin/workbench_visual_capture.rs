@@ -26,6 +26,9 @@ mod conversations;
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
 #[allow(dead_code)]
+#[path = "../frame_trace.rs"]
+mod frame_trace;
+#[allow(dead_code)]
 #[path = "../health_query.rs"]
 mod health_query;
 #[allow(dead_code)]
