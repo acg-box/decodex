@@ -53,9 +53,9 @@ impl AgentSurface {
 				self.workspace_action(
 					"graph-expand".into(),
 					if self.workspace.graph_expanded {
-						"Restore conversation"
+						"Restore layout · Shift-Esc"
 					} else {
-						"Expand work overview"
+						"Expand Dock · Shift-Esc"
 					}
 					.into(),
 					|s, cx| {

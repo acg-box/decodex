@@ -476,6 +476,18 @@ mod tests {
 					assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
 				}
 			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			std::thread::sleep(
+				crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40),
+			);
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			let (restore, expand) = if target.is_none() {
+				("chat-expansion-restore-icon", "chat-expansion-expand-icon")
+			} else {
+				("dock-expansion-restore-icon", "dock-expansion-expand-icon")
+			};
+			assert!(visual.debug_bounds(restore).is_some());
+			assert!(visual.debug_bounds(expand).is_none());
 			surface.update(visual, |s, cx| {
 				s.toggle_focused_content(cx);
 				assert!(!s.workspace.chat_expanded && !s.workspace.graph_expanded);
@@ -493,6 +505,15 @@ mod tests {
 					(230., 270., 300.)
 				);
 			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			std::thread::sleep(
+				crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40),
+			);
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			assert!(visual.debug_bounds("chat-expansion-expand-icon").is_some());
+			assert!(visual.debug_bounds("dock-expansion-expand-icon").is_some());
+			assert!(visual.debug_bounds("chat-expansion-restore-icon").is_none());
+			assert!(visual.debug_bounds("dock-expansion-restore-icon").is_none());
 		}
 	}
 

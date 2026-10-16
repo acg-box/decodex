@@ -158,7 +158,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn panel_glyph(index: usize) -> AnyElement {
-		panel_icon(["workspace-sidebar", "workspace-graph", "workspace-agents"][index])
+		panel_icon(["workspace-sidebar", "workspace-graph", "workspace-agents"][index], None)
 			.expect("known panel glyph")
 	}
 
@@ -449,14 +449,18 @@ impl AgentSurface {
 			}
 			.to_owned()
 		};
-		let icon = panel_icon(&id);
+		let expanded = match id.as_str() {
+			"graph-expand" => Some(self.workspace.graph_expanded),
+			"chat-expand" => Some(self.workspace.chat_expanded),
+			_ => None,
+		};
+		let icon = panel_icon(&id, expanded);
 		let closes_dock = id == "graph-close";
 		let icon_only = icon.is_some();
 		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
-		let expanded = None::<bool>;
 		let debug_id = id.clone();
 		let label_id = format!("overflow-{id}");
 
@@ -2023,6 +2027,7 @@ impl AgentSurface {
 			"dock-compact" | "dock-running" | "dock-result" | "dock-completed"
 			| "dock-dependencies" | "dock-blocked" => self.visual_dock_page(page, cx),
 			"expanded" => self.workspace.graph_expanded = true,
+			"chat-expanded" => self.workspace.chat_expanded = true,
 			"in-use" => {
 				self.workspace.graph_visible = false;
 
@@ -2518,12 +2523,15 @@ pub(super) fn clock_label(micros: i64) -> String {
 	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
 }
 
-fn panel_icon(id: &str) -> Option<AnyElement> {
+fn panel_icon(id: &str, expanded: Option<bool>) -> Option<AnyElement> {
+	if let Some(expanded) = expanded {
+		let key = if id == "graph-expand" { "dock-expansion" } else { "chat-expansion" };
+		return Some(workspace_symbols::panel_expansion(key, expanded).into_any_element());
+	}
 	let symbol = match id {
 		"workspace-sidebar" => crate::shell::workspace_symbols::Symbol::Sidebar,
 		"workspace-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
-		"graph-expand" | "chat-expand" => crate::shell::workspace_symbols::Symbol::Expand,
 		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
 		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
 		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,

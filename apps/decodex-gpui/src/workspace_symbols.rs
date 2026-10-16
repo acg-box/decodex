@@ -6,13 +6,15 @@ use std::{
 
 use gpui::{
 	self, AnyElement, App, ElementId, Image, ImageFormat, PathBuilder, RenderOnce, Window,
-	prelude::{IntoElement, Styled as _},
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
+	},
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 36]> = LazyLock::new(|| {
-	let sources: [&[u8]; 36] = [
+static IMAGES: LazyLock<[Arc<Image>; 37]> = LazyLock::new(|| {
+	let sources: [&[u8]; 37] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
@@ -49,6 +51,7 @@ static IMAGES: LazyLock<[Arc<Image>; 36]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/arrange.png"),
 		include_bytes!("../../../assets/workspace-symbols/fit.png"),
 		include_bytes!("../../../assets/workspace-symbols/waveform.png"),
+		include_bytes!("../../../assets/workspace-symbols/restore.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
@@ -91,6 +94,43 @@ pub(super) enum Symbol {
 	Arrange,
 	Fit,
 	Waveform,
+	Restore,
+}
+
+/// Both panel controls use their layout state and the same interruptible transition.
+#[derive(gpui::IntoElement)]
+pub(super) struct PanelExpansion {
+	id: &'static str,
+	expanded: bool,
+}
+impl RenderOnce for PanelExpansion {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let progress = ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+		gpui::div()
+			.relative()
+			.size(gpui::px(16.))
+			.flex_none()
+			.when(progress < 1., |slot| {
+				slot.child(
+					gpui::div()
+						.debug_selector(move || format!("{}-expand-icon", self.id))
+						.absolute()
+						.inset_0()
+						.opacity(1. - progress)
+						.child(icon(Symbol::Expand)),
+				)
+			})
+			.when(progress > 0., |slot| {
+				slot.child(
+					gpui::div()
+						.debug_selector(move || format!("{}-restore-icon", self.id))
+						.absolute()
+						.inset_0()
+						.opacity(progress)
+						.child(icon(Symbol::Restore)),
+				)
+			})
+	}
 }
 
 #[derive(gpui::IntoElement)]
@@ -180,4 +220,8 @@ pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> Disclosure
 
 pub(super) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> ProcessChevron {
 	ProcessChevron { id: id.into(), expanded }
+}
+
+pub(super) fn panel_expansion(id: &'static str, expanded: bool) -> PanelExpansion {
+	PanelExpansion { id, expanded }
 }

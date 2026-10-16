@@ -860,6 +860,17 @@ mod tests {
 				w.refresh();
 				w.draw(cx).clear(cx);
 			});
+			let before_expanded = surface.read_with(visual, |s, _| s.workspace.graph_expanded);
+			assert!(
+				visual
+					.debug_bounds(if before_expanded {
+						"dock-expansion-restore-icon"
+					} else {
+						"dock-expansion-expand-icon"
+					})
+					.is_some(),
+				"the visible icon must match the current Dock layout"
+			);
 			let bounds = visual.debug_bounds(control).expect("graph control");
 			visual.simulate_click(bounds.center(), Default::default());
 			surface.update(visual, |s, _| {
