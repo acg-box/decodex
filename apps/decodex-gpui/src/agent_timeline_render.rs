@@ -1,5 +1,5 @@
 //! Render native history without converting provider IDs into local inbox IDs.
-use gpui::{AnyElement, Div, KeyDownEvent, PathBuilder, Role, StatefulInteractiveElement as _};
+use gpui::{AnyElement, Div, KeyDownEvent, Role, StatefulInteractiveElement as _};
 
 use crate::{
 	shell::{
@@ -633,27 +633,10 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				}
 			}))
 			.child(
-				gpui::canvas(
-					|_, _, _| (),
-					|bounds, _, window, _| {
-						let point = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
-						let mut path = PathBuilder::stroke(gpui::px(1.1));
-
-						path.move_to(point(2., 9.));
-						path.line_to(point(9., 2.));
-						path.line_to(point(12., 5.));
-						path.line_to(point(5., 12.));
-						path.line_to(point(1., 13.));
-						path.close();
-						path.move_to(point(7., 4.));
-						path.line_to(point(10., 7.));
-
-						if let Ok(path) = path.build() {
-							window.paint_path(path, gpui::rgb(TEXT_MUTED));
-						}
-					},
-				)
-				.size(gpui::px(14.)),
+				gpui::svg()
+					.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><path d="M2 9L9 2L12 5L5 12L1 13ZM7 4L10 7" fill="none" stroke="white" stroke-width="1.1"/></svg>"#)
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.size(gpui::px(14.)),
 			);
 
 		body.group(group).child(gpui::div().flex().justify_end().child(edit))

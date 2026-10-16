@@ -1,9 +1,8 @@
 //! Compact response statistics with hover details, independent of transcript layout.
-use std::f32::consts::TAU;
 
 use gpui::{
-	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder,
-	Pixels, RenderOnce, SharedString, Window,
+	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, Pixels,
+	RenderOnce, SharedString, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -153,37 +152,11 @@ fn duration_label(ms: u64) -> String {
 }
 
 fn duration_icon() -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(gpui::px(1.));
-
-			for step in 0..=32 {
-				let angle = step as f32 * TAU / 32.;
-				let p = bounds.origin
-					+ gpui::point(
-						gpui::px(5.5 + 4.25 * angle.cos()),
-						gpui::px(5.5 + 4.25 * angle.sin()),
-					);
-
-				if step == 0 {
-					path.move_to(p);
-				} else {
-					path.line_to(p);
-				}
-			}
-
-			path.move_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(2.5)));
-			path.line_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(5.5)));
-			path.line_to(bounds.origin + gpui::point(gpui::px(7.5), gpui::px(6.5)));
-
-			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgb(TEXT_MUTED));
-			}
-		},
-	)
-	.size(gpui::px(11.))
-	.flex_none()
+	gpui::svg()
+		.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"><g fill="none" stroke="white" stroke-width="1"><circle cx="5.5" cy="5.5" r="4.25"/><path d="M5.5 2.5V5.5L7.5 6.5"/></g></svg>"#)
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.size(gpui::px(11.))
+		.flex_none()
 }
 
 fn details_panel(

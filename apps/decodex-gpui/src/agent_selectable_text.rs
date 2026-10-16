@@ -1,7 +1,9 @@
 //! Read-only rich text with native hit testing and clipboard selection.
 use std::{ops::Range, path::Path};
 
-use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText};
+use gpui::{
+	App, Element, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText,
+};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::shell::agent_surface::{
@@ -30,6 +32,11 @@ impl RenderOnce for SelectableText {
 			(s.range(&self.text), s.focus.clone())
 		};
 		let highlights = selection_highlights(self.text.len(), self.highlights, range);
+		let batch = highlights
+			.iter()
+			.all(|(_, style)| style.underline.is_none() && style.strikethrough.is_none())
+			&& window.text_style().underline.is_none()
+			&& window.text_style().strikethrough.is_none();
 		let styled = StyledText::new(self.text.clone()).with_highlights(highlights);
 		let down_layout = styled.layout().clone();
 		let move_layout = down_layout.clone();
@@ -133,7 +140,73 @@ impl RenderOnce for SelectableText {
 					cx.stop_propagation();
 				}
 			})
-			.child(styled)
+			.child(if batch {
+				TextLayer(styled).into_any_element()
+			} else {
+				styled.into_any_element()
+			})
+	}
+}
+
+/// A paragraph has one foreground order. Keep selection backgrounds underneath
+/// it instead of inserting every glyph into the scene's overlap tree each frame.
+/// Decorated text keeps GPUI's original interleaving of glyphs and decorations.
+struct TextLayer(StyledText);
+impl IntoElement for TextLayer {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
+	}
+}
+impl Element for TextLayer {
+	type PrepaintState = ();
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<gpui::ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		id: Option<&gpui::GlobalElementId>,
+		inspector: Option<&gpui::InspectorElementId>,
+		window: &mut Window,
+		cx: &mut App,
+	) -> (gpui::LayoutId, ()) {
+		self.0.request_layout(id, inspector, window, cx)
+	}
+
+	fn prepaint(
+		&mut self,
+		id: Option<&gpui::GlobalElementId>,
+		inspector: Option<&gpui::InspectorElementId>,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		state: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		self.0.prepaint(id, inspector, bounds, state, window, cx);
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		_: &mut (),
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		self.0.layout().paint_background(window, cx).expect("text background");
+		window.paint_layer(bounds, |window| {
+			self.0.layout().paint_foreground(window, cx).expect("text foreground");
+		});
 	}
 }
 

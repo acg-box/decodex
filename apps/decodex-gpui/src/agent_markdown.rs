@@ -19,8 +19,7 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
-	StrikethroughStyle,
+	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, RenderOnce, StrikethroughStyle,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
@@ -131,38 +130,14 @@ impl RenderOnce for CopyButton {
 				}
 			})
 			.child(
-				gpui::canvas(
-					|_, _, _| (),
-					move |bounds, _, window, _| {
-						let point = |x: f32, y: f32| {
-							bounds.origin + gpui::point(gpui::px(x * 0.75), gpui::px(y * 0.75))
-						};
-						let mut path = PathBuilder::stroke(gpui::px(1.1));
-
-						if copied {
-							path.move_to(point(2., 8.));
-							path.line_to(point(6., 12.));
-							path.line_to(point(14., 4.));
-						} else {
-							path.move_to(point(5., 4.));
-							path.line_to(point(13., 4.));
-							path.line_to(point(13., 14.));
-							path.line_to(point(5., 14.));
-							path.close();
-							path.move_to(point(10., 1.));
-							path.line_to(point(2., 1.));
-							path.line_to(point(2., 11.));
-						}
-
-						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								gpui::rgb(if copied { BLUE } else { TEXT_MUTED }),
-							);
-						}
-					},
-				)
-				.size(gpui::px(12.)),
+				gpui::svg()
+					.data(if copied {
+						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M1.5 6L4.5 9L10.5 3" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
+					} else {
+						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M3.75 3H9.75V10.5H3.75ZM7.5 .75H1.5V8.25" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
+					})
+					.text_color(gpui::rgb(if copied { BLUE } else { TEXT_MUTED }))
+					.size(gpui::px(12.)),
 			)
 			.smooth()
 	}
