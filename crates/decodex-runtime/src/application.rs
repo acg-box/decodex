@@ -4915,7 +4915,7 @@ fn agent_assistant_history(
 		.unwrap_or_default();
 	let status = value.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str);
 
-	if text.is_empty() {
+	if text.trim().is_empty() {
 		if status == Some("completed")
 			&& value
 				.pointer("/threadReadback/exactTurnReadback")
@@ -4923,7 +4923,13 @@ fn agent_assistant_history(
 				== Some(true)
 			&& value.pointer("/threadReadback/truncated").and_then(serde_json::Value::as_bool)
 				== Some(false)
-			&& messages.is_some_and(|messages| messages.as_array().is_some_and(Vec::is_empty))
+			&& messages.is_some_and(|messages| {
+				messages.as_array().is_some_and(|items| {
+					items.iter().all(|item| {
+						item["text"].as_str().is_some_and(|text| text.trim().is_empty())
+					})
+				})
+			})
 			&& value.pointer("/terminal/turn/error").is_none_or(serde_json::Value::is_null)
 		{
 			return ("system", "Completed without a text response.".into());
@@ -6530,10 +6536,17 @@ mod tests {
 	#[test]
 	fn exact_successful_empty_turn_is_a_record_not_an_execution_warning() {
 		let mut value = serde_json::json!({"terminal":{"turn":{"status":"completed"}},"threadReadback":{"assistantMessages":[],"exactTurnReadback":true,"truncated":false}});
-		assert_eq!(
-			super::agent_assistant_history(&value, &mut false),
-			("system", "Completed without a text response.".into())
-		);
+		for messages in [
+			serde_json::json!([]),
+			serde_json::json!([{"text":""}]),
+			serde_json::json!([{"text":"  "},{"text":""}]),
+		] {
+			value["threadReadback"]["assistantMessages"] = messages;
+			assert_eq!(
+				super::agent_assistant_history(&value, &mut false),
+				("system", "Completed without a text response.".into())
+			);
+		}
 		for (pointer, replacement) in [
 			("/terminal/turn/status", serde_json::json!("failed")),
 			("/threadReadback/exactTurnReadback", serde_json::json!(false)),

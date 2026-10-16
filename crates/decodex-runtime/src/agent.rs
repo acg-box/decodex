@@ -57,7 +57,9 @@ use file_changes::PendingFileChanges;
 use resume_recovery::ClosingResume;
 use voice::VoiceConnection;
 
-const INSTRUCTIONS: &str = include_str!("agent/instructions.md");
+const COORDINATION: &str = include_str!("agent/coordination.md");
+const INSTRUCTIONS: &str =
+	concat!(include_str!("agent/instructions.md"), "\n", include_str!("agent/coordination.md"));
 // Leave ample space below the transport's frame limit for prompt escaping and RPC fields.
 const MAX_WAKE_BATCH_BYTES: usize = 512 * 1_024;
 
@@ -326,12 +328,9 @@ impl AgentCoordinator {
 				EnqueueAgentEvent {
 					source_event_id: serde_json::json!(["turn/completed", thread, turn]).to_string(),
 					work_item_id: item.id,
-					event_kind: if item.parent_goal_id.is_none() {
-						"agent_turn_completed"
-					} else {
-						"worker_turn_completed"
-					}
-					.into(),
+					// The store routes results for outstanding assignments atomically.
+					// Workspace ownership alone does not subscribe a parent to every turn.
+					event_kind: "agent_turn_completed".into(),
 					payload: serde_json::json!({"terminal":result_messages::terminal(&params),"threadReadback":evidence,"usage":usage}).to_string(),
 				},
 			)
@@ -2564,7 +2563,9 @@ fn wake_message(batch: &[AgentInboxEvent]) -> Result<String, AgentError> {
 			.ok_or_else(|| AgentError::Invalid("missing saved user text".into()));
 	}
 
-	Ok("New external work updates are available in the tool context. Assess them and record the next decision for the existing goal.".into())
+	Ok(format!(
+		"New external work updates are available in the tool context. Assess them and record the next decision for the existing goal.\n\n{COORDINATION}"
+	))
 }
 
 fn wake_evidence(event: &AgentInboxEvent) -> Value {

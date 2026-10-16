@@ -1,6 +1,7 @@
 //! Durable Agent work and inbox facts. The caller owns planning and judgment.
 
 mod capacity;
+mod delegation;
 mod steer;
 
 pub use capacity::AgentCapacityRetry;
@@ -677,6 +678,7 @@ impl SqliteStore {
 				if payload.len()>65_536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
 
 				transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",rusqlite::params![source,id,payload,now]).map_err(error::sqlite_error)?;
+				delegation::begin(&transaction, &id, transaction.last_insert_rowid())?;
 			}
 
 			let work = read_work(&transaction, &id)?;
@@ -846,6 +848,13 @@ impl SqliteStore {
 			}
 
 			let mut input = input;
+            if matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed") {
+                input.event_kind = if delegation::awaiting_result(&transaction, &id)? {
+                    "worker_turn_completed"
+                } else {
+                    "agent_turn_completed"
+                }.into();
+            }
             let mut payload: Value = serde_json::from_str(&input.payload).unwrap_or_default();
             let eligible = work.status == AgentWorkStatus::Open
                 && matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed")
@@ -1388,8 +1397,11 @@ impl SqliteStore {
 
 			transaction.execute("UPDATE agent_inbox_events SET disposition = ?2, disposition_note = ?3, disposed_at_micros = ?4 WHERE id = ?1 AND disposition IS NULL",
 				rusqlite::params![id, disposition.as_str(), note, now]).map_err(error::sqlite_error)?;
-			transaction.execute("UPDATE agent_work_items SET status = ?2, next_check_at_micros = ?3, updated_at_micros = max(updated_at_micros, ?4) WHERE id = ?1",
-				rusqlite::params![event.work_item_id, disposition.as_str(), next_check_at_micros, now]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET status = ?2, next_check_at_micros = ?3, updated_at_micros = max(updated_at_micros, ?4) WHERE id = ?1 AND (?6<>'worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_delegations WHERE work_id=?1 AND instruction_event_id>?5))",
+				rusqlite::params![event.work_item_id, disposition.as_str(), next_check_at_micros, now,event.id,event.event_kind]).map_err(error::sqlite_error)?;
+			if disposition == AgentDisposition::Resolved && event.event_kind == "worker_turn_completed" {
+				delegation::accept(&transaction, &event.work_item_id, event.id)?;
+			}
 
 			let updated = read_event(&transaction, id)?;
 
@@ -1656,6 +1668,7 @@ fn insert_event(
 #[cfg(test)]
 mod tests {
 	mod activity;
+	mod delegation;
 	mod dispatch_refusals;
 	mod inbox_carryover;
 	mod native_turns;

@@ -500,10 +500,10 @@ impl AgentSurface {
 					to: work.id.clone(),
 					kind: Kind::Assigned,
 					color: Kind::Assigned.color(),
-					label: "Delegated".into(),
+					label: "Owner".into(),
 					excerpt: None,
 					detail: format!(
-						"{}\n\nRecorded parent task: {}\nState: {}",
+						"{}\n\nConversation owner: {}\nState: {}",
 						self.work_label(work),
 						parent,
 						super::super::dock::progress_state(snapshot, work).label
