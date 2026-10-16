@@ -200,6 +200,10 @@ impl Element for TextLayer {
 		window: &mut Window,
 		cx: &mut App,
 	) {
+		// Keep layout for selection and scrolling, but skip glyph work outside the viewport.
+		if bounds.intersect(&window.content_mask().bounds).is_empty() {
+			return;
+		}
 		if self.batch {
 			self.styled.layout().paint_background(window, cx).expect("text background");
 			window.paint_layer(bounds, |window| {
