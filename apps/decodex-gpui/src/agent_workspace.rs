@@ -56,6 +56,13 @@ fn open_connection_settings(
 	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
 		shell.update(cx, |shell, cx| shell.open_settings_window(destination, cx));
 	}
+	#[cfg(all(target_os = "macos", not(test)))]
+	if let Some(parent) = super::native_composer::parent_window(window, cx) {
+		cx.defer(move |cx| {
+			let _ = parent
+				.update(cx, |_, window, cx| open_connection_settings(destination, window, cx));
+		});
+	}
 }
 
 fn connection_recovery_notice(
@@ -860,7 +867,11 @@ impl AgentSurface {
 			.map(|entry| entry.text.as_str())
 	}
 
-	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn connection_notice(
+		&self,
+		reason: &'static str,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
 			return gpui::div()
 				.id("conversation-unavailable")
@@ -870,7 +881,7 @@ impl AgentSurface {
 				.h(gpui::px(40.))
 				.flex()
 				.items_center()
-				.justify_center()
+				.justify_start()
 				.gap(gpui::px(8.))
 				.text_size(gpui::px(12.))
 				.text_color(gpui::rgb(TEXT_MUTED))
@@ -994,27 +1005,6 @@ impl AgentSurface {
 				.flex_col()
 				.child(self.conversation_activity(cx))
 				.child(self.recovered_draft_panel(cx))
-				.when_some(
-					self.composer_unavailable_reason().filter(|_| !self.connection_initializing()),
-					|d, reason| {
-						d.child(
-							gpui::div()
-								.w_full()
-								.px(gpui::px(ui_theme::CONVERSATION_INSET))
-								.py(gpui::px(12.))
-								.flex()
-								.justify_center()
-								.child(
-									gpui::div()
-										.w_full()
-										.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
-										.min_w_0()
-										.px(gpui::px(10.))
-										.child(self.connection_notice(reason, cx)),
-								),
-						)
-					},
-				)
 				.child(self.render_composer(window, cx)),
 		)
 	}
@@ -2815,11 +2805,34 @@ mod tests {
 					delivery_claimed: false,
 				}];
 			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("composer-blocked").is_some());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+		surface.update(visual, |s, cx| {
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "release")
+				.unwrap()
+				.kind = decodex_protocol::AgentWorkKindDto::Manager;
 			s.open_page("release", cx);
 			assert!(s.composer_unavailable_reason().is_none());
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("composer-blocked").is_none());
+		assert!(visual.debug_bounds("composer-editor-area").is_some());
+		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().pending_events[0].work_item_id = "release".into();
 			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+			cx.notify();
 		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("composer-blocked").is_some());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
 	}
 
 	#[gpui::test]
@@ -3005,7 +3018,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn unavailable_draft_remains_visible_editable_and_never_dispatches(
+	fn unavailable_composer_keeps_a_read_only_draft_and_resumes_after_recovery(
 		cx: &mut gpui::TestAppContext,
 	) {
 		cx.update(crate::composer_input::bind_keys);
@@ -3013,8 +3026,6 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-
-			s.state = LoadState::Stale;
 
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 			s.composer.update(cx, |input, cx| input.set_content("Saved", cx));
@@ -3033,18 +3044,29 @@ mod tests {
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear(cx);
 		});
+		surface.update(visual, |s, cx| {
+			s.state = LoadState::Stale;
+			s.composer_menu = Some("attachments");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.run_until_parked();
 
 		assert!(visual.debug_bounds("agent-composer").is_some());
-		assert!(
-			visual.debug_bounds("conversation-unavailable").unwrap().bottom()
-				<= visual.debug_bounds("agent-composer").unwrap().top()
-		);
+		let composer = visual.debug_bounds("agent-composer").unwrap();
+		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+		assert!(notice.top() >= composer.top() && notice.bottom() <= composer.bottom());
+		assert!(visual.debug_bounds("composer-retained-draft").is_some());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+		assert!(visual.debug_bounds("composer-action-row").is_none());
+		assert!(visual.debug_bounds("composer-menu-popover").is_none());
 
 		visual.simulate_keystrokes("cmd-end space e d i t e d enter cmd-enter");
 
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.composer.read(cx).content(), "Saved edited");
+			assert_eq!(s.composer.read(cx).content(), "Saved");
 			assert_eq!(s.attachments.len(), 1);
+			assert!(s.composer_menu.is_none());
 
 			s.escape_interrupt(cx);
 			s.escape_interrupt(cx);
@@ -3057,8 +3079,21 @@ mod tests {
 
 			s.state = LoadState::Ready;
 
-			assert_eq!(s.composer.read(cx).content(), "Saved edited");
+			assert_eq!(s.composer.read(cx).content(), "Saved");
 			assert!(s.submission.command.is_none(), "reconnection cannot submit retained edits");
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear(cx);
+			window.focus(&input.focus_handle(cx), cx);
+		});
+		assert!(visual.debug_bounds("composer-blocked").is_none());
+		assert!(visual.debug_bounds("composer-editor-area").is_some());
+		visual.simulate_keystrokes("cmd-end space e d i t e d");
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Saved edited");
+			assert_eq!(s.attachments.len(), 1);
+			assert!(s.submission.command.is_none());
 		});
 	}
 

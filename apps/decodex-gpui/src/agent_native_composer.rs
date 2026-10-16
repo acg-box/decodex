@@ -52,13 +52,22 @@ struct ComposerPanel {
 	_observation: Subscription,
 	input_focus: Option<gpui::FocusHandle>,
 }
+
+pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle> {
+	window.root::<ComposerPanel>().flatten().map(|panel| panel.read(cx).parent)
+}
+
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| {
 			s.sync_question_editor(cx);
 			let focus = s.conversation_composer().focus_handle(cx);
-			if self.input_focus.as_ref().is_some_and(|old| old != &focus && old.is_focused(window))
+			if s.composer_unavailable_reason().is_none()
+				&& self
+					.input_focus
+					.as_ref()
+					.is_some_and(|old| old != &focus && old.is_focused(window))
 			{
 				window.focus(&focus, cx);
 			}
@@ -138,6 +147,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn focus_native_message(&self, cx: &mut Context<Self>) -> bool {
+		if self.composer_unavailable_reason().is_some() {
+			return false;
+		}
 		let Some(child) = self.native_composer.child.filter(|_| self.native_composer.enabled)
 		else {
 			return false;
@@ -193,6 +205,7 @@ impl AgentSurface {
 
 		if enabled
 			&& !self.native_composer.enabled
+			&& self.composer_unavailable_reason().is_none()
 			&& self.conversation_composer().focus_handle(cx).is_focused(window)
 			&& let Some(child) = self.native_composer.child
 		{
@@ -288,6 +301,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
+		let blocked = self.composer_unavailable_reason();
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
@@ -311,9 +325,9 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("native-composer-accessibility-entry")
-					.role(Role::Button)
-					.aria_label("Focus message editor")
-					.tab_index(0)
+					.role(if blocked.is_some() { Role::Status } else { Role::Button })
+					.aria_label(blocked.unwrap_or("Focus message editor"))
+					.tab_index(if blocked.is_some() { -1 } else { 0 })
 					.on_click(cx.listener(|s, _, window, cx| s.focus_message(window, cx)))
 					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {

@@ -70,10 +70,40 @@ impl Render for ComposerTip {
 	}
 }
 
+fn composer_capsule(native: bool) -> Stateful<Div> {
+	gpui::div()
+		.id("agent-composer")
+		.debug_selector(|| "agent-composer".into())
+		.occlude()
+		.relative()
+		.w_full()
+		.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+		.min_w_0()
+		.px(gpui::px(10.))
+		.py(gpui::px(7.))
+		.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
+		.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
+		.when(!native, |d| {
+			d.shadow(vec![gpui::BoxShadow {
+				inset: false,
+				color: gpui::rgba(0x0000001a).into(),
+				offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+				blur_radius: gpui::px(16.),
+				spread_radius: gpui::px(-5.),
+			}])
+		})
+		.flex()
+		.flex_col()
+		.gap(gpui::px(4.))
+}
+
 impl AgentSurface {
 	/// Move keyboard and accessibility focus into the current message editor.
 	pub(crate) fn focus_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		use gpui::Focusable as _;
+		if self.composer_unavailable_reason().is_some() {
+			return;
+		}
 		#[cfg(all(target_os = "macos", not(test)))]
 		if self.focus_native_message(cx) {
 			return;
@@ -356,6 +386,64 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
+		let capsule = composer_capsule(native);
+		if let Some(reason) = self.composer_unavailable_reason() {
+			use gpui::Focusable as _;
+			let input = self.conversation_composer();
+			if input.focus_handle(cx).is_focused(window) {
+				window.blur(cx);
+			}
+			if self.composer_menu.is_some() {
+				let owner = cx.entity().downgrade();
+				cx.defer(move |cx| {
+					let _ = owner.update(cx, |s, cx| {
+						s.composer_menu_content = None;
+						s.dismiss_composer_menu(cx);
+					});
+				});
+			}
+			let draft = input.read(cx).content().to_owned();
+			let draft_key = format!(
+				"composer-saved-draft-{:?}-{}",
+				input.entity_id(),
+				self.selected.as_deref().unwrap_or("new")
+			);
+			return capsule.child(
+				gpui::div()
+					.id("composer-blocked")
+					.debug_selector(|| "composer-blocked".into())
+					.w_full()
+					.min_h(gpui::px(51.))
+					.px(gpui::px(8.))
+					.flex()
+					.flex_col()
+					.justify_center()
+					.child(self.connection_notice(reason, cx))
+					.when(!draft.is_empty(), |d| {
+						d.child(
+							gpui::div()
+								.id("composer-retained-draft")
+								.debug_selector(|| "composer-retained-draft".into())
+								.w_full()
+								.max_h(gpui::px(120.))
+								.pb(gpui::px(4.))
+								.overflow_y_scroll()
+								.text_color(gpui::rgb(TEXT_MUTED))
+								.child(agent_surface::selectable_text::SelectableText::plain(
+									draft_key, draft,
+								)),
+						)
+					})
+					.when(self.voice.is_some() || self.dictation.is_some(), |d| {
+						d.child(self.workspace_action(
+							"composer-stop-recording".into(),
+							"Stop recording".into(),
+							|s, cx| s.stop_voice(cx),
+							cx,
+						))
+					}),
+			);
+		}
 		self.update_question_placeholder(cx);
 		let editor = gpui::div()
 			.id("composer-editor-area")
@@ -387,30 +475,7 @@ impl AgentSurface {
 				}
 			});
 
-		gpui::div()
-			.id("agent-composer")
-			.debug_selector(|| "agent-composer".into())
-			.occlude()
-			.relative()
-			.w_full()
-			.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
-			.min_w_0()
-			.px(gpui::px(10.))
-			.py(gpui::px(7.))
-			.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-			.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
-			.when(!native, |d| {
-				d.shadow(vec![gpui::BoxShadow {
-					inset: false,
-					color: gpui::rgba(0x0000001a).into(),
-					offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-					blur_radius: gpui::px(16.),
-					spread_radius: gpui::px(-5.),
-				}])
-			})
-			.flex()
-			.flex_col()
-			.gap(gpui::px(4.))
+		capsule
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" && !e.keystroke.modifiers.shift {
 					if !e.is_held {
@@ -474,7 +539,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		if self.workspace_connecting() {
+		if self.workspace_connecting() || self.composer_unavailable_reason().is_some() {
 			return gpui::div();
 		}
 		let menu = self.composer_menu.or(self.composer_menu_content);

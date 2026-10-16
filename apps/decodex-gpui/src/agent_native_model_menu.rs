@@ -76,12 +76,14 @@ impl AgentSurface {
 				|(composer, trigger)| Bounds::new(composer.origin + trigger.origin, trigger.size),
 			);
 		let active = ui_motion::application_active();
+		let available = self.composer_unavailable_reason().is_none();
 		let open = active
+			&& available
 			&& self.native_composer.enabled
 			&& self.composer_menu == Some("model")
 			&& anchor.is_some();
 		let opacity = ui_motion::native_presence("model-menu-native-opacity", open, window, cx);
-		let opacity = if active { opacity } else { 0. };
+		let opacity = if active && available { opacity } else { 0. };
 		if let Some(child) = self.native_model_menu.child {
 			let bounds = anchor.map(|anchor| {
 				composer::model_menu_bounds(
