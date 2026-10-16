@@ -19,6 +19,11 @@ pub(super) struct SelectableText {
 	pub highlights: Vec<(Range<usize>, HighlightStyle)>,
 	pub links: Vec<(Range<usize>, String)>,
 }
+impl SelectableText {
+	pub(super) fn plain(key: String, text: String) -> Self {
+		Self { key, text, highlights: Vec::new(), links: Vec::new() }
+	}
+}
 impl RenderOnce for SelectableText {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(
@@ -85,17 +90,6 @@ impl RenderOnce for SelectableText {
 
 				cx.stop_propagation();
 			})
-			.on_mouse_move(move |event, _, cx| {
-				if move_state.read(cx).dragging && event.pressed_button == Some(MouseButton::Left) {
-					let ix = move_layout.index_for_position(event.position).unwrap_or_else(|ix| ix);
-
-					move_state.update(cx, |s, cx| {
-						s.head = ix;
-
-						cx.notify();
-					});
-				}
-			})
 			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
 				let click = {
 					let s = up_state.read(cx);
@@ -145,7 +139,33 @@ impl RenderOnce for SelectableText {
 			} else {
 				styled.into_any_element()
 			})
+			.child(selection_drag(move_state, move_layout))
 	}
+}
+
+fn selection_drag(state: gpui::Entity<Selection>, layout: gpui::TextLayout) -> impl IntoElement {
+	gpui::canvas(
+		|_, _, _| (),
+		move |_, _, window, _| {
+			let state = state.clone();
+			let layout = layout.clone();
+			// Continue a selection when the pointer leaves its text bounds.
+			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
+				if phase == gpui::DispatchPhase::Capture
+					&& state.read(cx).dragging
+					&& event.pressed_button == Some(MouseButton::Left)
+				{
+					let ix = layout.index_for_position(event.position).unwrap_or_else(|ix| ix);
+					state.update(cx, |s, cx| {
+						s.head = ix;
+						cx.notify();
+					});
+				}
+			});
+		},
+	)
+	.absolute()
+	.inset_0()
 }
 
 /// A paragraph has one foreground order. Keep selection backgrounds underneath
@@ -273,6 +293,7 @@ fn selection_highlights(
 }
 #[cfg(test)]
 mod tests {
+	use gpui::prelude::{ParentElement as _, Styled as _};
 
 	use crate::shell::agent_surface::selectable_text::{
 		self, ClipboardItem, Context, FontWeight, IntoElement, SelectableText, Window,
@@ -283,12 +304,12 @@ mod tests {
 	}
 	impl gpui::Render for Preview {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-			SelectableText {
+			gpui::div().w(gpui::px(250.)).child(SelectableText {
 				key: "changing-selection".into(),
 				text: self.text.clone(),
 				highlights: Vec::new(),
 				links: Vec::new(),
-			}
+			})
 		}
 	}
 
@@ -309,6 +330,25 @@ mod tests {
 		assert_eq!(runs[1].1.font_weight, Some(FontWeight::BOLD));
 		assert!(runs[1].1.background_color.is_some());
 		assert!(runs[3].1.background_color.is_none());
+	}
+
+	#[gpui::test]
+	fn dragging_past_the_text_keeps_extending_the_selection(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| Preview { text: "A calm reading day.".into() });
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		let bounds = visual.debug_bounds("changing-selection").expect("text");
+		let start = gpui::point(bounds.left() + gpui::px(1.), bounds.top() + gpui::px(8.));
+		let end = gpui::point(bounds.right() + gpui::px(24.), bounds.bottom() + gpui::px(24.));
+		visual.simulate_mouse_down(start, gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(end, gpui::MouseButton::Left, Default::default());
+		visual.simulate_keystrokes("cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+				Some("A calm reading day.")
+			);
+		});
 	}
 
 	#[gpui::test]

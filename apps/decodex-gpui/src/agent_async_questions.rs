@@ -9,6 +9,7 @@ use crate::{
 		EntityId, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
 		StatefulInteractiveElement, Styled, Window,
 		composer::ComposerTip,
+		selectable_text::SelectableText,
 		workspace_symbols::{self, Symbol},
 	},
 	ui_motion::{self, SmoothControl as _},
@@ -443,7 +444,12 @@ impl AgentSurface {
 		let titles: Vec<_> = questions
 			.iter()
 			.filter(|q| question_source(&q.id).as_deref() == Some(item))
-			.map(|q| gpui::div().child(q.title.clone()))
+			.map(|q| {
+				gpui::div().child(SelectableText::plain(
+					format!("question-history-{}", q.id),
+					q.title.clone(),
+				))
+			})
 			.collect();
 		(!titles.is_empty())
 			.then(|| gpui::div().flex().flex_col().gap_2().children(titles).into_any_element())
@@ -548,7 +554,10 @@ impl AgentSurface {
 						.pt(gpui::px(2.5))
 						.whitespace_normal()
 						.font_weight(gpui::FontWeight::MEDIUM)
-						.child(question.title.clone()),
+						.child(SelectableText::plain(
+							format!("question-title-selection-{}", question.id),
+							question.title.clone(),
+						)),
 				)
 				.child(skip),
 		);
@@ -965,6 +974,29 @@ mod tests {
 
 		s.history = Some(("root".into(), history));
 	}
+	#[gpui::test]
+	fn question_title_can_be_selected_and_copied_without_submitting(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			install_question_fixture(s, cx);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+			window.draw(cx).clear(cx);
+		});
+		let title = visual.debug_bounds("question-title-selection-q1").expect("question title");
+		visual.simulate_click(title.center(), Default::default());
+		visual.simulate_keystrokes("cmd-a cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+				Some("Choose a format")
+			);
+			assert!(surface.read(cx).async_question_submissions.is_empty());
+		});
+	}
+
 	#[gpui::test]
 	fn question_actions_stay_in_composer_across_history_pages(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
