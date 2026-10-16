@@ -6140,12 +6140,11 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	let ProductStore::Available(store) = store else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let records = match store
+	let Ok(records) = store
 		.read_agent_snapshot(MAX_AGENT_WORK_ITEMS, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS)
 		.await
-	{
-		Ok(records) => records,
-		Err(_) => return decodex_protocol::AgentSnapshotResult::Unavailable,
+	else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
 	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
 		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
@@ -6169,6 +6168,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 
 	let snapshot = AgentSnapshotDto {
+		agent_slots: Default::default(),
 		context_references: references
 			.into_iter()
 			.map(|r| decodex_protocol::AgentContextReferenceDto {

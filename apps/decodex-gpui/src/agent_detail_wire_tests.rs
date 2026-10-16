@@ -96,6 +96,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 
 			surface.update(cx, |s, cx| {
 				s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: false,
 					runtime_source: Some(EntityId::new("source").unwrap()),

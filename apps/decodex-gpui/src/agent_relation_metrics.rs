@@ -189,7 +189,7 @@ impl AgentSurface {
 			.iter()
 			.find(|n| Some(&n.key) == self.work_board.view.picked_agent.as_ref())?;
 		let row = node.row.as_ref()?;
-		let labels = identity::labels(std::iter::once(node.key.clone()));
+		let labels = identity::labels(self.snapshot.as_ref(), std::iter::once(node.key.clone()));
 		let tokens = self.published_metrics_for(node).tokens;
 		let total = graph
 			.nodes
@@ -222,7 +222,7 @@ impl AgentSurface {
 								.child(
 									gpui::div()
 										.text_color(gpui::rgb(TEXT_MUTED))
-										.child(labels[&node.key].clone()),
+										.children(labels.get(&node.key).cloned()),
 								)
 								.child(
 									gpui::div()
@@ -391,7 +391,7 @@ impl AgentSurface {
 			.collect();
 		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
 		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
-		let labels = identity::labels(nodes.iter().map(|n| n.key.clone()));
+		let labels = identity::labels(self.snapshot.as_ref(), nodes.iter().map(|n| n.key.clone()));
 		let mut distribution =
 			gpui::div().flex().w_full().h(gpui::px(28.)).rounded(gpui::px(4.)).overflow_hidden();
 		for (node, value) in ranked.iter().filter(|(_, v)| *v > 0) {
@@ -399,7 +399,16 @@ impl AgentSurface {
 			let key = node.key.clone();
 			let keyrow = key.clone();
 			let hoverkey = key.clone();
-			let label = labels[&node.key].clone();
+			let label = labels.get(&node.key).cloned().unwrap_or_else(|| {
+				node.row
+					.as_ref()
+					.expect("ranked nodes have rows")
+					.title
+					.chars()
+					.next()
+					.map(|initial| initial.to_string())
+					.unwrap_or_default()
+			});
 			let highlighted = self.work_board.view.hovered_agent.as_ref() == Some(&key)
 				|| self.work_board.view.picked_agent.as_ref() == Some(&key);
 			let tip = format!(

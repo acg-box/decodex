@@ -299,16 +299,31 @@ impl AgentHost {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return;
 		};
+		let Ok(slots) = self.store.agent_slots().await else {
+			snapshot.connection_initializing = true;
+			return;
+		};
 		crate::agent_visibility::ArchiveVisibility::refresh(
 			&self.archive_visibility,
 			generation.as_str(),
 			client,
-			snapshot.work_items.iter().filter_map(|work| work.codex_thread_id.clone()).collect(),
+			snapshot
+				.work_items
+				.iter()
+				.filter_map(|work| work.codex_thread_id.clone())
+				.chain(slots.iter().filter_map(|slot| slot.thread_id.clone()))
+				.collect(),
 		)
 		.await;
 		let cache = self.archive_visibility.lock().await;
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
 			cache.project(snapshot);
+			if crate::agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
+				.await
+				.is_err()
+			{
+				snapshot.connection_initializing = true;
+			}
 		} else {
 			snapshot.connection_initializing = true;
 		}
@@ -804,6 +819,27 @@ impl AgentHost {
 		let result = native_agents::read(&self.store, &client, work, thread, cursor).await;
 
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
+			if let decodex_protocol::NativeAgentsResult::Available { agents, .. } = &result {
+				let active = agents
+					.iter()
+					.filter(|agent| {
+						matches!(
+							agent.status.as_str(),
+							"active" | "idle" | "waitingOnApproval" | "waitingOnUserInput"
+						)
+					})
+					.map(|agent| {
+						(
+							format!("native:{work}:{}", agent.thread_id),
+							work.to_owned(),
+							Some(agent.thread_id.clone()),
+						)
+					})
+					.collect();
+				if self.store.reconcile_agent_slots(active, vec![]).await.is_err() {
+					return decodex_protocol::NativeAgentsResult::Unavailable;
+				}
+			}
 			result
 		} else {
 			decodex_protocol::NativeAgentsResult::Unavailable

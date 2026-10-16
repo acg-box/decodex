@@ -1725,6 +1725,9 @@ impl AgentCoordinator {
 
 		match event {
 			ServerEvent::Notification { method, params } if method == "turn/started" => {
+				if let Some(thread) = params["threadId"].as_str() {
+					self.store.resume_native_agent_slot(thread.into()).await?;
+				}
 				self.observe_native_turn(&params).await?;
 			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
@@ -1734,6 +1737,11 @@ impl AgentCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
+				if method == "thread/closed" {
+					self.store
+						.release_native_agent_slots(vec![exact(&params, "/threadId")?])
+						.await?;
+				}
 				self.observe_unloaded_thread(&method, &exact(&params, "/threadId")?);
 			},
 			ServerEvent::Notification { method, params }
@@ -1759,6 +1767,9 @@ impl AgentCoordinator {
 			ServerEvent::Notification { method, params }
 				if method == "item/started" || method == "item/completed" =>
 			{
+				if method == "item/completed" {
+					crate::agent_slots::observe_native_close(&self.store, &params["item"]).await?;
+				}
 				if let Some(activity) = activity::project(&params, method == "item/completed") {
 					self.store
 						.record_agent_activity(

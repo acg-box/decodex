@@ -1016,8 +1016,10 @@ impl AgentSurface {
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale(graph);
 		let neighborhood = self.relation_neighborhood(graph);
-		let labels =
-			identity::labels(graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()));
+		let labels = identity::labels(
+			self.snapshot.as_ref(),
+			graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()),
+		);
 		let baselines = self.metric_baselines(graph);
 
 		for node in &graph.nodes {

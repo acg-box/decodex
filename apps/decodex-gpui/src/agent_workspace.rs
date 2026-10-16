@@ -1977,6 +1977,7 @@ impl AgentSurface {
 				}
 
 				self.snapshot = Some(AgentSnapshotDto {
+					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: false,
 					runtime_source: None,
@@ -2108,6 +2109,7 @@ impl AgentSurface {
 			};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,

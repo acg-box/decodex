@@ -924,6 +924,7 @@ mod tests {
 	}
 	fn install_question_fixture(s: &mut AgentSurface, _cx: &mut Context<AgentSurface>) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,

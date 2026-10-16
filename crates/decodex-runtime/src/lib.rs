@@ -34,6 +34,7 @@ mod agent_resources;
 mod agent_search_settings;
 mod agent_skill_roots;
 mod agent_skills;
+mod agent_slots;
 mod agent_transcript;
 mod agent_usage_estimate;
 mod agent_visibility;

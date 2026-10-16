@@ -243,6 +243,7 @@ mod tests {
 	}
 	fn snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,

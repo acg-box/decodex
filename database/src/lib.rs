@@ -33,6 +33,8 @@ mod agent_reasoning_summary;
 mod agent_request_payload;
 mod agent_response_usage;
 mod agent_settings_observations;
+mod agent_slots;
+pub use agent_slots::AgentSlot;
 mod agent_task_references;
 mod agent_turn_execution;
 mod agent_voice;

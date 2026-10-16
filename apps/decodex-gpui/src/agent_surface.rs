@@ -3080,6 +3080,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3284,6 +3285,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3354,6 +3356,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3491,6 +3494,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3617,6 +3621,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3708,6 +3713,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,

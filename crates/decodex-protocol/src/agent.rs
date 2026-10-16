@@ -1015,6 +1015,9 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
+	#[serde(default)]
+	pub agent_slots: std::collections::BTreeMap<String, u32>,
 	/// Explicit selected context references, not inferred from prose.
 	#[serde(default)]
 	pub context_references: Vec<AgentContextReferenceDto>,
@@ -1041,6 +1044,9 @@ impl AgentSnapshotDto {
 		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
 		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.agent_slots.len() <= 1_024
+			&& self.agent_slots.keys().all(|key| text(key, 1_536))
+			&& self.agent_slots.values().collect::<HashSet<_>>().len() == self.agent_slots.len()
 			&& self.workspaces.iter().all(|workspace| {
 				text(&workspace.name, 256)
 					&& text(&workspace.directory, 4_096)
@@ -1311,6 +1317,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -1333,6 +1340,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
