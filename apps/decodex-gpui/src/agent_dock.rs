@@ -172,7 +172,10 @@ impl AgentSurface {
 			work.codex_thread_id,
 			self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()),
 			work.updated_at_micros,
-			self.handoff_items().iter().find(|h| h.work == work.id).map(|h| &h.key)
+			self.snapshot
+				.as_ref()
+				.and_then(|snapshot| self.handoffs.item_for(snapshot, work))
+				.map(|handoff| handoff.key)
 		])
 		.to_string()
 	}

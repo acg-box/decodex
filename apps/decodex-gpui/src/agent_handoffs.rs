@@ -105,57 +105,64 @@ impl Handoffs {
 		}
 		let mut work: Vec<_> = snapshot.work_items.iter().collect();
 		work.sort_by_key(|w| (w.created_at_micros, w.id.as_str()));
-		work.into_iter()
-			.filter_map(|work| {
-				let request = snapshot.pending_events.iter().find(|event| {
-					event.work_item_id == work.id
-						&& ["permission_pending", "user_input_pending", "server_request_pending"]
-							.contains(&event.event_kind.as_str())
-				});
-				let (key, label, reason, result) = if let Some(event) = request {
-					let permission = event.event_kind == "permission_pending";
-					(
-						format!("request:{}", event.id),
-						if permission { "Permission needed" } else { "Answer needed" },
-						if permission {
-							"Review the original request before granting permission."
-						} else {
-							"A question is waiting for your response."
-						},
-						false,
-					)
-				} else if work.status == Status::UserDecision
-					&& work.dispatch_state == Dispatch::Idle
-				{
-					(
-						receipt(work),
-						"Decision needed",
-						"This task explicitly asks for your decision.",
-						false,
-					)
-				} else if direct_work(snapshot, work) && work.dispatch_state == Dispatch::Unknown {
-					(
-						receipt(work),
-						"Check execution",
-						"Execution could not be confirmed. Check the conversation before retrying.",
-						false,
-					)
-				} else if direct_work(snapshot, work)
-					&& completed(work)
-					&& self.seen.get(&work.id) != Some(&receipt(work))
-				{
-					(
-						receipt(work),
-						"Result ready",
-						"This task reported completion. Review its result and verification.",
-						true,
-					)
+		work.into_iter().filter_map(|work| self.item_for(snapshot, work)).collect()
+	}
+
+	/// Read one work item without rebuilding and sorting every handoff on each frame.
+	pub(super) fn item_for(
+		&self,
+		snapshot: &AgentSnapshotDto,
+		work: &AgentWorkItemDto,
+	) -> Option<Handoff> {
+		if self.scope.is_none() || snapshot.connection_initializing {
+			return None;
+		}
+
+		let request = snapshot.pending_events.iter().find(|event| {
+			event.work_item_id == work.id
+				&& ["permission_pending", "user_input_pending", "server_request_pending"]
+					.contains(&event.event_kind.as_str())
+		});
+		let (key, label, reason, result) = if let Some(event) = request {
+			let permission = event.event_kind == "permission_pending";
+			(
+				format!("request:{}", event.id),
+				if permission { "Permission needed" } else { "Answer needed" },
+				if permission {
+					"Review the original request before granting permission."
 				} else {
-					return None;
-				};
-				Some(Handoff { work: work.id.clone(), key, label, reason, result, attention: true })
-			})
-			.collect()
+					"A question is waiting for your response."
+				},
+				false,
+			)
+		} else if work.status == Status::UserDecision && work.dispatch_state == Dispatch::Idle {
+			(
+				receipt(work),
+				"Decision needed",
+				"This task explicitly asks for your decision.",
+				false,
+			)
+		} else if direct_work(snapshot, work) && work.dispatch_state == Dispatch::Unknown {
+			(
+				receipt(work),
+				"Check execution",
+				"Execution could not be confirmed. Check the conversation before retrying.",
+				false,
+			)
+		} else if direct_work(snapshot, work)
+			&& completed(work)
+			&& self.seen.get(&work.id) != Some(&receipt(work))
+		{
+			(
+				receipt(work),
+				"Result ready",
+				"This task reported completion. Review its result and verification.",
+				true,
+			)
+		} else {
+			return None;
+		};
+		Some(Handoff { work: work.id.clone(), key, label, reason, result, attention: true })
 	}
 
 	pub fn dock_items(&self, snapshot: &AgentSnapshotDto) -> Vec<Handoff> {

@@ -60,11 +60,41 @@ fn percentage(value: Option<f32>) -> String {
 		None => "—".into(),
 	}
 }
-fn metric_track(value: Option<f32>, color: u32, scale: f32) -> AnyElement {
-	// Decorative segments share one layout box; their fill does not affect layout.
+fn metric_cell(label: String, value: Option<f32>, color: u32, scale: f32) -> AnyElement {
+	// Labels and decorative segments have fixed geometry. Paint one box instead
+	// of relaying out a nested flex tree for every node on every animation frame.
 	gpui::canvas(
-		|_, _, _| {},
-		move |bounds, (), window, _| {
+		move |_, window, _| {
+			let font = window.text_style().font();
+			let shape = |text: String, size: f32, color| {
+				let run = gpui::TextRun {
+					len: text.len(),
+					font: font.clone(),
+					color: gpui::rgb(color).into(),
+					background_color: None,
+					underline: None,
+					strikethrough: None,
+				};
+				window.text_system().shape_line(text.into(), gpui::px(size * scale), &[run], None)
+			};
+			(shape(label, 11., TEXT_MUTED), shape(percentage(value), 10., color))
+		},
+		move |bounds, (label, share), window, cx| {
+			let line_height = gpui::px(14. * scale);
+			let _ =
+				label.paint(bounds.origin, line_height, gpui::TextAlign::Left, None, window, cx);
+			let _ = share.paint(
+				gpui::point(bounds.right() - share.width, bounds.top()),
+				line_height,
+				gpui::TextAlign::Left,
+				None,
+				window,
+				cx,
+			);
+			let bounds = gpui::Bounds::new(
+				bounds.origin + gpui::point(gpui::px(0.), gpui::px(19. * scale)),
+				gpui::size(bounds.size.width, gpui::px(3. * scale)),
+			);
 			let gap = gpui::px(1.5 * scale);
 			let width = ((bounds.size.width - gap * 11.) / 12.).max(gpui::px(0.));
 			for i in 0..12 {
@@ -93,7 +123,7 @@ fn metric_track(value: Option<f32>, color: u32, scale: f32) -> AnyElement {
 		},
 	)
 	.w_full()
-	.h(gpui::px(3. * scale))
+	.h(gpui::px(22. * scale))
 	.into_any_element()
 }
 
@@ -346,29 +376,12 @@ impl AgentSurface {
 			body = body.child(
 				gpui::div()
 					.id(SharedString::from(format!("metric-{color}-{}", node.key)))
+					.role(Role::Group)
+					.aria_label(format!("{label} · {}", percentage(part)))
 					.flex_1()
 					.min_w_0()
-					.flex()
-					.flex_col()
-					.gap(gpui::px(5. * scale))
 					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-					.child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.gap(gpui::px(4. * scale))
-							.text_size(gpui::px(11. * scale))
-							.line_height(gpui::px(14. * scale))
-							.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label))
-							.child(
-								gpui::div()
-									.text_size(gpui::px(10. * scale))
-									.text_color(gpui::rgb(color))
-									.child(percentage(part)),
-							),
-					)
-					.child(metric_track(part, color, scale)),
+					.child(metric_cell(label, part, color, scale)),
 			);
 		}
 		crate::ui_loading::content(
