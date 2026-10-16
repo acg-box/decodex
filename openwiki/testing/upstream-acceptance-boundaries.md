@@ -54,10 +54,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-14T20:39:39.547Z" }
+generated: { by: "codex", at: "2026-10-16T06:31:21.593Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T20:39:39.547Z
+    at: 2026-10-16T06:31:21.593Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -98,6 +98,8 @@ Choose the smallest test that can fail for the changed behavior. Preserve comple
 `decodex-components` tests cover exact official source selection, release baseline coverage, download interruption and retry, hash refusal, atomic replacement, failed publication preservation and damaged cache handling. The ignored official package test uses an isolated store to exercise failed network access, retry, offline reuse and schema repair with a real signed Release. That fixture is not the production pin.
 
 The ignored development test takes a qualified package through `DECODEX_TEST_DEVELOPMENT_RUNTIME`. It verifies exact executable bytes after import, repairs damaged executable and schema files from the local archive, rejects a different commit and keeps the previous selection after an import failure. Run the affected native consumer fixtures against the component-store executable as a separate check. Matching hashes can carry forward evidence for the same artifact; matching a version string or schema alone cannot.
+
+During a component migration, record whether a failed fixture reached its behavior assertions. Preserve full failure output and each exact executable identity. Compare the previous and proposed components under the same fixture limits. Resolve startup failures before reporting the affected behavior as qualified; a shared initialization timeout does not establish its cause.
 
 Formal release selection must retain the currently reviewed fixes. The pin tool rejects an official Release that does not contain the development baseline; reviewers must also establish affected behavior and schema compatibility. No test fixture or successful package download authorizes a lower baseline.
 

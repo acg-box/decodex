@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fb262573d973e3bfbacced29f64a3c919aa45e92b321d1abddd5a2f027dfbba8",
+  "pageVersion": "sha256:2465912b9bcf7285f2a70cab2a4d8a007eb5f8b670d53a769dd83900d74f2d0b",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -78,7 +78,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:3eaaa2bf0b81953f13541f4f6662908a52f990b35a237f7a870c17d07fc8b96e"
+          "version": "repo-file-v1:sha256:0096cc8cd76b207e6308939b40753e7fc1570f985d8bce64490b70e50b30901a"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:3eaaa2bf0b81953f13541f4f6662908a52f990b35a237f7a870c17d07fc8b96e"
+          "version": "repo-file-v1:sha256:0096cc8cd76b207e6308939b40753e7fc1570f985d8bce64490b70e50b30901a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
@@ -269,6 +269,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-15T20:50:23.059Z"
+    "at": "2026-10-16T06:31:21.593Z"
   }
 }
