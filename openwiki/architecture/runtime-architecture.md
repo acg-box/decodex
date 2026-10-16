@@ -30,6 +30,8 @@ sources:
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
+  - id: openwiki-source-1f19769e3cb97a2389e92f82
+    resource: repo://crates/decodex-runtime/src/account_launch.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -54,10 +56,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+generated: { by: "codex", at: "2026-10-15T20:50:23.059Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T20:39:39.547Z
+    at: 2026-10-15T20:50:23.059Z
 ---
 
 # Runtime Architecture
@@ -100,6 +102,12 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
 The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
+
+## Startup preflight cleanup
+
+Version and schema preflights reserve one slot in the daemon's bounded cleanup quarantine before the first child starts. `ProcessGuard::Preflight` retains the shared capacity owner and that slot through both preflights. It does not grant account authority or return a `RunnerPermit`. Account-bound processes keep their existing permit.
+
+If immediate cleanup cannot finish, `ProcessGroupOwner` transfers the child, its output pump and the guard to the reaper. The guard remains owned until cleanup completes. Existing queue limits, preflight deadlines and process-group signaling rules still apply. The two-phase profile regression covers cleanup handoff during either version or schema preflight.
 
 ## Context defaults
 

@@ -48,7 +48,13 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+  - id: openwiki-source-6b78c4fcf18e4d7a81d69679
+    resource: repo://crates/decodex-runtime/src/agent/timeline/attachments.rs
+  - id: openwiki-source-cb57a61e719abcde2e5a7754
+    resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
+  - id: openwiki-source-8d3e8e016f038e821f68dd0c
+    resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
+generated: { by: "codex", at: "2026-10-15T20:50:23.059Z" }
 verified:
   - by: openwiki/0.7.2
     at: 2026-10-15T20:50:23.059Z

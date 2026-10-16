@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:95f540eb780e1d9f5f241d5805b22f5cdd24ed755d4bb69bb40357c0f1a4eb2f",
+  "pageVersion": "sha256:fb262573d973e3bfbacced29f64a3c919aa45e92b321d1abddd5a2f027dfbba8",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -53,7 +53,7 @@
       "statement": "The attested native launch enables description-first tool ordering, subagent context defaults and full-fork prefix preservation without enabling multi_agent_v2 itself or forcing gRPC hosting.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1395-L1409",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1394-L1408",
           "version": "repo-lines-v1:sha256:b4dd06c1b85bffe95101e1d3a8b98e1645d41a5b9997061c34f4793f16cdc413:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmZmOTBlYzA5NzdhMjYyZTA4NmJkMDhlZmFmODZiMzI2Nzg2ZGI2YzVjMDEyMTY5OWZhY2ZiNzRjYmE2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyMDY5NmJmN2ZhNDIxZGZlNjdlNzgwYWM1Y2E0YzEwNjFiZTlmNmQxMzM3YzBmMjBjNjEwNjNhOTZkZDI4ZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MTUyNzhjZDk2NmZiMDE3NDgxZjgwYjM4ZmQyOWUwODAyZWRkZDFlN2I4ZDIyMWJlNmY4NTlhMTgyN2JhNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4N2IyYjMyM2VlZWExNzhiZTAzMjZlMWNmNzY5ZTYwNzU3NGM1YjkxMjlmNjdjMWJhZTEyZWY3NzUyNzE2ZDAifQ"
         },
         {
@@ -194,7 +194,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:0b121ccf804628b0524901b8e6042ee327b46836f48bd644a48ec253ec6f4d5d"
+          "version": "repo-file-v1:sha256:0999d0d37642469714f1d4cdc8373d0b93aeb31a56acb5475204dd36b706296a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs",
@@ -233,10 +233,42 @@
           "version": "repo-file-v1:sha256:8df134bfceb6a56e86e3760859326597662657d0c9c599910a7794bfe6aacb81"
         }
       ]
+    },
+    {
+      "id": "claim_6d753319f15e43ae9c50d5981868b275",
+      "statement": "Startup version and schema preflights reserve one bounded cleanup slot before spawning and retain the daemon capacity owner through both preflights; this unbound ProcessGuard does not create an account RunnerPermit.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch.rs#L51-L80",
+          "version": "repo-lines-v1:sha256:42b6c443172646dfc7de54b493b4ff3b76661f322d7db6920ee9bf1048beac9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxY2VhNjY5NzhmMzkyNDUwNWQ5YjI1MzRhZGQ0ODNlYjAxZjIxYWI4MmMxM2NhMDcyMjVlNjNiYjQ1YjM2YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3ZTQ5ZjgxZGUzOWM0M2RkMGI1YjFjNTIyZGU2OTIxMzhhYmNmZjMyY2UyYmFlZmU2OTk3YmMxODYzZGRlNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMDA2MmM2Y2Y3YzMzNDU1Mjk5ZmYxNDM3MDYzYjY2ZTMxMjJkZjlkZTczNjcwMGY3MmJiNzdlYTQ0YjAyMDMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L3121-L3153",
+          "version": "repo-lines-v1:sha256:eae8223f42174c48804abbb37e0cb529a1d2763574a377f408eecd75d32eee83:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYWY4NjY3MjJkNDAxNDk2OWRjNDc4NDRhMTAxMGYzM2ZiOGM0OWYxYzVlNjM0M2ZmMDJmOTkwMDkzOTdlNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NzQ5ZTlhYjRhZTIxOGM0MTQ4MDBiMDU2YzQ0MTUyZWU3NDZlNzVkYWNjNGQ5ZTU4MTNkYzI1OTFkNjM2YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjZTJmMjIzNjRkZWM5ZTU1ODgyMDRhYTgxMzc4NzgzMmQ3NWI4OTZiNmIyZGRiNTI1Y2FmMmM1MDU1MzIwNjQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L5619-L5681",
+          "version": "repo-lines-v1:sha256:2aacb285da268b62ed279c4b587b90cc53dfa5eed1d168083df22634492d1508:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0YzQzOTI2OGQ0OWQxYmM3ZjlkZTNhYmVkNDUzNzE4YjY0OGVmOTVjOTJmMTRmZDg5ODE2NmE4M2I2NTA1YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMmRiMGNhMTgxMmU4NGRhZjUxMmNmODQ4YTlhYWM1NmQ5NDQ3NmJmMWUyMjA4ZDU2ODkwZjE1Nzg0ZjBkYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0OWVmMzE3MDI4ZmQ2ZDM5MzYwYjIzMGQ0OWI3MjhmYWJhN2VjNjVhNzViYzZjMjc1ZDVjZTc3YjNmYzIzYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlZjg2MzA5M2VhNzFjYmQ2MDk4YTc3ODIwM2UyZTkzZmY0YjliNTVjZTlmYzdlNGQ2ZjFlZmJmYmRjY2NkMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_128fd7a49c3d47719360bf524b63754f",
+      "statement": "When immediate child cleanup cannot finish, ProcessGroupOwner transfers the child, output pump and cleanup guard to the reaper, and the profile regression covers this handoff during either preflight phase.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L3284-L3310",
+          "version": "repo-lines-v1:sha256:299908a14e83570c1e28b6f462df6085b93c90de51238a33c56c7cf091272152:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjMmY1NDhkNjIzY2U3OTI5ZGUxN2JiOTg3OWViYjNjMWVlNjI4OTUxYjNmZjE0Mzc0ODQ3NmE5NjhiNWM0ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyYWM3NDBkMjQxZTdjNDkyYzJhMTZlNTNhMGYwZTljMDJlMDY3NWJlYmEzZjZkYmFhYjE4YWFiNmRiYjAwNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhODI2NTM0ZTM1YTc5OWNjOWNkMTEwMmU0ZjYzNDFlNmEyNTNiMTE5NTMyZTg2MDJmNGUyZjhjMjNmMDdhOGMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L7981-L8032",
+          "version": "repo-lines-v1:sha256:b1b49a5540e8078aef8ad502b52875491b48cfe0871ca7d194cb6cf7a2b61859:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmNzkxZjEyMWZiN2M4MDM3N2I0NjIyM2RiMjM2YjJkMzg1MzRkODhmZTZkYWZmODRiNGZhZGViMTZhYWUxNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ODE1NjhiMjIxMDY4NDYyOWFiNTBkOWY1MWE3Mjc2MGM3MzllYzcwNGQ2NTJmZDI5ZTU4N2I3Y2QxZTA5ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOGI2NjY4MmZiNjgwNmRhY2QwYTJkZGU2ZWJmZDllYjgzZTZhMWQ0ZDdkMzA3OGRlNTg3NmY0YWM0MWU4ZDgifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T20:39:39.547Z"
+    "at": "2026-10-15T20:50:23.059Z"
   }
 }
