@@ -12,11 +12,10 @@ pub(crate) fn window_options() -> gpui::WindowOptions {
 }
 
 pub(crate) fn observe_activation<T: 'static>(window: &mut Window, cx: &mut gpui::Context<T>) {
-	// Resume every visible surface when the app returns, including non-key children.
-	cx.observe_window_activation(window, |_, window, cx| {
-		if window.is_window_active() && application_active() {
-			cx.refresh_windows();
-		}
+	// Paint a static state on departure and resume all surfaces on return.
+	// A sibling composer becoming key does not deactivate the application.
+	cx.observe_window_activation(window, |_, _, cx| {
+		cx.refresh_windows();
 	})
 	.detach();
 }

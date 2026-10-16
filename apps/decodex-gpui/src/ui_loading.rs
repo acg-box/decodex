@@ -257,6 +257,7 @@ impl RenderOnce for Content {
 			|_, _| Arrival::default(),
 		);
 		let settled = self.layout.as_ref().is_none_or(|(settled, _)| *settled);
+		let reduced = ui_motion::reduced();
 		let opacity = state.update(cx, |s, _| {
 			if self.ready && !s.loaded && s.started.is_none() {
 				s.geometry = None;
@@ -266,11 +267,11 @@ impl RenderOnce for Content {
 			if self.ready
 				&& s.started.is_none()
 				&& self.layout.is_some()
-				&& (!settled || s.stable_frames < 2)
+				&& (!settled || (!reduced && s.stable_frames < 2))
 			{
 				0.
 			} else {
-				s.progress(self.ready, Instant::now(), ui_motion::reduced())
+				s.progress(self.ready, Instant::now(), reduced)
 			}
 		});
 		if opacity < 1. && settled {

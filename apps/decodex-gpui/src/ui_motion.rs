@@ -444,7 +444,11 @@ impl Tween {
 	}
 
 	pub(crate) fn target(&mut self, value: f32, now: Instant) {
-		if self.to != value {
+		if (self.from != self.to || self.to != value) && reduced() {
+			self.from = value;
+			self.to = value;
+			self.started = now;
+		} else if self.to != value {
 			self.from = self.sample(now);
 			self.to = value;
 			self.started = now;
@@ -488,8 +492,12 @@ impl SmoothControl for Stateful<Div> {
 	}
 }
 
-/// Follow host reduced-motion and VoiceOver preferences without changing configuration.
+/// Background surfaces are static, including redraws caused by service updates.
+/// Keyboard focus within the foreground application does not affect this policy.
 pub(crate) fn reduced() -> bool {
+	if !application_active() {
+		return true;
+	}
 	#[cfg(all(target_os = "macos", not(test)))]
 	{
 		// AppKit owns this process-wide preference; called from UI rendering.
