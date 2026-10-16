@@ -1130,6 +1130,7 @@ impl AgentSurface {
 				},
 				move |bounds, _, window, cx| {
 					let mut animate = false;
+					let mut paths = style::StrokeBatch::default();
 					paint_relation_grid(bounds, scale, pan, window);
 					for (edge, a, b) in &paint_lines {
 						let mut route = route(a, b, edge.kind);
@@ -1171,26 +1172,26 @@ impl AgentSurface {
 							if selected { 1.6 } else { 1.2 },
 						);
 						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								gpui::rgba(
-									(color << 8)
-										| if faded {
-											0x30
-										} else if selected {
-											0xef
-										} else {
-											0x90
-										},
-								),
-							);
+							let color = (color << 8)
+								| if faded {
+									0x30
+								} else if selected {
+									0xef
+								} else {
+									0x90
+								};
+							if let Some((color, path)) = paths.push(path, color) {
+								window.paint_path(path, gpui::rgba(color));
+							}
 						}
 						if show_flow && !reduce_motion {
+							paths.paint(window);
 							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
 							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
 							animate = true;
 						}
 					}
+					paths.paint(window);
 					if animate {
 						crate::ui_motion::request_frame(window, cx);
 					}
