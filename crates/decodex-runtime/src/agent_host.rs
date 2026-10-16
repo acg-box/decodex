@@ -305,6 +305,8 @@ impl AgentHost {
 		snapshot: &mut decodex_protocol::AgentSnapshotDto,
 	) {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
+			// No native connection is not evidence that retained threads are active.
+			self.archive_visibility.lock().await.project(snapshot);
 			return;
 		};
 		let Ok(slots) = self.store.agent_slots().await else {

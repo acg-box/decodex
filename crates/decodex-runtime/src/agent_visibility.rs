@@ -266,6 +266,25 @@ mod tests {
 		}
 	}
 	#[test]
+	fn disconnected_projection_waits_for_initial_visibility_and_keeps_confirmed_archives() {
+		let mut cache = ArchiveVisibility::default();
+		let mut initial = snapshot();
+		cache.project(&mut initial);
+		assert!(initial.connection_initializing);
+
+		cache.generation = Some("known-process".into());
+		cache.apply(
+			"known-process",
+			HashMap::from([("thread-old".into(), ThreadArchiveState::Archived)]),
+		);
+		let mut disconnected = snapshot();
+		cache.project(&mut disconnected);
+		assert!(!disconnected.connection_initializing);
+		assert!(!disconnected.work_items.iter().any(|work| work.id == "old"));
+		assert!(disconnected.work_items.iter().any(|work| work.id == "live"));
+	}
+
+	#[test]
 	fn archive_removes_only_exact_nodes_and_incident_edges_without_hiding_live_descendants() {
 		let original = snapshot();
 		let mut visible = original.clone();
