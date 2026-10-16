@@ -233,6 +233,12 @@ impl gpui::Element for PaginationLayout {
 			}
 		}
 		self.child.prepaint(window, cx);
+		if self.row.is_none() {
+			crate::frame_trace::transcript_layout(
+				self.scroll.max_offset().y.into(),
+				self.scroll.offset().y.into(),
+			);
+		}
 	}
 
 	fn paint(

@@ -13,15 +13,19 @@ static ROWS: OnceLock<(Instant, Mutex<Vec<serde_json::Value>>)> = OnceLock::new(
 
 /// Trace row presentation alongside frame timing, without message content.
 pub(crate) fn row_arrival(position: u64, phase: &str, progress: f32, height: f32) {
-	record_row(position, phase, Some(progress), height, None);
+	record_row(Some(position), phase, Some(progress), height, None);
 }
 
 pub(crate) fn row_layout(position: u64, height: f32, scroll_offset: f32) {
-	record_row(position, "layout", None, height, Some(scroll_offset));
+	record_row(Some(position), "layout", None, height, Some(scroll_offset));
+}
+
+pub(crate) fn transcript_layout(maximum: f32, offset: f32) {
+	record_row(None, "viewport", None, maximum, Some(offset));
 }
 
 fn record_row(
-	position: u64,
+	position: Option<u64>,
 	phase: &str,
 	progress: Option<f32>,
 	height: f32,
@@ -32,7 +36,7 @@ fn record_row(
 	}
 	let Some((start, rows)) = ROWS.get() else { return };
 	let mut rows = rows.lock().expect("row frame measurements");
-	if rows.len() < 8_192 {
+	if rows.len() < 16_384 {
 		rows.push(serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}));
 	}
 }
@@ -101,9 +105,13 @@ pub(crate) fn start(cx: &mut gpui::App) {
 				}))
 			})
 			.collect();
-		let arrivals =
-			ROWS.get().map(|(_, rows)| rows.lock().expect("row frame measurements").clone());
-		let report = serde_json::json!({"schema": 4, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals});
+		let (viewport, arrivals): (Vec<_>, Vec<_>) = ROWS
+			.get()
+			.map(|(_, rows)| rows.lock().expect("row frame measurements").clone())
+			.unwrap_or_default()
+			.into_iter()
+			.partition(|row| row["phase"] == "viewport");
+		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");
