@@ -181,13 +181,6 @@ impl AgentSurface {
 			.child(agent_surface::muted(label))
 			.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
 
-		if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
-			row = row.child(markdown::response_copy_button(
-				&format!("copy-partial-{}", entry.id),
-				"Copy unfinished output",
-				entry.text.clone(),
-			));
-		}
 		if entry.kind == "capacity_retry_pending" {
 			row = row.child(
 				gpui::div()
@@ -324,16 +317,20 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		for copy_id in ["copy-partial-91", "copy-partial-92"] {
-			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
-
-			visual.simulate_click(copy.center(), Default::default());
-			visual.update(|_, cx| {
-				assert_eq!(
-					cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
-					Some("Unfinished source\n\n$$\n\\frac{a+b}{c}")
-				);
-			});
+		for id in [91, 92] {
+			assert!(
+				visual
+					.debug_bounds(Box::leak(format!("copy-partial-{id}").into_boxed_str()))
+					.is_none()
+			);
+			assert!(
+				visual
+					.debug_bounds(Box::leak(format!("partial-{id}-0").into_boxed_str()))
+					.is_some()
+					|| visual
+						.debug_bounds(Box::leak(format!("receipt-{id}-0").into_boxed_str()))
+						.is_some()
+			);
 		}
 
 		surface.update(visual, |s, cx| {
@@ -360,16 +357,20 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		for copy_id in ["copy-partial-91", "copy-partial-92"] {
-			let copy = visual.debug_bounds(copy_id).expect("visible unfinished output");
-
-			visual.simulate_click(copy.center(), Default::default());
-			visual.update(|_, cx| {
-				assert_eq!(
-					cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
-					Some("Unfinished source\n\n$$\n\\frac{a+b}{c}")
-				);
-			});
+		for id in [91, 92] {
+			assert!(
+				visual
+					.debug_bounds(Box::leak(format!("copy-partial-{id}").into_boxed_str()))
+					.is_none()
+			);
+			assert!(
+				visual
+					.debug_bounds(Box::leak(format!("partial-{id}-0").into_boxed_str()))
+					.is_some()
+					|| visual
+						.debug_bounds(Box::leak(format!("receipt-{id}-0").into_boxed_str()))
+						.is_some()
+			);
 		}
 	}
 

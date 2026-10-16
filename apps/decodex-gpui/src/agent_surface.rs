@@ -91,9 +91,7 @@ use crate::{
 	shell::{workspace_symbols, workspace_symbols::Symbol},
 	ui_loading,
 	ui_motion::{self, SmoothControl},
-	ui_theme::{
-		self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, METADATA_GAP, TEXT_MUTED,
-	},
+	ui_theme::{self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, TEXT_MUTED},
 	ui_working::Working,
 };
 use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
@@ -2692,7 +2690,7 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
-	history_entry_presented(entry, identity, metrics, None, true)
+	history_entry_presented(entry, identity, metrics, None, true, None)
 }
 
 fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
@@ -2714,6 +2712,7 @@ fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyEle
 		None,
 		streamed,
 		false,
+		None,
 	)
 }
 
@@ -2723,6 +2722,7 @@ fn history_entry_presented(
 	metrics: Option<AnyElement>,
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
+	metadata_ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
 ) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
@@ -2743,12 +2743,7 @@ fn history_entry_presented(
 			} else {
 				"Assistant · Unfinished"
 			}))
-			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)))
-			.child(markdown::response_copy_button(
-				&format!("copy-partial-{}", entry.id),
-				"Copy unfinished output",
-				entry.text.clone(),
-			));
+			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)));
 	}
 
 	if entry.kind == "user"
@@ -2812,37 +2807,13 @@ fn history_entry_presented(
 						.enumerate()
 						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
 				)
-				.when(!user && show_metadata, |body| {
-					body.child(
-						gpui::div()
-							.mt(gpui::px(METADATA_GAP))
-							.flex()
-							.items_center()
-							.gap(gpui::px(2.))
-							.child(
-								metrics.unwrap_or_else(|| reply_metrics(entry).into_any_element()),
-							)
-							.when(entry.kind == "assistant", |row| {
-								row.child(markdown::response_copy_button(
-									&format!("copy-response-{identity}"),
-									"Copy response",
-									if entry.weather.is_empty() {
-										visible_text.clone()
-									} else {
-										format!(
-											"{}\n\n{}",
-											visible_text,
-											entry
-												.weather
-												.iter()
-												.map(|f| f.markdown())
-												.collect::<Vec<_>>()
-												.join("\n\n")
-										)
-									},
-								))
-							}),
-					)
+				.when(!user, |body| {
+					body.child(response_metrics::FinishedFooter {
+						visible: show_metadata,
+						ready: metadata_ready,
+						child: show_metadata
+							.then(|| response_metrics::footer(entry, identity, metrics)),
+					})
 				}),
 		)
 }

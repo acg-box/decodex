@@ -15,6 +15,72 @@ use crate::shell::agent_surface::{
 };
 use decodex_protocol::AgentTurnUsageDto;
 
+const METRICS_HEIGHT: f32 = 24.;
+
+#[derive(IntoElement)]
+pub(super) struct FinishedFooter {
+	pub visible: bool,
+	pub ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
+	pub child: Option<AnyElement>,
+}
+impl RenderOnce for FinishedFooter {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let target =
+			if self.visible && self.ready.is_none_or(|ready| ready.get()) { 1. } else { 0. };
+		// Keep this slot mounted while streaming. Saved replies start at their final size.
+		let state = window.use_keyed_state("response-footer-motion", cx, |_, _| {
+			crate::ui_motion::Tween::new(target)
+		});
+		let now = std::time::Instant::now();
+		let (progress, moving) = state.update(cx, |motion, _| {
+			motion.target(target, now);
+			(motion.sample(now), motion.moving(now))
+		});
+		if moving {
+			crate::ui_motion::request_frame(window, cx);
+		}
+		gpui::div()
+			.debug_selector(|| "response-footer".into())
+			.w_full()
+			.flex_none()
+			.h(gpui::px((METRICS_HEIGHT + crate::ui_theme::METADATA_GAP) * progress))
+			.when(progress < 1., |row| row.overflow_hidden())
+			.opacity(progress)
+			.children(self.child)
+	}
+}
+
+pub(super) fn footer(
+	entry: &decodex_protocol::AgentHistoryEntryDto,
+	identity: &str,
+	metrics: Option<AnyElement>,
+) -> AnyElement {
+	let text = agent_surface::markdown::response_text(&entry.text);
+	let text = if entry.weather.is_empty() {
+		text
+	} else {
+		format!(
+			"{}\n\n{}",
+			text,
+			entry.weather.iter().map(|f| f.markdown()).collect::<Vec<_>>().join("\n\n")
+		)
+	};
+	gpui::div()
+		.mt(gpui::px(crate::ui_theme::METADATA_GAP))
+		.flex()
+		.items_center()
+		.gap(gpui::px(2.))
+		.child(metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()))
+		.when(entry.kind == "assistant", |row| {
+			row.child(agent_surface::markdown::response_copy_button(
+				&format!("copy-response-{identity}"),
+				"Copy response",
+				text,
+			))
+		})
+		.into_any_element()
+}
+
 #[derive(IntoElement)]
 pub(super) struct ResponseMetrics {
 	pub key: String,
@@ -50,7 +116,7 @@ impl RenderOnce for ResponseMetrics {
 			.cursor_default()
 			.flex_none()
 			.whitespace_nowrap()
-			.h(gpui::px(24.))
+			.h(gpui::px(METRICS_HEIGHT))
 			.flex()
 			.items_center()
 			.gap(gpui::px(6.))
