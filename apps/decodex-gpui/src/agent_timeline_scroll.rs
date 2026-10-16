@@ -329,13 +329,19 @@ impl AgentSurface {
 		hidden: &BTreeSet<usize>,
 	) {
 		self.timeline.native.completions.prepare(&self.timeline.native.entries, groups);
-		let folded = hidden.iter().map(|i| row_key(&self.timeline.native.entries[*i])).collect();
+		let folded = hidden
+			.iter()
+			.copied()
+			.chain(groups.iter().map(|group| group.first_index))
+			.map(|i| row_key(&self.timeline.native.entries[i]))
+			.collect();
 		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
-		if state.folded != folded {
+		if let Some(first) = state.folded.symmetric_difference(&folded).next().map(|key| key.0) {
+			// Earlier rows keep their measured size and position. Only the
+			// changed header and following rows can move when a turn folds.
+			state.rows.retain(|key, _| key.0 < first);
 			state.folded = folded;
-
-			state.rows.clear();
 		}
 	}
 
@@ -591,6 +597,52 @@ mod tests {
 		viewport.0.borrow_mut().pinned = Some(scroll::row_key(&entry));
 
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
+	}
+
+	#[gpui::test]
+	fn a_new_process_fold_keeps_older_history_virtualized(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, _| {
+			let entries = vec![row(1), row(10), row(11), row(12)];
+			s.timeline.native.entries = entries.clone();
+			let group = super::super::groups::Group {
+				turn: "turn".into(),
+				turns: ["turn".into()].into(),
+				indices: vec![2],
+				expanded: false,
+				first_index: 1,
+				final_index: 1,
+				count: 1,
+			};
+			// The final reply can precede its last process item. Its header is
+			// therefore the first affected row, not the first hidden item.
+			for entry in &entries {
+				s.timeline.native.viewport.0.borrow_mut().measure(
+					scroll::row_key(entry),
+					5_000.,
+					700.,
+				);
+			}
+			s.prepare_process_folds(&[group], &[2].into());
+			let viewport = &s.timeline.native.viewport;
+			assert_eq!(
+				viewport.offscreen_height(&entries[0], 0., 900.),
+				Some(700.),
+				"a new fold must not remount previously measured older replies"
+			);
+			for entry in &entries[1..] {
+				assert_eq!(viewport.offscreen_height(entry, 0., 900.), None);
+				viewport.0.borrow_mut().measure(scroll::row_key(entry), 5_000., 700.);
+			}
+			s.prepare_process_folds(&[], &Default::default());
+			assert_eq!(
+				s.timeline.native.viewport.offscreen_height(&entries[0], 0., 900.),
+				Some(700.)
+			);
+			for entry in &entries[1..] {
+				assert_eq!(s.timeline.native.viewport.offscreen_height(entry, 0., 900.), None);
+			}
+		});
 	}
 
 	#[test]
