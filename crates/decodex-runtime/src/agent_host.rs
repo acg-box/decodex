@@ -1963,15 +1963,16 @@ impl AgentHost {
 				// its editor with a false connection failure or requeue it.
 				let _ = self.store.resolve_agent_delivery_failure(root.into()).await;
 			},
-			Err(AgentError::ThreadOwnedElsewhere) => {
-				let _ = self.store.hold_agent_unsent_input(root.into()).await;
-				let _ = self
-					.store
-					.record_agent_thread_in_use(
-						root.into(),
-						diagnostic(&AgentError::ThreadOwnedElsewhere),
-					)
-					.await;
+			Err(ref error @ AgentError::ThreadOwnedElsewhere { ref thread_id }) => {
+				let Ok(items) = self.store.list_agent_work_items().await else { return };
+				let Some(owner) = items
+					.into_iter()
+					.find(|item| item.codex_thread_id.as_deref() == Some(thread_id.as_str()))
+				else {
+					return;
+				};
+				let _ = self.store.hold_agent_unsent_input(owner.id.clone()).await;
+				let _ = self.store.record_agent_thread_in_use(owner.id, diagnostic(error)).await;
 			},
 			Err(error) => {
 				let _ =
@@ -2238,7 +2239,6 @@ fn request_is_live_on(client: &AppServerClient, payload: &Value) -> bool {
 fn diagnostic(error: &AgentError) -> String {
 	match error {
         AgentError::ThreadArchived => "This conversation is archived. Unarchive it to continue. Your saved messages remain queued.".into(),
-		AgentError::ThreadOwnedElsewhere => "This Agent conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.".into(),
 		AgentError::Store(_) => "Agent delivery could not access its saved state.".into(),
 		AgentError::DependenciesPending(_) => "Agent is waiting for prerequisite work.".into(),
 		_ => error.to_string(),

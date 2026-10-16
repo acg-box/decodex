@@ -808,7 +808,9 @@ impl AgentSurface {
 			}
 
 			let reason = match event.event_kind.as_str() {
-				"thread_in_use_needs_attention" => THREAD_LOCKED_MESSAGE,
+				"thread_in_use_needs_attention" if event.work_item_id == *selected =>
+					THREAD_LOCKED_MESSAGE,
+				"thread_in_use_needs_attention" => continue,
 				"reconnection_needs_attention" =>
 					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
 				"configuration_needs_attention" =>
@@ -2788,6 +2790,28 @@ mod tests {
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
 		assert!(visual.debug_bounds("agent-composer").is_some());
+	}
+
+	#[gpui::test]
+	fn a_main_writer_lock_does_not_disable_another_conversation(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "external-main-writer".into(),
+					work_item_id: "agent".into(),
+					event_kind: "thread_in_use_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+			s.open_page("release", cx);
+			assert!(s.composer_unavailable_reason().is_none());
+			s.snapshot.as_mut().unwrap().pending_events[0].work_item_id = "release".into();
+			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+		});
 	}
 
 	#[gpui::test]
