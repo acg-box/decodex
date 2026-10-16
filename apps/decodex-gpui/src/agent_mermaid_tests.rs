@@ -19,7 +19,7 @@ fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 	nodes
 		.iter()
 		.flat_map(|node| match &node.content {
-			NodeContent::Block(kind @ (Kind::Code | Kind::Mermaid { .. }), children) =>
+			NodeContent::Block(kind @ (Kind::Code { .. } | Kind::Mermaid { .. }), children) =>
 				vec![(matches!(kind, Kind::Mermaid { .. }), markdown::code_text(children))],
 			NodeContent::Block(_, children) => sources(children),
 			_ => Vec::new(),

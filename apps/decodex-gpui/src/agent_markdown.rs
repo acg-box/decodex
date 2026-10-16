@@ -1,6 +1,7 @@
 //! Native Markdown presentation; HTML is text and remote images are not fetched.
 #[path = "agent_markdown_cache.rs"] mod cache;
 #[path = "agent_clipboard.rs"] mod clipboard;
+#[path = "agent_markdown_code.rs"] mod code;
 #[path = "agent_code_comments.rs"] mod code_comments;
 #[path = "agent_math.rs"] mod math;
 #[path = "agent_mermaid.rs"] mod mermaid;
@@ -45,7 +46,7 @@ enum Kind {
 	List(Option<u64>),
 	Item,
 	Quote,
-	Code,
+	Code { language: Option<String> },
 	Mermaid { fence: Range<usize>, content_end: usize },
 	Table,
 	Row(bool),
@@ -330,7 +331,14 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 		Tag::CodeBlock(CodeBlockKind::Fenced(info))
 			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
 			Kind::Mermaid { content_end: range.start, fence: range },
-		Tag::CodeBlock(_) => Kind::Code,
+		Tag::CodeBlock(CodeBlockKind::Fenced(info)) => Kind::Code {
+			language: info
+				.split([',', ' ', '\t'])
+				.next()
+				.filter(|s| !s.is_empty())
+				.map(str::to_owned),
+		},
+		Tag::CodeBlock(CodeBlockKind::Indented) => Kind::Code { language: None },
 		Tag::Table(_) => Kind::Table,
 		Tag::TableHead => Kind::Row(true),
 		Tag::TableRow => Kind::Row(false),
@@ -380,7 +388,7 @@ fn parse(text: &str) -> Vec<Node> {
 					if let Kind::Mermaid { fence, content_end } = &kind
 						&& !mermaid_view::has_closing_fence(text, fence.clone(), *content_end)
 					{
-						kind = Kind::Code;
+						kind = Kind::Code { language: Some("mermaid".into()) };
 					}
 
 					stack
@@ -407,11 +415,12 @@ fn parse(text: &str) -> Vec<Node> {
 							continue;
 						}
 
-						let crlf =
-							matches!(stack.last(), Some((Kind::Code | Kind::Mermaid { .. }, _, _)))
-								&& value.starts_with('\n')
-								&& range.start > 0
-								&& text.as_bytes()[range.start - 1] == b'\r';
+						let crlf = matches!(
+							stack.last(),
+							Some((Kind::Code { .. } | Kind::Mermaid { .. }, _, _))
+						) && value.starts_with('\n')
+							&& range.start > 0
+							&& text.as_bytes()[range.start - 1] == b'\r';
 
 						Node::text(if crlf { format!("\r{value}") } else { value.into_string() })
 					},
@@ -595,19 +604,8 @@ fn render_node_content(
 			})
 			.child(inline(children, key, selection))
 			.into_any_element(),
-		Kind::Code | Kind::Mermaid { .. } => gpui::div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.p_3()
-			.rounded_md()
-			.bg(gpui::rgba(0x00000045))
-			.font_family("Menlo")
-			.text_size(gpui::px(12.0))
-			.line_height(gpui::px(19.0))
-			.child(copy_button(&format!("copy-code-{key}"), "Copy code", code_text(children)))
-			.child(inline(children, key, selection))
-			.into_any_element(),
+		Kind::Code { language } => code::render(children, language.as_deref(), key, selection),
+		Kind::Mermaid { .. } => code::render(children, Some("mermaid"), key, selection),
 		Kind::List(start) => render_list(start, children, key, selection),
 
 		Kind::Row(header) => gpui::div()
@@ -719,7 +717,7 @@ fn render_item(
 			NodeContent::Block(
 				Kind::Paragraph
 					| Kind::List(_)
-					| Kind::Code
+					| Kind::Code { .. }
 					| Kind::Mermaid { .. }
 					| Kind::Quote
 					| Kind::Table,
@@ -909,7 +907,7 @@ mod tests {
 				nodes
 					.iter()
 					.flat_map(|n| match &n.content {
-						NodeContent::Block(Kind::Code, children) =>
+						NodeContent::Block(Kind::Code { .. }, children) =>
 							vec![markdown::code_text(children)],
 						NodeContent::Block(_, children) => blocks(children),
 						_ => Vec::new(),
@@ -1038,7 +1036,9 @@ mod tests {
 		);
 
 		assert!(nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::Table, _))));
-		assert!(nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::Code, _))));
+		assert!(
+			nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::Code { .. }, _)))
+		);
 		assert!(nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::List(_), _))));
 	}
 }

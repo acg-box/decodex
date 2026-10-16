@@ -51,7 +51,7 @@ fn render(node: &Node, output: &mut String) {
 		Kind::List(None) => ("<ul>".into(), "</ul>".into()),
 		Kind::Item => ("<li>".into(), "</li>".into()),
 		Kind::Quote => ("<blockquote>".into(), "</blockquote>".into()),
-		Kind::Code | Kind::Mermaid { .. } => ("<pre><code>".into(), "</code></pre>".into()),
+		Kind::Code { .. } | Kind::Mermaid { .. } => ("<pre><code>".into(), "</code></pre>".into()),
 		Kind::Table => ("<table>".into(), "</table>".into()),
 		Kind::Row(_) => ("<tr>".into(), "</tr>".into()),
 		Kind::Cell => ("<td>".into(), "</td>".into()),
