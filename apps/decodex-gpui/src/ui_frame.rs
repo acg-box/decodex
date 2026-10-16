@@ -5,6 +5,7 @@ use objc2::{
 	rc::Retained,
 	runtime::{AnyClass, AnyObject},
 };
+use std::sync::atomic::AtomicU8;
 
 /// Native focus selects the keyboard target, not the cadence of sibling windows.
 pub(crate) fn window_options() -> gpui::WindowOptions {
@@ -12,7 +13,7 @@ pub(crate) fn window_options() -> gpui::WindowOptions {
 }
 
 pub(crate) fn observe_activation<T: 'static>(window: &mut Window, cx: &mut gpui::Context<T>) {
-	// Paint a static state on departure and resume all surfaces on return.
+	// Re-evaluate the rendering policy on departure and resume all surfaces on return.
 	// A sibling composer becoming key does not deactivate the application.
 	cx.observe_window_activation(window, |_, _, cx| {
 		cx.refresh_windows();
@@ -31,9 +32,19 @@ pub(crate) fn application_active() -> bool {
 	true
 }
 
-/// Follow the display while the app is foreground; pause decorative motion in background.
+pub(crate) fn background_rendering(value: Option<bool>) -> bool {
+	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
+	crate::ui_preferences::boolean("fullBackgroundRendering", &CACHE, value, false)
+}
+
+/// Rendering policy is separate from keyboard focus and application activation.
+pub(crate) fn animations_active() -> bool {
+	application_active() || background_rendering(None)
+}
+
+/// Request the display cadence whenever the user permits animation.
 pub(crate) fn request_frame(window: &Window, _: &mut App) {
-	if application_active() {
+	if animations_active() {
 		// Interpolation changes pixels, not the model. GPUI's animation helper
 		// notifies the rendering entity, which also runs draft and window observers.
 		window.on_next_frame(|window, _| window.refresh());

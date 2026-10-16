@@ -1185,7 +1185,7 @@ impl AgentSurface {
 								),
 							);
 						}
-						if show_flow && !reduce_motion && crate::ui_motion::application_active() {
+						if show_flow && !reduce_motion {
 							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
 							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
 							animate = true;

@@ -814,6 +814,13 @@ impl SettingsSurface {
 					)),
 				)
 				.child(
+					group().child(settings_group_title("Animation")).child(self.preference_control(
+						"full-background-rendering", "full-background-rendering-knob",
+						"Full rendering in background", crate::ui_frame::background_rendering, cx,
+					)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+						.child("Keep animations and the display frame rate when Decodex is inactive. Uses more energy.")),
+				)
+				.child(
 					group()
 						.child(settings_group_title("Text cursor"))
 						.child(self.cursor_controls(cx)),
@@ -1128,6 +1135,27 @@ mod tests {
 		visual.simulate_click(regular.center(), Default::default());
 
 		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+	}
+
+	#[gpui::test]
+	fn background_rendering_switch_applies_to_every_window(cx: &mut TestAppContext) {
+		crate::ui_frame::background_rendering(Some(false));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(900.)));
+			window.draw(cx).clear(cx);
+		});
+		let bounds =
+			visual.debug_bounds("full-background-rendering").expect("background preference");
+		visual.simulate_click(bounds.center(), Default::default());
+		assert!(crate::ui_frame::background_rendering(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(bounds.center(), Default::default());
+		assert!(!crate::ui_frame::background_rendering(None));
 	}
 
 	#[gpui::test]

@@ -1,5 +1,8 @@
 //! Native component preview using an actual saved tool response, not live weather.
 #[path = "../src/ui_frame.rs"] mod ui_frame;
+#[allow(dead_code)] // The preview shares the boolean preference, but does not use string receipts.
+#[path = "../src/ui_preferences.rs"]
+mod ui_preferences;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
 use futures_util as _;

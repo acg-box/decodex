@@ -1,4 +1,4 @@
-//! Shared overflow text: scroll while the window is active, reset when inactive.
+//! Shared overflow text follows the application rendering policy.
 use crate::ui_motion;
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, TextRun, Window, prelude::*};
 use std::time::Instant;
@@ -78,7 +78,7 @@ impl OverflowLine {
 			&[run],
 			None,
 		);
-		let active = ui_motion::application_active();
+		let active = !ui_motion::reduced();
 		let start = window.use_keyed_state(id, cx, |_, _| (Instant::now(), active));
 		start.update(cx, |state, _| {
 			if !active || state.1 != active {
@@ -109,7 +109,7 @@ impl OverflowLine {
 			return;
 		}
 		let distance = (f32::from(self.line.width) - f32::from(visible.size.width)).max(0.);
-		let x = if ui_motion::application_active() && !self.reduced && distance > 1. {
+		let x = if !self.reduced && distance > 1. {
 			ui_motion::request_frame(window, cx);
 			offset(self.start.read(cx).0.elapsed().as_secs_f32(), distance)
 		} else {

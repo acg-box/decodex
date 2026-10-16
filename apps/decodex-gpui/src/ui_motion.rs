@@ -9,7 +9,7 @@ pub(crate) use text_reveal::TextReveal;
 use std::time::{Duration, Instant};
 
 pub(crate) use crate::ui_frame::{
-	application_active, observe_activation, request_frame, window_options,
+	animations_active, application_active, observe_activation, request_frame, window_options,
 };
 
 use gpui::{
@@ -492,10 +492,9 @@ impl SmoothControl for Stateful<Div> {
 	}
 }
 
-/// Background surfaces are static, including redraws caused by service updates.
-/// Keyboard focus within the foreground application does not affect this policy.
+/// Respect system accessibility preferences and the application rendering policy.
 pub(crate) fn reduced() -> bool {
-	if !application_active() {
+	if !animations_active() {
 		return true;
 	}
 	#[cfg(all(target_os = "macos", not(test)))]
@@ -698,7 +697,7 @@ impl RenderOnce for AgentRailStatus {
 			cx,
 			|_, _| Instant::now(),
 		);
-		let intensity = if busy && application_active() && !reduced() {
+		let intensity = if busy && !reduced() {
 			request_frame(window, cx);
 			0.82 + 0.18
 				* (clock.read(cx).elapsed().as_secs_f32() * std::f32::consts::TAU / 2.4).cos()

@@ -64,7 +64,7 @@ pub(crate) fn start(cx: &mut gpui::App) {
 						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass})
 					}).ok()
 				}).collect();
-				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "windows": windows})
+				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "full_background_rendering": crate::ui_frame::background_rendering(None), "windows": windows})
 			});
 			observations.lock().expect("frame activity").push(sample);
 			cx.background_executor().timer(Duration::from_millis(100)).await;
