@@ -515,6 +515,16 @@ impl ServiceApplication {
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			if let Some(agent) = &self.agent {
+				// A failed restore cannot confirm which retained threads are active.
+				// Report failure instead of presenting the archive gate as endless startup.
+				if !agent.connection_initializing()
+					&& agent.guardian_generation().is_none()
+					&& !snapshot.work_items.is_empty()
+				{
+					return QueryResultPayload::AgentSnapshot(
+						decodex_protocol::AgentSnapshotResult::Unavailable,
+					);
+				}
 				agent.retain_active_work(snapshot).await;
 			}
 			let after = match &self.agent {

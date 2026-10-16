@@ -48,15 +48,25 @@ use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 
-fn open_connection_accounts(window: &mut Window, cx: &mut gpui::App) {
+fn open_connection_settings(
+	destination: crate::shell::Destination,
+	window: &mut Window,
+	cx: &mut gpui::App,
+) {
 	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
-		shell.update(cx, |shell, cx| {
-			shell.open_settings_window(crate::shell::Destination::Accounts, cx)
-		});
+		shell.update(cx, |shell, cx| shell.open_settings_window(destination, cx));
 	}
 }
 
-fn account_connection_notice(message: &'static str) -> AnyElement {
+fn connection_recovery_notice(
+	message: &'static str,
+	destination: crate::shell::Destination,
+) -> AnyElement {
+	let (id, label) = if destination == crate::shell::Destination::Accounts {
+		("connection-open-accounts", "Open Accounts")
+	} else {
+		("connection-open-diagnostics", "Open Diagnostics")
+	};
 	gpui::div()
 		.id("conversation-unavailable")
 		.debug_selector(|| "conversation-unavailable".into())
@@ -72,18 +82,18 @@ fn account_connection_notice(message: &'static str) -> AnyElement {
 		.child(message)
 		.child(
 			gpui::div()
-				.id("connection-open-accounts")
-				.debug_selector(|| "connection-open-accounts".into())
+				.id(id)
+				.debug_selector(move || id.into())
 				.role(Role::Button)
-				.aria_label("Open Accounts")
+				.aria_label(label)
 				.tab_index(0)
 				.cursor_pointer()
 				.text_color(gpui::rgb(BLUE))
-				.child("Open Accounts")
-				.on_click(|_, window, cx| open_connection_accounts(window, cx))
-				.on_key_down(|event: &KeyDownEvent, window, cx| {
+				.child(label)
+				.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
+				.on_key_down(move |event: &KeyDownEvent, window, cx| {
 					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-						open_connection_accounts(window, cx);
+						open_connection_settings(destination, window, cx);
 						cx.stop_propagation();
 					}
 				}),
@@ -867,7 +877,7 @@ impl AgentSurface {
 		if !self.uncertain
 			&& let Some(message) = detail.and_then(account_connection_message)
 		{
-			return account_connection_notice(message);
+			return connection_recovery_notice(message, crate::shell::Destination::Accounts);
 		}
 		let title = if self.uncertain {
 			"Delivery unconfirmed · Sending paused"
@@ -1159,6 +1169,8 @@ impl AgentSurface {
 			ui_motion::request_frame(window, cx);
 		}
 		if connecting {
+			let unavailable =
+				matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale);
 			return gpui::div()
 				.debug_selector(|| "workspace-connecting".into())
 				.size_full()
@@ -1167,7 +1179,18 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.justify_center()
-				.child(crate::ui_loading::workspace())
+				.child(if unavailable {
+					gpui::div()
+						.max_w(gpui::px(440.))
+						.px(gpui::px(ui_theme::CONVERSATION_INSET))
+						.child(connection_recovery_notice(
+							"Could not connect to Codex. Your history and drafts are saved.",
+							crate::shell::Destination::Health,
+						))
+						.into_any_element()
+				} else {
+					crate::ui_loading::workspace().into_any_element()
+				})
 				.into_any_element();
 		}
 		self.observe_visible_output(cx);
@@ -2728,6 +2751,46 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn failed_startup_keeps_unconfirmed_history_hidden_and_preserves_the_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().connection_initializing = true;
+			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Unavailable));
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("work-dock").is_none());
+		assert!(visual.debug_bounds("workspace-transcript").is_none());
+		assert!(visual.debug_bounds("agent-composer").is_none());
+		surface.update(visual, |s, cx| {
+			// A background retry must retain actionable feedback until a new result arrives.
+			s.status_before_refresh = Some(s.state.clone());
+			s.state = LoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
+		surface.update(visual, |s, cx| {
+			let mut ready = s.snapshot.clone().unwrap();
+			ready.connection_initializing = false;
+			ready.pending_events.clear();
+			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Available(ready)));
+			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+		assert!(visual.debug_bounds("agent-composer").is_some());
+	}
+
+	#[gpui::test]
 	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -2796,7 +2859,8 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 
-		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
 		assert!(visual.debug_bounds("work-dock").is_none());
 		assert!(
 			visual.debug_bounds("workspace-welcome").is_none(),

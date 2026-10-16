@@ -1096,7 +1096,7 @@ impl AgentSnapshotDto {
 pub enum AgentSnapshotResult {
 	/// Complete data, including an empty work store.
 	Available(AgentSnapshotDto),
-	/// The owner store is unavailable or cannot verify its data.
+	/// The owner store or current native visibility cannot be verified.
 	Unavailable,
 	/// Count or encoded-size bounds prevent a complete response. No records were omitted silently.
 	CapacityExceeded {
