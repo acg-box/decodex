@@ -2,6 +2,7 @@
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
+#[path = "agent_timeline_motion.rs"] mod motion;
 #[path = "agent_timeline_receipts.rs"] mod receipts;
 #[path = "agent_timeline_render.rs"] mod render;
 #[path = "agent_timeline_scroll.rs"] mod scroll;
@@ -473,8 +474,8 @@ impl AgentSurface {
 		let mut headers = std::collections::BTreeMap::new();
 
 		for group in &groups {
-			headers.insert(group.indices[0], group);
-			collapsed.extend(group.indices.iter().skip(1).copied());
+			headers.insert(group.first_index, group);
+			collapsed.extend(group.indices.iter().copied());
 		}
 
 		self.prepare_process_folds(work, &collapsed);
@@ -486,7 +487,7 @@ impl AgentSurface {
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let voice_tail_turns =
 			super::voice::history::tail_flush_turns(&self.timeline.native.entries);
-		let empty_reasoning = groups::empty_completed_reasoning(&self.timeline.native.entries);
+		let empty_reasoning = groups::empty_completed_items(&self.timeline.native.entries);
 		let replied_turns: BTreeSet<_> = self
 			.timeline
 			.native
@@ -542,7 +543,12 @@ impl AgentSurface {
 				panel = panel.child(self.native_scroll_row(work, entry, body, cx));
 				continue;
 			}
-			if voice_hidden.contains(&index) {
+			if voice_hidden.contains(&index)
+				|| empty_reasoning.contains(&index)
+				|| matches!(
+					&entry.content,
+					AgentTimelineContent::TurnBoundary { completed: false, .. }
+				) {
 				continue;
 			}
 			if matches!(&entry.content,
@@ -552,17 +558,22 @@ impl AgentSurface {
 			{
 				continue;
 			}
-			if empty_reasoning.contains(&index) {
-				continue;
-			}
 
 			if let Some(group) = headers.get(&index) {
 				if !hidden.is_empty() {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
-				let body =
+				let mut body =
 					self.process_history_body(work, group, entry, index == group.first_index, cx);
+				if !group.indices.contains(&index) {
+					body = body.child(self.native_timeline_content(
+						work,
+						entry,
+						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+						cx,
+					));
+				}
 
 				panel =
 					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));
@@ -849,6 +860,7 @@ pub(super) struct Timeline {
 	show_saved: bool,
 	expanded_turns: BTreeSet<String>,
 	viewport: Viewport,
+	arrivals: motion::Arrivals,
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
 }
@@ -957,6 +969,7 @@ impl Timeline {
 		self.preview.clear();
 
 		self.viewport = Default::default();
+		self.arrivals = Default::default();
 		self.binding = None;
 
 		self.entries.clear();
@@ -994,6 +1007,7 @@ impl Timeline {
 			&& page.entries.len() >= self.entries.len() - start
 			&& bounded(self.entries[..start].iter().chain(&page.entries))
 		{
+			self.arrivals.observe(&page.entries, !ui_motion::reduced());
 			self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 
 			self.weather.extend(page.weather);
@@ -1030,6 +1044,9 @@ impl Timeline {
 			self.expanded_turns.clear();
 			self.preview.clear();
 		}
+		// An explicit read or a gap replaces the viewport, not an appended live row.
+		self.arrivals = Default::default();
+		self.arrivals.observe(&page.entries, false);
 
 		self.binding = Some(binding);
 		self.safety_buffering_turn_id = page.safety_buffering_turn_id;

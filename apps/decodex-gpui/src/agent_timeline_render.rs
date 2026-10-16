@@ -51,6 +51,7 @@ impl AgentSurface {
 			}
 
 			let key = output_key(work, &message.turn_id, &message.item_id);
+			self.timeline.native.arrivals.present_live(&message.item_id);
 			let streamed =
 				StreamingText::output(markdown::response_text(&message.text), key.clone(), false)
 					.into_any_element();
@@ -174,6 +175,7 @@ impl AgentSurface {
             if kind != "agentInput" && attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
                 || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
 		let content = if process { process_indent(content) } else { content };
+		let content = self.timeline.native.arrivals.wrap(entry, content);
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
 
