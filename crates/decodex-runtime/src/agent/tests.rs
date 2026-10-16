@@ -2288,7 +2288,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 #[tokio::test]
 async fn external_writer_release_requires_a_new_send() {
 	let (mut coordinator, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"_resume_failures":1})).await;
+		fixture_with_history(serde_json::json!({"_resume_failures":3})).await;
 	let original = coordinator.start_agent("agent", "Initial").await.unwrap();
 
 	complete(&mut coordinator, "agent").await;
@@ -2334,7 +2334,19 @@ async fn external_writer_release_requires_a_new_send() {
 		.record_agent_thread_in_use("agent".into(), "Open elsewhere".into())
 		.await
 		.unwrap();
+	let notice = coordinator.store.list_agent_thread_in_use_events().await.unwrap().remove(0);
+	for _ in 0..2 {
+		assert!(matches!(
+			coordinator.check_due_followups(1).await,
+			Err(AgentError::ThreadOwnedElsewhere { .. })
+		));
+		coordinator.store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+		assert_eq!(blocked.len(), 1);
+		assert_eq!(blocked[0].id, notice.id);
+	}
 	coordinator.wake_pending().await.unwrap();
+	assert!(coordinator.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
 	assert!(coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().is_empty());
 

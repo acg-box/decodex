@@ -2364,7 +2364,7 @@ impl AgentCoordinator {
 					));
 				}
 
-				self.store.resolve_agent_delivery_failure(item.id).await?;
+				self.store.resolve_agent_thread_in_use(item.id).await?;
 			}
 		}
 

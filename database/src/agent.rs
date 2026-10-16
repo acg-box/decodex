@@ -1165,7 +1165,7 @@ impl SqliteStore {
 			let same: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?3 AND payload=?2 AND disposition IS NULL)",rusqlite::params![root,payload,kind],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			if !same {
-				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current processing diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND (event_kind=?3 OR (?3 IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention'))) AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?,kind]).map_err(error::sqlite_error)?;
+				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current processing diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND (event_kind=?3 OR (?3 IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND event_kind IN ('wake_failed','followup_processing_failed'))) AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?,kind]).map_err(error::sqlite_error)?;
 
 				let previous:i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&root],|row|row.get(0)).map_err(error::sqlite_error)?;
 				let source = serde_json::json!(["agent_delivery",root,previous]).to_string();
@@ -1192,7 +1192,17 @@ impl SqliteStore {
 	/// Successful delivery processing clears only delivery diagnostics, never work events.
 	pub async fn resolve_agent_delivery_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Agent delivery processing recovered.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Agent delivery processing recovered.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed') AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+
+			Ok(())
+		}).await
+	}
+
+	/// Clear writer and delivery diagnostics only after native resume confirms this thread's
+	/// identity and acquires its writer. Idle processing is not evidence of writer ownership.
+	pub async fn resolve_agent_thread_in_use(&self, work: String) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Native conversation writer acquired after resume.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('thread_in_use_needs_attention','wake_failed','followup_processing_failed') AND disposition IS NULL",rusqlite::params![work,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -2519,13 +2529,47 @@ mod tests {
 		assert_eq!(blocked.len(), 1);
 		assert_eq!(blocked[0].work_item_id, "agent");
 
-		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		store.resolve_agent_thread_in_use("agent".into()).await.unwrap();
 
 		assert!(store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
 		store.enqueue_agent_event(input("agent", "new")).await.unwrap();
 
 		assert_eq!(store.list_undelivered_agent_events(10).await.unwrap().len(), 3);
+	}
+
+	#[tokio::test]
+	async fn delivery_processing_cannot_release_an_external_writer() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+		store.create_agent_work_item(item("agent", None)).await.unwrap();
+		store.record_agent_thread_in_use("agent".into(), "Open elsewhere".into()).await.unwrap();
+		let notice = store.list_agent_thread_in_use_events().await.unwrap().remove(0);
+
+		for _ in 0..3 {
+			store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+			let blocked = store.list_agent_thread_in_use_events().await.unwrap();
+			assert_eq!(blocked.len(), 1);
+			assert_eq!(blocked[0].id, notice.id);
+			store
+				.record_agent_delivery_failure("agent".into(), "Unrelated processing failed".into())
+				.await
+				.unwrap();
+			let blocked = store.list_agent_thread_in_use_events().await.unwrap();
+			assert_eq!(blocked.len(), 1);
+			assert_eq!(blocked[0].id, notice.id);
+			assert!(matches!(
+				store
+					.enqueue_agent_event(EnqueueAgentEvent {
+						source_event_id: "blocked-send".into(),
+						work_item_id: "agent".into(),
+						event_kind: "user_message".into(),
+						payload: r#"{"text":"continue"}"#.into(),
+					})
+					.await,
+				Err(StoreError::AgentThreadInUse)
+			));
+		}
 	}
 
 	#[tokio::test]
@@ -2558,6 +2602,8 @@ mod tests {
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 2);
 
 		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 2);
+		store.resolve_agent_thread_in_use("agent".into()).await.unwrap();
 
 		let pending = store.list_pending_agent_events(10).await.unwrap();
 

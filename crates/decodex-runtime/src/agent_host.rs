@@ -2875,7 +2875,7 @@ mod tests {
 				.any(|e| e.event_kind == "user_message")
 		);
 
-		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		store.resolve_agent_thread_in_use("agent".into()).await.unwrap();
 
 		agent_host::persist_input(&store, "agent", "new-send", "Do this", None).await.unwrap();
 
