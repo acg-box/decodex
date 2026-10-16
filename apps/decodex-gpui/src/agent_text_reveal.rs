@@ -1,5 +1,5 @@
 //! Frame-paced presentation of received text. Never delays transport or stores output.
-use std::time::Instant;
+use std::{cell::Cell, rc::Rc, time::Instant};
 
 use gpui::{App, RenderOnce, prelude::*};
 
@@ -14,14 +14,20 @@ pub(super) struct StreamingText {
 	key: String,
 	output: bool,
 	complete: bool,
+	settled: Option<Rc<Cell<bool>>>,
 }
 impl StreamingText {
 	pub(super) fn output(text: String, key: String, complete: bool) -> Self {
-		Self { text, key, output: true, complete }
+		Self { text, key, output: true, complete, settled: None }
 	}
 
 	pub(super) fn caption(text: String, key: String) -> Self {
-		Self { text, key, output: false, complete: false }
+		Self { text, key, output: false, complete: false, settled: None }
+	}
+
+	pub(super) fn settled(mut self, signal: Rc<Cell<bool>>) -> Self {
+		self.settled = Some(signal);
+		self
 	}
 }
 impl RenderOnce for StreamingText {
@@ -53,9 +59,15 @@ impl RenderOnce for StreamingText {
 			|_, _| Flow::new(self.output && !self.complete),
 		);
 		if !flow.read(cx).enabled {
+			if let Some(signal) = self.settled {
+				signal.set(!moving && end == self.text.len());
+			}
 			return content;
 		}
 		let (height, growing) = flow.read(cx).sample(Instant::now());
+		if let Some(signal) = &self.settled {
+			signal.set(!moving && !growing && end == self.text.len());
+		}
 		if growing {
 			ui_motion::request_frame(window, cx);
 		}
@@ -83,6 +95,9 @@ impl RenderOnce for StreamingText {
 							s.sample(Instant::now()).1
 						});
 						if moving {
+							if let Some(signal) = &self.settled {
+								signal.set(false);
+							}
 							ui_motion::request_frame(window, cx);
 						}
 					})

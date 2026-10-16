@@ -52,8 +52,10 @@ impl AgentSurface {
 
 			let key = output_key(work, &message.turn_id, &message.item_id);
 			self.timeline.native.arrivals.present_live(&message.item_id);
+			self.timeline.native.completions.present_live(&message.item_id);
 			let streamed =
 				StreamingText::output(markdown::response_text(&message.text), key.clone(), false)
+					.settled(self.timeline.native.completions.output(&message.item_id))
 					.into_any_element();
 			let body = if message.kind == AgentLiveMessageKind::AgentMessage {
 				let entry = self.native_message_entry(
@@ -65,11 +67,9 @@ impl AgentSurface {
 				agent_surface::history_entry_presented(&entry, &key, None, Some(streamed), true)
 			} else {
 				gpui::div()
-					.child(agent_surface::muted(if message.kind == AgentLiveMessageKind::Plan {
-						"Proposed plan · In progress"
-					} else {
-						"Reasoning summary"
-					}))
+					.when(message.kind == AgentLiveMessageKind::Plan, |row| {
+						row.child(agent_surface::muted("Proposed plan"))
+					})
 					.child(streamed)
 			};
 			rows.push(
@@ -170,11 +170,7 @@ impl AgentSurface {
 			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
 				.to_string();
 		let selector = format!("native-history-{identity}");
-		let content = self.native_timeline_content(work, entry, &identity, cx);
-		let process = matches!(&entry.content, AgentTimelineContent::Item { kind, phase, activity, attachments, app_ui: false, .. }
-            if kind != "agentInput" && attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
-                || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
-		let content = if process { process_indent(content) } else { content };
+		let content = self.native_timeline_content(work, entry, &identity, false, cx);
 		let content = self.timeline.native.arrivals.wrap(entry, content);
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
@@ -327,13 +323,14 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
 		identity: &str,
+		archived: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let row = gpui::div().w_full().min_w_0().flex().flex_col().gap_1();
 
 		match &entry.content {
 			content @ AgentTimelineContent::Item { .. } =>
-				self.native_item_content(work, content, identity, cx),
+				self.native_item_content(work, content, identity, archived, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
 				.child(agent_surface::muted(if role == "user" { "You" } else { "Assistant" }))
 				.child(markdown::render(text, identity))
@@ -401,6 +398,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		work: &AgentWorkItemDto,
 		content: &AgentTimelineContent,
 		identity: &str,
+		archived: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let AgentTimelineContent::Item {
@@ -429,9 +427,11 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 
 		if kind == "agentMessage" && !truncated && attachments.is_empty() {
 			if let Some(panel) = self.async_question_item_text(work, item_id) {
+				self.timeline.native.completions.output(item_id).set(true);
 				return panel;
 			}
 			if text.is_empty() {
+				self.timeline.native.completions.output(item_id).set(true);
 				return gpui::div().into_any_element();
 			}
 		}
@@ -449,15 +449,21 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.into_any_element();
 		}
 
-		if kind == "agentMessage"
-			&& phase.as_deref() == Some("commentary")
+		if archived
+			&& (kind == "reasoning"
+				|| (kind == "agentMessage" && phase.as_deref() == Some("commentary")))
 			&& attachments.is_empty()
 		{
-			let body = markdown::render_process(text, identity);
+			let body = process_text(kind, text, identity, truncated);
 
-			return if let Some(action) =
-				self.voice_read_action(&work.id, identity, text, truncated || draft.is_some(), cx)
-			{
+			return if kind == "agentMessage"
+				&& let Some(action) = self.voice_read_action(
+					&work.id,
+					identity,
+					text,
+					truncated || draft.is_some(),
+					cx,
+				) {
 				gpui::div().child(body).child(action).into_any_element()
 			} else {
 				body
@@ -485,6 +491,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					output_key(work, turn_id, item_id),
 					draft.is_none(),
 				)
+				.settled(self.timeline.native.completions.output(item_id))
 				.into_any_element()
 			});
 			body = body.child(agent_surface::history_entry_presented(
@@ -555,13 +562,11 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				_ => "native-promotion-content",
 			};
 
-			row = row.child(gpui::div().debug_selector(move || selector.into()).child(
-				if kind == "reasoning" {
-					markdown::render_process(text, identity)
-				} else {
-					markdown::render(text, identity)
-				},
-			));
+			row = row.child(
+				gpui::div()
+					.debug_selector(move || selector.into())
+					.child(markdown::render(text, identity)),
+			);
 		}
 		if truncated {
 			row = row
@@ -831,9 +836,20 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 	}
 }
 
-/// Keep the guide gutter inside the available transcript width in both rendering paths.
+fn process_text(kind: &str, text: &str, identity: &str, truncated: bool) -> AnyElement {
+	gpui::div()
+		.when(kind == "reasoning", |row| row.debug_selector(|| "native-reasoning-summary".into()))
+		.child(markdown::render_process(text, identity))
+		.when(truncated, |row| {
+			row.child(agent_surface::muted("Some content was omitted from this history preview."))
+		})
+		.into_any_element()
+}
+
+/// Only expanded, completed process records use the guide gutter.
 pub(super) fn process_indent(content: impl IntoElement) -> AnyElement {
 	gpui::div()
+		.debug_selector(|| "archived-process-content".into())
 		.w_full()
 		.min_w_0()
 		.pl(gpui::px(8.))
@@ -1041,6 +1057,10 @@ mod tests {
 		});
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		std::thread::sleep(std::time::Duration::from_millis(750));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		// The text's final line was measured in that frame. Let its height settle
+		// before comparing the live and saved representations of the same output.
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let live = visual.debug_bounds("native-live-output").unwrap();
 		surface.update(visual, |s, cx| {

@@ -323,7 +323,12 @@ impl AgentSurface {
 		self.timeline.wheel_scroll = None;
 	}
 
-	pub(super) fn prepare_process_folds(&self, _work: &AgentWorkItemDto, hidden: &BTreeSet<usize>) {
+	pub(super) fn prepare_process_folds(
+		&self,
+		groups: &[native_timeline::groups::Group],
+		hidden: &BTreeSet<usize>,
+	) {
+		self.timeline.native.completions.prepare(&self.timeline.native.entries, groups);
 		let folded = hidden.iter().map(|i| row_key(&self.timeline.native.entries[*i])).collect();
 		let mut state = self.timeline.native.viewport.0.borrow_mut();
 

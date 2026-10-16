@@ -1,4 +1,5 @@
 //! Native timeline page state. Native IDs remain distinct from local inbox row IDs.
+#[path = "agent_timeline_completion.rs"] mod completion;
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
@@ -419,14 +420,28 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		group: &groups::Group,
 		entry: &AgentTimelineEntry,
-		first: bool,
 		cx: &mut Context<Self>,
 	) -> Div {
+		let header = self.turn_process_header(work, group, entry, cx);
+		if let Some(motion) = self.timeline.native.completions.get(group) {
+			let indices: Vec<_> = group
+				.indices
+				.iter()
+				.copied()
+				.filter(|i| motion.outgoing.contains(&self.timeline.native.entries[*i].position))
+				.collect();
+			let body = self.process_history_content(work, &indices, false, cx);
+			return gpui::div().w_full().child(completion::Closing {
+				motion,
+				position: entry.position,
+				header,
+				body,
+			});
+		}
 		let owner = cx.entity();
 		let indices = group.indices.clone();
 		let source_work = work.clone();
-		let header = first.then(|| self.turn_process_header(work, group, entry, cx));
-		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).children(header).child(
+		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).child(header).child(
 			ui_motion::disclosure_lazy(
 				SharedString::from(format!(
 					"turn-process-body-{}-{}-{}",
@@ -437,29 +452,38 @@ impl AgentSurface {
 				group.expanded,
 				move |cx| {
 					owner.update(cx, |s, cx| {
-						render::process_indent(
-							gpui::div().w_full().flex().flex_col().gap(gpui::px(8.)).children(
-								indices
-									.iter()
-									.filter_map(|index| s.timeline.native.entries.get(*index))
-									.map(|entry| {
-										s.native_timeline_content(
-											&source_work,
-											entry,
-											&format!(
-												"process-{}-{}",
-												source_work.id,
-												serde_json::json!(key(entry))
-											),
-											cx,
-										)
-									}),
-							),
-						)
+						s.process_history_content(&source_work, &indices, true, cx)
 					})
 				},
 			),
 		)
+	}
+
+	fn process_history_content(
+		&self,
+		work: &AgentWorkItemDto,
+		indices: &[usize],
+		archived: bool,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let body = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(scroll::ROW_GAP))
+			.children(indices.iter().filter_map(|i| self.timeline.native.entries.get(*i)).map(
+				|entry| {
+					self.native_timeline_content(
+						work,
+						entry,
+						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+						archived,
+						cx,
+					)
+				},
+			));
+		if archived { render::process_indent(body) } else { body.into_any_element() }
 	}
 
 	fn append_native_history_rows(
@@ -478,7 +502,7 @@ impl AgentSurface {
 			collapsed.extend(group.indices.iter().copied());
 		}
 
-		self.prepare_process_folds(work, &collapsed);
+		self.prepare_process_folds(&groups, &collapsed);
 
 		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
 		let voice_headers: std::collections::BTreeMap<_, _> =
@@ -564,13 +588,13 @@ impl AgentSurface {
 					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
-				let mut body =
-					self.process_history_body(work, group, entry, index == group.first_index, cx);
+				let mut body = self.process_history_body(work, group, entry, cx);
 				if !group.indices.contains(&index) {
 					body = body.child(self.native_timeline_content(
 						work,
 						entry,
 						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
+						false,
 						cx,
 					));
 				}
@@ -861,6 +885,7 @@ pub(super) struct Timeline {
 	expanded_turns: BTreeSet<String>,
 	viewport: Viewport,
 	arrivals: motion::Arrivals,
+	completions: completion::Completions,
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
 }
@@ -970,6 +995,7 @@ impl Timeline {
 
 		self.viewport = Default::default();
 		self.arrivals = Default::default();
+		self.completions = Default::default();
 		self.binding = None;
 
 		self.entries.clear();
@@ -1046,6 +1072,7 @@ impl Timeline {
 		}
 		// An explicit read or a gap replaces the viewport, not an appended live row.
 		self.arrivals = Default::default();
+		self.completions.replace_history(self.binding.as_ref() == Some(&binding));
 		self.arrivals.observe(&page.entries, false);
 
 		self.binding = Some(binding);
