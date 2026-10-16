@@ -1,6 +1,6 @@
 //! A foreground-owning native material for small GPUI child windows.
 //! UI state and event handlers remain in GPUI; AppKit owns only composition.
-use std::{env, ptr};
+use std::{cell::Cell, env, ptr};
 
 use gpui::{Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
@@ -35,6 +35,7 @@ pub(crate) struct GlassPanel {
 	parent: Retained<NSWindow>,
 	frame: Option<NSRect>,
 	visible: bool,
+	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 }
 impl GlassPanel {
@@ -134,6 +135,7 @@ impl GlassPanel {
 				parent,
 				frame: None,
 				visible: false,
+				opacity: Cell::new(if radius.is_some() { 1. } else { 0. }),
 				window_observer,
 			})
 		}
@@ -187,6 +189,11 @@ impl GlassPanel {
 	}
 
 	pub(crate) fn set_opacity(&self, opacity: f32) {
+		// Only a changed alpha needs an AppKit write. Transcript frames must not
+		// repeatedly update the native window's composition state.
+		if self.opacity.replace(opacity) == opacity {
+			return;
+		}
 		unsafe {
 			let _: () = objc2::msg_send![&*self.native, setAlphaValue: f64::from(opacity)];
 		}
