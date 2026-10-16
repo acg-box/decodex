@@ -1,9 +1,9 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
 use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
 
-use crate::shell::agent_surface::{
-	markdown,
-	markdown::mermaid_view::{self, Context, IntoElement, Kind, Node, Window, mermaid},
+use crate::shell::agent_surface::markdown::{
+	self, NodeContent,
+	mermaid_view::{self, Context, IntoElement, Kind, Node, Window, mermaid},
 };
 
 struct Preview {
@@ -18,10 +18,10 @@ impl Render for Preview {
 fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 	nodes
 		.iter()
-		.flat_map(|node| match node {
-			Node::Block(kind @ (Kind::Code | Kind::Mermaid { .. }), children) =>
+		.flat_map(|node| match &node.content {
+			NodeContent::Block(kind @ (Kind::Code | Kind::Mermaid { .. }), children) =>
 				vec![(matches!(kind, Kind::Mermaid { .. }), markdown::code_text(children))],
-			Node::Block(_, children) => sources(children),
+			NodeContent::Block(_, children) => sources(children),
 			_ => Vec::new(),
 		})
 		.collect()

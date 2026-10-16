@@ -985,6 +985,10 @@ mod tests {
 			window.resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
 			window.draw(cx).clear(cx);
 		});
+		for _ in 0..20 {
+			std::thread::sleep(std::time::Duration::from_millis(16));
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+		}
 		let title = visual.debug_bounds("question-title-selection-q1").expect("question title");
 		visual.simulate_click(title.center(), Default::default());
 		visual.simulate_keystrokes("cmd-a cmd-c");

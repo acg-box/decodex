@@ -1,9 +1,10 @@
 //! Read-only rich text with native hit testing and clipboard selection.
-use std::{ops::Range, path::Path};
+use std::{cell::OnceCell, ops::Range, path::Path, rc::Rc};
 
-use gpui::{
-	App, Element, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText,
-};
+#[path = "agent_text_selection.rs"] mod selection;
+pub(super) use selection::Document;
+
+use gpui::{App, Element, HighlightStyle, IntoElement, MouseButton, RenderOnce, StyledText};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::shell::agent_surface::{
@@ -25,153 +26,123 @@ impl SelectableText {
 	}
 }
 impl RenderOnce for SelectableText {
+	fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+		let key = self.key.clone();
+		let mut document = Document::default();
+		let child = document.push(self);
+		document.finish(&key, gpui::div().child(child))
+	}
+}
+
+#[derive(IntoElement)]
+struct TextBlock {
+	text: SelectableText,
+	range: Range<usize>,
+	scope: Rc<OnceCell<selection::Scope>>,
+}
+impl RenderOnce for TextBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(
-			SharedString::from(format!("selection-{}", self.key)),
-			cx,
-			|_, cx| Selection { anchor: 0, head: 0, dragging: false, focus: cx.focus_handle() },
-		);
-		let (range, focus) = {
-			let s = state.read(cx);
-
-			(s.range(&self.text), s.focus.clone())
-		};
-		let highlights = selection_highlights(self.text.len(), self.highlights, range);
-		let batch = highlights
-			.iter()
-			.all(|(_, style)| style.underline.is_none() && style.strikethrough.is_none())
-			&& window.text_style().underline.is_none()
-			&& window.text_style().strikethrough.is_none();
-		let styled = StyledText::new(self.text.clone()).with_highlights(highlights);
-		let down_layout = styled.layout().clone();
-		let move_layout = down_layout.clone();
-		let up_layout = down_layout.clone();
-		let down_state = state.clone();
-		let move_state = state.clone();
-		let up_state = state.clone();
-		let key_state = state.clone();
-		let down_text = self.text.clone();
-		let selector = self.key.clone();
-
+		let scope = self.scope.get().expect("selection scope");
+		let selected = scope.state.read(cx).range(&scope.text);
+		let local = selected.start.max(self.range.start).min(self.range.end) - self.range.start
+			..selected.end.max(self.range.start).min(self.range.end) - self.range.start;
+		let highlights = selection_highlights(self.text.text.len(), self.text.highlights, local);
+		let batch =
+			highlights.iter().all(|(_, s)| s.underline.is_none() && s.strikethrough.is_none())
+				&& window.text_style().underline.is_none()
+				&& window.text_style().strikethrough.is_none();
+		let styled = StyledText::new(self.text.text.clone()).with_highlights(highlights);
+		let layout = styled.layout().clone();
+		let down_state = scope.state.clone();
+		let up_state = scope.state.clone();
+		let right_scope = self.scope.clone();
+		let right_layout = layout.clone();
+		let right_text = self.text.text.clone();
+		let down_layout = layout.clone();
+		let start = self.range.start;
+		let end = self.range.end;
+		let text = self.text.text;
+		let selector = self.text.key.clone();
 		gpui::div()
-			.id(SharedString::from(self.key))
+			.id(SharedString::from(self.text.key))
 			.debug_selector(move || selector.clone())
 			.role(Role::Label)
-			.aria_label(self.text.clone())
-			.track_focus(&focus)
+			.aria_label(text.clone())
 			.cursor_text()
+			.on_mouse_down(MouseButton::Right, move |event, window, cx| {
+				let scope = right_scope.get().expect("selection scope");
+				let ix = right_layout
+					.index_for_position(event.position)
+					.unwrap_or_else(|ix| ix)
+					.min(right_text.len());
+				if !scope.state.read(cx).range(&scope.text).contains(&(start + ix)) {
+					scope.state.update(cx, |s, cx| {
+						s.focus.focus(window, cx);
+						if let Some((offset, word)) = right_text
+							.split_word_bound_indices()
+							.find(|(offset, word)| *offset <= ix && ix < offset + word.len())
+						{
+							s.anchor = start + offset;
+							s.head = s.anchor + word.len();
+						}
+						cx.notify();
+					});
+				}
+				scope.context_menu(window, cx);
+				cx.stop_propagation();
+			})
 			.on_mouse_down(MouseButton::Left, move |event, window, cx| {
 				let ix = down_layout
 					.index_for_position(event.position)
 					.unwrap_or_else(|ix| ix)
-					.min(down_text.len());
-
+					.min(text.len());
 				down_state.update(cx, |s, cx| {
 					s.focus.focus(window, cx);
-
-					s.anchor = ix;
-					s.head = ix;
-					s.dragging = true;
-
-					if event.click_count >= 3 {
-						s.anchor = 0;
-						s.head = down_text.len();
-					} else if event.click_count == 2
-						&& let Some((start, word)) = down_text
-							.split_word_bound_indices()
-							.find(|(start, word)| *start <= ix && ix < start + word.len())
-					{
-						s.anchor = start;
-						s.head = start + word.len();
+					if !event.modifiers.shift {
+						s.anchor = start + ix;
 					}
-
+					s.head = start + ix;
+					s.dragging = true;
+					if event.click_count >= 3 {
+						s.anchor = start;
+						s.head = end;
+					} else if event.click_count == 2
+						&& let Some((offset, word)) = text
+							.split_word_bound_indices()
+							.find(|(offset, word)| *offset <= ix && ix < offset + word.len())
+					{
+						s.anchor = start + offset;
+						s.head = start + offset + word.len();
+					}
 					cx.notify();
 				});
-
 				cx.stop_propagation();
 			})
 			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
-				let click = {
-					let s = up_state.read(cx);
-
-					s.dragging && s.anchor == s.head
-				};
-
-				up_state.update(cx, |s, cx| {
-					s.dragging = false;
-
-					cx.notify();
-				});
-
-				if click
-					&& let Ok(ix) = up_layout.index_for_position(event.position)
-					&& let Some((_, url)) = self.links.iter().find(|(range, _)| range.contains(&ix))
+				let s = up_state.read(cx);
+				if s.dragging
+					&& s.anchor == s.head
+					&& let Ok(ix) = layout.index_for_position(event.position)
+					&& s.anchor == start + ix
+					&& let Some((_, url)) =
+						self.text.links.iter().find(|(range, _)| range.contains(&ix))
 				{
 					open_selection_link(url, cx);
 				}
 			})
-			.on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
-				state.update(cx, |s, _| s.dragging = false);
-			})
-			.on_key_down(move |event: &KeyDownEvent, _, cx| {
-				if event.keystroke.modifiers.platform && event.keystroke.key == "c" {
-					let s = key_state.read(cx);
-					let range = s.range(&self.text);
-
-					if let Some(text) = self.text.get(range).filter(|text| !text.is_empty()) {
-						cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
-					}
-
-					cx.stop_propagation();
-				} else if event.keystroke.modifiers.platform && event.keystroke.key == "a" {
-					key_state.update(cx, |s, cx| {
-						s.anchor = 0;
-						s.head = self.text.len();
-
-						cx.notify();
-					});
-
-					cx.stop_propagation();
-				}
-			})
-			.child(if batch {
-				TextLayer(styled).into_any_element()
-			} else {
-				styled.into_any_element()
-			})
-			.child(selection_drag(move_state, move_layout))
+			.child(TextLayer { styled, batch, range: self.range, scope: self.scope })
 	}
-}
-
-fn selection_drag(state: gpui::Entity<Selection>, layout: gpui::TextLayout) -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		move |_, _, window, _| {
-			let state = state.clone();
-			let layout = layout.clone();
-			// Continue a selection when the pointer leaves its text bounds.
-			window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
-				if phase == gpui::DispatchPhase::Capture
-					&& state.read(cx).dragging
-					&& event.pressed_button == Some(MouseButton::Left)
-				{
-					let ix = layout.index_for_position(event.position).unwrap_or_else(|ix| ix);
-					state.update(cx, |s, cx| {
-						s.head = ix;
-						cx.notify();
-					});
-				}
-			});
-		},
-	)
-	.absolute()
-	.inset_0()
 }
 
 /// A paragraph has one foreground order. Keep selection backgrounds underneath
 /// it instead of inserting every glyph into the scene's overlap tree each frame.
 /// Decorated text keeps GPUI's original interleaving of glyphs and decorations.
-struct TextLayer(StyledText);
+struct TextLayer {
+	styled: StyledText,
+	batch: bool,
+	range: Range<usize>,
+	scope: Rc<OnceCell<selection::Scope>>,
+}
 impl IntoElement for TextLayer {
 	type Element = Self;
 
@@ -198,7 +169,7 @@ impl Element for TextLayer {
 		window: &mut Window,
 		cx: &mut App,
 	) -> (gpui::LayoutId, ()) {
-		self.0.request_layout(id, inspector, window, cx)
+		self.styled.request_layout(id, inspector, window, cx)
 	}
 
 	fn prepaint(
@@ -210,7 +181,13 @@ impl Element for TextLayer {
 		window: &mut Window,
 		cx: &mut App,
 	) {
-		self.0.prepaint(id, inspector, bounds, state, window, cx);
+		self.styled.prepaint(id, inspector, bounds, state, window, cx);
+		self.scope
+			.get()
+			.expect("selection scope")
+			.layouts
+			.borrow_mut()
+			.push((self.range.clone(), self.styled.layout().clone()));
 	}
 
 	fn paint(
@@ -223,25 +200,17 @@ impl Element for TextLayer {
 		window: &mut Window,
 		cx: &mut App,
 	) {
-		self.0.layout().paint_background(window, cx).expect("text background");
-		window.paint_layer(bounds, |window| {
-			self.0.layout().paint_foreground(window, cx).expect("text foreground");
-		});
+		if self.batch {
+			self.styled.layout().paint_background(window, cx).expect("text background");
+			window.paint_layer(bounds, |window| {
+				self.styled.layout().paint_foreground(window, cx).expect("text foreground");
+			});
+		} else {
+			self.styled.paint(None, None, bounds, &mut (), &mut (), window, cx);
+		}
 	}
 }
 
-struct Selection {
-	anchor: usize,
-	head: usize,
-	dragging: bool,
-	focus: FocusHandle,
-}
-impl Selection {
-	fn range(&self, text: &str) -> Range<usize> {
-		text.floor_char_boundary(self.anchor.min(self.head).min(text.len()))
-			..text.floor_char_boundary(self.anchor.max(self.head).min(text.len()))
-	}
-}
 fn open_selection_link(url: &str, cx: &mut App) {
 	if url.starts_with("https://")
 		|| url.starts_with("http://")

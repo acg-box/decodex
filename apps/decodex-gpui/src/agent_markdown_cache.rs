@@ -10,6 +10,7 @@ const MAX_SOURCE_BYTES: usize = 512 * 1_024;
 
 #[derive(Default)]
 pub(super) struct Document {
+	pub(super) source: Rc<str>,
 	pub(super) nodes: OnceCell<Vec<Node>>,
 	pub(super) plain: OnceCell<String>,
 }
@@ -30,7 +31,7 @@ impl Cache {
 			return document.clone();
 		}
 
-		let document = Rc::new(Document::default());
+		let document = Rc::new(Document { source: text.into(), ..Default::default() });
 
 		if text.len() > MAX_SOURCE_BYTES {
 			return document;
@@ -53,7 +54,7 @@ impl Cache {
 
 		self.source_bytes += text.len();
 
-		self.documents.insert(text.into(), (self.clock, document.clone()));
+		self.documents.insert(document.source.clone(), (self.clock, document.clone()));
 
 		document
 	}
