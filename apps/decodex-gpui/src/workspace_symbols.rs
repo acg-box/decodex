@@ -101,7 +101,18 @@ pub(super) struct DisclosureChevron {
 impl RenderOnce for DisclosureChevron {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let progress = ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+		if progress == 0. || progress == 1. {
+			return gpui::svg()
+				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M2 4L6 8L10 4" fill="none" stroke="white" stroke-width="1.2"/></svg>"#)
+				.text_color(gpui::rgb(TEXT_MUTED))
+				.with_transformation(gpui::Transformation::rotate(gpui::radians(progress * std::f32::consts::PI)))
+				.size(gpui::px(12.))
+				.flex_none()
+				.into_any_element();
+		}
 
+		// Only the changing outline needs a live path. Its settled shapes use
+		// the atlas without changing the existing fold motion or stroke weight.
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
@@ -125,6 +136,7 @@ impl RenderOnce for DisclosureChevron {
 		)
 		.size(gpui::px(12.))
 		.flex_none()
+		.into_any_element()
 	}
 }
 
