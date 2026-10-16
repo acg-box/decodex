@@ -137,34 +137,14 @@ pub(super) struct ProcessChevron {
 impl RenderOnce for ProcessChevron {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let progress = ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
-		let angle = progress * FRAC_PI_2;
-
-		gpui::canvas(
-			|_, _, _| (),
-			move |bounds, _, window, _| {
-				let mut path = PathBuilder::stroke(gpui::px(1.4));
-
-				for (i, (x, y)) in [(-2., -3.5), (1.5, 0.), (-2., 3.5)].into_iter().enumerate() {
-					let point = bounds.center()
-						+ gpui::point(
-							gpui::px(x * angle.cos() - y * angle.sin()),
-							gpui::px(x * angle.sin() + y * angle.cos()),
-						);
-
-					if i == 0 {
-						path.move_to(point);
-					} else {
-						path.line_to(point);
-					}
-				}
-
-				if let Ok(path) = path.build() {
-					window.paint_path(path, window.text_style().color);
-				}
-			},
-		)
-		.size(gpui::px(12.))
-		.flex_none()
+		// Rasterize this fixed outline once in GPUI's atlas. A live path for every
+		// tool row splits Metal rendering into full-window intermediate passes.
+		gpui::svg()
+			.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M4 2.5L7.5 6L4 9.5" fill="none" stroke="white" stroke-width="1.4"/></svg>"#)
+			.text_color(window.text_style().color)
+			.with_transformation(gpui::Transformation::rotate(gpui::radians(progress * FRAC_PI_2)))
+			.size(gpui::px(12.))
+			.flex_none()
 	}
 }
 
