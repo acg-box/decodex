@@ -77,7 +77,6 @@ use {
 	std::os::unix::fs::OpenOptionsExt as _,
 };
 
-#[cfg(test)] use crate::account_launch::RunnerCapacity;
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
 	self, AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV,
@@ -86,7 +85,7 @@ use crate::account_launch::macos_attested_spawn::{
 use crate::{
 	StoredCredential,
 	account_launch::{
-		RunnerPermit,
+		RunnerCapacity, RunnerPermit,
 		protocol::{
 			self, AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 			ExactThreadStateListParams, InitializeCapabilities, InitializeParams,
@@ -1770,7 +1769,7 @@ impl SupervisedProcess {
 			.reserve(binding.account_id.clone(), 1)
 			.map_err(|_| SupervisionError::SpawnFailed)?;
 
-		Self::spawn_inner(command, binding, Some(guard))
+		Self::spawn_inner(command, binding, guard)
 	}
 
 	fn spawn_bound(
@@ -1778,7 +1777,7 @@ impl SupervisedProcess {
 		binding: AccountBinding,
 		guard: RunnerPermit,
 	) -> Result<Self, SupervisionError> {
-		Self::spawn_inner(command, binding, Some(guard))
+		Self::spawn_inner(command, binding, guard)
 	}
 
 	#[cfg(test)]
@@ -1837,7 +1836,7 @@ impl SupervisedProcess {
 	fn spawn_inner(
 		command: AppServerCommand,
 		binding: AccountBinding,
-		guard: Option<RunnerPermit>,
+		guard: RunnerPermit,
 	) -> Result<Self, SupervisionError> {
 		run_before_spawn_test(&command);
 		verify_executable(&command)?;
@@ -3119,13 +3118,66 @@ impl<'a> ProbeNegotiation<'a> {
 	}
 }
 
+enum ProcessGuard {
+	Account(RunnerPermit),
+	Preflight {
+		// Keep the shared capacity owner alive until this cleanup finishes.
+		_capacity: Arc<RunnerCapacity>,
+		quarantine: Arc<ProcessQuarantine>,
+		slot: QuarantineSlotLease,
+	},
+}
+impl ProcessGuard {
+	fn prepare(guard: Option<RunnerPermit>) -> Result<Self, SupervisionError> {
+		if let Some(guard) = guard {
+			return Ok(Self::Account(guard));
+		}
+
+		let capacity =
+			RunnerCapacity::daemon().map_err(|_| SupervisionError::CleanupUnavailable)?;
+		let quarantine = Arc::clone(&capacity.inner.quarantine);
+		let slot = quarantine.reserve_slot().ok_or(SupervisionError::CleanupUnavailable)?;
+
+		Ok(Self::Preflight { _capacity: capacity, quarantine, slot })
+	}
+
+	fn into_runner_permit(self) -> Option<RunnerPermit> {
+		match self {
+			Self::Account(guard) => Some(guard),
+			Self::Preflight { .. } => None,
+		}
+	}
+
+	fn quarantine(&mut self) -> (Arc<ProcessQuarantine>, usize) {
+		match self {
+			Self::Account(guard) => guard.quarantine(),
+			Self::Preflight { quarantine, slot, .. } => {
+				slot.mark_installed();
+
+				(Arc::clone(quarantine), slot.index())
+			},
+		}
+	}
+
+	#[cfg(test)]
+	fn use_quarantine_for_test(&mut self, quarantine: &Arc<ProcessQuarantine>) {
+		match self {
+			Self::Account(guard) => guard.use_quarantine_for_test(quarantine),
+			Self::Preflight { quarantine: current, slot, .. } => {
+				*slot = quarantine.reserve_slot().expect("test quarantine has a free slot");
+				*current = Arc::clone(quarantine);
+			},
+		}
+	}
+}
+
 pub(super) struct ReapJob {
 	child: ManagedChild,
 	process_group: u32,
 	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
 	may_signal_process_group: bool,
 	pump: Option<StdoutPump>,
-	_guard: Option<RunnerPermit>,
+	_guard: Option<ProcessGuard>,
 	#[cfg(test)]
 	not_before: Option<Instant>,
 }
@@ -3135,13 +3187,13 @@ pub(super) struct ProcessGroupOwner {
 	process_group: u32,
 	// This authority is monotonic: no observation can restore it after reap or wait failure.
 	may_signal_process_group: bool,
-	guard: Option<RunnerPermit>,
+	guard: Option<ProcessGuard>,
 	pump: Option<StdoutPump>,
 	#[cfg(test)]
 	reap_not_before: Option<Instant>,
 }
 impl ProcessGroupOwner {
-	fn new(child: impl Into<ManagedChild>, guard: Option<RunnerPermit>) -> Self {
+	fn new(child: impl Into<ManagedChild>, guard: ProcessGuard) -> Self {
 		let child = child.into();
 		let process_group = child.id();
 
@@ -3149,7 +3201,7 @@ impl ProcessGroupOwner {
 			child: Some(child),
 			process_group,
 			may_signal_process_group: true,
-			guard,
+			guard: Some(guard),
 			pump: None,
 			#[cfg(test)]
 			reap_not_before: None,
@@ -3195,7 +3247,7 @@ impl ProcessGroupOwner {
 	fn shutdown_retaining_guard(
 		&mut self,
 		timeout: Duration,
-	) -> Result<(ShutdownOutcome, Option<RunnerPermit>), SupervisionError> {
+	) -> Result<(ShutdownOutcome, Option<ProcessGuard>), SupervisionError> {
 		let Some(child) = self.child.as_mut() else {
 			return Ok((ShutdownOutcome::Exited, self.guard.take()));
 		};
@@ -3233,8 +3285,7 @@ impl ProcessGroupOwner {
 		let Some(child) = self.child.take() else {
 			return;
 		};
-		let mut guard =
-			self.guard.take().expect("every spawned group owns capacity and a cleanup slot");
+		let mut guard = self.guard.take().expect("every spawned group owns a cleanup slot");
 		let (quarantine, slot) = guard.quarantine();
 		let job = ReapJob {
 			child,
@@ -4536,10 +4587,12 @@ fn decode_conversation_process_event(
 fn spawn_protocol_process(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
-	guard: Option<RunnerPermit>,
+	guard: RunnerPermit,
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 ) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
+	let guard = ProcessGuard::Account(guard);
+
 	#[cfg(target_os = "macos")]
 	if let Some(identity) = &command.attested_code_identity {
 		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
@@ -4669,7 +4722,10 @@ fn spawn_attested_protocol_process(
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
-		let owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
+		let owner = ProcessGroupOwner::new(
+			ManagedChild::Attested(spawned.child),
+			ProcessGuard::Account(guard),
+		);
 
 		Ok(finish_attested_protocol_spawn(
 			owner,
@@ -4688,7 +4744,7 @@ fn spawn_attested_protocol_process(
 		}
 
 		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(child, Some(guard));
+		let mut owner = ProcessGroupOwner::new(child, ProcessGuard::Account(guard));
 		let (stdin, stdout) = match owner.child_mut() {
 			ManagedChild::Standard(child) => {
 				let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
@@ -5567,6 +5623,7 @@ fn attest_executable_for_home(
 	guard: Option<RunnerPermit>,
 ) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
 	let deadline = Instant::now() + timeout;
+	let guard = ProcessGuard::prepare(guard)?;
 	let version_output = NamedTempFile::new().map_err(|_| SupervisionError::PreflightFailed)?;
 	let version_writer = version_output.reopen().map_err(|_| SupervisionError::PreflightFailed)?;
 	let (version_status, guard) = run_preflight_command(
@@ -5616,7 +5673,7 @@ fn attest_executable_for_home(
 	let generated = GeneratedSchemaEvidence::load(schema_directory.path())
 		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
 
-	Ok((build, generated, guard))
+	Ok((build, generated, guard.into_runner_permit()))
 }
 
 fn protected_spawn_path(command: &AppServerCommand) -> PathBuf {
@@ -5645,8 +5702,8 @@ fn run_preflight_command(
 	stdout: Stdio,
 	timeout: Duration,
 	max_file_bytes: u64,
-	guard: Option<RunnerPermit>,
-) -> Result<(ExitStatus, Option<RunnerPermit>), SupervisionError> {
+	guard: ProcessGuard,
+) -> Result<(ExitStatus, ProcessGuard), SupervisionError> {
 	run_before_spawn_test(command);
 	verify_executable(command)?;
 	run_after_verification_test(command);
@@ -5676,7 +5733,7 @@ fn run_preflight_command(
 		owner
 			.guard
 			.as_mut()
-			.expect("test preflight owns capacity")
+			.expect("test preflight owns cleanup")
 			.use_quarantine_for_test(&control.quarantine);
 
 		let spawn = control.spawn_count.fetch_add(1, Ordering::AcqRel) + 1;
@@ -5707,7 +5764,7 @@ fn run_preflight_command(
 		{
 			let (_, guard) = owner.shutdown_retaining_guard(Duration::from_millis(1))?;
 
-			return Ok((status, guard));
+			return Ok((status, guard.ok_or(SupervisionError::CleanupUnavailable)?));
 		}
 
 		let now = Instant::now();
@@ -7115,7 +7172,10 @@ pub(crate) mod tests {
 		let mut child = command.spawn().unwrap();
 		let pid = child.id();
 		let stdin = child.stdin.take().unwrap();
-		let owner = process::ProcessGroupOwner::new(child, Some(capacity.reserve().unwrap()));
+		let owner = process::ProcessGroupOwner::new(
+			child,
+			process::ProcessGuard::Account(capacity.reserve().unwrap()),
+		);
 		let (sender, receiver) = mpsc::sync_channel(1);
 		let (mut owner, stdin) = process::finish_attested_protocol_spawn(
 			owner,
@@ -7914,6 +7974,48 @@ pub(crate) mod tests {
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::PreflightFailed));
 
 		wait_until_process_is_dead(descendant);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn profile_preflights_retain_cleanup_without_an_account_permit() {
+		for (mode, trigger_spawn) in
+			[("preflight-uncertain-version", 1), ("preflight-uncertain-schema", 2)]
+		{
+			let temp = TempDir::new().unwrap();
+			let quarantine = ProcessQuarantine::new();
+			let lifecycle = quarantine.lifecycle_probe();
+			let spawn_count = Arc::new(AtomicU32::new(0));
+			let group = Arc::new(AtomicU32::new(0));
+			let command = fake_command(mode, temp.path(), None)
+				.with_preflight_cleanup_control_for_test(
+					trigger_spawn,
+					Arc::clone(&spawn_count),
+					Arc::clone(&group),
+					Duration::from_millis(150),
+					Arc::clone(&quarantine),
+				);
+			let result = AttestedAppServerProfile::attest_for_test(
+				command,
+				Path::new("/tmp/.codex"),
+				Duration::from_secs(5),
+			);
+
+			assert!(matches!(
+				result,
+				Err(ProbeError::Supervision(SupervisionError::PreflightFailed))
+			));
+			assert_eq!(spawn_count.load(Ordering::Acquire), trigger_spawn);
+
+			let process_group = group.load(Ordering::Acquire);
+
+			assert_ne!(process_group, 0);
+
+			drop(quarantine);
+			wait_until_process_is_dead(process_group);
+			wait_for_flag(&lifecycle.exited, Duration::from_secs(3));
+			wait_for_flag(&lifecycle.joined, Duration::from_secs(3));
+		}
 	}
 
 	#[cfg(unix)]
