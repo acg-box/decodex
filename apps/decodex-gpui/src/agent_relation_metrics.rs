@@ -80,17 +80,26 @@ fn metric_cell(label: String, value: Option<f32>, color: u32, scale: f32) -> Any
 			(shape(label, 11., TEXT_MUTED), shape(percentage(value), 10., color))
 		},
 		move |bounds, (label, share), window, cx| {
-			let line_height = gpui::px(14. * scale);
-			let _ =
-				label.paint(bounds.origin, line_height, gpui::TextAlign::Left, None, window, cx);
-			let _ = share.paint(
-				gpui::point(bounds.right() - share.width, bounds.top()),
-				line_height,
-				gpui::TextAlign::Left,
-				None,
-				window,
-				cx,
-			);
+			// Each label occupies a separate range in this fixed-size cell.
+			window.paint_layer(bounds, |window| {
+				let line_height = gpui::px(14. * scale);
+				let _ = label.paint(
+					bounds.origin,
+					line_height,
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+				let _ = share.paint(
+					gpui::point(bounds.right() - share.width, bounds.top()),
+					line_height,
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+			});
 			let bounds = gpui::Bounds::new(
 				bounds.origin + gpui::point(gpui::px(0.), gpui::px(19. * scale)),
 				gpui::size(bounds.size.width, gpui::px(3. * scale)),
@@ -174,20 +183,23 @@ fn usage_label(id: String, title: String, share: String) -> AnyElement {
 			} else {
 				(None, false)
 			};
-			let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
-			if let Some(name) = name {
-				let _ = name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
-			}
-			if show_share {
-				let _ = share.paint(
-					gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
-					gpui::px(16.),
-					gpui::TextAlign::Left,
-					None,
-					window,
-					cx,
-				);
-			}
+			window.paint_layer(bounds, |window| {
+				let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
+				if let Some(name) = name {
+					let _ =
+						name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
+				}
+				if show_share {
+					let _ = share.paint(
+						gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
+						gpui::px(16.),
+						gpui::TextAlign::Left,
+						None,
+						window,
+						cx,
+					);
+				}
+			});
 		},
 	)
 	.w_full()

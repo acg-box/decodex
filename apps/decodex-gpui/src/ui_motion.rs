@@ -2,7 +2,7 @@
 #[path = "ui_agent_label.rs"] mod agent_label;
 pub(crate) use agent_label::AgentSignal;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
-pub(crate) use overflow_label::OverflowLabel;
+pub(crate) use overflow_label::{OverflowLabel, OverflowLine};
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 

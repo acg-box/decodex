@@ -6,6 +6,7 @@ use super::{
 use crate::ui_theme::TEXT;
 use gpui::AppContext;
 #[path = "agent_relation_details.rs"] mod details;
+#[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_identity.rs"] mod identity;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
 #[path = "agent_relation_resources.rs"] mod resources;
@@ -1256,47 +1257,15 @@ impl AgentSurface {
 			.gap(gpui::px(3. * scale))
 			.overflow_hidden()
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap(gpui::px(8. * scale))
-					.children(label.map(|label| {
-						gpui::div()
-							.text_size(gpui::px(10. * scale))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.flex_none()
-							.child(label.clone())
-					}))
-					.child(status_lamp(
-						node.color,
-						connected && node.running(),
-						scale,
-						flow_started,
-					))
-					.child(
-						gpui::div()
-							.flex_1()
-							.w_0()
-							.min_w_0()
-							.text_size(gpui::px(12. * scale))
-							.child(crate::ui_motion::OverflowLabel {
-								id: format!("relation-title-{}", node.key).into(),
-								text: node.title.clone().into(),
-							}),
-					),
-			)
-			.when_some(node.task(), |d, task| {
-				d.child(
-					gpui::div()
-						.text_size(gpui::px(11. * scale))
-						.text_color(gpui::rgb(TEXT_MUTED))
-						.min_w_0()
-						.child(crate::ui_motion::OverflowLabel {
-							id: format!("relation-task-{}", node.key).into(),
-							text: task.to_owned().into(),
-						}),
-				)
+			.child(header::Header {
+				key: node.key.clone(),
+				title: node.title.clone(),
+				label: label.cloned(),
+				task: node.task().map(str::to_owned),
+				scale,
+				color: node.color,
+				running: connected && node.running(),
+				clock: flow_started,
 			})
 	}
 
@@ -1395,34 +1364,6 @@ fn paint_relation_grid(
 			x += spacing;
 		}
 	});
-}
-
-fn status_lamp(color: u32, running: bool, scale: f32, clock: std::time::Instant) -> AnyElement {
-	gpui::canvas(
-		|_, _, _| (),
-		move |bounds, _, window, cx| {
-			let animate =
-				running && !crate::ui_motion::reduced() && crate::ui_motion::application_active();
-			let phase = (clock.elapsed().as_secs_f32() / 2.8).fract();
-			if animate {
-				let alpha = (24. + 32. * (phase * std::f32::consts::TAU).sin().abs()) as u32;
-				window.paint_quad(
-					gpui::fill(bounds, gpui::rgba((color << 8) | alpha))
-						.corner_radii(gpui::px(5. * scale)),
-				);
-				crate::ui_motion::request_frame(window, cx);
-			}
-			let dot = gpui::Bounds::new(
-				bounds.origin + gpui::point(gpui::px(2. * scale), gpui::px(2. * scale)),
-				gpui::size(gpui::px(6. * scale), gpui::px(6. * scale)),
-			);
-			window.paint_quad(gpui::fill(dot, gpui::rgb(color)).corner_radii(gpui::px(3. * scale)));
-		},
-	)
-	.w(gpui::px(10. * scale))
-	.h(gpui::px(10. * scale))
-	.flex_none()
-	.into_any_element()
 }
 
 struct Route {
