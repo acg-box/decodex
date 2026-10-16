@@ -71,8 +71,8 @@ pub use self::{
 	accounts::AccountMetadata,
 	agent::{
 		AgentCapacityRetry, AgentDependency, AgentDispatchState, AgentDisposition, AgentInboxEvent,
-		AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
-		EnqueueAgentEvent,
+		AgentRecoveryKind, AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind,
+		AgentWorkStatus, EnqueueAgentEvent,
 	},
 	agent_app_settings::{
 		AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentAppSettingsReceipt,

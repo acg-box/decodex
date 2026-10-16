@@ -21,7 +21,10 @@ impl AgentCoordinator {
 		};
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
 
-		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
+		if !self
+			.store
+			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.await?
 		{
 			return Err(reject());
 		}
@@ -31,7 +34,10 @@ impl AgentCoordinator {
 		if !matches!(state, ThreadArchiveState::Active | ThreadArchiveState::Archived) {
 			return Err(reject());
 		}
-		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
+		if !self
+			.store
+			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.await?
 		{
 			return Err(reject());
 		}
@@ -48,7 +54,7 @@ impl AgentCoordinator {
 		// Only desired-state readback can resolve an uncertain mutation.
 		let observed = self.client.thread_archive_state(thread).await;
 
-		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation).await? {
+		if !self.store.agent_thread_is_restorable(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::UnknownDispatch);
 		}
 
@@ -102,7 +108,7 @@ impl AgentCoordinator {
 			}
 			if !self
 				.store
-				.agent_thread_is_owned(
+				.agent_thread_is_restorable(
 					work.into(),
 					thread.into(),
 					self.native_generation.as_ref().map(|g| g.as_str().into()),

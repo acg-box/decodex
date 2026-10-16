@@ -42,8 +42,8 @@ use decodex_codex::app_server_client::{
 };
 use decodex_core::AccountId;
 use decodex_database::{
-	AgentDispatchState, AgentMisalignment, AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
-	StoreError,
+	AgentDispatchState, AgentMisalignment, AgentRecoveryKind, AgentWorkStatus, EnqueueAgentEvent,
+	SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
@@ -179,7 +179,7 @@ impl AgentHost {
 
 			let thread = work.codex_thread_id.as_deref().expect("filtered native thread");
 
-			time::timeout(
+			let result = time::timeout(
 				Duration::from_secs(12),
 				agent_models::recover_ordinary_model(
 					&self.store,
@@ -194,7 +194,15 @@ impl AgentHost {
 				),
 			)
 			.await
-			.map_err(|_| AgentError::Invalid("model recovery observation timed out".into()))??;
+			.map_err(|_| AgentError::Invalid("model recovery observation timed out".into()))
+			.and_then(std::convert::identity);
+			self.store
+				.record_agent_recovery(
+					work.id.clone(),
+					AgentRecoveryKind::Model,
+					result.err().as_ref().map(diagnostic),
+				)
+				.await?;
 		}
 
 		Ok(())
@@ -961,8 +969,8 @@ impl AgentHost {
 
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						if let Some((root, agent, events)) = active.as_mut()
-							&& self.recover_models(agent, events).await.is_err() {
-							self.record_error(root, "recovery_needs_attention").await;
+							&& let Err(error) = self.recover_models(agent, events).await {
+							let _ = self.store.record_agent_event_failure(root.clone(), diagnostic(&error)).await;
 						}
 
 						self.rotate_exhausted(&mut active).await;
@@ -2110,9 +2118,16 @@ impl AgentHost {
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {
 				let phase = crate::startup_trace::Phase::new("recover_persisted");
-				if active.1.recover_persisted().await.is_err() {
-					self.record_error(&root.id, "recovery_needs_attention").await;
-				} else {
+				let recovery = active.1.recover_persisted().await;
+				let _ = self
+					.store
+					.record_agent_recovery(
+						root.id.clone(),
+						AgentRecoveryKind::PersistedState,
+						recovery.as_ref().err().map(diagnostic),
+					)
+					.await;
+				if recovery.is_ok() {
 					let _ = self.store.resolve_agent_event_failure(root.id.clone()).await;
 				}
 
