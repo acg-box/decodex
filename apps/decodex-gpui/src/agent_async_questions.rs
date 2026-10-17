@@ -207,7 +207,7 @@ impl AgentSurface {
 			return true;
 		};
 		if let Err(message) = decodex_protocol::agent_async_question_reply(source, &answer) {
-			self.feedback = Feedback::error(message);
+			self.feedback = Feedback::warning(message);
 			cx.notify();
 			return true;
 		}
@@ -296,7 +296,7 @@ impl AgentSurface {
 					return;
 				}
 				if let Err(message) = decodex_protocol::agent_async_question_reply(source, answer) {
-					self.feedback = Feedback::error(message);
+					self.feedback = Feedback::warning(message);
 					cx.notify();
 					return;
 				}

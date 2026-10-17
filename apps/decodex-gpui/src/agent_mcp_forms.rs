@@ -90,9 +90,15 @@ impl AgentSurface {
 			return;
 		}
 
+		let fields = match decodex_protocol::mcp_request_fields(&value) {
+			Ok(fields) => fields,
+			Err(message) => {
+				self.feedback = Feedback::error(message);
+				cx.notify();
+				return;
+			},
+		};
 		let result = (|| -> Result<Value, String> {
-			let fields = decodex_protocol::mcp_request_fields(&value)?;
-
 			if fields.is_empty() {
 				return Ok(Value::Null);
 			}
@@ -136,7 +142,7 @@ impl AgentSurface {
 				self.respond(response.to_string(), cx);
 			},
 			Err(message) => {
-				self.feedback = Feedback::error(message);
+				self.feedback = Feedback::warning(message);
 
 				cx.notify();
 			},
@@ -664,6 +670,7 @@ connection_initializing: false,
             s.submit_mcp_form(7,cx);
 
             assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());
+            assert_eq!(s.feedback.tone, crate::ui_feedback::Tone::Warning);
 
             s.mcp_answers.insert("agree".into(),serde_json::json!(false));
             s.mcp_inputs["name"].update(cx,|input,cx|input.set_content("My name",cx));
@@ -674,6 +681,7 @@ connection_initializing: false,
 
             s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback.message,"No service profile is configured.");
+            assert_eq!(s.feedback.tone, crate::ui_feedback::Tone::Error);
         });
 		}
 	}

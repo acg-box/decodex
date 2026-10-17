@@ -462,7 +462,7 @@ impl AgentSurface {
 		let options = match self.voice_call_options(work.as_str(), cx) {
 			Ok(options) => options,
 			Err(message) => {
-				self.feedback = Feedback::error(message);
+				self.feedback = Feedback::warning(message);
 
 				cx.notify();
 

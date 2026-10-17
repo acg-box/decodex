@@ -12,7 +12,7 @@ use gpui::{
 
 use crate::{
 	ui_motion::{self, Tween},
-	ui_theme::{AMBER, CONVERSATION_INSET, GREEN, TEXT_MUTED},
+	ui_theme::{AMBER, CONVERSATION_INSET, ERROR, GREEN, TEXT_MUTED},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -30,7 +30,7 @@ impl Tone {
 			Self::Neutral => TEXT_MUTED,
 			Self::Success => GREEN,
 			Self::Warning => AMBER,
-			Self::Error => 0xf28b82,
+			Self::Error => ERROR,
 		}
 	}
 
