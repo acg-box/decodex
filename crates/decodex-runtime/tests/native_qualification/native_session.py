@@ -2,6 +2,7 @@ import json, os, subprocess, tempfile, threading, queue, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 B = Path(os.environ['QUALIFIED_CODEX_BINARY'])
+_EOF = object()
 
 class Session:
 
@@ -14,8 +15,11 @@ class Session:
         self.serial = 0
 
         def read():
-            for line in self.p.stdout:
-                self.q.put(json.loads(line))
+            try:
+                for line in self.p.stdout:
+                    self.q.put(json.loads(line))
+            finally:
+                self.q.put(_EOF)
         threading.Thread(target=read, daemon=True).start()
         try:
             self.call('initialize', {'clientInfo': {'name': 'decodex_qualification', 'version': '0.1'}, 'capabilities': {'experimentalApi': True}})
@@ -35,6 +39,9 @@ class Session:
         end = time.monotonic() + 30
         while time.monotonic() < end:
             v = self.q.get(timeout=max(0.01, end - time.monotonic()))
+            if v is _EOF:
+                self.stderr.seek(0)
+                raise RuntimeError('App-server closed during ' + m + ': ' + self.stderr.read())
             if v.get('id') == i:
                 if 'error' in v:
                     raise RuntimeError(v['error'])
@@ -47,6 +54,8 @@ class Session:
         end = time.monotonic() + 35
         while len(completed) < count:
             v = self.events.pop(0) if self.events else self.q.get(timeout=max(0.01, end - time.monotonic()))
+            if v is _EOF:
+                raise RuntimeError('App-server closed before turn completion')
             if v.get('method') == 'turn/completed':
                 assert v['params']['turn']['status'] == 'completed', v
                 completed.add(v['params']['threadId'])
