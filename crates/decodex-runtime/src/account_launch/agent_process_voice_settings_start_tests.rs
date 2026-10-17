@@ -137,30 +137,32 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		}
 
 		if let Some(start) = starts.first() {
-			assert_eq!(start["params"]["threadId"], thread);
-			assert_eq!(start["params"]["version"], "v3");
-			assert_eq!(start["params"]["realtimeSessionId"], "voice");
-			assert_eq!(start["params"]["transport"]["type"], "webrtc");
-			assert_eq!(start["params"]["outputModality"], "audio");
-
-			if voice == "juniper" {
-				assert_eq!(start["params"]["model"], "realtime-fixture");
-				assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
-				assert_eq!(start["params"]["realtimeEndInstructions"], "");
-			} else {
-				for field in ["model", "realtimeStartInstructions", "realtimeEndInstructions"] {
-					assert!(start["params"].get(field).is_none());
-				}
-			}
-
-			assert_eq!(
-				start["params"]["voice"],
-				if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
-			);
+			assert_voice_start(start, thread, voice);
 		}
 
 		server.abort();
 	}
+}
+
+fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
+	assert_eq!(start["params"]["threadId"], thread);
+	assert_eq!(start["params"]["version"], "v3");
+	assert_eq!(start["params"]["realtimeSessionId"], "voice");
+	assert_eq!(start["params"]["transport"]["type"], "webrtc");
+	assert_eq!(start["params"]["outputModality"], "audio");
+	if voice == "juniper" {
+		assert_eq!(start["params"]["model"], "realtime-fixture");
+		assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
+		assert_eq!(start["params"]["realtimeEndInstructions"], "");
+	} else {
+		for field in ["model", "realtimeStartInstructions", "realtimeEndInstructions"] {
+			assert!(start["params"].get(field).is_none());
+		}
+	}
+	assert_eq!(
+		start["params"]["voice"],
+		if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
+	);
 }
 
 #[tokio::test]

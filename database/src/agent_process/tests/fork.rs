@@ -92,10 +92,11 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.unwrap()
 	);
 
-	for (work, thread, allowed) in [
-		("unrelated-manager", "unrelated-native", false),
-		("root", "native-source", true),
-		("branch", "native-fork", true),
+	// User-initiated Live follows conversation hosting, not agent execution ownership.
+	for (work, thread) in [
+		("unrelated-manager", "unrelated-native"),
+		("root", "native-source"),
+		("branch", "native-fork"),
 	] {
 		let result = store
 			.begin_agent_voice_call(AgentVoiceCall {
@@ -107,13 +108,20 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			})
 			.await;
 
-		assert_eq!(result.is_ok(), allowed, "voice admission for {work}");
-
-		if allowed {
-			store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
-		}
+		assert!(result.is_ok(), "voice admission for {work}: {result:?}");
+		store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
 	}
 
+	assert!(
+		!store
+			.agent_thread_is_owned(
+				"unrelated-manager".into(),
+				"unrelated-native".into(),
+				generation.clone()
+			)
+			.await
+			.unwrap()
+	);
 	assert!(
 		store
 			.agent_thread_is_owned("root".into(), "native-source".into(), generation)
