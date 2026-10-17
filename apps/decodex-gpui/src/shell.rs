@@ -1899,7 +1899,7 @@ impl Render for Shell {
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
 
 		root.relative()
-			.child(ui_motion::arrival(route, content))
+			.child(crate::ui_layout::panel(ui_motion::arrival(route, content)))
 			.child(controls)
 			.child(gpui::deferred(status).priority(3))
 		// Keep global notifications above deferred composer menus throughout dismissal.

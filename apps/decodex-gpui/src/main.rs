@@ -28,6 +28,7 @@ mod panel_preferences;
 mod settings_surface;
 mod shell;
 mod ui_frame;
+mod ui_layout;
 mod ui_loading;
 mod ui_motion;
 mod ui_performance;
