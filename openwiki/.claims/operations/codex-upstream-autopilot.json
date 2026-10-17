@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b2a4e8e4133ac775b9fd5007439a004b0b376a8de35b9d05bad1fb8fd9633eda",
+  "pageVersion": "sha256:992721e9907176e7508ae0880b778234f95236ee24fc4f716fcbf25654d2497a",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -42,7 +42,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -110,7 +110,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         }
       ]
     },
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:dbd769ae10986e4ecd9ebf4a323fa3877de25f1f25156f7793f7a0bf1b27be14"
+          "version": "repo-file-v1:sha256:62870ed804095840327b6be13b8b5362abcd490892f63647b97954fde5cbcb5d"
         }
       ]
     },
@@ -169,10 +169,28 @@
           "version": "repo-lines-v1:sha256:83ef8d9ca302e5222203c1118c9731f07a1e83ba02b5253de33142d76b979647:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFiOTZiNWY0MTJiZDZiM2UwNTExOWYxZGY5YjQyMWI4MTU1OWIzYzZiMGVlMjVkYzVlNTBhYjIwMzY0ZWUwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjM3MDkzYzdiZTlhYzQ3NDcyNDVmNjNhZWQyMzg2MzI0ZGI2MjY1NGExOTNjMzYwOGQyM2E1Y2NkOTAxNDYxZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBhZGFlMDMzNjM5YmExMDc3MTA1MDRiMTk1ZjQ2NzljYTFmMDQwNTNiMWEwOTM3NjhlZmZkNmE5YTJhODc0YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWYyOTAzNzI0ZDlmYTEzYjY1YWJjN2EyZjljMTNkYzMyMDBiZjM2YzZlYWI1MTI0M2NhYmVlODIwNmRmZDczOSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_886bfe557c0d4e299d4766edec48632d",
+      "statement": "Current portable source-review and qualification records retain per-commit behavior and consumer evidence, exact artifact/helper identities, reusable fixture hashes, executed tests and explicit limits; Git retains replaced versions without moving the native review cursor.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/current-review.json",
+          "version": "repo-file-v1:sha256:594134f559e8dd7e1ac879c15436ff700e18c4fc122a6b7e5d1633e53ccb6b12"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
+        },
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-17T01:35:30.324Z"
+    "at": "2026-10-17T05:03:59.613Z"
   }
 }

@@ -3,9 +3,6 @@ type: Reference
 title: "Commands and validation"
 description: "Repository command authority and source, native and desktop acceptance boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-13T07:14:35.295Z
 sources:
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
@@ -13,12 +10,34 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
   - id: openwiki-source-90188458ff8e2e5499bd7ca8
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
+  - id: openwiki-source-1a964823f348372d89aa1920
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs
+  - id: openwiki-source-9145039d5c88ff2144ae6a60
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
+  - id: openwiki-source-053611cb863c8c6865cef2ca
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-ba12412e93bca80301ac28a3
+    resource: repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py
+  - id: openwiki-source-e7a53f398340c29957bd81d3
+    resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
+  - id: openwiki-source-2fee1dea7ba19d72acce7a3c
+    resource: repo://crates/decodex-runtime/tests/native_qualification/proxy_headers.py
+  - id: openwiki-source-aac8f76a32012d4a3e5a445d
+    resource: repo://crates/decodex-runtime/tests/native_qualification/terminal_controls.py
+  - id: openwiki-source-157a50123cd9da439c18985d
+    resource: repo://crates/decodex-runtime/tests/native_qualification/usage.py
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
@@ -35,7 +54,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
+generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-17T05:00:17.787Z
 ---
 
 
@@ -108,6 +130,25 @@ DECODEX_TEST_CODEX_BINARY=/absolute/path/to/codex cargo +stable nextest run --lo
 The test creates a private native home and a loopback Responses fixture. It adds 10,300 unrelated archive records, then runs two archive and unarchive cycles through two retained native processes. It checks exact identity, active descendants, restored hierarchy and the absence of additional model turns. Neither process restarts during those cycles. The command does not install a runtime or use the user's conversation store.
 
 The GPUI `archived_selection_parks_exact_draft_and_restores_it_on_unarchive` check covers the list projection, relationship graph and original draft, including attachments and references. These checks support the source build; they do not prove that an older installed app contains the change. Use a freshly built app for interactive acceptance and keep installation separate.
+
+## Qualify retained native behavior
+
+Use [the portable evidence index](../../automations/upstream/retained-evidence.json) for current retained requirements, exact test names and qualification limits. Use its command and environment with the candidate CLI and its packaged helpers. Register the selected tests first and include ignored native fixtures explicitly. Require every listed test to execute. Keep source tests, local projection tests and actual CLI tests in separate receipts.
+
+The reusable artifact probes are in `crates/decodex-runtime/tests/native_qualification/`. Set `QUALIFIED_CODEX_BINARY` to the absolute candidate CLI path and `QUALIFIED_CODEX_SOURCE_COMMIT` to its exact upstream commit. Set `DECODEX_QUALIFICATION_OUTPUT` to an existing output directory under the native automation run, outside tracked files. Keep the packaged Code Mode helper beside the selected package.
+
+```sh
+python3 crates/decodex-runtime/tests/native_qualification/usage.py
+python3 crates/decodex-runtime/tests/native_qualification/terminal_controls.py
+python3 crates/decodex-runtime/tests/native_qualification/apps_recovery.py
+python3 crates/decodex-runtime/tests/native_qualification/proxy_headers.py
+```
+
+These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
+
+A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
+
+Original upstream app-server integration tests can require private source-fixture hooks. Build their original standalone launcher with its required debug assertions, freeze that launcher outside Cargo output, and use the registered Rust harness with explicit `CARGO_BIN_EXE_*` paths. Cargo or Nextest can replace selected package binary paths. Record the source launcher and actual production CLI separately; preserve the original assertions and timeout. The [qualification record](../../automations/upstream/qualification.json) retains exact test identities, the launcher recipe and conditional remote-network limits.
 
 ## Prepare Codex components
 

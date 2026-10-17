@@ -282,3 +282,97 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 
 	backend.abort();
 }
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY and its packaged Code Mode helper"]
+async fn installed_native_parallel_dynamic_tools_preserve_ids_and_result_order() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let calls = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(Mutex::new(Vec::new()));
+	let backend = tokio::spawn(native_tests::serve_fixture(
+		listener,
+		calls.clone(),
+		None,
+		Some(bodies.clone()),
+		None,
+		|serial| match serial {
+			0 =>
+				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"parallel-cell","input":r#"
+function sort(a) { return a.sort(() => { a.fill(0); return 0; }); }
+for (let i = 0; i < 1000; i++) { sort([1, 2]); sort([{}, {}]); }
+const object = {};
+if (sort([object, {}])[0] !== object) throw new Error('sort changed an element');
+const values = await Promise.all([tools.lookup({key: 'A'}), tools.lookup({key: 'B'})]);
+text(JSON.stringify({values, sort: true}));
+"#}),
+			_ =>
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
+		},
+	));
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nenable_request_compression=false\n")).unwrap();
+	let mut session = NativeSession::start(&binary, home.path());
+	time::timeout(Duration::from_secs(30), async {
+		let start = session.client.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"lookup","description":"Return one isolated fixture value","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false}}]})).await.unwrap();
+		let thread = start["thread"]["id"].as_str().unwrap();
+		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated parallel tool fixture"}]})).await.unwrap();
+		let turn_id = turn["turn"]["id"].as_str().unwrap();
+		let mut pending = Vec::new();
+		while pending.len() < 2 {
+			match session.events.recv().await.unwrap() {
+				ServerEvent::Request { id, method, params } => {
+					assert_eq!(method, "item/tool/call");
+					assert_eq!(params["threadId"], thread);
+					assert_eq!(params["turnId"], turn_id);
+					assert_eq!(params["tool"], "lookup");
+					pending.push((id, params["arguments"]["key"].as_str().unwrap().to_owned()));
+				}
+				ServerEvent::Notification { method, .. } => assert_ne!(method, "turn/completed", "both tool requests must arrive before either reply"),
+				_ => {}
+			}
+		}
+		assert_ne!(pending[0].0, pending[1].0);
+		let mut keys: Vec<_> = pending.iter().map(|(_, key)| key.as_str()).collect();
+		keys.sort_unstable();
+		assert_eq!(keys, ["A", "B"]);
+		for (id, key) in pending.into_iter().rev() {
+			session.client.respond(id, serde_json::json!({"success":true,"contentItems":[{"type":"inputText","text":format!("value-{key}")}]})).await.unwrap();
+		}
+		loop {
+			if let ServerEvent::Notification { method, params } = session.events.recv().await.unwrap()
+				&& method == "turn/completed" {
+				assert_eq!(params["turn"]["status"], "completed");
+				break;
+			}
+		}
+	}).await.expect("both pending dynamic calls must be independently delivered");
+	assert_eq!(calls.load(Ordering::Acquire), 2);
+	let captured = bodies.lock().unwrap();
+	let output = captured[1]["input"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.filter(|item| {
+			item["type"] == "custom_tool_call_output" && item["call_id"] == "parallel-cell"
+		})
+		.map(|item| item["output"].to_string())
+		.collect::<Vec<_>>()
+		.join("\n");
+	assert!(
+		output.contains("value-A") && output.contains("value-B"),
+		"both results must reach their program: {output}"
+	);
+	assert!(
+		output.find("value-A") < output.find("value-B"),
+		"Promise.all must preserve input order: {output}"
+	);
+	assert!(
+		output.contains("sort") && output.contains("true"),
+		"the exact bundled V8 helper must finish the mixed-kind sort fixture: {output}"
+	);
+	drop(captured);
+	drop(session);
+	backend.abort();
+}

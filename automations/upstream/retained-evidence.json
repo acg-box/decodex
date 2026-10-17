@@ -1,15 +1,18 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "97ebf2d94d62e2ff2045f3ea17b6e11eae9a21fb",
+  "source_baseline": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
-    "https://github.com/acg-box/decodex/pull/2453"
+    "https://github.com/acg-box/decodex/pull/2453",
+    "https://github.com/acg-box/decodex/pull/2454",
+    "https://github.com/acg-box/decodex/pull/2455",
+    "https://github.com/acg-box/decodex/pull/2456"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
-    "limits": "Two native_search selectors test local projections. The other26 use the selected CLI. A historical selector list is a requirement, not a fresh pass receipt.",
+    "limits": "Two native_search selectors test local projections. The other 27 use the selected CLI. Exact helper behavior is covered where the tests use Code Mode. Register every selector and record actual passes separately.",
     "tests": [
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
@@ -150,6 +153,11 @@
         "test": "installed_native_voice_policy_read_does_not_use_user_feature_flags",
         "package": "decodex-runtime",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
+      },
+      {
+        "test": "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
       }
     ],
     "command": [
@@ -170,7 +178,7 @@
       "--retries",
       "0",
       "-E",
-      "test(installed_native_code_mode_yielded_cells_keep_their_outputs) | test(installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) | test(installed_native_mcp_capabilities_survive_tool_discovery_failure) | test(installed_named_permission_selection_during_active_turn_survives_restart) | test(installed_permission_selection_publishes_and_survives_native_restart) | test(native_child_mcp_input_preserves_policy_and_exact_request) | test(installed_native_child_inherits_updated_step_model) | test(installed_native_spawn_description_follows_updated_step_model) | test(installed_native_streams_auto_compaction_and_resumes_its_checkpoint) | test(installed_native_preserves_prompt_before_compaction_error_and_after_restart) | test(installed_native_qualified_defaults_preserve_multi_agent_selection) | test(installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) | test(installed_native_usage_restores_agent_baseline_after_cold_resume) | test(installed_native_model_access_metadata_refreshes_after_cold_restart) | test(installed_native_guardian_preserves_large_action) | test(installed_native_context_preferences_share_config_and_preserve_thresholds) | test(installed_native_archive_roundtrip_refreshes_without_restarting_either_process) | test(installed_native_continuation_uses_live_details_and_rejects_restart_authority) | test(installed_hook_trust_enablement_and_modified_content_are_independent) | test(installed_native_daybreak_preference_is_staged_without_selecting_access) | test(installed_native_goal_reads_preserve_native_state_after_restart) | test(installed_active_goal_preserves_native_budget_and_elapsed_accounting) | test(installed_native_read_state_preserves_new_results_and_cold_marks) | test(native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) | test(native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) | test(installed_native_discards_partial_compaction_output_after_restart) | test(installed_native_realtime_history_survives_agent_and_cold_bridge) | test(installed_native_voice_policy_read_does_not_use_user_feature_flags)"
+      "test(installed_native_code_mode_yielded_cells_keep_their_outputs) | test(installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) | test(installed_native_mcp_capabilities_survive_tool_discovery_failure) | test(installed_named_permission_selection_during_active_turn_survives_restart) | test(installed_permission_selection_publishes_and_survives_native_restart) | test(native_child_mcp_input_preserves_policy_and_exact_request) | test(installed_native_child_inherits_updated_step_model) | test(installed_native_spawn_description_follows_updated_step_model) | test(installed_native_streams_auto_compaction_and_resumes_its_checkpoint) | test(installed_native_preserves_prompt_before_compaction_error_and_after_restart) | test(installed_native_qualified_defaults_preserve_multi_agent_selection) | test(installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) | test(installed_native_usage_restores_agent_baseline_after_cold_resume) | test(installed_native_model_access_metadata_refreshes_after_cold_restart) | test(installed_native_guardian_preserves_large_action) | test(installed_native_context_preferences_share_config_and_preserve_thresholds) | test(installed_native_archive_roundtrip_refreshes_without_restarting_either_process) | test(installed_native_continuation_uses_live_details_and_rejects_restart_authority) | test(installed_hook_trust_enablement_and_modified_content_are_independent) | test(installed_native_daybreak_preference_is_staged_without_selecting_access) | test(installed_native_goal_reads_preserve_native_state_after_restart) | test(installed_active_goal_preserves_native_budget_and_elapsed_accounting) | test(installed_native_read_state_preserves_new_results_and_cold_marks) | test(native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) | test(native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) | test(installed_native_discards_partial_compaction_output_after_restart) | test(installed_native_realtime_history_survives_agent_and_cold_bridge) | test(installed_native_voice_policy_read_does_not_use_user_feature_flags) | test(installed_native_parallel_dynamic_tools_preserve_ids_and_result_order)"
     ],
     "environment": {
       "DECODEX_TEST_CODEX_BINARY": "Exact qualified CLI executable",
@@ -179,13 +187,58 @@
     }
   },
   "qualification": {
-    "status": "requires_fresh_evidence_before_runtime_migration",
-    "source_archive_sha256": "6e920fd580c4462482af3c8974e4a72d177f3e47c9a987d8b18ac82acf37d960",
-    "schema_sha256": "af95adf4743af5241b95820c0351f418b7e8318c75a8f5da56318d7767705054",
+    "status": "qualified_for_retained_decodex_consumers",
+    "evidence": "automations/upstream/qualification.json",
+    "source_archive_sha256": "5a695834a4543fcaa78c6bc166903a100c755f3984e726699b7da4aa10968331",
+    "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
     "limits": [
-      "The previous complete required source-test manifest and artifact/helper provenance were not retained in the repository. Recover exact identities from original evidence or establish fresh bounded proof before migration.",
-      "Source review, source test execution, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
-      "No installed-app, hosted provider, physical audio, real-account, MDM, Windows or remote-Windows acceptance is implied."
+      "Source review, executed source tests, exact-artifact behavior, merged delivery and installed-app acceptance remain separate.",
+      "The complete older certified 153-test manifest could not be reconstructed from truncated historical output. This run retains exact fresh requirements and results; it does not rewrite that older receipt.",
+      "No live provider, real-account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
+      "Production V8 guard flags remain; no standalone optimized d8 security regression was executed.",
+      "Six conditional remote-credential snapshot cases ran and failed under the host resolver. Current Decodex sources have no remote-executor configuration/provisioning consumer. The unchanged baseline DNS/address policy rejects reserved addresses. These cases are not qualified or declared delivered; no host network setting or native enforcement was relaxed."
     ]
-  }
+  },
+  "retained_artifact_probes": {
+    "source": "crates/decodex-runtime/tests/native_qualification",
+    "environment": {
+      "QUALIFIED_CODEX_BINARY": "Absolute exact candidate CLI; keep its packaged helpers in place",
+      "QUALIFIED_CODEX_SOURCE_COMMIT": "Exact reviewed 40-character upstream source commit",
+      "DECODEX_QUALIFICATION_OUTPUT": "Existing native automation run output directory outside tracked files"
+    },
+    "fixtures": [
+      {
+        "test": "usage.py",
+        "behavior": "Incomplete usage retains live context baseline; valid, missing and malformed spending cases."
+      },
+      {
+        "test": "terminal_controls.py",
+        "behavior": "Five terminal/retry controls, including model retry versus transport retry counts."
+      },
+      {
+        "test": "apps_recovery.py",
+        "behavior": "Cached hosted Apps discovery during a shared gated startup retry, then one native Code Mode invocation."
+      },
+      {
+        "test": "proxy_headers.py",
+        "behavior": "Configured upstream Host and authentication replace caller values; ordinary headers survive; duplicate Host is normalized."
+      }
+    ],
+    "command": [
+      "python3",
+      "crates/decodex-runtime/tests/native_qualification/<fixture>"
+    ],
+    "limits": "Loopback synthetic providers and account fixtures; system-temporary homes with owned child/server cleanup. No live account, hosted provider or installed-app acceptance."
+  },
+  "source_review_evidence": "automations/upstream/current-review.json",
+  "optional_decisions": [
+    {
+      "id": "mermaid-punctuation-and-flowchart-grammar",
+      "evidence_commit": "9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c",
+      "status": "awaiting_user_decision",
+      "value": "Render multiline flowchart labels alongside the earlier bounded grammar proposal.",
+      "maintenance_cost": "Local parser and box layout changes, grammar/width/source-copy regressions and GPUI visual checks.",
+      "recommendation": "Defer pending explicit user choice; current complete-source fallback remains usable."
+    }
+  ]
 }

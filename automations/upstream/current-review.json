@@ -1,0 +1,757 @@
+{
+  "version": 1,
+  "scope": "Current bounded source-review evidence only. Native automation state owns the live cursor, pending work and scheduler. Git retains replaced evidence versions. This is not a native definition or run log.",
+  "start_exclusive": "97ebf2d94d62e2ff2045f3ea17b6e11eae9a21fb",
+  "end_inclusive": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
+  "count": 30,
+  "implementation_snapshot": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2456",
+  "classification_counts": {
+    "not applicable": 11,
+    "native-owned": 13,
+    "optional decision": 1,
+    "necessary repair": 5
+  },
+  "records": [
+    {
+      "commit": "341de32c33fb00b88b5dd50be70610dc59dad045",
+      "disposition": "not applicable",
+      "changed_behavior": "Root suspension now requests shutdown of its local agent runtime, fences new starts, and returns after closing the root writer without waiting for descendant cleanup. Recovery keeps the root turn identity and does not restart children.",
+      "affected_symbols": "core/src/codex_thread.rs#suspend_turn_and_shutdown; core/src/session/turn_suspension.rs#suspend_turn_and_shutdown; protocol/src/turn_input.rs#SuspendTurnOutcome",
+      "tests_read": "core/tests/suite/abort_tasks.rs#root_turn_suspension_preserves_unfinished_turn_history",
+      "decodex_consumer": "No Decodex consumer: full local crates/apps symbol search finds no suspension operation. Upstream call-site search finds the public core method, session dispatcher and source tests; the retained Decodex bridge uses app-server stdio, not embedded codex-core.",
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::abort_tasks::root_turn_suspension_preserves_unfinished_turn_history::recovers_root_after_stopping_child"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::abort_tasks::root_turn_suspension_preserves_unfinished_turn_history::reports_child_writer_failure_separately"
+        }
+      ],
+      "validation_and_limits": "The original root-suspension source integration cases passed. No Decodex API or ownership-transfer workflow is added; the app-server bridge has no suspension operation.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "9c84e89ce0893a552058d26dc6746ff6a40ea6e6",
+      "disposition": "native-owned",
+      "changed_behavior": "SQLite configuration caches its filesystem probe across clones. Reclamation skips the extra maintenance connection on Linux NFS to avoid lock release and contention; failed probes can retry. Non-Linux detection returns false.",
+      "affected_symbols": "file-system/src/nfs.rs#is_nfs; state/src/sqlite.rs#SqliteConfig::is_nfs; state/src/runtime/reclamation.rs#visit,reclaim",
+      "tests_read": "state/src/sqlite_tests.rs#sqlite_home_filesystem_probe_is_shared_by_clones_until_config_replacement,failed_sqlite_home_filesystem_probe_recovers_after_home_creation; state/src/runtime/reclamation_tests.rs#interrupted_reclamation_releases_writer_and_resumes_without_data_loss",
+      "decodex_consumer": "Decodex uses the native app-server thread store through crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS. Decodex product SQLite has a separate owner and does not use upstream SqliteConfig.",
+      "tests_executed": [],
+      "validation_and_limits": "Baseline 97ebf2d9 source lacks this change. Target source contains the reviewed implementation. macOS cannot qualify actual Linux NFS behavior; no local database rewrite is needed. The exact qualified macOS artifact is recorded separately; Linux NFS execution remains unmeasured.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c",
+      "disposition": "optional decision",
+      "changed_behavior": "Flowchart node labels decode exactly <br>, <br/> and <br />to line breaks, validate each visible line and lay out multiline boxes. Other HTML, multiline edge labels and empty labels remain unsupported; complete raw source is retained across terminal resize.",
+      "affected_symbols": "mermaid/src/parse.rs#node,flowchart_label,check_label; mermaid/src/draw.rs#render",
+      "tests_read": "mermaid/src/tests.rs#stadiums_with_other_shapes_in_every_direction,quoted_flowchart_labels_reject_malformed_and_unsafe_text,rejects_partial_or_unsupported_input,source_graph_and_width_limits; tui/src/streaming/mermaid_tests.rs#mermaid_stream_closes_resizes_and_preserves_raw_source,mermaid_controller_keeps_diagram_mutable_and_returns_original_source",
+      "decodex_consumer": "apps/decodex-gpui/src/agent_mermaid/parse.rs#check_label rejects<,>,quotes and controls. Its tests intentionally preserve unsupported source. The native TUI renderer is not the GPUI renderer.",
+      "tests_executed": [],
+      "validation_and_limits": "Do not expand the local grammar automatically. Optional multiline-label rendering has a current safe source fallback; no correctness defect established.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "592964c0cb4d8f1b0c32d2a81f2bc602e7ae88cc",
+      "disposition": "native-owned",
+      "changed_behavior": "Image edits record local input paths and SHA256 of the exact bytes read before normalization, preserving request order and observing replacement bytes on later calls. Successful completed items carry inputImages through extension serialization, legacy events, history rebuilding and migration; start/failure/history-only edits keep it empty.",
+      "affected_symbols": "ext/image-generation/src/tool.rs#request_for_call_args,load_input_image,handle_call,legacy_end_event; ext/items/src/image_generation.rs#ImageGenerationInputImage,ImageGenerationItem; app-server-protocol/src/protocol/thread_history.rs#handle_image_generation_end",
+      "tests_read": "ext/image-generation/src/tests.rs#referenced_files_record_the_exact_bytes_read_for_each_request,unreadable_or_invalid_reference_does_not_build_an_edit_request; ext/items/src/tests.rs#image_generation_input_images_survive_serialization; app-server-protocol/src/protocol/thread_history.rs#rebuilds_extension_image_generation_item_from_persisted_completion; thread-store/src/local/rollout_migration_tests.rs#migration_preserves_image_generation_input_observations; app-server/tests/suite/v2/imagegen_extension.rs#transparent_image_preserves_output_metadata_and_persisted_history",
+      "decodex_consumer": "crates/decodex-codex/src/app_server_client/history_item.rs#thread_read_item preserves the full native item Value. crates/decodex-runtime/src/agent/timeline/media.rs and attachments.rs retain output fileId precedence and output bytes. Input provenance is additive and does not replace generated output.",
+      "tests_executed": [
+        {
+          "package": "codex-app-server-protocol",
+          "target": "codex_app_server_protocol",
+          "test": "protocol::thread_history::tests::rebuilds_extension_image_generation_item_from_persisted_completion"
+        },
+        {
+          "package": "codex-extension-items",
+          "target": "codex_extension_items",
+          "test": "tests::image_generation_input_images_survive_serialization"
+        },
+        {
+          "package": "codex-image-generation-extension",
+          "target": "codex_image_generation_extension",
+          "test": "tool::tests::referenced_files_record_the_exact_bytes_read_for_each_request"
+        },
+        {
+          "package": "codex-image-generation-extension",
+          "target": "codex_image_generation_extension",
+          "test": "tool::tests::unreadable_or_invalid_reference_does_not_build_an_edit_request"
+        },
+        {
+          "package": "codex-thread-store",
+          "target": "codex_thread_store",
+          "test": "local::rollout_migration::tests::migration_preserves_image_generation_input_observations"
+        },
+        {
+          "package": "codex-app-server",
+          "target": "all",
+          "test": "suite::v2::imagegen_extension::transparent_image_preserves_output_metadata_and_persisted_history::prompt_only"
+        },
+        {
+          "package": "codex-app-server",
+          "target": "all",
+          "test": "suite::v2::imagegen_extension::transparent_image_preserves_output_metadata_and_persisted_history::referenced_file"
+        }
+      ],
+      "validation_and_limits": "Baseline 97ebf2d9 lacks this additive field. The original image-byte, extension serialization, migration and history source tests passed. The exact candidate passed retained history/compaction consumers and schema qualification. Existing output-reference handling stays valid; no new input-provenance presentation or live image-provider acceptance is claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "e90f49a2692e94e8b11be0263093547e1a74abd6",
+      "disposition": "not applicable",
+      "changed_behavior": "An explicit connection at the default daemon socket is treated as local only after verifying the protected symlink and private owner directory; direct forwarded sockets remain remote. Explicit missing endpoints error without embedded fallback or daemon auto-start.",
+      "affected_symbols": "app-server-transport/src/transport/unix_socket.rs#verified_local_daemon_socket; tui/src/lib.rs#app_server_target_for_launch; tui/src/startup_orchestration.rs#run_main_inner",
+      "tests_read": "app-server-transport/src/transport/unix_socket_tests.rs#control_socket_file_is_private_after_bind; tui/src/lib.rs#app_server_target_for_launch_uses_local_daemon_for_default_socket",
+      "decodex_consumer": "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS fixes the retained production command to app-server--stdio; macos_attested_spawn.rs owns private stdio launch. Decodex does not launch the native TUI or use its explicit daemon target classifier.",
+      "tests_executed": [],
+      "validation_and_limits": "No daemon discovery or local configuration authority change in Decodex. Native exports alone do not create a retained local consumer; source tests read, not executed.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "aff92080f2b8d5f63a63b4ada7b92054287f237c",
+      "disposition": "native-owned",
+      "changed_behavior": "Remote plugin config stores remote_plugin_id, release_id and auto_provision as metadata without downloading bundles or granting activation. Existing enabled and hook-scope policy still controls cached plugins.",
+      "affected_symbols": "config/src/types.rs#PluginConfig; core-plugins/src/loader.rs#remote_installed_plugins_to_config",
+      "tests_read": "config/src/types_tests.rs#plugin_activation_inherits_defaults_without_explicit_enablement; core-plugins/src/loader_tests.rs#hooks_only_scope_shares_plugin_resolution_without_loading_other_capabilities",
+      "decodex_consumer": "crates/decodex-runtime/src/agent_plugins.rs#persist_current preserves native plugin observations without local config writes. Local plugin management is retired by upstream-product-scope; these fields do not authorize restoration.",
+      "tests_executed": [
+        {
+          "package": "codex-config",
+          "target": "codex_config",
+          "test": "types::tests::plugin_activation_inherits_defaults_without_explicit_enablement"
+        }
+      ],
+      "validation_and_limits": "Read effective activation and hook-scope test bodies, including every policy-loop branch. The original activation-policy regressions passed. Baseline 97 lacks the fields. No new provisioning policy or UI is enabled; the qualified current-consumer artifact and its limits are recorded separately.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "1c5ca2a9791ded685e94233ee07832e619ec2af2",
+      "disposition": "native-owned",
+      "changed_behavior": "Zsh joins Bash for protected credential snapshot replay. Trusted login profiles supply original credentials only during uncached capture; execution binds the broker to the current environment and uses virtualized exports. Explicit scalar/empty overrides survive. Unsupported safe snapshots fall back to ordinary execution with a warning; broker restore failure does not run the shell.",
+      "affected_symbols": "exec-server/src/shell_snapshot_credentials.rs#prepare,restore_fallback; exec-server/src/process_sandbox.rs#supports_credential_snapshot,credential_snapshot_proxy; exec-server/src/shell_snapshot.rs#capture_snapshot; shell-command/src/shell_snapshot_restore.rs#build_brokered_credential_exports; network-proxy/src/runtime.rs#bind_credential_broker_environment",
+      "tests_read": "exec-server/tests/exec_process.rs#shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context; network-proxy/src/remote_config_tests.rs#remote_credential_mappings_follow_the_environment_and_broker_config; core/tests/suite/scenarios_credential_masking.rs#remote_credential_masking_request_history",
+      "decodex_consumer": "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS launches the native server. No remote executor provisioning or credential-broker implementation exists in retained Decodex launch controls; native shell execution owns this conditional behavior.",
+      "tests_executed": [
+        {
+          "package": "codex-network-proxy",
+          "target": "codex_network_proxy",
+          "test": "remote_config::tests::remote_credential_mappings_follow_the_environment_and_broker_config"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::unmasked"
+        }
+      ],
+      "validation_and_limits": "The original remote credential mapping and local-address policy controls passed. All seven snapshot scenarios ran: the unmasked control passed and six masked/profile cases failed because host DNS returned a reserved synthetic address or did not resolve the fixture hostname. DNS/address-policy source matches baseline97 byte for byte. Current Decodex has no remote-executor provisioning/configuration consumer. Preserve this conditional qualification limit; no host DNS/proxy or native policy was changed.",
+      "runtime_delivery": "Source included; conditional remote credential behavior remains outside qualified current consumer scope.",
+      "conditional_test_failures": [
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::bash_profile_fallback",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_bash",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_zsh_inherited_credentials",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_zsh_profile_credentials",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::zsh_profile_gateway_fallback",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "exec_process",
+          "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::zsh_unsupported_profile_fallback",
+          "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
+        }
+      ]
+    },
+    {
+      "commit": "98fd26206d96a4a2f7aee7258fc60c4ec3f1a566",
+      "disposition": "not applicable",
+      "changed_behavior": "Collapsed TUI execution headers show a neutral Exited status and nonzero exit count instead of red generic failure labels. Per-command expanded error details remain visible.",
+      "affected_symbols": "tui/src/exec_cell/compact.rs#compact_command_lines; tui/src/exec_cell/render.rs#compact_hyperlink_lines",
+      "tests_read": "tui/src/chatwidget/tests/exec_flow.rs#exploration_nonzero_exits_remain_visible_beside_successful_reads; compact_exploration_with_failures snapshot",
+      "decodex_consumer": "Decodex renders its own GPUI history and reads structured native exit status; it does not link the ratatui exec-cell renderer or launch the native TUI. No status protocol field changes.",
+      "tests_executed": [],
+      "validation_and_limits": "Read the complete test body and collapsed/expanded assertions. This native TUI-only presentation change establishes no local compatibility repair. No GPUI changes were made.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "16e578dd1ddaf4f5db9cd1f3dbfea0958fd74339",
+      "disposition": "native-owned",
+      "changed_behavior": "A remote exec-server can accept bounded version1 NDJSON scoped credentials over parent stdin. Initial authentication waits for a valid frame; each registry request checks current expiry and environment. Rotation replaces the token, malformed input latches failure, and EOF clears authentication and ends lifetime. Scoped credentials do not authenticate websocket traffic or fall back to workload identity.",
+      "affected_symbols": "cli/src/exec_server_credential.rs#ExecutorCredentialPipe,read_frames,parse_frame,resolve_auth_headers; cli/src/exec_server_command.rs#ExecServerCommand::run; cli/src/exec_server_telemetry.rs",
+      "tests_read": "cli/src/exec_server_args_tests.rs#exec_server_parses_executor_credential_options; cli/src/exec_server_credential_tests.rs#waits_for_initial_rotation_replaces_token_and_eof_clears_auth,malformed_rotations_latch_failure_and_clear_existing_credential,eof_before_a_complete_frame_never_authenticates,expiry_is_checked_again_on_every_request,parser_rejects_unsupported_schema_without_exposing_input; cli/tests/exec_server.rs#remote_exec_server_scoped_credentials_authenticate_only_register_and_validate,remote_exec_server_scoped_credentials_never_fall_back_for_another_environment",
+      "decodex_consumer": "Decodex private app-server--stdio launch does not invoke the exec-server credential flags or provide registry credentials. Native-only remote execution integration; no new remote workflow is authorized.",
+      "tests_executed": [
+        {
+          "package": "codex-cli",
+          "target": "exec_server",
+          "test": "remote_exec_server_scoped_credentials_authenticate_only_register_and_validate"
+        },
+        {
+          "package": "codex-cli",
+          "target": "exec_server",
+          "test": "remote_exec_server_scoped_credentials_never_fall_back_for_another_environment"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_args_tests::exec_server_parses_executor_credential_options"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_credential::tests::eof_before_a_complete_frame_never_authenticates"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_credential::tests::expiry_is_checked_again_on_every_request"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_credential::tests::malformed_rotations_latch_failure_and_clear_existing_credential"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_credential::tests::parser_rejects_unsupported_schema_without_exposing_input"
+        },
+        {
+          "package": "codex-cli",
+          "target": "codex",
+          "test": "exec_server_credential::tests::waits_for_initial_rotation_replaces_token_and_eof_clears_auth"
+        }
+      ],
+      "validation_and_limits": "Read the full new credential implementation, five unit tests and two mock registry/websocket integrations. Actual external registry/provider behavior remains unmeasured. Source97 lacks this opt-in path; current Decodex launch remains unchanged.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "6b991972c5b539198dcea9bac4fc14e57559c3af",
+      "disposition": "not applicable",
+      "changed_behavior": "Linux sandbox removes obsolete protected-create inotify monitoring, exec-start notification pipes and post-execution violation cleanup. Existing read-only bind masks and synthetic mount cleanup still enforce missing protected paths; child wait status is preserved.",
+      "affected_symbols": "linux-sandbox/src/bwrap.rs#BwrapArgs; linux-sandbox/src/linux_run_main.rs#run_main and removed register_protected_create_targets,cleanup_protected_create_targets,monitor_protected_create_targets",
+      "tests_read": "linux-sandbox/src/linux_run_main_tests.rs#cleanup_protected_create_targets tests removed; linux-sandbox/src/bwrap.rs#missing_child_git_under_parent_repo_is_mounted_read_only and symlink variant",
+      "decodex_consumer": "The selected Decodex artifact is aarch64-apple-darwin and uses native macOS Seatbelt. No Linux sandbox executable or bwrap consumer is packaged by scripts/macos/build_codex_source.mts.",
+      "tests_executed": [],
+      "validation_and_limits": "Read the removed monitor, registration, cleanup and tests at the parent source and retained bind-mask test bodies at the fixed target. macOS cannot execute Linux enforcement regressions; no cross-platform acceptance is claimed.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "e790ce271749ce431e446a9e2cc66485fe60f931",
+      "disposition": "native-owned",
+      "changed_behavior": "Remote metadata in-flight request coalescing now uses a short synchronous mutex instead of an async mutex. RPC initialization stays outside the lock; failures and canceled initializers remain retryable, and completed requests are removed rather than cached.",
+      "affected_symbols": "exec-server/src/remote_file_system.rs#lock_metadata_requests,get_metadata,get_metadata_uncached",
+      "tests_read": "exec-server/src/remote_file_system_path_uri_tests.rs#concurrent_remote_metadata_requests_share_only_in_flight_results",
+      "decodex_consumer": "Native environment FileSystem behind the private app-server boundary. Decodex neither calls this Rust ABI nor shares its cache. Decodex filesystem and history caches have separate owners.",
+      "tests_executed": [
+        {
+          "package": "codex-exec-server",
+          "target": "codex_exec_server",
+          "test": "remote_file_system::path_uri_tests::concurrent_remote_metadata_requests_share_only_in_flight_results"
+        }
+      ],
+      "validation_and_limits": "Read the complete changed map operations, metadata implementation and cancellation/concurrency test body. The original coalescing/concurrency source regression passed. No lock is held across await. Baseline 97 uses async locking; exact-artifact retained consumers passed within the recorded scope.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "a45b8ccb016fb74f63a6bc29e701568e387cbe38",
+      "disposition": "native-owned",
+      "changed_behavior": "FileSystem supports bounded streaming replacement. Local and capable remote executors open once, write each block before polling the next, and close handles. Legacy executors buffer before one replacement write; a failed or canceled started stream never replays through that legacy path. Cancellation invalidates metadata and closes a pending open by exact handle.",
+      "affected_symbols": "file-system/src/lib.rs#write_file_stream; exec-server/src/local_file_system.rs#write_file_stream; exec-server/src/remote_file_system.rs#write_file_stream,FileWriteRegistration,MetadataInvalidation; exec-server/src/client.rs#fs_open,supports_file_write_streaming; file-system/src/environment_accessor.rs#write_file_stream",
+      "tests_read": "exec-server/tests/file_stream.rs#streaming_replacement_writes_before_reading_the_next_block,streaming_replacement_copies_binary_and_empty_files,streaming_replacement_preserves_partial_failure_and_releases_handles,cancelled_streaming_replacement_invalidates_metadata; exec-server/src/client.rs#old_executor_receives_buffered_replacement_and_keeps_read_only_opens,cancelled_streaming_replacement_closes_pending_open",
+      "decodex_consumer": "Native execution filesystem and the optional environment copy tool consume the new trait method. Decodex uses app-server stdio; no direct filesystem ABI or automatic file-copy workflow is introduced.",
+      "tests_executed": [
+        {
+          "package": "codex-exec-server",
+          "target": "codex_exec_server",
+          "test": "client::tests::cancelled_streaming_replacement_closes_pending_open"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "codex_exec_server",
+          "test": "client::tests::old_executor_receives_buffered_replacement_and_keeps_read_only_opens"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "file_stream",
+          "test": "cancelled_streaming_replacement_invalidates_metadata"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "file_stream",
+          "test": "streaming_replacement_copies_binary_and_empty_files"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "file_stream",
+          "test": "streaming_replacement_preserves_partial_failure_and_releases_handles"
+        },
+        {
+          "package": "codex-exec-server",
+          "target": "file_stream",
+          "test": "streaming_replacement_writes_before_reading_the_next_block"
+        }
+      ],
+      "validation_and_limits": "Read the trait, local and remote implementation, capability admission, handle drops, source/cancel semantics, all four new integration bodies and both compatibility/cancel unit bodies. Replacement is not atomic: failure may leave truncation or partial data and an in-flight write can outlive cancellation. No rollback claim.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "6ae8b8aa7c608730d4315d59c5c081897ae02780",
+      "disposition": "necessary repair",
+      "changed_behavior": "Native V8 updates to crate152.2.0 and ICU78, adds element-kind agreement guards for optimized Array.sort, and authenticates refreshed sandbox archive/binding pairs. Existing no-maglev, no-turbolev and no-turbo-inline-array-builtins guards remain enabled in code mode.",
+      "affected_symbols": "code-mode-runtime/src/v8_init.rs#initialize_v8_with_mode; patches/v8_array_sort_elements_kind.patch#IteratingArrayBuiltinHelper,ReduceArraySort,TryReduceArrayPrototypeSort; scripts/codex_package/v8.py#resolve_codex_v8_cargo_env,fetch_codex_v8_artifacts,verify_release_checksum_manifest; codex-rs/Cargo.lock#v8152.2.0,deno_core_icudata0.78.0",
+      "tests_read": "patches/v8_array_sort_elements_kind.patch#regress-crbug-542403045.js full89-line mixed-kind/comparator-mutation and same-kind optimization regression; .github/scripts/test_v8_canary_changes.py#test_security_backport_changes_require_canary_and_source_build; scripts/codex_package/test_v8.py#FetchCodexV8ArtifactsTest all12 methods",
+      "decodex_consumer": "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS enables code_mode_tool_description_first. scripts/macos/build_codex_source.mts invokes the exact upstream package builder, which resolves the pinned sandbox V8 pair for bundled codex-code-mode-host. Existing installed_native_code_mode_yielded_cells_keep_their_outputs is an exact-artifact consumer.",
+      "tests_executed": [],
+      "validation_and_limits": "The official source archive, pinned V8 archive/binding trust chain, signed CLI/helper identities, common component checks and all 81 original V8 runtime tests passed qualification. Actual helper execution passed the retained Code Mode probes and mixed-kind sort/parallel-call fixture with production guard flags retained. The original optimized d8/C++ regression and Bazel/Windows workflows were not executed; no broad optimized-path security acceptance is claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "executed_test_groups": [
+        "codex-code-mode-runtime:lib (81 original tests)",
+        "native retained artifact probes",
+        "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+      ],
+      "actual_candidate_tests": [
+        "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+      ]
+    },
+    {
+      "commit": "144779cd243d395af79c6e7a0d5d0ae9ed344efc",
+      "disposition": "native-owned",
+      "changed_behavior": "Optional Guardian Decisions comparison preserves evidence message roles, order, boundaries and phase. Input/output text and trusted skill/tool messages remain separate from the rubric. Only inline user images are admitted; unsupported audio, remote images and compacted evidence still reject. Comparison cannot change the baseline risk.",
+      "affected_symbols": "ext/guardian-v2/src/async_scorer/decisions.rs#request_body; ext/guardian-v2/src/async_scorer/metrics.rs#decisions_failure_reason,record_decisions_comparison",
+      "tests_read": "ext/guardian-v2/src/async_scorer/decisions_tests.rs#adapter_rejects_unsupported_evidence,adapter_preserves_trusted_tool_authority_and_scope,http_contract_and_untrusted_response_validation; ext/guardian-v2/src/async_scorer/decisions_lifecycle_tests.rs#decisions_disagreement_failures_and_disabled_flag_preserve_baseline",
+      "decodex_consumer": "Decodex uses native Guardian approval through crates/decodex-runtime/src/account_launch/process.rs and installed_native_guardian_preserves_large_action. Full crates/apps search finds no guardianv2_decisions_comparison enablement or local Decisions transport. Existing native policy retains ownership.",
+      "tests_executed": [
+        {
+          "package": "codex-guardian-v2",
+          "target": "codex_guardian_v2",
+          "test": "async_scorer::decisions::tests::adapter_preserves_trusted_tool_authority_and_scope"
+        },
+        {
+          "package": "codex-guardian-v2",
+          "target": "codex_guardian_v2",
+          "test": "async_scorer::decisions::tests::adapter_rejects_unsupported_evidence"
+        },
+        {
+          "package": "codex-guardian-v2",
+          "target": "codex_guardian_v2",
+          "test": "async_scorer::extension::tests::decisions_lifecycle_tests::decisions_disagreement_failures_and_disabled_flag_preserve_baseline"
+        }
+      ],
+      "validation_and_limits": "Original mixed-role HTTP and lifecycle source tests passed, including skill evidence and unchanged baseline controls. No live comparison service was exercised and the comparison flag is not enabled by Decodex.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "4eb4a65407d98cebc4c83bf13be440b9fbc78a7c",
+      "disposition": "not applicable",
+      "changed_behavior": "Host-delivered codex_app.create_thread messages can capture authenticated sender recent user messages and preceding assistant context for Guardian review. Recognition still requires host provenance; unproven delivery clears prior context, and sender content stays out of worker prompts.",
+      "affected_symbols": "core/src/agent/control/sender_context.rs#capture_sender_user_messages",
+      "tests_read": "core/tests/suite/guardian_sender_messages_tests.rs#guardian_receives_sender_user_messages_by_default new desktop_create_thread parameter case",
+      "decodex_consumer": "Full Decodex crates/apps search finds no codex_app.create_thread delivery producer or codex_delegation envelope. Native subagents and existing MCP approval correlation use other paths. Codex desktop host producer is outside this app.",
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::assistant_context_shares_user_budget"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::cloud_threads"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::default"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::desktop_create_thread"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::retired_opt_out"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::tui"
+        }
+      ],
+      "validation_and_limits": "The original sender-context integration test passed. Decodex has no codex_app.create_thread/delegation sender-authority producer; no cross-chat delivery API or authority imitation is added.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "2bf2bdf82c33f4c66ba3f0767b8e4b6a933aac40",
+      "disposition": "necessary repair",
+      "changed_behavior": "Plugin hook approval now binds both declaration and plugin bundle contents. hooks/list returns an opaque declaration/content pair; config writes persist trusted_hash and trusted_content_hash separately. Command and MCP hooks recheck fresh contents inside the existing timeout. A shared immutable per-plugin/config-home baseline migrates old declaration approvals. Generated Python bytecode, .venv and .egg-info do not change the fingerprint.",
+      "affected_symbols": "hooks/src/engine/plugin_fingerprint.rs#plugin_content_hash; hooks/src/engine/plugin_trust.rs#verify,matches_hash,legacy_trust_path,migrate_legacy_trust; hooks/src/engine/discovery.rs#append_plugin_hook_sources,append_matcher_groups; hooks/src/engine/command_runner.rs#run_command; hooks/src/engine/mcp_runner.rs#run_mcp_tool; app-server/src/config_manager_service.rs#trusted_hash persistence; app-server/src/request_processors/catalog_processor.rs#hooks_list",
+      "tests_read": "app-server/tests/suite/v2/hooks_list.rs#loaded_session_refreshes_externally_updated_plugin_hooks,config_batch_write_updates_hook_trust_for_loaded_session; core/tests/suite/hooks.rs#plugin_pre_tool_use_blocks_exec_command_before_execution; hooks/src/engine/mod_tests.rs bundled cleanup trust boundary bodies/diffs",
+      "decodex_consumer": "crates/decodex-codex/src/app_server_client/hooks.rs#HookSettingsReview::change forwards currentHash opaquely, admits one bounded trusted_hash write, and keeps enablement separate. crates/decodex-runtime/src/agent_hooks.rs#write,project_hook uses native trustStatus and exact review/config version. crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs#installed_hook_trust_enablement_and_modified_content_are_independent exercises actual CLI trust/reload/restart.",
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::hooks::plugin_pre_tool_use_blocks_exec_command_before_execution"
+        },
+        {
+          "package": "codex-app-server",
+          "target": "all",
+          "test": "suite::v2::hooks_list::config_batch_write_updates_hook_trust_for_loaded_session"
+        },
+        {
+          "package": "codex-app-server",
+          "target": "all",
+          "test": "suite::v2::hooks_list::loaded_session_refreshes_externally_updated_plugin_hooks"
+        }
+      ],
+      "validation_and_limits": "The original hook trust/reload source regressions passed. The exact signed candidate passed declaration changes, script-only changes, enablement, retrust and restart checks against actual script effects. The current consumer forwards the opaque hash pair without a new control. Read full fingerprint/trust code, discovery, command/MCP execution and upgrade/rollback/config/legacy test bodies. Excluded generated runtimes and source-change races remain native best-effort limits; no absolute tamper guarantee.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "actual_candidate_tests": [
+        "installed_hook_trust_enablement_and_modified_content_are_independent"
+      ]
+    },
+    {
+      "commit": "b5115cdd669d37a8635a9742851e97ba4fb1d42c",
+      "disposition": "not applicable",
+      "changed_behavior": "Upstream Linux Bazel compatibility tests select latest stable and nearest publication to60 days, deduplicating equal choices and tie-breaking by numeric version. Preparation resolves archive digests, exports CODEX_COMPAT_RELEASES, and uses bounded classified GitHub read retries.",
+      "affected_symbols": ".github/scripts/contract_releases.py#github_read,list_releases,select_stables; .github/scripts/resolve_exec_server_releases.py#main; bazel/extensions/codex_release_archive.bzl#_codex_release_repository_impl",
+      "tests_read": ".github/scripts/test_contract_releases.py#StableReleaseSelectionTests::test_selects_latest_and_closest_stable_by_publication_date",
+      "decodex_consumer": "Decodex Makefile.toml and scripts/macos/build_codex_source.mts use Cargo and a fixed reviewed commit; they do not invoke upstream Bazel compatibility targets or source these GitHub Actions.",
+      "tests_executed": [],
+      "validation_and_limits": "Read the full new resolver, release read helper, selection test and repository materializer plus workflow wiring. This test infrastructure change does not relax the fixed development baseline or formal official Release requirements. No release download/publication test executed.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits.",
+      "executed_python_tests": [
+        ".github/scripts/test_contract_releases.py (1)"
+      ]
+    },
+    {
+      "commit": "34420d42648f627f766bd347532dcaad5475a68b",
+      "disposition": "native-owned",
+      "changed_behavior": "A failed Noise rendezvous handshake reads an already pending disconnect event before a RpcClient exists and includes its classified reason. Handshake timeout and cleanup still terminate the transport and abort only its owned tasks.",
+      "affected_symbols": "exec-server/src/client_transport.rs#finish_noise_rendezvous_connection",
+      "tests_read": "exec-server/src/client_transport_tests.rs#noise_handshake_reports_disconnect_reason",
+      "decodex_consumer": "Native remote exec-server transport is reached only by configured native remote environments. Retained Decodex launches private stdio and has no Noise relay implementation or error-string parser.",
+      "tests_executed": [
+        {
+          "package": "codex-exec-server",
+          "target": "codex_exec_server",
+          "test": "client_transport::tests::noise_handshake_reports_disconnect_reason"
+        }
+      ],
+      "validation_and_limits": "Read full handshake completion and the complete binary/text/reset mock regression. Source97 reports generic readiness failure; no new local relay workflow is introduced, and no actual external relay acceptance is claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "4491caf1ad063f753381500454b599d750e50848",
+      "disposition": "necessary repair",
+      "changed_behavior": "Thread-store projection reads a captured rollout suffix incrementally with a reusable line buffer instead of allocating all suffix bytes. It preserves byte offsets and trailing incomplete records, rejects shrink/EOF, skips malformed records as before and checks cancellation between records.",
+      "affected_symbols": "thread-store/src/local/thread_history_materialization.rs#read_projection_steps_sync",
+      "tests_read": "thread-store/src/local/thread_history_materialization_tests.rs#catch_up_preserves_trailing_partial_line_boundaries,blank_and_rejected_rollout_lines_advance_projection",
+      "decodex_consumer": "Decodex crates/decodex-codex/src/app_server_client/history.rs and history_item.rs use native thread/read and pagination; account_launch native history, read-state, realtime, compaction and cold-resume regressions require this thread store. Decodex does not parse native rollout files directly.",
+      "tests_executed": [
+        {
+          "package": "codex-thread-store",
+          "target": "codex_thread_store",
+          "test": "local::thread_history_materialization::tests::blank_and_rejected_rollout_lines_advance_projection"
+        },
+        {
+          "package": "codex-thread-store",
+          "target": "codex_thread_store",
+          "test": "local::thread_history_materialization::tests::catch_up_preserves_trailing_partial_line_boundaries"
+        }
+      ],
+      "validation_and_limits": "Read the entire 257-line projection function and both full affected tests, including 64 KiB record padding and cancellation/retry assertions. Both original source projection regressions and the exact-candidate cold-history/read-state consumer passed. Peak unread-suffix buffering is removed; projection output and one individual large line still allocate. No measured memory benchmark is claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "actual_candidate_tests": [
+        "installed_native_read_state_preserves_new_results_and_cold_marks"
+      ]
+    },
+    {
+      "commit": "b3cc59afcf28bf8f8cc35023be67b9e2f62fc066",
+      "disposition": "not applicable",
+      "changed_behavior": "Upstream npm publication retries each package at most3 times with fresh processes/OIDC and10/20-second delays, retains debug logs7 days and treats already published versions as success. Provisioned macOS verification uses a matching Intel runner for x86_64 while retaining Apple Silicon for aarch64.",
+      "affected_symbols": ".github/workflows/rust-release.yml#Publish npm packages; .github/workflows/rust-release-provisioned-macos.yml#verify",
+      "tests_read": "No test body added or changed; read complete affected publication loop, macOS verification matrix and exact-package smoke-test job.",
+      "decodex_consumer": "Decodex distribution uses its repository macOS component/build workflow; it does not publish upstream npm packages or invoke upstream release workflows. scripts/macos/build_codex_source.mts calls a source package builder, not these release jobs.",
+      "tests_executed": [],
+      "validation_and_limits": "This commit does not change the built native runtime. No publication, tag, installation or release action is authorized/executed. Cross-architecture upstream runner acceptance is not a local test result.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "fa46ef3af641f21d0facc69bd11e562fce6a3f9a",
+      "disposition": "not applicable",
+      "changed_behavior": "Remote-control409 retry tests wait for EOF of rejected sockets before advancing only the capped retry sleeps. Bodyless rejections preserve reconnect counts and healthy-connection backoff in cursor and cursorless cases.",
+      "affected_symbols": "app-server-transport/src/transport/remote_control/websocket_retry_tests.rs#assert_conflict_recovery",
+      "tests_read": "app-server-transport/src/transport/remote_control/websocket_retry_tests.rs#assert_conflict_recovery and its two cursor/cursorless callers",
+      "decodex_consumer": "Decodex retained connection is native app-server--stdio; it does not start Codex remote-control enrollment, websocket ownership or relay servers. This commit changes test code only.",
+      "tests_executed": [],
+      "validation_and_limits": "Read full modified helper, including socket shutdown, capped boundaries and reconnect_attempt11. No runtime behavior or new local remote-control feature is delivered. Test bodies read, not executed.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "b26b0a7a777bd9c153da2e1e86f00ee1600476bd",
+      "disposition": "necessary repair",
+      "changed_behavior": "MCP OAuth discovery selects resource-specific scopes from the first WWW-Authenticate challenge, then protected-resource metadata, plus offline_access only when supported. Authorization-server general scopes no longer become requested resource scopes. Preregistered clients can discover/login without general scope or dynamic registration metadata.",
+      "affected_symbols": "rmcp-client/src/auth_status.rs#discover_streamable_http_oauth_with_manager,normalize_scopes; Cargo.toml#rmcp98a54789b80110ad210495c4ad845c89e1980471; https://github.com/modelcontextprotocol/rust-sdk/blob/98a54789b80110ad210495c4ad845c89e1980471/crates/rmcp/src/transport/auth.rs#select_initial_scopes",
+      "tests_read": "rmcp-client/src/auth_status.rs#discover_streamable_http_oauth_does_not_use_authorization_server_scopes,discover_streamable_http_oauth_follows_protected_resource_metadata; cli/tests/mcp_login.rs#no_browser_prefers_challenge_scopes_for_preregistered_client,assert_no_browser_exchanges_pasted_callback_and_saves_credentials; https://github.com/modelcontextprotocol/rust-sdk/blob/98a54789b80110ad210495c4ad845c89e1980471/crates/rmcp/src/transport/auth.rs#select_initial_scopes_prefers_resource_challenge",
+      "decodex_consumer": "crates/decodex-runtime/src/mcp_login.rs#start delegates mcpServer/oauth/login with server/thread only, without a local scope list. Existing native discovery tests exercise enterprise login restrictions. Native rmcp owns resource scope discovery and credential storage.",
+      "tests_executed": [
+        {
+          "package": "codex-rmcp-client",
+          "target": "codex_rmcp_client",
+          "test": "auth_status::tests::discover_streamable_http_oauth_does_not_use_authorization_server_scopes"
+        },
+        {
+          "package": "codex-rmcp-client",
+          "target": "codex_rmcp_client",
+          "test": "auth_status::tests::discover_streamable_http_oauth_follows_protected_resource_metadata"
+        },
+        {
+          "package": "codex-cli",
+          "target": "mcp_login",
+          "test": "no_browser_prefers_challenge_scopes_for_preregistered_client"
+        }
+      ],
+      "validation_and_limits": "Read the complete changed implementation, resource/challenge test loops, no-browser login/token/persistence fixture and resolved SDK scope-selection body and regression. The original resource-discovery source regressions passed. The signed candidate passed the original preregistered-client challenge-scope CLI integration and retained native enterprise discovery restrictions. No real-provider sign-in is claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "actual_candidate_tests": [
+        "no_browser_prefers_challenge_scopes_for_preregistered_client"
+      ]
+    },
+    {
+      "commit": "beae473be8564d884a8cfe9704194a5c803d2ac1",
+      "disposition": "necessary repair",
+      "changed_behavior": "DynamicToolHandler permits independent concurrent calls, allowing a code-mode Promise.all to deliver both requests before either reply. Each pending call remains bound to its own ID and supports cancellation; reverse reply order preserves Promise result order.",
+      "affected_symbols": "core/src/tools/handlers/dynamic.rs#supports_parallel_tool_calls,handle_call,request_dynamic_tool",
+      "tests_read": "core/tests/suite/code_mode_dynamic_tools_tests.rs#code_mode_dynamic_tool_calls_pending_together_resolve_in_reverse_order",
+      "decodex_consumer": "crates/decodex-runtime/src/agent.rs#thread_params attaches retained manager dynamic tools. handle_request validates exact thread/turn ownership and returns the original request ID; actor-owned host mutations can remain serialized. No global host parallel policy is added.",
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::code_mode::dynamic_tools::code_mode_dynamic_tool_calls_pending_together_resolve_in_reverse_order"
+        }
+      ],
+      "validation_and_limits": "Read the complete handler, per-ID registration/completion, original integration regression and local request handler. The original source regression and signed candidate Code Mode fixture passed: both tool requests arrived before either reply, IDs remained distinct, and reverse replies preserved result order. No product control or new tool is added.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "actual_candidate_tests": [
+        "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+      ]
+    },
+    {
+      "commit": "0df4aa67781ae45a3c97befa4db48b734afe46d9",
+      "disposition": "native-owned",
+      "changed_behavior": "A disabled-by-default mcp_tool_list_changed flag lets ordinary MCP catalogs refresh within the same turn after ordered list-change notifications. Refreshes coalesce, discard invalidated pagination/startup lists, retain old snapshots on failure, apply5-second retry cooldown and avoid blocking admitted calls. Shared startup caches are invalidated by notification revisions.",
+      "affected_symbols": "rmcp-client/src/tool_list_changes.rs#track_tool_list_changes,receive; codex-mcp/src/client_tool_catalog.rs#refresh_after_notifications,refresh,run_with_snapshot; codex-mcp/src/connection_manager.rs#refresh_notified_catalog,listed_tools; codex-mcp/src/tool_catalog_cache.rs#accepts_snapshot,current_tools_or; features/src/lib.rs#McpToolListChanged default false",
+      "tests_read": "core/tests/suite/rmcp_client.rs#discovers_and_calls_new_mcp_tool_in_same_turn,mcp_tool_discovery_scenario; core/tests/suite/scenarios.rs#mcp_tool_discovery_in_same_turn; codex-mcp/src/connection_manager_tests.rs#reconciliation_reuses_connection_without_relisting_regular_tools,tool_catalog_cache_sanitizes_tools_and_tracks_environment_generation",
+      "decodex_consumer": "Existing Decodex native MCP discovery/approval consumers use the app-server boundary; no local mcp_tool_list_changed enablement was found. Codex Apps shared-live catalog retains its separate native policy and is excluded from ordinary notification refresh.",
+      "tests_executed": [
+        {
+          "package": "codex-mcp",
+          "target": "codex_mcp",
+          "test": "connection_manager::tests::reconciliation_reuses_connection_without_relisting_regular_tools"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::disabled"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_during_listing"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_during_startup"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_invalidates_cursor"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::scenarios::mcp_tool_discovery_in_same_turn::code_mode"
+        },
+        {
+          "package": "codex-core",
+          "target": "all",
+          "test": "suite::scenarios::mcp_tool_discovery_in_same_turn::direct"
+        }
+      ],
+      "validation_and_limits": "Read complete notification/refresh state machines, lock/cache implementations and the full core, Code Mode and concurrency/timeout/retry source tests; the selected original regressions passed. The exact candidate also passed retained MCP discovery/metadata consumers with the new development flag off. Enabling that flag remains a separate optional product/configuration decision.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "96eb400d1231f0199e96f640c740096087cf3e9b",
+      "disposition": "native-owned",
+      "changed_behavior": "Thread-store exposes Retryable only for known safe retries and OutcomeUnknown for writes that may have committed. Unclassified SQLx failures stay Internal. App-server mappings and fatal startup behavior stay unchanged; diagnostics expose category labels without raw error payloads. No category automatically retries an operation.",
+      "affected_symbols": "thread-store/src/error.rs#ThreadStoreError; core/src/session_rollout_init_error.rs#map_session_init_error; core/src/thread_manager/shutdown.rs#thread_store_error_kind; app-server/src/request_processors/thread_attachments.rs#thread_attachment_store_error; thread_sections.rs#thread_section_store_error; thread_processor.rs#thread_store_mutation_error",
+      "tests_read": "thread-store/src/error_tests.rs#unclassified_sqlx_failures_remain_internal; core/src/session_rollout_init_error_tests.rs#storage_failures_remain_fatal_during_session_initialization,conflict_and_unsupported_keep_their_session_initialization_categories; app-server/src/request_processors/thread_processor_tests.rs#storage_failure_classification_does_not_change_mutation_error_policy; core/src/agent/control/runtime_tests.rs#report_display_includes_safe_cause_without_raw_error_payload",
+      "decodex_consumer": "Decodex bridge reads structured JSON-RPC error codes and retained mutations use no-replay receipts, including agent_hooks.rs#write. Its own SQLite error owner is independent. Wire errors remain -32603 for both new storage categories, with conflict still -32600.",
+      "tests_executed": [
+        {
+          "package": "codex-app-server",
+          "target": "codex_app_server",
+          "test": "request_processors::thread_processor::thread_processor_tests::storage_failure_classification_does_not_change_mutation_error_policy"
+        },
+        {
+          "package": "codex-core",
+          "target": "codex_core",
+          "test": "agent::control::runtime::tests::report_display_includes_safe_cause_without_raw_error_payload"
+        },
+        {
+          "package": "codex-core",
+          "target": "codex_core",
+          "test": "session_rollout_init_error::tests::conflict_and_unsupported_keep_their_session_initialization_categories"
+        },
+        {
+          "package": "codex-core",
+          "target": "codex_core",
+          "test": "session_rollout_init_error::tests::storage_failures_remain_fatal_during_session_initialization"
+        },
+        {
+          "package": "codex-thread-store",
+          "target": "codex_thread_store",
+          "test": "error::tests::unclassified_sqlx_failures_remain_internal"
+        }
+      ],
+      "validation_and_limits": "Read the complete new error enum, startup/error mappings and affected tests. The original category, initialization, mutation-policy and shutdown-display source regressions passed. No retry loop or message-based retry inference was added. Actual injected disk/network failure is not claimed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "088c7a1e75462caec9ec87e93caa8c4616a0c447",
+      "disposition": "not applicable",
+      "changed_behavior": "Upstream argument lint and V8 CI use shared Bazel preparation to restore target/scope-specific repository caches and configure execution logs. Canary screening includes preparation changes, and lock validation receives its declared BuildBuddy credential.",
+      "affected_symbols": ".github/actions/prepare-bazel-ci/action.yml#steps; .github/actions/run-argument-comment-lint/action.yml; .github/scripts/v8_canary_changes.py#CANARY_PATH_PATTERNS; .github/workflows/rusty-v8-release.yml; .github/workflows/v8-canary.yml",
+      "tests_read": ".github/scripts/test_v8_canary_changes.py existing path/version selection tests; no new runtime test body.",
+      "decodex_consumer": "Decodex uses scripts/macos/build_codex_source.mts with the Cargo package builder, not these upstream Actions or Bazel preparation. Its CI and cache ownership remain repository-local.",
+      "tests_executed": [],
+      "validation_and_limits": "Read complete preparation action, path selector implementation and all changed workflow blocks. Existing upstream canary unit tests executed8/8; this does not execute a hosted Bazel workflow or change local toolchains.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits.",
+      "executed_python_tests": [
+        ".github/scripts/test_v8_canary_changes.py (8)"
+      ]
+    },
+    {
+      "commit": "e7de1f444089c29ac002e3df08d940f6de8a2613",
+      "disposition": "not applicable",
+      "changed_behavior": "A host can explicitly register a multi_env_copy_file extension to stream files between distinct selected environments. It uses each endpoint permission-bound filesystem, validates absolute native paths, returns only byte count, masks transport details and warns of partial/truncated targets after failure.",
+      "affected_symbols": "ext/multi-env-copy-file/src/extension.rs#install,FileCopyExtension::tools; ext/multi-env-copy-file/src/tool.rs#CopyFileTool::handle,spec",
+      "tests_read": "ext/multi-env-copy-file/tests/suite/mod.rs#copy_file_is_opt_in,copy_file_uses_each_environments_permissions; ext/multi-env-copy-file/tests/suite/transfers.rs#copy_file_transfers_between_local_and_foreign_executors",
+      "decodex_consumer": "Exact source-wide Rust search finds installation only in this extension test suite, with no production default host registration. Decodex has no extension registration or embedded codex-core consumer; it launches native app-server stdio.",
+      "tests_executed": [],
+      "validation_and_limits": "Read the entire extension/tool implementation and full opt-in, per-endpoint permission/grant and foreign-transfer test bodies. No new copy workflow or native extension is enabled. Remote and filesystem transfer executions were not performed for this excluded product capability.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "a083a1e49ea499b0dd37afa36f4d8c70d5536056",
+      "disposition": "native-owned",
+      "changed_behavior": "MCP approval resolution carries user/interrupted/non_interactive cancellation provenance. Missing/failed app-server replies synthesize interruption; exec auto-cancel reports unavailable interaction, and explicit TUI actions report user cancellation. Missing reason remains compatible with older clients.",
+      "affected_symbols": "protocol/src/mcp_approval_meta.rs#McpApprovalCancellationReason; core/src/mcp_tool_call.rs#request_mcp_tool_user_approval,maybe_request_mcp_tool_approval,handle_mcp_tool_call; core/src/tools/approvals.rs#ApprovalResolution,request_user_approval; app-server/src/bespoke_event_handling.rs#on_mcp_server_elicitation_response; exec/src/lib.rs#canceled_mcp_server_elicitation_response",
+      "tests_read": "core/src/mcp_tool_call_tests.rs#dispatched_mcp_approval_with_closed_response_is_classified_as_approval; exec/src/lib_tests.rs#canceled_mcp_server_elicitation_response_uses_cancel_action; core/src/tools/approvals_tests.rs approval source/result regression initializers",
+      "decodex_consumer": "crates/decodex-protocol/src/mcp_elicitation.rs and runtime agent pending request ownership preserve exact request identity and native action. A successful legacy Cancel without reason stays valid; an interrupted native request now gets native interruption metadata. No local message-string policy depends on the former text.",
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "target": "codex_core",
+          "test": "mcp_tool_call::tests::dispatched_mcp_approval_with_closed_response_is_classified_as_approval"
+        },
+        {
+          "package": "codex-exec",
+          "target": "codex_exec",
+          "test": "tests::canceled_mcp_server_elicitation_response_uses_cancel_action"
+        }
+      ],
+      "validation_and_limits": "Read the cancellation enum, native approval and app-server response bodies, closed-channel integration, exec serialization and changed propagation fields. The selected original source regressions and exact-candidate retained child-MCP/input/approval consumers passed. Legacy Cancel without a reason remains supported; no new UI decision is needed.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
+    },
+    {
+      "commit": "440312f11396a58b312dd31798ec3393810d8ff8",
+      "disposition": "not applicable",
+      "changed_behavior": "Native TUI session selections carry a process-local backend UUID across auxiliary pickers and reconnects. Foreign same-thread-ID selections reject before requests or draft mutation. A selected backend and auxiliary picker cannot fall back to an embedded server; fresh startup can.",
+      "affected_symbols": "tui/src/backend_id.rs#BackendId; tui/src/resume_picker.rs#SessionTarget::ensure_backend; tui/src/lib.rs#AppServerTarget::preserve_selected_backend,start_app_server_for_picker; tui/src/session_start.rs#SessionStartAction::start,complete_session_start; tui/src/app/reconnect.rs#reconnect",
+      "tests_read": "tui/src/app/tests/backend_ownership_tests.rs#foreign_backend_selection_cannot_resume_same_id_or_unarchive,startup_fallback_requires_no_established_backend,auxiliary_picker_connection_preserves_backend_selection,startup_rejects_foreign_resume_and_fork_before_requests",
+      "decodex_consumer": "Decodex does not launch the native TUI or use its SessionTarget type. Its native app-server bridge binds requests to account, process generation, connection and thread/turn identities, as in agent.rs#handle_request and agent_hooks.rs#write. The new UUID never appears on the wire.",
+      "tests_executed": [],
+      "validation_and_limits": "Read semantic source diffs, complete backend/selection validation and session-start bodies, and all275 lines of the four new ownership regressions. Other test edits mechanically supply the new owner field. No native TUI/GPUI ownership code is transplanted or tested as Decodex acceptance.",
+      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+    },
+    {
+      "commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
+      "disposition": "native-owned",
+      "changed_behavior": "MCP catalogs preserve opaque first-tools/list-page metadata through refreshes and caches and expose nullable toolListMeta in server status. Live Apps metadata is scoped to discovery settings/capabilities/extensions; older caches still supply tools without metadata. Status capabilities are restricted to selected servers.",
+      "affected_symbols": "codex-mcp/src/rmcp_client.rs#list_tools_for_client_uncached,cached_catalog,listed_catalog; codex-mcp/src/client_tool_catalog.rs#read_current,refresh,run_with_snapshot; codex-mcp/src/connection_manager/tool_catalog.rs#list_catalogs_with_errors; connectors/src/connector_runtime/mod.rs#current_catalog_snapshot,publish_runtime_if_newest_accepted_with; codex-mcp/src/mcp/mod.rs#collect_mcp_server_status_snapshot_from_manager; app-server-protocol/src/protocol/v2/mcp.rs#McpServerStatus",
+      "tests_read": "codex-mcp/src/connection_manager_tests.rs#catalog_listing_preserves_legacy_apps_tools_during_failed_startup; connectors/src/connector_runtime/tests.rs#live_catalogs_isolate_scopes_and_reject_older_refreshes; app-server-protocol/src/protocol/v2/tests.rs#mcp_server_status_serializes_absent_server_info_as_null,mcp_server_status_accepts_older_inventory_without_runtime_status,mcp_server_status_serializes_absent_server_info_metadata_as_null",
+      "decodex_consumer": "crates/decodex-codex/src/app_server_client/integrations.rs#mcp_server_statuses validates known fields and clones complete native rows, preserving additive opaque metadata. crates/decodex-runtime/src/agent_integrations.rs projects only supported status/capability names; no new metadata presentation is added. Existing native MCP capability/failure/pagination regression is the consumer.",
+      "tests_executed": [
+        {
+          "package": "codex-app-server-protocol",
+          "target": "codex_app_server_protocol",
+          "test": "protocol::v2::tests::mcp_server_status_accepts_older_inventory_without_runtime_status"
+        },
+        {
+          "package": "codex-app-server-protocol",
+          "target": "codex_app_server_protocol",
+          "test": "protocol::v2::tests::mcp_server_status_serializes_absent_server_info_as_null"
+        },
+        {
+          "package": "codex-app-server-protocol",
+          "target": "codex_app_server_protocol",
+          "test": "protocol::v2::tests::mcp_server_status_serializes_absent_server_info_metadata_as_null"
+        },
+        {
+          "package": "codex-connectors",
+          "target": "codex_connectors",
+          "test": "connector_runtime::tests::live_catalogs_isolate_scopes_and_reject_older_refreshes"
+        },
+        {
+          "package": "codex-mcp",
+          "target": "codex_mcp",
+          "test": "connection_manager::tests::catalog_listing_preserves_legacy_apps_tools_during_failed_startup"
+        }
+      ],
+      "validation_and_limits": "The exact candidate schema 55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea loaded successfully. Original nullable/legacy/scoped catalog source tests passed. The actual CLI consumer preserved first-page opaque metadata through tools/status pagination and two cold starts. No metadata UI or refresh policy is added.",
+      "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
+      "actual_candidate_tests": [
+        "installed_native_mcp_capabilities_survive_tool_discovery_failure"
+      ]
+    }
+  ]
+}

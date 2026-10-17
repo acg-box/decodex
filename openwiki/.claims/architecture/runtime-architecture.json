@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2465912b9bcf7285f2a70cab2a4d8a007eb5f8b670d53a769dd83900d74f2d0b",
+  "pageVersion": "sha256:3aa3ea1e8fad458828c733ef495cf28b592f09497b9184c245f076ca105814da",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -78,7 +78,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:0096cc8cd76b207e6308939b40753e7fc1570f985d8bce64490b70e50b30901a"
+          "version": "repo-file-v1:sha256:3a53272dd8534bd7f7adfe933c60f5c14a012acb6538d99e4863e61fe992514b"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:0096cc8cd76b207e6308939b40753e7fc1570f985d8bce64490b70e50b30901a"
+          "version": "repo-file-v1:sha256:3a53272dd8534bd7f7adfe933c60f5c14a012acb6538d99e4863e61fe992514b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
@@ -265,10 +265,24 @@
           "version": "repo-lines-v1:sha256:b1b49a5540e8078aef8ad502b52875491b48cfe0871ca7d194cb6cf7a2b61859:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmNzkxZjEyMWZiN2M4MDM3N2I0NjIyM2RiMjM2YjJkMzg1MzRkODhmZTZkYWZmODRiNGZhZGViMTZhYWUxNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ODE1NjhiMjIxMDY4NDYyOWFiNTBkOWY1MWE3Mjc2MGM3MzllYzcwNGQ2NTJmZDI5ZTU4N2I3Y2QxZTA5ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOGI2NjY4MmZiNjgwNmRhY2QwYTJkZGU2ZWJmZDllYjgzZTZhMWQ0ZDdkMzA3OGRlNTg3NmY0YWM0MWU4ZDgifQ"
         }
       ]
+    },
+    {
+      "id": "claim_9ce98178b04644c2b7128411a8ca553c",
+      "statement": "The portable qualification record binds current artifact and helper identities, source checks and retained native consumer evidence to explicit limits; source-only fixture launchers and installed-app acceptance remain separate.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:62870ed804095840327b6be13b8b5362abcd490892f63647b97954fde5cbcb5d"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-16T06:31:21.593Z"
+    "at": "2026-10-17T05:00:17.787Z"
   }
 }

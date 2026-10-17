@@ -6,6 +6,10 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
@@ -28,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
+  - id: openwiki-source-b2869e6da778a74cb6afc667
+    resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-fe4da151d2112b589ec8679c
@@ -54,10 +60,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-16T06:31:21.593Z" }
+generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-16T06:31:21.593Z
+    at: 2026-10-17T05:00:17.787Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -104,6 +110,14 @@ During a component migration, record whether a failed fixture reached its behavi
 Formal release selection must retain the currently reviewed fixes. The pin tool rejects an official Release that does not contain the development baseline; reviewers must also establish affected behavior and schema compatibility. No test fixture or successful package download authorizes a lower baseline.
 
 The signed stage test checks that the app contains the runtime requirement and Sparkle, excludes bundled Codex executables and schemas, and rejects a missing production pin before changing an existing stage. It does not install the app, prove a public update feed, or establish live provider and physical audio acceptance.
+
+## Source fixture scope
+
+The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) identifies the current native consumers. Native run receipts retain raw output; Git retains replaced compact records.
+
+An original upstream source fixture can require private startup arguments that the production CLI does not expose. Qualify that fixture through the original standalone launcher and registered test harness. Record its identity and required build options separately. Passing that source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
+
+The current conditional remote-credential snapshot cases ran and failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
 
 ## Terminal errors and external context
 

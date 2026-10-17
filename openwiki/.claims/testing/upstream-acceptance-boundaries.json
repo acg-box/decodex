@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:625aaa02beca88d866789af35a6b2a5338391f0445610cd3fcaaafce635531d4",
+  "pageVersion": "sha256:50e781c9ed4a419591a845080177cc832e624270207efca6c4877d75c23bee02",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:0096cc8cd76b207e6308939b40753e7fc1570f985d8bce64490b70e50b30901a"
+          "version": "repo-file-v1:sha256:3a53272dd8534bd7f7adfe933c60f5c14a012acb6538d99e4863e61fe992514b"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -243,10 +243,42 @@
           "version": "repo-lines-v1:sha256:44f8f8c00046e81e1cdf5fdc48a7949dfb933c7ee4fdf47e85638a46d0c13766:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNGQ1M2I1NGI1NmUwNjcxNWQyMzg5ZDU1NzBiODYxZTY4M2UzNzRlZjMzZGViZTc2NWQzZDBlZGE0MjdmZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2YzhmZjUwNzFjZmE3ZGMzOTc4ZDA4YmI3YzlhY2Y2YTNjNjkwOGQwMWM5NWMxMzUwODMwMjkxMGQzY2E0OGQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_a9b3c30e842a40e79f50064e788b13af",
+      "statement": "The compact qualification record separates exact source test identities and private source-fixture launcher evidence from production CLI/helper behavior and installed-application acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:62870ed804095840327b6be13b8b5362abcd490892f63647b97954fde5cbcb5d"
+        }
+      ]
+    },
+    {
+      "id": "claim_63018a0b5de243dbb29fe6ab7ae36402",
+      "statement": "Conditional remote-credential snapshot cases remain unqualified after host DNS failures. Current retained stdio consumers have no remote-executor provisioning path; the recorded scope preserves failed evidence and native address protection and defines when the conditional proof must reopen.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
+          "version": "repo-file-v1:sha256:0999d0d37642469714f1d4cdc8373d0b93aeb31a56acb5475204dd36b706296a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-16T06:31:21.593Z"
+    "at": "2026-10-17T05:00:17.787Z"
   }
 }
