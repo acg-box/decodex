@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6d23cc72bed35a0ed225b80440dff268550c27d79778e25901f3bc2fa8822560",
+  "pageVersion": "sha256:47278a366f8268303068600a9328748e01781775c0afe11ef33117e0a9bd89bf",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -45,7 +45,7 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L271-L288",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L275-L292",
           "version": "repo-lines-v1:sha256:4c2c6c8cd9c86e4990b13a676d068d9423bc04cd687e42aca2d6ae1f08c642e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZGU4NTVjZjVjNjk2OTdiNWJlZTE1NjQyNzMwYjYzYzIwOWI3MWNjMjc4NWM3ZDFiNjczZWExOWNiYzhlZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
@@ -74,17 +74,17 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "The checked-in portfolio explicitly configures the upstream Maintainer as PAUSED; configuration is separate from host registration and execution.",
+      "statement": "The checked-in portfolio explicitly configures the upstream Maintainer as ACTIVE; configuration is separate from host registration and execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:2f21271cb59c191ffeeddad5d4166332c1e1df07346ec0bbf9104209b7db4903"
+          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T07:37:30.807Z"
+    "at": "2026-10-17T07:29:15.006Z"
   }
 }
