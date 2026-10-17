@@ -21,13 +21,16 @@ use decodex_protocol::{
 
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
-	for (voice, config_fails, policy) in [
-		("juniper", false, None),
-		("aube", false, None),
-		("future_voice", false, Some(true)),
-		("juniper", true, None),
-		("juniper", false, Some(false)),
+	for (voice, config_fails, policy, hosted) in [
+		("juniper", false, None, false),
+		("juniper", false, None, true),
+		("aube", false, None, false),
+		("future_voice", false, Some(true), false),
+		("juniper", true, None, false),
+		("juniper", false, Some(false), false),
 	] {
+		let thread = if hosted { "hosted-voice-thread" } else { "voice-thread" };
+		let work = if hosted { "conversation" } else { "root" };
 		let fails = config_fails || policy == Some(false);
 		let home = tempfile::tempdir().unwrap();
 		let (local, remote) = io::duplex(8_192);
@@ -42,7 +45,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				let request: Value = serde_json::from_str(&line).unwrap();
 				let mut response = match request["method"].as_str().unwrap() {
 					"thread/read" | "thread/resume" =>
-						serde_json::json!({"result":{"thread":{"id":"voice-thread","cwd":"/tmp","turns":[]}}}),
+						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","turns":[]}}}),
 					"config/read" if config_fails =>
 						serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
 					"config/read" =>
@@ -65,6 +68,23 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 			}
 		});
 		let owned = OwnedReviewer::new(home.path(), &client, "voice-thread", "turn").await;
+		if hosted {
+			let mut conversation = owned.store.get_agent_work_item("root".into()).await.unwrap();
+			conversation.id = work.into();
+			conversation.parent_goal_id = Some("root".into());
+			conversation.codex_thread_id = None;
+			conversation.active_turn_id = None;
+			conversation.dispatch_state = decodex_database::AgentDispatchState::Idle;
+			owned.store.create_agent_manager(conversation).await.unwrap();
+			owned.store.bind_agent_thread(work.into(), thread.into()).await.unwrap();
+			assert!(
+				!owned
+					.store
+					.agent_thread_is_owned(work.into(), thread.into(), Some(GENERATION.into()))
+					.await
+					.unwrap()
+			);
+		}
 		let mut agent = AgentCoordinator::new(
 			owned.store.clone(),
 			client,
@@ -81,7 +101,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		let result = agent
 			.voice_request(AgentVoiceRequest::Start {
 				session_id: EntityId::new("voice").unwrap(),
-				work_id: EntityId::new("root").unwrap(),
+				work_id: EntityId::new(work).unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
 				options: if voice == "juniper" {
 					AgentVoiceOptions {
@@ -109,6 +129,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		assert_eq!(owned.store.open_agent_voice_calls().await.unwrap().len(), usize::from(!fails));
 
 		if let Some(start) = starts.first() {
+			assert_eq!(start["params"]["threadId"], thread);
 			assert_eq!(start["params"]["version"], "v3");
 			assert_eq!(start["params"]["realtimeSessionId"], "voice");
 			assert_eq!(start["params"]["transport"]["type"], "webrtc");

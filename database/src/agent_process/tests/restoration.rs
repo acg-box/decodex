@@ -1,7 +1,7 @@
-use crate::{SqliteStore, agent_process::tests};
+use crate::{AgentVoiceCall, SqliteStore, agent_process::tests};
 
 #[tokio::test]
-async fn user_restore_crosses_manager_roles_but_keeps_host_and_thread_identity() {
+async fn selected_conversation_actions_keep_host_and_thread_identity_across_manager_roles() {
 	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("restore.sqlite3")).unwrap();
 	tests::seed(&store).await;
@@ -38,7 +38,28 @@ async fn user_restore_crosses_manager_roles_but_keeps_host_and_thread_identity()
 				.unwrap(),
 			allowed
 		);
+		let call = AgentVoiceCall {
+			session_id: format!("voice-{work}-{thread}"),
+			work_id: work.into(),
+			thread_id: thread.into(),
+			generation_id: tests::generation_id(1).as_str().into(),
+			baseline_turn_id: None,
+		};
+		assert_eq!(store.begin_agent_voice_call(call).await.is_ok(), allowed);
 	}
+	assert_eq!(store.open_agent_voice_calls().await.unwrap().len(), 1);
+	assert!(
+		store
+			.begin_agent_voice_call(AgentVoiceCall {
+				session_id: "old-host-voice".into(),
+				work_id: "conversation".into(),
+				thread_id: "native-chat".into(),
+				generation_id: tests::generation_id(2).as_str().into(),
+				baseline_turn_id: None,
+			})
+			.await
+			.is_err()
+	);
 	assert!(
 		!store
 			.agent_thread_is_restorable(

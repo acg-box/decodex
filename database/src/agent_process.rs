@@ -33,15 +33,7 @@ impl SqliteStore {
 		let Some(generation) = generation else {
 			return self.agent_thread_is_owned(work, thread, None).await;
 		};
-		self.run(move |connection| {
-			connection.query_row("WITH RECURSIVE hosted(id) AS (
-				SELECT b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
-				WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
-				UNION SELECT w.id FROM agent_work_items w JOIN hosted ON w.parent_goal_id=hosted.id)
-				SELECT EXISTS(SELECT 1 FROM hosted JOIN agent_work_items w ON w.id=hosted.id WHERE w.id=?2 AND w.codex_thread_id=?3)",
-				rusqlite::params![generation,work,thread], |row| row.get(0))
-				.map_err(account_lifecycle::sql_error)
-		}).await
+		self.run(move |connection| hosts_thread(connection, &work, &thread, &generation)).await
 	}
 
 	/// Check the current exact native thread binding and process subtree ownership.
@@ -192,6 +184,23 @@ impl SqliteStore {
 			Ok(outcome)
 		}).await
 	}
+}
+
+/// User actions may select any exact conversation hosted by the current process.
+/// This does not grant an agent tool permission to act across manager boundaries.
+pub(crate) fn hosts_thread(
+	connection: &Connection,
+	work: &str,
+	thread: &str,
+	generation: &str,
+) -> Result<bool, StoreError> {
+	connection.query_row("WITH RECURSIVE hosted(id) AS (
+		SELECT b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
+		WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
+		UNION SELECT w.id FROM agent_work_items w JOIN hosted ON w.parent_goal_id=hosted.id)
+		SELECT EXISTS(SELECT 1 FROM hosted JOIN agent_work_items w ON w.id=hosted.id WHERE w.id=?2 AND w.codex_thread_id=?3)",
+		rusqlite::params![generation,work,thread], |row| row.get(0))
+		.map_err(account_lifecycle::sql_error)
 }
 
 pub(crate) fn owns_work(

@@ -59,7 +59,7 @@ impl SqliteStore {
                 WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state IN ('idle','running'))",
                 rusqlite::params![call.work_id,call.thread_id],|r|r.get(0)).map_err(sqlite_error)?;
 
-            if !bound || !agent_process::owns_work(&tx,&call.work_id,Some(&call.generation_id))?
+            if !bound || !agent_process::hosts_thread(&tx,&call.work_id,&call.thread_id,&call.generation_id)?
                 || agent_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
 
             tx.execute("INSERT INTO agent_voice_calls(session_id,work_id,thread_id,generation_id,baseline_turn_id,created_at_micros)
