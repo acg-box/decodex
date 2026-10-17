@@ -101,7 +101,7 @@
           "test": "suite::v2::imagegen_extension::transparent_image_preserves_output_metadata_and_persisted_history::referenced_file"
         }
       ],
-      "validation_and_limits": "Baseline 97ebf2d9 source lacks this additive field. Existing output-reference handling stays valid. No new input-provenance presentation is authorized. Candidate schema/artifact and native regressions must be qualified separately.",
+      "validation_and_limits": "Baseline 97ebf2d9 lacks this additive field. The original image-byte, extension serialization, migration and history source tests passed. The exact candidate passed retained history/compaction consumers and schema qualification. Existing output-reference handling stays valid; no new input-provenance presentation or live image-provider acceptance is claimed.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -129,7 +129,7 @@
           "test": "types::tests::plugin_activation_inherits_defaults_without_explicit_enablement"
         }
       ],
-      "validation_and_limits": "Read effective activation and hook-scope test bodies including every policy-loop branch. Baseline97 source lacks the fields. No auto-provisioning product policy or UI change; No new provisioning policy is enabled; exact artifact qualification is recorded separately.",
+      "validation_and_limits": "Read effective activation and hook-scope test bodies, including every policy-loop branch. The original activation-policy regressions passed. Baseline 97 lacks the fields. No new provisioning policy or UI is enabled; the qualified current-consumer artifact and its limits are recorded separately.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -200,7 +200,7 @@
       "tests_read": "tui/src/chatwidget/tests/exec_flow.rs#exploration_nonzero_exits_remain_visible_beside_successful_reads; compact_exploration_with_failures snapshot",
       "decodex_consumer": "Decodex renders its own GPUI history and reads structured native exit status; it does not link the ratatui exec-cell renderer or launch the native TUI. No status protocol field changes.",
       "tests_executed": [],
-      "validation_and_limits": "Read the complete test body and collapsed/expanded assertions. This native TUI-only presentation change establishes no local compatibility repair. No GPUI changes made, preserving the separate active UI owner.",
+      "validation_and_limits": "Read the complete test body and collapsed/expanded assertions. This native TUI-only presentation change establishes no local compatibility repair. No GPUI changes were made.",
       "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
     },
     {
@@ -280,7 +280,7 @@
           "test": "remote_file_system::path_uri_tests::concurrent_remote_metadata_requests_share_only_in_flight_results"
         }
       ],
-      "validation_and_limits": "Read the complete changed map operations, metadata implementation and cancellation/concurrency test body. No lock is held across await. Source97 uses async locking; fresh candidate execution is separate.",
+      "validation_and_limits": "Read the complete changed map operations, metadata implementation and cancellation/concurrency test body. The original coalescing/concurrency source regression passed. No lock is held across await. Baseline 97 uses async locking; exact-artifact retained consumers passed within the recorded scope.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -437,7 +437,7 @@
           "test": "suite::v2::hooks_list::loaded_session_refreshes_externally_updated_plugin_hooks"
         }
       ],
-      "validation_and_limits": "Source97 lacks content binding. Current consumer admits the opaque pair without needing a new control. Exact candidate must execute existing trust/enable/restart regression and a script-only mutation case before selecting this runtime. Read full fingerprint/trust code, discovery handler body, command/MCP execution bodies and full upgrade/rollback/config/legacy same-turn test bodies. Excluded generated runtimes and source-change races remain the native best-effort fingerprint limits; no absolute tamper guarantee.",
+      "validation_and_limits": "The original hook trust/reload source regressions passed. The exact signed candidate passed declaration changes, script-only changes, enablement, retrust and restart checks against actual script effects. The current consumer forwards the opaque hash pair without a new control. Read full fingerprint/trust code, discovery, command/MCP execution and upgrade/rollback/config/legacy test bodies. Excluded generated runtimes and source-change races remain native best-effort limits; no absolute tamper guarantee.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
       "actual_candidate_tests": [
         "installed_hook_trust_enablement_and_modified_content_are_independent"
@@ -493,7 +493,7 @@
           "test": "local::thread_history_materialization::tests::catch_up_preserves_trailing_partial_line_boundaries"
         }
       ],
-      "validation_and_limits": "Read the entire257-line projection function and both full affected tests, including64KiB record padding and cancellation/retry assertions. Peak unread-suffix buffer is removed but projection output and one individual large line still allocate. Source97 lacks streaming. Fresh source tests and candidate cold-history regressions required; no measured memory benchmark claimed.",
+      "validation_and_limits": "Read the entire 257-line projection function and both full affected tests, including 64 KiB record padding and cancellation/retry assertions. Both original source projection regressions and the exact-candidate cold-history/read-state consumer passed. Peak unread-suffix buffering is removed; projection output and one individual large line still allocate. No measured memory benchmark is claimed.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
       "actual_candidate_tests": [
         "installed_native_read_state_preserves_new_results_and_cold_marks"
@@ -545,7 +545,7 @@
           "test": "no_browser_prefers_challenge_scopes_for_preregistered_client"
         }
       ],
-      "validation_and_limits": "Read full changed source and resource/challenge test loops, full no-browser mock login/token/persist helper, and the exact resolved SDK scope-selection body and challenge regression. Source97 uses authorization-server scopes. Require fresh affected source regressions and exact-candidate consumer boundary checks; no real provider sign-in is claimed.",
+      "validation_and_limits": "Read the complete changed implementation, resource/challenge test loops, no-browser login/token/persistence fixture and resolved SDK scope-selection body and regression. The original resource-discovery source regressions passed. The signed candidate passed the original preregistered-client challenge-scope CLI integration and retained native enterprise discovery restrictions. No real-provider sign-in is claimed.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
       "actual_candidate_tests": [
         "no_browser_prefers_challenge_scopes_for_preregistered_client"
@@ -565,7 +565,7 @@
           "test": "suite::code_mode::dynamic_tools::code_mode_dynamic_tool_calls_pending_together_resolve_in_reverse_order"
         }
       ],
-      "validation_and_limits": "Read full handler and per-ID registration/completion, full new integration regression and complete local request handler. Source97 can serialize these waits. Require candidate code-mode concurrency/ID regression. No product control or new tool is added.",
+      "validation_and_limits": "Read the complete handler, per-ID registration/completion, original integration regression and local request handler. The original source regression and signed candidate Code Mode fixture passed: both tool requests arrived before either reply, IDs remained distinct, and reverse replies preserved result order. No product control or new tool is added.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
       "actual_candidate_tests": [
         "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
@@ -615,7 +615,7 @@
           "test": "suite::scenarios::mcp_tool_discovery_in_same_turn::direct"
         }
       ],
-      "validation_and_limits": "Read complete notification adapter, refresh state machine and affected lock/cache implementations, full four-case core scenario helper, code-mode snapshot test and full concurrent timeout/retry/immutable-old-binding test. New flag remains off; enabling it is a separate optional product/config decision. Candidate must retain current MCP regressions even while flag is disabled.",
+      "validation_and_limits": "Read complete notification/refresh state machines, lock/cache implementations and the full core, Code Mode and concurrency/timeout/retry source tests; the selected original regressions passed. The exact candidate also passed retained MCP discovery/metadata consumers with the new development flag off. Enabling that flag remains a separate optional product/configuration decision.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -652,7 +652,7 @@
           "test": "error::tests::unclassified_sqlx_failures_remain_internal"
         }
       ],
-      "validation_and_limits": "Read entire new error enum, complete startup/error mapping functions, all new tests and complete shutdown-display regression. No new retry loop, message-based retry inference or change to local unknown outcomes. Fresh source tests qualify categories; actual injected disk/network failure is not claimed.",
+      "validation_and_limits": "Read the complete new error enum, startup/error mappings and affected tests. The original category, initialization, mutation-policy and shutdown-display source regressions passed. No retry loop or message-based retry inference was added. Actual injected disk/network failure is not claimed.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -699,7 +699,7 @@
           "test": "tests::canceled_mcp_server_elicitation_response_uses_cancel_action"
         }
       ],
-      "validation_and_limits": "Read the cancellation enum, full native user-approval and app-server response bodies, full closed-channel integration regression, exec serialization test and all changed propagation/source fields. No new UI decision is needed for backward-compatible metadata. Current retained child-MCP/input/approval regressions qualify the boundary separately.",
+      "validation_and_limits": "Read the cancellation enum, native approval and app-server response bodies, closed-channel integration, exec serialization and changed propagation fields. The selected original source regressions and exact-candidate retained child-MCP/input/approval consumers passed. Legacy Cancel without a reason remains supported; no new UI decision is needed.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate."
     },
     {
@@ -747,7 +747,7 @@
           "test": "connection_manager::tests::catalog_listing_preserves_legacy_apps_tools_during_failed_startup"
         }
       ],
-      "validation_and_limits": "The exact candidate schema55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea loaded successfully. Original nullable/legacy/scoped catalog source tests passed. The actual CLI consumer preserved first-page opaque metadata through tools/status pagination and two cold starts. No metadata UI or refresh policy is added.",
+      "validation_and_limits": "The exact candidate schema 55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea loaded successfully. Original nullable/legacy/scoped catalog source tests passed. The actual CLI consumer preserved first-page opaque metadata through tools/status pagination and two cold starts. No metadata UI or refresh policy is added.",
       "runtime_delivery": "Included in the qualified current-consumer development artifact; installed-app acceptance is separate.",
       "actual_candidate_tests": [
         "installed_native_mcp_capabilities_survive_tool_discovery_failure"
