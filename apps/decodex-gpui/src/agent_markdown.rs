@@ -655,6 +655,12 @@ fn render_list(
 	key: &str,
 	selection: &mut selectable_text::Document,
 ) -> AnyElement {
+	// Keep a short hanging indent. Numbered markers share a right edge even
+	// when the list crosses a digit boundary; bullets need no number gutter.
+	let marker_width = start.map_or(8., |start| {
+		let last = start + children.len().saturating_sub(1) as u64;
+		last.to_string().len() as f32 * BODY_SIZE * 0.65 + 4.
+	});
 	gpui::div()
 		.w_full()
 		.min_w_0()
@@ -668,11 +674,16 @@ fn render_list(
 			gpui::div()
 				.w_full()
 				.flex()
-				.gap_2()
+				.gap(gpui::px(6.))
 				.child(
 					gpui::div()
-						.w(gpui::px(24.0))
+						.debug_selector({
+							let key = format!("markdown-list-marker-{key}-{index}");
+							move || key.clone()
+						})
+						.w(gpui::px(marker_width))
 						.flex_shrink_0()
+						.text_right()
 						.text_color(gpui::rgb(TEXT_MUTED))
 						.child(start.map_or_else(
 							|| "•".into(),

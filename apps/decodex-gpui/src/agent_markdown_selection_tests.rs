@@ -46,6 +46,24 @@ fn draw(cx: &mut gpui::VisualTestContext) {
 	});
 }
 
+#[gpui::test]
+fn list_markers_stay_close_and_wrapped_items_share_the_text_edge(cx: &mut gpui::TestAppContext) {
+	for source in [
+		"- A long first item that wraps onto another line so the hanging indent remains visible and easy to follow.\n- Short item.",
+		"99. A long first item that wraps onto another line so the hanging indent remains visible and easy to follow.\n100. Short item.",
+	] {
+		let (_, visual) =
+			cx.add_window_view(|_, _| Preview { text: source.into(), process: false });
+		draw(visual);
+		let first = visual.debug_bounds("markdown-list-content-selection-preview-0-0").unwrap();
+		let second = visual.debug_bounds("markdown-list-content-selection-preview-0-1").unwrap();
+		let marker = visual.debug_bounds("markdown-list-marker-selection-preview-0-0").unwrap();
+		assert_eq!(first.left() - marker.right(), gpui::px(6.));
+		assert_eq!(first.left(), second.left());
+		assert!(first.size.height > second.size.height, "the first item must wrap");
+	}
+}
+
 fn copy_drag(
 	cx: &mut gpui::VisualTestContext,
 	first: &'static str,
