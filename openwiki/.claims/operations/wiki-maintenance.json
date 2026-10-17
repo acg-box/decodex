@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:907fb5da0e231d3e6c19e6bc471932406abb38912fd3597f4b76b882895d82fe",
+  "pageVersion": "sha256:985d390296d3a698242829d56c1f3245b8ea822a75ab78805abfbd964281419c",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
-      "statement": "The checked-in portfolio defines three upstream/content tasks and no dedicated OpenWiki task; the upstream Maintainer is PAUSED and repository status values do not establish actual scheduler registration or execution.",
+      "statement": "The checked-in portfolio defines three upstream/content tasks and no dedicated OpenWiki task; repository status values do not establish actual scheduler registration or execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:2f21271cb59c191ffeeddad5d4166332c1e1df07346ec0bbf9104209b7db4903"
+          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
         }
       ]
     },
@@ -35,6 +35,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-17T07:29:15.006Z"
   }
 }

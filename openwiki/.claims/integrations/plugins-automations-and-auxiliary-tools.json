@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9da1f47081b7527dfeed2687e9c23a444a5eb9d55849c3025a5ae5d38cde6507",
+  "pageVersion": "sha256:6507b0bfb6ac153f602aad52d60cd1ab34bf5b356ff2c6700be6e051fa6f7eab",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -14,7 +14,7 @@
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The portfolio defines three native tasks: the upstream Maintainer is explicitly PAUSED, while Content Manager and Xurl Publisher inherit ACTIVE. Radar and Publisher remain separate auxiliary tools, and repository configuration does not establish live scheduler status.",
+      "statement": "The portfolio defines three native tasks: the upstream Maintainer has an explicit ACTIVE override, while Content Manager and Xurl Publisher inherit ACTIVE. Radar and Publisher remain separate auxiliary tools, and repository configuration does not establish live scheduler status.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-publisher/src/lib.rs",
@@ -26,13 +26,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:2f21271cb59c191ffeeddad5d4166332c1e1df07346ec0bbf9104209b7db4903"
+          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-17T07:29:15.006Z"
   }
 }

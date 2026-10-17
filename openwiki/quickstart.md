@@ -22,10 +22,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-17T07:29:15.006Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T07:37:30.807Z
+    at: 2026-10-17T07:29:15.006Z
 ---
 
 # OpenWiki quickstart
@@ -60,7 +60,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Local plugin management and embedded MCP HTML widgets are retired. Codex owns configuration and native execution; Decodex retains tool observations, native forms and readable history.
-- The checked-in automation portfolio marks the upstream maintainer **PAUSED**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
+- The checked-in automation portfolio marks the upstream maintainer **ACTIVE**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
 
 ## Build and evidence
 

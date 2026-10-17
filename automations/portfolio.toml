@@ -7,12 +7,12 @@ version               = 1
 [[automations]]
 execution_environment = "worktree"
 id                    = "codex-upstream-maintainer"
-model                 = "gpt-6-astra"
+model                 = "gpt-6.1-sol"
 name                  = "Codex Upstream Maintainer"
 prompt_file           = "automations/upstream/prompts/maintainer.md"
-reasoning_effort      = "medium"
+reasoning_effort      = "max"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
-status                = "PAUSED"
+status                = "ACTIVE"
 
 [[automations]]
 id               = "decodex-content-manager"
