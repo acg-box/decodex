@@ -27,6 +27,7 @@ let symbols = [
     "timeline": "clock",
     "agents": "sidebar.right",
     "expand": "arrow.up.left.and.arrow.down.right",
+    "restore": "arrow.down.right.and.arrow.up.left",
     "settings": "gearshape",
     "close": "xmark",
     "plus": "plus",

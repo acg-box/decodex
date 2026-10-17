@@ -1,4 +1,5 @@
 //! Compact Agent composer. Controls apply to the next submitted message.
+use crate::ui_feedback::Feedback;
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
@@ -39,7 +40,26 @@ use crate::{
 use controls::{PrimaryMark, PrimaryMode};
 use decodex_protocol::AgentAttachmentDto;
 
-struct ComposerTip(String);
+pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
+pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
+
+#[cfg(any(test, target_os = "macos"))]
+pub(super) fn model_menu_bounds(
+	anchor: gpui::Bounds<gpui::Pixels>,
+	height: f32,
+	viewport: gpui::Size<gpui::Pixels>,
+) -> gpui::Bounds<gpui::Pixels> {
+	let width = MODEL_MENU_WIDTH + 2. * MODEL_MENU_SHADOW;
+	let x = (f32::from(anchor.left()) - MODEL_MENU_SHADOW)
+		.clamp(8., (f32::from(viewport.width) - width - 8.).max(8.));
+	let y = (f32::from(anchor.top()) - height).max(8.);
+	gpui::Bounds::new(
+		gpui::point(gpui::px(x), gpui::px(y)),
+		gpui::size(gpui::px(width), gpui::px(height)),
+	)
+}
+
+pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		crate::ui_motion::tooltip_surface(gpui::div())
@@ -51,10 +71,53 @@ impl Render for ComposerTip {
 	}
 }
 
+fn composer_capsule(native: bool) -> Stateful<Div> {
+	gpui::div()
+		.id("agent-composer")
+		.debug_selector(|| "agent-composer".into())
+		.occlude()
+		.relative()
+		.w_full()
+		.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+		.min_w_0()
+		.px(gpui::px(10.))
+		.py(gpui::px(7.))
+		.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
+		.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
+		.when(!native, |d| {
+			d.shadow(vec![gpui::BoxShadow {
+				inset: false,
+				color: gpui::rgba(0x0000001a).into(),
+				offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+				blur_radius: gpui::px(16.),
+				spread_radius: gpui::px(-5.),
+			}])
+		})
+		.flex()
+		.flex_col()
+		.gap(gpui::px(4.))
+}
+
 impl AgentSurface {
+	#[cfg(any(test, target_os = "macos"))]
+	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
+		allowed
+			&& ui_theme::composer_glass(None)
+			&& supported
+			&& !self.workspace_connecting()
+			&& !self.workspace.browsing
+			&& self.snapshot.is_some()
+			&& !self.selected_is_archived()
+			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
+			&& !self.workspace.graph_expanded
+	}
+
 	/// Move keyboard and accessibility focus into the current message editor.
 	pub(crate) fn focus_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		use gpui::Focusable as _;
+		if self.composer_unavailable_reason().is_some() {
+			return;
+		}
 		#[cfg(all(target_os = "macos", not(test)))]
 		if self.focus_native_message(cx) {
 			return;
@@ -75,7 +138,9 @@ impl AgentSurface {
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
 
-		if work.dispatch_state != AgentDispatchStateDto::Running {
+		if work.dispatch_state != AgentDispatchStateDto::Running
+			|| self.current_turn_completed(work)
+		{
 			return None;
 		}
 
@@ -117,7 +182,7 @@ impl AgentSurface {
 		(self.sending && self.workspace.opening_work.is_none() && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
-				&& (self.feedback == "Message saved · Waiting for agent…"
+				&& (self.feedback.message == "Message saved · Waiting for agent…"
 					|| self.snapshot.as_ref().is_some_and(|snapshot| {
 						snapshot.work_items.iter().any(|work| {
 							Some(&work.id) == self.selected.as_ref()
@@ -224,7 +289,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.feedback = "No service profile is configured.".into();
+			self.feedback = Feedback::error("No service profile is configured.");
 
 			cx.notify();
 
@@ -270,29 +335,35 @@ impl AgentSurface {
 		});
 
 		self.interrupt_task = Some(cx.spawn(async move |surface, cx| {
-            let result = request.await;
-            let _ = surface.update(cx, |s, cx| {
-                if s.interrupting.as_ref() != Some(&target) { return; }
+			let result = request.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.interrupting.as_ref() != Some(&target) {
+					return;
+				}
 
-                let accepted = match result {
-                    Ok((result, snapshot)) => {
-                        if let Some(snapshot) = snapshot { s.apply_result(Ok(snapshot)); }
+				let accepted = match result {
+					Ok((result, snapshot)) => {
+						if let Some(snapshot) = snapshot {
+							s.apply_result(Ok(snapshot));
+						}
 
-                        matches!(result, Ok(AgentCommandResponse::Accepted { .. }))
-                    }
+						matches!(result, Ok(AgentCommandResponse::Accepted { .. }))
+					},
 
-                    Err(_) => false,
-                };
+					Err(_) => false,
+				};
 
-                if !accepted && s.interrupting.as_ref() == Some(&target) {
-                    s.interrupting = None;
-                    s.feedback = "Stopping could not be confirmed. If the response is still running, press Stop again.".into();
-                }
+				if !accepted && s.interrupting.as_ref() == Some(&target) {
+					s.interrupting = None;
+					s.feedback = Feedback::warning(
+						"Stopping could not be confirmed. If the response is still running, press Stop again.",
+					);
+				}
 
-                s.load_history(cx);
-                cx.notify();
-            });
-        }));
+				s.load_history(cx);
+				cx.notify();
+			});
+		}));
 
 		cx.notify();
 	}
@@ -335,6 +406,23 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
+		let capsule = composer_capsule(native);
+		let (blocked, opacity) = crate::ui_feedback::composer_block(
+			self.feedback_scope(),
+			self.composer_unavailable_reason(),
+			window,
+			cx,
+		);
+		let ready = crate::ui_motion::value(
+			"composer-ready-opacity",
+			if blocked.is_none() { 1. } else { 0. },
+			window,
+			cx,
+		);
+		if let Some(reason) = blocked {
+			return self.render_blocked_composer(capsule, reason, opacity, window, cx);
+		}
+		self.update_question_placeholder(cx);
 		let editor = gpui::div()
 			.id("composer-editor-area")
 			.debug_selector(|| "composer-editor-area".into())
@@ -365,30 +453,7 @@ impl AgentSurface {
 				}
 			});
 
-		gpui::div()
-			.id("agent-composer")
-			.debug_selector(|| "agent-composer".into())
-			.occlude()
-			.relative()
-			.w_full()
-			.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
-			.min_w_0()
-			.px(gpui::px(10.))
-			.py(gpui::px(7.))
-			.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-			.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
-			.when(!native, |d| {
-				d.shadow(vec![gpui::BoxShadow {
-					inset: false,
-					color: gpui::rgba(0x0000001a).into(),
-					offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-					blur_radius: gpui::px(16.),
-					spread_radius: gpui::px(-5.),
-				}])
-			})
-			.flex()
-			.flex_col()
-			.gap(gpui::px(4.))
+		capsule
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" && !e.keystroke.modifiers.shift {
 					if !e.is_held {
@@ -399,58 +464,187 @@ impl AgentSurface {
 				}
 			}))
 			.on_drop(cx.listener(|s, paths: &ExternalPaths, _, cx| {
-				if s.native_agents.selected.is_none() {
+				if s.native_agents.selected.is_none() && s.async_question_composer().is_none() {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}
 			}))
-			.when(self.native_agents.selected.is_none(), |d| {
-				d.children(self.attachment_row(cx)).children(self.task_reference_row(cx))
-			})
-			.map(|capsule| {
-				let controls = gpui::div()
-					.id("composer-action-row")
-					.debug_selector(|| "composer-action-row".into())
+			.child(
+				gpui::div()
 					.w_full()
-					.min_w_0()
 					.flex()
-					.items_center()
+					.flex_col()
 					.gap(gpui::px(4.))
+					.opacity(ready)
+					.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
+						d.child(self.composer_question_panel(cx))
+					})
 					.when(
 						self.native_agents.selected.is_none()
-							&& self.dictation.is_none()
-							&& self.voice.is_none(),
+							&& self.async_question_composer().is_none(),
 						|d| {
-							d.child(self.composer_control(
-								"attach",
-								"+".into(),
-								"Attachments, skills and microphone",
-								|s, cx| s.toggle_composer_menu("attachments", cx),
-								cx,
-							))
+							d.children(self.attachment_row(cx))
+								.children(self.task_reference_row(cx))
 						},
-					);
-				if self.voice.is_some() {
-					capsule.child(controls.child(editor).child(self.composer_toolbar(window, cx)))
-				} else {
-					capsule
-						.when(
-							!(self.native_agents.selected.is_some()
-								&& matches!(
-									self.native_agents.connection,
-									super::native_agents::NativeConnection::ParentManaged
-								)),
-							|capsule| capsule.child(editor),
-						)
-						.child(controls.child(self.composer_toolbar(window, cx)))
-				}
-			})
+					)
+					.map(|capsule| {
+						let controls = gpui::div()
+							.id("composer-action-row")
+							.debug_selector(|| "composer-action-row".into())
+							.w_full()
+							.min_w_0()
+							.flex()
+							.items_center()
+							.gap(gpui::px(4.))
+							.when(
+								self.native_agents.selected.is_none()
+									&& self.dictation.is_none()
+									&& self.voice.is_none()
+									&& self.async_question_composer().is_none(),
+								|d| {
+									d.child(self.composer_control(
+										"attach",
+										"+".into(),
+										"Attachments, skills and microphone",
+										|s, cx| s.toggle_composer_menu("attachments", cx),
+										cx,
+									))
+								},
+							);
+						if self.voice.is_some() {
+							capsule.child(
+								controls.child(editor).child(self.composer_toolbar(window, cx)),
+							)
+						} else {
+							capsule
+								.when(
+									!(self.native_agents.selected.is_some()
+										&& matches!(
+											self.native_agents.connection,
+											super::native_agents::NativeConnection::ParentManaged
+										)),
+									|capsule| capsule.child(editor),
+								)
+								.child(controls.child(self.composer_toolbar(window, cx)))
+						}
+					}),
+			)
+	}
+
+	fn render_blocked_composer(
+		&self,
+		capsule: Stateful<Div>,
+		reason: &'static str,
+		opacity: f32,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		use gpui::Focusable as _;
+		let input = self.conversation_composer();
+		if input.focus_handle(cx).is_focused(window) {
+			window.blur(cx);
+		}
+		if self.composer_menu.is_some() {
+			let owner = cx.entity().downgrade();
+			cx.defer(move |cx| {
+				let _ = owner.update(cx, |s, cx| {
+					s.composer_menu_content = None;
+					s.dismiss_composer_menu(cx);
+				});
+			});
+		}
+		let draft = input.read(cx).content().to_owned();
+		let draft_key = format!(
+			"composer-saved-draft-{:?}-{}",
+			input.entity_id(),
+			self.selected.as_deref().unwrap_or("new")
+		);
+		capsule.child(
+			gpui::div()
+				.id("composer-blocked")
+				.debug_selector(|| "composer-blocked".into())
+				.opacity(opacity)
+				.w_full()
+				.min_h(gpui::px(51.))
+				.px(gpui::px(8.))
+				.flex()
+				.flex_col()
+				.justify_center()
+				.child(self.connection_notice(reason, cx))
+				.when(!draft.is_empty(), |d| {
+					d.child(
+						gpui::div()
+							.id("composer-retained-draft")
+							.debug_selector(|| "composer-retained-draft".into())
+							.w_full()
+							.max_h(gpui::px(120.))
+							.pb(gpui::px(4.))
+							.overflow_y_scroll()
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(agent_surface::selectable_text::SelectableText::plain(
+								draft_key, draft,
+							)),
+					)
+				})
+				.when(self.voice.is_some() || self.dictation.is_some(), |d| {
+					d.child(self.workspace_action(
+						"composer-stop-recording".into(),
+						"Stop recording".into(),
+						|s, cx| s.stop_voice(cx),
+						cx,
+					))
+				}),
+		)
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		if self.workspace_connecting() {
+		if self.workspace_connecting() || self.composer_unavailable_reason().is_some() {
 			return gpui::div();
 		}
 		let menu = self.composer_menu.or(self.composer_menu_content);
+		#[cfg(all(target_os = "macos", not(test)))]
+		if menu == Some("model") && self.native_composer.enabled && !self.native_model_menu.failed {
+			// The menu has its own overlay above the native composer. Keep only
+			// the main window's outside-click dismissal here.
+			return gpui::div().absolute().inset_0().on_mouse_down_out(cx.listener(
+				|s, _, _, cx| {
+					if s.composer_menu == Some("model") {
+						s.dismiss_composer_menu(cx);
+					}
+				},
+			));
+		}
+		#[cfg(all(target_os = "macos", not(test)))]
+		let inline = !self.native_composer.enabled;
+		#[cfg(not(all(target_os = "macos", not(test))))]
+		let inline = true;
+		if menu == Some("model") && inline {
+			let Some(anchor) = self.menu_trigger_bounds.get("model") else { return gpui::div() };
+			return gpui::div().absolute().inset_0().child(
+				gpui::deferred(
+					gpui::anchored()
+						.anchor(gpui::Anchor::BottomLeft)
+						.snap_to_window()
+						.position(gpui::point(
+							anchor.left() - gpui::px(MODEL_MENU_SHADOW),
+							anchor.top(),
+						))
+						.child(
+							gpui::div()
+								.w(gpui::px(MODEL_MENU_WIDTH + 2. * MODEL_MENU_SHADOW))
+								.child(
+									ui_motion::popover(
+										"composer-popover-motion",
+										self.composer_menu.is_some(),
+										self.composer_options(cx)
+											.unwrap_or_else(|| gpui::div().into_any_element()),
+									)
+									.unframed(true),
+								),
+						),
+				)
+				.priority(2),
+			);
+		}
 		let left = matches!(
 			menu,
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
@@ -611,12 +805,10 @@ impl AgentSurface {
 				NativeConnection::Failed(reason) => {
 					row = row
 						.child(
-							gpui::div()
+							crate::ui_feedback::Tone::Error
+								.row("native-connection-error", reason)
 								.flex_1()
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(reason.clone()),
+								.min_w_0(),
 						)
 						.child(self.workspace_action(
 							"native-connect-retry".into(),
@@ -685,17 +877,21 @@ impl AgentSurface {
 			))
 			.child(gpui::div().flex_1())
 			.children(self.usage_line(cx))
-			.child(self.composer_control_with_window(
-				"dictation",
-				"".into(),
-				"Dictate into the draft",
-				|s, w, cx| s.start_dictation(w, cx),
-				cx,
-			))
+			.when(self.async_question_composer().is_none(), |row| {
+				row.child(self.composer_control_with_window(
+					"dictation",
+					"".into(),
+					"Dictate into the draft",
+					|s, w, cx| s.start_dictation(w, cx),
+					cx,
+				))
+			})
 			.child(self.composer_control_with_window(
 				"send",
 				"".into(),
-				if self.interrupting.is_some() {
+				if self.async_question_composer().is_some() {
+					"Send answer · Enter"
+				} else if self.interrupting.is_some() {
 					"Stopping response"
 				} else if self.awaiting_start(cx) {
 					"Starting response"
@@ -710,6 +906,10 @@ impl AgentSurface {
 					"Send · Enter"
 				},
 				|s, window, cx| {
+					if s.async_question_composer().is_some() {
+						s.submit(cx);
+						return;
+					}
 					if s.awaiting_start(cx) || s.interrupting.is_some() {
 						return;
 					}
@@ -794,7 +994,7 @@ impl AgentSurface {
 			.text_color(gpui::rgb(if send { TEXT } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
-					.text_size(gpui::px(11.))
+					.text_size(gpui::px(ui_theme::BODY_SIZE))
 					.font_weight(FontWeight::NORMAL)
 					.flex_shrink(1.)
 					.min_w_0()
@@ -873,7 +1073,10 @@ impl AgentSurface {
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
 		match id {
 			"send" => PrimaryMark {
-				mode: if self.native_agents.selected.is_some() || self.dictation.is_some() {
+				mode: if self.native_agents.selected.is_some()
+					|| self.dictation.is_some()
+					|| self.async_question_composer().is_some()
+				{
 					PrimaryMode::Send
 				} else if self.stop_button(cx) {
 					PrimaryMode::Stop
@@ -945,8 +1148,10 @@ impl AgentSurface {
 					)
 				})
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
-				.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
-				.child(controls::effort_indicator(&self.composer_effort_value()))
+				.when_some(self.composer_effort_value(cx), |row, effort| {
+					row.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
+						.child(controls::effort_indicator(&effort))
+				})
 				.into_any_element(),
 			_ => gpui::div().child(label).into_any_element(),
 		}
@@ -970,6 +1175,13 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(super) fn dismiss_composer_menu(&mut self, cx: &mut Context<Self>) {
+		self.composer_menu = None;
+		self.effort_drag = None;
+		self.effort_pointer = None;
+		cx.notify();
+	}
+
 	fn composer_options(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		// Keep content mounted while the disclosure animates closed.
 		let menu = self.composer_menu.or(self.composer_menu_content)?;
@@ -988,11 +1200,7 @@ impl AgentSurface {
 				.occlude()
 				.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 					if event.keystroke.key == "escape" {
-						s.composer_menu = None;
-						s.effort_drag = None;
-						s.effort_pointer = None;
-
-						cx.notify();
+						s.dismiss_composer_menu(cx);
 						cx.stop_propagation();
 					}
 				}))
@@ -1013,11 +1221,7 @@ impl AgentSurface {
 						return;
 					}
 
-					s.composer_menu = None;
-					s.effort_drag = None;
-					s.effort_pointer = None;
-
-					cx.notify();
+					s.dismiss_composer_menu(cx);
 				}))
 				.p(gpui::px(if menu == "model" { 0. } else { 8. }))
 				.w_full()
@@ -1038,34 +1242,35 @@ impl AgentSurface {
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
-					gpui::div()
-						.flex()
-						.flex_col()
-						.gap(gpui::px(6.))
-						.child(
-							ui_motion::menu_surface(gpui::div())
-								.p(gpui::px(5.))
-								.child(self.model_palette(cx))
-								.child(
-									gpui::div()
-										.mt(gpui::px(6.))
-										.child(self.service_tier_picker(cx)),
-								),
-						)
-						.child(
-							ui_motion::menu_surface(gpui::div())
-								.px(gpui::px(7.))
-								.py(gpui::px(2.))
-								.rounded_full()
-								.flex()
-								.items_center()
-								.child(self.creation_effort_toggle(cx))
-								.child(gpui::div().flex_1().min_w_0().child(self.effort_scale(cx))),
-						)
-						.into_any_element()
+					self.model_options(cx)
 				})
 				.into_any_element(),
 		)
+	}
+
+	pub(super) fn model_options(&self, cx: &mut Context<Self>) -> AnyElement {
+		gpui::div()
+			.id("model-options")
+			.debug_selector(|| "model-options".into())
+			.flex()
+			.flex_col()
+			.gap(gpui::px(6.))
+			.child(
+				ui_motion::menu_surface(gpui::div())
+					.p(gpui::px(5.))
+					.child(self.model_palette(cx))
+					.child(gpui::div().mt(gpui::px(6.)).child(self.service_tier_picker(cx))),
+			)
+			.child(
+				ui_motion::menu_surface(gpui::div())
+					.px(gpui::px(7.))
+					.py(gpui::px(2.))
+					.rounded_full()
+					.flex()
+					.items_center()
+					.child(gpui::div().flex_1().min_w_0().child(self.effort_scale(cx))),
+			)
+			.into_any_element()
 	}
 
 	pub(super) fn select_composer_option(
@@ -1075,6 +1280,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		if menu == "model" {
+			if let Some(effort) = self
+				.composer_effort_value(cx)
+				.and_then(|effort| ConversationReasoningEffort::new(effort).ok())
+			{
+				self.effort = effort;
+			}
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
 			self.mark_model_intent(cx);
 			self.reconcile_selected_model_effort(cx);
@@ -1223,13 +1434,13 @@ impl AgentSurface {
 	fn attach_paths(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
 		for path in paths {
 			if self.attachments.len() >= 16 {
-				self.feedback = "Attach at most 16 files or folders.".into();
+				self.feedback = Feedback::warning("Attach at most 16 files or folders.");
 
 				break;
 			}
 
 			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file() || p.is_dir()) else {
-				self.feedback = "The selected file or folder is not available.".into();
+				self.feedback = Feedback::error("The selected file or folder is not available.");
 
 				continue;
 			};
@@ -1258,7 +1469,8 @@ impl AgentSurface {
 				ClipboardEntry::Image(image) => match save_clipboard_image(image) {
 					Ok(path) => self.attach_paths(vec![path], cx),
 					Err(error) => {
-						self.feedback = format!("Cannot attach clipboard image: {error}");
+						self.feedback =
+							Feedback::error(format!("Cannot attach clipboard image: {error}"));
 
 						cx.notify();
 					},
@@ -1344,6 +1556,68 @@ mod tests {
 		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
 		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
 	};
+
+	#[gpui::test]
+	fn inspector_readback_does_not_remove_glass_or_change_the_draft(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			assert!(s.native_composer_requested(true, true));
+			s.resources = Some((
+				s.selected.clone().unwrap(),
+				Some(decodex_protocol::AgentResourcesResult::Unavailable),
+			));
+			s.workspace.details_visible = true;
+			assert!(s.native_composer_requested(true, true));
+			s.workspace.details_visible = false;
+			assert!(s.native_composer_requested(true, true));
+			assert!(!s.native_composer_requested(false, true));
+			assert!(!s.native_composer_requested(true, false));
+			crate::ui_theme::composer_glass(Some(false));
+			assert!(!s.native_composer_requested(true, true));
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			crate::ui_theme::composer_glass(Some(true));
+			assert!(s.native_composer_requested(true, true));
+		});
+	}
+
+	#[test]
+	fn native_model_menu_fits_above_the_trigger_without_covering_it() {
+		let viewport = gpui::size(gpui::px(900.), gpui::px(720.));
+		for x in [100., 850.] {
+			let trigger = gpui::Bounds::new(
+				gpui::point(gpui::px(x), gpui::px(650.)),
+				gpui::size(gpui::px(120.), gpui::px(28.)),
+			);
+			let menu = super::model_menu_bounds(trigger, 240., viewport);
+			assert_eq!(menu.bottom(), trigger.top());
+			assert!(menu.left() >= gpui::px(8.));
+			assert!(menu.right() <= viewport.width - gpui::px(8.));
+		}
+	}
+
+	#[gpui::test]
+	fn model_menu_stays_near_its_button_in_a_tall_composer(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content(&"Draft line\n".repeat(6), cx));
+			s.composer_menu = Some("model");
+			s.composer_menu_content = Some("model");
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(|w, _| w.refresh());
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let trigger = visual.debug_bounds("composer-model").unwrap();
+		let menu = visual.debug_bounds("model-options").unwrap();
+		let composer = visual.debug_bounds("agent-composer").unwrap();
+		let gap = f32::from(trigger.top() - menu.bottom());
+		assert!((4. ..=16.).contains(&gap), "menu gap: {gap}");
+		assert!(menu.bottom() > composer.top() + gpui::px(50.));
+	}
 
 	#[gpui::test]
 	fn native_and_main_composers_keep_the_same_geometry(cx: &mut gpui::TestAppContext) {
@@ -1463,6 +1737,63 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn native_completion_stops_response_ui_before_the_snapshot_catches_up(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::shell::agent_surface::native_timeline::Binding;
+		use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.clear(cx));
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			work.active_turn_id = Some("turn".into());
+			work.dispatch_state = AgentDispatchStateDto::Running;
+			let work = work.clone();
+			s.timeline.native.binding = Some(Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			});
+			assert!(s.response_in_progress(&work));
+			assert!(s.stop_button(cx));
+
+			for status in ["completed", "interrupted", "failed"] {
+				s.timeline.native.entries = vec![AgentTimelineEntry {
+					position: 1,
+					content: AgentTimelineContent::TurnBoundary {
+						turn_id: "turn".into(),
+						completed: true,
+						status: Some(status.into()),
+						duration_ms: None,
+						usage_summary: None,
+						usage: None,
+						error: None,
+					},
+				}];
+				assert!(!s.response_in_progress(&work));
+				assert!(s.running_turn().is_none());
+				assert!(!s.stop_button(cx));
+			}
+
+			let mut newer = work.clone();
+			newer.active_turn_id = Some("next-turn".into());
+			assert!(s.response_in_progress(&newer), "an old completion must not stop new work");
+			s.timeline.native.binding.as_mut().unwrap().thread = "other-thread".into();
+			assert!(s.response_in_progress(&work), "completion belongs to its exact conversation");
+		});
+	}
+
+	#[gpui::test]
 	fn delivered_messages_do_not_keep_the_composer_waiting_after_stop(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1482,7 +1813,8 @@ mod tests {
 				},
 			);
 
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
 
@@ -1645,7 +1977,7 @@ mod tests {
 
 			assert!(!s.escape_stop_armed());
 			assert_eq!(
-				s.feedback, "No service profile is configured.",
+				s.feedback.message, "No service profile is configured.",
 				"second Escape reaches the native interrupt path"
 			);
 		});
@@ -1664,7 +1996,8 @@ mod tests {
 			assert!(s.awaiting_start(cx));
 
 			s.sending = false;
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			assert!(s.awaiting_start(cx));
 
@@ -1739,7 +2072,7 @@ mod tests {
 
 			s.interrupt_current(cx);
 
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			s.uncertain = false;
 

@@ -515,6 +515,16 @@ impl ServiceApplication {
 
 		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			if let Some(agent) = &self.agent {
+				// A failed restore cannot confirm which retained threads are active.
+				// Report failure instead of presenting the archive gate as endless startup.
+				if !agent.connection_initializing()
+					&& agent.guardian_generation().is_none()
+					&& !snapshot.work_items.is_empty()
+				{
+					return QueryResultPayload::AgentSnapshot(
+						decodex_protocol::AgentSnapshotResult::Unavailable,
+					);
+				}
 				agent.retain_active_work(snapshot).await;
 			}
 			let after = match &self.agent {
@@ -522,7 +532,7 @@ impl ServiceApplication {
 				None => None,
 			};
 			snapshot.runtime_source = if before == after { after } else { None };
-			snapshot.connection_initializing = initializing
+			snapshot.connection_initializing |= initializing
 				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 
 			if !snapshot.is_valid() {
@@ -2572,20 +2582,7 @@ impl Application for ServiceApplication {
 			tasks.push(Box::pin(runtime.clone().daemon_service(stop.clone())));
 		}
 		if let Some(observations) = &self.account_observations {
-			let observations = observations.clone();
-			let startup = self.agent.as_ref().map(crate::agent_host::AgentHost::startup_state);
-			let mut stop = stop.clone();
-			tasks.push(Box::pin(async move {
-				// Background provider HTTP reads hold the same account lock as process
-				// admission. Let initial recovery acquire it before quota/profile refresh.
-				if let Some(mut startup) = startup {
-					tokio::select! {
-						_ = startup.wait_for(|initializing| !*initializing) => {},
-						_ = stop.wait_for(|stopped| *stopped) => return,
-					}
-				}
-				observations.daemon_service(stop).await;
-			}));
+			tasks.push(Box::pin(observations.clone().daemon_service(stop)));
 		}
 
 		tasks
@@ -4915,7 +4912,7 @@ fn agent_assistant_history(
 		.unwrap_or_default();
 	let status = value.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str);
 
-	if text.is_empty() {
+	if text.trim().is_empty() {
 		if status == Some("completed")
 			&& value
 				.pointer("/threadReadback/exactTurnReadback")
@@ -4923,7 +4920,13 @@ fn agent_assistant_history(
 				== Some(true)
 			&& value.pointer("/threadReadback/truncated").and_then(serde_json::Value::as_bool)
 				== Some(false)
-			&& messages.is_some_and(|messages| messages.as_array().is_some_and(Vec::is_empty))
+			&& messages.is_some_and(|messages| {
+				messages.as_array().is_some_and(|items| {
+					items.iter().all(|item| {
+						item["text"].as_str().is_some_and(|text| text.trim().is_empty())
+					})
+				})
+			})
 			&& value.pointer("/terminal/turn/error").is_none_or(serde_json::Value::is_null)
 		{
 			return ("system", "Completed without a text response.".into());
@@ -5075,27 +5078,26 @@ fn agent_request_field_names(method: &str) -> Option<&'static [&'static str]> {
 	Some(keys)
 }
 
-fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
-	kind == "unsent_input"
-		|| !matches!(
-			event_kind,
-			"agent_turn_completed"
-				| "worker_turn_completed"
-				| "user_message"
-				| "voice_user"
-				| "voice_assistant"
-				| "activity_started"
-				| "activity_completed"
-				| "assistant_message"
-				| "context_compacted"
-				| "auth_recovery_started"
-				| "auth_recovery_completed"
-				| "strict_review_notice"
-				| "config_warning"
-				| "native_warning"
-				| "partial_output"
-				| "plan_updated"
-		)
+fn agent_history_shows_disposition(event_kind: &str) -> bool {
+	!matches!(
+		event_kind,
+		"agent_turn_completed"
+			| "worker_turn_completed"
+			| "user_message"
+			| "voice_user"
+			| "voice_assistant"
+			| "activity_started"
+			| "activity_completed"
+			| "assistant_message"
+			| "context_compacted"
+			| "auth_recovery_started"
+			| "auth_recovery_completed"
+			| "strict_review_notice"
+			| "config_warning"
+			| "native_warning"
+			| "partial_output"
+			| "plan_updated"
+	)
 }
 
 fn agent_history_event_display(
@@ -5189,9 +5191,9 @@ fn render_agent_history(
 		if let Some(note) = event
 			.disposition_note
 			.as_ref()
-			.filter(|_| agent_history_shows_disposition(&event.event_kind, kind))
+			.filter(|_| agent_history_shows_disposition(&event.event_kind))
 		{
-			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
+			text.push_str("\n\nDisposition: ");
 			text.push_str(note);
 		}
 
@@ -5398,6 +5400,11 @@ fn agent_history_receipt(
 	}
 
 	Some(decodex_protocol::AgentHistoryReceiptDto {
+		unsent_reason: event.disposition_note.clone().filter(|_| {
+			event.event_kind == "user_message"
+				&& event.disposition == Some(AgentDisposition::UserDecision)
+				&& event.delivered_turn_id.is_none()
+		}),
 		voice_session_id: agent_voice_receipt_session(event),
 		event_kind: event.event_kind.clone(),
 		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
@@ -6134,12 +6141,11 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	let ProductStore::Available(store) = store else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let records = match store
+	let Ok(records) = store
 		.read_agent_snapshot(MAX_AGENT_WORK_ITEMS, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS)
 		.await
-	{
-		Ok(records) => records,
-		Err(_) => return decodex_protocol::AgentSnapshotResult::Unavailable,
+	else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
 	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
 		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
@@ -6163,6 +6169,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 
 	let snapshot = AgentSnapshotDto {
+		agent_slots: Default::default(),
 		context_references: references
 			.into_iter()
 			.map(|r| decodex_protocol::AgentContextReferenceDto {
@@ -6345,7 +6352,11 @@ mod history_receipt_tests {
 		assert_eq!(rows[0].kind, "unsent_input");
 		assert!(rows[0].text.contains("Keep this input"));
 		assert!(rows[0].text.contains("Attached: /tmp/retained.txt"));
-		assert!(rows[0].text.contains("Not sent: the local connection queue is full."));
+		assert!(!rows[0].text.contains("Not sent:"));
+		assert_eq!(
+			rows[0].receipt.as_ref().unwrap().unsent_reason.as_deref(),
+			Some("Not sent: the local connection queue is full.")
+		);
 
 		for turn in ["", "acknowledged"] {
 			event.delivered_turn_id = Some(turn.into());
@@ -6354,6 +6365,7 @@ mod history_receipt_tests {
 
 			assert_eq!(rows[0].kind, "user", "a claimed or acknowledged turn is not known-unsent");
 			assert!(!rows[0].text.contains("Not sent:"));
+			assert!(rows[0].receipt.as_ref().unwrap().unsent_reason.is_none());
 		}
 	}
 
@@ -6530,10 +6542,17 @@ mod tests {
 	#[test]
 	fn exact_successful_empty_turn_is_a_record_not_an_execution_warning() {
 		let mut value = serde_json::json!({"terminal":{"turn":{"status":"completed"}},"threadReadback":{"assistantMessages":[],"exactTurnReadback":true,"truncated":false}});
-		assert_eq!(
-			super::agent_assistant_history(&value, &mut false),
-			("system", "Completed without a text response.".into())
-		);
+		for messages in [
+			serde_json::json!([]),
+			serde_json::json!([{"text":""}]),
+			serde_json::json!([{"text":"  "},{"text":""}]),
+		] {
+			value["threadReadback"]["assistantMessages"] = messages;
+			assert_eq!(
+				super::agent_assistant_history(&value, &mut false),
+				("system", "Completed without a text response.".into())
+			);
+		}
 		for (pointer, replacement) in [
 			("/terminal/turn/status", serde_json::json!("failed")),
 			("/threadReadback/exactTurnReadback", serde_json::json!(false)),

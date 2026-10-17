@@ -1,6 +1,6 @@
 //! Exact-thread archive membership. Native thread/read has no archived field.
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{BTreeSet, HashMap, HashSet},
 	time::Duration,
 };
 
@@ -24,8 +24,10 @@ pub enum ThreadArchiveState {
 
 impl AppServerClient {
 	/// Observe only the requested bindings, stopping when every identity is found.
-	/// Positive observations survive a later page failure or deadline. An absent
-	/// identity has no observation and must keep its previous visibility.
+	/// Positive observations survive a later page failure or deadline. Each page
+	/// has a deadline so a progressing large catalog can finish. An absent
+	/// identity has no observation after an incomplete scan and must keep its
+	/// previous visibility. Only two complete lists establish NotFound.
 	pub async fn observe_thread_archives(
 		&self,
 		threads: &HashSet<String>,
@@ -35,12 +37,13 @@ impl AppServerClient {
 		if pending.is_empty() || pending.iter().any(|id| valid_id(id).is_err()) {
 			return observed;
 		}
+		let directories = self.archive_directories(threads).await;
 		let mut budget = MAX_FRAME_BYTES;
 		let scan = async {
 			// Most retained work is active. Do not scan unrelated archives once
 			// the active list has supplied every requested identity.
 			for archived in [false, true] {
-				self.visit_archive_catalog(None, archived, &mut budget, |id| {
+				self.visit_archive_catalog(directories.clone(), archived, &mut budget, |id| {
 					if pending.remove(id) {
 						observed.insert(
 							id.to_owned(),
@@ -60,8 +63,29 @@ impl AppServerClient {
 			}
 			Ok::<_, ClientError>(())
 		};
-		let _ = time::timeout(Duration::from_secs(8), scan).await;
+		if scan.await.is_ok() {
+			for id in pending {
+				observed.insert(id, ThreadArchiveState::NotFound);
+			}
+		}
 		observed
+	}
+
+	async fn archive_directories(&self, threads: &HashSet<String>) -> Option<Value> {
+		let mut directories = BTreeSet::new();
+		for thread in threads {
+			let response = time::timeout(
+				Duration::from_secs(8),
+				self.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false})),
+			)
+			.await
+			.ok()?
+			.ok()?;
+			directories.insert(archive_directory(&response, thread).ok()?.to_owned());
+		}
+		// Native metadata supplies the scope. If a binding cannot be read, inspect
+		// the full catalogs so absence is never inferred from a stale local folder.
+		Some(serde_json::json!(directories))
 	}
 
 	/// Inspect both lists with explicit provider/source filters and bounded pagination.
@@ -117,7 +141,7 @@ impl AppServerClient {
 		budget: &mut usize,
 	) -> Result<HashSet<String>, ClientError> {
 		let mut ids = HashSet::new();
-		self.visit_archive_catalog(cwd, archived, budget, |id| {
+		self.visit_archive_catalog(cwd.map(Value::from), archived, budget, |id| {
 			ids.insert(id.to_owned());
 			target == Some(id)
 		})
@@ -127,7 +151,7 @@ impl AppServerClient {
 
 	async fn visit_archive_catalog(
 		&self,
-		cwd: Option<&str>,
+		cwd: Option<Value>,
 		archived: bool,
 		budget: &mut usize,
 		mut observe: impl FnMut(&str) -> bool,
@@ -142,10 +166,12 @@ impl AppServerClient {
 				"sortKey":"updated_at",
 				"sourceKinds":["cli","vscode","exec","appServer","subAgent","subAgentReview","subAgentCompact","subAgentThreadSpawn","subAgentOther","unknown"]
 			});
-			if let Some(cwd) = cwd {
-				params["cwd"] = serde_json::json!(cwd);
+			if let Some(cwd) = &cwd {
+				params["cwd"] = cwd.clone();
 			}
-			let page = self.request("thread/list", params).await?;
+			let page = time::timeout(Duration::from_secs(8), self.request("thread/list", params))
+				.await
+				.map_err(|_| ClientError::Io)??;
 			let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 			if data.len() > 100 {
 				return Err(ClientError::InvalidFrame);
@@ -239,6 +265,23 @@ mod tests {
 		serde_json::json!({"data":ids.iter().map(|id|serde_json::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
 	}
 
+	async fn next_catalog_request(
+		lines: &mut tokio::io::Lines<impl tokio::io::AsyncBufRead + Unpin>,
+		writer: &mut (impl tokio::io::AsyncWrite + Unpin),
+	) -> Value {
+		loop {
+			let request: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			if request["method"] != "thread/read" {
+				assert_eq!(request["params"]["cwd"], serde_json::json!(["/workspace"]));
+				return request;
+			}
+			assert_eq!(request["params"]["includeTurns"], false);
+			let response = serde_json::json!({"id":request["id"],"result":{"thread":{"id":request["params"]["threadId"],"cwd":"/workspace"}}});
+			writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+		}
+	}
+
 	#[tokio::test]
 	async fn observes_external_archive_and_restore_on_the_same_connection() {
 		let (local, remote) = io::duplex(65_536);
@@ -253,8 +296,7 @@ mod tests {
 				(true, page(&["target"], serde_json::json!("unrelated-archive-page"))),
 				(false, page(&["root", "target"], serde_json::json!("unrelated-active-page"))),
 			] {
-				let request: Value =
-					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				let request = next_catalog_request(&mut lines, &mut w).await;
 				assert_eq!(request["method"], "thread/list");
 				assert_eq!(request["params"]["archived"], archived);
 				assert_eq!(request["params"]["sortKey"], "updated_at");
@@ -282,6 +324,53 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn progressing_archive_lists_confirm_absent_bindings_after_eight_seconds() {
+		let (local, remote) = io::duplex(65_536);
+		let (r, w) = io::split(local);
+		let (client, _events) = AppServerClient::from_io(r, w);
+		let server = tokio::spawn(async move {
+			let (r, mut w) = io::split(remote);
+			let mut lines = BufReader::new(r).lines();
+			for (archived, ids, next) in [
+				(false, vec!["active"], Value::Null),
+				(true, vec!["archived"], serde_json::json!("last")),
+				(true, vec![], Value::Null),
+			] {
+				let request = next_catalog_request(&mut lines, &mut w).await;
+				assert_eq!(request["params"]["archived"], archived);
+				// Every page progresses within its deadline, but the catalog takes nine seconds.
+				tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+				w.write_all(
+					format!(
+						"{}\n",
+						serde_json::json!({"id":request["id"],"result":page(&ids, next)})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			}
+		});
+		let observed = client
+			.observe_thread_archives(&std::collections::HashSet::from([
+				"active".into(),
+				"archived".into(),
+				"missing".into(),
+			]))
+			.await;
+		assert_eq!(
+			observed,
+			std::collections::HashMap::from([
+				("active".into(), ThreadArchiveState::Active),
+				("archived".into(), ThreadArchiveState::Archived),
+				("missing".into(), ThreadArchiveState::NotFound),
+			])
+		);
+		client.close();
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn failed_later_page_preserves_positive_observations_without_inferring_missing_state() {
 		let (local, remote) = io::duplex(65_536);
 		let (r, w) = io::split(local);
@@ -289,12 +378,29 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
+			let request: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(request["method"], "thread/read");
+			w.write_all(
+				format!(
+					"{}\n",
+					serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"unavailable"}})
+				)
+				.as_bytes(),
+			)
+			.await
+			.unwrap();
 			for response in [
 				page(&["active"], serde_json::json!("next")),
 				serde_json::json!({"data":null,"nextCursor":null}),
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "thread/list");
+				assert!(
+					request["params"].get("cwd").is_none(),
+					"unknown metadata requires the complete catalogs"
+				);
 				w.write_all(
 					format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
 						.as_bytes(),

@@ -5,6 +5,34 @@ use super::{
 	StatefulInteractiveElement, Styled, TEXT_MUTED,
 };
 
+/// Keep adjacent solid strokes together without changing their triangle order.
+/// Separate paths let unrelated node backgrounds split the edge rendering into
+/// repeated full-window intermediate passes.
+#[derive(Default)]
+pub(super) struct StrokeBatch(Option<(u32, gpui::Path<gpui::Pixels>)>);
+
+impl StrokeBatch {
+	pub(super) fn push(
+		&mut self,
+		path: gpui::Path<gpui::Pixels>,
+		color: u32,
+	) -> Option<(u32, gpui::Path<gpui::Pixels>)> {
+		if let Some((_, previous)) = self.0.as_mut().filter(|(previous, _)| *previous == color) {
+			previous.bounds = previous.bounds.union(&path.bounds);
+			previous.vertices.extend(path.vertices);
+			None
+		} else {
+			self.0.replace((color, path))
+		}
+	}
+
+	pub(super) fn paint(&mut self, window: &mut gpui::Window) {
+		if let Some((color, path)) = self.0.take() {
+			window.paint_path(path, gpui::rgba(color));
+		}
+	}
+}
+
 impl AgentSurface {
 	pub(super) fn relation_legend_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
 		let hidden = self.work_board.view.legend_hidden;

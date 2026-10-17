@@ -4,9 +4,11 @@
 #[path = "shell_account_activity.rs"] mod account_activity;
 #[path = "account_feedback.rs"] mod account_feedback;
 #[path = "account_identity.rs"] mod account_identity;
+#[path = "shell_diagnostics.rs"] mod diagnostics;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
+#[path = "native_titlebar.rs"] mod native_titlebar;
 #[path = "shell_navigation.rs"] mod navigation;
 #[path = "ordinary_drafts.rs"] mod ordinary_drafts;
 #[path = "quota_meter.rs"] mod quota_meter;
@@ -85,13 +87,14 @@ use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
 	AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
-	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountSelectionModeDto,
-	AppServerCapability, ClientFailure, ClientProfile, ConversationNativeSettings,
-	ConversationRecoveryAction, ConversationState, ConversationSummary, DesktopOrdinaryDraft,
-	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, EntityRevision, HistoryItemDto,
-	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
-	NativeProcessDiagnostics, WireText,
+	AccountProfileResult, AccountSelectionModeDto, AppServerCapability, ClientFailure,
+	ClientProfile, ConversationNativeSettings, ConversationRecoveryAction, ConversationState,
+	ConversationSummary, DesktopOrdinaryDraft, DoctorComponent, DoctorIssue, DoctorStatus,
+	EntityId, EntityRevision, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey, NativeProcessDiagnostics, WireText,
 };
+#[cfg(any(test, feature = "visual-capture"))]
+use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto};
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
 
@@ -100,6 +103,8 @@ gpui::actions!(
 	[
 		/// Reload workspace reads without restarting execution.
 		ReloadWorkspace,
+		/// Close Settings or hide the workspace while keeping the menu bar available.
+		CloseWindow,
 		FocusNext,
 		FocusPrevious,
 		ActivateDestination,
@@ -107,7 +112,6 @@ gpui::actions!(
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
-		CloseSettings,
 		RefreshHealth,
 		ToggleSidebar,
 		ShrinkPanel,
@@ -208,6 +212,7 @@ pub(crate) struct Shell {
 	account_status: Option<SharedString>,
 	health_query: HealthQuery,
 	health: HealthSnapshot,
+	diagnostics: diagnostics::Diagnostics,
 	conversations: Conversations,
 	quick: ConversationsSnapshot,
 	history_pager: Option<HistoryPager>,
@@ -218,7 +223,8 @@ pub(crate) struct Shell {
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
-	titlebar_drag_pending: bool,
+	titlebar: native_titlebar::Titlebar,
+	performance: Entity<crate::ui_performance::PerformanceIsland>,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -259,11 +265,16 @@ impl Shell {
 		self.reset_cards.profile = profile.clone();
 
 		let cwd = self.conversations.working_directory();
+		let connection = self.connection;
 
 		self.agent.update(cx, |surface, cx| {
 			surface.bind_profile(profile, cx);
 			surface.seed_context(cwd, vec![], cx);
-			surface.refresh(cx);
+			match connection {
+				ConnectionView::Online { .. } => surface.refresh(cx),
+				ConnectionView::Connecting { .. } | ConnectionView::OfflineRetrying { .. } => {},
+				_ => surface.mark_stale(cx),
+			}
 		});
 		self.reset_ordinary_draft_binding(cx);
 
@@ -294,6 +305,7 @@ impl Shell {
 		.detach();
 
 		let agent = cx.new(AgentSurface::new);
+		let performance = cx.new(crate::ui_performance::PerformanceIsland::new);
 
 		cx.observe(&agent, |shell, _, cx| {
 			shell.record_navigation(cx);
@@ -320,6 +332,7 @@ impl Shell {
 
 		window.focus(&root_focus, cx);
 		Self {
+			performance,
 			settings_window: None,
 			settings_selected: Destination::Settings,
 			selected: Destination::Agent,
@@ -361,6 +374,7 @@ impl Shell {
 			account_status: None,
 			health_query,
 			health,
+			diagnostics: Default::default(),
 			conversations,
 			quick,
 			history_pager: None,
@@ -374,7 +388,7 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
-			titlebar_drag_pending: false,
+			titlebar: Default::default(),
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -971,6 +985,7 @@ impl Shell {
 	fn request_health_refresh(&mut self, cx: &mut Context<Self>) {
 		if self.health_query.refresh() {
 			self.health = self.health_query.snapshot();
+			self.diagnostics.copied = false;
 
 			cx.notify();
 		}
@@ -1869,10 +1884,11 @@ impl Render for Shell {
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
-			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx)
+			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
+			agent.prepare_native_model_menu(window, cx);
 		});
 
-		let controls = floating_window_controls(self, &presentation, window, cx);
+		let controls = floating_window_controls(self, &presentation, cx);
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.prepare_native_status(window, cx);
@@ -1883,7 +1899,7 @@ impl Render for Shell {
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
 
 		root.relative()
-			.child(ui_motion::arrival(route, content))
+			.child(crate::ui_layout::panel(ui_motion::arrival(route, content)))
 			.child(controls)
 			.child(gpui::deferred(status).priority(3))
 		// Keep global notifications above deferred composer menus throughout dismissal.
@@ -1976,7 +1992,7 @@ impl Render for SettingsWindow {
 			.bg(gpui::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
-			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
+			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
 			}))
@@ -2174,8 +2190,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	composer_input::bind_keys(cx);
 
 	cx.bind_keys([
-		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
+		KeyBinding::new("cmd-w", CloseWindow, Some("SettingsWindow")),
+		KeyBinding::new("escape", CloseWindow, Some("SettingsWindow")),
 	]);
 	cx.bind_keys([
 		KeyBinding::new("cmd-shift-r", ReloadWorkspace, None),
@@ -2527,7 +2543,15 @@ fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) 
 			ConnectionView::Online { generation: before, .. },
 			ConnectionView::Online { generation: after, .. },
 		) => before != after,
-		_ => previous != next,
+		(ConnectionView::Online { .. }, _) => true,
+		(
+			_,
+			ConnectionView::Incompatible(_)
+			| ConnectionView::Quarantined { .. }
+			| ConnectionView::ShuttingDown
+			| ConnectionView::Stopped,
+		) => previous != next,
+		_ => false,
 	}
 }
 
@@ -2541,13 +2565,38 @@ fn online_cursor_progress_does_not_invalidate_the_conversation() {
 	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
 }
 
+#[test]
+fn connection_progress_is_not_a_disconnect_and_terminal_startup_failures_are_actionable() {
+	let connecting = ConnectionView::Connecting { attempt: 1 };
+	let retrying =
+		ConnectionView::OfflineRetrying { next_attempt: 2, delay: Duration::from_millis(100) };
+	let retry = ConnectionView::Connecting { attempt: 2 };
+	let online = ConnectionView::Online { generation: 1, applied: None };
+	for (before, after) in [(connecting, retrying), (retrying, retry), (retry, online)] {
+		assert!(!connection_requires_recovery(before, after));
+	}
+	assert!(connection_requires_recovery(online, retrying));
+	for terminal in [
+		ConnectionView::Stopped,
+		ConnectionView::Incompatible(crate::client_lifecycle::CompatibilityReason::InvalidEndpoint),
+		ConnectionView::Quarantined {
+			reason: crate::client_lifecycle::QuarantineReason::StableServerIdentity,
+			recovery: crate::client_lifecycle::QuarantineRecovery::OperatorRequired,
+		},
+	] {
+		assert!(connection_requires_recovery(connecting, terminal));
+		assert!(!connection_requires_recovery(terminal, terminal));
+	}
+}
+
 fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx: &mut AsyncApp) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
 			if connection_requires_recovery(shell.connection, view) {
 				shell.account_activity.clear();
 				shell.agent.update(cx, AgentSurface::mark_stale);
-			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
+			}
+			if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
 				shell.agent.update(cx, |s, cx| s.refresh(cx));
 			}
 
@@ -2650,64 +2699,31 @@ fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize)
 fn floating_window_controls(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
-	_window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let conversation_header = (shell.selected == Destination::Agent).then(|| {
-		shell.agent.update(cx, |agent, cx| {
-			let (left, right) = agent.topbar_insets(_window);
-			gpui::div()
-				.absolute()
-				.top_0()
-				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
-				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
-				.h_full()
-				.flex()
-				.items_center()
-				.justify_center()
-				.min_w_0()
-				.child(
-					gpui::div()
-						.id("conversation-topbar-controls")
-						.max_w(gpui::px(360.))
-						.w_full()
-						.min_w_0()
-						.child(agent.work_context(_window, cx)),
-				)
-		})
-	});
+	shell.titlebar.begin_frame();
+
 	gpui::div()
 		.id("floating-window-controls")
+		.debug_selector(|| "window-drag-region".into())
+		.occlude()
 		.role(Role::Navigation)
 		.aria_label("Window controls")
 		.absolute()
-		.top(gpui::px(CONTROL_MARGIN))
-		.left(gpui::px(CONTROL_MARGIN))
-		.right(gpui::px(CONTROL_MARGIN))
-		.h(gpui::px(CONTROL_GROUP_HEIGHT))
+		.top_0()
+		.left_0()
+		.right_0()
+		.h(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+		.p(gpui::px(CONTROL_MARGIN))
 		.flex()
 		.items_center()
 		.justify_between()
 		.window_control_area(WindowControlArea::Drag)
-		.on_mouse_down(
-			MouseButton::Left,
-			cx.listener(|shell, _, _, _| shell.titlebar_drag_pending = true),
-		)
-		.on_mouse_up(
-			MouseButton::Left,
-			cx.listener(|shell, _, _, _| shell.titlebar_drag_pending = false),
-		)
-		.on_mouse_move(cx.listener(|shell, _, window, _| {
-			if shell.titlebar_drag_pending {
-				shell.titlebar_drag_pending = false;
-
+		.when(!cfg!(target_os = "macos"), |header| {
+			header.on_mouse_down(MouseButton::Left, |_, window, cx| {
 				window.start_window_move();
-			}
-		}))
-		.on_click(|event, window, _| {
-			if event.click_count() == 2 {
-				window.titlebar_double_click();
-			}
+				cx.stop_propagation();
+			})
 		})
 		.child(
 			ui_theme::floating_group()
@@ -2717,7 +2733,24 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
-		.children(conversation_header)
+		.child(
+			gpui::div()
+				.absolute()
+				.top(gpui::px(CONTROL_MARGIN))
+				.left_0()
+				.right_0()
+				.flex()
+				.justify_center()
+				.child(
+					gpui::div()
+						.relative()
+						.child(shell.performance.clone())
+						.when(crate::ui_performance::preference(None), |island| {
+							island.child(shell.titlebar.control())
+						}),
+				),
+		)
+		.child(shell.titlebar.sync())
 		.into_any_element()
 }
 
@@ -2751,10 +2784,10 @@ fn topbar_controls(
 				.child(agent_panel_control(shell, 2, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
-			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
+			controls.child(topbar_sessions_toggle(shell, left_sidebar_visible, cx))
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
-			controls.child(topbar_inspector_toggle(inspector_visible, cx))
+			controls.child(topbar_inspector_toggle(shell, inspector_visible, cx))
 		})
 		.when(
 			matches!(shell.selected, Destination::Agent | Destination::Conversations),
@@ -2773,6 +2806,7 @@ fn topbar_controls(
 		.child(
 			gpui::div()
 				.id("open-settings")
+				.debug_selector(|| "open-settings".into())
 				.role(Role::Button)
 				.aria_label("Open settings")
 				.tooltip(|_, cx| cx.new(|_| ControlTooltip("Settings · Command-,")).into())
@@ -2824,6 +2858,8 @@ fn topbar_controls(
 				.on_click(cx.listener(|shell, _, _, cx| {
 					shell.open_settings_window(Destination::Settings, cx);
 				}))
+				.relative()
+				.child(shell.titlebar.bordered_control(1.))
 				.child(workspace_symbols::icon(workspace_symbols::Symbol::Settings))
 				.smooth(),
 		)
@@ -2846,6 +2882,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 
 	gpui::div()
 		.id(("agent-panel-control", index))
+		.debug_selector(move || format!("agent-panel-control-{index}"))
 		.role(Role::Button)
 		.when(enabled, |el| el.tab_index(0))
 		.aria_label(label)
@@ -2897,6 +2934,8 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				cx.stop_propagation();
 			}
 		}))
+		.relative()
+		.child(shell.titlebar.control())
 		.child(
 			gpui::div()
 				.flex()
@@ -2911,16 +2950,16 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 	match snapshot.load {
 		HealthLoadState::NeverRequested => HealthPresentation {
-			label: "Not requested",
-			detail: "No health report is available.",
+			label: "No report yet",
+			detail: "Check local services to look for a problem.",
 			color: 0x64748b,
 		},
 		HealthLoadState::Loading => HealthPresentation {
-			label: "Loading",
+			label: "Checking local services…",
 			detail: if snapshot.report.is_some() {
-				"Refreshing the retained report."
+				"The previous results remain below until this check finishes."
 			} else {
-				"Requesting the current report."
+				"This checks local services. It does not start a conversation."
 			},
 			color: 0x60a5fa,
 		},
@@ -2934,9 +2973,16 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 			});
 
 			if core_statuses.iter().all(|status| *status == Some(DoctorStatus::Ready)) {
+				if !diagnostics::issues(snapshot).is_empty() {
+					return HealthPresentation {
+						label: "Some features need attention",
+						detail: "Review the issue below, then check again.",
+						color: WB_AMBER,
+					};
+				}
 				HealthPresentation {
-					label: "Core ready",
-					detail: "All required Decodex services are ready.",
+					label: "Local services are ready",
+					detail: "No local configuration, storage or connection errors were found.",
 					color: 0x22c55e,
 				}
 			} else if core_statuses
@@ -2944,31 +2990,31 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				.any(|status| matches!(status, Some(DoctorStatus::Unavailable(_))))
 			{
 				HealthPresentation {
-					label: "Core unavailable",
-					detail: "At least one required Decodex service is unavailable.",
+					label: "A local service needs attention",
+					detail: "Review the issue below, then check again.",
 					color: crate::ui_theme::ERROR,
 				}
 			} else {
 				HealthPresentation {
-					label: "Core not verified",
-					detail: "At least one required Decodex service has not been verified.",
+					label: "Some local checks are incomplete",
+					detail: "Check again to update the report.",
 					color: 0xf59e0b,
 				}
 			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
-			label: "Offline",
-			detail: "Health is unavailable while the daemon is offline.",
+			label: "Cannot connect to local services",
+			detail: "Restart Decodex, then check again. Your history and drafts are saved.",
 			color: 0xf97316,
 		},
 		HealthLoadState::Stale => HealthPresentation {
-			label: "Stale",
-			detail: "The retained report belongs to an earlier connection.",
+			label: "Report needs an update",
+			detail: "The connection changed. Check again for current results.",
 			color: 0xf59e0b,
 		},
 		HealthLoadState::Refused => HealthPresentation {
-			label: "Response refused",
-			detail: "The retained report was not replaced.",
+			label: "Could not update the report",
+			detail: "Check again. The previous results have not changed.",
 			color: crate::ui_theme::ERROR,
 		},
 	}
@@ -3078,7 +3124,7 @@ fn health_component_row(
 		.gap_4()
 		.border_b_1()
 		.border_color(gpui::rgba(0xffffff0a))
-		.text_size(gpui::px(11.0))
+		.text_size(gpui::px(BODY_SIZE))
 		.text_color(gpui::rgb(WB_TEXT_MUTED))
 		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty()
@@ -3086,7 +3132,7 @@ fn health_component_row(
 			|element| {
 				element.child(
 					gpui::div()
-						.text_size(gpui::px(11.0))
+						.text_size(gpui::px(BODY_SIZE))
 						.text_color(gpui::rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
@@ -3096,8 +3142,7 @@ fn health_component_row(
 			gpui::div()
 				.flex_none()
 				.justify_end()
-				.w(gpui::px(120.0))
-				.min_w(gpui::px(120.0))
+				.min_w(gpui::px(88.0))
 				.flex()
 				.items_center()
 				.gap_2()
@@ -3133,6 +3178,7 @@ fn health_component_section(
 
 	gpui::div()
 		.id(id)
+		.debug_selector(move || id.into())
 		.flex()
 		.flex_col()
 		.child(
@@ -3140,22 +3186,23 @@ fn health_component_section(
 				.px_1()
 				.pb_2()
 				.flex()
-				.items_center()
-				.justify_between()
-				.gap_4()
+				.flex_col()
+				.gap_1()
 				.child(
 					gpui::div()
-						.text_size(gpui::px(11.0))
+						.text_size(gpui::px(BODY_SIZE))
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_color(gpui::rgb(WB_TEXT))
 						.child(title),
 				)
-				.child(
-					gpui::div()
-						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
-						.child(detail),
-				),
+				.when(!detail.is_empty(), |heading| {
+					heading.child(
+						gpui::div()
+							.text_size(gpui::px(BODY_SIZE))
+							.text_color(gpui::rgb(WB_TEXT_FAINT))
+							.child(detail),
+					)
+				}),
 		)
 		.child(
 			gpui::div()
@@ -5183,7 +5230,19 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.execution
 		.reasoning_effort
 		.as_ref()
-		.map_or("Inherited", |effort| effort.as_str())
+		.map(|effort| effort.as_str())
+		.or_else(|| {
+			shell
+				.quick
+				.catalog
+				.as_ref()?
+				.iter()
+				.find(|model| model.model == shell.quick.execution.model)?
+				.default_effort
+				.as_ref()
+				.map(|effort| effort.as_str())
+		})
+		.unwrap_or("Not reported")
 		.to_uppercase();
 	let fast_enabled = shell.quick.execution.fast;
 	let send = composer_send(can_send, cx);
@@ -5562,126 +5621,6 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 	}
 }
 
-fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
-	let presentation = health_presentation(snapshot);
-	let content = gpui::div()
-		.w_full()
-		.max_w(gpui::px(SETTINGS_WIDTH))
-		.child(
-			gpui::div()
-				.id("health-query-status")
-				.role(Role::Status)
-				.aria_label(format!("Health report: {}", presentation.label))
-				.h(gpui::px(44.0))
-				.min_h(gpui::px(44.0))
-				.px_4()
-				.flex()
-				.items_center()
-				.gap_3()
-				.rounded(gpui::px(10.0))
-				.border_1()
-				.border_color(gpui::rgba(0xffffff10))
-				.bg(gpui::rgba(0xffffff04))
-				.child(
-					gpui::div()
-						.size(gpui::px(6.0))
-						.min_w(gpui::px(6.0))
-						.rounded_full()
-						.bg(gpui::rgb(presentation.color)),
-				)
-				.child(
-					gpui::div()
-						.w(gpui::px(144.0))
-						.min_w(gpui::px(144.0))
-						.text_size(gpui::px(11.0))
-						.font_weight(FontWeight::SEMIBOLD)
-						.child(presentation.label),
-				)
-				.child(
-					gpui::div()
-						.min_w_0()
-						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_MUTED))
-						.child(presentation.detail),
-				),
-		)
-		.child(
-			gpui::div()
-				.id("health-components")
-				.pt_5()
-				.flex()
-				.flex_col()
-				.gap_4()
-				.child(
-					gpui::div()
-						.id("health-native-process")
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(
-							gpui::div()
-								.text_size(gpui::px(12.))
-								.font_weight(FontWeight::SEMIBOLD)
-								.child("Active agent process"),
-						)
-						.child(
-							gpui::div()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(WB_TEXT_MUTED))
-								.child(native_process_summary(
-									snapshot
-										.report
-										.as_ref()
-										.and_then(|report| report.native_process()),
-								)),
-						)
-						.child(
-							gpui::div()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(WB_TEXT_MUTED))
-								.child("Process-local snapshot from the latest Health refresh."),
-						),
-				)
-				.child(health_component_section(
-					"health-core-components",
-					"Core services",
-					"Required for normal operation",
-					0,
-					&HEALTH_CORE_COMPONENTS,
-					snapshot,
-				))
-				.child(health_component_section(
-					"health-app-server-components",
-					"Codex app-server",
-					"Capabilities are reported only after an active probe",
-					HEALTH_CORE_COMPONENTS.len(),
-					&HEALTH_APP_SERVER_COMPONENTS,
-					snapshot,
-				))
-				.child(health_component_section(
-					"health-optional-components",
-					"Optional capabilities",
-					"Disabled or unconfigured entries do not block Decodex",
-					HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
-					&HEALTH_OPTIONAL_COMPONENTS,
-					snapshot,
-				)),
-		);
-
-	gpui::div()
-		.id("health-scroll-viewport")
-		.flex_1()
-		.min_h_0()
-		.overflow_y_scroll()
-		.px(gpui::px(SETTINGS_INSET))
-		.pt(gpui::px(SETTINGS_GROUP_GAP))
-		.pb(gpui::px(SETTINGS_INSET))
-		.flex()
-		.justify_center()
-		.child(content)
-		.into_any_element()
-}
-
 fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
 	gpui::div()
 		.id("connection-status")
@@ -5916,7 +5855,7 @@ fn settings_workspace_content(
 			.child(if selected == Destination::Accounts {
 				accounts_content(shell, cx)
 			} else {
-				health_content(&shell.health)
+				diagnostics::content(shell, standalone, cx)
 			})
 			.into_any_element()
 	};
@@ -5963,13 +5902,14 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			// Install the accessibility adapter before the first key-window notification.
 			focus: false,
 			show: false,
-			..Default::default()
+			..ui_motion::window_options()
 		},
 		{
 			let owner = owner.clone();
 
 			move |window, cx| {
 				cx.new(|cx| {
+					ui_motion::observe_activation(window, cx);
 					{
 						window.on_next_frame(|window, _| window_material::configure(window));
 						cx.observe_window_appearance(window, |_, window, _| {
@@ -6217,7 +6157,11 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.into_any_element()
 }
 
-fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn topbar_sessions_toggle(
+	shell: &Shell,
+	left_sidebar_visible: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
 	gpui::div()
 		.id("toggle-left-sidebar")
 		.role(Role::Button)
@@ -6255,11 +6199,17 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
 		}))
+		.relative()
+		.child(shell.titlebar.bordered_control(1.))
 		.child("Sessions")
 		.into_any_element()
 }
 
-fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn topbar_inspector_toggle(
+	shell: &Shell,
+	inspector_visible: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
 	gpui::div()
 		.id("toggle-inspector")
 		.role(Role::Button)
@@ -6293,6 +6243,8 @@ fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> 
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
 		}))
+		.relative()
+		.child(shell.titlebar.bordered_control(1.))
 		.child("Context")
 		.into_any_element()
 }
@@ -6549,6 +6501,8 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 				.font_weight(FontWeight::SEMIBOLD)
 				.text_size(gpui::px(11.0))
 				.text_color(gpui::rgb(WB_TEXT))
+				.relative()
+				.child(shell.titlebar.control())
 				.child("Sessions")
 				.when_some(refresh_status, |element, status| {
 					element.child(
@@ -7405,7 +7359,7 @@ mod tests {
 			can_refresh: true,
 		};
 
-		assert_eq!(shell::health_presentation(&snapshot).label, "Core ready");
+		assert_eq!(shell::health_presentation(&snapshot).label, "Local services are ready");
 		assert_eq!(
 			shell::component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)))
 				.label,
@@ -7420,6 +7374,112 @@ mod tests {
 			shell::component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
 			"Not configured"
 		);
+		assert!(shell::diagnostics::issues(&snapshot).is_empty());
+	}
+
+	#[test]
+	fn diagnostics_show_real_feature_failures_without_repeating_the_same_cause() {
+		let snapshot = HealthSnapshot {
+			load: HealthLoadState::Ready,
+			report: Some(
+				decodex_protocol::DoctorReport::new(
+					decodex_protocol::ServerId::new("diagnostics-test").unwrap(),
+					decodex_protocol::CURRENT_VERSION,
+					DoctorComponent::ALL
+						.into_iter()
+						.map(|component| {
+							let status =
+								if matches!(component, DoctorComponent::AppServerCapability(_)) {
+									DoctorStatus::Unavailable(DoctorIssue::Authentication)
+								} else {
+									DoctorStatus::Ready
+								};
+							decodex_protocol::DoctorCheck::new(component, status)
+						})
+						.collect(),
+				)
+				.unwrap(),
+			),
+			can_refresh: true,
+		};
+		assert_eq!(shell::diagnostics::issues(&snapshot).len(), 1);
+		assert_eq!(shell::health_presentation(&snapshot).label, "Some features need attention");
+		for load in [
+			HealthLoadState::Loading,
+			HealthLoadState::Offline,
+			HealthLoadState::Stale,
+			HealthLoadState::Refused,
+		] {
+			assert!(
+				shell::diagnostics::issues(&HealthSnapshot { load, ..snapshot.clone() }).is_empty()
+			);
+		}
+	}
+
+	#[gpui::test]
+	fn diagnostics_details_scroll_within_a_small_settings_window_and_copy_the_report(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| {
+			s.open_settings_window(Destination::Health, cx);
+			s.visual_accounts_and_health();
+			cx.notify();
+		});
+		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
+		let settings = &mut VisualTestContext::from_window(handle.into(), visual);
+		settings.simulate_resize(gpui::size(gpui::px(860.), gpui::px(480.)));
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		let scroll = shell.read_with(settings, |s, _| s.diagnostics.scroll.clone());
+		let viewport = scroll.bounds();
+		assert!(viewport.size.height > gpui::px(200.) && viewport.bottom() <= gpui::px(480.));
+		assert!(settings.debug_bounds("health-components").is_none());
+		assert_eq!(scroll.max_offset().y, gpui::px(0.));
+		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
+		assert!(viewport.contains(&toggle.center()));
+		settings.simulate_click(toggle.center(), Default::default());
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(shell.read_with(settings, |s, _| s.diagnostics.expanded));
+		assert_eq!(scroll.bounds(), viewport, "details must not enlarge the viewport");
+		assert!(scroll.max_offset().y > viewport.size.height);
+		settings.simulate_event(gpui::ScrollWheelEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-180.))),
+			..Default::default()
+		});
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		assert_eq!(scroll.offset().y, gpui::px(-180.));
+		// Clicking the bottom of the track reaches the last technical section.
+		let track = settings.debug_bounds("health-scrollbar").unwrap();
+		settings.simulate_click(
+			gpui::point(track.center().x, track.bottom() - gpui::px(1.)),
+			Default::default(),
+		);
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		assert_eq!(scroll.offset().y, -scroll.max_offset().y);
+		let optional = settings.debug_bounds("health-optional-components").unwrap();
+		assert!(optional.bottom() <= viewport.bottom());
+		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+		shell.update(settings, |_, cx| cx.notify());
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		let copy = settings.debug_bounds("health-copy-report").unwrap();
+		settings.simulate_click(copy.center(), Default::default());
+		settings.update(|_, cx| {
+			let copied = cx.read_from_clipboard().unwrap().text().unwrap();
+			assert!(copied.starts_with("Decodex diagnostics\nReport state: Ready\n"));
+			let json = copied.splitn(3, '\n').nth(2).unwrap();
+			let report = serde_json::from_str::<decodex_protocol::DoctorReport>(json).unwrap();
+			assert_eq!(Some(&report), shell.read(cx).health.report.as_ref());
+		});
+		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
+		settings.simulate_click(toggle.center(), Default::default());
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(settings.debug_bounds("health-components").is_none());
+		assert_eq!(scroll.offset().y, gpui::px(0.));
+		let accounts = settings.debug_bounds("health-accounts").unwrap();
+		settings.simulate_click(accounts.center(), Default::default());
+		assert_eq!(shell.read_with(settings, |s, _| s.settings_selected), Destination::Accounts);
+		assert_eq!(shell.read_with(settings, |s, _| s.selected), Destination::Agent);
 	}
 
 	#[gpui::test]
@@ -7719,6 +7779,10 @@ mod tests {
 	#[gpui::test]
 	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+		// Match startup ordering: the menu binds its global close action after the shell.
+		visual.update(|_, cx| {
+			cx.bind_keys([gpui::KeyBinding::new("cmd-w", shell::CloseWindow, None)])
+		});
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels());
 
 		visual.simulate_keystrokes("cmd-,");
@@ -7736,7 +7800,8 @@ mod tests {
 			assert_eq!(s.settings_window.unwrap(), handle);
 			assert_eq!(s.agent.read(cx).workspace_panels(), before);
 		});
-		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.simulate_keystrokes("cmd-w");
 		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
 		visual.update(|window, cx| {
 			assert_eq!(
@@ -7817,7 +7882,29 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn conversation_title_passes_mouse_down_to_window_drag_region(cx: &mut TestAppContext) {
+	fn performance_island_excludes_only_its_visible_control_from_native_dragging(
+		cx: &mut TestAppContext,
+	) {
+		crate::ui_performance::preference(Some(true));
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		let pill = visual.debug_bounds("performance-island-toggle").expect("debug activity");
+		let region = visual.debug_bounds("window-drag-region").unwrap();
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert!(controls.iter().any(|b| b.contains(&pill.center())));
+		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		assert!(!controls.iter().any(|b| b.contains(&blank)));
+		crate::ui_performance::preference(Some(false));
+		visual.update(|window, cx| {
+			cx.refresh_windows();
+			window.draw(cx).clear(cx);
+		});
+		assert!(visual.debug_bounds("performance-island-toggle").is_none());
+	}
+
+	#[gpui::test]
+	fn native_titlebar_excludes_only_the_visible_control_bounds(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
@@ -7825,11 +7912,37 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 		visual.run_until_parked();
 		visual.update(|window, cx| window.draw(cx).clear(cx));
-		let title = visual.debug_bounds("workspace-conversation-header").unwrap();
-		visual.simulate_mouse_down(title.center(), gpui::MouseButton::Left, Default::default());
-		assert!(shell.read_with(visual, |s, _| s.titlebar_drag_pending));
-		visual.simulate_mouse_up(title.center(), gpui::MouseButton::Left, Default::default());
-		assert!(!shell.read_with(visual, |s, _| s.titlebar_drag_pending));
+		let region = visual.debug_bounds("window-drag-region").unwrap();
+		assert_eq!(region.top(), gpui::px(0.));
+		assert_eq!(region.left(), gpui::px(0.));
+		assert_eq!(region.size.height, gpui::px(super::WINDOW_CONTROLS_CLEARANCE));
+		let buttons = [
+			"agent-panel-control-0",
+			"navigate-back",
+			"navigate-forward",
+			"agent-panel-control-1",
+			"agent-panel-control-2",
+			"status-toggle",
+			"open-settings",
+		]
+		.map(|selector| visual.debug_bounds(selector).unwrap());
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert_eq!(controls.len(), buttons.len());
+		for bounds in buttons {
+			assert!(
+				controls.contains(&bounds),
+				"native control must match {bounds:?}: {controls:?}"
+			);
+		}
+		assert!(!controls.iter().any(|bounds| bounds.contains(&region.center())));
+		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
+		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
+		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(sidebar.center(), gpui::MouseButton::Left, Default::default());
+		assert_ne!(
+			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0),
+			before
+		);
 	}
 
 	#[gpui::test]

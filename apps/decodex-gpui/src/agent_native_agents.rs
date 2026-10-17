@@ -1,4 +1,6 @@
 //! Observe native descendants without creating duplicate local workers.
+use crate::ui_feedback::Feedback;
+
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	time::{Duration, Instant},
@@ -39,7 +41,7 @@ pub(super) struct NativeAgents {
 	input: Option<Entity<ComposerInput>>,
 	editor: Option<NativeAgentTarget>,
 	drafts: BTreeMap<NativeAgentTarget, String>,
-	feedback: String,
+	feedback: Feedback,
 	pending: Option<NativeAgentTarget>,
 	uncertain: BTreeSet<NativeAgentTarget>,
 	send_task: Option<Task<()>>,
@@ -149,11 +151,11 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() {
 			self.native_agents.input.as_ref().unwrap_or(&self.composer)
 		} else {
-			&self.composer
+			self.async_question_composer().unwrap_or(&self.composer)
 		}
 	}
 
-	pub(super) fn native_feedback(&self) -> &str {
+	pub(super) fn native_feedback(&self) -> &Feedback {
 		&self.native_agents.feedback
 	}
 
@@ -206,7 +208,9 @@ impl AgentSurface {
 		if let Some(target) = self.native_agents.pending.take() {
 			self.native_agents.uncertain.insert(target);
 
-			self.native_agents.feedback = "Delivery was not confirmed. Inspect the previous conversation before sending again.".into();
+			self.native_agents.feedback = Feedback::warning(
+				"Delivery was not confirmed. Inspect the previous conversation before sending again.",
+			);
 		}
 	}
 
@@ -265,7 +269,7 @@ impl AgentSurface {
 		if let Some(target) = self.native_agents.selected.take()
 			&& let Some(parent) = self.native_agents.parent_timeline.take()
 		{
-			self.timeline.native.task = None;
+			self.timeline.native.cancel_read();
 			let child = std::mem::replace(&mut self.timeline, *parent);
 			self.native_agents.timelines.insert(target, child);
 		}
@@ -499,7 +503,7 @@ impl AgentSurface {
 
 		self.history_task = None;
 		self.older_task = None;
-		self.timeline.native.task = None;
+		self.timeline.native.cancel_read();
 		let view =
 			self.native_agents.timelines.remove(&(owner.into(), thread.into())).unwrap_or_default();
 		self.native_agents.parent_timeline =
@@ -517,10 +521,11 @@ impl AgentSurface {
 
 		self.native_agents.detail = None;
 		self.native_agents.feedback = if self.native_agents.uncertain.contains(&target) {
-			"A previous message has an unconfirmed outcome. Inspect its history before continuing."
-				.into()
+			Feedback::warning(
+				"A previous message has an unconfirmed outcome. Inspect its history before continuing.",
+			)
 		} else {
-			String::new()
+			Feedback::default()
 		};
 		self.native_agents.next_detail = None;
 
@@ -839,7 +844,7 @@ impl AgentSurface {
 		};
 
 		self.native_agents.pending = Some(target.clone());
-		self.native_agents.feedback = "Sending…".into();
+		self.native_agents.feedback = Feedback::neutral("Sending…");
 
 		let send = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -891,14 +896,17 @@ impl AgentSurface {
 				{
 					input.update(cx, |input, cx| input.set_content("", cx));
 				}
-				"Sent"
+				Feedback::success("Sent")
 			},
 			// AgentClient reports every failure after its send boundary as a response.
-			None | Some(AgentCommandResponse::Rejected { .. }) =>
+			None | Some(AgentCommandResponse::Rejected { .. }) => Feedback::error(
 				"Message was not sent. Refresh the conversation and check its availability.",
+			),
 			_ => {
 				self.native_agents.uncertain.insert(target.clone());
-				"Delivery was not confirmed. Inspect the conversation before sending again."
+				Feedback::warning(
+					"Delivery was not confirmed. Inspect the conversation before sending again.",
+				)
 			},
 		};
 
@@ -910,7 +918,7 @@ impl AgentSurface {
 			.as_ref()
 			== Some(&target)
 		{
-			self.native_agents.feedback = feedback.into();
+			self.native_agents.feedback = feedback;
 			self.native_agents.next_detail = None;
 			self.refresh_open_native_history(cx);
 		}

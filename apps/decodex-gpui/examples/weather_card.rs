@@ -1,4 +1,10 @@
 //! Native component preview using an actual saved tool response, not live weather.
+#[allow(dead_code)] // This preview uses the frame policy without an observed model presentation.
+#[path = "../src/ui_frame.rs"]
+mod ui_frame;
+#[allow(dead_code)] // The preview shares the boolean preference, but does not use string receipts.
+#[path = "../src/ui_preferences.rs"]
+mod ui_preferences;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
 use futures_util as _;
@@ -26,7 +32,7 @@ use unicode_width as _;
 #[cfg(target_os = "macos")]
 use {
 	block2 as _, decodex_components as _, libwebrtc as _, objc2_audio_toolbox as _,
-	objc2_avf_audio as _, objc2_core_audio_types as _, rtrb as _,
+	objc2_core_audio_types as _, objc2_core_foundation as _, rtrb as _,
 };
 
 use decodex_protocol::WeatherForecast;
@@ -87,15 +93,18 @@ fn main() {
 					title: Some("Decodex · Weather preview".into()),
 					..Default::default()
 				}),
-				..Default::default()
+				..ui_frame::window_options()
 			},
-			|_, cx| {
-				cx.new(|_| Preview {
-					forecast: WeatherForecast::parse(include_str!(
-						"fixtures/singapore-weather.txt"
-					))
-					.expect("captured weather format"),
-					copied: false,
+			|window, cx| {
+				cx.new(|cx| {
+					ui_frame::observe_activation(window, cx);
+					Preview {
+						forecast: WeatherForecast::parse(include_str!(
+							"fixtures/singapore-weather.txt"
+						))
+						.expect("captured weather format"),
+						copied: false,
+					}
 				})
 			},
 		)

@@ -1,6 +1,4 @@
 //! Native composition boundary for the existing Agent composer.
-use std::time::Duration;
-
 use gpui::{
 	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
 	Focusable, MouseButton, Pixels, Render, Role, StatefulInteractiveElement as _, Subscription,
@@ -19,7 +17,6 @@ use crate::{
 	ui_theme::{
 		BODY_SIZE, FONT_FAMILY, TEXT,
 		native_glass_panel::{self, GlassPanel},
-		window_material::GlassStyle,
 	},
 };
 
@@ -31,7 +28,6 @@ pub(super) struct NativeComposer {
 	height: f32,
 	creating: bool,
 	failed: bool,
-	resume_after: Option<std::time::Instant>,
 }
 impl Default for NativeComposer {
 	fn default() -> Self {
@@ -42,7 +38,6 @@ impl Default for NativeComposer {
 			height: 42.,
 			creating: false,
 			failed: false,
-			resume_after: None,
 		}
 	}
 }
@@ -51,11 +46,30 @@ struct ComposerPanel {
 	parent: AnyWindowHandle,
 	glass: Option<GlassPanel>,
 	_observation: Subscription,
+	input_focus: Option<gpui::FocusHandle>,
 }
+
+pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle> {
+	window.root::<ComposerPanel>().flatten().map(|panel| panel.read(cx).parent)
+}
+
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.downgrade();
-		let capsule = self.owner.update(cx, |s, cx| s.render_composer_capsule(true, window, cx));
+		let capsule = self.owner.update(cx, |s, cx| {
+			s.sync_question_editor(cx);
+			let focus = s.conversation_composer().focus_handle(cx);
+			if s.composer_unavailable_reason().is_none()
+				&& self
+					.input_focus
+					.as_ref()
+					.is_some_and(|old| old != &focus && old.is_focused(window))
+			{
+				window.focus(&focus, cx);
+			}
+			self.input_focus = Some(focus);
+			s.render_composer_capsule(true, window, cx)
+		});
 		let parent = self.parent;
 		let focus_owner = self.owner.clone();
 
@@ -72,6 +86,15 @@ impl Render for ComposerPanel {
 					let height = f32::from(bounds.size.height).max(42.);
 					let _ = owner.update(cx, |s, cx| {
 						if (s.native_composer.height - height).abs() > 0.5 {
+							// Reserve the same new height in the transcript before its next
+							// layout. Waiting for the parent's footer measurement adds a
+							// second scroll correction to every question animation frame.
+							if s.native_composer.enabled && s.native_composer.bounds.is_some() {
+								s.workspace.composer_overlay_height =
+									(s.workspace.composer_overlay_height + height
+										- s.native_composer.height)
+										.max(0.);
+							}
 							s.native_composer.height = height;
 
 							cx.notify();
@@ -80,8 +103,18 @@ impl Render for ComposerPanel {
 				}
 			})
 			.id("native-composer-focus-panel")
-			.capture_any_mouse_down(move |_, _, cx| {
-				focus_owner.update(cx, |s, _| s.workspace.focused_panel = None);
+			.capture_any_mouse_down(move |event, _, cx| {
+				focus_owner.update(cx, |s, cx| {
+					s.workspace.focused_panel = None;
+					if s.composer_menu == Some("model")
+						&& !s
+							.menu_trigger_bounds
+							.get("model")
+							.is_some_and(|b| b.contains(&event.position))
+					{
+						s.dismiss_composer_menu(cx);
+					}
+				});
 			})
 			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
@@ -110,12 +143,18 @@ impl AgentSurface {
 	}
 
 	pub(super) fn focus_native_message(&self, cx: &mut Context<Self>) -> bool {
+		if self.composer_unavailable_reason().is_some() {
+			return false;
+		}
 		let Some(child) = self.native_composer.child.filter(|_| self.native_composer.enabled)
 		else {
 			return false;
 		};
 		cx.defer(move |cx| {
 			let _ = child.update(cx, |panel, window, cx| {
+				// This is an explicit focus action. Making a child key alone does
+				// not activate a hidden or background application on macOS.
+				cx.activate(true);
 				let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
 				window.focus(&focus, cx);
 				if let Some(glass) = &panel.glass {
@@ -134,34 +173,14 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		// Inline tool disclosures do not cover or replace the native composer.
-		let requested = allowed
-			&& !self.workspace_connecting()
-			&& !self.workspace.browsing
-			&& self.snapshot.is_some()
-			&& !self.selected_is_archived()
-			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
-			&& native_glass_panel::available()
-			&& self.resources.is_none()
-			&& self.integrations.is_none()
-			&& self.usage_estimate.is_none()
-			&& !self.workspace.graph_expanded;
-		let now = std::time::Instant::now();
-
-		if !requested {
-			self.native_composer.resume_after = Some(now + Duration::from_millis(200));
-		}
-
-		let settling = self.native_composer.resume_after.is_some_and(|until| until > now);
-
-		if requested && settling {
-			ui_motion::request_frame(window, cx);
-		}
-
-		let enabled = requested && !settling && !self.native_composer.failed;
+		// Inspector inventories are cached data, not modal surfaces. They must
+		// never replace the composer's material, even after Details closes.
+		let enabled = self.native_composer_requested(allowed, native_glass_panel::available())
+			&& !self.native_composer.failed;
 
 		if enabled
 			&& !self.native_composer.enabled
+			&& self.composer_unavailable_reason().is_none()
 			&& self.conversation_composer().focus_handle(cx).is_focused(window)
 			&& let Some(child) = self.native_composer.child
 		{
@@ -241,12 +260,11 @@ impl AgentSurface {
 			if let Some(child) = child {
 				let _ = child.update(cx, |panel, window, cx| {
 					if let Some(glass) = &mut panel.glass {
-						if enabled && let Some(bounds) = bounds {
-							glass.set_style(GlassStyle::configured() == GlassStyle::Clear);
-
-							if glass.place(bounds) {
-								window.bounds_changed(cx);
-							}
+						if enabled
+							&& let Some(bounds) = bounds
+							&& glass.place(bounds)
+						{
+							window.bounds_changed(cx);
 						}
 
 						glass.set_opacity(opacity);
@@ -258,6 +276,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
+		let blocked = self.composer_unavailable_reason();
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
@@ -281,9 +300,9 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("native-composer-accessibility-entry")
-					.role(Role::Button)
-					.aria_label("Focus message editor")
-					.tab_index(0)
+					.role(if blocked.is_some() { Role::Status } else { Role::Button })
+					.aria_label(blocked.unwrap_or("Focus message editor"))
+					.tab_index(if blocked.is_some() { -1 } else { 0 })
 					.on_click(cx.listener(|s, _, window, cx| s.focus_message(window, cx)))
 					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -330,13 +349,33 @@ fn create_panel(
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,
 				focus: false,
-				..Default::default()
+				..ui_motion::window_options()
 			},
-			move |_, cx| {
+			move |window, cx| {
 				cx.new(|cx| {
+					ui_motion::observe_activation(window, cx);
+					cx.observe_window_activation(
+						window,
+						|panel: &mut ComposerPanel, window, cx| {
+							if !window.is_window_active() && !ui_motion::application_active() {
+								panel.owner.update(cx, |s, cx| {
+									if s.composer_menu == Some("model") {
+										s.dismiss_composer_menu(cx);
+									}
+								});
+							}
+						},
+					)
+					.detach();
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
-					ComposerPanel { owner, parent, glass: None, _observation: observation }
+					ComposerPanel {
+						owner,
+						parent,
+						glass: None,
+						_observation: observation,
+						input_focus: None,
+					}
 				})
 			},
 		)

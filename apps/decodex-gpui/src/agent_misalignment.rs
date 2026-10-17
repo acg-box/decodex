@@ -145,6 +145,7 @@ mod tests {
 
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -190,7 +191,7 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
@@ -203,7 +204,7 @@ mod tests {
 			assert!(s.submission.command.is_none());
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let bounds = visual.debug_bounds("misalignment-continue").expect("explicit continuation");
@@ -211,7 +212,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			s.feedback.clear();
 
@@ -224,10 +225,11 @@ mod tests {
 			s.acknowledge_misalignment("root", "review-one", cx);
 
 			assert!(s.feedback.is_empty());
+			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
@@ -242,10 +244,11 @@ mod tests {
 			s.acknowledge_misalignment("root", "review-one", cx);
 
 			assert!(s.feedback.is_empty());
+			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());

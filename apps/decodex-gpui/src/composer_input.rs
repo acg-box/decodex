@@ -72,6 +72,7 @@ enum ComposerAppearance {
 
 /// Conversation composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
+	presentation: Entity<crate::ui_frame::Presentation<Self>>,
 	cursor: Cursor,
 	focus_handle: FocusHandle,
 	placeholder: SharedString,
@@ -129,7 +130,10 @@ impl ComposerInput {
 		appearance: ComposerAppearance,
 		cx: &mut Context<Self>,
 	) -> Self {
+		let owner = cx.entity();
+		let presentation = crate::ui_frame::Presentation::new(&owner, Self::render_input, cx);
 		Self {
+			presentation,
 			cursor: Default::default(),
 			focus_handle: cx.focus_handle().tab_index(tab_index).tab_stop(true),
 			placeholder: placeholder.into(),
@@ -162,9 +166,11 @@ impl ComposerInput {
 		text: impl Into<SharedString>,
 		cx: &mut Context<Self>,
 	) {
-		self.placeholder = text.into();
-
-		cx.notify();
+		let text = text.into();
+		if self.placeholder != text {
+			self.placeholder = text;
+			cx.notify();
+		}
 	}
 
 	pub(crate) fn is_composing(&self) -> bool {
@@ -185,6 +191,7 @@ impl ComposerInput {
 		}
 
 		self.content.clear();
+		self.cursor.reset_motion();
 
 		self.native_part = None;
 
@@ -205,6 +212,7 @@ impl ComposerInput {
 		}
 
 		self.native_part = None;
+		self.cursor.reset_motion();
 
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
@@ -663,7 +671,13 @@ impl EntityInputHandler for ComposerInput {
 }
 
 impl Render for ComposerInput {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		self.presentation.clone()
+	}
+}
+
+impl ComposerInput {
+	fn render_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
 		if let Some(reveal) = &mut self.text_reveal {
 			let (end, moving) = reveal.sample(&self.content, std::time::Instant::now());
 			self.visible_end = moving.then_some(end);
@@ -757,6 +771,7 @@ impl Render for ComposerInput {
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(gpui::rgb(0xeeeaf0))
 			.child(ComposerTextElement { input: entity })
+			.into_any_element()
 	}
 }
 

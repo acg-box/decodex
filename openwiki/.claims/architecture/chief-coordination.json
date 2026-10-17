@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:88d6bebfbdecd3f852400d41315fe0645673caf4daea80ee2225f14436c8d13b",
+  "pageVersion": "sha256:cb727639c217aeabd510fbd7482722193526520c9737317ba82c9aaa86f5424a",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -18,11 +18,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+          "version": "repo-file-v1:sha256:9a1a05bba54af8fb710c42a3547739e28907c63c0b5e1671ef5b94ccf0d5efa6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:bd8d608b307c4665f7a750e51cf5463e9ee0cc4d842821ec4d8c17bb83c09f9e"
+          "version": "repo-file-v1:sha256:b10a6147191b7486f4471ed4c6981c5ec00e6562cea24587f3d32f7df13a5bf1"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+          "version": "repo-file-v1:sha256:9a1a05bba54af8fb710c42a3547739e28907c63c0b5e1671ef5b94ccf0d5efa6"
         }
       ]
     },
@@ -118,11 +118,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs#L213-L334",
-          "version": "repo-lines-v1:sha256:ef9bd63df7036bb20396a1d9127b5ec2b810d82238038317f91dc319bd45cde5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMmEyNTcwYWE2M2ZmNjMzZDY2MzllZTE1Njg4YThiN2M3ZTk4MDkyMGE3NTlmNmFiYTZiMzQxZDhjYTcwODYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzYzQ0OWRhY2EyODlmYzNkMWYyMjMzNDVlMTQzY2FkNmM1OTllMDQ1ZjdkODY1MjY1YzIxZmNkYWEwZmI3NWQ1In0"
+          "version": "repo-lines-v1:sha256:8ea481ec40d07998784988a9e6ce0412350e325f62d7261e543b73f7f0492c57:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMmEyNTcwYWE2M2ZmNjMzZDY2MzllZTE1Njg4YThiN2M3ZTk4MDkyMGE3NTlmNmFiYTZiMzQxZDhjYTcwODYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzYzQ0OWRhY2EyODlmYzNkMWYyMjMzNDVlMTQzY2FkNmM1OTllMDQ1ZjdkODY1MjY1YzIxZmNkYWEwZmI3NWQ1In0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1506-L1540",
-          "version": "repo-lines-v1:sha256:4a48e1e063697b59ab7e0089756a1453d5e6b2458db21fab49982a07791fb663:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZmE1ZTAyOWRjMjgyOTc3ZTU0NjI5ZTBiY2Y0OGJiM2IzMjVhY2VlY2ViZDAxYTlhNmM5MmY0NjE4YzJmNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ODg4MjhlYWY1MzAzZjc4MmVkOTAxMmQ5MjY5ZjI4ZTMxNzA1ODJhODBhMTNiNWRmYzRkZjYwOWFjN2U5MDUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs#L375-L446",
+          "version": "repo-lines-v1:sha256:2fcd8af3a489ce3fa4cd4d0aaa8317592f4bd4ca14b0fe613847cc6f51fcbbd9:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwNmU3MDg3OGI1OTUxZjYwMzI5ZjEwNDU0Y2NkYTBiNWVmNWI5NTRlN2ZkN2E2NzAwMjczNWJhMGRiZWFjMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NGQ2NjA2MmIxZTM5NGE0ZDdjZjQ5MTc2ZTc4ZjVlZWRiMWIwMGE1MmI3NGRhNGY5NzU3MDYwNTBjNGNjZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0ZGFmMDgxYmJjNTgwMjMyOWQxMTQ3ZmEwY2E0YTQ3YWVjNzZlMmNiYzkyNGZlZTliMTRkZTlhNjQ5MDEzZGIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1496-L1534",
+          "version": "repo-lines-v1:sha256:1052be6a03b3decc194abd1c971fd8f4474645c106e9a52de446ff7d86b06b6e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4OTUyN2VmNTI4MTIyYmU1Y2M2N2U1ZTE0NmJiMzI5NzE3OWFjOGM3ZjE3M2FkZjRhMzYyMTZkMGQ4YjRkMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3YWMzYWNhZjVlNWNmNzg4MzFiZjQxOTBiZmMyZDhjNDYxY2ExYmM5M2VmY2QzMDQ5OWZlZDI4MGNmOTM1ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzMThiMzUyOTE1OTgzM2I0NzRhNWExYWUyMjc2ZTA2MTIyMzA4ZWM5YmZhODg1MWZiZGU2ZjM2ODdjZGNhOGIifQ"
         }
       ]
     },
@@ -150,7 +154,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+          "version": "repo-file-v1:sha256:9a1a05bba54af8fb710c42a3547739e28907c63c0b5e1671ef5b94ccf0d5efa6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -172,13 +176,13 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+          "version": "repo-file-v1:sha256:9a1a05bba54af8fb710c42a3547739e28907c63c0b5e1671ef5b94ccf0d5efa6"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-15T06:39:54.695Z"
   }
 }

@@ -54,6 +54,7 @@ pub(crate) struct AccountObservationService {
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
 	observation_generation: Sender<u64>,
+	initial_observation_complete: Sender<bool>,
 }
 impl AccountObservationService {
 	#[cfg(test)]
@@ -93,7 +94,13 @@ impl AccountObservationService {
 			state: Arc::new(RwLock::new(AccountObservationState::default())),
 			refresh_requested: Arc::new(Notify::new()),
 			observation_generation,
+			initial_observation_complete: watch::channel(false).0,
 		}
+	}
+
+	/// Finish the first provider checks before process admission uses their quota facts.
+	pub(crate) async fn wait_for_initial_observation(&self) {
+		let _ = self.initial_observation_complete.subscribe().wait_for(|complete| *complete).await;
 	}
 
 	/// Request one coalesced background refresh without making a client wait for provider work.
@@ -193,6 +200,7 @@ impl AccountObservationService {
 		let mut pending = HashSet::new();
 		let mut task_accounts = HashMap::new();
 		let mut observations = JoinSet::new();
+		let mut initial_tasks = None;
 
 		loop {
 			if *stop.borrow() {
@@ -206,6 +214,7 @@ impl AccountObservationService {
 					if result.is_err() || *stop.borrow_and_update() {
 						break;
 					}
+					continue;
 				},
 				() = self.refresh_requested.notified() => {
 					self.schedule_current_accounts(
@@ -247,6 +256,16 @@ impl AccountObservationService {
 						&mut observations,
 					).await;
 				},
+			}
+			if !*self.initial_observation_complete.borrow() {
+				let initial = initial_tasks
+					.get_or_insert_with(|| task_accounts.keys().copied().collect::<HashSet<_>>());
+				initial.retain(|task| task_accounts.contains_key(task));
+				if initial.is_empty() {
+					// Both successful and failed checks complete startup. A queued refresh
+					// has a new task ID and must not keep the initial round open.
+					self.initial_observation_complete.send_replace(true);
+				}
 			}
 		}
 
@@ -868,7 +887,10 @@ fn profile_status_semantically_equal(
 }
 
 fn account_observation_is_schedulable(account: &AccountRecord) -> bool {
-	!account.tombstoned && account.credential.is_some() && account.unsettled_operation.is_none()
+	!account.tombstoned
+		&& account.credential.is_some()
+		&& (account.unsettled_operation.is_none()
+			|| crate::account_service::rejected_refresh_recovery(account).is_some())
 }
 
 fn plan_observation_round<T>(
@@ -1207,7 +1229,7 @@ mod tests {
 	}
 
 	#[test]
-	fn recovery_required_account_is_suppressed_on_every_scheduler_wake() {
+	fn rejected_refresh_can_be_probed_while_ambiguous_recovery_stays_suppressed() {
 		let account_id = account(9);
 		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000099").unwrap();
 		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-9").unwrap();
@@ -1237,7 +1259,9 @@ mod tests {
 			tombstoned: false,
 		};
 
-		assert!(!account_observation::account_observation_is_schedulable(&record));
+		assert!(account_observation::account_observation_is_schedulable(&record));
+		record.unsettled_operation.as_mut().unwrap().recovery_code =
+			Some("provider_refresh_ambiguous".to_owned());
 		assert!(!account_observation::account_observation_is_schedulable(&record));
 
 		record.unsettled_operation = None;

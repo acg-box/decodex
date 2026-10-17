@@ -4,7 +4,7 @@ use gpui::{App, ClipboardItem};
 #[cfg(target_os = "macos")] use objc2_foundation::NSString;
 use reqwest::Url;
 
-use crate::shell::agent_surface::markdown::{self, Kind, Node};
+use crate::shell::agent_surface::markdown::{self, Kind, Node, NodeContent};
 
 pub(super) fn html(text: &str) -> String {
 	let mut output = String::new();
@@ -35,11 +35,11 @@ fn escape(text: &str) -> String {
 }
 
 fn render(node: &Node, output: &mut String) {
-	let Node::Block(kind, children) = node else {
-		match node {
-			Node::Text(text) => output.push_str(&escape(text)),
-			Node::Rule => output.push_str("<hr>"),
-			Node::Block(_, _) => unreachable!(),
+	let NodeContent::Block(kind, children) = &node.content else {
+		match &node.content {
+			NodeContent::Text(text) => output.push_str(&escape(text)),
+			NodeContent::Rule => output.push_str("<hr>"),
+			NodeContent::Block(_, _) => unreachable!(),
 		}
 
 		return;
@@ -51,7 +51,7 @@ fn render(node: &Node, output: &mut String) {
 		Kind::List(None) => ("<ul>".into(), "</ul>".into()),
 		Kind::Item => ("<li>".into(), "</li>".into()),
 		Kind::Quote => ("<blockquote>".into(), "</blockquote>".into()),
-		Kind::Code | Kind::Mermaid { .. } => ("<pre><code>".into(), "</code></pre>".into()),
+		Kind::Code { .. } | Kind::Mermaid { .. } => ("<pre><code>".into(), "</code></pre>".into()),
 		Kind::Table => ("<table>".into(), "</table>".into()),
 		Kind::Row(_) => ("<tr>".into(), "</tr>".into()),
 		Kind::Cell => ("<td>".into(), "</td>".into()),

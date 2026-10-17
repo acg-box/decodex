@@ -257,11 +257,11 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	let item = &row["item"];
 	let kind = id(&item["type"])?;
-	// Decodex sends delegated instructions as tool input, never as a user message.
-	// This display category does not change native roles or execution authority.
+	// Assigned instructions are visible context. Automatic wakeups stay in the
+	// execution details instead of adding synthetic chat messages.
 	let delegated_input = kind == "functionCallOutput"
 		&& item["namespace"] == "decodex"
-		&& matches!(item["name"].as_str(), Some("work_instruction" | "work_wake"));
+		&& item["name"] == "work_instruction";
 	let (attachments, omitted) = attachments::project(item);
 	let source = match kind.as_str() {
 		"agentMessage" | "plan" => item["text"].as_str()?.to_owned(),

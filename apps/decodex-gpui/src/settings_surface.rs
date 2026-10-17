@@ -624,6 +624,13 @@ impl SettingsSurface {
 					("Off", Preference { blinking: false, ..current }),
 				],
 			),
+			(
+				"Cursor animation",
+				vec![
+					("On", Preference { animated: true, ..current }),
+					("Off", Preference { animated: false, ..current }),
+				],
+			),
 		];
 
 		gpui::div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
@@ -793,7 +800,19 @@ impl SettingsSurface {
 				.flex_col()
 				.gap(gpui::px(24.))
 				.child(
-					group().child(settings_group_title("Materials")).child(self.glass_controls(cx)),
+					group().child(settings_group_title("Materials"))
+						.child(self.preference_control(
+							"composer-liquid-glass", "composer-liquid-glass-knob",
+							"Liquid Glass input bar", ui_theme::composer_glass, cx,
+						)).child(self.glass_controls(cx)),
+				)
+				.child(
+					group().child(settings_group_title("Developer"))
+						.child(self.preference_control(
+							"debug-mode", "debug-mode-knob", "Debug mode",
+							crate::ui_performance::preference, cx,
+						)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+							.child("Show live rendering and system GPU metrics in the top bar.")),
 				)
 				.child(
 					group()
@@ -805,6 +824,13 @@ impl SettingsSurface {
 						"smooth-scrolling", "smooth-scrolling-knob", "Smooth scrolling",
 						crate::ui_scroll::preference, cx,
 					)),
+				)
+				.child(
+					group().child(settings_group_title("Animation")).child(self.preference_control(
+						"full-background-rendering", "full-background-rendering-knob",
+						"Full rendering in background", crate::ui_frame::background_rendering, cx,
+					)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+						.child("Keep animations and the display frame rate when Decodex is inactive. Uses more energy.")),
 				)
 				.child(
 					group()
@@ -1121,6 +1147,69 @@ mod tests {
 		visual.simulate_click(regular.center(), Default::default());
 
 		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+	}
+
+	#[gpui::test]
+	fn composer_glass_switch_defaults_to_on_and_retains_the_users_choice(cx: &mut TestAppContext) {
+		assert!(crate::ui_theme::composer_glass(None));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(900.)));
+			window.draw(cx).clear(cx);
+		});
+		let toggle =
+			visual.debug_bounds("composer-liquid-glass").expect("composer material switch");
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(!crate::ui_theme::composer_glass(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(crate::ui_theme::composer_glass(None));
+	}
+
+	#[gpui::test]
+	fn debug_mode_is_opt_in_and_can_be_disabled_again(cx: &mut TestAppContext) {
+		assert!(!crate::ui_performance::preference(None));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+			window.draw(cx).clear(cx);
+		});
+		let toggle = visual.debug_bounds("debug-mode").expect("debug switch");
+		assert!(toggle.bottom() < gpui::px(620.));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(crate::ui_performance::preference(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(!crate::ui_performance::preference(None));
+	}
+
+	#[gpui::test]
+	fn background_rendering_switch_applies_to_every_window(cx: &mut TestAppContext) {
+		crate::ui_frame::background_rendering(Some(false));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(900.)));
+			window.draw(cx).clear(cx);
+		});
+		let bounds =
+			visual.debug_bounds("full-background-rendering").expect("background preference");
+		visual.simulate_click(bounds.center(), Default::default());
+		assert!(crate::ui_frame::background_rendering(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(bounds.center(), Default::default());
+		assert!(!crate::ui_frame::background_rendering(None));
 	}
 
 	#[gpui::test]

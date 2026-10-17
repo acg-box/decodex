@@ -96,6 +96,8 @@ pub(crate) struct AccountApiCredential {
 	pub(crate) binding: CredentialBinding,
 	/// Registry revision read together with the binding.
 	pub(crate) account_revision: i64,
+	/// A failed renewal may still have usable access. Only a successful read clears it.
+	recovery_probe: Option<AccountOperationId>,
 	/// Per-account lifecycle lock retained across the bounded provider request.
 	pub(crate) _launch_guard: OwnedMutexGuard<()>,
 }
@@ -107,6 +109,11 @@ impl Debug for AccountApiCredential {
 			.field("binding", &self.binding)
 			.field("account_revision", &self.account_revision)
 			.finish()
+	}
+}
+impl AccountApiCredential {
+	pub(crate) fn is_recovery_probe(&self) -> bool {
+		self.recovery_probe.is_some()
 	}
 }
 
@@ -4356,18 +4363,121 @@ impl AccountService {
 	) -> Result<AccountApiCredential, AccountLifecycleError> {
 		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
 		let account = self.load_account(account_id).await?;
-		let stored = self.read_exact_for_api(&account).await?;
-		let (account, stored) = self
-			.refresh_observation_credential(account_id, minimum_validity, account, stored)
-			.await?;
+		let (account, stored, recovery_probe) =
+			self.observation_credential(account_id, minimum_validity, account).await?;
 		let binding = account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
 
 		Ok(AccountApiCredential {
 			stored,
 			binding,
 			account_revision: account.revision,
+			recovery_probe,
 			_launch_guard: launch_guard,
 		})
+	}
+
+	async fn observation_credential(
+		&self,
+		account_id: &AccountId,
+		minimum_validity: Duration,
+		account: AccountRecord,
+	) -> Result<(AccountRecord, StoredCredential, Option<AccountOperationId>), AccountLifecycleError>
+	{
+		let Some(recovery) = rejected_refresh_recovery(&account) else {
+			let stored = self.read_exact_for_api(&account).await?;
+			let (account, stored) = self
+				.refresh_observation_credential(account_id, minimum_validity, account, stored)
+				.await?;
+			return Ok((account, stored, None));
+		};
+		let operation = self
+			.store
+			.read_account_operation(recovery)
+			.await?
+			.ok_or(AccountLifecycleError::InvalidOperation)?;
+		let binding = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
+		// A rejected renewal has no replacement to reconcile. Uncertain writes and
+		// superseded operations must keep their existing recovery authority.
+		if operation.expected.as_ref() != Some(binding)
+			|| operation.expected_account_revision != Some(account.revision)
+			|| operation.target.is_some()
+			|| operation.superseded_by_operation_id.is_some()
+		{
+			return Err(AccountLifecycleError::NotReady(
+				AccountLifecycleReadiness::OperationUnsettled,
+			));
+		}
+		let stored = self.read_and_observe_exact_credential(&account, binding).await?;
+		let now = current_unix_micros()?;
+		if let Some(winner) = matching_shared_refresh(
+			binding,
+			stored.bundle(),
+			now,
+			self.exact_shared_auth_credential(),
+		) && !access_token_needs_refresh(
+			winner.bundle.access_token_expires_at_unix_micros(),
+			now,
+			minimum_validity,
+		)? {
+			self.cancel_rejected_observation_refresh(recovery).await?;
+			self.refresh_while_locked(
+				AccountOperationId::generate()
+					.map_err(|_| AccountLifecycleError::InvalidOperation)?,
+				account_id,
+				Some(account.revision),
+				None,
+				None,
+				RefreshPlan { supplied_refresh: Some(winner), ..RefreshPlan::OBSERVATION },
+			)
+			.await?;
+			let account = self.load_account(account_id).await?;
+			let stored = self.read_exact_for_api(&account).await?;
+			return Ok((account, stored, None));
+		}
+		if access_token_needs_refresh(
+			stored.bundle().access_token_expires_at_unix_micros(),
+			now,
+			minimum_validity,
+		)? {
+			return Err(AccountLifecycleError::NotReady(
+				AccountLifecycleReadiness::OperationUnsettled,
+			));
+		}
+		let recovery = recovery.clone();
+		Ok((account, stored, Some(recovery)))
+	}
+
+	async fn cancel_rejected_observation_refresh(
+		&self,
+		operation: &AccountOperationId,
+	) -> Result<(), AccountLifecycleError> {
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					operation,
+					AccountOperationPhase::RecoveryRequired,
+					AccountOperationPhase::Cancelled,
+					None,
+				)
+				.await?,
+		)?;
+		Ok(())
+	}
+
+	/// The credential retains the account lock throughout the successful provider reads.
+	pub(crate) async fn accept_observation_recovery(
+		&self,
+		credential: &AccountApiCredential,
+	) -> Result<(), AccountLifecycleError> {
+		if let Some(recovery) = &credential.recovery_probe {
+			require_refreshed_access_token_for_observation(
+				credential.stored.bundle().access_token_expires_at_unix_micros(),
+				current_unix_micros()?,
+				Duration::ZERO,
+			)?;
+			self.cancel_rejected_observation_refresh(recovery).await?;
+		}
+		Ok(())
 	}
 
 	async fn refresh_observation_credential(
@@ -4448,6 +4558,7 @@ impl AccountService {
 			stored,
 			binding,
 			account_revision: account.revision,
+			recovery_probe: None,
 			_launch_guard: launch_guard,
 		})
 	}
@@ -5402,6 +5513,24 @@ fn operation_id_from_digest(digest: &[u8]) -> Result<AccountOperationId, Account
 		bytes[15],
 	))
 	.map_err(|_| AccountLifecycleError::InvalidOperation)
+}
+
+pub(crate) fn rejected_refresh_recovery(account: &AccountRecord) -> Option<&AccountOperationId> {
+	if account.tombstoned {
+		return None;
+	}
+	account
+		.unsettled_operation
+		.as_ref()
+		.filter(|operation| {
+			operation.kind == AccountOperationKind::Refresh
+				&& operation.phase == AccountOperationPhase::RecoveryRequired
+				&& matches!(
+					operation.recovery_code.as_deref(),
+					Some("provider_refresh_rejected" | "provider_access_rejected_after_refresh")
+				)
+		})
+		.map(|operation| &operation.operation_id)
 }
 
 fn quota_selection_score(
@@ -7549,10 +7678,19 @@ mod tests {
 		}
 	}
 
+	type ObservationFixture =
+		(tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>);
+
 	async fn independently_owned_observation_service(
 		refresh: Result<CredentialRefreshResult, CredentialRefreshError>,
-	) -> (tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>)
-	{
+	) -> ObservationFixture {
+		observation_service_with_expiry(refresh, 1).await
+	}
+
+	async fn observation_service_with_expiry(
+		refresh: Result<CredentialRefreshResult, CredentialRefreshError>,
+		expiry: i64,
+	) -> ObservationFixture {
 		let directory = tempfile::tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
@@ -7565,7 +7703,7 @@ mod tests {
 			.expect("provider identity");
 		let enrollment_id = AccountOperationId::new("22000000-0000-4000-8000-000000000041")
 			.expect("enrollment identity");
-		let bundle = shared_bundle(provider.account_id(), "expired-access", 1);
+		let bundle = shared_bundle(provider.account_id(), "expired-access", expiry);
 		let binding = bundle
 			.binding_for(
 				&account_id,
@@ -7679,6 +7817,52 @@ mod tests {
 		assert!(selected.is_err(), "missing callback authority must reject process selection");
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
+	}
+
+	#[tokio::test]
+	async fn initial_account_observation_waits_for_checks_and_finishes_on_provider_failure() {
+		let (_directory, _store, service, _account, shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
+		let initial = observations.wait_for_initial_observation();
+		tokio::pin!(initial);
+		assert!(futures_util::poll!(initial.as_mut()).is_pending());
+
+		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
+		tokio::time::timeout(std::time::Duration::from_secs(1), initial)
+			.await
+			.expect("failed provider checks must finish startup, not leave a loading screen");
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+		observations.request_refresh();
+		let refreshed = observations.wait_for_initial_observation();
+		tokio::pin!(refreshed);
+		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
+		stop.send_replace(true);
+		daemon.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn initial_account_observation_finishes_without_accounts() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let service = AccountService::new(
+			store.clone(),
+			Arc::new(SqliteCredentialStore::new(store)),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
+		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
+		tokio::time::timeout(
+			std::time::Duration::from_secs(1),
+			observations.wait_for_initial_observation(),
+		)
+		.await
+		.expect("an empty registry needs no provider wait");
+		stop.send_replace(true);
+		daemon.await.unwrap();
 	}
 
 	#[tokio::test]
@@ -8026,7 +8210,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn rejected_observation_refresh_requires_exact_relogin_without_retrying() {
+	async fn rejected_observation_refresh_with_expired_access_requires_recovery_without_retrying() {
 		let rejection = account_service::classify_refresh_http_failure(
 			reqwest::StatusCode::BAD_REQUEST,
 			br#"{"error":{"code":"INVALID_GRANT"}}"#,
@@ -8061,6 +8245,167 @@ mod tests {
 			service.api_credential_for_observation(&account_id, Duration::ZERO).await,
 			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
 		));
+	}
+
+	#[tokio::test]
+	async fn accepted_access_recovers_a_rejected_refresh_without_changing_credentials() {
+		let (_directory, store, service, account_id, shared) =
+			observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX).await;
+		let before = service.inspect(&account_id).await.unwrap().account;
+		let operation_id = AccountOperationId::generate().unwrap();
+		assert!(matches!(
+			service
+				.refresh_for_observation(operation_id.clone(), &account_id, before.revision)
+				.await,
+			Err(AccountLifecycleError::Refresh(CredentialRefreshError::Rejected))
+		));
+
+		let credential =
+			service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+		assert!(credential.is_recovery_probe());
+		assert_eq!(Some(&credential.binding), before.credential.as_ref());
+		assert_eq!(
+			store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
+			AccountOperationPhase::RecoveryRequired
+		);
+		service.accept_observation_recovery(&credential).await.unwrap();
+		drop(credential);
+
+		let after = service.inspect(&account_id).await.unwrap().account;
+		assert_eq!(after.revision, before.revision);
+		assert_eq!(after.credential, before.credential);
+		assert!(after.unsettled_operation.is_none());
+		assert_ne!(after.lifecycle_readiness, AccountLifecycleReadiness::OperationUnsettled);
+		assert_eq!(
+			store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
+			AccountOperationPhase::Cancelled
+		);
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+
+		let restarted = AccountService::new(
+			store.clone(),
+			Arc::new(SqliteCredentialStore::new(store)),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		assert!(restarted.reconcile_startup().await.unwrap().manual_recovery.is_empty());
+		assert!(
+			restarted.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none()
+		);
+	}
+
+	#[tokio::test]
+	async fn unfinished_access_probe_keeps_recovery_and_does_not_refresh() {
+		let (_directory, store, service, account_id, shared) =
+			observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX).await;
+		let operation_id = AccountOperationId::generate().unwrap();
+		assert!(
+			service.refresh_for_observation(operation_id.clone(), &account_id, 1).await.is_err()
+		);
+		for _ in 0..2 {
+			let credential =
+				service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+			assert!(credential.is_recovery_probe());
+			drop(credential);
+			assert_eq!(
+				store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
+				AccountOperationPhase::RecoveryRequired
+			);
+		}
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+	}
+
+	#[tokio::test]
+	async fn rejected_refresh_adopts_a_newer_same_account_auth_file_without_provider_refresh() {
+		let (_directory, store, service, account_id, original_shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Rejected)).await;
+		let operation_id = AccountOperationId::generate().unwrap();
+		assert!(
+			service.refresh_for_observation(operation_id.clone(), &account_id, 1).await.is_err()
+		);
+		let native = Arc::new(RefreshRaceSharedAuthFile::new(
+			"observed-account",
+			shared_bundle("observed-account", "native-successor", i64::MAX),
+		));
+		let service = service.with_shared_auth_coordinator(test_coordinator(
+			native.clone(),
+			CodexLiveness::MayBeRunning,
+		));
+
+		let credential =
+			service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+		assert!(!credential.is_recovery_probe());
+		assert_eq!(credential.stored.bundle().access_token(), "native-successor");
+		assert_eq!(credential.binding.version.get(), 2);
+		drop(credential);
+		assert!(service.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none());
+		assert_eq!(
+			store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
+			AccountOperationPhase::Cancelled
+		);
+		assert_eq!(native.project_attempts.load(Ordering::Relaxed), 0);
+		assert_eq!(original_shared.project_attempts.load(Ordering::Relaxed), 0);
+	}
+
+	#[tokio::test]
+	async fn rejected_refresh_does_not_adopt_another_account_or_an_older_auth_file() {
+		for (provider, expiry) in
+			[("another-account", i64::MAX), ("observed-account", i64::MAX - 1)]
+		{
+			let (_directory, store, service, account_id, _shared) =
+				observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX)
+					.await;
+			let operation_id = AccountOperationId::generate().unwrap();
+			assert!(
+				service
+					.refresh_for_observation(operation_id.clone(), &account_id, 1)
+					.await
+					.is_err()
+			);
+			let native = Arc::new(RefreshRaceSharedAuthFile::new(
+				provider,
+				shared_bundle(provider, "unrelated-access", expiry),
+			));
+			let service = service.with_shared_auth_coordinator(test_coordinator(
+				native.clone(),
+				CodexLiveness::MayBeRunning,
+			));
+			let credential =
+				service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+			assert!(credential.is_recovery_probe());
+			assert_eq!(credential.stored.bundle().access_token(), "expired-access");
+			assert_eq!(credential.binding.version.get(), 1);
+			drop(credential);
+			assert_eq!(
+				store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
+				AccountOperationPhase::RecoveryRequired
+			);
+			assert_eq!(native.project_attempts.load(Ordering::Relaxed), 0);
+		}
+	}
+
+	#[tokio::test]
+	async fn ambiguous_refresh_stays_fenced_with_valid_access_and_a_native_successor() {
+		let (_directory, _store, service, account_id, _shared) =
+			observation_service_with_expiry(Err(CredentialRefreshError::Ambiguous), i64::MAX).await;
+		assert!(
+			service
+				.refresh_for_observation(AccountOperationId::generate().unwrap(), &account_id, 1)
+				.await
+				.is_err()
+		);
+		let native = Arc::new(RefreshRaceSharedAuthFile::new(
+			"observed-account",
+			shared_bundle("observed-account", "native-successor", i64::MAX),
+		));
+		let service = service.with_shared_auth_coordinator(test_coordinator(
+			native.clone(),
+			CodexLiveness::MayBeRunning,
+		));
+		assert!(matches!(
+			service.api_credential_for_observation(&account_id, Duration::ZERO).await,
+			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
+		));
+		assert_eq!(native.project_attempts.load(Ordering::Relaxed), 0);
 	}
 
 	#[tokio::test]
@@ -8249,7 +8594,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn refreshed_access_rejection_becomes_one_durable_login_requirement() {
+	async fn refreshed_access_rejection_stays_durable_until_a_provider_probe_succeeds() {
 		let refreshed = CredentialRefreshResult {
 			returned_provider: ProviderIdentity::new(AccountProvider::Chatgpt, "observed-account")
 				.expect("provider identity"),
@@ -8330,11 +8675,26 @@ mod tests {
 		));
 		let startup = restarted.reconcile_startup().await.expect("restart reconciliation");
 
-		assert_eq!(startup.manual_recovery, vec![(account_id.clone(), recovery_id)]);
-		assert!(matches!(
-			restarted.api_credential_for_observation(&account_id, Duration::ZERO).await,
-			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
-		));
+		assert_eq!(startup.manual_recovery, vec![(account_id.clone(), recovery_id.clone())]);
+		let credential =
+			restarted.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+		assert!(credential.is_recovery_probe());
+		assert_eq!(
+			restarted
+				.inspect(&account_id)
+				.await
+				.unwrap()
+				.account
+				.unsettled_operation
+				.unwrap()
+				.operation_id,
+			recovery_id
+		);
+		restarted.accept_observation_recovery(&credential).await.unwrap();
+		drop(credential);
+		assert!(
+			restarted.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none()
+		);
 	}
 
 	#[tokio::test]

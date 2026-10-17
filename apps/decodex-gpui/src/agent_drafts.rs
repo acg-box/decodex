@@ -1,11 +1,9 @@
 //! Keep editable input and uncertain submission state with its exact service profile.
 #[path = "agent_draft_storage.rs"] mod storage;
 
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	mem,
-};
+use std::{collections::BTreeMap, mem};
 
+#[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use gpui::px;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentActionDto;
@@ -17,9 +15,8 @@ use std::{
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
-	AgentSurface, ClientProfile, ComposerInput, Context, Entity, EntityId, IdempotencyKey,
-	PendingCommand, QueuedCommand, Task, WireText,
-	async_questions::ChoiceDraft,
+	AgentSurface, ClientProfile, Context, EntityId, IdempotencyKey, PendingCommand, QueuedCommand,
+	Task, WireText,
 	execution_intent::{self, Intents},
 	send_preview::Preview,
 };
@@ -59,10 +56,6 @@ struct Drafts {
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
 	restored_questions: Vec<DesktopQuestionDraft>,
-	question_inputs: BTreeMap<(String, String), Entity<ComposerInput>>,
-	question_choices: BTreeMap<(String, String), ChoiceDraft>,
-	question_threads: BTreeMap<String, String>,
-	collapsed_questions: BTreeSet<String>,
 	execution: Intents,
 	text: String,
 	manager: Option<String>,
@@ -73,7 +66,7 @@ struct Drafts {
 	tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	uncertain: bool,
 	steer_pending: Option<PendingCommand>,
-	feedback: String,
+	feedback: crate::ui_feedback::Feedback,
 }
 
 impl AgentSurface {
@@ -158,10 +151,6 @@ impl AgentSurface {
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
 			threads: mem::take(&mut self.draft_profiles.threads),
 			restored_questions: mem::take(&mut self.restored_question_drafts),
-			question_inputs: mem::take(&mut self.async_question_inputs),
-			question_choices: mem::take(&mut self.async_question_choices),
-			question_threads: mem::take(&mut self.async_question_threads),
-			collapsed_questions: mem::take(&mut self.collapsed_async_questions),
 			execution: mem::take(&mut self.draft_profiles.execution),
 			text: self.composer.read(cx).content().into(),
 			manager: mem::take(&mut self.composer_manager),
@@ -172,19 +161,16 @@ impl AgentSurface {
 			tasks: mem::take(&mut self.draft_profiles.tasks),
 			uncertain: self.uncertain,
 			steer_pending: self.submission.pending.take(),
-			feedback: if self.uncertain { self.feedback.clone() } else { String::new() },
+			feedback: if self.uncertain { self.feedback.clone() } else { Default::default() },
 		}
 	}
 
 	fn apply_drafts(&mut self, restored: Drafts, cx: &mut Context<Self>) {
+		self.async_question_editor = None;
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
 
 		self.draft_profiles.threads = restored.threads;
 		self.restored_question_drafts = restored.restored_questions;
-		self.async_question_inputs = restored.question_inputs;
-		self.async_question_choices = restored.question_choices;
-		self.async_question_threads = restored.question_threads;
-		self.collapsed_async_questions = restored.collapsed_questions;
 		self.workspace.new_conversation = restored.new_conversation;
 		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
 		self.composer_manager = restored.manager;
@@ -219,15 +205,13 @@ pub(super) mod tests {
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	};
 
-	use gpui::AppContext as _;
-
 	#[cfg(not(test))]
 	use crate::shell::agent_surface::drafts::{
 		AgentAttachmentDto, AgentTaskReferenceDto, composer, execution_intent,
 	};
 	use crate::shell::agent_surface::drafts::{
-		AgentSurface, ClientProfile, ComposerInput, ConversationReasoningEffort,
-		ConversationWorkingDirectory, EntityId, IdempotencyKey, PendingCommand, WireText,
+		AgentSurface, ClientProfile, ConversationReasoningEffort, ConversationWorkingDirectory,
+		DesktopQuestionDraft, EntityId, IdempotencyKey, PendingCommand, WireText,
 	};
 
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
@@ -369,57 +353,30 @@ pub(super) mod tests {
 	}
 
 	#[gpui::test]
-	fn async_editors_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
+	fn legacy_answers_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-
 		surface.update(visual, |s, cx| {
-			let key = ("work".into(), "question".into());
-
 			s.bind_profile(Some(first.clone()), cx);
-
-			let input = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
-
-			input.update(cx, |input, cx| input.set_content("First service answer", cx));
-			s.async_question_inputs.insert(key.clone(), input.clone());
-			s.async_question_choices.insert(key.clone(), Default::default());
-			s.async_question_threads.insert("work".into(), "first-thread".into());
-			s.collapsed_async_questions.insert("work".into());
+			s.restored_question_drafts.push(DesktopQuestionDraft {
+				work_id: EntityId::new("work").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				question_id: WireText::new("question").unwrap(),
+				text: "Unsent answer".into(),
+				selected: None,
+				custom: None,
+				collapsed: true,
+			});
 			s.bind_profile(None, cx);
-
-			assert_eq!(s.async_question_inputs[&key], input);
-
-			input.update(cx, |input, cx| input.set_content("Edited offline", cx));
+			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
 			s.bind_profile(Some(first.clone()), cx);
-
-			assert_eq!(s.async_question_inputs[&key], input);
-
-			s.bind_profile(Some(second.clone()), cx);
-
-			assert!(s.async_question_inputs.is_empty());
-			assert!(s.async_question_choices.is_empty());
-			assert!(s.async_question_threads.is_empty());
-			assert!(s.collapsed_async_questions.is_empty());
-
-			let other = cx.new(|cx| ComposerInput::with_placeholder(40, "Answer", "Answer", cx));
-
-			other.update(cx, |input, cx| input.set_content("Second service answer", cx));
-			s.async_question_inputs.insert(key.clone(), other.clone());
-			s.async_question_threads.insert("work".into(), "second-thread".into());
-			s.bind_profile(Some(first), cx);
-
-			assert_eq!(s.async_question_inputs[&key], input);
-			assert_eq!(input.read(cx).content(), "Edited offline");
-			assert!(s.async_question_choices.contains_key(&key));
-			assert_eq!(s.async_question_threads["work"], "first-thread");
-			assert!(s.collapsed_async_questions.contains("work"));
-			assert!(s.submission.command.is_none() && !s.sending);
-
+			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
 			s.bind_profile(Some(second), cx);
-
-			assert_eq!(s.async_question_inputs[&key], other);
-			assert_eq!(other.read(cx).content(), "Second service answer");
-			assert_eq!(s.async_question_threads["work"], "second-thread");
+			assert!(s.restored_question_drafts.is_empty());
+			s.bind_profile(Some(first), cx);
+			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
+			assert!(s.composer.read(cx).content().is_empty());
+			assert!(!s.sending);
 		});
 	}
 }

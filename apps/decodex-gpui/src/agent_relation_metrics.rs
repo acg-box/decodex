@@ -60,27 +60,80 @@ fn percentage(value: Option<f32>) -> String {
 		None => "—".into(),
 	}
 }
-fn metric_track(value: Option<f32>, color: u32, scale: f32) -> AnyElement {
-	gpui::div()
-		.w_full()
-		.flex()
-		.gap(gpui::px(1.5 * scale))
-		.children((0..12).map(|i| {
-			let filled = (value.unwrap_or(0.) * 12. - i as f32).clamp(0., 1.);
-			gpui::div()
-				.flex_1()
-				.h(gpui::px(3. * scale))
-				.rounded(gpui::px(scale))
-				.overflow_hidden()
-				.bg(gpui::rgba(0xffffff10))
-				.child(
-					gpui::div()
-						.h_full()
-						.w(gpui::relative(filled))
-						.bg(gpui::rgba((color << 8) | 0xc8)),
-				)
-		}))
-		.into_any_element()
+fn metric_cell(label: String, value: Option<f32>, color: u32, scale: f32) -> AnyElement {
+	// Labels and decorative segments have fixed geometry. Paint one box instead
+	// of relaying out a nested flex tree for every node on every animation frame.
+	gpui::canvas(
+		move |_, window, _| {
+			let font = window.text_style().font();
+			let shape = |text: String, size: f32, color| {
+				let run = gpui::TextRun {
+					len: text.len(),
+					font: font.clone(),
+					color: gpui::rgb(color).into(),
+					background_color: None,
+					underline: None,
+					strikethrough: None,
+				};
+				window.text_system().shape_line(text.into(), gpui::px(size * scale), &[run], None)
+			};
+			(shape(label, 11., TEXT_MUTED), shape(percentage(value), 10., color))
+		},
+		move |bounds, (label, share), window, cx| {
+			// Each label occupies a separate range in this fixed-size cell.
+			window.paint_layer(bounds, |window| {
+				let line_height = gpui::px(14. * scale);
+				let _ = label.paint(
+					bounds.origin,
+					line_height,
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+				let _ = share.paint(
+					gpui::point(bounds.right() - share.width, bounds.top()),
+					line_height,
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+			});
+			let bounds = gpui::Bounds::new(
+				bounds.origin + gpui::point(gpui::px(0.), gpui::px(19. * scale)),
+				gpui::size(bounds.size.width, gpui::px(3. * scale)),
+			);
+			let gap = gpui::px(1.5 * scale);
+			let width = ((bounds.size.width - gap * 11.) / 12.).max(gpui::px(0.));
+			for i in 0..12 {
+				let segment = gpui::Bounds::new(
+					bounds.origin + gpui::point((width + gap) * i as f32, gpui::px(0.)),
+					gpui::size(width, bounds.size.height),
+				);
+				let mut track = gpui::fill(segment, gpui::rgba(0xffffff10));
+				track.corner_radii = gpui::Corners::all(gpui::px(scale));
+				window.paint_quad(track);
+				let filled = (value.unwrap_or(0.) * 12. - i as f32).clamp(0., 1.);
+				if filled > 0. {
+					let clip = gpui::ContentMask {
+						bounds: gpui::Bounds::new(
+							segment.origin,
+							gpui::size(width * filled, segment.size.height),
+						),
+					};
+					window.with_content_mask(Some(clip), |window| {
+						let mut fill = gpui::fill(segment, gpui::rgba((color << 8) | 0xc8));
+						fill.corner_radii = gpui::Corners::all(gpui::px(scale));
+						window.paint_quad(fill);
+					});
+				}
+			}
+		},
+	)
+	.w_full()
+	.h(gpui::px(22. * scale))
+	.into_any_element()
 }
 
 fn usage_label(id: String, title: String, share: String) -> AnyElement {
@@ -130,20 +183,23 @@ fn usage_label(id: String, title: String, share: String) -> AnyElement {
 			} else {
 				(None, false)
 			};
-			let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
-			if let Some(name) = name {
-				let _ = name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
-			}
-			if show_share {
-				let _ = share.paint(
-					gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
-					gpui::px(16.),
-					gpui::TextAlign::Left,
-					None,
-					window,
-					cx,
-				);
-			}
+			window.paint_layer(bounds, |window| {
+				let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
+				if let Some(name) = name {
+					let _ =
+						name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
+				}
+				if show_share {
+					let _ = share.paint(
+						gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
+						gpui::px(16.),
+						gpui::TextAlign::Left,
+						None,
+						window,
+						cx,
+					);
+				}
+			});
 		},
 	)
 	.w_full()
@@ -175,7 +231,7 @@ impl AgentSurface {
 			.iter()
 			.find(|n| Some(&n.key) == self.work_board.view.picked_agent.as_ref())?;
 		let row = node.row.as_ref()?;
-		let labels = identity::labels(std::iter::once(node.key.clone()));
+		let labels = identity::labels(self.snapshot.as_ref(), std::iter::once(node.key.clone()));
 		let tokens = self.published_metrics_for(node).tokens;
 		let total = graph
 			.nodes
@@ -208,7 +264,7 @@ impl AgentSurface {
 								.child(
 									gpui::div()
 										.text_color(gpui::rgb(TEXT_MUTED))
-										.child(labels[&node.key].clone()),
+										.children(labels.get(&node.key).cloned()),
 								)
 								.child(
 									gpui::div()
@@ -287,7 +343,7 @@ impl AgentSurface {
 			.unwrap_or_default()
 	}
 
-	fn metric_baselines(&self, graph: &Graph) -> (u128, u128) {
+	pub(super) fn metric_baselines(&self, graph: &Graph) -> (u128, u128) {
 		graph.nodes.iter().map(|n| self.metrics_for(n)).fold((0, 0), |(tokens, time), m| {
 			(
 				tokens + u128::from(m.tokens.unwrap_or(0)),
@@ -296,9 +352,13 @@ impl AgentSurface {
 		})
 	}
 
-	pub(super) fn node_metrics(&self, node: &Node, graph: &Graph, scale: f32) -> AnyElement {
+	pub(super) fn node_metrics(
+		&self,
+		node: &Node,
+		baselines: (u128, u128),
+		scale: f32,
+	) -> AnyElement {
 		let metrics = self.metrics_for(node);
-		let baselines = self.metric_baselines(graph);
 		let mut body = gpui::div().w_full().flex().gap(gpui::px(12. * scale));
 		for (value, baseline, color, label, meaning) in [
 			(
@@ -328,29 +388,12 @@ impl AgentSurface {
 			body = body.child(
 				gpui::div()
 					.id(SharedString::from(format!("metric-{color}-{}", node.key)))
+					.role(Role::Group)
+					.aria_label(format!("{label} · {}", percentage(part)))
 					.flex_1()
 					.min_w_0()
-					.flex()
-					.flex_col()
-					.gap(gpui::px(5. * scale))
 					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-					.child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.gap(gpui::px(4. * scale))
-							.text_size(gpui::px(11. * scale))
-							.line_height(gpui::px(14. * scale))
-							.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label))
-							.child(
-								gpui::div()
-									.text_size(gpui::px(10. * scale))
-									.text_color(gpui::rgb(color))
-									.child(percentage(part)),
-							),
-					)
-					.child(metric_track(part, color, scale)),
+					.child(metric_cell(label, part, color, scale)),
 			);
 		}
 		crate::ui_loading::content(
@@ -373,7 +416,7 @@ impl AgentSurface {
 			.collect();
 		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
 		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
-		let labels = identity::labels(nodes.iter().map(|n| n.key.clone()));
+		let labels = identity::labels(self.snapshot.as_ref(), nodes.iter().map(|n| n.key.clone()));
 		let mut distribution =
 			gpui::div().flex().w_full().h(gpui::px(28.)).rounded(gpui::px(4.)).overflow_hidden();
 		for (node, value) in ranked.iter().filter(|(_, v)| *v > 0) {
@@ -381,7 +424,16 @@ impl AgentSurface {
 			let key = node.key.clone();
 			let keyrow = key.clone();
 			let hoverkey = key.clone();
-			let label = labels[&node.key].clone();
+			let label = labels.get(&node.key).cloned().unwrap_or_else(|| {
+				node.row
+					.as_ref()
+					.expect("ranked nodes have rows")
+					.title
+					.chars()
+					.next()
+					.map(|initial| initial.to_string())
+					.unwrap_or_default()
+			});
 			let highlighted = self.work_board.view.hovered_agent.as_ref() == Some(&key)
 				|| self.work_board.view.picked_agent.as_ref() == Some(&key);
 			let tip = format!(

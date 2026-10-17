@@ -382,6 +382,11 @@ mod tests {
 			assert!(s.native_agents.selected.is_none());
 		});
 
+		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+		std::thread::sleep(std::time::Duration::from_millis(270));
+		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("conversation-activity-status").is_some());
 
 		surface.update(visual, |s, cx| {
@@ -398,6 +403,12 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
+		assert!(
+			visual.debug_bounds("conversation-activity-status").is_some(),
+			"retain the notice during exit"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 	}
 	#[gpui::test]

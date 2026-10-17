@@ -27,8 +27,12 @@ mod native_updater;
 mod panel_preferences;
 mod settings_surface;
 mod shell;
+mod ui_feedback;
+mod ui_frame;
+mod ui_layout;
 mod ui_loading;
 mod ui_motion;
+mod ui_performance;
 mod ui_preferences;
 mod ui_scroll;
 mod ui_theme;
@@ -61,7 +65,7 @@ use crate::{
 };
 use composer_input::{Copy, Cut, Paste, SelectAll};
 use decodex_protocol::{ClientFailure, ClientProfile};
-use shell::{ReloadWorkspace, SettingsWindow};
+use shell::{CloseWindow, ReloadWorkspace};
 use ui_theme::window_material;
 
 gpui::actions!(
@@ -69,8 +73,6 @@ gpui::actions!(
 	[
 		/// Quit the application and release its owned services.
 		Quit,
-		/// Close the main window while keeping the menu bar available.
-		CloseWindow,
 		/// Minimize the active main window.
 		Minimize,
 		/// Hide the application windows.
@@ -85,8 +87,6 @@ struct QuitPreflight(bool);
 impl Global for QuitPreflight {}
 
 fn main() {
-	frame_trace::start();
-
 	let application = gpui_platform::application();
 	let main_window: Rc<RefCell<Option<WindowHandle<Shell>>>> = Rc::new(RefCell::new(None));
 
@@ -100,6 +100,7 @@ fn main() {
 		}
 	});
 	application.run(move |cx: &mut App| {
+		frame_trace::start(cx);
 		shell::bind_keys(cx);
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
@@ -129,17 +130,20 @@ fn main() {
 						traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
 					}),
 					window_background: WindowBackgroundAppearance::Blurred,
-					app_owns_titlebar_drag: true,
+					// AppKit owns blank titlebar drags. Native control hit targets keep
+					// GPUI buttons interactive without a client-initiated drag session.
+					app_owns_titlebar_drag: false,
 					window_bounds: Some(WindowBounds::Windowed(bounds)),
 					window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
 					focus: false,
 					show: false,
-					..Default::default()
+					..ui_motion::window_options()
 				},
 				move |window, cx| {
 					let account_login = account_login.clone();
 
 					cx.new(|cx| {
+						ui_motion::observe_activation(window, cx);
 						Shell::new(window, cx, initial_connection)
 							.with_account_login(account_login)
 							.with_agent_profile(agent_profile, cx)
@@ -282,11 +286,16 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 
 			if let Some(button) = native.standardWindowButton(NSWindowButton::CloseButton) {
 				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
-
-				window.set_traffic_light_position(gpui::point(
-					gpui::px(16.0),
-					gpui::px(center_y - button.frame().size.height as f32 / 2.0),
-				));
+				let frame = button.frame();
+				let y = f64::from(center_y) - frame.size.height / 2.0;
+				// A move also publishes a bounds change. Keep the native titlebar
+				// geometry stable while WindowServer owns the drag.
+				if frame.origin.x != 16.0 || frame.origin.y != y {
+					window.set_traffic_light_position(gpui::point(
+						gpui::px(16.0),
+						gpui::px(y as f32),
+					));
+				}
 			}
 		}
 	});
@@ -357,20 +366,6 @@ fn compose_lifecycle(
 }
 
 fn hide_main_window(cx: &mut App) {
-	// On macOS GPUI's active_window is the main window, which can differ from
-	// the key Settings window when attached composer windows are present.
-	let settings = cx
-		.windows()
-		.into_iter()
-		.filter_map(|w| w.downcast::<SettingsWindow>())
-		.find(|w| w.is_active(cx) == Some(true));
-
-	if let Some(window) = settings {
-		let _ = window.update(cx, |_, window, _| window.remove_window());
-
-		return;
-	}
-
 	#[cfg(target_os = "macos")]
 	{
 		let _ = cx;

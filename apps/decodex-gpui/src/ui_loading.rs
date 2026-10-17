@@ -24,42 +24,55 @@ impl RenderOnce for Loading {
 			|_, _| Instant::now(),
 		);
 		let elapsed = clock.read(cx).elapsed().as_secs_f32();
-		let scale = if self.icon_only { 1.5 } else { 1. };
 		let reduced = ui_motion::reduced();
-		let phase = if reduced { 0. } else { elapsed * TAU / 1.4 };
 
 		if !reduced {
 			ui_motion::request_frame(window, cx);
 		}
 
-		gpui::div()
-			.id(SharedString::from(format!("loading-row-{}", self.label)))
-			.role(Role::Status)
-			.aria_label(if self.label.is_empty() { "Loading" } else { self.label })
-			.debug_selector(move || format!("loading-feedback-{}", self.label))
-			.h(gpui::px(24.))
-			.flex_none()
-			.flex()
-			.items_center()
-			.gap(gpui::px(8.))
-			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.opacity(if reduced { 1. } else { ((elapsed - 0.12) / 0.12).clamp(0., 1.) })
-			.child(gpui::div().flex().items_center().gap(gpui::px(4. * scale)).children(
-				(0..3).map(|i| {
-					gpui::div()
-						.size(gpui::px(4. * scale))
-						.rounded_full()
-						.bg(gpui::rgb(TEXT_MUTED))
-						.opacity(if reduced {
-							0.6
-						} else {
-							0.3 + 0.45 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.
-						})
-				}),
-			))
-			.when(!self.icon_only && !self.label.is_empty(), |row| row.child(self.label))
+		indicator(self.label, self.icon_only, elapsed, reduced).opacity(if reduced {
+			1.
+		} else {
+			((elapsed - 0.12) / 0.12).clamp(0., 1.)
+		})
 	}
+}
+
+fn indicator(
+	label: &'static str,
+	icon_only: bool,
+	elapsed: f32,
+	reduced: bool,
+) -> gpui::Stateful<gpui::Div> {
+	let scale = if icon_only { 1.5 } else { 1. };
+	let phase = if reduced { 0. } else { elapsed * TAU / 1.4 };
+
+	gpui::div()
+		.id(SharedString::from(format!("loading-row-{label}")))
+		.role(Role::Status)
+		.aria_label(if label.is_empty() { "Loading" } else { label })
+		.debug_selector(move || format!("loading-feedback-{label}"))
+		.h(gpui::px(24.))
+		.flex_none()
+		.flex()
+		.items_center()
+		.gap(gpui::px(8.))
+		.text_size(gpui::px(11.))
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.child(gpui::div().flex().items_center().gap(gpui::px(4. * scale)).children((0..3).map(
+			|i| {
+				gpui::div()
+					.size(gpui::px(4. * scale))
+					.rounded_full()
+					.bg(gpui::rgb(TEXT_MUTED))
+					.opacity(if reduced {
+						0.6
+					} else {
+						0.3 + 0.45 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.
+					})
+			},
+		)))
+		.when(!icon_only && !label.is_empty(), |row| row.child(label))
 }
 
 /// First-load placeholder that reserves the reading surface, not a toolbar row.
@@ -95,6 +108,58 @@ impl RenderOnce for ConversationLoading {
 
 pub(crate) fn loading(label: &'static str) -> Loading {
 	Loading { label, icon_only: false }
+}
+
+/// Keep mounted across page requests so brief completions do not restart the indicator.
+#[derive(IntoElement)]
+pub(crate) struct PaginationLoading {
+	active: bool,
+}
+impl RenderOnce for PaginationLoading {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state =
+			window.use_keyed_state("pagination-loading", cx, |_, _| PaginationPresence::default());
+		let reduced = ui_motion::reduced();
+		let now = Instant::now();
+		let (opacity, elapsed) = state.update(cx, |s, _| {
+			(s.opacity(self.active, now), now.duration_since(s.started).as_secs_f32())
+		});
+
+		if (self.active && (!reduced || opacity == 0.)) || (!self.active && opacity > 0.) {
+			ui_motion::request_frame(window, cx);
+		}
+
+		gpui::div().when(opacity > 0., |row| {
+			row.child(indicator("Loading earlier history", true, elapsed, reduced).opacity(opacity))
+		})
+	}
+}
+
+pub(crate) fn pagination(active: bool) -> PaginationLoading {
+	PaginationLoading { active }
+}
+
+struct PaginationPresence {
+	active: bool,
+	started: Instant,
+	fade: ui_motion::Tween,
+}
+impl Default for PaginationPresence {
+	fn default() -> Self {
+		Self { active: false, started: Instant::now(), fade: ui_motion::Tween::new(0.) }
+	}
+}
+impl PaginationPresence {
+	fn opacity(&mut self, active: bool, now: Instant) -> f32 {
+		if active && !self.active && self.fade.sample(now) == 0. {
+			self.started = now;
+		}
+		self.active = active;
+
+		let visible = active && now.duration_since(self.started).as_millis() >= 250;
+		self.fade.target(if visible { 1. } else { 0. }, now);
+		self.fade.sample(now)
+	}
 }
 
 pub(crate) fn conversation(label: &'static str) -> ConversationLoading {
@@ -192,6 +257,7 @@ impl RenderOnce for Content {
 			|_, _| Arrival::default(),
 		);
 		let settled = self.layout.as_ref().is_none_or(|(settled, _)| *settled);
+		let reduced = ui_motion::reduced();
 		let opacity = state.update(cx, |s, _| {
 			if self.ready && !s.loaded && s.started.is_none() {
 				s.geometry = None;
@@ -201,11 +267,11 @@ impl RenderOnce for Content {
 			if self.ready
 				&& s.started.is_none()
 				&& self.layout.is_some()
-				&& (!settled || s.stable_frames < 2)
+				&& (!settled || (!reduced && s.stable_frames < 2))
 			{
 				0.
 			} else {
-				s.progress(self.ready, Instant::now(), ui_motion::reduced())
+				s.progress(self.ready, Instant::now(), reduced)
 			}
 		});
 		if opacity < 1. && settled {
@@ -257,6 +323,29 @@ pub(crate) fn history(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn pagination_feedback_ignores_fast_reads_and_stays_continuous_between_pages() {
+		let mut state = PaginationPresence::default();
+		let start = Instant::now();
+		let at = |ms| start + std::time::Duration::from_millis(ms);
+
+		assert_eq!(state.opacity(true, at(0)), 0.);
+		assert_eq!(state.opacity(false, at(100)), 0., "fast reads stay invisible");
+		assert_eq!(state.opacity(true, at(110)), 0.);
+		assert_eq!(state.opacity(true, at(350)), 0.);
+		assert_eq!(state.opacity(true, at(360)), 0., "fade starts after the delay");
+		assert_eq!(state.opacity(true, at(560)), 1.);
+		assert_eq!(state.opacity(false, at(570)), 1.);
+		let closing = state.opacity(false, at(660));
+		assert!(closing > 0. && closing < 1., "completion fades instead of blinking off");
+		assert_eq!(state.opacity(true, at(660)), closing, "resuming must preserve current opacity");
+		assert_eq!(state.opacity(true, at(860)), 1.);
+		assert_eq!(state.opacity(false, at(870)), 1.);
+		assert_eq!(state.opacity(false, at(1_100)), 0.);
+		assert_eq!(state.opacity(true, at(1_110)), 0., "a later read gets a new delay");
+	}
+
 	#[test]
 	fn workspace_regions_reveal_in_place_and_refresh_does_not_restart_them() {
 		let mut arrival = WorkspaceArrival::default();

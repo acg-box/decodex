@@ -10,9 +10,11 @@ mod native_quit;
 #[cfg(target_os = "macos")]
 #[path = "../native_reopen.rs"]
 mod native_reopen;
+#[path = "../ui_frame.rs"] mod ui_frame;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
+#[path = "../ui_preferences.rs"] mod ui_preferences;
 #[path = "../ui_theme.rs"] mod ui_theme;
 #[cfg(target_os = "macos")]
 mod probe {
@@ -563,7 +565,7 @@ use unicode_width as _;
 #[cfg(target_os = "macos")]
 use {
 	block2 as _, decodex_components as _, libwebrtc as _, objc2_audio_toolbox as _,
-	objc2_avf_audio as _, objc2_core_audio_types as _, rtrb as _,
+	objc2_core_audio_types as _, objc2_core_foundation as _, rtrb as _,
 };
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 

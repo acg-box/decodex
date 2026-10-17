@@ -198,11 +198,6 @@ impl AgentSurface {
 		tween.sample(now)
 	}
 
-	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
-		// Match the actual conversation column, including animated sidebar widths.
-		(self.workspace_sidebar_width(window), self.agent_tree_width(window))
-	}
-
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible
 			|| self.workspace.chat_expanded
@@ -221,8 +216,14 @@ impl AgentSurface {
 		if self.workspace.graph_expanded {
 			return available;
 		}
-		let height =
-			self.workspace.graph_panel_height.clamp(120., 640.).min((available.1 - 240.).max(38.));
+		// Question choices can make the composer taller than a normal draft.
+		// Retain a readable transcript and usable timeline above that overlay.
+		let chat_minimum = (self.workspace.composer_overlay_height + 160.).max(240.);
+		let height = self
+			.workspace
+			.graph_panel_height
+			.clamp(120., 640.)
+			.min((available.1 - chat_minimum).max(38.));
 		(available.0, height.min(available.1))
 	}
 
@@ -475,6 +476,18 @@ mod tests {
 					assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
 				}
 			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			std::thread::sleep(
+				crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40),
+			);
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			let (restore, expand) = if target.is_none() {
+				("chat-expansion-restore-icon", "chat-expansion-expand-icon")
+			} else {
+				("dock-expansion-restore-icon", "dock-expansion-expand-icon")
+			};
+			assert!(visual.debug_bounds(restore).is_some());
+			assert!(visual.debug_bounds(expand).is_none());
 			surface.update(visual, |s, cx| {
 				s.toggle_focused_content(cx);
 				assert!(!s.workspace.chat_expanded && !s.workspace.graph_expanded);
@@ -491,6 +504,43 @@ mod tests {
 					),
 					(230., 270., 300.)
 				);
+			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			std::thread::sleep(
+				crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40),
+			);
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			assert!(visual.debug_bounds("chat-expansion-expand-icon").is_some());
+			assert!(visual.debug_bounds("dock-expansion-expand-icon").is_some());
+			assert!(visual.debug_bounds("chat-expansion-restore-icon").is_none());
+			assert!(visual.debug_bounds("dock-expansion-restore-icon").is_none());
+		}
+	}
+
+	#[gpui::test]
+	fn dock_resize_reserves_reading_space_above_a_tall_question(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_panel_height = 640.;
+		});
+		for overlay in [95., 235., 320.] {
+			visual.update(|window, cx| {
+				surface.update(cx, |s, _| {
+					s.workspace.composer_overlay_height = overlay;
+					let (_, dock_height) = s.workspace_graph_size(window, true);
+					let reading_height = f32::from(window.viewport_size().height)
+						- workspace_size::WINDOW_CONTROLS_CLEARANCE
+						- dock_height
+						- overlay;
+					assert!(reading_height >= 160., "a question must not consume the timeline");
+					assert_eq!(
+						s.workspace.graph_panel_height, 640.,
+						"retain the preferred Dock size"
+					);
+				})
 			});
 		}
 	}

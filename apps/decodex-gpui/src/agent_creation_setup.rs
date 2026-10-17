@@ -1,9 +1,6 @@
 //! Preserve pre-creation input independently of existing task execution overrides.
-use gpui::{AnyElement, KeyDownEvent};
-
 use crate::shell::agent_surface::{
-	AgentSandboxDto, AgentSurface, Context, ConversationReasoningEffort, InteractiveElement,
-	IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled,
+	AgentSandboxDto, AgentSurface, Context, ConversationReasoningEffort,
 };
 use decodex_protocol::{DesktopCreationIntent, DesktopCreationSetup};
 
@@ -68,60 +65,17 @@ impl AgentSurface {
 	pub(super) fn creation_effort(&self) -> Option<ConversationReasoningEffort> {
 		(!self.creation_inherit_effort).then(|| self.effort.clone())
 	}
-
-	pub(super) fn creation_effort_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
-		if self.composer_manager.is_some() || self.root_id().is_some() {
-			return gpui::div().into_any_element();
-		}
-
-		let label = if self.creation_inherit_effort {
-			"Use explicit reasoning"
-		} else {
-			"Use native reasoning"
-		};
-
-		gpui::div()
-			.id("creation-native-effort")
-			.debug_selector(|| "creation-native-effort".into())
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_label(label)
-			.cursor_pointer()
-			.px_2()
-			.py_1()
-			.child("Auto")
-			.on_click(cx.listener(|s, _, _, cx| s.toggle_creation_effort(cx)))
-			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
-				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
-					s.toggle_creation_effort(cx);
-					cx.stop_propagation();
-				}
-			}))
-			.into_any_element()
-	}
-
-	fn toggle_creation_effort(&mut self, cx: &mut Context<Self>) {
-		if self.composer_manager.is_some() || self.root_id().is_some() {
-			return;
-		}
-
-		self.creation_inherit_effort = !self.creation_inherit_effort;
-		self.creation_intent.reasoning = true;
-
-		self.apply_creation_defaults(cx);
-
-		self.creation_setup_present = true;
-
-		self.save_draft_document(cx);
-		cx.notify();
-	}
 }
 
 pub(super) fn summary(setup: &DesktopCreationSetup) -> String {
 	format!(
-		"New task · {} · {} · {}",
+		"New task · {}{} · {}",
 		setup.model.chars().take(80).collect::<String>(),
-		if setup.inherit_effort { "Inherited" } else { setup.reasoning_effort.as_str() },
+		if setup.inherit_effort {
+			String::new()
+		} else {
+			format!(" · {}", setup.reasoning_effort.as_str())
+		},
 		setup.working_directory.chars().take(120).collect::<String>()
 	)
 }

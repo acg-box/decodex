@@ -233,6 +233,12 @@ impl gpui::Element for PaginationLayout {
 			}
 		}
 		self.child.prepaint(window, cx);
+		if self.row.is_none() {
+			crate::frame_trace::transcript_layout(
+				self.scroll.max_offset().y.into(),
+				self.scroll.offset().y.into(),
+			);
+		}
 	}
 
 	fn paint(
@@ -317,14 +323,25 @@ impl AgentSurface {
 		self.timeline.wheel_scroll = None;
 	}
 
-	pub(super) fn prepare_process_folds(&self, _work: &AgentWorkItemDto, hidden: &BTreeSet<usize>) {
-		let folded = hidden.iter().map(|i| row_key(&self.timeline.native.entries[*i])).collect();
+	pub(super) fn prepare_process_folds(
+		&self,
+		groups: &[native_timeline::groups::Group],
+		hidden: &BTreeSet<usize>,
+	) {
+		self.timeline.native.completions.prepare(&self.timeline.native.entries, groups);
+		let folded = hidden
+			.iter()
+			.copied()
+			.chain(groups.iter().map(|group| group.first_index))
+			.map(|i| row_key(&self.timeline.native.entries[i]))
+			.collect();
 		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
-		if state.folded != folded {
+		if let Some(first) = state.folded.symmetric_difference(&folded).next().map(|key| key.0) {
+			// Earlier rows keep their measured size and position. Only the
+			// changed header and following rows can move when a turn folds.
+			state.rows.retain(|key, _| key.0 < first);
 			state.folded = folded;
-
-			state.rows.clear();
 		}
 	}
 
@@ -436,6 +453,7 @@ impl AgentSurface {
 		let owner = work.id.clone();
 		let selection = geometry.clone();
 		let selected_key = key.clone();
+		let arrival = self.timeline.native.arrivals.active(entry).then_some(entry.position);
 
 		let row = PaginationLayout {
 			child: row,
@@ -457,6 +475,13 @@ impl AgentSurface {
 				let Some(bounds) = bounds.first() else {
 					return;
 				};
+				if let Some(position) = arrival {
+					crate::frame_trace::row_layout(
+						position,
+						bounds.size.height.into(),
+						scroll.offset().y.into(),
+					);
+				}
 				#[cfg(test)]
 				geometry
 					.borrow_mut()
@@ -572,6 +597,52 @@ mod tests {
 		viewport.0.borrow_mut().pinned = Some(scroll::row_key(&entry));
 
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
+	}
+
+	#[gpui::test]
+	fn a_new_process_fold_keeps_older_history_virtualized(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, _| {
+			let entries = vec![row(1), row(10), row(11), row(12)];
+			s.timeline.native.entries = entries.clone();
+			let group = super::super::groups::Group {
+				turn: "turn".into(),
+				turns: ["turn".into()].into(),
+				indices: vec![2],
+				expanded: false,
+				first_index: 1,
+				final_index: 1,
+				count: 1,
+			};
+			// The final reply can precede its last process item. Its header is
+			// therefore the first affected row, not the first hidden item.
+			for entry in &entries {
+				s.timeline.native.viewport.0.borrow_mut().measure(
+					scroll::row_key(entry),
+					5_000.,
+					700.,
+				);
+			}
+			s.prepare_process_folds(&[group], &[2].into());
+			let viewport = &s.timeline.native.viewport;
+			assert_eq!(
+				viewport.offscreen_height(&entries[0], 0., 900.),
+				Some(700.),
+				"a new fold must not remount previously measured older replies"
+			);
+			for entry in &entries[1..] {
+				assert_eq!(viewport.offscreen_height(entry, 0., 900.), None);
+				viewport.0.borrow_mut().measure(scroll::row_key(entry), 5_000., 700.);
+			}
+			s.prepare_process_folds(&[], &Default::default());
+			assert_eq!(
+				s.timeline.native.viewport.offscreen_height(&entries[0], 0., 900.),
+				Some(700.)
+			);
+			for entry in &entries[1..] {
+				assert_eq!(s.timeline.native.viewport.offscreen_height(entry, 0., 900.), None);
+			}
+		});
 	}
 
 	#[test]
@@ -738,7 +809,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
+	fn history_feedback_keeps_height_and_reading_position(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::native_timeline::Pagination;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(700.)));
@@ -765,7 +838,7 @@ mod tests {
 				AgentTimelinePage {
 					thread_id: "thread".into(),
 					entries: (0..4).map(row).collect(),
-					next_cursor: None,
+					next_cursor: Some("older".into()),
 					weather: Default::default(),
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
@@ -781,7 +854,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		// The fixture closes the initially reserved dock. Measure refreshes only
@@ -789,14 +862,14 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&work].clone());
 
 		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let maximum = scroll.max_offset();
@@ -811,9 +884,11 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
+				crate::ui_frame::draw_frame(window, cx);
 			});
 
+			assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
+			assert!(visual.debug_bounds("native-timeline-retry").is_none());
 			assert_eq!(
 				scroll.max_offset(),
 				maximum,
@@ -824,6 +899,29 @@ mod tests {
 				offset,
 				"background refresh must preserve reading position"
 			);
+		}
+
+		for pagination in [Pagination::Loading, Pagination::Failed, Pagination::Idle] {
+			surface.update(visual, |s, cx| {
+				s.timeline.native.pagination = pagination;
+				s.timeline.native.task = (pagination == Pagination::Loading)
+					.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			if pagination == Pagination::Loading {
+				for delay in [300, 16] {
+					thread::sleep(std::time::Duration::from_millis(delay));
+					visual.update(crate::ui_frame::draw_frame);
+				}
+				assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
+			}
+			assert_eq!(
+				visual.debug_bounds("native-timeline-retry").is_some(),
+				pagination == Pagination::Failed
+			);
+			assert_eq!(scroll.max_offset(), maximum, "pagination feedback must not resize history");
+			assert_eq!(scroll.offset(), offset, "pagination feedback must not move the reader");
 		}
 	}
 

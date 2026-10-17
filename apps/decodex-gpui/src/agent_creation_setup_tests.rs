@@ -109,7 +109,7 @@ fn unbound_creation_edits_survive_reopen(cx: &mut TestAppContext) {
 
 		s.restore_unbound_draft(cx);
 
-		assert_eq!(s.composer_effort_value(), "Inherited");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 		assert_eq!(s.creation_setup(cx), Some(expected));
 		assert!(s.submission.command.is_none());
 	});

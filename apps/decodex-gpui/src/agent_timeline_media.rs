@@ -1,9 +1,13 @@
 //! One explicit native image preview, bounded and tied to the selected source.
+#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use std::{sync::Arc, time::Duration};
 
 use gpui::{AnyElement, ImageFormat, ObjectFit};
 use tokio::{runtime::Builder, time};
 
+#[cfg(any(test, feature = "visual-capture"))] use crate::shell::agent_surface::ClientProfile;
+#[cfg(feature = "visual-capture")]
+use crate::shell::agent_surface::native_timeline::AgentHistoryResult;
 #[cfg(test)]
 use crate::shell::agent_surface::native_timeline::{
 	AgentSnapshotResult, AgentTimelineContent, AgentTimelineEntry,
@@ -12,9 +16,8 @@ use crate::{
 	shell::{
 		agent_surface,
 		agent_surface::native_timeline::{
-			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Binding,
-			ClientProfile, Context, EntityId, InteractiveElement, IntoElement, ParentElement,
-			Styled, StyledImage, Task, render,
+			AgentClient, AgentSurface, AgentWorkItemDto, Binding, Context, EntityId,
+			InteractiveElement, IntoElement, ParentElement, Styled, StyledImage, Task, render,
 		},
 	},
 	ui_loading,
@@ -60,7 +63,7 @@ impl AgentSurface {
 		)?;
 
 		self.profile = Some(profile);
-		self.feedback = "Image preview from an isolated native service".into();
+		self.feedback = Feedback::neutral("Image preview from an isolated native service");
 
 		self.load_native_media(request, cx);
 

@@ -50,6 +50,12 @@ mod tests {
 		assert_eq!(activity.unwrap().kind, "functionCallOutput");
 		assert_eq!(text, "Inspect the delegated task.");
 
+		let mut wake = row.clone();
+		wake["item"]["name"] = serde_json::json!("work_wake");
+		assert!(
+			matches!(super::super::ordinary(&wake).unwrap(), AgentTimelineContent::Item {kind, text, activity:Some(_), ..} if kind == "functionCallOutput" && text.contains("Inspect the delegated task."))
+		);
+
 		for namespace in [serde_json::json!(null), serde_json::json!("")] {
 			let mut unnamed = row.clone();
 

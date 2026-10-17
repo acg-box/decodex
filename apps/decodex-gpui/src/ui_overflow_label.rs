@@ -1,4 +1,4 @@
-//! Shared overflow text: scroll while the window is active, reset when inactive.
+//! Shared overflow text follows the application rendering policy.
 use crate::ui_motion;
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, TextRun, Window, prelude::*};
 use std::time::Instant;
@@ -25,9 +25,45 @@ pub(crate) struct OverflowLabel {
 }
 impl RenderOnce for OverflowLabel {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let text: SharedString = self.text.replace(['\n', '\r'], " ").into();
-		let style = window.text_style();
-		let font_size = style.font_size.to_pixels(window.rem_size());
+		let line = OverflowLine::new(self.id.clone(), self.text, window.text_style(), window, cx);
+		gpui::div()
+			.id(self.id)
+			.relative()
+			.min_w_0()
+			.w(line.width())
+			.max_w_full()
+			.h(line.height)
+			.overflow_hidden()
+			.child(
+				gpui::canvas(
+					|_, _, _| (),
+					move |bounds, _, window, cx| line.paint(bounds, window, cx),
+				)
+				.absolute()
+				.top_0()
+				.left_0()
+				.size_full(),
+			)
+	}
+}
+
+/// Shared shaping and motion for labels inside ordinary layouts or fixed canvases.
+/// The canvas path keeps graph headers out of repeated intrinsic-size layout.
+pub(crate) struct OverflowLine {
+	line: gpui::ShapedLine,
+	pub height: gpui::Pixels,
+	start: gpui::Entity<(Instant, bool)>,
+	reduced: bool,
+}
+impl OverflowLine {
+	pub(crate) fn new(
+		id: ElementId,
+		text: SharedString,
+		style: gpui::TextStyle,
+		window: &mut Window,
+		cx: &mut App,
+	) -> Self {
+		let text: SharedString = text.replace(['\n', '\r'], " ").into();
 		let run = TextRun {
 			len: text.len(),
 			font: style.font(),
@@ -36,75 +72,61 @@ impl RenderOnce for OverflowLabel {
 			underline: None,
 			strikethrough: None,
 		};
-		let width =
-			f32::from(window.text_system().shape_line(text.clone(), font_size, &[run], None).width);
-		let active = window.is_window_active();
-		let start = window.use_keyed_state(self.id.clone(), cx, |_, _| (Instant::now(), active));
+		let line = window.text_system().shape_line(
+			text,
+			style.font_size.to_pixels(window.rem_size()),
+			&[run],
+			None,
+		);
+		let active = !ui_motion::reduced();
+		let start = window.use_keyed_state(id, cx, |_, _| (Instant::now(), active));
 		start.update(cx, |state, _| {
 			if !active || state.1 != active {
 				state.0 = Instant::now();
 			}
 			state.1 = active;
 		});
-		let reduced = ui_motion::reduced();
-		let measure_text = text.clone();
-		gpui::div()
-			.id(self.id)
-			.relative()
-			.min_w_0()
-			.w(gpui::px(width))
-			.max_w_full()
-			.h(window.line_height())
-			.overflow_hidden()
-			.child(gpui::div().w_full().whitespace_nowrap().text_ellipsis().opacity(0.).child(text))
-			.child(
-				gpui::canvas(
-					move |_, window, _| {
-						let style = window.text_style();
-						let run = TextRun {
-							len: measure_text.len(),
-							font: style.font(),
-							color: style.color,
-							background_color: None,
-							underline: None,
-							strikethrough: None,
-						};
-						window.text_system().shape_line(
-							measure_text.clone(),
-							style.font_size.to_pixels(window.rem_size()),
-							&[run],
-							None,
-						)
-					},
-					move |bounds, line, window, cx| {
-						let visible = bounds.intersect(&window.content_mask().bounds);
-						if visible.size.width <= gpui::px(0.) || visible.size.height <= gpui::px(0.)
-						{
-							return;
-						}
-						let distance =
-							(f32::from(line.width) - f32::from(visible.size.width)).max(0.);
-						let x = if window.is_window_active() && !reduced && distance > 1. {
-							ui_motion::request_frame(window, cx);
-							offset(start.read(cx).0.elapsed().as_secs_f32(), distance)
-						} else {
-							0.
-						};
-						let _ = line.paint(
-							bounds.origin - gpui::point(gpui::px(x), gpui::px(0.)),
-							window.line_height(),
-							gpui::TextAlign::Left,
-							None,
-							window,
-							cx,
-						);
-					},
-				)
-				.absolute()
-				.top_0()
-				.left_0()
-				.size_full(),
-			)
+		Self {
+			line,
+			height: style.line_height_in_pixels(window.rem_size()),
+			start,
+			reduced: ui_motion::reduced(),
+		}
+	}
+
+	pub(crate) fn width(&self) -> gpui::Pixels {
+		self.line.width
+	}
+
+	pub(crate) fn paint(
+		&self,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		let visible = bounds.intersect(&window.content_mask().bounds);
+		if visible.is_empty() {
+			return;
+		}
+		let distance = (f32::from(self.line.width) - f32::from(visible.size.width)).max(0.);
+		let x = if !self.reduced && distance > 1. {
+			ui_motion::request_frame(window, cx);
+			offset(self.start.read(cx).0.elapsed().as_secs_f32(), distance)
+		} else {
+			0.
+		};
+		window.with_content_mask(Some(gpui::ContentMask { bounds: visible }), |window| {
+			window.paint_layer(visible, |window| {
+				let _ = self.line.paint(
+					bounds.origin - gpui::point(gpui::px(x), gpui::px(0.)),
+					self.height,
+					gpui::TextAlign::Left,
+					None,
+					window,
+					cx,
+				);
+			});
+		});
 	}
 }
 

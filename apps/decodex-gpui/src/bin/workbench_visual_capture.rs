@@ -26,6 +26,9 @@ mod conversations;
 #[path = "../desktop_settings.rs"]
 mod desktop_settings;
 #[allow(dead_code)]
+#[path = "../frame_trace.rs"]
+mod frame_trace;
+#[allow(dead_code)]
 #[path = "../health_query.rs"]
 mod health_query;
 #[allow(dead_code)]
@@ -44,10 +47,14 @@ mod settings_surface;
 #[allow(dead_code)]
 #[path = "../shell.rs"]
 mod shell;
+#[path = "../ui_feedback.rs"] mod ui_feedback;
+#[path = "../ui_frame.rs"] mod ui_frame;
+#[path = "../ui_layout.rs"] mod ui_layout;
 #[allow(dead_code)]
 #[path = "../ui_loading.rs"]
 mod ui_loading;
 #[path = "../ui_motion.rs"] mod ui_motion;
+#[path = "../ui_performance.rs"] mod ui_performance;
 #[allow(dead_code)]
 #[path = "../ui_preferences.rs"]
 mod ui_preferences;

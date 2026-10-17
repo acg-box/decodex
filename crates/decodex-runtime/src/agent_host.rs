@@ -42,8 +42,8 @@ use decodex_codex::app_server_client::{
 };
 use decodex_core::AccountId;
 use decodex_database::{
-	AgentDispatchState, AgentMisalignment, AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
-	StoreError,
+	AgentDispatchState, AgentMisalignment, AgentRecoveryKind, AgentWorkStatus, EnqueueAgentEvent,
+	SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
@@ -179,7 +179,7 @@ impl AgentHost {
 
 			let thread = work.codex_thread_id.as_deref().expect("filtered native thread");
 
-			time::timeout(
+			let result = time::timeout(
 				Duration::from_secs(12),
 				agent_models::recover_ordinary_model(
 					&self.store,
@@ -194,7 +194,15 @@ impl AgentHost {
 				),
 			)
 			.await
-			.map_err(|_| AgentError::Invalid("model recovery observation timed out".into()))??;
+			.map_err(|_| AgentError::Invalid("model recovery observation timed out".into()))
+			.and_then(std::convert::identity);
+			self.store
+				.record_agent_recovery(
+					work.id.clone(),
+					AgentRecoveryKind::Model,
+					result.err().as_ref().map(diagnostic),
+				)
+				.await?;
 		}
 
 		Ok(())
@@ -297,18 +305,37 @@ impl AgentHost {
 		snapshot: &mut decodex_protocol::AgentSnapshotDto,
 	) {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
+			// No native connection is not evidence that retained threads are active.
+			self.archive_visibility.lock().await.project(snapshot);
+			return;
+		};
+		let Ok(slots) = self.store.agent_slots().await else {
+			snapshot.connection_initializing = true;
 			return;
 		};
 		crate::agent_visibility::ArchiveVisibility::refresh(
 			&self.archive_visibility,
 			generation.as_str(),
 			client,
-			snapshot.work_items.iter().filter_map(|work| work.codex_thread_id.clone()).collect(),
+			snapshot
+				.work_items
+				.iter()
+				.filter_map(|work| work.codex_thread_id.clone())
+				.chain(slots.iter().filter_map(|slot| slot.thread_id.clone()))
+				.collect(),
 		)
 		.await;
 		let cache = self.archive_visibility.lock().await;
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
-			crate::agent_visibility::retain_active(snapshot, &cache.archived);
+			cache.project(snapshot);
+			if crate::agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
+				.await
+				.is_err()
+			{
+				snapshot.connection_initializing = true;
+			}
+		} else {
+			snapshot.connection_initializing = true;
 		}
 	}
 
@@ -357,10 +384,6 @@ impl AgentHost {
 
 	pub(crate) async fn process_diagnostics(&self) -> NativeProcessDiagnostics {
 		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
-	}
-
-	pub(crate) fn startup_state(&self) -> watch::Receiver<bool> {
-		self.initializing.subscribe()
 	}
 
 	pub(crate) fn connection_initializing(&self) -> bool {
@@ -802,6 +825,27 @@ impl AgentHost {
 		let result = native_agents::read(&self.store, &client, work, thread, cursor).await;
 
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
+			if let decodex_protocol::NativeAgentsResult::Available { agents, .. } = &result {
+				let active = agents
+					.iter()
+					.filter(|agent| {
+						matches!(
+							agent.status.as_str(),
+							"active" | "idle" | "waitingOnApproval" | "waitingOnUserInput"
+						)
+					})
+					.map(|agent| {
+						(
+							format!("native:{work}:{}", agent.thread_id),
+							work.to_owned(),
+							Some(agent.thread_id.clone()),
+						)
+					})
+					.collect();
+				if self.store.reconcile_agent_slots(active, vec![]).await.is_err() {
+					return decodex_protocol::NativeAgentsResult::Unavailable;
+				}
+			}
 			result
 		} else {
 			decodex_protocol::NativeAgentsResult::Unavailable
@@ -923,8 +967,8 @@ impl AgentHost {
 
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
 						if let Some((root, agent, events)) = active.as_mut()
-							&& self.recover_models(agent, events).await.is_err() {
-							self.record_error(root, "recovery_needs_attention").await;
+							&& let Err(error) = self.recover_models(agent, events).await {
+							let _ = self.store.record_agent_event_failure(root.clone(), diagnostic(&error)).await;
 						}
 
 						self.rotate_exhausted(&mut active).await;
@@ -1013,11 +1057,25 @@ impl AgentHost {
 				self.mcp_login.disconnect(Some(generation)).await;
 			}
 
-			if let Some(event) = event
-				&& let Err(error) = agent.handle_event(event).await
-				&& event_failure_needs_attention(closed, &error)
-			{
-				self.record_error(root, "event_processing_failed").await;
+			if let Some(event) = event {
+				let method = match &event {
+					ServerEvent::Notification { method, .. }
+					| ServerEvent::Request { method, .. } => method.clone(),
+					ServerEvent::Closed(_) => "connection closed".into(),
+					ServerEvent::UnmatchedResponse { .. } => "unmatched response".into(),
+				};
+				if let Err(error) = agent.handle_event(event).await
+					&& event_failure_needs_attention(closed, &error)
+				{
+					let detail = format!("{method}: {}", diagnostic(&error));
+					let _ = self
+						.store
+						.record_agent_event_failure(
+							root.clone(),
+							detail.chars().take(1_024).collect(),
+						)
+						.await;
+				}
 			}
 
 			if closed {
@@ -1057,6 +1115,14 @@ impl AgentHost {
 			}
 
 			let detail = match error {
+				AgentError::ThreadOwnedElsewhere { .. } => {
+					// Resume records the shared conversation lock. The composer renders it;
+					// do not add a second, misleading voice connection error.
+					self.voice.update(&id, AgentVoicePhase::Failed, None, None);
+					return;
+				},
+				AgentError::ThreadArchived =>
+					"This conversation is archived. Restore it before starting Live.".into(),
 				AgentError::Transport(ClientError::Remote(error)) =>
 					agent_voice::provider_error_message(&error.message).into(),
 				AgentError::Invalid(message) => message,
@@ -1901,15 +1967,16 @@ impl AgentHost {
 				// its editor with a false connection failure or requeue it.
 				let _ = self.store.resolve_agent_delivery_failure(root.into()).await;
 			},
-			Err(AgentError::ThreadOwnedElsewhere) => {
-				let _ = self.store.hold_agent_unsent_input(root.into()).await;
-				let _ = self
-					.store
-					.record_agent_thread_in_use(
-						root.into(),
-						diagnostic(&AgentError::ThreadOwnedElsewhere),
-					)
-					.await;
+			Err(ref error @ AgentError::ThreadOwnedElsewhere { ref thread_id }) => {
+				let Ok(items) = self.store.list_agent_work_items().await else { return };
+				let Some(owner) = items
+					.into_iter()
+					.find(|item| item.codex_thread_id.as_deref() == Some(thread_id.as_str()))
+				else {
+					return;
+				};
+				let _ = self.store.hold_agent_unsent_input(owner.id.clone()).await;
+				let _ = self.store.record_agent_thread_in_use(owner.id, diagnostic(error)).await;
 			},
 			Err(error) => {
 				let _ =
@@ -1919,6 +1986,16 @@ impl AgentHost {
 	}
 
 	async fn record_error(&self, root: &str, kind: &str) {
+		if kind == "event_processing_failed" {
+			let _ = self
+				.store
+				.record_agent_event_failure(
+					root.into(),
+					"Native configuration observation could not be saved.".into(),
+				)
+				.await;
+			return;
+		}
 		if kind == "reconnection_needs_attention" {
 			let _ = self
 				.store
@@ -2044,12 +2121,25 @@ impl AgentHost {
 
 			return None;
 		};
+		if let Some(observations) = &self.observations {
+			let _phase = crate::startup_trace::Phase::new("initial_account_observations");
+			observations.wait_for_initial_observation().await;
+		}
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {
 				let phase = crate::startup_trace::Phase::new("recover_persisted");
-				if active.1.recover_persisted().await.is_err() {
-					self.record_error(&root.id, "recovery_needs_attention").await;
+				let recovery = active.1.recover_persisted().await;
+				let _ = self
+					.store
+					.record_agent_recovery(
+						root.id.clone(),
+						AgentRecoveryKind::PersistedState,
+						recovery.as_ref().err().map(diagnostic),
+					)
+					.await;
+				if recovery.is_ok() {
+					let _ = self.store.resolve_agent_event_failure(root.id.clone()).await;
 				}
 
 				drop(phase);
@@ -2157,7 +2247,6 @@ fn request_is_live_on(client: &AppServerClient, payload: &Value) -> bool {
 fn diagnostic(error: &AgentError) -> String {
 	match error {
         AgentError::ThreadArchived => "This conversation is archived. Unarchive it to continue. Your saved messages remain queued.".into(),
-		AgentError::ThreadOwnedElsewhere => "This Agent conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.".into(),
 		AgentError::Store(_) => "Agent delivery could not access its saved state.".into(),
 		AgentError::DependenciesPending(_) => "Agent is waiting for prerequisite work.".into(),
 		_ => error.to_string(),
@@ -2794,7 +2883,7 @@ mod tests {
 				.any(|e| e.event_kind == "user_message")
 		);
 
-		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		store.resolve_agent_thread_in_use("agent".into()).await.unwrap();
 
 		agent_host::persist_input(&store, "agent", "new-send", "Do this", None).await.unwrap();
 

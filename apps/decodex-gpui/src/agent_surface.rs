@@ -1,4 +1,5 @@
 //! Agent conversation and work overview. The service owns records and execution.
+use crate::ui_feedback::Feedback;
 
 #[path = "agent_activity.rs"] mod activity;
 #[path = "agent_tree.rs"] mod agent_tree;
@@ -36,6 +37,9 @@
 #[path = "agent_native_composer.rs"]
 mod native_composer;
 #[path = "agent_native_goal.rs"] mod native_goal;
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "agent_native_model_menu.rs"]
+mod native_model_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -88,13 +92,10 @@ use crate::{
 	shell::{workspace_symbols, workspace_symbols::Symbol},
 	ui_loading,
 	ui_motion::{self, SmoothControl},
-	ui_theme::{
-		self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, METADATA_GAP, TEXT_MUTED,
-	},
+	ui_theme::{self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, TEXT_MUTED},
 	ui_working::Working,
 };
 use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
-use async_questions::ChoiceDraft;
 use capabilities::CatalogContext;
 use creation_setup::DEFAULT_MODEL;
 use decodex_protocol::{
@@ -137,6 +138,8 @@ enum LoadState {
 pub(crate) struct AgentSurface {
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_composer: native_composer::NativeComposer,
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_model_menu: native_model_menu::NativeModelMenu,
 	voice: Option<VoiceUi>,
 	retired_voice_captions: Vec<CaptionHistory>,
 	voice_task: Option<Task<()>>,
@@ -175,6 +178,8 @@ pub(crate) struct AgentSurface {
 	native_agents: NativeAgents,
 	output_stream: OutputStream,
 	workspace: WorkspaceView,
+	workspace_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	transcript_presentation: Entity<crate::ui_frame::Presentation<Self>>,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
 	state: LoadState,
@@ -226,7 +231,7 @@ pub(crate) struct AgentSurface {
 	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
-	feedback: String,
+	feedback: Feedback,
 	history: Option<(String, AgentHistoryResult)>,
 	history_task: Option<Task<()>>,
 	history_requested_for: Option<String>,
@@ -244,12 +249,10 @@ pub(crate) struct AgentSurface {
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
 	question_timers: std::collections::BTreeMap<i64, QuestionTimer>,
 	question_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
+	async_question_editor: Option<async_questions::Editor>,
+	async_question_submissions: Vec<async_questions::Submission>,
 	question_notices: QuestionNotices,
 	restored_question_drafts: Vec<DesktopQuestionDraft>,
-	collapsed_async_questions: std::collections::BTreeSet<String>,
-	async_question_threads: std::collections::BTreeMap<String, String>,
-	async_question_choices: std::collections::BTreeMap<(String, String), ChoiceDraft>,
-	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	accounts: Vec<(String, String)>,
 }
 impl AgentSurface {
@@ -271,7 +274,7 @@ impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code, reason = "capture-only interaction proof shares the main module")]
 	pub(crate) fn visual_send_evidence(&self, cx: &Context<Self>) -> serde_json::Value {
-		serde_json::json!({"snapshot":self.snapshot,"history":self.history,"feedback":self.feedback,"sending":self.sending,"uncertain":self.uncertain,"draft":self.composer.read(cx).content()})
+		serde_json::json!({"snapshot":self.snapshot,"history":self.history,"feedback":self.feedback.message,"sending":self.sending,"uncertain":self.uncertain,"draft":self.composer.read(cx).content()})
 	}
 
 	/// Render only protocol-read observations; the capture has no command profile.
@@ -303,7 +306,8 @@ impl AgentSurface {
 			surface.prepare_question_inputs(&request, cx);
 		}
 
-		surface.feedback = "Read-only capture of a disposable service projection".into();
+		surface.feedback =
+			Feedback::neutral("Read-only capture of a disposable service projection");
 
 		surface
 	}
@@ -317,8 +321,14 @@ impl AgentSurface {
 		surface
 	}
 
+	#[expect(clippy::too_many_lines, reason = "Keep the single owned-state initializer together")]
 	fn with_inputs(inputs: AgentInputs, cx: &mut Context<Self>) -> Self {
 		let AgentInputs { model, cwd, composer } = inputs;
+		let owner = cx.entity();
+		let workspace_presentation =
+			crate::ui_frame::Presentation::new(&owner, Self::render_workspace_view, cx);
+		let transcript_presentation =
+			crate::ui_frame::Presentation::new(&owner, Self::render_transcript_view, cx);
 
 		Self {
 			voice: None,
@@ -366,6 +376,8 @@ impl AgentSurface {
 			menu_trigger_bounds: Default::default(),
 			#[cfg(all(target_os = "macos", not(test)))]
 			native_composer: Default::default(),
+			#[cfg(all(target_os = "macos", not(test)))]
+			native_model_menu: Default::default(),
 			composer_menu: None,
 			escape_stop: None,
 			interrupting: None,
@@ -380,6 +392,8 @@ impl AgentSurface {
 			native_agents: Default::default(),
 			output_stream: Default::default(),
 			workspace: WorkspaceView::default(),
+			workspace_presentation,
+			transcript_presentation,
 			accounts: vec![],
 			composer,
 			model,
@@ -404,7 +418,7 @@ impl AgentSurface {
 			command_epoch: 0,
 			sending: false,
 			uncertain: false,
-			feedback: String::new(),
+			feedback: Feedback::default(),
 			history: None,
 			history_task: None,
 			history_requested_for: None,
@@ -422,12 +436,10 @@ impl AgentSurface {
 			mcp_answers: Default::default(),
 			question_timers: Default::default(),
 			question_inputs: Default::default(),
+			async_question_editor: None,
+			async_question_submissions: Vec::new(),
 			question_notices: Default::default(),
 			restored_question_drafts: Vec::new(),
-			collapsed_async_questions: Default::default(),
-			async_question_threads: Default::default(),
-			async_question_choices: Default::default(),
-			async_question_inputs: Default::default(),
 			profile: None,
 			snapshot: None,
 			state: LoadState::Idle,
@@ -549,8 +561,6 @@ impl AgentSurface {
 					if matches!(history, AgentHistoryResult::Available { .. }) {
 						surface.acknowledge_open_handoff(&id);
 					}
-					cx.notify();
-
 					if surface
 						.history
 						.as_ref()
@@ -570,7 +580,7 @@ impl AgentSurface {
 							surface.timeline.latest_follow_work = Some(id.clone());
 						}
 
-						if surface.feedback == "Message saved · Waiting for agent…" {
+						if surface.feedback.message == "Message saved · Waiting for agent…" {
 							let last_reply = |history: &AgentHistoryResult| match history {
 								AgentHistoryResult::Available { entries, .. } => entries
 									.iter()
@@ -591,7 +601,7 @@ impl AgentSurface {
 						}
 
 						surface.reconcile_voice_captions(&id, &history);
-						surface.prepare_async_question_inputs(&id, &history, cx);
+						surface.prune_async_question_drafts(&id, &history);
 						surface.timeline.cache.insert(id.clone(), history.clone());
 
 						surface.history = Some((id, history));
@@ -754,9 +764,9 @@ impl AgentSurface {
 			return;
 		}
 		if !serde_json::from_str::<serde_json::Value>(&json).is_ok_and(|value| value.is_object()) {
-			self.feedback =
-				"Response must be a JSON object that matches the displayed provider request."
-					.into();
+			self.feedback = Feedback::warning(
+				"Response must be a JSON object that matches the displayed provider request.",
+			);
 
 			cx.notify();
 
@@ -785,10 +795,10 @@ impl AgentSurface {
 		}
 
 		let Ok(response_json) = HistoryText::new(json) else {
-			self.feedback = format!(
+			self.feedback = Feedback::warning(format!(
 				"Response is too large after encoding (limit {} bytes). Shorten your answers and retry; your entries are preserved.",
 				decodex_protocol::MAX_HISTORY_INLINE_BYTES
-			);
+			));
 
 			cx.notify();
 
@@ -904,8 +914,12 @@ impl AgentSurface {
 			return;
 		}
 
+		if self.submit_question_answer(cx) {
+			return;
+		}
+
 		if let Some(error) = self.composer_capability_error(cx) {
-			self.feedback = error.into();
+			self.feedback = Feedback::error(error);
 
 			cx.notify();
 
@@ -953,7 +967,7 @@ impl AgentSurface {
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
-				self.feedback = message;
+				self.feedback = Feedback::error(message);
 
 				cx.notify();
 			},
@@ -1015,7 +1029,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.feedback = "No service profile is configured.".into();
+			self.feedback = Feedback::error("No service profile is configured.");
 
 			cx.notify();
 
@@ -1024,7 +1038,7 @@ impl AgentSurface {
 
 		if !self.command_connection_ready() {
 			self.feedback =
-				"Connection unavailable. Draft retained; refresh before sending.".into();
+				Feedback::error("Connection unavailable. Draft retained; refresh before sending.");
 
 			cx.notify();
 
@@ -1036,7 +1050,7 @@ impl AgentSurface {
 			match self.command_draft_copy(cx) {
 				Ok(copy) => Some(copy),
 				Err(message) => {
-					self.feedback = message.into();
+					self.feedback = Feedback::error(message);
 
 					cx.notify();
 
@@ -1069,13 +1083,14 @@ impl AgentSurface {
 		}
 
 		self.sending = true;
-		self.feedback = "Sending…".into();
+		self.feedback = Feedback::neutral("Sending…");
 
 		if pending.steer.is_some() {
 			self.submission.pending = Some(pending.clone());
 		}
 
 		self.submission.unconfirmed.push(key.clone());
+		self.begin_question_submission(&action, &key, cx);
 
 		self.submission.waiting = Some(QueuedCommand { profile, action, key, pending });
 
@@ -1131,6 +1146,13 @@ impl AgentSurface {
 		}
 
 		self.sending = false;
+		if !matches!(
+			&result,
+			Ok(AgentCommandResponse::Accepted { .. }
+				| AgentCommandResponse::PotentiallyDispatched { .. })
+		) {
+			self.restore_question_submission(pending.key.as_ref());
+		}
 
 		self.finish_send_preview(
 			&pending,
@@ -1210,9 +1232,9 @@ impl AgentSurface {
 		match result {
 			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
-					"Message saved · Waiting for agent…".into()
+					Feedback::neutral("Message saved · Waiting for agent…")
 				} else {
-					String::new()
+					Feedback::default()
 				};
 
 				if draft == Some(surface.composer.read(cx).content()) {
@@ -1223,19 +1245,21 @@ impl AgentSurface {
 				}
 			},
 			Ok(AgentCommandResponse::Rejected { error }) =>
-				surface.feedback = format!("Not accepted: {error:?}. Draft retained."),
+				surface.feedback =
+					Feedback::error(format!("Not accepted: {error:?}. Draft retained.")),
 			Ok(AgentCommandResponse::PotentiallyDispatched { failure }) => {
 				surface.uncertain = true;
-				surface.feedback = format!(
+				surface.feedback = Feedback::warning(format!(
 					"Acceptance unknown: {failure:?}. Draft retained. Sending is blocked to prevent duplicate effects; inspect history and service state."
-				);
+				));
 			},
-			Err(message) => surface.feedback = message,
+			Err(message) => surface.feedback = Feedback::error(message),
 		}
 	}
 
 	fn cancel_queued_command(&mut self, cx: &Context<Self>) {
 		if let Some(queued) = self.submission.waiting.take() {
+			self.restore_question_submission(Some(&queued.key));
 			self.remove_command_draft_fence(&queued.pending);
 			self.retain_failed_command_draft(&queued.pending, false, cx);
 			self.submission.unconfirmed.retain(|key| key != &queued.key);
@@ -1293,10 +1317,13 @@ impl AgentSurface {
 		if self.sending {
 			self.uncertain = true;
 			self.sending = false;
-			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
+			self.feedback = Feedback::warning(
+				"Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.",
+			);
 		}
 
 		self.question_notices = Default::default();
+		self.async_question_submissions.clear();
 
 		self.bind_drafts(profile.as_ref(), cx);
 
@@ -1304,6 +1331,7 @@ impl AgentSurface {
 
 		self.timeline.native = Default::default();
 		self.timeline.native.epoch = epoch;
+		self.timeline.native_cache.clear();
 		self.generation += 1;
 		self.refresh_failures = 0;
 		self.task = None;
@@ -1358,8 +1386,10 @@ impl AgentSurface {
 		self.guardian = Default::default();
 		self.archive = Default::default();
 		self.selected = self.composer_manager.clone();
-		self.state = LoadState::Idle;
-		self.refresh(cx);
+		// Binding restores local state. The retained-session owner starts the first
+		// read after its connection is online, not while the daemon is starting.
+		self.state = if self.profile.is_some() { LoadState::Idle } else { LoadState::Unavailable };
+		self.status_before_refresh = None;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(500)).await;
@@ -1447,6 +1477,7 @@ impl AgentSurface {
 		};
 
 		self.status_before_refresh = Some(self.state.clone());
+		let background = self.state == LoadState::Ready && self.snapshot.is_some();
 		self.state = LoadState::Loading;
 		self.generation += 1;
 
@@ -1500,7 +1531,9 @@ impl AgentSurface {
 			});
 		}));
 
-		cx.notify();
+		if !background {
+			cx.notify();
+		}
 	}
 
 	fn apply_refreshed_snapshot(
@@ -1588,7 +1621,7 @@ impl AgentSurface {
 				}) {
 					self.interrupting = None;
 				}
-				if self.feedback == "Message saved · Waiting for agent…"
+				if self.feedback.message == "Message saved · Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
 							&& (work.dispatch_state != AgentDispatchStateDto::Idle
@@ -1600,11 +1633,7 @@ impl AgentSurface {
 					}) {
 					self.feedback.clear();
 				}
-				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
-					!= snapshot.runtime_source.as_ref()
-				{
-					self.timeline.native.reset();
-				}
+				self.invalidate_native_timeline(&snapshot);
 				if !self.is_new_conversation()
 					&& !self
 						.selected
@@ -1721,33 +1750,19 @@ impl AgentSurface {
 		}
 		if !self.sending
 			&& !self.feedback.is_empty()
-			&& self.feedback != "Message saved · Waiting for agent…"
+			&& self.feedback.message != "Message saved · Waiting for agent…"
 		{
 			return Some((
 				if self.uncertain { "Check delivery" } else { "Message status" },
-				self.feedback.clone(),
+				self.feedback.message.clone(),
 				false,
 			));
 		}
 
-		if let Some(event) = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot
-				.pending_events
-				.iter()
-				.find(|event| event.event_kind == "thread_in_use_needs_attention")
-		}) {
-			let name = self
-				.snapshot
-				.as_ref()
-				.and_then(|snapshot| {
-					snapshot.work_items.iter().find(|work| work.id == event.work_item_id)
-				})
-				.map(|work| self.work_label(work))
-				.unwrap_or_else(|| "This conversation".into());
-
+		if self.selected.as_deref().is_some_and(|work| self.thread_in_use(work)) {
 			return Some((
 				"In use by another app",
-				format!("{name} is in use by another app."),
+				"This conversation is in use by another app.".into(),
 				false,
 			));
 		}
@@ -1758,8 +1773,9 @@ impl AgentSurface {
 			LoadState::Capacity { .. } => "Work view unavailable",
 			_ => {
 				let pending = self.snapshot.as_ref()?.pending_events.iter().find(|event| {
-					event.event_kind.ends_with("_needs_attention")
-						|| event.event_kind.ends_with("_failed")
+					Some(&event.work_item_id) == self.selected.as_ref()
+						&& (event.event_kind.ends_with("_needs_attention")
+							|| event.event_kind.ends_with("_failed"))
 				})?;
 
 				return Some((
@@ -1802,107 +1818,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_context(
-		&self,
-		window: &Window,
-		_cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
-		if self.is_new_conversation() && !self.workspace.browsing {
-			return gpui::div().into_any_element();
-		}
-		let title = if self.workspace.browsing {
-			"All work".into()
-		} else {
-			self.conversation_page()
-				.and_then(|id| {
-					self.native_page_label(&id).or_else(|| {
-						self.snapshot
-							.as_ref()?
-							.work_items
-							.iter()
-							.find(|w| w.id == id)
-							.map(|w| self.work_label(w))
-					})
-				})
-				.unwrap_or_else(|| "Main".into())
-		};
-		let tip = title.clone();
-		let (left, right) = self.topbar_insets(window);
-		let available = (f32::from(window.viewport_size().width) - left - right).min(360.) - 20.;
-		let run = gpui::TextRun {
-			len: title.len(),
-			font: window.text_style().font(),
-			color: gpui::rgb(ui_theme::TEXT_MUTED).into(),
-			background_color: None,
-			underline: None,
-			strikethrough: None,
-		};
-		let truncated = f32::from(
-			window
-				.text_system()
-				.shape_line(title.clone().into(), gpui::px(12.), &[run], None)
-				.width,
-		) > available;
-		gpui::div()
-			.id("current-conversation-title")
-			.when(truncated, |title| {
-				title.tooltip(move |_, cx| {
-					cx.new(|_| crate::shell::ControlTooltip(tip.clone())).into()
-				})
-			})
-			.debug_selector(|| "workspace-conversation-header".into())
-			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
-			.w_full()
-			.max_w_full()
-			.min_w_0()
-			.flex()
-			.items_center()
-			.justify_center()
-			.text_center()
-			.px(gpui::px(10.))
-			.text_size(gpui::px(12.))
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
-			.child(gpui::div().min_w_0().whitespace_nowrap().text_ellipsis().child(title))
-			.into_any_element()
-	}
-
-	pub(super) fn work_details_button(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let target = cx.entity();
-		gpui::div()
-			.relative()
-			.flex_none()
-			.child(self.workspace_action(
-				"inspect-work".into(),
-				"⋯".into(),
-				|s, cx| {
-					s.workspace.details_visible = !s.workspace.details_visible;
-
-					if s.workspace.details_visible
-						&& let Some(work) = s.selected.clone()
-						&& s.resources.as_ref().is_none_or(|(owner, _)| owner != &work)
-					{
-						s.toggle_resources(&work, cx);
-					}
-
-					cx.notify();
-				},
-				cx,
-			))
-			.child(
-				gpui::canvas(
-					move |bounds, _, cx| {
-						target.update(cx, |s, _| {
-							s.menu_trigger_bounds.insert("inspect-work", bounds);
-						});
-					},
-					|_, _, _, _| {},
-				)
-				.absolute()
-				.inset_0(),
-			)
-			.into_any_element()
-	}
-
 	fn details(
 		&self,
 		snapshot: &AgentSnapshotDto,
@@ -1927,7 +1842,6 @@ impl AgentSurface {
 			.child(self.misalignment_panel(work, cx))
 			.child(self.guardian_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
-			.child(self.async_question_panel(work, cx))
 			.child(self.history_panel(work, cx))
 	}
 
@@ -2143,13 +2057,11 @@ impl AgentSurface {
 								(message.kind == AgentLiveMessageKind::ReasoningSummary)
 									.then(|| muted("Reasoning summary")),
 							)
-							.child(StreamingText {
-								text: message.text.clone(),
-								key: format!(
-									"live-{}-{}-{}",
-									work.id, message.turn_id, message.item_id
-								),
-							})
+							.child(StreamingText::output(
+								message.text.clone(),
+								format!("live-{}-{}-{}", work.id, message.turn_id, message.item_id),
+								false,
+							))
 							.when(message.truncated, |row| {
 								row.child(muted(
 									"Partial output shortened; waiting for saved result.",
@@ -2183,28 +2095,29 @@ impl AgentSurface {
 	}
 
 	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {
-		let active = matches!(
-			work.dispatch_state,
-			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
-		) || (self.native_agents.selected.is_none()
-			&& self.selected.as_ref() == Some(&work.id)
-			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+		let active = self.response_in_progress(work)
+			|| (self.native_agents.selected.is_none()
+				&& self.selected.as_ref() == Some(&work.id)
+				&& (self.sending || self.feedback.message == "Message saved · Waiting for agent…"));
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		panel = panel.child(Working {
-			key: format!(
-				"working-{}-{}",
-				work.id,
-				work.codex_thread_id.as_deref().unwrap_or_default()
-			),
-			turn: (active
-				&& (self.native_agents.selected.is_some()
-					|| self.composer_unavailable_reason().is_none()))
-			.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
-		});
+		// Message spacing belongs between messages. The work signal owns only
+		// its animated footprint, followed by a small shared reading gap.
+		panel =
+			gpui::div().w_full().flex().flex_col().pb(gpui::px(16.)).child(panel).child(Working {
+				key: format!(
+					"working-{}-{}",
+					work.id,
+					work.codex_thread_id.as_deref().unwrap_or_default()
+				),
+				turn: (active
+					&& (self.native_agents.selected.is_some()
+						|| self.composer_unavailable_reason().is_none()))
+				.then(|| work.active_turn_id.clone().unwrap_or_else(|| work.id.clone())),
+			});
 
 		if active
 			&& self.native_history_active(work)
@@ -2454,7 +2367,20 @@ impl AgentSurface {
 }
 
 impl Render for AgentSurface {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		self.workspace_presentation.clone()
+	}
+}
+
+impl AgentSurface {
+	fn render_workspace_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		use gpui::Focusable as _;
+		let old_focus = self.conversation_composer().focus_handle(cx);
+		self.sync_question_editor(cx);
+		let focus = self.conversation_composer().focus_handle(cx);
+		if old_focus != focus && old_focus.is_focused(window) {
+			window.focus(&focus, cx);
+		}
 		self.observe_recap_focus(window, cx);
 
 		self.render_workspace(window, cx)
@@ -2555,6 +2481,7 @@ impl Default for WorkspaceView {
 #[derive(Default)]
 struct TimelineView {
 	native: Timeline,
+	native_cache: std::collections::BTreeMap<(String, String), Timeline>,
 	marks: std::collections::BTreeMap<HistoryKey, HistoryMark>,
 	marks_work: Option<(String, bool)>,
 	marks_revision: Option<(u64, u64)>,
@@ -2633,7 +2560,7 @@ pub(crate) fn compact_tokens(value: u64) -> String {
 }
 
 fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
-	has_profile && *state != LoadState::Loading
+	has_profile && !matches!(state, LoadState::Idle | LoadState::Loading)
 }
 
 // This startup advisory describes the Codex environment, not a failed turn.
@@ -2736,7 +2663,7 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
-	history_entry_presented(entry, identity, metrics, None, true)
+	history_entry_presented(entry, identity, metrics, None, true, None)
 }
 
 fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
@@ -2758,6 +2685,7 @@ fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyEle
 		None,
 		streamed,
 		false,
+		None,
 	)
 }
 
@@ -2767,6 +2695,7 @@ fn history_entry_presented(
 	metrics: Option<AnyElement>,
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
+	metadata_ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
 ) -> Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
@@ -2787,12 +2716,7 @@ fn history_entry_presented(
 			} else {
 				"Assistant · Unfinished"
 			}))
-			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)))
-			.child(markdown::response_copy_button(
-				&format!("copy-partial-{}", entry.id),
-				"Copy unfinished output",
-				entry.text.clone(),
-			));
+			.child(markdown::render(&entry.text, &format!("partial-{}", entry.id)));
 	}
 
 	if entry.kind == "user"
@@ -2856,37 +2780,13 @@ fn history_entry_presented(
 						.enumerate()
 						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
 				)
-				.when(!user && show_metadata, |body| {
-					body.child(
-						gpui::div()
-							.mt(gpui::px(METADATA_GAP))
-							.flex()
-							.items_center()
-							.gap(gpui::px(2.))
-							.child(
-								metrics.unwrap_or_else(|| reply_metrics(entry).into_any_element()),
-							)
-							.when(entry.kind == "assistant", |row| {
-								row.child(markdown::response_copy_button(
-									&format!("copy-response-{identity}"),
-									"Copy response",
-									if entry.weather.is_empty() {
-										visible_text.clone()
-									} else {
-										format!(
-											"{}\n\n{}",
-											visible_text,
-											entry
-												.weather
-												.iter()
-												.map(|f| f.markdown())
-												.collect::<Vec<_>>()
-												.join("\n\n")
-										)
-									},
-								))
-							}),
-					)
+				.when(!user, |body| {
+					body.child(response_metrics::FinishedFooter {
+						visible: show_metadata,
+						ready: metadata_ready,
+						child: show_metadata
+							.then(|| response_metrics::footer(entry, identity, metrics)),
+					})
 				}),
 		)
 }
@@ -3106,13 +3006,114 @@ mod tests {
 	}
 
 	#[test]
-	fn snapshot_poll_requires_a_profile_and_no_in_flight_read() {
+	fn snapshot_poll_waits_for_the_first_online_read_and_does_not_overlap_requests() {
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Unavailable));
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Stale));
-		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Idle));
+		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Idle));
 		assert!(!agent_surface::should_poll_snapshot(false, &LoadState::Unavailable));
 		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Loading));
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Ready));
+	}
+
+	#[gpui::test]
+	fn startup_waits_for_transport_before_reading_and_keeps_one_loading_surface(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::{
+			client_lifecycle::ConnectionView,
+			shell::{self, Shell},
+		};
+		let (_root, profile, _) = super::drafts::tests::profiles();
+		let initial = ConnectionView::Connecting { attempt: 1 };
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			Shell::new(window, cx, initial).with_agent_profile(Some(profile), cx)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+		agent.update(visual, |s, cx| {
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		let (sender, views) = std::sync::mpsc::channel();
+		let mut app = visual.update(|_, cx| cx.to_async());
+		for view in [
+			initial,
+			ConnectionView::OfflineRetrying {
+				next_attempt: 2,
+				delay: std::time::Duration::from_millis(100),
+			},
+			ConnectionView::Connecting { attempt: 2 },
+		] {
+			sender.send(view).unwrap();
+			shell::publish_views(&shell.downgrade(), &views, &mut app);
+			visual.executor().advance_clock(std::time::Duration::from_millis(750));
+			visual.run_until_parked();
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+			assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+			agent.read_with(visual, |s, cx| {
+				assert_eq!(s.state, LoadState::Idle);
+				assert!(s.task.is_none(), "do not race daemon startup with an Agent query");
+				assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			});
+		}
+		sender.send(ConnectionView::Online { generation: 1, applied: None }).unwrap();
+		shell::publish_views(&shell.downgrade(), &views, &mut app);
+		agent.update(visual, |s, cx| {
+			assert_eq!(s.state, LoadState::Loading);
+			assert!(s.task.is_some(), "online starts the first Agent read immediately");
+			// Replace the socket read with controlled native-startup observations.
+			s.generation += 1;
+			s.task = None;
+			s.apply_refreshed_snapshot(
+				Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					agent_slots: Default::default(),
+					context_references: vec![],
+					connection_initializing: true,
+					runtime_source: None,
+					workspaces: vec![],
+					dependencies: vec![],
+					work_items: vec![],
+					pending_events: vec![],
+				})),
+				cx,
+			);
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+		agent.update(visual, |s, cx| {
+			let mut ready = s.snapshot.clone().unwrap();
+			ready.connection_initializing = false;
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(ready)), cx);
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+	}
+
+	#[gpui::test]
+	fn a_terminal_startup_configuration_error_is_not_hidden_by_loading(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::{
+			client_lifecycle::{CompatibilityReason, ConnectionView},
+			shell::Shell,
+		};
+		let (_, visual) = cx.add_window_view(|window, cx| {
+			Shell::new(
+				window,
+				cx,
+				ConnectionView::Incompatible(CompatibilityReason::Startup(
+					decodex_protocol::ClientFailure::ConfigurationMissing,
+				)),
+			)
+			.with_agent_profile(None, cx)
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
 	}
 
 	#[gpui::test]
@@ -3124,6 +3125,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3152,7 +3154,7 @@ mod tests {
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
 			assert_eq!(
-				surface.feedback,
+				surface.feedback.message,
 				"Refresh account defaults for this directory before sending."
 			);
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
@@ -3164,7 +3166,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
-			assert_eq!(surface.feedback, "No service profile is configured.");
+			assert_eq!(surface.feedback.message, "No service profile is configured.");
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
 		});
@@ -3311,7 +3313,8 @@ mod tests {
 				work.active_turn_id = None;
 			}
 
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
 
@@ -3328,6 +3331,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3387,7 +3391,7 @@ mod tests {
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |surface, _| {
-			assert_eq!(surface.feedback, "No service profile is configured.");
+			assert_eq!(surface.feedback.message, "No service profile is configured.");
 			assert!(!surface.sending);
 		});
 	}
@@ -3398,6 +3402,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3535,6 +3540,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3661,6 +3667,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3752,6 +3759,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -3782,6 +3790,17 @@ mod tests {
 			assert_eq!(s.status_notice().unwrap().0, "In use by another app");
 			assert!(s.thread_in_use("agent"));
 			assert!(!s.thread_in_use("another-agent"));
+			s.selected = Some("another-agent".into());
+			assert!(
+				s.status_notice().is_none(),
+				"another conversation's lock is not a current notice"
+			);
+			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
+				"event_processing_failed".into();
+			assert!(s.status_notice().is_none(), "another conversation's failure stays scoped");
+			s.selected = Some("agent".into());
+			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
+				"thread_in_use_needs_attention".into();
 
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 

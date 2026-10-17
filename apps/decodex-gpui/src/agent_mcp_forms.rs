@@ -1,4 +1,5 @@
 //! Explicit typed replies to live MCP elicitation requests.
+use crate::ui_feedback::Feedback;
 use std::rc::Rc;
 
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
@@ -89,9 +90,15 @@ impl AgentSurface {
 			return;
 		}
 
+		let fields = match decodex_protocol::mcp_request_fields(&value) {
+			Ok(fields) => fields,
+			Err(message) => {
+				self.feedback = Feedback::error(message);
+				cx.notify();
+				return;
+			},
+		};
 		let result = (|| -> Result<Value, String> {
-			let fields = decodex_protocol::mcp_request_fields(&value)?;
-
 			if fields.is_empty() {
 				return Ok(Value::Null);
 			}
@@ -125,7 +132,7 @@ impl AgentSurface {
 				let response = serde_json::json!({"action":"accept","content":content,"_meta":persist.map(|scope|serde_json::json!({"persist":scope}))});
 
 				if let Err(message) = decodex_protocol::validate_mcp_response(&value, &response) {
-					self.feedback = message;
+					self.feedback = Feedback::error(message);
 
 					cx.notify();
 
@@ -135,7 +142,7 @@ impl AgentSurface {
 				self.respond(response.to_string(), cx);
 			},
 			Err(message) => {
-				self.feedback = message;
+				self.feedback = Feedback::warning(message);
 
 				cx.notify();
 			},
@@ -472,6 +479,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+                agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,
                 runtime_source: None,
@@ -493,7 +501,7 @@ connection_initializing: false,
 
             s.submit_mcp_form_with_scope(7,Some("always"),cx);
 
-            assert_eq!(s.feedback,"This persistence scope was not offered");
+            assert_eq!(s.feedback.message,"This persistence scope was not offered");
 
             s.feedback.clear();
             s.submit_mcp_form_with_scope(6,Some("session"),cx);
@@ -517,7 +525,7 @@ connection_initializing: false,
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert!(s.submission.command.is_none());
 		});
 
@@ -545,7 +553,7 @@ connection_initializing: false,
 				s.submit_mcp_form(7, cx);
 
 				assert_eq!(
-					s.feedback,
+					s.feedback.message,
 					if schema.is_object() {
 						"Unsupported choice constraints"
 					} else {
@@ -573,6 +581,7 @@ connection_initializing: false,
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+                agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,
                 runtime_source: None,
@@ -619,7 +628,7 @@ connection_initializing: false,
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			let request = AgentRequestResult::Available {
 				event_id: 8,
@@ -661,6 +670,7 @@ connection_initializing: false,
             s.submit_mcp_form(7,cx);
 
             assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());
+            assert_eq!(s.feedback.tone, crate::ui_feedback::Tone::Warning);
 
             s.mcp_answers.insert("agree".into(),serde_json::json!(false));
             s.mcp_inputs["name"].update(cx,|input,cx|input.set_content("My name",cx));
@@ -670,7 +680,8 @@ connection_initializing: false,
             assert_eq!(s.mcp_answers["agree"],false);
 
             s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
-            s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
+            s.submit_mcp_form(7,cx);assert_eq!(s.feedback.message,"No service profile is configured.");
+            assert_eq!(s.feedback.tone, crate::ui_feedback::Tone::Error);
         });
 		}
 	}

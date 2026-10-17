@@ -1885,7 +1885,7 @@ async fn observer_receives_the_complete_bounded_retry_progression() {
 	assert_eq!(
 		views.try_iter().collect::<Vec<_>>(),
 		vec![
-			ConnectionView::Stopped,
+			ConnectionView::Connecting { attempt: 1 },
 			ConnectionView::Connecting { attempt: 1 },
 			ConnectionView::OfflineRetrying { next_attempt: 2, delay: Duration::from_millis(100) },
 			ConnectionView::Connecting { attempt: 2 },

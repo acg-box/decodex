@@ -1,11 +1,13 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
+#[cfg(any(test, feature = "visual-capture"))] use super::Brief;
 use super::{
-	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Brief, Context, FluentBuilder, GREEN,
+	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, FluentBuilder, GREEN,
 	InteractiveElement, IntoElement, ParentElement, Row, Styled, TEXT_MUTED,
 };
 use crate::ui_theme::TEXT;
 use gpui::AppContext;
 #[path = "agent_relation_details.rs"] mod details;
+#[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_identity.rs"] mod identity;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
 #[path = "agent_relation_resources.rs"] mod resources;
@@ -265,8 +267,8 @@ impl AgentSurface {
 		})
 	}
 
-	pub(super) fn relation_controls(&self, cx: &mut Context<Self>) -> AnyElement {
-		let scale = self.relation_scale(&self.relation_graph());
+	fn relation_controls(&self, graph: &Graph, cx: &mut Context<Self>) -> AnyElement {
+		let scale = self.relation_scale(graph);
 		let cluster = || {
 			crate::ui_theme::floating_group()
 				.h(gpui::px(28.))
@@ -470,7 +472,7 @@ impl AgentSurface {
 		canvas = self.relation_node_layer(canvas, graph, cx);
 
 		canvas
-			.child(self.relation_controls(cx))
+			.child(self.relation_controls(graph, cx))
 			.children(self.picked_metric_card(graph, cx))
 			.child(
 				gpui::div()
@@ -500,10 +502,10 @@ impl AgentSurface {
 					to: work.id.clone(),
 					kind: Kind::Assigned,
 					color: Kind::Assigned.color(),
-					label: "Delegated".into(),
+					label: "Owner".into(),
 					excerpt: None,
 					detail: format!(
-						"{}\n\nRecorded parent task: {}\nState: {}",
+						"{}\n\nConversation owner: {}\nState: {}",
 						self.work_label(work),
 						parent,
 						super::super::dock::progress_state(snapshot, work).label
@@ -1016,8 +1018,11 @@ impl AgentSurface {
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale(graph);
 		let neighborhood = self.relation_neighborhood(graph);
-		let labels =
-			identity::labels(graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()));
+		let labels = identity::labels(
+			self.snapshot.as_ref(),
+			graph.nodes.iter().filter(|n| n.row.is_some()).map(|n| n.key.clone()),
+		);
+		let baselines = self.metric_baselines(graph);
 
 		for node in &graph.nodes {
 			let (selected, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
@@ -1038,6 +1043,7 @@ impl AgentSurface {
 
 			let view = self
 				.relation_node_surface(node, graph, selected, faded, labels.get(&node.key), cx)
+				.when(node.row.is_some(), |d| d.child(self.node_metrics(node, baselines, scale)))
 				.on_mouse_down(
 					MouseButton::Left,
 					cx.listener(move |s, e: &MouseDownEvent, _, cx| {
@@ -1105,6 +1111,12 @@ impl AgentSurface {
 						let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
 						s.work_board.view.origin =
 							(f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+						if s.workspace.panel_drag.is_some() {
+							// A manual panel resize reveals the same canvas. Re-fitting on
+							// every pixel also reshapes and rasterizes every node's text.
+							s.work_board.view.camera_fixed = true;
+							s.work_board.view.zoom = Some(scale);
+						}
 						if s.work_board.view.viewport != size
 							|| s.work_board.view.node_count != node_count
 						{
@@ -1112,13 +1124,14 @@ impl AgentSurface {
 							s.work_board.view.viewport = size;
 							if !s.work_board.view.camera_fixed {
 								s.fit_relations();
+								cx.notify();
 							}
-							cx.notify();
 						}
 					});
 				},
 				move |bounds, _, window, cx| {
 					let mut animate = false;
+					let mut paths = style::StrokeBatch::default();
 					paint_relation_grid(bounds, scale, pan, window);
 					for (edge, a, b) in &paint_lines {
 						let mut route = route(a, b, edge.kind);
@@ -1160,26 +1173,26 @@ impl AgentSurface {
 							if selected { 1.6 } else { 1.2 },
 						);
 						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								gpui::rgba(
-									(color << 8)
-										| if faded {
-											0x30
-										} else if selected {
-											0xef
-										} else {
-											0x90
-										},
-								),
-							);
+							let color = (color << 8)
+								| if faded {
+									0x30
+								} else if selected {
+									0xef
+								} else {
+									0x90
+								};
+							if let Some((color, path)) = paths.push(path, color) {
+								window.paint_path(path, gpui::rgba(color));
+							}
 						}
-						if show_flow && !reduce_motion && window.is_window_active() {
+						if show_flow && !reduce_motion {
+							paths.paint(window);
 							let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
 							route.paint_flow(bounds.origin, scale, pan, phase, color, window);
 							animate = true;
 						}
 					}
+					paths.paint(window);
 					if animate {
 						crate::ui_motion::request_frame(window, cx);
 					}
@@ -1246,49 +1259,16 @@ impl AgentSurface {
 			.gap(gpui::px(3. * scale))
 			.overflow_hidden()
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap(gpui::px(8. * scale))
-					.children(label.map(|label| {
-						gpui::div()
-							.text_size(gpui::px(10. * scale))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.flex_none()
-							.child(label.clone())
-					}))
-					.child(status_lamp(
-						node.color,
-						connected && node.running(),
-						scale,
-						flow_started,
-					))
-					.child(
-						gpui::div()
-							.flex_1()
-							.w_0()
-							.min_w_0()
-							.text_size(gpui::px(12. * scale))
-							.child(crate::ui_motion::OverflowLabel {
-								id: format!("relation-title-{}", node.key).into(),
-								text: node.title.clone().into(),
-							}),
-					),
-			)
-			.when_some(node.task(), |d, task| {
-				d.child(
-					gpui::div()
-						.text_size(gpui::px(11. * scale))
-						.text_color(gpui::rgb(TEXT_MUTED))
-						.min_w_0()
-						.child(crate::ui_motion::OverflowLabel {
-							id: format!("relation-task-{}", node.key).into(),
-							text: task.to_owned().into(),
-						}),
-				)
+			.child(header::Header {
+				key: node.key.clone(),
+				title: node.title.clone(),
+				label: label.cloned(),
+				task: node.task().map(str::to_owned),
+				scale,
+				color: node.color,
+				running: connected && node.running(),
+				clock: flow_started,
 			})
-			.when(node.row.is_some(), |d| d.child(self.node_metrics(node, graph, scale)))
 	}
 
 	fn relation_node_tooltip(&self, node: &Node) -> String {
@@ -1367,48 +1347,25 @@ fn paint_relation_grid(
 	window: &mut gpui::Window,
 ) {
 	let spacing = grid_spacing(scale);
-	let mut x = pan.0.rem_euclid(spacing);
-	while x < f32::from(bounds.size.width) {
-		let mut y = pan.1.rem_euclid(spacing);
-		while y < f32::from(bounds.size.height) {
-			window.paint_quad(gpui::fill(
-				gpui::Bounds::new(
-					bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
-					gpui::size(gpui::px(1.), gpui::px(1.)),
-				),
-				gpui::rgba(0xffffff28),
-			));
-			y += spacing;
-		}
-		x += spacing;
-	}
-}
-
-fn status_lamp(color: u32, running: bool, scale: f32, clock: std::time::Instant) -> AnyElement {
-	gpui::canvas(
-		|_, _, _| (),
-		move |bounds, _, window, cx| {
-			let animate = running && !crate::ui_motion::reduced() && window.is_window_active();
-			let phase = (clock.elapsed().as_secs_f32() / 2.8).fract();
-			if animate {
-				let alpha = (24. + 32. * (phase * std::f32::consts::TAU).sin().abs()) as u32;
-				window.paint_quad(
-					gpui::fill(bounds, gpui::rgba((color << 8) | alpha))
-						.corner_radii(gpui::px(5. * scale)),
-				);
-				crate::ui_motion::request_frame(window, cx);
+	// Grid dots never overlap. Give the whole background one draw order instead
+	// of inserting thousands of independent bounds into the scene's order tree.
+	window.paint_layer(bounds, |window| {
+		let mut x = pan.0.rem_euclid(spacing);
+		while x < f32::from(bounds.size.width) {
+			let mut y = pan.1.rem_euclid(spacing);
+			while y < f32::from(bounds.size.height) {
+				window.paint_quad(gpui::fill(
+					gpui::Bounds::new(
+						bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
+						gpui::size(gpui::px(1.), gpui::px(1.)),
+					),
+					gpui::rgba(0xffffff28),
+				));
+				y += spacing;
 			}
-			let dot = gpui::Bounds::new(
-				bounds.origin + gpui::point(gpui::px(2. * scale), gpui::px(2. * scale)),
-				gpui::size(gpui::px(6. * scale), gpui::px(6. * scale)),
-			);
-			window.paint_quad(gpui::fill(dot, gpui::rgb(color)).corner_radii(gpui::px(3. * scale)));
-		},
-	)
-	.w(gpui::px(10. * scale))
-	.h(gpui::px(10. * scale))
-	.flex_none()
-	.into_any_element()
+			x += spacing;
+		}
+	});
 }
 
 struct Route {
@@ -1601,6 +1558,40 @@ impl AgentSurface {
 mod fit_tests {
 	use super::*;
 	#[gpui::test]
+	fn panel_resize_keeps_the_graph_camera_until_an_explicit_fit(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.work_board.graph = false;
+			s.workspace.graph_visible = true;
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let camera =
+			surface.read_with(visual, |s, _| (s.work_board.view.zoom, s.work_board.view.pan));
+		assert!(camera.0.is_some());
+		for height in [240., 380., 200.] {
+			surface.update(visual, |s, cx| {
+				s.workspace.panel_drag =
+					Some((crate::shell::agent_surface::workspace_size::Panel::Bottom, 0., 0.));
+				s.workspace.graph_panel_height = height;
+				cx.notify();
+			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			surface.read_with(visual, |s, _| {
+				assert_eq!((s.work_board.view.zoom, s.work_board.view.pan), camera);
+			});
+		}
+		surface.update(visual, |s, _| {
+			s.workspace.panel_drag = None;
+			s.fit_relations();
+			assert_ne!((s.work_board.view.zoom, s.work_board.view.pan), camera);
+		});
+	}
+
+	#[gpui::test]
 	fn usage_selection_preserves_camera_and_toggles(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
@@ -1664,6 +1655,69 @@ mod fit_tests {
 			for kind in [Kind::Returned, Kind::Context, Kind::Message, Kind::Wait, Kind::Resource] {
 				edge.kind = kind;
 				assert!(!edge.executing(&target, true));
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn workspace_layout_does_not_reserve_rows_for_another_workspace(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			let template = s.snapshot.as_ref().unwrap().work_items[0].clone();
+			let work = |id: &str, parent: Option<&str>| {
+				let mut item = template.clone();
+				item.id = id.into();
+				item.parent_goal_id = parent.map(str::to_owned);
+				item.codex_thread_id = None;
+				item
+			};
+			let mut previous = None;
+			for count in [2, 7] {
+				let snapshot = s.snapshot.as_mut().unwrap();
+				snapshot.work_items = vec![
+					work("root", None),
+					work("a-reading", Some("root")),
+					work("b-project", Some("root")),
+					work("c-reading", Some("root")),
+				];
+				let mut project = vec!["b-project".into()];
+				for i in 0..count {
+					let id = format!("project-child-{i}");
+					snapshot.work_items.push(work(&id, Some("b-project")));
+					project.push(id);
+				}
+				snapshot.workspaces = vec![
+					decodex_protocol::WorkspaceDto {
+						id: "reading".into(),
+						name: "Reading".into(),
+						directory: "/tmp/reading".into(),
+						work_ids: vec!["a-reading".into(), "c-reading".into()],
+					},
+					decodex_protocol::WorkspaceDto {
+						id: "project".into(),
+						name: "Project".into(),
+						directory: "/tmp/project".into(),
+						work_ids: project,
+					},
+				];
+				let graph = s.relation_graph();
+				let node = |key: &str| graph.nodes.iter().find(|n| n.key == key).unwrap();
+				let first = node("a-reading");
+				let last = node("c-reading");
+				assert_eq!(last.y - first.y, 96., "another workspace must not leave empty rows");
+				assert_eq!(last.x, first.x);
+				let relative = (last.x - first.x, last.y - first.y);
+				if let Some(previous) = previous {
+					assert_eq!(relative, previous);
+				}
+				previous = Some(relative);
+				assert_eq!(
+					node("b-project").y,
+					(node("project-child-0").y + node(&format!("project-child-{}", count - 1)).y)
+						/ 2.
+				);
+				assert_eq!(graph.nodes.len(), count + 4);
+				assert_eq!(graph.edges.len(), count + 3);
 			}
 		});
 	}

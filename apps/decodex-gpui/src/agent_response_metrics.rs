@@ -1,9 +1,8 @@
 //! Compact response statistics with hover details, independent of transcript layout.
-use std::f32::consts::TAU;
 
 use gpui::{
-	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder,
-	Pixels, RenderOnce, SharedString, Window,
+	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, Pixels,
+	RenderOnce, SharedString, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -15,6 +14,72 @@ use crate::shell::agent_surface::{
 	ui_theme::{CAPTION_SIZE, TEXT, TEXT_MUTED},
 };
 use decodex_protocol::AgentTurnUsageDto;
+
+const METRICS_HEIGHT: f32 = 24.;
+
+#[derive(IntoElement)]
+pub(super) struct FinishedFooter {
+	pub visible: bool,
+	pub ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
+	pub child: Option<AnyElement>,
+}
+impl RenderOnce for FinishedFooter {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let target =
+			if self.visible && self.ready.is_none_or(|ready| ready.get()) { 1. } else { 0. };
+		// Keep this slot mounted while streaming. Saved replies start at their final size.
+		let state = window.use_keyed_state("response-footer-motion", cx, |_, _| {
+			crate::ui_motion::Tween::new(target)
+		});
+		let now = std::time::Instant::now();
+		let (progress, moving) = state.update(cx, |motion, _| {
+			motion.target(target, now);
+			(motion.sample(now), motion.moving(now))
+		});
+		if moving {
+			crate::ui_motion::request_frame(window, cx);
+		}
+		gpui::div()
+			.debug_selector(|| "response-footer".into())
+			.w_full()
+			.flex_none()
+			.h(gpui::px((METRICS_HEIGHT + crate::ui_theme::METADATA_GAP) * progress))
+			.when(progress < 1., |row| row.overflow_hidden())
+			.opacity(progress)
+			.children(self.child)
+	}
+}
+
+pub(super) fn footer(
+	entry: &decodex_protocol::AgentHistoryEntryDto,
+	identity: &str,
+	metrics: Option<AnyElement>,
+) -> AnyElement {
+	let text = agent_surface::markdown::response_text(&entry.text);
+	let text = if entry.weather.is_empty() {
+		text
+	} else {
+		format!(
+			"{}\n\n{}",
+			text,
+			entry.weather.iter().map(|f| f.markdown()).collect::<Vec<_>>().join("\n\n")
+		)
+	};
+	gpui::div()
+		.mt(gpui::px(crate::ui_theme::METADATA_GAP))
+		.flex()
+		.items_center()
+		.gap(gpui::px(2.))
+		.child(metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()))
+		.when(entry.kind == "assistant", |row| {
+			row.child(agent_surface::markdown::response_copy_button(
+				&format!("copy-response-{identity}"),
+				"Copy response",
+				text,
+			))
+		})
+		.into_any_element()
+}
 
 #[derive(IntoElement)]
 pub(super) struct ResponseMetrics {
@@ -51,7 +116,7 @@ impl RenderOnce for ResponseMetrics {
 			.cursor_default()
 			.flex_none()
 			.whitespace_nowrap()
-			.h(gpui::px(24.))
+			.h(gpui::px(METRICS_HEIGHT))
 			.flex()
 			.items_center()
 			.gap(gpui::px(6.))
@@ -153,37 +218,11 @@ fn duration_label(ms: u64) -> String {
 }
 
 fn duration_icon() -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(gpui::px(1.));
-
-			for step in 0..=32 {
-				let angle = step as f32 * TAU / 32.;
-				let p = bounds.origin
-					+ gpui::point(
-						gpui::px(5.5 + 4.25 * angle.cos()),
-						gpui::px(5.5 + 4.25 * angle.sin()),
-					);
-
-				if step == 0 {
-					path.move_to(p);
-				} else {
-					path.line_to(p);
-				}
-			}
-
-			path.move_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(2.5)));
-			path.line_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(5.5)));
-			path.line_to(bounds.origin + gpui::point(gpui::px(7.5), gpui::px(6.5)));
-
-			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgb(TEXT_MUTED));
-			}
-		},
-	)
-	.size(gpui::px(11.))
-	.flex_none()
+	gpui::svg()
+		.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"><g fill="none" stroke="white" stroke-width="1"><circle cx="5.5" cy="5.5" r="4.25"/><path d="M5.5 2.5V5.5L7.5 6.5"/></g></svg>"#)
+		.text_color(gpui::rgb(TEXT_MUTED))
+		.size(gpui::px(11.))
+		.flex_none()
 }
 
 fn details_panel(

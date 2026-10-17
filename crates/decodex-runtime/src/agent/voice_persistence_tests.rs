@@ -283,7 +283,7 @@ async fn voice_start_rejects_independent_manager_before_native_requests() {
 	let mut manager = agent.store.get_agent_work_item("root".into()).await.unwrap();
 
 	manager.id = "independent".into();
-	manager.parent_goal_id = Some("root".into());
+	manager.parent_goal_id = None;
 	manager.codex_thread_id = None;
 	manager.dispatch_state = AgentDispatchState::Idle;
 	manager.active_turn_id = None;

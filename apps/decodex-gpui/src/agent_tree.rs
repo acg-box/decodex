@@ -1,7 +1,7 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
 use std::{collections::BTreeSet, f32::consts::FRAC_PI_2};
 
-use gpui::{AnyElement, Div, FontWeight, KeyDownEvent, PathBuilder, Stateful};
+use gpui::{AnyElement, App, Div, FontWeight, KeyDownEvent, RenderOnce, Stateful};
 use ui_theme::{CAPTION_SIZE, PANEL_HEADER_HEIGHT, TEXT, TEXT_MUTED, TREE_ROW_HEIGHT};
 
 use crate::{
@@ -107,9 +107,7 @@ impl AgentSurface {
 								.text_color(gpui::rgb(TEXT_MUTED))
 								.child(self.agent_count().to_string()),
 						)
-					})
-					.child(gpui::div().flex_1())
-					.child(self.work_details_button(cx)),
+					}),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
 			.child(self.sidebar_resize_handle(Panel::Right, cx))
@@ -163,7 +161,7 @@ impl AgentSurface {
 					cx.notify();
 				}
 			}))
-			.child(chevron(format!("tree-chevron-{id}"), expanded))
+			.child(TreeChevron { id: format!("tree-chevron-{id}"), expanded })
 			.smooth()
 			.into_any_element()
 	}
@@ -343,36 +341,27 @@ pub(super) fn tree_children(depth: usize) -> Div {
 	)
 }
 
-fn chevron(id: String, expanded: bool) -> impl IntoElement {
-	gpui::canvas(
-		|_, _, _| (),
-		move |bounds, _, window, cx| {
-			let angle = ui_motion::value(
-				SharedString::from(id.clone()),
-				if expanded { FRAC_PI_2 } else { 0. },
-				window,
-				cx,
-			);
-			let center = bounds.center();
-			let point = |x: f32, y: f32| {
-				center
-					+ gpui::point(
-						gpui::px(x * angle.cos() - y * angle.sin()),
-						gpui::px(x * angle.sin() + y * angle.cos()),
-					)
-			};
-			let mut path = PathBuilder::stroke(gpui::px(1.2));
-
-			path.move_to(point(-1.5, -3.));
-			path.line_to(point(1.5, 0.));
-			path.line_to(point(-1.5, 3.));
-
-			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgb(TEXT_MUTED));
-			}
-		},
-	)
-	.size(gpui::px(12.))
+#[derive(gpui::IntoElement)]
+struct TreeChevron {
+	id: String,
+	expanded: bool,
+}
+impl RenderOnce for TreeChevron {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let angle = ui_motion::value(
+			SharedString::from(self.id),
+			if self.expanded { FRAC_PI_2 } else { 0. },
+			window,
+			cx,
+		);
+		// Rotate one atlas image. A path in each tree row adds full-window
+		// intermediate render passes even when the arrow is stationary.
+		gpui::svg()
+			.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 3L7.5 6L4.5 9" fill="none" stroke="white" stroke-width="1.2"/></svg>"#)
+			.text_color(gpui::rgb(TEXT_MUTED))
+			.with_transformation(gpui::Transformation::rotate(gpui::radians(angle)))
+			.size(gpui::px(12.))
+	}
 }
 
 fn children<'a>(snapshot: &'a AgentSnapshotDto, parent: &str) -> Vec<&'a AgentWorkItemDto> {

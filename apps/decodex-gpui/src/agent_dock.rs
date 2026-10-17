@@ -172,7 +172,10 @@ impl AgentSurface {
 			work.codex_thread_id,
 			self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()),
 			work.updated_at_micros,
-			self.handoff_items().iter().find(|h| h.work == work.id).map(|h| &h.key)
+			self.snapshot
+				.as_ref()
+				.and_then(|snapshot| self.handoffs.item_for(snapshot, work))
+				.map(|handoff| handoff.key)
 		])
 		.to_string()
 	}
@@ -857,6 +860,17 @@ mod tests {
 				w.refresh();
 				w.draw(cx).clear(cx);
 			});
+			let before_expanded = surface.read_with(visual, |s, _| s.workspace.graph_expanded);
+			assert!(
+				visual
+					.debug_bounds(if before_expanded {
+						"dock-expansion-restore-icon"
+					} else {
+						"dock-expansion-expand-icon"
+					})
+					.is_some(),
+				"the visible icon must match the current Dock layout"
+			);
 			let bounds = visual.debug_bounds(control).expect("graph control");
 			visual.simulate_click(bounds.center(), Default::default());
 			surface.update(visual, |s, _| {

@@ -1,4 +1,4 @@
-//! A small pixel cloud for live work. The clock follows one conversation's active state.
+//! A stationary work signal whose space closes with its opacity after work ends.
 use std::{
 	f32::consts::PI,
 	sync::{Arc, LazyLock},
@@ -6,16 +6,13 @@ use std::{
 };
 
 use gpui::{
-	self, App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels,
-	RenderOnce, Role, SharedString, Window,
-	prelude::{
-		InteractiveElement as _, ParentElement as _, StatefulInteractiveElement as _, Styled as _,
-	},
+	App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels, RenderOnce,
+	Role, SharedString, Window, prelude::*,
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-// Use the approved logo silhouette, including its lightning and cursor cutouts.
+// Keep the approved logo silhouette, including its lightning and cursor cutouts.
 static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
 	let svg = include_str!("../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg")
         .replace("<g transform", r##"<defs><linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#edf4f6"/><stop offset=".42" stop-color="#c6dde6"/><stop offset=".72" stop-color="#91b8ca"/><stop offset="1" stop-color="#d8e9ed"/></linearGradient></defs><g transform"##)
@@ -30,120 +27,137 @@ pub(crate) struct Working {
 }
 impl RenderOnce for Working {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state =
-			window.use_keyed_state(SharedString::from(self.key), cx, |_, _| Motion::default());
 		let now = Instant::now();
-		let (elapsed, closing) = state.update(cx, |s, _| {
-			if s.turn != self.turn {
-				if self.turn.is_some() {
-					s.started = Some(now);
-					s.ended = None;
-				} else if s.started.is_some() {
-					s.ended = Some(now);
-				}
-
-				s.turn = self.turn.clone();
-			}
-
-			(
-				s.started.map(|t| now.duration_since(t).as_secs_f32()),
-				s.ended.map(|t| now.duration_since(t).as_secs_f32()),
-			)
-		});
+		let state =
+			window.use_keyed_state(SharedString::from(self.key), cx, |_, _| Motion::new(now));
+		let active = self.turn.is_some();
+		let (opacity, moving, elapsed) = state.update(cx, |s, _| s.sample(active, now));
 		let reduced = ui_motion::reduced();
-		let visible = elapsed.is_some() && closing.is_none_or(|t| t < 0.35 && !reduced);
-
-		if !visible {
-			return gpui::div().hidden().into_any_element();
-		}
-		if !reduced {
+		let time = elapsed;
+		if moving || (active && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
 
-		let time = elapsed.unwrap_or_default();
-		let settle = closing.map_or(1., |t| (1. - t / 0.35).clamp(0., 1.));
-
+		// Use one transition for both visibility and space. Keep the artwork at
+		// its natural size instead of squeezing it as the slot closes.
 		gpui::div()
-			.id("pixel-work-status")
-			.role(Role::Status)
-			.aria_label("Working")
-			.flex()
-			.items_center()
-			.gap(gpui::px(8.))
-			.h(gpui::px(24. * settle))
-			.text_size(gpui::px(12.))
-			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.child(
-				gpui::div()
-					.relative()
-					.w(gpui::px(32.))
-					.h(gpui::px(24.))
-					.flex_none()
-					.child(
-						gpui::img(CLOUD.clone())
-							.absolute()
-							.top_0()
-							.left_0()
-							.size(gpui::px(24.))
-							.opacity(0.9 * settle),
-					)
-					.child(
-						gpui::canvas(
-							|_, _, _| (),
-							move |bounds, _, window, _| {
-								for index in 0..10 {
-									let (x, y, edge, alpha) =
-										particle(if reduced { 1.4 } else { time }, index);
-									let alpha = alpha * settle;
-									let b = Bounds::new(
-										bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
-										gpui::size(gpui::px(edge), gpui::px(edge)),
-									);
-
-									paint_particle(
-										window,
-										b,
-										gpui::linear_gradient(
-											155.,
-											gpui::linear_color_stop(
-												gpui::rgba(0xe8f3f8ff).opacity(alpha),
-												0.,
-											),
-											gpui::linear_color_stop(
-												gpui::rgba(0x9ec8d9ff).opacity(alpha * 0.7),
-												1.,
-											),
-										),
-									);
-
-									let rim = Bounds::new(
-										b.origin,
-										gpui::size(b.size.width, gpui::px(0.35)),
-									);
-
-									paint_particle(
-										window,
-										rim,
-										gpui::rgba(0xf1fcffff).opacity(alpha * 0.55).into(),
-									);
-								}
-							},
-						)
+			.id("work-status-slot")
+			.debug_selector(|| "work-status-slot".into())
+			.relative()
+			.h(gpui::px(32. * opacity))
+			.flex_none()
+			.overflow_hidden()
+			.when(opacity > 0., |slot| {
+				slot.child(
+					gpui::div()
+						.id("pixel-work-status")
 						.absolute()
-						.size_full(),
-					),
-			)
-			.child(gpui::div().opacity(settle).child("Working"))
-			.into_any_element()
+						.top(gpui::px(4.))
+						.left_0()
+						.role(Role::Status)
+						.aria_label("Working")
+						.flex()
+						.items_center()
+						.gap(gpui::px(8.))
+						.h(gpui::px(24.))
+						.opacity(opacity)
+						.text_size(gpui::px(12.))
+						.line_height(gpui::px(18.))
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child(
+							gpui::div()
+								.relative()
+								.w(gpui::px(32.))
+								.h(gpui::px(24.))
+								.flex_none()
+								.child(
+									gpui::img(CLOUD.clone())
+										.absolute()
+										.top_0()
+										.left_0()
+										.size(gpui::px(24.))
+										.opacity(0.9),
+								)
+								.child(
+									gpui::canvas(
+										|_, _, _| (),
+										move |bounds, _, window, _| {
+											for index in 0..10 {
+												let (x, y, edge, alpha) = particle(
+													if reduced { 1.4 } else { time },
+													index,
+												);
+
+												let b = Bounds::new(
+													bounds.origin
+														+ gpui::point(gpui::px(x), gpui::px(y)),
+													gpui::size(gpui::px(edge), gpui::px(edge)),
+												);
+
+												paint_particle(
+													window,
+													b,
+													gpui::linear_gradient(
+														155.,
+														gpui::linear_color_stop(
+															gpui::rgba(0xe8f3f8ff).opacity(alpha),
+															0.,
+														),
+														gpui::linear_color_stop(
+															gpui::rgba(0x9ec8d9ff)
+																.opacity(alpha * 0.7),
+															1.,
+														),
+													),
+												);
+
+												let rim = Bounds::new(
+													b.origin,
+													gpui::size(b.size.width, gpui::px(0.35)),
+												);
+
+												paint_particle(
+													window,
+													rim,
+													gpui::rgba(0xf1fcffff)
+														.opacity(alpha * 0.55)
+														.into(),
+												);
+											}
+										},
+									)
+									.absolute()
+									.size_full(),
+								),
+						)
+						.child("Working"),
+				)
+			})
 	}
 }
 
-#[derive(Default)]
 struct Motion {
-	turn: Option<String>,
-	started: Option<Instant>,
-	ended: Option<Instant>,
+	active: bool,
+	started: Instant,
+	opacity: ui_motion::Tween,
+}
+impl Motion {
+	fn new(now: Instant) -> Self {
+		Self { active: false, started: now, opacity: ui_motion::Tween::new(0.) }
+	}
+
+	fn sample(&mut self, active: bool, now: Instant) -> (f32, bool, f32) {
+		if active && !self.active {
+			self.started = now;
+		}
+		self.active = active;
+		self.opacity.target(if active { 1. } else { 0. }, now);
+		(
+			self.opacity.sample(now),
+			self.opacity.moving(now),
+			now.duration_since(self.started).as_secs_f32(),
+		)
+	}
 }
 
 fn smooth(value: f32) -> f32 {
@@ -180,5 +194,49 @@ fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background
 
 	if let Ok(path) = path.build() {
 		window.paint_path(path, color);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::time::Duration;
+
+	#[test]
+	fn appearance_and_disappearance_share_one_continuous_fade() {
+		let now = Instant::now();
+		let mut motion = Motion::new(now);
+		assert_eq!(motion.sample(false, now).0, 0.);
+		assert_eq!(motion.sample(true, now).0, 0.);
+		let half = now + Duration::from_millis(100);
+		let opacity = motion.sample(true, half).0;
+		assert!(opacity > 0. && opacity < 1.);
+		assert_eq!(motion.sample(false, half).0, opacity, "an interrupted entrance must not jump");
+		assert_eq!(motion.sample(false, now + Duration::from_millis(300)).0, 0.);
+	}
+
+	struct Signal(bool);
+	impl gpui::Render for Signal {
+		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+			Working { key: "test-work".into(), turn: self.0.then(|| "turn".into()) }
+		}
+	}
+
+	#[gpui::test]
+	fn finished_work_releases_its_slot(cx: &mut gpui::TestAppContext) {
+		let (signal, visual) = cx.add_window_view(|_, _| Signal(false));
+		for (active, height) in [(false, 0.), (true, 32.), (false, 0.)] {
+			signal.update(visual, |s, cx| {
+				s.0 = active;
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			std::thread::sleep(Duration::from_millis(220));
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert_eq!(
+				visual.debug_bounds("work-status-slot").unwrap().size.height,
+				gpui::px(height)
+			);
+		}
 	}
 }

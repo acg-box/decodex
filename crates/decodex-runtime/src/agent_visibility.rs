@@ -16,9 +16,17 @@ pub(crate) struct ArchiveVisibility {
 	pub archived: HashSet<String>,
 	refreshing: bool,
 	threads: HashSet<String>,
+	initial_pending: Option<HashSet<String>>,
 }
 
 impl ArchiveVisibility {
+	pub fn project(&self, snapshot: &mut AgentSnapshotDto) {
+		// Finishing a request does not prove that the first archive view is complete.
+		snapshot.connection_initializing |=
+			self.generation.is_none() || self.initial_pending.is_some();
+		retain_active(snapshot, &self.archived);
+	}
+
 	pub async fn refresh(
 		cache: &Arc<Mutex<Self>>,
 		generation: &str,
@@ -42,6 +50,11 @@ impl ArchiveVisibility {
 	pub fn apply(&mut self, generation: &str, observed: HashMap<String, ThreadArchiveState>) {
 		if self.generation.as_deref() == Some(generation) {
 			for (id, state) in observed {
+				if state != ThreadArchiveState::Changed
+					&& let Some(pending) = &mut self.initial_pending
+				{
+					pending.remove(&id);
+				}
 				match state {
 					ThreadArchiveState::Active => {
 						self.archived.remove(&id);
@@ -52,7 +65,14 @@ impl ArchiveVisibility {
 					ThreadArchiveState::NotFound | ThreadArchiveState::Changed => {},
 				}
 			}
+			if self.initial_pending.as_ref().is_some_and(HashSet::is_empty) {
+				self.initial_pending = None;
+			}
+			crate::startup_trace::archive_pending(
+				self.initial_pending.as_ref().map_or(0, HashSet::len),
+			);
 			self.refreshing = false;
+			self.checked_at = Some(Instant::now());
 		}
 	}
 
@@ -63,7 +83,15 @@ impl ArchiveVisibility {
 		now: Instant,
 	) -> bool {
 		if self.generation.as_deref() != Some(generation) {
-			*self = Self { generation: Some(generation.into()), ..Self::default() };
+			*self = Self {
+				generation: Some(generation.into()),
+				initial_pending: Some(threads.clone()),
+				..Self::default()
+			};
+		}
+		if let Some(pending) = &mut self.initial_pending {
+			pending.retain(|id| threads.contains(id));
+			pending.extend(threads.difference(&self.threads).cloned());
 		}
 		if self.refreshing
 			|| (self.threads == *threads
@@ -73,7 +101,6 @@ impl ArchiveVisibility {
 		{
 			return false;
 		}
-		self.checked_at = Some(now);
 		self.refreshing = true;
 		self.threads = threads.clone();
 		self.archived.retain(|id| threads.contains(id));
@@ -152,8 +179,19 @@ mod tests {
 		.expect("snapshot scheduling must not wait for the native response");
 		let request = outgoing.recv().await.unwrap();
 		assert!(cache.lock().await.archived.is_empty());
+		let mut pending = snapshot();
+		cache.lock().await.project(&mut pending);
+		assert!(pending.connection_initializing, "do not reveal an unfiltered first snapshot");
 		ArchiveVisibility::refresh(&cache, "process", client, threads).await;
 		assert!(outgoing.try_recv().is_err(), "one refresh per interval");
+		assert_eq!(request["method"], "thread/read");
+		incoming
+			.send(Ok(serde_json::json!({
+				"id":request["id"],"result":{"thread":{"id":"archived","cwd":"/workspace"}}
+			})))
+			.await
+			.unwrap();
+		let request = outgoing.recv().await.unwrap();
 		incoming
 			.send(Ok(serde_json::json!({
 				"id":request["id"],"result":{"data":[],"nextCursor":null}
@@ -178,6 +216,14 @@ mod tests {
 		})
 		.await
 		.expect("the completed catalog becomes visible to later snapshots");
+		let mut ready = snapshot();
+		ready.work_items[1].codex_thread_id = Some("archived".into());
+		cache.lock().await.project(&mut ready);
+		assert!(!ready.connection_initializing);
+		assert_eq!(
+			ready.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
+			["main", "live"]
+		);
 	}
 
 	fn work(id: &str, parent: Option<&str>) -> AgentWorkItemDto {
@@ -197,6 +243,7 @@ mod tests {
 	}
 	fn snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
@@ -218,6 +265,25 @@ mod tests {
 			pending_events: vec![],
 		}
 	}
+	#[test]
+	fn disconnected_projection_waits_for_initial_visibility_and_keeps_confirmed_archives() {
+		let mut cache = ArchiveVisibility::default();
+		let mut initial = snapshot();
+		cache.project(&mut initial);
+		assert!(initial.connection_initializing);
+
+		cache.generation = Some("known-process".into());
+		cache.apply(
+			"known-process",
+			HashMap::from([("thread-old".into(), ThreadArchiveState::Archived)]),
+		);
+		let mut disconnected = snapshot();
+		cache.project(&mut disconnected);
+		assert!(!disconnected.connection_initializing);
+		assert!(!disconnected.work_items.iter().any(|work| work.id == "old"));
+		assert!(disconnected.work_items.iter().any(|work| work.id == "live"));
+	}
+
 	#[test]
 	fn archive_removes_only_exact_nodes_and_incident_edges_without_hiding_live_descendants() {
 		let original = snapshot();
@@ -267,6 +333,88 @@ mod tests {
 		assert!(cache.archived.contains("current"));
 		cache.apply("second", HashMap::from([("current".into(), ThreadArchiveState::Active)]));
 		assert!(cache.archived.is_empty(), "positive active membership restores the same binding");
+	}
+
+	#[test]
+	fn archive_refresh_keeps_ready_content_and_new_generation_waits_for_its_own_read() {
+		let now = Instant::now();
+		let threads = HashSet::from(["thread-old".into()]);
+		let mut cache = ArchiveVisibility::default();
+		cache.refresh_due("first", &threads, now);
+		cache.apply("first", HashMap::from([("thread-old".into(), ThreadArchiveState::Archived)]));
+		assert!(cache.refresh_due("first", &threads, now + Duration::from_secs(10)));
+		let mut refreshing = snapshot();
+		cache.project(&mut refreshing);
+		assert!(!refreshing.connection_initializing);
+		assert_eq!(refreshing.work_items.len(), 2);
+		let mut connecting = snapshot();
+		connecting.connection_initializing = true;
+		cache.project(&mut connecting);
+		assert!(
+			connecting.connection_initializing,
+			"archive readiness cannot end service recovery"
+		);
+		assert!(cache.refresh_due("second", &threads, now + Duration::from_secs(11)));
+		cache.apply("first", HashMap::new());
+		let mut replaced = snapshot();
+		cache.project(&mut replaced);
+		assert!(replaced.connection_initializing, "a stale result cannot reveal a new source");
+		cache.apply("second", HashMap::new());
+		let mut finished = snapshot();
+		cache.project(&mut finished);
+		assert!(finished.connection_initializing, "a failed read cannot reveal retained history");
+		cache.apply("second", HashMap::from([("thread-old".into(), ThreadArchiveState::NotFound)]));
+		let mut confirmed = snapshot();
+		cache.project(&mut confirmed);
+		assert!(!confirmed.connection_initializing, "complete absence can finish the first read");
+	}
+
+	#[test]
+	fn partial_initial_archive_reads_never_reveal_unfiltered_history() {
+		let mut cache = ArchiveVisibility::default();
+		let source = snapshot();
+		let threads =
+			source.work_items.iter().filter_map(|work| work.codex_thread_id.clone()).collect();
+		cache.refresh_due("process", &threads, Instant::now());
+		for observed in [
+			HashMap::new(),
+			HashMap::from([("thread-main".into(), ThreadArchiveState::Active)]),
+			HashMap::from([("thread-old".into(), ThreadArchiveState::Archived)]),
+		] {
+			cache.apply("process", observed);
+			let mut pending = source.clone();
+			cache.project(&mut pending);
+			assert!(pending.connection_initializing);
+		}
+		cache.apply("process", HashMap::from([("thread-live".into(), ThreadArchiveState::Active)]));
+		let mut ready = source;
+		cache.project(&mut ready);
+		assert!(!ready.connection_initializing);
+		assert_eq!(
+			ready.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
+			["main", "live"]
+		);
+	}
+
+	#[test]
+	fn bindings_added_during_the_initial_read_wait_for_their_own_archive_state() {
+		let now = Instant::now();
+		let mut cache = ArchiveVisibility::default();
+		let threads = HashSet::from(["thread-main".into()]);
+		assert!(cache.refresh_due("process", &threads, now));
+		let expanded = HashSet::from(["thread-main".into(), "thread-old".into()]);
+		assert!(!cache.refresh_due("process", &expanded, now));
+		cache.apply("process", HashMap::from([("thread-main".into(), ThreadArchiveState::Active)]));
+		let mut pending = snapshot();
+		cache.project(&mut pending);
+		assert!(pending.connection_initializing, "the old request cannot confirm a new binding");
+		assert!(cache.refresh_due("process", &expanded, now));
+		cache
+			.apply("process", HashMap::from([("thread-old".into(), ThreadArchiveState::Archived)]));
+		let mut ready = snapshot();
+		cache.project(&mut ready);
+		assert!(!ready.connection_initializing);
+		assert!(ready.work_items.iter().all(|work| work.id != "old"));
 	}
 
 	#[test]

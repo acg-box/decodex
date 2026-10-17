@@ -1,6 +1,7 @@
 //! Provider request forms bound to the exact persisted request event.
+use crate::ui_feedback::Feedback;
 
-use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent};
+use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, prelude::FluentBuilder as _};
 use serde_json::{Map, Value};
 
 #[cfg(test)]
@@ -49,10 +50,23 @@ impl RequestReader {
 pub(super) struct QuestionTimer {
 	started: std::time::Instant,
 	disabled: bool,
+	caption: std::cell::Cell<Option<u64>>,
 }
 impl QuestionTimer {
 	fn new(value: &Value, now: std::time::Instant) -> Self {
-		Self { started: now, disabled: value["isBlocking"].as_bool() != Some(false) }
+		Self {
+			started: now,
+			disabled: value["isBlocking"].as_bool() != Some(false),
+			caption: Default::default(),
+		}
+	}
+
+	fn caption(&self, now: std::time::Instant) -> Option<(u64, bool)> {
+		let remaining = self.remaining(now);
+		if remaining.is_some() {
+			self.caption.set(remaining);
+		}
+		self.caption.get().map(|seconds| (seconds, remaining.is_some()))
 	}
 
 	fn remaining(&self, now: std::time::Instant) -> Option<u64> {
@@ -197,14 +211,18 @@ impl AgentSurface {
 					.smooth(),
 			);
 
-			if let Some(remaining) = self
+			if let Some((remaining, visible)) = self
 				.question_timers
 				.get(event_id)
-				.and_then(|timer| timer.remaining(std::time::Instant::now()))
+				.and_then(|timer| timer.caption(std::time::Instant::now()))
 			{
-				panel = panel.child(agent_surface::muted(format!(
-					"Skips unanswered in {remaining}s. Interact to keep this question open."
-				)));
+				// Keep the pressed option still when interaction cancels the timeout.
+				panel =
+					panel.child(gpui::div().when(!visible, |caption| caption.invisible()).child(
+						agent_surface::muted(format!(
+							"Skips unanswered in {remaining}s. Interact to keep this question open."
+						)),
+					));
 			}
 		} else {
 			panel = self.approval_request_panel(panel, method, request_json.as_str(), &value, cx);
@@ -481,7 +499,7 @@ impl AgentSurface {
 			let text = input.read(cx).content().trim();
 
 			if text.is_empty() {
-				self.feedback = "Answer each question before sending.".into();
+				self.feedback = Feedback::warning("Answer each question before sending.");
 
 				cx.notify();
 
@@ -828,7 +846,7 @@ mod timing_tests {
 				visual.simulate_click(allow.center(), gpui::Modifiers::default());
 				surface.read_with(visual, |s, _| {
 					assert_eq!(
-						s.feedback, "No service profile is configured.",
+						s.feedback.message, "No service profile is configured.",
 						"must reach dispatch, not reject the full grant as oversized"
 					);
 				});
@@ -851,6 +869,7 @@ mod timing_tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
+                agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,
                 runtime_source: None,
@@ -877,16 +896,23 @@ connection_initializing: false,
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
+		for _ in 0..20 {
+			std::thread::sleep(std::time::Duration::from_millis(16));
+			visual.update(crate::ui_frame::draw_frame);
+		}
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
 
 		surface.read_with(visual, |s, cx| {
 			assert!(s.question_inputs["format"].read(cx).content().is_empty());
 			assert!(!s.question_timers[&7].disabled);
 		});
-		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.simulate_mouse_down(bounds.center(), gpui::MouseButton::Left, Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("question-format-0"), Some(bounds));
+		visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 
 		surface.update(visual, |s, cx| {
 			assert!(s.question_timers[&7].disabled);
@@ -913,7 +939,7 @@ connection_initializing: false,
 			s.question_inputs["format"].update(cx, |input, cx| input.set_content("PDF", cx));
 			s.submit_answers(cx);
 
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
 		});
 	}

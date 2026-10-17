@@ -356,6 +356,7 @@ impl Shell {
 					cx.stop_propagation();
 				}
 			}))
+			.child(self.titlebar.control())
 			.child(workspace_symbols::icon(if notices.is_empty() {
 				Symbol::Bell
 			} else if color == ERROR {

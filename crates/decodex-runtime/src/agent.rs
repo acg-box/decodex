@@ -57,7 +57,9 @@ use file_changes::PendingFileChanges;
 use resume_recovery::ClosingResume;
 use voice::VoiceConnection;
 
-const INSTRUCTIONS: &str = include_str!("agent/instructions.md");
+const COORDINATION: &str = include_str!("agent/coordination.md");
+const INSTRUCTIONS: &str =
+	concat!(include_str!("agent/instructions.md"), "\n", include_str!("agent/coordination.md"));
 // Leave ample space below the transport's frame limit for prompt escaping and RPC fields.
 const MAX_WAKE_BATCH_BYTES: usize = 512 * 1_024;
 
@@ -326,12 +328,9 @@ impl AgentCoordinator {
 				EnqueueAgentEvent {
 					source_event_id: serde_json::json!(["turn/completed", thread, turn]).to_string(),
 					work_item_id: item.id,
-					event_kind: if item.parent_goal_id.is_none() {
-						"agent_turn_completed"
-					} else {
-						"worker_turn_completed"
-					}
-					.into(),
+					// The store routes results for outstanding assignments atomically.
+					// Workspace ownership alone does not subscribe a parent to every turn.
+					event_kind: "agent_turn_completed".into(),
 					payload: serde_json::json!({"terminal":result_messages::terminal(&params),"threadReadback":evidence,"usage":usage}).to_string(),
 				},
 			)
@@ -1679,7 +1678,13 @@ impl AgentCoordinator {
 				turn_id: exact(params, "/turnId")?,
 				item_id: exact(params, if completed { "/item/id" } else { "/itemId" })?,
 				kind: kind.into(),
-				text: exact(params, if completed { "/item/text" } else { "/delta" })?,
+				// Native final messages and deltas may be empty. Identity fields must
+				// be nonempty, but an empty text value can clear a retained draft.
+				text: params
+					.pointer(if completed { "/item/text" } else { "/delta" })
+					.and_then(Value::as_str)
+					.ok_or_else(|| AgentError::Invalid("missing output text".into()))?
+					.to_owned(),
 				completed,
 			})
 			.await?;
@@ -1720,6 +1725,9 @@ impl AgentCoordinator {
 
 		match event {
 			ServerEvent::Notification { method, params } if method == "turn/started" => {
+				if let Some(thread) = params["threadId"].as_str() {
+					self.store.resume_native_agent_slot(thread.into()).await?;
+				}
 				self.observe_native_turn(&params).await?;
 			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
@@ -1729,6 +1737,11 @@ impl AgentCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
+				if method == "thread/closed" {
+					self.store
+						.release_native_agent_slots(vec![exact(&params, "/threadId")?])
+						.await?;
+				}
 				self.observe_unloaded_thread(&method, &exact(&params, "/threadId")?);
 			},
 			ServerEvent::Notification { method, params }
@@ -1754,6 +1767,9 @@ impl AgentCoordinator {
 			ServerEvent::Notification { method, params }
 				if method == "item/started" || method == "item/completed" =>
 			{
+				if method == "item/completed" {
+					crate::agent_slots::observe_native_close(&self.store, &params["item"]).await?;
+				}
 				if let Some(activity) = activity::project(&params, method == "item/completed") {
 					self.store
 						.record_agent_activity(
@@ -2314,17 +2330,33 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
-		let blocked = self.store.list_agent_thread_in_use_events().await?;
+		let notices = self.store.list_agent_thread_in_use_events().await?;
+		let mut blocked = std::collections::HashSet::new();
+		let mut root_blocked = None;
 
-		for notice in blocked {
+		for notice in notices {
 			self.store.hold_agent_unsent_input(notice.work_item_id.clone()).await?;
 
 			let item = self.store.get_agent_work_item(notice.work_item_id.clone()).await?;
 
 			if let Some(thread) = &item.codex_thread_id {
 				let params = Self::resume_params(thread);
-				let resumed =
-					self.client.thread_resume(params).await.map_err(|e| resume_error(e, thread))?;
+				let resumed = match self
+					.client
+					.thread_resume(params)
+					.await
+					.map_err(|e| resume_error(e, thread))
+				{
+					Ok(value) => value,
+					Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
+						blocked.insert(item.id.clone());
+						if item.parent_goal_id.is_none() {
+							root_blocked = Some(error);
+						}
+						continue;
+					},
+					Err(error) => return Err(error),
+				};
 
 				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
 					return Err(AgentError::Invalid(
@@ -2332,7 +2364,7 @@ impl AgentCoordinator {
 					));
 				}
 
-				self.store.resolve_agent_delivery_failure(item.id).await?;
+				self.store.resolve_agent_thread_in_use(item.id).await?;
 			}
 		}
 
@@ -2344,6 +2376,7 @@ impl AgentCoordinator {
 			managers.contains(&item.id)
 				&& item.kind == AgentWorkKind::Goal
 				&& item.dispatch_state == AgentDispatchState::Idle
+				&& !blocked.contains(&item.id)
 		}) {
 			if voice_calls.iter().any(|call| call.work_id == agent.id) {
 				continue;
@@ -2389,15 +2422,29 @@ impl AgentCoordinator {
 
 			// Delivery is fenced before RPC. Failure remains visible and is never
 			// retried automatically, including after a service restart.
-			self.dispatch_with_events(
-				&agent,
-				&wake_message(&batch)?,
-				batch.iter().map(|event| event.id).collect(),
-			)
-			.await?;
+			match self
+				.dispatch_with_events(
+					&agent,
+					&wake_message(&batch)?,
+					batch.iter().map(|event| event.id).collect(),
+				)
+				.await
+			{
+				Ok(_) => {},
+				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
+					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
+					self.store
+						.record_agent_thread_in_use(agent.id.clone(), error.to_string())
+						.await?;
+					if agent.parent_goal_id.is_none() {
+						root_blocked = Some(error);
+					}
+				},
+				Err(error) => return Err(error),
+			}
 		}
 
-		Ok(())
+		root_blocked.map_or(Ok(()), Err)
 	}
 }
 
@@ -2412,7 +2459,10 @@ pub enum AgentError {
 	/// Exact native resume refused because the selected session is archived.
 	ThreadArchived,
 	/// Another Codex client owns the persisted thread writer; no turn was dispatched.
-	ThreadOwnedElsewhere,
+	ThreadOwnedElsewhere {
+		/// Native thread that another application currently owns.
+		thread_id: String,
+	},
 	/// The provider transport failed.
 	Transport(ClientError),
 	/// Durable state could not be read or updated.
@@ -2434,6 +2484,9 @@ pub enum AgentError {
 }
 impl Display for AgentError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		if matches!(self, Self::ThreadOwnedElsewhere { .. }) {
+			return f.write_str("This conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.");
+		}
 		write!(f, "Agent: {self:?}")
 	}
 }
@@ -2541,7 +2594,7 @@ fn resume_error(error: ClientError, thread: &str) -> AgentError {
 		&& remote.code == -32_600
 		&& remote.message.contains("already has an active writer")
 	{
-		return AgentError::ThreadOwnedElsewhere;
+		return AgentError::ThreadOwnedElsewhere { thread_id: thread.to_owned() };
 	}
 
 	error.into()
@@ -2558,7 +2611,9 @@ fn wake_message(batch: &[AgentInboxEvent]) -> Result<String, AgentError> {
 			.ok_or_else(|| AgentError::Invalid("missing saved user text".into()));
 	}
 
-	Ok("New external work updates are available in the tool context. Assess them and record the next decision for the existing goal.".into())
+	Ok(format!(
+		"New external work updates are available in the tool context. Assess them and record the next decision for the existing goal.\n\n{COORDINATION}"
+	))
 }
 
 fn wake_evidence(event: &AgentInboxEvent) -> Value {

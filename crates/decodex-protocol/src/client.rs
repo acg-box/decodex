@@ -6795,6 +6795,7 @@ max_entry_bytes = 0
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(AgentHistoryReceiptDto {
+						unsent_reason: None,
 						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: (change == "delivered").then(|| "turn".into()),

@@ -13,32 +13,50 @@ impl Graph {
 		if !self.nodes.iter().any(|n| n.row.as_ref().is_some_and(|r| r.workspace.is_some())) {
 			return;
 		}
-		// Cross-workspace children must not stretch their parent's local scope.
-		let mut parents: Vec<_> = (0..self.nodes.len()).collect();
-		parents.sort_by(|a, b| self.nodes[*b].x.total_cmp(&self.nodes[*a].x));
-		for i in parents {
-			let Some(row) = &self.nodes[i].row else { continue };
-			let local: Vec<_> = self
-				.edges
-				.iter()
-				.filter(|e| {
-					e.from == self.nodes[i].key && matches!(e.kind, Kind::Assigned | Kind::Spawned)
-				})
-				.filter_map(|e| self.nodes.iter().find(|n| n.key == e.to))
-				.filter(|n| n.row.as_ref().is_some_and(|r| r.workspace == row.workspace))
-				.map(|n| n.y)
-				.collect();
-			if !local.is_empty() {
-				self.nodes[i].y = (local.iter().copied().fold(f32::INFINITY, f32::min)
-					+ local.iter().copied().fold(f32::NEG_INFINITY, f32::max))
-					/ 2.;
-			}
-		}
 		let mut groups: BTreeMap<Option<String>, Vec<usize>> = BTreeMap::new();
 		for (i, node) in self.nodes.iter().enumerate() {
 			if let Some(row) = &node.row {
 				groups.entry(row.workspace.clone()).or_default().push(i);
 			}
+		}
+		let children = {
+			let indices: BTreeMap<_, _> =
+				self.nodes.iter().enumerate().map(|(i, n)| (n.key.as_str(), i)).collect();
+			let mut children = vec![Vec::new(); self.nodes.len()];
+			for edge in &self.edges {
+				if !matches!(edge.kind, Kind::Assigned | Kind::Spawned) {
+					continue;
+				}
+				let (Some(&from), Some(&to)) =
+					(indices.get(edge.from.as_str()), indices.get(edge.to.as_str()))
+				else {
+					continue;
+				};
+				if let (Some(a), Some(b)) = (&self.nodes[from].row, &self.nodes[to].row)
+					&& a.workspace == b.workspace
+				{
+					children[from].push(to);
+				}
+			}
+			children
+		};
+		// Reuse the ownership order, but remove rows occupied by other workspaces.
+		// Compact local leaves first, then center their parents from the bottom up.
+		for members in groups.values_mut() {
+			members.sort_by(|a, b| self.nodes[*a].y.total_cmp(&self.nodes[*b].y));
+			let mut cursor = 0.;
+			for &i in members.iter().filter(|i| children[**i].is_empty()) {
+				self.nodes[i].y = cursor;
+				cursor += 96.;
+			}
+		}
+		let mut parents: Vec<_> =
+			(0..self.nodes.len()).filter(|i| !children[*i].is_empty()).collect();
+		parents.sort_by(|a, b| self.nodes[*b].x.total_cmp(&self.nodes[*a].x));
+		for i in parents {
+			let ys = || children[i].iter().map(|child| self.nodes[*child].y);
+			self.nodes[i].y =
+				(ys().fold(f32::INFINITY, f32::min) + ys().fold(f32::NEG_INFINITY, f32::max)) / 2.;
 		}
 		let mut top = 48.;
 		for members in groups.values() {

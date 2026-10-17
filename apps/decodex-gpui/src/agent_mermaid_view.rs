@@ -8,7 +8,7 @@ use crate::shell::agent_surface::{
 		ParentElement, Range, SharedString, StatefulInteractiveElement, Styled, mermaid,
 		mermaid::Role, ui_theme,
 	},
-	selectable_text::SelectableText,
+	selectable_text::{Document, SelectableText},
 };
 
 // Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
@@ -27,7 +27,7 @@ pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: u
 		>= opening_len
 }
 
-pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
+pub(super) fn render(children: &[Node], key: &str, selection: &mut Document) -> Option<AnyElement> {
 	let source = markdown::code_text(children);
 	let out = diagram(&source)?;
 	let selector = format!("mermaid-{key}");
@@ -61,12 +61,12 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 					.items_start()
 					.overflow_x_scroll()
 					.whitespace_nowrap()
-					.child(SelectableText {
+					.child(selection.push(SelectableText {
 						key: format!("mermaid-text-{key}"),
 						text: out.text,
 						highlights: out.highlights,
 						links: Vec::new(),
-					}),
+					})),
 			)
 			.into_any_element(),
 	)

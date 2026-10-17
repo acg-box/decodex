@@ -2,7 +2,6 @@
 use core::panic::Location;
 use std::mem;
 
-use cursor::{Preference, Shape};
 use gpui::{AvailableSpace, TextAlign};
 use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE};
 
@@ -109,13 +108,11 @@ impl Element for ComposerTextElement {
 		let input = self.input.read(cx);
 		let focus = input.focus_handle.clone();
 		let selections = [input.selected_range.clone()];
-		let draw_cursor = input.cursor.visible
-			&& cursor::eligible(
-				focus.is_focused(window),
-				window.is_window_active(),
-				input.selected_range.is_empty(),
-			);
-		let cursor_shape = Preference::configured().shape;
+		let draw_cursor = cursor::eligible(
+			focus.is_focused(window),
+			window.is_window_active() && crate::ui_motion::application_active(),
+			input.selected_range.is_empty(),
+		);
 		let next = composer_input::next_boundary(&input.content, input.cursor_offset());
 		let gutter = gpui::px(0.);
 		let origin = bounds.origin + gpui::point(gutter, -state.offset);
@@ -188,28 +185,16 @@ impl Element for ComposerTextElement {
 			} else {
 				gpui::px(BODY_SIZE * 0.6)
 			};
-			let (offset, extent, color) = match cursor_shape {
-				Shape::Bar => (
-					gpui::point(gpui::px(0.), gpui::px(0.)),
-					gpui::size(gpui::px(1.5), gpui::px(BODY_LINE_HEIGHT)),
-					gpui::rgba(0xe5e7ebff),
-				),
-				Shape::Block => (
-					gpui::point(gpui::px(0.), gpui::px(0.)),
-					gpui::size(width, gpui::px(BODY_LINE_HEIGHT)),
-					gpui::rgba(0xe5e7eb55),
-				),
-				Shape::Underline => (
-					gpui::point(gpui::px(0.), gpui::px(BODY_LINE_HEIGHT - 2.)),
-					gpui::size(width, gpui::px(2.)),
-					gpui::rgba(0xe5e7ebff),
-				),
-			};
-
-			window.paint_quad(composer_input::fill(
-				Bounds::new(origin + caret + offset, extent),
-				color,
-			));
+			self.input.update(cx, |input, cx| {
+				input.cursor.paint(
+					selections[0].end,
+					Bounds::new(origin + caret, gpui::size(width, gpui::px(BODY_LINE_HEIGHT))),
+					bounds,
+					state.offset,
+					window,
+					cx,
+				);
+			});
 		}
 
 		self.input.update(cx, |input, _| {

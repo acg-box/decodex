@@ -14,10 +14,10 @@ use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTE
 use crate::{
 	shell::{
 		agent_surface::{
-			self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto,
-			Context, FluentBuilder, InteractiveElement, IntoElement, ParentElement, Render,
-			SharedString, StatefulInteractiveElement, Styled, Window, markdown, native_timeline,
-			ui_theme, workspace,
+			self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, FluentBuilder,
+			InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+			StatefulInteractiveElement, Styled, Window, markdown, native_timeline, ui_theme,
+			workspace,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -439,8 +439,6 @@ impl AgentSurface {
 
 				if moving {
 					ui_motion::request_frame(window, cx);
-
-					cx.notify();
 				} else {
 					let following = wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
@@ -486,8 +484,6 @@ impl AgentSurface {
 
 		if t < 1.0 {
 			ui_motion::request_frame(window, cx);
-
-			cx.notify();
 		} else {
 			let (work, id, started) =
 				(navigation.work.clone(), navigation.id.clone(), navigation.started);
@@ -552,19 +548,14 @@ impl AgentSurface {
 	}
 
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
-		self.clear_voice_reading_space();
-		self.timeline.latest_follow_work = self.selected.clone();
-		self.timeline.selected = None;
-		self.timeline.navigation = None;
+		self.timeline.latest_follow_work = None;
 		self.timeline.older_scroll_anchor = None;
-
 		if let Some(work) = &self.selected {
-			self.timeline.follow_paused.remove(work);
 			self.timeline.scroll.entry(work.clone()).or_default();
 		}
-
-		self.set_voice_follow(true);
-		cx.notify();
+		// Sending is a short navigation transition. Once it settles, streaming
+		// follows the current layout exactly instead of easing after every token.
+		self.jump_to_latest(cx);
 	}
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
@@ -603,12 +594,9 @@ impl AgentSurface {
 				|| self.selected.as_ref().and_then(|id| self.timeline.scroll.get(id)).is_some_and(
 					|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.),
 				);
-		let working = self.conversation_work().is_some_and(|work| {
-			matches!(
-				work.dispatch_state,
-				AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
-			) && !self.thread_in_use(&work.id)
-		});
+		let working = self
+			.conversation_work()
+			.is_some_and(|work| self.response_in_progress(&work) && !self.thread_in_use(&work.id));
 		let width =
 			ui_motion::value("jump-latest-width", if working { 56. } else { 28. }, window, cx);
 		let clock =
@@ -687,16 +675,17 @@ impl AgentSurface {
 	) -> AnyElement {
 		// Reserve a stable gutter while histories load or agents change.
 		gpui::div()
+			.relative()
 			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
-			.pb(gpui::px(ui_motion::value(
-				"history-rail-bottom",
-				self.workspace.composer_overlay_height,
-				window,
-				cx,
-			)))
 			.flex_none()
 			.overflow_hidden()
-			.child(self.history_rail(window, cx))
+			.child(
+				gpui::div()
+					.absolute()
+					.inset_0()
+					.bottom(gpui::px(self.workspace.composer_overlay_height))
+					.child(self.history_rail(window, cx)),
+			)
 			.into_any_element()
 	}
 
@@ -740,9 +729,7 @@ impl AgentSurface {
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
 		let positions: Vec<_> =
 			self.timeline.marks.values().map(|mark| mark.position.clone()).collect();
-		let working = self
-			.conversation_work()
-			.is_some_and(|work| work.dispatch_state == AgentDispatchStateDto::Running);
+		let working = self.conversation_work().is_some_and(|work| self.response_in_progress(&work));
 		let last = positions.len() - 1;
 		let current = self.active_history_index(&scroll);
 		let active_position = ui_motion::value(
@@ -754,18 +741,15 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let spacing = ((f32::from(scroll.bounds().size.height)
-			- self.workspace.composer_overlay_height
-			- 32.0)
-			/ positions.len() as f32)
-			.clamp(2.0, 11.0);
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
 			.debug_selector(|| "conversation-history-rail".into())
 			.w(gpui::px(44.0))
 			.flex_none()
 			.h_full()
-			.py_4()
+			// Keep the first tick below the conversation's expand control.
+			.pt(gpui::px(36.))
+			.pb_4()
 			.flex()
 			.flex_col()
 			.justify_center()
@@ -793,8 +777,11 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label(format!("Jump to: {}", mark.question))
 					.w_full()
-					.flex_none()
-					.h(gpui::px(spacing))
+					// Size the hit target and its tick together in the current layout.
+					// Reading the previous scroll bounds lags behind a Dock resize.
+					.flex_1()
+					.min_h_0()
+					.max_h(gpui::px(11.))
 					.cursor_pointer()
 					.on_hover(cx.listener(move |s, hovered: &bool, _, cx| {
 						if *hovered {
@@ -1472,6 +1459,68 @@ phase: None,
 	}
 
 	#[gpui::test]
+	fn dock_resize_keeps_rail_targets_and_history_geometry_in_sync(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture history");
+			};
+			*entries = (0..36)
+				.map(|id| {
+					let mut entry = entries[0].clone();
+					entry.id = id;
+					entry.text =
+						format!("Reading note {id}: keep this message at its original size.");
+					entry
+				})
+				.collect();
+			s.workspace.panel_drag = Some((super::super::workspace_size::Panel::Bottom, 0., 0.));
+			s.workspace.graph_visible = true;
+			s.workspace.graph_panel_height = 120.;
+		});
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		thread::sleep(std::time::Duration::from_millis(400));
+		visual.update(|w, cx| w.draw(cx).clear(cx));
+		let positions = surface.read_with(visual, |s, _| {
+			s.timeline.marks.values().map(|mark| mark.position.get()).collect::<Vec<_>>()
+		});
+		for height in [560., 240., 480., 120.] {
+			surface.update(visual, |s, cx| {
+				s.workspace.panel_drag =
+					Some((super::super::workspace_size::Panel::Bottom, 0., 0.));
+				s.workspace.graph_panel_height = height;
+				cx.notify();
+			});
+			// Check the first frame at the new size, before any follow-up notification.
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			let rail = visual.debug_bounds("conversation-history-rail").unwrap();
+			let targets = surface.read_with(visual, |s, _| {
+				s.timeline
+					.marks
+					.iter()
+					.enumerate()
+					.map(|(index, (id, mark))| {
+						assert!((mark.position.get() - positions[index]).abs() < 0.5);
+						let bounds = mark.hit_bounds.get().unwrap();
+						assert!(bounds.origin.y >= rail.origin.y + gpui::px(35.5));
+						assert!(bounds.bottom() <= rail.bottom() - gpui::px(15.5));
+						assert!(bounds.size.height > gpui::px(0.));
+						(id.clone(), bounds)
+					})
+					.collect::<Vec<_>>()
+			});
+			for (id, bounds) in targets.iter().step_by(7) {
+				visual.simulate_click(bounds.center(), Default::default());
+				surface
+					.read_with(visual, |s, _| assert_eq!(s.timeline.selected.as_ref(), Some(id)));
+			}
+		}
+	}
+
+	#[gpui::test]
 	fn rail_hit_targets_select_their_own_message(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -1925,6 +1974,41 @@ phase: None,
 	}
 
 	#[gpui::test]
+	fn streaming_follow_uses_the_current_layout_without_a_catch_up_frame(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(500.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+				entries[1].text = "A line of streamed output.\n\n".repeat(40);
+			}
+			s.timeline.latest_follow_work = Some("agent".into());
+		});
+		for _ in 0..8 {
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+		}
+		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
+		for lines in [42, 43, 48, 50, 45] {
+			surface.update(visual, |s, cx| {
+				if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+					entries[1].text = "A line of streamed output.\n\n".repeat(lines);
+				}
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert!(
+				(scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.),
+				"new content must be anchored before its first paint: offset {:?}, max {:?}",
+				scroll.offset(),
+				scroll.max_offset()
+			);
+		}
+	}
+
+	#[gpui::test]
 	fn jump_to_latest_scrolls_to_bottom_and_resumes_follow(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -1994,22 +2078,23 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.timeline.follow_paused.insert("agent".into());
 			s.follow_latest_after_send(cx);
 
 			assert!(s.timeline.selected.is_none());
-			assert!(s.timeline.navigation.is_none());
-			assert!(!s.timeline.follow_paused.contains("agent"));
+			assert!(s.timeline.navigation.as_ref().is_some_and(|motion| motion.id.is_none()));
+			assert!(s.timeline.latest_follow_work.is_none());
+			assert!(s.timeline.follow_paused.contains("agent"));
 		});
 
-		// Let time-based panel transitions settle before checking the final scroll extent.
-		thread::sleep(std::time::Duration::from_millis(240));
+		// Let the sending transition settle before checking continuous bottom-follow.
+		thread::sleep(std::time::Duration::from_millis(300));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 
 		surface.read_with(visual, |s, _| {

@@ -43,6 +43,11 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		}
+		let initial_model = self
+			.workspace
+			.new_conversation
+			.is_none()
+			.then(|| (self.composer_model_value(cx), self.composer_effort_value(cx)));
 		self.close_native_agent(cx);
 		self.stop_voice(cx);
 		let id = self
@@ -50,6 +55,16 @@ impl AgentSurface {
 			.new_conversation
 			.get_or_insert_with(|| format!("conversation-{}", super::unique_command()))
 			.clone();
+		if let Some((Some(model), effort)) = initial_model
+			&& let Ok(model) = decodex_protocol::ConversationModel::new(model)
+		{
+			let effort = effort
+				.and_then(|value| decodex_protocol::ConversationReasoningEffort::new(value).ok());
+			self.draft_profiles.execution.change(id.clone(), |choice| {
+				choice.model = Some(model);
+				choice.reasoning_effort = effort;
+			});
+		}
 		self.restore_manager_composer(&id, cx);
 		self.selected = Some(id);
 		self.composer.update(cx, |input, cx| {
@@ -60,6 +75,7 @@ impl AgentSurface {
 		self.timeline.marks.clear();
 		self.feedback.clear();
 		self.workspace.details_visible = false;
+		self.save_draft_document(cx);
 		cx.notify();
 	}
 

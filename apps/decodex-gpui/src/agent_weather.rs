@@ -27,14 +27,14 @@ impl RenderOnce for WeatherCard {
 		let page = state.read(cx).target.min(pages - 1);
 		let position = state.read(cx).position().clamp(0., (pages - 1) as f32);
 
-		if (position - page as f32).abs() > 0.001 {
+		if (position - page as f32).abs() > 0.001 && crate::ui_frame::animations_active() {
 			let state = state.clone();
 
 			window.on_next_frame(move |window, cx| {
 				state.update(cx, |_, cx| cx.notify());
 				window.refresh();
 			});
-			window.request_animation_frame();
+			crate::ui_frame::request_frame(window, cx);
 		}
 
 		let selector = format!("weather-card-{key}");

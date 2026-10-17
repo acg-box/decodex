@@ -122,7 +122,11 @@ impl AgentCoordinator {
 		});
 	}
 
-	async fn owned_voice_generation(&self, work: &str, thread: &str) -> Result<String, AgentError> {
+	async fn selected_voice_generation(
+		&self,
+		work: &str,
+		thread: &str,
+	) -> Result<String, AgentError> {
 		let generation = self
 			.voice
 			.as_ref()
@@ -130,13 +134,15 @@ impl AgentCoordinator {
 			.generation
 			.clone();
 
+		// Live is a user action on the selected conversation, like restore. Agent tool
+		// permissions keep their narrower manager boundary.
 		if !self
 			.store
-			.agent_thread_is_owned(work.into(), thread.into(), Some(generation.clone()))
+			.agent_thread_is_restorable(work.into(), thread.into(), Some(generation.clone()))
 			.await?
 		{
 			return Err(AgentError::Invalid(
-				"Voice thread is not owned by the active process".into(),
+				"Voice could not start because this conversation is no longer connected.".into(),
 			));
 		}
 
@@ -227,7 +233,7 @@ impl AgentCoordinator {
 		let thread = item
 			.codex_thread_id
 			.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
-		let generation = self.owned_voice_generation(work_id.as_str(), &thread).await?;
+		let generation = self.selected_voice_generation(work_id.as_str(), &thread).await?;
 		if !crate::agent_voice_settings::voice_allowed(&self.client).await? {
 			return Err(AgentError::Invalid("Voice is disabled by managed policy.".into()));
 		}
@@ -237,11 +243,18 @@ impl AgentCoordinator {
 
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 
-			let resumed = self
-				.client
-				.thread_resume(params)
-				.await
-				.map_err(|error| agent::resume_error(error, &thread))?;
+			let resumed = match self.client.thread_resume(params).await {
+				Ok(resumed) => resumed,
+				Err(error) => {
+					let error = agent::resume_error(error, &thread);
+					if matches!(error, AgentError::ThreadOwnedElsewhere { .. }) {
+						self.store
+							.record_agent_thread_in_use(work_id.as_str().into(), error.to_string())
+							.await?;
+					}
+					return Err(error);
+				},
+			};
 
 			if agent::exact(&resumed, "/thread/id")? != thread {
 				return Err(AgentError::Invalid("voice thread differs".into()));

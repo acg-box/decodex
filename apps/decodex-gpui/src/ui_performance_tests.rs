@@ -1,0 +1,187 @@
+//! Check rolling metrics and keep Debug independent of full task tracing.
+use super::*;
+
+#[gpui::test]
+fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut gpui::TestAppContext) {
+	preference(Some(true));
+	let (island, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+		island.metrics.fps = 165.;
+		island.metrics.draw_frames = 1;
+		island.host.gpu_percent = Some(100.);
+		island
+	});
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	let toggle = visual.debug_bounds("performance-island-toggle").expect("island control");
+	let fps = visual.debug_bounds("performance-fps").unwrap();
+	let gpu = visual.debug_bounds("performance-gpu-label").unwrap();
+	assert!(gpu.left() - fps.right() >= gpui::px(12.));
+	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < toggle.right());
+	visual.simulate_mouse_move(toggle.center(), None, Default::default());
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));
+	visual.simulate_mouse_move(
+		gpui::point(gpui::px(600.), gpui::px(400.)),
+		None,
+		Default::default(),
+	);
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
+	visual.simulate_mouse_move(toggle.center(), None, Default::default());
+	visual.simulate_click(toggle.center(), Default::default());
+	visual.simulate_mouse_move(
+		gpui::point(gpui::px(600.), gpui::px(400.)),
+		None,
+		Default::default(),
+	);
+	assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);
+	visual.simulate_click(toggle.center(), Default::default());
+	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
+	preference(Some(false));
+}
+
+#[gpui::test]
+fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut gpui::TestAppContext) {
+	preference(Some(true));
+	let (_, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+		island.expansion = Expansion::Clicked;
+		island
+	});
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	let details = visual.debug_bounds("performance-island-details").expect("metric grid");
+	let chart = visual.debug_bounds("performance-island-chart").expect("draw-time chart");
+	let capsule = visual.debug_bounds("performance-island").unwrap();
+	assert!(details.bottom() <= capsule.bottom(), "{details:?} outside {capsule:?}");
+	assert!(details.right() <= capsule.right());
+	assert!(chart.size.height >= gpui::px(28.));
+	let cells = ["performance-cpu-row", "performance-memory-row", "performance-latency-row"]
+		.map(|id| visual.debug_bounds(id).unwrap());
+	let draw = visual.debug_bounds("performance-draw-row").unwrap();
+	assert_eq!(cells[0].left(), draw.left());
+	assert!(
+		(cells[2].right() - chart.right()).abs() < gpui::px(0.01),
+		"{cells:?} against {chart:?}"
+	);
+	for pair in cells.windows(2) {
+		assert_eq!(pair[0].top(), pair[1].top());
+		assert_eq!(pair[1].left() - pair[0].right(), gpui::px(12.));
+		assert!((pair[0].size.width - pair[1].size.width).abs() <= gpui::px(1.));
+	}
+	assert_eq!(chart.top(), draw.top());
+	assert_eq!(chart.left() - draw.right(), gpui::px(8.));
+	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
+	assert_eq!(visual.debug_bounds("performance-gpu").unwrap().right(), chart.right());
+	assert_eq!(capsule.size, gpui::size(gpui::px(272.), gpui::px(96.)));
+	assert!(visual.debug_bounds("performance-island-note").is_none());
+	preference(Some(false));
+}
+
+#[gpui::test]
+fn metric_slots_stay_put_across_missing_and_wider_values(cx: &mut gpui::TestAppContext) {
+	preference(Some(true));
+	let (island, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+		island.expansion = Expansion::Clicked;
+		island
+	});
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	let ids = [
+		"performance-fps",
+		"performance-gpu",
+		"performance-cpu",
+		"performance-memory",
+		"performance-latency",
+		"performance-draw",
+	];
+	let before = ids.map(|id| visual.debug_bounds(id).unwrap());
+	island.update(visual, |s, cx| {
+		s.metrics = Metrics {
+			fps: 165.,
+			draw_ms: 26.5,
+			submit_ms: 123.4,
+			draw_frames: 82,
+			ready_samples: 82,
+		};
+		s.cpu_percent = Some(1234.);
+		s.host.gpu_percent = Some(100.);
+		s.host.peak_memory_bytes = Some(12_300_000_000.);
+		cx.notify();
+	});
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	for (id, bounds) in ids.into_iter().zip(before) {
+		assert_eq!(visual.debug_bounds(id).unwrap(), bounds, "{id}");
+	}
+	for (id, label) in [
+		("performance-cpu", "performance-cpu-label"),
+		("performance-memory", "performance-memory-label"),
+		("performance-draw", "performance-draw-label"),
+		("performance-latency", "performance-latency-label"),
+	] {
+		let label = visual.debug_bounds(label).unwrap();
+		let value = visual.debug_bounds(id).unwrap();
+		assert_eq!(label.left(), value.left(), "{id}");
+		assert_eq!(label.bottom(), value.top(), "{id}: {label:?} overlaps {value:?}");
+		assert!(label.right() <= value.right(), "{id}: label exceeds its column");
+	}
+	preference(Some(false));
+}
+
+#[gpui::test]
+fn draw_history_keeps_real_samples_in_background_without_inserting_missing_zeros(
+	cx: &mut gpui::TestAppContext,
+) {
+	let island = cx.new(PerformanceIsland::new);
+	island.update(cx, |island, _| {
+		for index in 1..=40 {
+			island.record(Metrics { draw_frames: 5, draw_ms: index as f64, ..Default::default() });
+			island.record(Metrics::default());
+		}
+		assert_eq!(island.history.len(), 40);
+		assert_eq!(island.history.front().map(|s| s.1), Some(1.));
+		assert_eq!(island.history.back().map(|s| s.1), Some(40.));
+		assert!(island.history.iter().all(|value| value.1 > 0.));
+	});
+}
+
+#[gpui::test]
+fn metrics_use_only_the_new_histogram_samples(cx: &mut gpui::TestAppContext) {
+	let (_, visual) = cx.add_window_view(|_, cx| PerformanceIsland::new(cx));
+	visual.update(|window, _| {
+		let mut previous = window.frame_duration_snapshot();
+		previous.draw_duration_histogram.record(100_000_000).unwrap();
+		previous.present_interval_histogram.record(100_000_000).unwrap();
+		let mut next = previous.clone();
+		for value in [2_000_000, 4_000_000] {
+			next.draw_duration_histogram.record(value).unwrap();
+		}
+		for value in [6_000_000, 12_000_000] {
+			next.present_interval_histogram.record(value).unwrap();
+		}
+		next.dirty_to_present_histogram.record(9_000_000).unwrap();
+		let metrics = Metrics::collect(next, &previous, 0.5).unwrap();
+		assert_eq!(metrics.draw_frames, 2);
+		assert_eq!(metrics.fps, 4.);
+		assert!((4. ..4.01).contains(&metrics.draw_ms));
+		assert!((9. ..9.01).contains(&metrics.submit_ms));
+	});
+}
+
+#[gpui::test]
+fn disabling_the_overlay_stops_sampling_without_enabling_task_traces(
+	cx: &mut gpui::TestAppContext,
+) {
+	let was_tracing = gpui::profiler::trace_enabled();
+	preference(Some(true));
+	let (island, visual) = cx.add_window_view(|_, cx| PerformanceIsland::new(cx));
+	visual.update(|window, cx| window.draw(cx).clear(cx));
+	assert!(island.read_with(visual, |s, _| s.task.is_some()));
+	assert_eq!(gpui::profiler::trace_enabled(), was_tracing);
+	preference(Some(false));
+	visual.update(|window, cx| {
+		cx.refresh_windows();
+		window.draw(cx).clear(cx);
+	});
+	assert!(island.read_with(visual, |s, _| s.task.is_none()));
+	assert_eq!(gpui::profiler::trace_enabled(), was_tracing);
+}

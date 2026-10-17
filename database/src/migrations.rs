@@ -7,7 +7,7 @@ use crate::{DatabaseError, account_alias, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
 
-const CURRENT_SCHEMA_VERSION: i64 = 53;
+const CURRENT_SCHEMA_VERSION: i64 = 55;
 const MIGRATIONS: &[Migration] = &[
 	Migration {
 		version: 48,
@@ -38,6 +38,16 @@ const MIGRATIONS: &[Migration] = &[
 		version: 53,
 		name: "independent_workspaces",
 		sql: include_str!("../migrations/0053_independent_workspaces.sql"),
+	},
+	Migration {
+		version: 54,
+		name: "agent_delegations",
+		sql: include_str!("../migrations/0054_agent_delegations.sql"),
+	},
+	Migration {
+		version: 55,
+		name: "agent_slots",
+		sql: include_str!("../migrations/0055_agent_slots.sql"),
 	},
 ];
 
@@ -342,3 +352,7 @@ mod reset_credit_expiry_tests;
 #[cfg(test)]
 #[path = "workspace_migration_tests.rs"]
 mod workspace_tests;
+
+#[cfg(test)]
+#[path = "agent_coordination_migration_tests.rs"]
+mod agent_coordination_tests;

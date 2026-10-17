@@ -93,6 +93,7 @@ cp "$MENU_BAR_PACKAGE/.build/checkouts/Sparkle/LICENSE" "$RESOURCES/ThirdPartyNo
 cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"
 cp "$ROOT/assets/licenses/codex-LICENSE.txt" "$RESOURCES/ThirdPartyNotices/codex-LICENSE.txt"
 cp "$ROOT/assets/licenses/codex-NOTICE.txt" "$RESOURCES/ThirdPartyNotices/codex-NOTICE.txt"
+cp "$ROOT/assets/licenses/vscode-neovide-cursor.txt" "$RESOURCES/ThirdPartyNotices/vscode-neovide-cursor.txt"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
 cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon.png" "$RESOURCES/StatusBarIcon.png"

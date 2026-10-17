@@ -56,6 +56,7 @@ fn work() -> AgentWorkItemDto {
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").unwrap()),
@@ -130,7 +131,7 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut T
 fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
-	for change in ["thread", "turn", "running", "removed", "source"] {
+	for change in ["thread", "removed", "source"] {
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 
@@ -145,8 +146,6 @@ fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut TestAppCo
 
 			match change {
 				"thread" => next.work_items[0].codex_thread_id = Some("other".into()),
-				"turn" => next.work_items[0].active_turn_id = Some("other".into()),
-				"running" => next.work_items[0].dispatch_state = AgentDispatchStateDto::Running,
 				"removed" => next.work_items.clear(),
 				_ => next.runtime_source = Some(EntityId::new("other").unwrap()),
 			}
@@ -161,6 +160,183 @@ fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut TestAppCo
 			assert!(s.model_settings.observations.is_empty());
 		});
 	}
+}
+
+#[gpui::test]
+fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
+	cx: &mut TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		let mut state = snapshot();
+		let mut other = work();
+		other.id = "other".into();
+		other.kind = AgentWorkKindDto::Manager;
+		other.parent_goal_id = Some("root".into());
+		other.codex_thread_id = Some("other-thread".into());
+		state.work_items.push(other);
+		s.apply_result(Ok(AgentSnapshotResult::Available(state.clone())));
+		for (owner, thread, model, effort) in [
+			("root", "thread", "main-model", "high"),
+			("other", "other-thread", "other-model", "low"),
+		] {
+			s.model_settings.observations.insert(
+				owner.into(),
+				AgentModelSettingsResult::Available {
+					work_id: EntityId::new(owner).unwrap(),
+					thread_id: EntityId::new(thread).unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					model_provider: None,
+					model: Some(WireText::new(model).unwrap()),
+					reasoning_effort: Some(WireText::new(effort).unwrap()),
+				},
+			);
+			s.model_settings.read_at.insert(owner.into(), std::time::Instant::now());
+		}
+		for owner in ["other", "root", "other", "root"] {
+			s.open_page(owner, cx);
+			assert_eq!(
+				s.composer_model_label(cx),
+				if owner == "root" { "main-model" } else { "other-model" }
+			);
+			assert_eq!(
+				s.composer_effort_value(cx).as_deref(),
+				Some(if owner == "root" { "high" } else { "low" })
+			);
+		}
+		s.new_work_conversation(cx);
+		assert_eq!(s.composer_model_label(cx), "main-model");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
+		let action = s.build_submission("Start this conversation", cx).unwrap();
+		let decodex_protocol::AgentActionDto::NewConversation { execution, .. } = &action else {
+			panic!("new conversation")
+		};
+		assert_eq!(execution.model.as_ref().unwrap().as_str(), "main-model");
+		assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::High));
+		let captured = s.draft_profiles.execution.capture(&action).unwrap();
+		s.open_page("other", cx);
+		s.new_work_conversation(cx);
+		assert_eq!(
+			s.composer_model_label(cx),
+			"main-model",
+			"reopening the draft must retain its chosen model"
+		);
+		s.draft_profiles.execution.accepted(Some(&captured));
+		assert!(s.draft_profiles.execution.choice(&captured.0).is_empty());
+		s.open_page("root", cx);
+		state.work_items[0].active_turn_id = Some("new-turn".into());
+		state.work_items[0].dispatch_state = AgentDispatchStateDto::Running;
+		let epoch = s.model_settings.epoch;
+		s.apply_result(Ok(AgentSnapshotResult::Available(state)));
+		assert_ne!(s.model_settings.epoch, epoch);
+		assert!(
+			s.model_settings.read_at.is_empty(),
+			"read the native settings again for the new turn"
+		);
+		assert_eq!(
+			s.composer_model_label(cx),
+			"main-model",
+			"keep the same thread's last observation until that read completes"
+		);
+		assert_eq!(s.model_settings.observations.len(), 2);
+		assert!(s.draft_profiles.execution.choice("root").is_empty());
+		assert!(s.draft_profiles.execution.choice("other").is_empty());
+	});
+}
+
+#[gpui::test]
+fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		let observation = AgentModelSettingsResult::Available {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: EntityId::new("thread").unwrap(),
+			account_id: EntityId::new("account").unwrap(),
+			model_provider: None,
+			model: Some(WireText::new("native-model").unwrap()),
+			reasoning_effort: Some(WireText::new("high").unwrap()),
+		};
+		s.model_settings.observe("root".into(), observation.clone());
+
+		let mut running = snapshot();
+		running.work_items[0].active_turn_id = Some("next-turn".into());
+		running.work_items[0].dispatch_state = AgentDispatchStateDto::Running;
+		s.apply_result(Ok(AgentSnapshotResult::Available(running)));
+		for _ in 0..2 {
+			s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+			assert_eq!(s.composer_model_label(cx), "native-model");
+			assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
+		}
+
+		let mut changed = observation;
+		if let AgentModelSettingsResult::Available { model, .. } = &mut changed {
+			*model = Some(WireText::new("updated-model").unwrap());
+		}
+		s.model_settings.observe("root".into(), changed);
+		assert_eq!(s.composer_model_label(cx), "updated-model");
+
+		let mut rebound = snapshot();
+		rebound.work_items[0].codex_thread_id = Some("other-thread".into());
+		s.apply_result(Ok(AgentSnapshotResult::Available(rebound)));
+		assert_eq!(s.composer_model_value(cx), None, "never retain another thread's model");
+		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+	});
+}
+
+#[gpui::test]
+fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.model.update(cx, |input, cx| input.set_content("native-model", cx));
+		s.creation_inherit_effort = true;
+		s.capabilities = Some(AgentCapabilitiesResult::Available {
+			memory_enabled: None,
+			models: vec![AgentModelDto {
+				model: ConversationModel::new("native-model").unwrap(),
+				name: "Native model".into(),
+				efforts: vec![ConversationReasoningEffort::Medium],
+				default_effort: Some(ConversationReasoningEffort::Medium),
+				supports_fast: false,
+				service_tiers: vec![],
+				default_service_tier: None,
+				available_cyber_programs: None,
+				specialty: None,
+				supports_images: false,
+				availability: None,
+				upgrade: None,
+			}],
+		});
+		assert_eq!(s.composer_model_label(cx), "Native model");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("medium"));
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.model_settings.observations.insert(
+			"root".into(),
+			AgentModelSettingsResult::Available {
+				work_id: EntityId::new("root").unwrap(),
+				thread_id: EntityId::new("thread").unwrap(),
+				account_id: EntityId::new("account").unwrap(),
+				model_provider: None,
+				model: Some(WireText::new("native-model").unwrap()),
+				reasoning_effort: None,
+			},
+		);
+		assert_eq!(s.composer_model_label(cx), "Native model");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("medium"));
+		s.effort = ConversationReasoningEffort::High;
+		s.select_composer_option("model", "native-model", cx);
+		assert_eq!(
+			s.draft_profiles.execution.choice("root").reasoning_effort,
+			Some(ConversationReasoningEffort::Medium),
+			"selecting a model must preserve the visible effort, not another editor's value"
+		);
+		s.draft_profiles.execution = Default::default();
+		s.model_settings.observations.insert("root".into(), AgentModelSettingsResult::Unavailable);
+		assert_eq!(s.composer_model_value(cx), None);
+		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+		assert_eq!(s.composer_effort_value(cx), None, "never reuse an unrelated editor value");
+	});
 }
 
 #[gpui::test]
@@ -261,7 +437,7 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(cx: &mu
 			s.draft_profiles.execution.choice("agent").reasoning_effort,
 			Some(ConversationReasoningEffort::Low)
 		);
-		assert_eq!(s.composer_effort_value(), "low");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("low"));
 	});
 }
 
@@ -296,7 +472,7 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut
 			Some(&AgentModelSettingsResult::Unavailable)
 		);
 		assert_eq!(s.composer_model_label(cx), "composer-model");
-		assert_eq!(s.composer_effort_value(), "medium");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("medium"));
 		assert_eq!(s.model_settings.observations.len(), 2);
 	});
 }

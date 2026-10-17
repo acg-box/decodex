@@ -1,4 +1,5 @@
 //! User-requested Markdown export; loaded excerpts are explicit alternatives.
+use crate::ui_feedback::Feedback;
 use std::{
 	env,
 	fs::OpenOptions,
@@ -111,7 +112,7 @@ impl AgentSurface {
 		let excerpt = loaded.then(|| self.loaded_transcript(&target)).flatten();
 
 		if loaded && excerpt.is_none() {
-			self.feedback = "No loaded conversation text is available.".into();
+			self.feedback = Feedback::warning("No loaded conversation text is available.");
 
 			cx.notify();
 
@@ -130,47 +131,92 @@ impl AgentSurface {
 
 		cx.notify();
 
-		cx.spawn(async move |surface,cx| {
+		cx.spawn(async move |surface, cx| {
 			let path = match destination {
 				Some(destination) => match destination.await {
-					Ok(Ok(Some(path)))=>Some(path),
-					_=>{let _=surface.update(cx,|s,cx|{s.timeline.transcript_busy=false;cx.notify();});return;}
+					Ok(Ok(Some(path))) => Some(path),
+					_ => {
+						let _ = surface.update(cx, |s, cx| {
+							s.timeline.transcript_busy = false;
+							cx.notify();
+						});
+						return;
+					},
 				},
-				None=>None,
+				None => None,
 			};
-			let result = cx.background_executor().spawn(async move {
-				if let Some(text)=excerpt {return Ok(text);}
+			let result = cx
+				.background_executor()
+				.spawn(async move {
+					if let Some(text) = excerpt {
+						return Ok(text);
+					}
 
-				let runtime=Builder::new_current_thread().enable_all().build().map_err(|_|())?;
+					let runtime =
+						Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
 
-				runtime.block_on(AgentClient::new(profile).transcript(work,thread)).map_err(|_|())
-			}).await;
-			let valid=surface.update(cx,|s,cx| {
-				if s.native_goal_target()!=Some(target) || s.snapshot.as_ref().and_then(|s|s.runtime_source.as_ref())!=Some(&source) {
-					s.timeline.transcript_busy=false;s.feedback="Conversation source changed. Export again from the selected conversation.".into();cx.notify();return false;
-				}
+					runtime
+						.block_on(AgentClient::new(profile).transcript(work, thread))
+						.map_err(|_| ())
+				})
+				.await;
+			let valid = surface
+				.update(cx, |s, cx| {
+					if s.native_goal_target() != Some(target)
+						|| s.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+							!= Some(&source)
+					{
+						s.timeline.transcript_busy = false;
+						s.feedback = Feedback::warning(
+							"Conversation source changed. Export again from the selected conversation.",
+						);
+						cx.notify();
+						return false;
+					}
 
-				true
-			}).unwrap_or(false);
+					true
+				})
+				.unwrap_or(false);
 
-			if !valid {return;}
+			if !valid {
+				return;
+			}
 
-			let Ok(text)=result else {
-				let _=surface.update(cx,|s,cx|{s.timeline.transcript_busy=false;s.timeline.transcript_failed=true;s.feedback="Complete history could not be exported. Retry, or explicitly export the loaded excerpt.".into();cx.notify();});return;
+			let Ok(text) = result else {
+				let _ = surface.update(cx, |s, cx| {
+					s.timeline.transcript_busy = false;
+					s.timeline.transcript_failed = true;
+					s.feedback = Feedback::error(
+						"Complete history could not be exported. Retry, or explicitly export the loaded excerpt.",
+					);
+					cx.notify();
+				});
+				return;
 			};
-			let saved = if let Some(path)=path {
-				cx.background_executor().spawn(async move {write_transcript(&path,&text)}).await
+			let saved = if let Some(path) = path {
+				cx.background_executor().spawn(async move { write_transcript(&path, &text) }).await
 			} else {
-				let _=surface.update(cx,|_,cx|cx.write_to_clipboard(ClipboardItem::new_string(text)));Ok(())
+				let _ = surface
+					.update(cx, |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(text)));
+				Ok(())
 			};
-			let _=surface.update(cx,|s,cx| {
-				s.timeline.transcript_busy=false;
+			let _ = surface.update(cx, |s, cx| {
+				s.timeline.transcript_busy = false;
 
-				s.timeline.transcript_failed=false;
+				s.timeline.transcript_failed = false;
 
-				s.feedback=match saved {Ok(())=>if loaded {"Loaded excerpt exported."} else {"Conversation exported as Markdown."},Err(reason)=>reason}.into();cx.notify();
+				s.feedback = match saved {
+					Ok(()) => Feedback::success(if loaded {
+						"Loaded excerpt exported."
+					} else {
+						"Conversation exported as Markdown."
+					}),
+					Err(reason) => Feedback::error(reason),
+				};
+				cx.notify();
 			});
-		}).detach();
+		})
+		.detach();
 	}
 }
 fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {

@@ -2288,7 +2288,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 #[tokio::test]
 async fn external_writer_release_requires_a_new_send() {
 	let (mut coordinator, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"_resume_failures":1})).await;
+		fixture_with_history(serde_json::json!({"_resume_failures":3})).await;
 	let original = coordinator.start_agent("agent", "Initial").await.unwrap();
 
 	complete(&mut coordinator, "agent").await;
@@ -2298,8 +2298,12 @@ async fn external_writer_release_requires_a_new_send() {
 	while sent.try_recv().is_ok() {}
 
 	coordinator.enqueue_user_message("agent", "one-input", "Continue").await.unwrap();
+	let input =
+		coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().pop().unwrap();
 
-	assert!(matches!(coordinator.wake_pending().await, Err(AgentError::ThreadOwnedElsewhere)));
+	assert!(
+		matches!(coordinator.wake_pending().await, Err(AgentError::ThreadOwnedElsewhere { ref thread_id }) if Some(thread_id) == original.codex_thread_id.as_ref())
+	);
 
 	let before = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -2307,8 +2311,10 @@ async fn external_writer_release_requires_a_new_send() {
 
 	let pending = coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap();
 
-	assert_eq!(pending.len(), 1);
-	assert!(pending[0].delivered_turn_id.is_none());
+	assert!(pending.is_empty());
+	let held = coordinator.store.get_agent_inbox_event(input.id).await.unwrap();
+	assert_eq!(held.disposition, Some(AgentDisposition::UserDecision));
+	assert!(held.delivered_turn_id.is_none());
 
 	for index in 0..1_000 {
 		coordinator
@@ -2328,7 +2334,19 @@ async fn external_writer_release_requires_a_new_send() {
 		.record_agent_thread_in_use("agent".into(), "Open elsewhere".into())
 		.await
 		.unwrap();
+	let notice = coordinator.store.list_agent_thread_in_use_events().await.unwrap().remove(0);
+	for _ in 0..2 {
+		assert!(matches!(
+			coordinator.check_due_followups(1).await,
+			Err(AgentError::ThreadOwnedElsewhere { .. })
+		));
+		coordinator.store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+		assert_eq!(blocked.len(), 1);
+		assert_eq!(blocked[0].id, notice.id);
+	}
 	coordinator.wake_pending().await.unwrap();
+	assert!(coordinator.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
 	assert!(coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().is_empty());
 
@@ -2352,6 +2370,71 @@ async fn external_writer_release_requires_a_new_send() {
 	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(requests.iter().filter(|r| r["method"] == "turn/start").count(), 1);
+}
+
+#[tokio::test]
+async fn a_locked_conversation_does_not_stop_independent_input() {
+	let (mut coordinator, mut sent, _directory) =
+		fixture_with_history(serde_json::json!({"_resume_failures":2})).await;
+	let root = coordinator.start_agent("agent", "Coordinate").await.unwrap();
+	complete(&mut coordinator, "agent").await;
+	AgentCoordinator::create_conversation(
+		&coordinator.store,
+		"reading",
+		EnqueueAgentEvent {
+			source_event_id: "first-reading-input".into(),
+			work_item_id: "reading".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Plan a quiet afternoon"}).to_string(),
+		},
+		None,
+	)
+	.await
+	.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	complete(&mut coordinator, "reading").await;
+	let reading = coordinator.store.get_agent_work_item("reading".into()).await.unwrap();
+	coordinator.loaded_threads.remove(reading.codex_thread_id.as_ref().unwrap());
+	while sent.try_recv().is_ok() {}
+	let input = coordinator
+		.store
+		.enqueue_agent_event(EnqueueAgentEvent {
+			source_event_id: "blocked-reading-input".into(),
+			work_item_id: "reading".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Add a tea break"}).to_string(),
+		})
+		.await
+		.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+	assert_eq!(blocked.len(), 1);
+	assert_eq!(blocked[0].work_item_id, "reading");
+	let held = coordinator.store.get_agent_inbox_event(input.id).await.unwrap();
+	assert_eq!(held.disposition, Some(AgentDisposition::UserDecision));
+	assert!(held.delivered_turn_id.is_none());
+	coordinator
+		.enqueue_user_message("agent", "unrelated-input", "Help me choose a book")
+		.await
+		.unwrap();
+	coordinator.wake_pending().await.unwrap();
+	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
+	let starts: Vec<_> = requests.iter().filter(|r| r["method"] == "turn/start").collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["threadId"].as_str(), root.codex_thread_id.as_deref());
+	assert!(
+		coordinator
+			.store
+			.get_agent_work_item("agent".into())
+			.await
+			.unwrap()
+			.active_turn_id
+			.is_some()
+	);
+	assert_eq!(
+		coordinator.store.list_agent_thread_in_use_events().await.unwrap()[0].work_item_id,
+		"reading"
+	);
 }
 
 #[tokio::test]

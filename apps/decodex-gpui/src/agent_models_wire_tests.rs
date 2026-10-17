@@ -118,6 +118,7 @@ fn work() -> AgentWorkItemDto {
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").unwrap()),
@@ -161,7 +162,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("previous-model"));
-			assert_eq!(s.composer_effort_value(), "high");
+			assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 		});
 		visual.update(|w, cx| {
 			w.draw(cx).clear(cx);
@@ -207,7 +208,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 			assert_eq!(s.composer_model_value(cx), None, "do not retain the pre-edit model");
-			assert_eq!(s.composer_effort_value(), "Inherited");
+			assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 			assert!(s.task_models.task.is_none());
 			assert!(!s.task_models.reviewed);
 			assert!(s.task_models.feedback.contains("Response was not confirmed"));

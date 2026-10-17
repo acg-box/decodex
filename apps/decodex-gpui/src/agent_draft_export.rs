@@ -1,4 +1,5 @@
 //! Explicit user-selected export of a bounded recovery record.
+use crate::ui_feedback::Feedback;
 use std::{
 	env,
 	fs::{File, OpenOptions},
@@ -29,8 +30,9 @@ impl AgentSurface {
 				cx.background_executor().spawn(async move { export_copy(&path, copy) }).await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.feedback = match result {
-					Ok(()) => "Draft copy exported. The saved copy is still retained.".into(),
-					Err(reason) => reason.into(),
+					Ok(()) =>
+						Feedback::success("Draft copy exported. The saved copy is still retained."),
+					Err(reason) => Feedback::error(reason),
 				};
 
 				cx.notify();

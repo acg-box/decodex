@@ -1,6 +1,7 @@
 //! Read-only presentation of native review directives; stored Markdown stays intact.
 use std::collections::HashMap;
 
+#[cfg(test)] use crate::shell::agent_surface::markdown::NodeContent;
 use crate::shell::agent_surface::markdown::{Kind, Node};
 
 pub(super) fn nodes(source: &str) -> Option<Vec<Node>> {
@@ -36,14 +37,14 @@ fn comment(line: &str) -> Option<Node> {
 	let location =
 		if start == end { format!("{file}:{start}") } else { format!("{file}:{start}-{end}") };
 
-	Some(Node::Block(
+	Some(Node::block(
 		Kind::Quote,
 		vec![
-			Node::Block(Kind::Paragraph, vec![Node::Block(Kind::Strong, vec![Node::Text(title)])]),
-			Node::Block(Kind::Paragraph, vec![Node::Text(body.to_owned())]),
-			Node::Block(
+			Node::block(Kind::Paragraph, vec![Node::block(Kind::Strong, vec![Node::text(title)])]),
+			Node::block(Kind::Paragraph, vec![Node::text(body.to_owned())]),
+			Node::block(
 				Kind::Paragraph,
-				vec![Node::Block(Kind::InlineCode, vec![Node::Text(location)])],
+				vec![Node::block(Kind::InlineCode, vec![Node::text(location)])],
 			),
 		],
 	))
@@ -107,14 +108,14 @@ fn attributes(mut source: &str) -> Option<HashMap<String, String>> {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::markdown::code_comments::{self, Node};
+	use crate::shell::agent_surface::markdown::code_comments::{self, Node, NodeContent};
 	fn text(nodes: &[Node]) -> String {
 		nodes
 			.iter()
-			.map(|node| match node {
-				Node::Text(value) => value.clone(),
-				Node::Block(_, children) => text(children),
-				Node::Rule => String::new(),
+			.map(|node| match &node.content {
+				NodeContent::Text(value) => value.clone(),
+				NodeContent::Block(_, children) => text(children),
+				NodeContent::Rule => String::new(),
 			})
 			.collect::<Vec<_>>()
 			.join(" ")

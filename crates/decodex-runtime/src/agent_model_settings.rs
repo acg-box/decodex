@@ -17,7 +17,7 @@ where
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	};
 
-	if !owned(store, &before).await {
+	if !hosted(store, &before).await {
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
 
@@ -28,7 +28,7 @@ where
 
 	if !guard.is_live()
 		|| source().await.is_none_or(|after| after.key != before.key)
-		|| !owned(store, &before).await
+		|| !hosted(store, &before).await
 	{
 		return decodex_protocol::AgentModelSettingsResult::Unavailable;
 	}
@@ -67,11 +67,17 @@ where
 	}
 }
 
-async fn owned(store: &SqliteStore, source: &Source) -> bool {
+async fn hosted(store: &SqliteStore, source: &Source) -> bool {
 	let k = &source.key;
 
+	// This is a user observation across the host's conversations. Agent execution
+	// keeps its separate, narrower manager ownership check.
 	store
-		.agent_thread_is_owned(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
+		.agent_thread_is_restorable(
+			k.work.clone(),
+			k.thread.clone(),
+			Some(k.generation.as_str().into()),
+		)
 		.await
 		.unwrap_or(false)
 }

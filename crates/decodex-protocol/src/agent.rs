@@ -170,6 +170,9 @@ pub struct AgentHistorySourceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryReceiptDto {
+	/// A confirmed local refusal, separate from the original input text.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub unsent_reason: Option<String>,
 	/// Durable voice call identity; absent for non-voice and older receipts.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub voice_session_id: Option<String>,
@@ -1015,6 +1018,9 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
+	#[serde(default)]
+	pub agent_slots: std::collections::BTreeMap<String, u32>,
 	/// Explicit selected context references, not inferred from prose.
 	#[serde(default)]
 	pub context_references: Vec<AgentContextReferenceDto>,
@@ -1041,6 +1047,9 @@ impl AgentSnapshotDto {
 		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
 		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.agent_slots.len() <= 1_024
+			&& self.agent_slots.keys().all(|key| text(key, 1_536))
+			&& self.agent_slots.values().collect::<HashSet<_>>().len() == self.agent_slots.len()
 			&& self.workspaces.iter().all(|workspace| {
 				text(&workspace.name, 256)
 					&& text(&workspace.directory, 4_096)
@@ -1090,7 +1099,7 @@ impl AgentSnapshotDto {
 pub enum AgentSnapshotResult {
 	/// Complete data, including an empty work store.
 	Available(AgentSnapshotDto),
-	/// The owner store is unavailable or cannot verify its data.
+	/// The owner store or current native visibility cannot be verified.
 	Unavailable,
 	/// Count or encoded-size bounds prevent a complete response. No records were omitted silently.
 	CapacityExceeded {
@@ -1283,6 +1292,7 @@ mod tests {
 		let mut receipt: AgentHistoryReceiptDto = serde_json::from_value(legacy.clone()).unwrap();
 
 		assert!(receipt.voice_session_id.is_none());
+		assert!(receipt.unsent_reason.is_none());
 		assert_eq!(serde_json::to_value(&receipt).unwrap(), legacy);
 
 		receipt.voice_session_id = Some("opaque call/1".into());
@@ -1291,6 +1301,17 @@ mod tests {
 
 		assert_eq!(encoded["voice_session_id"], "opaque call/1");
 		assert_eq!(serde_json::from_value::<AgentHistoryReceiptDto>(encoded).unwrap(), receipt);
+	}
+
+	#[test]
+	fn local_refusal_reason_roundtrips_without_becoming_message_text() {
+		let value = serde_json::json!({
+			"event_kind":"user_message", "delivered_turn_id":null, "disposed":true,
+			"unsent_reason":"Conversation is in use elsewhere."
+		});
+		let receipt: AgentHistoryReceiptDto = serde_json::from_value(value.clone()).unwrap();
+		assert_eq!(receipt.unsent_reason.as_deref(), Some("Conversation is in use elsewhere."));
+		assert_eq!(serde_json::to_value(receipt).unwrap(), value);
 	}
 
 	#[test]
@@ -1311,6 +1332,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
@@ -1333,6 +1355,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,

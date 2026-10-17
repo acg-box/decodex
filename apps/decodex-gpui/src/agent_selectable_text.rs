@@ -1,7 +1,10 @@
 //! Read-only rich text with native hit testing and clipboard selection.
-use std::{ops::Range, path::Path};
+use std::{cell::OnceCell, ops::Range, path::Path, rc::Rc};
 
-use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText};
+#[path = "agent_text_selection.rs"] mod selection;
+pub(super) use selection::Document;
+
+use gpui::{App, Element, HighlightStyle, IntoElement, MouseButton, RenderOnce, StyledText};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::shell::agent_surface::{
@@ -17,138 +20,201 @@ pub(super) struct SelectableText {
 	pub highlights: Vec<(Range<usize>, HighlightStyle)>,
 	pub links: Vec<(Range<usize>, String)>,
 }
+impl SelectableText {
+	pub(super) fn plain(key: String, text: String) -> Self {
+		Self { key, text, highlights: Vec::new(), links: Vec::new() }
+	}
+}
 impl RenderOnce for SelectableText {
+	fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+		let key = self.key.clone();
+		let mut document = Document::default();
+		let child = document.push(self);
+		document.finish(&key, gpui::div().child(child))
+	}
+}
+
+#[derive(IntoElement)]
+struct TextBlock {
+	text: SelectableText,
+	range: Range<usize>,
+	scope: Rc<OnceCell<selection::Scope>>,
+}
+impl RenderOnce for TextBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(
-			SharedString::from(format!("selection-{}", self.key)),
-			cx,
-			|_, cx| Selection { anchor: 0, head: 0, dragging: false, focus: cx.focus_handle() },
-		);
-		let (range, focus) = {
-			let s = state.read(cx);
-
-			(s.range(&self.text), s.focus.clone())
-		};
-		let highlights = selection_highlights(self.text.len(), self.highlights, range);
-		let styled = StyledText::new(self.text.clone()).with_highlights(highlights);
-		let down_layout = styled.layout().clone();
-		let move_layout = down_layout.clone();
-		let up_layout = down_layout.clone();
-		let down_state = state.clone();
-		let move_state = state.clone();
-		let up_state = state.clone();
-		let key_state = state.clone();
-		let down_text = self.text.clone();
-		let selector = self.key.clone();
-
+		let scope = self.scope.get().expect("selection scope");
+		let selected = scope.state.read(cx).range(&scope.text);
+		let local = selected.start.max(self.range.start).min(self.range.end) - self.range.start
+			..selected.end.max(self.range.start).min(self.range.end) - self.range.start;
+		let highlights = selection_highlights(self.text.text.len(), self.text.highlights, local);
+		let batch =
+			highlights.iter().all(|(_, s)| s.underline.is_none() && s.strikethrough.is_none())
+				&& window.text_style().underline.is_none()
+				&& window.text_style().strikethrough.is_none();
+		let styled = StyledText::new(self.text.text.clone()).with_highlights(highlights);
+		let layout = styled.layout().clone();
+		let down_state = scope.state.clone();
+		let up_state = scope.state.clone();
+		let right_scope = self.scope.clone();
+		let right_layout = layout.clone();
+		let right_text = self.text.text.clone();
+		let down_layout = layout.clone();
+		let start = self.range.start;
+		let end = self.range.end;
+		let text = self.text.text;
+		let selector = self.text.key.clone();
 		gpui::div()
-			.id(SharedString::from(self.key))
+			.id(SharedString::from(self.text.key))
 			.debug_selector(move || selector.clone())
 			.role(Role::Label)
-			.aria_label(self.text.clone())
-			.track_focus(&focus)
+			.aria_label(text.clone())
 			.cursor_text()
+			.on_mouse_down(MouseButton::Right, move |event, window, cx| {
+				let scope = right_scope.get().expect("selection scope");
+				let ix = right_layout
+					.index_for_position(event.position)
+					.unwrap_or_else(|ix| ix)
+					.min(right_text.len());
+				if !scope.state.read(cx).range(&scope.text).contains(&(start + ix)) {
+					scope.state.update(cx, |s, cx| {
+						s.focus.focus(window, cx);
+						if let Some((offset, word)) = right_text
+							.split_word_bound_indices()
+							.find(|(offset, word)| *offset <= ix && ix < offset + word.len())
+						{
+							s.anchor = start + offset;
+							s.head = s.anchor + word.len();
+						}
+						cx.notify();
+					});
+				}
+				scope.context_menu(window, cx);
+				cx.stop_propagation();
+			})
 			.on_mouse_down(MouseButton::Left, move |event, window, cx| {
 				let ix = down_layout
 					.index_for_position(event.position)
 					.unwrap_or_else(|ix| ix)
-					.min(down_text.len());
-
+					.min(text.len());
 				down_state.update(cx, |s, cx| {
 					s.focus.focus(window, cx);
-
-					s.anchor = ix;
-					s.head = ix;
-					s.dragging = true;
-
-					if event.click_count >= 3 {
-						s.anchor = 0;
-						s.head = down_text.len();
-					} else if event.click_count == 2
-						&& let Some((start, word)) = down_text
-							.split_word_bound_indices()
-							.find(|(start, word)| *start <= ix && ix < start + word.len())
-					{
-						s.anchor = start;
-						s.head = start + word.len();
+					if !event.modifiers.shift {
+						s.anchor = start + ix;
 					}
-
+					s.head = start + ix;
+					s.dragging = true;
+					if event.click_count >= 3 {
+						s.anchor = start;
+						s.head = end;
+					} else if event.click_count == 2
+						&& let Some((offset, word)) = text
+							.split_word_bound_indices()
+							.find(|(offset, word)| *offset <= ix && ix < offset + word.len())
+					{
+						s.anchor = start + offset;
+						s.head = start + offset + word.len();
+					}
 					cx.notify();
 				});
-
 				cx.stop_propagation();
 			})
-			.on_mouse_move(move |event, _, cx| {
-				if move_state.read(cx).dragging && event.pressed_button == Some(MouseButton::Left) {
-					let ix = move_layout.index_for_position(event.position).unwrap_or_else(|ix| ix);
-
-					move_state.update(cx, |s, cx| {
-						s.head = ix;
-
-						cx.notify();
-					});
-				}
-			})
 			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
-				let click = {
-					let s = up_state.read(cx);
-
-					s.dragging && s.anchor == s.head
-				};
-
-				up_state.update(cx, |s, cx| {
-					s.dragging = false;
-
-					cx.notify();
-				});
-
-				if click
-					&& let Ok(ix) = up_layout.index_for_position(event.position)
-					&& let Some((_, url)) = self.links.iter().find(|(range, _)| range.contains(&ix))
+				let s = up_state.read(cx);
+				if s.dragging
+					&& s.anchor == s.head
+					&& let Ok(ix) = layout.index_for_position(event.position)
+					&& s.anchor == start + ix
+					&& let Some((_, url)) =
+						self.text.links.iter().find(|(range, _)| range.contains(&ix))
 				{
 					open_selection_link(url, cx);
 				}
 			})
-			.on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
-				state.update(cx, |s, _| s.dragging = false);
-			})
-			.on_key_down(move |event: &KeyDownEvent, _, cx| {
-				if event.keystroke.modifiers.platform && event.keystroke.key == "c" {
-					let s = key_state.read(cx);
-					let range = s.range(&self.text);
-
-					if let Some(text) = self.text.get(range).filter(|text| !text.is_empty()) {
-						cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
-					}
-
-					cx.stop_propagation();
-				} else if event.keystroke.modifiers.platform && event.keystroke.key == "a" {
-					key_state.update(cx, |s, cx| {
-						s.anchor = 0;
-						s.head = self.text.len();
-
-						cx.notify();
-					});
-
-					cx.stop_propagation();
-				}
-			})
-			.child(styled)
+			.child(TextLayer { styled, batch, range: self.range, scope: self.scope })
 	}
 }
 
-struct Selection {
-	anchor: usize,
-	head: usize,
-	dragging: bool,
-	focus: FocusHandle,
+/// A paragraph has one foreground order. Keep selection backgrounds underneath
+/// it instead of inserting every glyph into the scene's overlap tree each frame.
+/// Decorated text keeps GPUI's original interleaving of glyphs and decorations.
+struct TextLayer {
+	styled: StyledText,
+	batch: bool,
+	range: Range<usize>,
+	scope: Rc<OnceCell<selection::Scope>>,
 }
-impl Selection {
-	fn range(&self, text: &str) -> Range<usize> {
-		text.floor_char_boundary(self.anchor.min(self.head).min(text.len()))
-			..text.floor_char_boundary(self.anchor.max(self.head).min(text.len()))
+impl IntoElement for TextLayer {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
 	}
 }
+impl Element for TextLayer {
+	type PrepaintState = ();
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<gpui::ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		id: Option<&gpui::GlobalElementId>,
+		inspector: Option<&gpui::InspectorElementId>,
+		window: &mut Window,
+		cx: &mut App,
+	) -> (gpui::LayoutId, ()) {
+		self.styled.request_layout(id, inspector, window, cx)
+	}
+
+	fn prepaint(
+		&mut self,
+		id: Option<&gpui::GlobalElementId>,
+		inspector: Option<&gpui::InspectorElementId>,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		state: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		self.styled.prepaint(id, inspector, bounds, state, window, cx);
+		self.scope
+			.get()
+			.expect("selection scope")
+			.layouts
+			.borrow_mut()
+			.push((self.range.clone(), self.styled.layout().clone()));
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&gpui::GlobalElementId>,
+		_: Option<&gpui::InspectorElementId>,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		_: &mut (),
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		// Keep layout for selection and scrolling, but skip glyph work outside the viewport.
+		if bounds.intersect(&window.content_mask().bounds).is_empty() {
+			return;
+		}
+		if self.batch {
+			self.styled.layout().paint_background(window, cx).expect("text background");
+			window.paint_layer(bounds, |window| {
+				self.styled.layout().paint_foreground(window, cx).expect("text foreground");
+			});
+		} else {
+			self.styled.paint(None, None, bounds, &mut (), &mut (), window, cx);
+		}
+	}
+}
+
 fn open_selection_link(url: &str, cx: &mut App) {
 	if url.starts_with("https://")
 		|| url.starts_with("http://")
@@ -200,6 +266,7 @@ fn selection_highlights(
 }
 #[cfg(test)]
 mod tests {
+	use gpui::prelude::{ParentElement as _, Styled as _};
 
 	use crate::shell::agent_surface::selectable_text::{
 		self, ClipboardItem, Context, FontWeight, IntoElement, SelectableText, Window,
@@ -210,12 +277,12 @@ mod tests {
 	}
 	impl gpui::Render for Preview {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-			SelectableText {
+			gpui::div().w(gpui::px(250.)).child(SelectableText {
 				key: "changing-selection".into(),
 				text: self.text.clone(),
 				highlights: Vec::new(),
 				links: Vec::new(),
-			}
+			})
 		}
 	}
 
@@ -236,6 +303,25 @@ mod tests {
 		assert_eq!(runs[1].1.font_weight, Some(FontWeight::BOLD));
 		assert!(runs[1].1.background_color.is_some());
 		assert!(runs[3].1.background_color.is_none());
+	}
+
+	#[gpui::test]
+	fn dragging_past_the_text_keeps_extending_the_selection(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| Preview { text: "A calm reading day.".into() });
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		let bounds = visual.debug_bounds("changing-selection").expect("text");
+		let start = gpui::point(bounds.left() + gpui::px(1.), bounds.top() + gpui::px(8.));
+		let end = gpui::point(bounds.right() + gpui::px(24.), bounds.bottom() + gpui::px(24.));
+		visual.simulate_mouse_down(start, gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(end, gpui::MouseButton::Left, Default::default());
+		visual.simulate_keystrokes("cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+				Some("A calm reading day.")
+			);
+		});
 	}
 
 	#[gpui::test]

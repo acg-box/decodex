@@ -1,10 +1,14 @@
 //! Native Markdown presentation; HTML is text and remote images are not fetched.
 #[path = "agent_markdown_cache.rs"] mod cache;
 #[path = "agent_clipboard.rs"] mod clipboard;
+#[path = "agent_markdown_code.rs"] mod code;
 #[path = "agent_code_comments.rs"] mod code_comments;
 #[path = "agent_math.rs"] mod math;
 #[path = "agent_mermaid.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
+#[cfg(test)]
+#[path = "agent_markdown_selection_tests.rs"]
+mod selection_tests;
 #[cfg(test)]
 #[path = "agent_markdown_task_lists_tests.rs"]
 mod task_lists_tests;
@@ -19,8 +23,7 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
-	StrikethroughStyle,
+	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, RenderOnce, StrikethroughStyle,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
@@ -43,7 +46,7 @@ enum Kind {
 	List(Option<u64>),
 	Item,
 	Quote,
-	Code,
+	Code { language: Option<String> },
 	Mermaid { fence: Range<usize>, content_end: usize },
 	Table,
 	Row(bool),
@@ -58,10 +61,29 @@ enum Kind {
 }
 
 #[derive(Clone, Debug)]
-enum Node {
+struct Node {
+	content: NodeContent,
+	source: Option<Range<usize>>,
+}
+#[derive(Clone, Debug)]
+enum NodeContent {
 	Text(String),
-	Block(Kind, Vec<Self>),
+	Block(Kind, Vec<Node>),
 	Rule,
+}
+impl Node {
+	fn text(text: String) -> Self {
+		Self { content: NodeContent::Text(text), source: None }
+	}
+
+	fn block(kind: Kind, children: Vec<Self>) -> Self {
+		Self { content: NodeContent::Block(kind, children), source: None }
+	}
+
+	fn located(mut self, source: Range<usize>) -> Self {
+		self.source = Some(source);
+		self
+	}
 }
 
 #[derive(Default)]
@@ -69,6 +91,7 @@ struct Inline {
 	text: String,
 	highlights: Vec<(Range<usize>, HighlightStyle)>,
 	links: Vec<(Range<usize>, String)>,
+	sources: Vec<(Range<usize>, Range<usize>)>,
 }
 
 #[derive(gpui::IntoElement)]
@@ -131,38 +154,14 @@ impl RenderOnce for CopyButton {
 				}
 			})
 			.child(
-				gpui::canvas(
-					|_, _, _| (),
-					move |bounds, _, window, _| {
-						let point = |x: f32, y: f32| {
-							bounds.origin + gpui::point(gpui::px(x * 0.75), gpui::px(y * 0.75))
-						};
-						let mut path = PathBuilder::stroke(gpui::px(1.1));
-
-						if copied {
-							path.move_to(point(2., 8.));
-							path.line_to(point(6., 12.));
-							path.line_to(point(14., 4.));
-						} else {
-							path.move_to(point(5., 4.));
-							path.line_to(point(13., 4.));
-							path.line_to(point(13., 14.));
-							path.line_to(point(5., 14.));
-							path.close();
-							path.move_to(point(10., 1.));
-							path.line_to(point(2., 1.));
-							path.line_to(point(2., 11.));
-						}
-
-						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								gpui::rgb(if copied { BLUE } else { TEXT_MUTED }),
-							);
-						}
-					},
-				)
-				.size(gpui::px(12.)),
+				gpui::svg()
+					.data(if copied {
+						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M1.5 6L4.5 9L10.5 3" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
+					} else {
+						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M3.75 3H9.75V10.5H3.75ZM7.5 .75H1.5V8.25" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
+					})
+					.text_color(gpui::rgb(if copied { BLUE } else { TEXT_MUTED }))
+					.size(gpui::px(12.)),
 			)
 			.smooth()
 	}
@@ -189,7 +188,7 @@ pub(super) fn copy_button(key: &str, label: &'static str, text: String) -> AnyEl
 }
 
 pub(super) fn response_copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
-	CopyButton { key: key.into(), label, text, rich: true }.into_any_element()
+	CopyButton { key: key.into(), label, text, rich: false }.into_any_element()
 }
 
 pub(super) fn plain_text(text: &str) -> String {
@@ -258,8 +257,9 @@ pub(super) fn response_text(text: &str) -> String {
 
 pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
+	let mut selection = selectable_text::Document::markdown(document.source.clone());
 
-	gpui::div()
+	let content = gpui::div()
 		.w_full()
 		.min_w_0()
 		.flex()
@@ -268,41 +268,43 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.text_size(gpui::px(12.))
 		.line_height(gpui::px(19.))
 		.text_color(gpui::rgb(TEXT_MUTED))
-		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
-			let key = format!("{key}-{i}");
+		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(
+			|(i, node)| {
+				let key = format!("{key}-{i}");
 
-			if let Node::Block(Kind::Heading(_) | Kind::Paragraph, children) = node {
-				gpui::div()
-					.font_weight(FontWeight::NORMAL)
-					.child({
-						let mut out = Inline::default();
+				if let NodeContent::Block(Kind::Heading(_) | Kind::Paragraph, children) =
+					&node.content
+				{
+					gpui::div()
+						.font_weight(FontWeight::NORMAL)
+						.child({
+							let mut out = Inline::default();
 
-						append_inline(children, HighlightStyle::default(), None, &mut out);
+							append_inline(children, HighlightStyle::default(), None, &mut out);
 
-						for (_, style) in &mut out.highlights {
-							style.font_weight = None;
-						}
+							for (_, style) in &mut out.highlights {
+								style.font_weight = None;
+							}
 
-						selectable_text::SelectableText {
-							key: key.clone(),
-							text: out.text,
-							highlights: out.highlights,
-							links: out.links,
-						}
+							let start = selection.checkpoint();
+							let element = selectable(out, &key, &mut selection);
+							selection.mark(start, node.source.clone());
+							element
+						})
 						.into_any_element()
-					})
-					.into_any_element()
-			} else {
-				render_node(node, &key)
-			}
-		}))
-		.into_any_element()
+				} else {
+					render_node(node, &key, &mut selection)
+				}
+			},
+		));
+	selection.finish(key, content).into_any_element()
 }
 
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
+	let mut selection = selectable_text::Document::markdown(document.source.clone());
 
-	gpui::div()
+	let content = gpui::div()
 		.flex()
 		.flex_col()
 		.gap_2()
@@ -314,9 +316,9 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 				.get_or_init(|| parse(text))
 				.iter()
 				.enumerate()
-				.map(|(i, node)| render_node(node, &format!("{key}-{i}"))),
-		)
-		.into_any_element()
+				.map(|(i, node)| render_node(node, &format!("{key}-{i}"), &mut selection)),
+		);
+	selection.finish(key, content).into_any_element()
 }
 
 fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
@@ -329,7 +331,14 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 		Tag::CodeBlock(CodeBlockKind::Fenced(info))
 			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
 			Kind::Mermaid { content_end: range.start, fence: range },
-		Tag::CodeBlock(_) => Kind::Code,
+		Tag::CodeBlock(CodeBlockKind::Fenced(info)) => Kind::Code {
+			language: info
+				.split([',', ' ', '\t'])
+				.next()
+				.filter(|s| !s.is_empty())
+				.map(str::to_owned),
+		},
+		Tag::CodeBlock(CodeBlockKind::Indented) => Kind::Code { language: None },
 		Tag::Table(_) => Kind::Table,
 		Tag::TableHead => Kind::Row(true),
 		Tag::TableRow => Kind::Row(false),
@@ -346,7 +355,7 @@ fn parse(text: &str) -> Vec<Node> {
 	let options =
 		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
 	let math = MathMarkdown::new(text, options, None);
-	let mut stack = vec![(Kind::Group, Vec::new())];
+	let mut stack = vec![(Kind::Group, Vec::new(), 0..text.len())];
 	let mut flattened = 0;
 
 	let events = math.events(Parser::new_ext(&math.markdown, options).into_offset_iter());
@@ -354,7 +363,7 @@ fn parse(text: &str) -> Vec<Node> {
 		match event {
 			Event::Start(tag) =>
 				if stack.len() < 64 && flattened == 0 {
-					stack.push((tag_kind(tag, range), Vec::new()));
+					stack.push((tag_kind(tag, range.clone()), Vec::new(), range));
 				} else {
 					flattened += 1;
 				},
@@ -362,12 +371,16 @@ fn parse(text: &str) -> Vec<Node> {
 				if flattened > 0 {
 					flattened -= 1;
 				} else if stack.len() > 1 {
-					let (mut kind, children) = stack.pop().expect("open block");
+					let (mut kind, children, source) = stack.pop().expect("open block");
 
 					if matches!(kind, Kind::Paragraph)
 						&& let Some(comments) = code_comments::nodes(&text[range.clone()])
 					{
-						stack.last_mut().expect("root").1.extend(comments);
+						stack
+							.last_mut()
+							.expect("root")
+							.1
+							.push(Node::block(Kind::Group, comments).located(range.clone()));
 
 						continue;
 					}
@@ -375,46 +388,54 @@ fn parse(text: &str) -> Vec<Node> {
 					if let Kind::Mermaid { fence, content_end } = &kind
 						&& !mermaid_view::has_closing_fence(text, fence.clone(), *content_end)
 					{
-						kind = Kind::Code;
+						kind = Kind::Code { language: Some("mermaid".into()) };
 					}
 
-					stack.last_mut().expect("root").1.push(Node::Block(kind, children));
+					stack
+						.last_mut()
+						.expect("root")
+						.1
+						.push(Node::block(kind, children).located(source));
 				},
 			event => {
 				let node = match event {
 					Event::Text(value) | Event::Html(value) | Event::InlineHtml(value) => {
-						if let Some((Kind::Mermaid { content_end, .. }, _)) = stack.last_mut() {
+						if let Some((Kind::Mermaid { content_end, .. }, _, _)) = stack.last_mut() {
 							*content_end = range.end;
 						}
 						if let Some(display) = math.span(&range) {
-							stack.last_mut().expect("root").1.push(Node::Block(
-								Kind::Math { source: text[range].to_owned(), display },
-								vec![Node::Text(value.into_string())],
-							));
+							stack.last_mut().expect("root").1.push(
+								Node::block(
+									Kind::Math { source: text[range.clone()].to_owned(), display },
+									vec![Node::text(value.into_string()).located(range.clone())],
+								)
+								.located(range.clone()),
+							);
 
 							continue;
 						}
 
-						let crlf =
-							matches!(stack.last(), Some((Kind::Code | Kind::Mermaid { .. }, _)))
-								&& value.starts_with('\n')
-								&& range.start > 0
-								&& text.as_bytes()[range.start - 1] == b'\r';
+						let crlf = matches!(
+							stack.last(),
+							Some((Kind::Code { .. } | Kind::Mermaid { .. }, _, _))
+						) && value.starts_with('\n')
+							&& range.start > 0
+							&& text.as_bytes()[range.start - 1] == b'\r';
 
-						Node::Text(if crlf { format!("\r{value}") } else { value.into_string() })
+						Node::text(if crlf { format!("\r{value}") } else { value.into_string() })
 					},
 					Event::Code(text) =>
-						Node::Block(Kind::InlineCode, vec![Node::Text(text.into_string())]),
-					Event::SoftBreak => Node::Text(" ".into()),
-					Event::HardBreak => Node::Text("\n".into()),
-					Event::Rule => Node::Rule,
+						Node::block(Kind::InlineCode, vec![Node::text(text.into_string())]),
+					Event::SoftBreak => Node::text(" ".into()),
+					Event::HardBreak => Node::text("\n".into()),
+					Event::Rule => Node { content: NodeContent::Rule, source: None },
 					Event::TaskListMarker(done) =>
-						Node::Text(if done { "☑ " } else { "☐ " }.into()),
-					Event::FootnoteReference(text) => Node::Text(format!("[{text}]")),
+						Node::text(if done { "☑ " } else { "☐ " }.into()),
+					Event::FootnoteReference(text) => Node::text(format!("[{text}]")),
 					_ => continue,
 				};
 
-				stack.last_mut().expect("root").1.push(node);
+				stack.last_mut().expect("root").1.push(node.located(range));
 			},
 		}
 	}
@@ -424,8 +445,9 @@ fn parse(text: &str) -> Vec<Node> {
 
 fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out: &mut Inline) {
 	for node in nodes {
-		match node {
-			Node::Text(text) => {
+		let start = out.text.len();
+		match &node.content {
+			NodeContent::Text(text) => {
 				let start = out.text.len();
 
 				out.text.push_str(text);
@@ -438,7 +460,7 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 					out.links.push((range, link.into()));
 				}
 			},
-			Node::Block(kind, children) => {
+			NodeContent::Block(kind, children) => {
 				let mut next = style;
 
 				match kind {
@@ -456,66 +478,96 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 
 				append_inline(children, next, target, out);
 			},
-			Node::Rule => {},
+			NodeContent::Rule => {},
+		}
+		if let Some(source) = &node.source {
+			out.sources.push((start..out.text.len(), source.clone()));
 		}
 	}
 }
 
-fn inline(nodes: &[Node], key: &str) -> AnyElement {
+fn inline(nodes: &[Node], key: &str, selection: &mut selectable_text::Document) -> AnyElement {
 	let mut out = Inline::default();
 
 	append_inline(nodes, HighlightStyle::default(), None, &mut out);
 
-	super::selectable_text::SelectableText {
-		key: key.into(),
-		text: out.text,
-		highlights: out.highlights,
-		links: out.links,
-	}
-	.into_any_element()
+	selectable(out, key, selection)
 }
 
-fn render_math_paragraph(nodes: &[Node], key: &str) -> AnyElement {
+fn selectable(out: Inline, key: &str, selection: &mut selectable_text::Document) -> AnyElement {
+	selection
+		.push_mapped(
+			super::selectable_text::SelectableText {
+				key: key.into(),
+				text: out.text,
+				highlights: out.highlights,
+				links: out.links,
+			},
+			out.sources,
+		)
+		.into_any_element()
+}
+
+fn render_math_paragraph(
+	nodes: &[Node],
+	key: &str,
+	selection: &mut selectable_text::Document,
+) -> AnyElement {
 	let mut elements = Vec::new();
 	let mut start = 0;
 
 	for (index, node) in nodes.iter().enumerate() {
-		if matches!(node, Node::Block(Kind::Math { display: true, .. }, _)) {
+		if matches!(&node.content, NodeContent::Block(Kind::Math { display: true, .. }, _)) {
 			if start < index {
-				elements.push(inline(&nodes[start..index], &format!("{key}-before-{index}")));
+				elements.push(inline(
+					&nodes[start..index],
+					&format!("{key}-before-{index}"),
+					selection,
+				));
 			}
 
-			elements.push(render_node(node, &format!("{key}-formula-{index}")));
+			elements.push(render_node(node, &format!("{key}-formula-{index}"), selection));
 
 			start = index + 1;
 		}
 	}
 
 	if start < nodes.len() {
-		elements.push(inline(&nodes[start..], &format!("{key}-after")));
+		elements.push(inline(&nodes[start..], &format!("{key}-after"), selection));
 	}
 
 	gpui::div().w_full().min_w_0().flex().flex_col().gap_2().children(elements).into_any_element()
 }
 
-fn render_node(node: &Node, key: &str) -> AnyElement {
-	let Node::Block(kind, children) = node else {
-		return match node {
-			Node::Rule =>
+fn render_node(node: &Node, key: &str, selection: &mut selectable_text::Document) -> AnyElement {
+	let start = selection.checkpoint();
+	let result = render_node_content(node, key, selection);
+	selection.mark(start, node.source.clone());
+	result
+}
+
+fn render_node_content(
+	node: &Node,
+	key: &str,
+	selection: &mut selectable_text::Document,
+) -> AnyElement {
+	let NodeContent::Block(kind, children) = &node.content else {
+		return match &node.content {
+			NodeContent::Rule =>
 				gpui::div().h(gpui::px(1.0)).my_2().bg(gpui::rgba(0xffffff18)).into_any_element(),
-			_ => gpui::div().child(inline(slice::from_ref(node), key)).into_any_element(),
+			_ =>
+				gpui::div().child(inline(slice::from_ref(node), key, selection)).into_any_element(),
 		};
 	};
 
 	if matches!(kind, Kind::Paragraph)
-		&& children
-			.iter()
-			.any(|node| matches!(node, Node::Block(Kind::Math { display: true, .. }, _)))
-	{
-		return render_math_paragraph(children, key);
+		&& children.iter().any(|node| {
+			matches!(&node.content, NodeContent::Block(Kind::Math { display: true, .. }, _))
+		}) {
+		return render_math_paragraph(children, key, selection);
 	}
 	if matches!(kind, Kind::Mermaid { .. })
-		&& let Some(diagram) = mermaid_view::render(children, key)
+		&& let Some(diagram) = mermaid_view::render(children, key, selection)
 	{
 		return diagram;
 	}
@@ -536,7 +588,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.overflow_x_scroll()
 			.font_family("Menlo")
 			.whitespace_nowrap()
-			.child(inline(children, &format!("math-text-{key}")))
+			.child(inline(children, &format!("math-text-{key}"), selection))
 			.child(copy_button(&format!("math-copy-{key}"), "Copy formula", source.clone()))
 			.into_any_element(),
 		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => gpui::div()
@@ -550,22 +602,11 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 					},
 				))
 			})
-			.child(inline(children, key))
+			.child(inline(children, key, selection))
 			.into_any_element(),
-		Kind::Code | Kind::Mermaid { .. } => gpui::div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.p_3()
-			.rounded_md()
-			.bg(gpui::rgba(0x00000045))
-			.font_family("Menlo")
-			.text_size(gpui::px(12.0))
-			.line_height(gpui::px(19.0))
-			.child(copy_button(&format!("copy-code-{key}"), "Copy code", code_text(children)))
-			.child(inline(children, key))
-			.into_any_element(),
-		Kind::List(start) => render_list(start, children, key),
+		Kind::Code { language } => code::render(children, language.as_deref(), key, selection),
+		Kind::Mermaid { .. } => code::render(children, Some("mermaid"), key, selection),
+		Kind::List(start) => render_list(start, children, key, selection),
 
 		Kind::Row(header) => gpui::div()
 			.flex()
@@ -573,9 +614,12 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.border_b_1()
 			.border_color(gpui::rgba(0xffffff12))
 			.when(*header, |d| d.font_weight(FontWeight::SEMIBOLD).bg(gpui::rgba(0xffffff08)))
-			.children(
-				children.iter().enumerate().map(|(i, n)| render_node(n, &format!("{key}-{i}"))),
-			)
+			.children(children.iter().enumerate().map(|(i, n)| {
+				if i > 0 {
+					selection.separate("\t");
+				}
+				render_node(n, &format!("{key}-{i}"), selection)
+			}))
 			.into_any_element(),
 		Kind::Item => gpui::div()
 			.w_full()
@@ -583,7 +627,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.children(render_item(children, key))
+			.children(render_item(children, key, selection))
 			.into_any_element(),
 		_ => gpui::div()
 			.flex()
@@ -595,14 +639,28 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.when(matches!(kind, Kind::Table), |d| {
 				d.border_1().border_color(gpui::rgba(0xffffff12)).rounded_md()
 			})
-			.children(
-				children.iter().enumerate().map(|(i, n)| render_node(n, &format!("{key}-{i}"))),
-			)
+			.children(children.iter().enumerate().map(|(i, n)| {
+				if matches!(kind, Kind::Table) && i > 0 {
+					selection.separate("\n");
+				}
+				render_node(n, &format!("{key}-{i}"), selection)
+			}))
 			.into_any_element(),
 	}
 }
 
-fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement {
+fn render_list(
+	start: &Option<u64>,
+	children: &[Node],
+	key: &str,
+	selection: &mut selectable_text::Document,
+) -> AnyElement {
+	// Keep a short hanging indent. Numbered markers share a right edge even
+	// when the list crosses a digit boundary; bullets need no number gutter.
+	let marker_width = start.map_or(8., |start| {
+		let last = start + children.len().saturating_sub(1) as u64;
+		last.to_string().len() as f32 * BODY_SIZE * 0.65 + 4.
+	});
 	gpui::div()
 		.w_full()
 		.min_w_0()
@@ -610,14 +668,22 @@ fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement 
 		.flex_col()
 		.gap_2()
 		.children(children.iter().enumerate().map(|(index, child)| {
+			if index > 0 {
+				selection.separate("\n");
+			}
 			gpui::div()
 				.w_full()
 				.flex()
-				.gap_2()
+				.gap(gpui::px(6.))
 				.child(
 					gpui::div()
-						.w(gpui::px(24.0))
+						.debug_selector({
+							let key = format!("markdown-list-marker-{key}-{index}");
+							move || key.clone()
+						})
+						.w(gpui::px(marker_width))
 						.flex_shrink_0()
+						.text_right()
 						.text_color(gpui::rgb(TEXT_MUTED))
 						.child(start.map_or_else(
 							|| "•".into(),
@@ -632,7 +698,7 @@ fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement 
 						})
 						.flex_1()
 						.min_w_0()
-						.child(render_node(child, &format!("{key}-{index}"))),
+						.child(render_node(child, &format!("{key}-{index}"), selection)),
 				)
 		}))
 		.into_any_element()
@@ -641,39 +707,47 @@ fn render_list(start: &Option<u64>, children: &[Node], key: &str) -> AnyElement 
 fn code_text(children: &[Node]) -> String {
 	children
 		.iter()
-		.filter_map(|node| match node {
-			Node::Text(text) => Some(text.as_str()),
+		.filter_map(|node| match &node.content {
+			NodeContent::Text(text) => Some(text.as_str()),
 			_ => None,
 		})
 		.collect()
 }
 
-fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
+fn render_item(
+	nodes: &[Node],
+	key: &str,
+	selection: &mut selectable_text::Document,
+) -> Vec<AnyElement> {
 	let mut result = Vec::new();
 	let mut start = 0;
 
 	for (index, node) in nodes.iter().enumerate() {
 		if matches!(
-			node,
-			Node::Block(
+			&node.content,
+			NodeContent::Block(
 				Kind::Paragraph
 					| Kind::List(_)
-					| Kind::Code
+					| Kind::Code { .. }
 					| Kind::Mermaid { .. }
 					| Kind::Quote
 					| Kind::Table,
 				_
-			) | Node::Rule
+			) | NodeContent::Rule
 		) {
 			if start < index {
 				result.push(
 					gpui::div()
-						.child(inline(&nodes[start..index], &format!("{key}-text-{start}")))
+						.child(inline(
+							&nodes[start..index],
+							&format!("{key}-text-{start}"),
+							selection,
+						))
 						.into_any_element(),
 				);
 			}
 
-			result.push(render_node(node, &format!("{key}-block-{index}")));
+			result.push(render_node(node, &format!("{key}-block-{index}"), selection));
 
 			start = index + 1;
 		}
@@ -682,7 +756,7 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 	if start < nodes.len() {
 		result.push(
 			gpui::div()
-				.child(inline(&nodes[start..], &format!("{key}-text-{start}")))
+				.child(inline(&nodes[start..], &format!("{key}-text-{start}"), selection))
 				.into_any_element(),
 		);
 	}
@@ -707,7 +781,7 @@ fn parse_plain_text(text: &str) -> String {
 mod tests {
 
 	use crate::shell::agent_surface::markdown::{
-		self, ClipboardItem, FontWeight, HighlightStyle, Inline, Kind, Node,
+		self, ClipboardItem, FontWeight, HighlightStyle, Inline, Kind, Node, NodeContent,
 	};
 
 	struct CopyPreview {
@@ -843,9 +917,10 @@ mod tests {
 			fn blocks(nodes: &[Node]) -> Vec<String> {
 				nodes
 					.iter()
-					.flat_map(|n| match n {
-						Node::Block(Kind::Code, children) => vec![markdown::code_text(children)],
-						Node::Block(_, children) => blocks(children),
+					.flat_map(|n| match &n.content {
+						NodeContent::Block(Kind::Code { .. }, children) =>
+							vec![markdown::code_text(children)],
+						NodeContent::Block(_, children) => blocks(children),
 						_ => Vec::new(),
 					})
 					.collect()
@@ -946,7 +1021,7 @@ mod tests {
 		visual.update(|_, cx| {
 			assert_eq!(
 				cx.read_from_clipboard().and_then(|item| item.text()),
-				Some("Read 中文 text".into())
+				Some("Read **中文** text".into())
 			)
 		});
 	}
@@ -971,9 +1046,11 @@ mod tests {
 			"# Heading\n\n- item\n\n```rust\nlet x = 1;\n```\n\n| A | B |\n|---|---|\n| one | two |\n",
 		);
 
-		assert!(nodes.iter().any(|n| matches!(n, Node::Block(Kind::Table, _))));
-		assert!(nodes.iter().any(|n| matches!(n, Node::Block(Kind::Code, _))));
-		assert!(nodes.iter().any(|n| matches!(n, Node::Block(Kind::List(_), _))));
+		assert!(nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::Table, _))));
+		assert!(
+			nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::Code { .. }, _)))
+		);
+		assert!(nodes.iter().any(|n| matches!(&n.content, NodeContent::Block(Kind::List(_), _))));
 	}
 }
 #[cfg(test)]
