@@ -37,9 +37,9 @@ pub(super) fn render(
 	let samples: Vec<_> = history.iter().copied().collect();
 	gpui::div()
 		.debug_selector(|| "performance-island-chart".into())
-		.w_full()
+		.flex_1()
+		.min_w_0()
 		.h(gpui::px(28.))
-		.flex_none()
 		.overflow_hidden()
 		.child(
 			gpui::canvas(

@@ -45,28 +45,24 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut gpui::Test
 	assert!(details.bottom() <= capsule.bottom(), "{details:?} outside {capsule:?}");
 	assert!(details.right() <= capsule.right());
 	assert!(chart.size.height >= gpui::px(28.));
-	let cells = [
-		"performance-cpu-row",
-		"performance-memory-row",
-		"performance-draw-row",
-		"performance-latency-row",
-	]
-	.map(|id| visual.debug_bounds(id).unwrap());
-	assert_eq!(cells[0].left(), chart.left());
+	let cells = ["performance-cpu-row", "performance-memory-row", "performance-latency-row"]
+		.map(|id| visual.debug_bounds(id).unwrap());
+	let draw = visual.debug_bounds("performance-draw-row").unwrap();
+	assert_eq!(cells[0].left(), draw.left());
 	assert!(
-		(cells[1].right() - chart.right()).abs() < gpui::px(0.01),
+		(cells[2].right() - chart.right()).abs() < gpui::px(0.01),
 		"{cells:?} against {chart:?}"
 	);
-	for row in cells.as_chunks::<2>().0 {
-		assert_eq!(row[0].top(), row[1].top());
-		assert_eq!(row[1].left() - row[0].right(), gpui::px(16.));
-		assert!((row[0].size.width - row[1].size.width).abs() <= gpui::px(1.));
+	for pair in cells.windows(2) {
+		assert_eq!(pair[0].top(), pair[1].top());
+		assert_eq!(pair[1].left() - pair[0].right(), gpui::px(12.));
+		assert!((pair[0].size.width - pair[1].size.width).abs() <= gpui::px(1.));
 	}
-	assert_eq!(cells[0].left(), cells[2].left());
-	assert_eq!(cells[1].right(), cells[3].right());
-	assert_eq!(visual.debug_bounds("performance-fps").unwrap().left(), chart.left());
+	assert_eq!(chart.top(), draw.top());
+	assert_eq!(chart.left() - draw.right(), gpui::px(8.));
+	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
 	assert_eq!(visual.debug_bounds("performance-gpu").unwrap().right(), chart.right());
-	assert_eq!(capsule.size, gpui::size(gpui::px(304.), gpui::px(120.)));
+	assert_eq!(capsule.size, gpui::size(gpui::px(272.), gpui::px(96.)));
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 	preference(Some(false));
 }
@@ -114,7 +110,9 @@ fn metric_slots_stay_put_across_missing_and_wider_values(cx: &mut gpui::TestAppC
 	] {
 		let label = visual.debug_bounds(label).unwrap();
 		let value = visual.debug_bounds(id).unwrap();
-		assert!(label.right() + gpui::px(4.) <= value.left(), "{id}: {label:?} overlaps {value:?}");
+		assert_eq!(label.left(), value.left(), "{id}");
+		assert_eq!(label.bottom(), value.top(), "{id}: {label:?} overlaps {value:?}");
+		assert!(label.right() <= value.right(), "{id}: label exceeds its column");
 	}
 	preference(Some(false));
 }

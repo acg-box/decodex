@@ -174,17 +174,17 @@ impl Render for PerformanceIsland {
 		let expanded = self.expansion.is_open();
 		let width = ui_motion::value(
 			"activity-island-width",
-			if expanded { 304. } else { 208. },
+			if expanded { 272. } else { 208. },
 			window,
 			cx,
 		);
 		let height = ui_motion::value(
 			"activity-island-height",
-			if expanded { 120. } else { 28. },
+			if expanded { 96. } else { 28. },
 			window,
 			cx,
 		);
-		let fraction = ((height - 28.) / 92.).clamp(0., 1.);
+		let fraction = ((height - 28.) / 68.).clamp(0., 1.);
 		let fps = if self.metrics.draw_frames == 0 {
 			"—".into()
 		} else {
