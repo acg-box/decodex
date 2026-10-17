@@ -30,6 +30,21 @@ pub(super) struct Panel {
 	epoch: u64,
 }
 
+impl Panel {
+	fn observe(&mut self, work: String, state: AgentModelSettingsResult) {
+		// A failed read contains no new model observation. Keep the last native
+		// value for this binding; source or thread changes invalidate it separately.
+		if state == AgentModelSettingsResult::Unavailable
+			&& matches!(
+				self.observations.get(&work),
+				Some(AgentModelSettingsResult::Available { .. })
+			) {
+			return;
+		}
+		self.observations.insert(work, state);
+	}
+}
+
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
 		if self.is_new_conversation() || self.sending || self.profile.is_none() {
@@ -305,7 +320,7 @@ impl AgentSurface {
 				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
 
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
-				s.model_settings.observations.insert(work, state);
+				s.model_settings.observe(work, state);
 
 				s.model_settings.task = None;
 

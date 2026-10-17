@@ -245,6 +245,47 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 }
 
 #[gpui::test]
+fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		let observation = AgentModelSettingsResult::Available {
+			work_id: EntityId::new("root").unwrap(),
+			thread_id: EntityId::new("thread").unwrap(),
+			account_id: EntityId::new("account").unwrap(),
+			model_provider: None,
+			model: Some(WireText::new("native-model").unwrap()),
+			reasoning_effort: Some(WireText::new("high").unwrap()),
+		};
+		s.model_settings.observe("root".into(), observation.clone());
+
+		let mut running = snapshot();
+		running.work_items[0].active_turn_id = Some("next-turn".into());
+		running.work_items[0].dispatch_state = AgentDispatchStateDto::Running;
+		s.apply_result(Ok(AgentSnapshotResult::Available(running)));
+		for _ in 0..2 {
+			s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+			assert_eq!(s.composer_model_label(cx), "native-model");
+			assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
+		}
+
+		let mut changed = observation;
+		if let AgentModelSettingsResult::Available { model, .. } = &mut changed {
+			*model = Some(WireText::new("updated-model").unwrap());
+		}
+		s.model_settings.observe("root".into(), changed);
+		assert_eq!(s.composer_model_label(cx), "updated-model");
+
+		let mut rebound = snapshot();
+		rebound.work_items[0].codex_thread_id = Some("other-thread".into());
+		s.apply_result(Ok(AgentSnapshotResult::Available(rebound)));
+		assert_eq!(s.composer_model_value(cx), None, "never retain another thread's model");
+		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+		assert_eq!(s.composer_model_label(cx), "Model unavailable");
+	});
+}
+
+#[gpui::test]
 fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
