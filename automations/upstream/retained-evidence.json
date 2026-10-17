@@ -1,15 +1,18 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "97ebf2d94d62e2ff2045f3ea17b6e11eae9a21fb",
+  "source_baseline": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
-    "https://github.com/acg-box/decodex/pull/2453"
+    "https://github.com/acg-box/decodex/pull/2453",
+    "https://github.com/acg-box/decodex/pull/2454",
+    "https://github.com/acg-box/decodex/pull/2455",
+    "https://github.com/acg-box/decodex/pull/2456"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
-    "limits": "Two native_search selectors test local projections. The other27 use the selected CLI. Exact helper behavior is covered where the tests use Code Mode. Register every selector and record actual passes separately.",
+    "limits": "Two native_search selectors test local projections. The other 27 use the selected CLI. Exact helper behavior is covered where the tests use Code Mode. Register every selector and record actual passes separately.",
     "tests": [
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
@@ -184,13 +187,16 @@
     }
   },
   "qualification": {
-    "status": "requires_fresh_evidence_before_runtime_migration",
-    "source_archive_sha256": "6e920fd580c4462482af3c8974e4a72d177f3e47c9a987d8b18ac82acf37d960",
-    "schema_sha256": "af95adf4743af5241b95820c0351f418b7e8318c75a8f5da56318d7767705054",
+    "status": "qualified_for_retained_decodex_consumers",
+    "evidence": "automations/upstream/qualification.json",
+    "source_archive_sha256": "5a695834a4543fcaa78c6bc166903a100c755f3984e726699b7da4aa10968331",
+    "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
     "limits": [
-      "The previous complete required source-test manifest and artifact/helper provenance were not retained in the repository. Recover exact identities from original evidence or establish fresh bounded proof before migration.",
-      "Source review, source test execution, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
-      "No installed-app, hosted provider, physical audio, real-account, MDM, Windows or remote-Windows acceptance is implied."
+      "Source review, executed source tests, exact-artifact behavior, merged delivery and installed-app acceptance remain separate.",
+      "The complete older certified 153-test manifest could not be reconstructed from truncated historical output. This run retains exact fresh requirements and results; it does not rewrite that older receipt.",
+      "No live provider, real-account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
+      "Production V8 guard flags remain; no standalone optimized d8 security regression was executed.",
+      "Six conditional remote-credential snapshot cases ran and failed under the host resolver. Current Decodex sources have no remote-executor configuration/provisioning consumer. The unchanged baseline DNS/address policy rejects reserved addresses. These cases are not qualified or declared delivered; no host network setting or native enforcement was relaxed."
     ]
   },
   "retained_artifact_probes": {
@@ -223,5 +229,16 @@
       "crates/decodex-runtime/tests/native_qualification/<fixture>"
     ],
     "limits": "Loopback synthetic providers and account fixtures; system-temporary homes with owned child/server cleanup. No live account, hosted provider or installed-app acceptance."
-  }
+  },
+  "source_review_evidence": "automations/upstream/current-review.json",
+  "optional_decisions": [
+    {
+      "id": "mermaid-punctuation-and-flowchart-grammar",
+      "evidence_commit": "9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c",
+      "status": "awaiting_user_decision",
+      "value": "Render multiline flowchart labels alongside the earlier bounded grammar proposal.",
+      "maintenance_cost": "Local parser and box layout changes, grammar/width/source-copy regressions and GPUI visual checks.",
+      "recommendation": "Defer pending explicit user choice; current complete-source fallback remains usable."
+    }
+  ]
 }

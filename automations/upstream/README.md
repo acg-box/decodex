@@ -38,7 +38,7 @@ Keep the portable retention index in [retained-evidence.json](retained-evidence.
 It records retained behavior requirements, exact validation entrypoints, artifact
 identities and qualification limits. It is not the live cursor or a task journal.
 Update current entries and let Git retain older versions. Keep raw logs, build
-products, personal paths, account fixtures and native scheduler state outside the
+products, personal paths, real account data and native scheduler state outside the
 repository. Preserve reusable custom regression fixtures with their test owner.
 
 Build directories and old local receipts can be removed. If they are absent,
