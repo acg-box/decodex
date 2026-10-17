@@ -777,12 +777,10 @@ impl AgentSurface {
 				NativeConnection::Failed(reason) => {
 					row = row
 						.child(
-							gpui::div()
+							crate::ui_feedback::Tone::Error
+								.row("native-connection-error", reason)
 								.flex_1()
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(reason.clone()),
+								.min_w_0(),
 						)
 						.child(self.workspace_action(
 							"native-connect-retry".into(),

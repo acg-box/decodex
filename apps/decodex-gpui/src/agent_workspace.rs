@@ -871,10 +871,15 @@ impl AgentSurface {
 	) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
 			return Tone::Warning
-				.row("conversation-unavailable", THREAD_LOCKED_MESSAGE)
+				.row_with_icon(
+					"conversation-unavailable",
+					THREAD_LOCKED_MESSAGE,
+					workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
+				)
 				.debug_selector(|| "conversation-unavailable".into())
 				.min_h(gpui::px(40.))
 				.items_center()
+				.justify_center()
 				.into_any_element();
 		}
 
@@ -964,11 +969,12 @@ impl AgentSurface {
 						&& !matches!(feedback.message.as_str(), "Sent" | "Sending…"),
 					|d| {
 						d.child(
-							feedback
-								.tone
-								.row("native-conversation-feedback", &feedback.message)
-								.px(gpui::px(ui_theme::CONVERSATION_INSET))
-								.py(gpui::px(4.)),
+							feedback.tone.banner(
+								feedback
+									.tone
+									.row("native-conversation-feedback", &feedback.message)
+									.justify_center(),
+							),
 						)
 					},
 				)
@@ -2415,13 +2421,15 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		};
 
-		tone.row("conversation-activity-status", label)
-			.debug_selector(|| "conversation-activity-status".into())
-			.w_full()
-			.px(gpui::px(ui_theme::CONVERSATION_INSET))
-			.py(gpui::px(4.))
-			.when(self.can_keep_both_drafts(), |row| row.child(self.keep_both_draft_button(cx)))
-			.into_any_element()
+		tone.banner(
+			tone.row("conversation-activity-status", label)
+				.debug_selector(|| "conversation-activity-status".into())
+				.justify_center()
+				.when(self.can_keep_both_drafts(), |row| {
+					row.child(self.keep_both_draft_button(cx))
+				}),
+		)
+		.into_any_element()
 	}
 }
 

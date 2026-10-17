@@ -12,8 +12,9 @@ use crate::{
 			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
 			InteractiveElement, IntoElement, ParentElement, Styled, Task, markdown,
 		},
-		workspace_symbols::{self, Symbol},
+		workspace_symbols,
 	},
+	ui_feedback::Tone,
 	ui_loading, ui_motion,
 	ui_theme::{AMBER, TEXT_MUTED},
 };
@@ -38,15 +39,12 @@ impl AgentSurface {
 		let title =
 			if entry.kind == "unsent_input" { "Message not sent" } else { "Delivery unconfirmed" };
 		let entry = entry.clone();
-		gpui::div()
+		Tone::Warning
+			.surface()
 			.w_full()
 			.min_w_0()
 			.px_3()
 			.py(gpui::px(6.))
-			.rounded(gpui::px(12.))
-			.border_1()
-			.border_color(gpui::rgba(0xe0b56f26))
-			.bg(gpui::rgba(0xe0b56f07))
 			.child(
 				gpui::div()
 					.flex()
@@ -117,7 +115,7 @@ impl AgentSurface {
 			.text_size(gpui::px(12.))
 			.font_weight(FontWeight::MEDIUM)
 			.text_color(gpui::rgb(AMBER))
-			.child(workspace_symbols::icon_sized(Symbol::AccountWarningAmber, 14.))
+			.child(Tone::Warning.icon())
 			.child(title)
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("{key}-chevron")),
