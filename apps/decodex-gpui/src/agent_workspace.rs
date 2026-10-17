@@ -1246,16 +1246,10 @@ impl AgentSurface {
 				.min_h_0()
 				.flex()
 				.relative()
-				// GPUI replays paint and hit targets from its cache, but does not
-				// replay accessibility nodes. Build those when a client is active.
-				.child(if window.is_a11y_active() {
-					self.transcript_presentation.clone().into_any_element()
-				} else {
-					self.transcript_presentation
-						.clone()
-						.cached(gpui::StyleRefinement::default().flex_1().min_w_0().h_full())
-						.into_any_element()
-				})
+				// Repaint the current transcript geometry. Whole-scene replay can
+				// retain old pixels during scrolling and native panel transitions.
+				// Markdown shaping and history preparation retain their own caches.
+				.child(self.transcript_presentation.clone())
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
