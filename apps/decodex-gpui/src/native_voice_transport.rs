@@ -15,7 +15,7 @@ use libwebrtc::{
 	audio_frame::AudioFrame,
 	audio_source::{AudioSourceOptions, native::NativeAudioSource},
 	audio_stream::native::NativeAudioStream,
-	data_channel::{DataChannelInit, DataChannelState},
+	data_channel::{DataChannel, DataChannelInit, DataChannelState},
 	media_stream_track::MediaStreamTrack,
 	peer_connection::{IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState},
 	peer_connection_factory::{
@@ -350,31 +350,7 @@ async fn run_media(
 		})));
 	}
 
-	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
-
-	let data = peer
-		.0
-		.create_data_channel("oai-events", DataChannelInit::default())
-		.map_err(|_| "The audio event channel could not start.")?;
-	let captions = events.clone();
-
-	data.on_message(Some(Box::new(move |buffer| {
-		if !buffer.binary
-			&& buffer.data.len() <= 65_536
-			&& let Ok(value) = serde_json::from_slice::<Value>(buffer.data)
-			&& matches!(
-				value["type"].as_str(),
-				Some(
-					"input_transcript.added"
-						| "output_transcript.added"
-						| "turn.created"
-						| "turn.done"
-						| "turn.delta"
-				)
-			) {
-			captions.send(serde_json::json!({"type":"caption","event":value}));
-		}
-	})));
+	let data = audio_event_channel(peer, events.clone())?;
 
 	let offer = time::timeout(
 		Duration::from_secs(10),
@@ -477,6 +453,32 @@ async fn run_media(
 			},
 		}
 	}
+}
+
+fn audio_event_channel(peer: &Peer, captions: Events) -> Result<DataChannel, &'static str> {
+	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
+	let channel = peer
+		.0
+		.create_data_channel("oai-events", DataChannelInit::default())
+		.map_err(|_| "The audio event channel could not start.")?;
+	channel.on_message(Some(Box::new(move |buffer| {
+		if !buffer.binary
+			&& buffer.data.len() <= 65_536
+			&& let Ok(value) = serde_json::from_slice::<Value>(buffer.data)
+			&& matches!(
+				value["type"].as_str(),
+				Some(
+					"input_transcript.added"
+						| "output_transcript.added"
+						| "turn.created"
+						| "turn.done"
+						| "turn.delta"
+				)
+			) {
+			captions.send(serde_json::json!({"type":"caption","event":value}));
+		}
+	})));
+	Ok(channel)
 }
 
 #[cfg(test)]
