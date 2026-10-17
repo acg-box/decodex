@@ -2078,7 +2078,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.timeline.follow_paused.insert("agent".into());
@@ -2094,7 +2094,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(300));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 
 		surface.read_with(visual, |s, _| {

@@ -1021,6 +1021,17 @@ impl AgentSurface {
 			})
 	}
 
+	pub(super) fn render_transcript_view(
+		&mut self,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		self.prepare_transcript_history(window, cx);
+		let selected = self.conversation_work();
+		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
+		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
+	}
+
 	fn workspace_transcript(
 		&mut self,
 		selected: Option<&AgentWorkItemDto>,
@@ -1143,6 +1154,7 @@ impl AgentSurface {
 			};
 		gpui::div()
 			.on_children_prepainted(fill_viewport)
+			.size_full()
 			.flex_1()
 			.min_h_0()
 			.min_w_0()
@@ -1222,15 +1234,17 @@ impl AgentSurface {
 		if !floating_composer {
 			self.workspace.composer_overlay_height = 0.;
 		}
-		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
-
 		chat = chat.child(
 			gpui::div()
 				.flex_1()
 				.min_h_0()
 				.flex()
 				.relative()
-				.child(transcript)
+				.child(
+					self.transcript_presentation
+						.clone()
+						.cached(gpui::StyleRefinement::default().flex_1().min_w_0().h_full()),
+				)
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
@@ -1250,13 +1264,18 @@ impl AgentSurface {
 					.child(
 						gpui::canvas(
 							move |bounds, _, cx| {
-								owner.update(cx, |s, cx| {
-									let height = f32::from(bounds.size.height);
-									if (s.workspace.composer_overlay_height - height).abs() > 0.5 {
-										s.workspace.composer_overlay_height = height;
-										cx.notify();
-									}
-								});
+								let height = f32::from(bounds.size.height);
+								if (owner.read(cx).workspace.composer_overlay_height - height).abs()
+									> 0.5
+								{
+									let owner = owner.clone();
+									cx.defer(move |cx| {
+										owner.update(cx, |s, cx| {
+											s.workspace.composer_overlay_height = height;
+											cx.notify();
+										})
+									});
+								}
 							},
 							|_, _, _, _| {},
 						)
@@ -1453,6 +1472,13 @@ impl AgentSurface {
 
 		if self.is_new_conversation() {
 			self.timeline.marks.clear();
+		} else {
+			self.prepare_history_marks();
+		}
+	}
+
+	fn prepare_transcript_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if self.is_new_conversation() {
 			return;
 		}
 		if self.timeline.older_scroll_anchor.is_none() {
@@ -1460,7 +1486,6 @@ impl AgentSurface {
 		}
 
 		self.restore_history_anchor(window, cx);
-		self.prepare_history_marks();
 		self.prepare_history_layout(window);
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
@@ -2553,6 +2578,22 @@ mod tests {
 		LoadState, Render, Window, graph,
 	};
 	use decodex_protocol::AgentWorkKindDto;
+
+	#[gpui::test]
+	fn workspace_animation_does_not_publish_navigation_or_draft_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (model, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		let notifications = std::rc::Rc::new(std::cell::Cell::new(0));
+		visual.update(|window, cx| {
+			let notifications = notifications.clone();
+			cx.observe(&model, move |_, _| notifications.set(notifications.get() + 1)).detach();
+			window.draw(cx).clear(cx);
+			assert!(window.simulate_next_frame(cx) > 0);
+		});
+		cx.run_until_parked();
+		assert_eq!(notifications.get(), 0);
+	}
 
 	struct ActionView(gpui::Entity<AgentSurface>);
 	impl Render for ActionView {

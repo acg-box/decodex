@@ -895,12 +895,12 @@ connection_initializing: false,
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		for _ in 0..20 {
 			std::thread::sleep(std::time::Duration::from_millis(16));
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
 
@@ -909,7 +909,7 @@ connection_initializing: false,
 			assert!(!s.question_timers[&7].disabled);
 		});
 		visual.simulate_mouse_down(bounds.center(), gpui::MouseButton::Left, Default::default());
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert_eq!(visual.debug_bounds("question-format-0"), Some(bounds));
 		visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 

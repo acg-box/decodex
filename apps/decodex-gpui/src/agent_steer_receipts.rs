@@ -1,8 +1,9 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
 use tokio::runtime::Builder;
 
+#[cfg(feature = "visual-capture")] use crate::shell::agent_surface::ClientProfile;
 use crate::shell::agent_surface::{
-	AgentClient, AgentCommandResponse, AgentSurface, ClientProfile, Context, PendingCommand,
+	AgentClient, AgentCommandResponse, AgentSurface, Context, PendingCommand,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{

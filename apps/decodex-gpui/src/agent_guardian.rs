@@ -978,7 +978,7 @@ mod tests {
 		surface.update(visual, |s, _| seed(s));
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
@@ -991,7 +991,7 @@ mod tests {
 			assert!(s.guardian.pending.is_empty());
 		});
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let bounds = visual.debug_bounds("guardian-approve-1").expect("explicit approval");
@@ -1026,10 +1026,11 @@ mod tests {
 			s.approve_guardian("root", 1, "changed", cx);
 
 			assert!(s.guardian.feedback.is_empty());
+			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());

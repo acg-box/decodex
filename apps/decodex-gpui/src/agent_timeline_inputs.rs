@@ -243,10 +243,10 @@ mod tests {
 			s.timeline.latest_follow_work = s.selected.clone();
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		for _ in 0..4 {
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 		let answer = visual.debug_bounds("native-promotion-content").unwrap();
 		let footer = visual.debug_bounds("floating-composer").unwrap();

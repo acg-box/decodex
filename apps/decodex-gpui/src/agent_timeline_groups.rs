@@ -507,7 +507,7 @@ mod tests {
 			cx.notify();
 			(binding, page)
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("turn-process-toggle").is_none());
 		assert!(visual.debug_bounds("archived-process-content").is_none());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
@@ -516,25 +516,25 @@ mod tests {
 			assert!(s.timeline.native.refresh(binding, page));
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		let initial = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!(initial > gpui::px(0.));
 		assert!(visual.debug_bounds("archived-process-content").is_none());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		thread::sleep(std::time::Duration::from_millis(90));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		let middle = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
 		assert!(visual.debug_bounds("archived-process-content").is_none());
 		thread::sleep(std::time::Duration::from_millis(300));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(surface.update(visual, |s, _| s.timeline.native.expanded_turns.contains("turn")));
 		assert!(visual.debug_bounds("archived-process-content").is_some());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
@@ -592,11 +592,11 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
@@ -604,13 +604,13 @@ mod tests {
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
 
 		surface.update(visual, |_, cx| cx.notify());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(
 			visual.debug_bounds("native-reasoning-summary").is_some(),
@@ -619,7 +619,7 @@ mod tests {
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		let process = visual.debug_bounds("native-reasoning-summary").unwrap();
 		let header = visual.debug_bounds("turn-process-toggle").unwrap();
@@ -632,12 +632,12 @@ mod tests {
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(
 			surface.update(visual, |s, _| s.timeline.native.expanded_turns.contains("turn")),
@@ -647,11 +647,11 @@ mod tests {
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 	}

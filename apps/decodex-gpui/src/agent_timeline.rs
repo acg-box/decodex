@@ -1370,7 +1370,7 @@ mod tests {
 			binding
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("native-timeline-older").is_none());
 
 		surface.update(visual, |s, cx| {
@@ -1383,16 +1383,16 @@ mod tests {
 			assert!(s.prefetch_native_history(cx));
 			assert_eq!(s.timeline.native.pagination, Pagination::Loading);
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
 		for delay in [300, 16] {
 			std::thread::sleep(std::time::Duration::from_millis(delay));
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
 
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.timeline.native.entries, vec![boundary(10, true)]);
 			assert_eq!(s.timeline.native.binding.as_ref(), Some(&binding));
@@ -1411,7 +1411,7 @@ mod tests {
 
 		visual.simulate_click(retry.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert_eq!(server.join().unwrap(), vec!["older", "older"]);
 		surface.read_with(visual, |s, _| {

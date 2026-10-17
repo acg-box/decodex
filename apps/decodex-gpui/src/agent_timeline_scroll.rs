@@ -854,7 +854,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		// The fixture closes the initially reserved dock. Measure refreshes only
@@ -862,14 +862,14 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&work].clone());
 
 		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
+			crate::ui_frame::draw_frame(window, cx);
 		});
 
 		let maximum = scroll.max_offset();
@@ -884,7 +884,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
+				crate::ui_frame::draw_frame(window, cx);
 			});
 
 			assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
@@ -908,11 +908,11 @@ mod tests {
 					.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
 				cx.notify();
 			});
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 			if pagination == Pagination::Loading {
 				for delay in [300, 16] {
 					thread::sleep(std::time::Duration::from_millis(delay));
-					visual.update(|window, cx| window.draw(cx).clear(cx));
+					visual.update(crate::ui_frame::draw_frame);
 				}
 				assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
 			}

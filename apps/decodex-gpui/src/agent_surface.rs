@@ -177,6 +177,8 @@ pub(crate) struct AgentSurface {
 	native_agents: NativeAgents,
 	output_stream: OutputStream,
 	workspace: WorkspaceView,
+	workspace_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	transcript_presentation: Entity<crate::ui_frame::Presentation<Self>>,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
 	state: LoadState,
@@ -319,6 +321,11 @@ impl AgentSurface {
 
 	fn with_inputs(inputs: AgentInputs, cx: &mut Context<Self>) -> Self {
 		let AgentInputs { model, cwd, composer } = inputs;
+		let owner = cx.entity();
+		let workspace_presentation =
+			crate::ui_frame::Presentation::new(&owner, Self::render_workspace_view, cx);
+		let transcript_presentation =
+			crate::ui_frame::Presentation::new(&owner, Self::render_transcript_view, cx);
 
 		Self {
 			voice: None,
@@ -382,6 +389,8 @@ impl AgentSurface {
 			native_agents: Default::default(),
 			output_stream: Default::default(),
 			workspace: WorkspaceView::default(),
+			workspace_presentation,
+			transcript_presentation,
 			accounts: vec![],
 			composer,
 			model,
@@ -2402,7 +2411,13 @@ impl AgentSurface {
 }
 
 impl Render for AgentSurface {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		self.workspace_presentation.clone()
+	}
+}
+
+impl AgentSurface {
+	fn render_workspace_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		use gpui::Focusable as _;
 		let old_focus = self.conversation_composer().focus_handle(cx);
 		self.sync_question_editor(cx);

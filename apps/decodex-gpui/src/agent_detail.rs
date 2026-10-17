@@ -470,11 +470,11 @@ mod tests {
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 
 		surface.update(visual, prepare_tool_history);
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
@@ -506,11 +506,11 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(300));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
 
@@ -524,33 +524,33 @@ mod tests {
 				cx.notify();
 			});
 
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 
 			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
 		}
 
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, complete_tool_history);
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		// The completion header becomes clickable after its entrance transition.
 		for _ in 0..32 {
 			if visual.debug_bounds("turn-process-finishing").is_none() {
 				break;
 			}
 			thread::sleep(std::time::Duration::from_millis(16));
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		for _ in 0..20 {
 			thread::sleep(std::time::Duration::from_millis(16));
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 		}
 
 		assert!(

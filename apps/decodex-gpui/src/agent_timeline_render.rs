@@ -1079,19 +1079,19 @@ mod tests {
 			cx.notify();
 			entry
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		std::thread::sleep(std::time::Duration::from_millis(750));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		// The text's final line was measured in that frame. Let its height settle
 		// before comparing the live and saved representations of the same output.
 		std::thread::sleep(std::time::Duration::from_millis(240));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		let live = visual.debug_bounds("native-live-output").unwrap();
 		surface.update(visual, |s, cx| {
 			s.timeline.native.entries.push(entry);
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("native-live-output").is_none());
 		assert_eq!(
 			visual.debug_bounds("native-promotion-content").unwrap(),
@@ -1106,7 +1106,7 @@ mod tests {
 			live.clear();
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		assert_eq!(
 			visual.debug_bounds("native-promotion-content").unwrap(),
 			live,
@@ -1214,7 +1214,7 @@ mod tests {
 			}
 
 			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
+				crate::ui_frame::draw_frame(window, cx);
 			});
 
 			// Present received text over frames before reading the copy control bounds.
@@ -1228,7 +1228,7 @@ mod tests {
 			for _ in 0..32 {
 				thread::sleep(std::time::Duration::from_millis(16));
 
-				visual.update(|window, cx| window.draw(cx).clear(cx));
+				visual.update(crate::ui_frame::draw_frame);
 			}
 
 			if !completed {
@@ -1243,7 +1243,7 @@ mod tests {
 			assert!(visual.debug_bounds("response-footer").unwrap().size.height >= gpui::px(24.));
 
 			visual.simulate_mouse_down(copy.center(), gpui::MouseButton::Left, Default::default());
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_frame);
 
 			assert_eq!(visual.debug_bounds(selector), Some(copy));
 

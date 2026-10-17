@@ -4,6 +4,8 @@ use std::{sync::Arc, time::Duration};
 use gpui::{AnyElement, ImageFormat, ObjectFit};
 use tokio::{runtime::Builder, time};
 
+#[cfg(feature = "visual-capture")]
+use crate::shell::agent_surface::native_timeline::AgentHistoryResult;
 #[cfg(test)]
 use crate::shell::agent_surface::native_timeline::{
 	AgentSnapshotResult, AgentTimelineContent, AgentTimelineEntry,
@@ -12,9 +14,8 @@ use crate::{
 	shell::{
 		agent_surface,
 		agent_surface::native_timeline::{
-			AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Binding,
-			ClientProfile, Context, EntityId, InteractiveElement, IntoElement, ParentElement,
-			Styled, StyledImage, Task, render,
+			AgentClient, AgentSurface, AgentWorkItemDto, Binding, ClientProfile, Context, EntityId,
+			InteractiveElement, IntoElement, ParentElement, Styled, StyledImage, Task, render,
 		},
 	},
 	ui_loading,
