@@ -5078,27 +5078,26 @@ fn agent_request_field_names(method: &str) -> Option<&'static [&'static str]> {
 	Some(keys)
 }
 
-fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
-	kind == "unsent_input"
-		|| !matches!(
-			event_kind,
-			"agent_turn_completed"
-				| "worker_turn_completed"
-				| "user_message"
-				| "voice_user"
-				| "voice_assistant"
-				| "activity_started"
-				| "activity_completed"
-				| "assistant_message"
-				| "context_compacted"
-				| "auth_recovery_started"
-				| "auth_recovery_completed"
-				| "strict_review_notice"
-				| "config_warning"
-				| "native_warning"
-				| "partial_output"
-				| "plan_updated"
-		)
+fn agent_history_shows_disposition(event_kind: &str) -> bool {
+	!matches!(
+		event_kind,
+		"agent_turn_completed"
+			| "worker_turn_completed"
+			| "user_message"
+			| "voice_user"
+			| "voice_assistant"
+			| "activity_started"
+			| "activity_completed"
+			| "assistant_message"
+			| "context_compacted"
+			| "auth_recovery_started"
+			| "auth_recovery_completed"
+			| "strict_review_notice"
+			| "config_warning"
+			| "native_warning"
+			| "partial_output"
+			| "plan_updated"
+	)
 }
 
 fn agent_history_event_display(
@@ -5192,9 +5191,9 @@ fn render_agent_history(
 		if let Some(note) = event
 			.disposition_note
 			.as_ref()
-			.filter(|_| agent_history_shows_disposition(&event.event_kind, kind))
+			.filter(|_| agent_history_shows_disposition(&event.event_kind))
 		{
-			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
+			text.push_str("\n\nDisposition: ");
 			text.push_str(note);
 		}
 
@@ -5401,6 +5400,11 @@ fn agent_history_receipt(
 	}
 
 	Some(decodex_protocol::AgentHistoryReceiptDto {
+		unsent_reason: event.disposition_note.clone().filter(|_| {
+			event.event_kind == "user_message"
+				&& event.disposition == Some(AgentDisposition::UserDecision)
+				&& event.delivered_turn_id.is_none()
+		}),
 		voice_session_id: agent_voice_receipt_session(event),
 		event_kind: event.event_kind.clone(),
 		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
@@ -6348,7 +6352,11 @@ mod history_receipt_tests {
 		assert_eq!(rows[0].kind, "unsent_input");
 		assert!(rows[0].text.contains("Keep this input"));
 		assert!(rows[0].text.contains("Attached: /tmp/retained.txt"));
-		assert!(rows[0].text.contains("Not sent: the local connection queue is full."));
+		assert!(!rows[0].text.contains("Not sent:"));
+		assert_eq!(
+			rows[0].receipt.as_ref().unwrap().unsent_reason.as_deref(),
+			Some("Not sent: the local connection queue is full.")
+		);
 
 		for turn in ["", "acknowledged"] {
 			event.delivered_turn_id = Some(turn.into());
@@ -6357,6 +6365,7 @@ mod history_receipt_tests {
 
 			assert_eq!(rows[0].kind, "user", "a claimed or acknowledged turn is not known-unsent");
 			assert!(!rows[0].text.contains("Not sent:"));
+			assert!(rows[0].receipt.as_ref().unwrap().unsent_reason.is_none());
 		}
 	}
 

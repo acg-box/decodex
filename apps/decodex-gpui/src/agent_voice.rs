@@ -2281,6 +2281,7 @@ mod tests {
 				turn_id: None,
 				weather: Vec::new(),
 				receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+					unsent_reason: None,
 					voice_session_id: Some(session.into()),
 					event_kind: "voice_user".into(),
 					delivered_turn_id: None,

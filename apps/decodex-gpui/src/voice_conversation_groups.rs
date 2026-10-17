@@ -227,6 +227,7 @@ mod tests {
 			usage: None,
 			duration_ms: None,
 			receipt: session.map(|session| decodex_protocol::AgentHistoryReceiptDto {
+				unsent_reason: None,
 				voice_session_id: Some(session.into()),
 				event_kind: format!("voice_{kind}"),
 				delivered_turn_id: None,

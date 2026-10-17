@@ -2644,6 +2644,7 @@ mod tests {
 					entry.kind = if id % 2 == 1 { "user" } else { "assistant" }.into();
 					entry.text = "Saved speech".into();
 					entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+						unsent_reason: None,
 						voice_session_id: Some(if id < 3 { "first" } else { "second" }.into()),
 						event_kind: format!("voice_{}", entry.kind),
 						delivered_turn_id: None,

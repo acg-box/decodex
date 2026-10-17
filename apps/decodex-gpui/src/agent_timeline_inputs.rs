@@ -1,5 +1,7 @@
 //! Current unconfirmed input pages are independent of both transcript cursors.
-use gpui::AnyElement;
+use gpui::{
+	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, StatefulInteractiveElement,
+};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::native_timeline::Binding;
@@ -7,13 +9,15 @@ use crate::{
 	shell::{
 		agent_surface,
 		agent_surface::native_timeline::{
-			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
-			IntoElement, ParentElement, Task, markdown,
+			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
+			InteractiveElement, IntoElement, ParentElement, Styled, Task, markdown,
 		},
+		workspace_symbols::{self, Symbol},
 	},
-	ui_loading,
+	ui_loading, ui_motion,
+	ui_theme::{AMBER, TEXT_MUTED},
 };
-use decodex_protocol::AgentInputReceiptsResult;
+use decodex_protocol::{AgentHistoryEntryDto, AgentInputReceiptsResult};
 
 #[derive(Default)]
 pub(super) struct InputReceipts {
@@ -23,6 +27,119 @@ pub(super) struct InputReceipts {
 }
 
 impl AgentSurface {
+	pub(super) fn saved_input_card(
+		&self,
+		work: &str,
+		entry: &AgentHistoryEntryDto,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let key = format!("saved-input-{work}-{}", entry.id);
+		let expanded = self.timeline.expanded_records.contains(&key);
+		let title =
+			if entry.kind == "unsent_input" { "Message not sent" } else { "Delivery unconfirmed" };
+		let entry = entry.clone();
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.px_3()
+			.py(gpui::px(6.))
+			.rounded(gpui::px(12.))
+			.border_1()
+			.border_color(gpui::rgba(0xe0b56f26))
+			.bg(gpui::rgba(0xe0b56f07))
+			.child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(self.saved_input_toggle(key.clone(), title, expanded, cx))
+					.child(markdown::copy_button(
+						&format!("{key}-copy"),
+						"Copy saved message",
+						entry.text.clone(),
+					)),
+			)
+			.child(ui_motion::disclosure_lazy(
+				SharedString::from(format!("{key}-disclosure")),
+				expanded,
+				move |_| {
+					gpui::div()
+						.debug_selector(move || format!("saved-input-body-{}", entry.id))
+						.pt_2()
+						.pb_1()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.text_size(gpui::px(12.5))
+						.line_height(gpui::px(19.))
+						.child(super::super::selectable_text::SelectableText::plain(
+							format!("{key}-text"),
+							entry.text,
+						))
+						.when_some(
+							entry.receipt.and_then(|receipt| receipt.unsent_reason),
+							|body, reason| {
+								body.child(
+									gpui::div()
+										.text_size(gpui::px(11.))
+										.text_color(gpui::rgb(TEXT_MUTED))
+										.child(reason),
+								)
+							},
+						)
+						.into_any_element()
+				},
+			))
+	}
+
+	fn saved_input_toggle(
+		&self,
+		key: String,
+		title: &'static str,
+		expanded: bool,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
+		let keyboard = key.clone();
+		gpui::div()
+			.id(SharedString::from(format!("{key}-toggle")))
+			.debug_selector(|| "saved-input-toggle".into())
+			.role(Role::Button)
+			.tab_index(0)
+			.aria_label(title)
+			.aria_expanded(expanded)
+			.flex_1()
+			.min_w_0()
+			.h(gpui::px(28.))
+			.flex()
+			.items_center()
+			.gap_2()
+			.cursor_pointer()
+			.text_size(gpui::px(12.))
+			.font_weight(FontWeight::MEDIUM)
+			.text_color(gpui::rgb(AMBER))
+			.child(workspace_symbols::icon_sized(Symbol::AccountWarningAmber, 14.))
+			.child(title)
+			.child(workspace_symbols::process_chevron(
+				SharedString::from(format!("{key}-chevron")),
+				expanded,
+			))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				if !s.timeline.expanded_records.remove(&key) {
+					s.timeline.expanded_records.insert(key.clone());
+				}
+				cx.notify();
+			}))
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
+					if !s.timeline.expanded_records.remove(&keyboard) {
+						s.timeline.expanded_records.insert(keyboard.clone());
+					}
+					cx.notify();
+					cx.stop_propagation();
+				}
+			}))
+	}
+
 	pub(super) fn native_input_receipts_loaded(&self, work: &str) -> bool {
 		matches!(&self.timeline.native.input_receipts.result,Some(AgentInputReceiptsResult::Available {work_id,..}) if work_id.as_str()==work)
 	}
@@ -128,11 +245,7 @@ impl AgentSurface {
 					rows.push(
 						(gpui::div()
 							.debug_selector(|| "unconfirmed-native-input".into())
-							.child(agent_surface::muted("Local input · Delivery not confirmed"))
-							.child(markdown::render(
-								&entry.text,
-								&format!("input-receipt-{}", entry.id),
-							)))
+							.child(self.saved_input_card(&work.id, entry, cx)))
 						.into_any_element(),
 					);
 				}
@@ -267,6 +380,7 @@ mod tests {
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(AgentHistoryReceiptDto {
+						unsent_reason: None,
 						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: None,

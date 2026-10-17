@@ -163,6 +163,12 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
+		if entry.kind == "unsent_input" {
+			let id = entry.id;
+			return gpui::div()
+				.debug_selector(move || format!("local-receipt-{id}"))
+				.child(self.saved_input_card(&work.id, entry, cx));
+		}
 		let mut row = gpui::div()
 			.debug_selector({
 				let id = entry.id;
@@ -292,7 +298,7 @@ mod tests {
 		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, AgentTimelineContent,
 	};
 	#[gpui::test]
-	fn old_native_diagnostics_stay_in_details_and_unsent_input_stays_inline(
+	fn unsent_input_is_compact_recoverable_and_separate_from_native_diagnostics(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -320,7 +326,7 @@ mod tests {
 			let record = |id, kind: &str, event: &str| AgentHistoryEntryDto {
 				id,
 				kind: kind.into(),
-				text: "Saved local record".into(),
+				text: "Saved **local** record".into(),
 				created_at_micros: id,
 				native_source: None,
 				turn_id: None,
@@ -329,6 +335,7 @@ mod tests {
 				usage: None,
 				duration_ms: None,
 				receipt: Some(decodex_protocol::AgentHistoryReceiptDto {
+					unsent_reason: None,
 					voice_session_id: None,
 					event_kind: event.into(),
 					delivered_turn_id: None,
@@ -357,8 +364,25 @@ mod tests {
 		assert!(visual.debug_bounds("local-receipt-91").is_none());
 		assert!(visual.debug_bounds("local-receipt-92").is_none());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
+		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(44.));
+		assert!(visual.debug_bounds("saved-input-body-93").is_none());
 		assert!(visual.debug_bounds("local-records-toggle").is_some());
+		let copy = visual.debug_bounds("saved-input-agent-93-copy").unwrap();
+		visual.simulate_click(copy.center(), Default::default());
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()),
+				Some("Saved **local** record".into())
+			);
+		});
+		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("saved-input-body-93").is_some());
 		surface.update(visual, |s, cx| {
+			s.workspace.details_visible = true;
 			s.timeline
 				.expanded_records
 				.insert(format!("local-records-{}", s.selected.as_ref().unwrap()));
@@ -483,7 +507,7 @@ mod tests {
             entries.clear();
             entries.push(AgentHistoryEntryDto {native_source:None,turn_id:Some("turn".into()),weather:vec![],id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
 
-            entries[0].receipt = Some(decodex_protocol::AgentHistoryReceiptDto { voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+            entries[0].receipt = Some(decodex_protocol::AgentHistoryReceiptDto { unsent_reason: None, voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
 
             let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
 
@@ -591,6 +615,7 @@ mod tests {
 			turn_id: None,
 			weather: Vec::new(),
 			receipt: Some(decodex_protocol::AgentHistoryReceiptDto {
+				unsent_reason: None,
 				voice_session_id: None,
 				event_kind: "user_message".into(),
 				delivered_turn_id: None,
@@ -636,6 +661,7 @@ mod tests {
 		assert_eq!(receipts::receipt_label(&entry), Some("Execution notice"));
 
 		entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+			unsent_reason: None,
 			voice_session_id: None,
 			event_kind: "native_warning".into(),
 			delivered_turn_id: None,

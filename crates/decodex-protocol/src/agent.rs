@@ -170,6 +170,9 @@ pub struct AgentHistorySourceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryReceiptDto {
+	/// A confirmed local refusal, separate from the original input text.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub unsent_reason: Option<String>,
 	/// Durable voice call identity; absent for non-voice and older receipts.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub voice_session_id: Option<String>,
@@ -1289,6 +1292,7 @@ mod tests {
 		let mut receipt: AgentHistoryReceiptDto = serde_json::from_value(legacy.clone()).unwrap();
 
 		assert!(receipt.voice_session_id.is_none());
+		assert!(receipt.unsent_reason.is_none());
 		assert_eq!(serde_json::to_value(&receipt).unwrap(), legacy);
 
 		receipt.voice_session_id = Some("opaque call/1".into());
@@ -1297,6 +1301,17 @@ mod tests {
 
 		assert_eq!(encoded["voice_session_id"], "opaque call/1");
 		assert_eq!(serde_json::from_value::<AgentHistoryReceiptDto>(encoded).unwrap(), receipt);
+	}
+
+	#[test]
+	fn local_refusal_reason_roundtrips_without_becoming_message_text() {
+		let value = serde_json::json!({
+			"event_kind":"user_message", "delivered_turn_id":null, "disposed":true,
+			"unsent_reason":"Conversation is in use elsewhere."
+		});
+		let receipt: AgentHistoryReceiptDto = serde_json::from_value(value.clone()).unwrap();
+		assert_eq!(receipt.unsent_reason.as_deref(), Some("Conversation is in use elsewhere."));
+		assert_eq!(serde_json::to_value(receipt).unwrap(), value);
 	}
 
 	#[test]
