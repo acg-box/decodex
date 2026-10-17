@@ -1,28 +1,28 @@
 {
-  "source_commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
-  "source_archive_sha256": "5a695834a4543fcaa78c6bc166903a100c755f3984e726699b7da4aa10968331",
-  "cargo_lock_sha256": "49535db071373ec9c6daeb6b62a809d1e55df9029f25f57bfaca272ea3ab1ef3",
+  "source_commit": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+  "source_archive_sha256": "0cb204e7e0b4e0338cef5b74d0296fdfa1a44d8aafa1d9d6ffefb628ea440be6",
+  "cargo_lock_sha256": "e1a4cee78181893964e4f6e3c598a76d947ae295813e56b038008fc8e2b96132",
   "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "675062588212f601b9593145f6a240c96a3bb0c7440f9f1c03dadd1ed17af8eb",
-      "size": 253771072,
+      "sha256": "adf8103611c0d36d19c027809edbd9f566882e9a1daf727926efebe56b52b45c",
+      "size": 253808480,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
       "pinned_commit_marker": true
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "69f306ca7de8c3a769b50f340d433115c3b36f135c56555beef0197904d30dc5",
-      "size": 68128304,
+      "sha256": "59722b90c491e968f825b43d822c4a086ef2a89f581d9bd9ad31e885ebbe5d7e",
+      "size": 68127856,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
       "pinned_commit_marker": true
     },
     {
       "path": "codex-path/rg",
-      "sha256": "334b1b2ec91f809c6594bbe1c750a5557839dbe986b295641e8a7867e4fffc91",
+      "sha256": "4c891a4bd4c02d46b59621084228d5b596d62ac38272bccce3bcab57ad997db4",
       "size": 4009552,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
@@ -44,768 +44,21 @@
         "sha256": "b9d5652ebca515eb2bf4c2ee4a6551b2567117b5aa720f430d2032616dd7e3b5"
       }
     ],
-    "checksum_chain": "Official package resolver verified the release manifest against the source pin, then verified both archive and bindings.",
-    "limits": "Production retains --no-maglev, --no-turbolev and --no-turbo-inline-array-builtins. No standalone d8 optimized-path security claim."
+    "checksum_chain": "Official package resolver verifies release manifest against the exact source trust file, then verifies archive and binding. Fresh cached file hashes rechecked.",
+    "limits": "Production guard flags unchanged; no standalone optimized d8 security regression."
   },
-  "retained_source_inclusion": {
-    "baseline": "97ebf2d94d62e2ff2045f3ea17b6e11eae9a21fb",
-    "candidate": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
-    "records": [
-      {
-        "source": "codex-rs/responses-api-proxy/src/lib.rs",
-        "sha256": "092e92662b9a564f98bd5ee157c09348465288a1656adcd5eb34d555dc551c1f",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/code-mode-runtime/src/lib.rs",
-        "sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/core/src/tools/handlers/mcp.rs",
-        "sha256": "8b14b0c469c5d95f5b051865dda4dd1c4bc28c06b422f52eb0dd70b23c2fa0a1",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/core/src/agent/control/spawn.rs",
-        "sha256": "afcb1cfc8b7f55e68359837bd8898705987408ddff900dac780de4ad6e19db20",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/codex-api/src/api_bridge.rs",
-        "sha256": "fe77e6d628a20d0f00b667e7a0e8fd454067d6b0fa9983f4e383828941925243",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/codex-api/src/error.rs",
-        "sha256": "686d3ad35905ed691bfb2d2f80354621fcf3a5fe980d86cc885127d52ff4501f",
-        "byte_identical": true
-      },
-      {
-        "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
-        "sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
-        "byte_identical": true
-      }
-    ]
-  },
-  "artifact_probes": [
-    {
-      "fixture": "usage.py",
-      "sha256": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf",
-      "exit_code": 0
-    },
-    {
-      "fixture": "terminal_controls.py",
-      "sha256": "d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c",
-      "exit_code": 0
-    },
-    {
-      "fixture": "apps_recovery.py",
-      "sha256": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597",
-      "exit_code": 0
-    },
-    {
-      "fixture": "proxy_headers.py",
-      "sha256": "11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576",
-      "exit_code": 0
-    }
-  ],
-  "consumer_count": 29,
-  "consumer_limits": "27 exact candidate CLI consumers and 2 synthetic native-search projections; isolated fixtures. No installed app or production account acceptance.",
-  "component_cache_repair": "Task-local copy of the signed Code Mode helper was changed; signature verification rejected it; common prepare restored the exact qualified helper hash. Global stores and active candidate were unchanged.",
-  "limits": [
-    "Source review, executed source tests, exact-artifact behavior, merged delivery and installed-app acceptance remain separate.",
-    "The complete older certified 153-test manifest could not be reconstructed from truncated historical output. This run retains exact fresh requirements and results; it does not rewrite that older receipt.",
-    "No live provider, real-account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
-    "Production V8 guard flags remain; no standalone optimized d8 security regression was executed.",
-    "Six conditional remote-credential snapshot cases ran and failed under the host resolver. Current Decodex sources have no remote-executor configuration/provisioning consumer. The unchanged baseline DNS/address policy rejects reserved addresses. These cases are not qualified or declared delivered; no host network setting or native enforcement was relaxed."
-  ],
-  "version": 1,
-  "status": "qualified_for_retained_decodex_consumers",
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2456",
   "prepared_development_package": {
-    "source_commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
-    "archive_sha256": "32e4666a7c9e05298d44d7bad0edc450fd39e89a65931af7cc11a47b64cae6c5",
-    "executable_sha256": "675062588212f601b9593145f6a240c96a3bb0c7440f9f1c03dadd1ed17af8eb",
-    "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea"
+    "sha256": "8ef9a9f30042dd1e78b01adf77164065a34b94102f36de6f0c4fb6cf13506759",
+    "entrypoint_sha256": "adf8103611c0d36d19c027809edbd9f566882e9a1daf727926efebe56b52b45c"
   },
-  "qualified_scope": "macOS arm64 development artifact for current retained Decodex app-server stdio consumers. Source validation and conditional native behavior have separate evidence and limits.",
   "source_integrity": {
-    "tracked_blobs_verified": 9279,
-    "implementation_and_tests_match_fixed_git_tree": true
+    "verified_blob_count": 9285,
+    "mismatches": 0,
+    "role": "Exact official Git blobs verified again in the actual package build source tree after tests."
   },
-  "source_validation": {
-    "role": "Execution evidence for this fixed qualification, not automatic permanent gates for unrelated future changes. Recheck current consumers and changed behavior before reusing it.",
-    "rust_passed_count": 349,
-    "python_passed_count": 21,
-    "tests": [
-      {
-        "package": "codex-api",
-        "kind": "lib",
-        "target": "codex_api",
-        "tests": [
-          "endpoint::realtime_websocket::methods::transcript_tests::transcript_budget_uses_frame_recency_without_reordering_speakers"
-        ]
-      },
-      {
-        "package": "codex-app-server",
-        "kind": "lib",
-        "target": "codex_app_server",
-        "tests": [
-          "config_manager::provider_tests::catalog_reload_uses_latest_model_provider",
-          "models_refresh_worker::tests::background_refresh_blocks_invalid_requirements_then_recovers",
-          "models_refresh_worker::tests::catalog_reload_recovers_after_cloud_failure",
-          "models_refresh_worker::tests::catalog_reload_recovers_original_project_after_startup_fallback",
-          "models_refresh_worker::tests::refreshes_immediately_periodically_and_stops_when_dropped",
-          "request_processors::thread_processor::thread_processor_tests::storage_failure_classification_does_not_change_mutation_error_policy",
-          "request_processors::thread_resume_redaction::tests::redacts_mcp_success_result_and_removes_image_generation"
-        ]
-      },
-      {
-        "package": "codex-app-server",
-        "kind": "test",
-        "target": "all",
-        "tests": [
-          "suite::v2::client_metadata::turn_start_forwards_client_metadata_to_responses_request_v2",
-          "suite::v2::client_metadata::turn_start_forwards_client_metadata_to_responses_websocket_request_body_v2",
-          "suite::v2::gateway_oauth::model_list_leaves_oauth_gateway_after_account_change",
-          "suite::v2::hooks_list::config_batch_write_updates_hook_trust_for_loaded_session",
-          "suite::v2::hooks_list::loaded_session_refreshes_externally_updated_plugin_hooks",
-          "suite::v2::imagegen_extension::standalone_image_edit_uses_attached_model_visible_image::omitted_defaults_to_opaque",
-          "suite::v2::imagegen_extension::standalone_image_edit_uses_attached_model_visible_image::opaque",
-          "suite::v2::imagegen_extension::standalone_image_edit_uses_attached_model_visible_image::transparent",
-          "suite::v2::imagegen_extension::standalone_image_generation_returns_saved_path_hint_to_model::omitted_defaults_to_opaque",
-          "suite::v2::imagegen_extension::standalone_image_generation_returns_saved_path_hint_to_model::opaque",
-          "suite::v2::imagegen_extension::standalone_image_generation_returns_saved_path_hint_to_model::transparent",
-          "suite::v2::imagegen_extension::transparent_image_preserves_output_metadata_and_persisted_history::prompt_only",
-          "suite::v2::imagegen_extension::transparent_image_preserves_output_metadata_and_persisted_history::referenced_file",
-          "suite::v2::model_list_requirements_tests::model_list_follows_changed_provider_without_restart::definition_changes",
-          "suite::v2::model_list_requirements_tests::model_list_follows_changed_provider_without_restart::selection_changes",
-          "suite::v2::model_list_requirements_tests::model_list_preserves_invalid_startup_config_fallback",
-          "suite::v2::model_list_requirements_tests::model_list_reuses_catalog_until_account_change",
-          "suite::v2::realtime_conversation::transcript_tests::websocket_v3_retains_both_speakers_from_same_frame_at_handoff"
-        ]
-      },
-      {
-        "package": "codex-app-server-protocol",
-        "kind": "lib",
-        "target": "codex_app_server_protocol",
-        "tests": [
-          "protocol::thread_history::tests::rebuilds_extension_image_generation_item_from_persisted_completion",
-          "protocol::thread_history::tests::replays_file_backed_image_generation_end_events_into_turn_history",
-          "protocol::v2::tests::mcp_server_status_accepts_older_inventory_without_runtime_status",
-          "protocol::v2::tests::mcp_server_status_serializes_absent_server_info_as_null",
-          "protocol::v2::tests::mcp_server_status_serializes_absent_server_info_metadata_as_null"
-        ]
-      },
-      {
-        "package": "codex-cli",
-        "kind": "bin",
-        "target": "codex",
-        "tests": [
-          "exec_server_args_tests::exec_server_parses_executor_credential_options",
-          "exec_server_credential::tests::eof_before_a_complete_frame_never_authenticates",
-          "exec_server_credential::tests::expiry_is_checked_again_on_every_request",
-          "exec_server_credential::tests::malformed_rotations_latch_failure_and_clear_existing_credential",
-          "exec_server_credential::tests::parser_rejects_unsupported_schema_without_exposing_input",
-          "exec_server_credential::tests::waits_for_initial_rotation_replaces_token_and_eof_clears_auth"
-        ]
-      },
-      {
-        "package": "codex-cli",
-        "kind": "test",
-        "target": "exec_server",
-        "tests": [
-          "remote_exec_server_scoped_credentials_authenticate_only_register_and_validate",
-          "remote_exec_server_scoped_credentials_never_fall_back_for_another_environment"
-        ]
-      },
-      {
-        "package": "codex-cli",
-        "kind": "test",
-        "target": "mcp_login",
-        "tests": [
-          "no_browser_prefers_challenge_scopes_for_preregistered_client"
-        ]
-      },
-      {
-        "package": "codex-code-mode-runtime",
-        "kind": "lib",
-        "target": "codex_code_mode_runtime",
-        "tests": [
-          "cell_actor::callbacks::tests::callback_wrapper_join_error_reports_failure",
-          "cell_actor::callbacks::tests::notification_callback_panic_reports_failure",
-          "cell_actor::callbacks::tests::tool_callback_panic_rejects_the_js_promise_and_reports_failure",
-          "cell_actor::tests::buffered_initial_yield_precedes_buffered_completion_for_yield_observer",
-          "cell_actor::tests::dropped_pending_observation_preserves_the_initial_yield_boundary",
-          "cell_actor::tests::dropped_pending_observer_preserves_the_frontier_for_the_next_observation",
-          "cell_actor::tests::dropped_yield_observer_preserves_output_for_the_next_observation",
-          "cell_actor::tests::failed_completion_delivery_rebuffers_the_event",
-          "cell_actor::tests::observation_dropped_before_dequeue_does_not_consume_output",
-          "cell_actor::tests::only_the_first_termination_claims_a_buffered_completion",
-          "cell_actor::tests::pending_observer_merges_initial_yield_and_completion_output",
-          "cell_actor::tests::queued_termination_preempts_unobserved_runtime_completion",
-          "cell_actor::tests::runtime_thread_panic_remains_a_cell_error_without_owner_supervision",
-          "cell_actor::tests::termination_claim_prevents_stored_value_commit",
-          "cell_actor::tests::unexpected_runtime_thread_exit_is_reported_to_the_session_owner",
-          "cell_actor::tests::yield_timer_preempts_buffered_runtime_output",
-          "runtime::callbacks::tests::host_callbacks_admit_no_new_effects_after_exit_is_requested",
-          "runtime::module_loader::tests::discarded_tool_response_is_collectible_before_cell_ends",
-          "runtime::tests::linked_v8_has_sandbox_enabled",
-          "runtime::tests::pending_mode_freezes_runtime_commands_until_resume",
-          "runtime::tests::runtime_thread_panic_before_initialization_is_reported_directly",
-          "runtime::tests::runtime_thread_panic_is_forwarded_without_owner_supervision",
-          "runtime::tests::terminate_execution_stops_javascript",
-          "runtime::tests::timers_release_tasks_when_cleared_or_the_cell_finishes",
-          "service::contract_tests::natural_completion_cleans_up_callbacks_before_responding",
-          "service::contract_tests::observed_natural_completion_wins_over_termination",
-          "service::contract_tests::repeated_termination_is_rejected_while_callback_cleanup_is_pending",
-          "service::contract_tests::returns_and_resumes_from_the_pending_frontier",
-          "service::contract_tests::second_observer_is_rejected_without_displacing_the_first",
-          "service::contract_tests::shutdown_cancels_notifications_while_natural_completion_is_draining",
-          "service::contract_tests::termination_cancels_pending_callbacks_before_responding",
-          "service::contract_tests::yielded_cells_retain_their_own_delegate_until_closed",
-          "service::contract_tests::yields_and_resumes",
-          "service::tests::audio_helper_accepts_audio_url_object_and_raw_mcp_audio_block",
-          "service::tests::audio_helper_rejects_non_data_urls",
-          "service::tests::audio_tests::audio_helper_bounds_wav_data_and_preserves_outputs_after_yield",
-          "service::tests::audio_tests::audio_helper_omits_short_wav_in_all_input_forms",
-          "service::tests::date_locale_string_formats_with_icu_data",
-          "service::tests::execute_and_wait_clamp_yield_grace_without_stopping_the_cell",
-          "service::tests::execute_to_pending_excludes_delayed_timeout_tool_calls_until_wait",
-          "service::tests::execute_to_pending_identifies_tool_calls_in_paused_frontier",
-          "service::tests::execute_to_pending_returns_completed_for_synchronous_results",
-          "service::tests::execute_to_pending_returns_once_the_runtime_is_quiescent",
-          "service::tests::execute_waits_for_nested_tool_during_yield_grace",
-          "service::tests::exit_after_yield_and_tool_response_finishes_successfully",
-          "service::tests::exit_stops_the_whole_cell_and_preserves_only_prior_writes",
-          "service::tests::generated_image_helper_appends_image_and_output_hint",
-          "service::tests::global_scope_contains_only_allowed_items",
-          "service::tests::image_helper_accepts_low_detail",
-          "service::tests::image_helper_accepts_raw_mcp_image_block_with_original_detail",
-          "service::tests::image_helper_rejects_raw_mcp_result_container",
-          "service::tests::image_helper_rejects_unsupported_detail",
-          "service::tests::image_helper_second_arg_overrides_explicit_object_detail",
-          "service::tests::image_helper_second_arg_overrides_raw_mcp_image_detail",
-          "service::tests::image_helpers_reject_invalid_image_outputs",
-          "service::tests::image_helpers_reject_remote_urls",
-          "service::tests::interrupt_yields_execute_and_wait_without_stopping_the_cell",
-          "service::tests::intl_date_time_format_formats_with_icu_data",
-          "service::tests::json_conversion_rejects_serde_markers_without_poisoning_sessions",
-          "service::tests::output_helpers_return_undefined",
-          "service::tests::output_helpers_surface_serialization_errors",
-          "service::tests::resolve_yield_timeout_applies_grace_before_session_limits",
-          "service::tests::shutdown_interrupts_cpu_bound_cells",
-          "service::tests::start_cell_rejects_new_cell_after_shutdown_begins",
-          "service::tests::stored_values_are_shared_between_cells_but_not_sessions",
-          "service::tests::storing_undefined_preserves_the_previous_value",
-          "service::tests::synchronous_exit_returns_successfully",
-          "service::tests::text_helper_serializes_objects",
-          "service::tests::tool_start_acknowledgement_reports_error_before_invocation",
-          "service::tests::tool_start_acknowledgement_reports_termination_before_invocation",
-          "service::tests::v8_console_is_not_exposed_on_global_this",
-          "service::tests::wait_reports_missing_cell_separately_from_runtime_results",
-          "service::tests::wait_to_pending_returns_after_resumed_runtime_becomes_quiescent_again",
-          "service::tests::wait_to_pending_returns_completed_after_resumed_runtime_finishes",
-          "service::tests::wait_waits_for_nested_tool_during_yield_grace",
-          "service::tests::zero_yield_limit_is_immediate_and_scoped_to_its_session",
-          "session_runtime::tests::cell_id_allocation_fails_before_wrapping",
-          "session_runtime::tests::drop_terminates_cells_when_the_registry_is_locked",
-          "session_runtime::tests::reports_cell_actor_panics_to_the_owner",
-          "session_runtime::tests::shutdown_rejects_cell_admission_queued_before_the_registry_lock",
-          "session_runtime::tests::termination_rejects_a_waiting_store_commit_before_the_next_cell_can_load_it"
-        ]
-      },
-      {
-        "package": "codex-config",
-        "kind": "lib",
-        "target": "codex_config",
-        "tests": [
-          "types::tests::plugin_activation_inherits_defaults_without_explicit_enablement"
-        ]
-      },
-      {
-        "package": "codex-connectors",
-        "kind": "lib",
-        "target": "codex_connectors",
-        "tests": [
-          "connector_runtime::tests::accepted_generations_finish_persistence_in_order",
-          "connector_runtime::tests::codex_apps_server_info_cache_survives_legacy_tools_cache_write",
-          "connector_runtime::tests::codex_apps_tools_cache_context_does_not_reread_disk_after_creation",
-          "connector_runtime::tests::codex_apps_tools_cache_is_ignored_when_json_is_invalid",
-          "connector_runtime::tests::codex_apps_tools_cache_is_ignored_when_schema_version_mismatches",
-          "connector_runtime::tests::codex_apps_tools_cache_is_overwritten_by_last_write",
-          "connector_runtime::tests::codex_apps_tools_cache_is_scoped_per_user",
-          "connector_runtime::tests::codex_apps_tools_cache_keeps_live_publish_when_disk_persistence_fails",
-          "connector_runtime::tests::codex_apps_tools_cache_preserves_formerly_disallowed_connectors",
-          "connector_runtime::tests::codex_apps_tools_cache_publishes_newest_shared_snapshot",
-          "connector_runtime::tests::codex_apps_tools_cache_scopes_non_utf8_home_disk_paths",
-          "connector_runtime::tests::cold_loaded_snapshot_uses_cache_modification_time",
-          "connector_runtime::tests::connector_runtime_without_cache_ignores_disk_state",
-          "connector_runtime::tests::connector_runtime_without_cache_publishes_without_writing",
-          "connector_runtime::tests::contexts_for_different_identities_keep_isolated_snapshots",
-          "connector_runtime::tests::live_catalogs_isolate_scopes_and_reject_older_refreshes",
-          "connector_runtime::tests::live_provider_reuses_equal_tools_only_within_its_scope",
-          "connector_runtime::tests::live_publish_sets_timestamp_and_stale_publish_preserves_it",
-          "connector_runtime::tests::oversized_tools_cache_is_ignored_during_initial_load",
-          "connector_runtime::tests::personal_and_workspace_contexts_are_distinct_even_with_matching_ids",
-          "connector_runtime::tests::startup_cached_codex_apps_tools_loads_from_disk_cache",
-          "connector_runtime::tests::startup_cached_codex_apps_tools_loads_without_server_info_cache"
-        ]
-      },
-      {
-        "package": "codex-core",
-        "kind": "lib",
-        "target": "codex_core",
-        "tests": [
-          "agent::control::runtime::tests::report_display_includes_safe_cause_without_raw_error_payload",
-          "agent::control::tests::cancelled_spawn_after_input_admission_discards_child",
-          "agent::control::tests::spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
-          "agent::control::tests::spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once::filtered_fork",
-          "agent::control::tests::spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once::preserve_prefix_fallback",
-          "compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_disabled_after_capture",
-          "compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled",
-          "compact_remote_v2::installation::tests::prepared_prefix_rejection_respects_caller_intent::account_optional",
-          "compact_remote_v2::installation::tests::prepared_prefix_rejection_respects_caller_intent::account_required",
-          "compact_remote_v2::installation::tests::prepared_prefix_rejection_respects_caller_intent::replacement_optional",
-          "compact_remote_v2::installation::tests::prepared_prefix_rejection_respects_caller_intent::replacement_required",
-          "compact_remote_v2::tests::collect_background_incomplete_does_not_publish_foreground_usage",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::guardian_thread_context",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::personality",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::realtime_conversation",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::shell_zsh_fork",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::unified_exec_zsh_fork",
-          "config::tests::retired_feature_requirements_do_not_pin_configured_values::worktrees",
-          "context::world_state::model::tests::legacy_model_snapshot_keeps_its_window_until_model_change_or_compaction",
-          "context::world_state::model::tests::model_change_renders_when_persisted_or_inferred_from_previous_turn",
-          "context::world_state::model::tests::unchanged_model_does_not_render",
-          "context::world_state::top_level_tools::tests::snapshots_namespace_transitions",
-          "context_manager::history::tests::encrypted_compactions_use_replay_cache_estimate",
-          "context_manager::history::tests::for_prompt_clears_image_generation_result_when_images_are_unsupported",
-          "context_manager::history::tests::for_prompt_preserves_image_generation_calls_when_images_are_supported",
-          "exec_policy::tests::windows_powershell_policy_classifies_only_independent_literal_commands",
-          "guardian::tests::guardian_review_session_config_clears_context_overrides_for_distinct_effective_model",
-          "guardian::tests::guardian_review_session_config_preserves_context_overrides_for_same_effective_model",
-          "mcp_tool_call::telemetry::tests::mcp_call_metric_outcome_bounds_and_sanitizes_error_code",
-          "mcp_tool_call::telemetry::tests::mcp_call_metric_outcome_distinguishes_request_and_tool_errors",
-          "mcp_tool_call::telemetry::tests::mcp_call_metric_outcome_reads_auth_error_code_from_meta",
-          "mcp_tool_call::telemetry::tests::mcp_call_metric_outcome_reports_server_tool_error_codes",
-          "mcp_tool_call::telemetry::tests::mcp_call_metric_tags_include_server_name",
-          "mcp_tool_call::tests::dispatched_mcp_approval_with_closed_response_is_classified_as_approval",
-          "mcp_tool_call::tests::mcp_tool_call_span_records_error_type_and_error_code::closed_transport",
-          "mcp_tool_call::tests::mcp_tool_call_span_records_error_type_and_error_code::sensitive_metadata",
-          "mcp_tool_call::tests::mcp_tool_call_span_records_error_type_and_error_code::structured_error",
-          "mcp_tool_call::tests::permission_request_hook_allows_mcp_tool_call",
-          "mcp_tool_call::tests::strict_auto_review_forces_guardian_for_mcp_policy_skip",
-          "realtime_conversation::tests::bounds_realtime_delegation_fields_and_keeps_latest_transcript",
-          "realtime_conversation::tests::classifies_outbound_api_failures_as_transport_loss",
-          "realtime_conversation::tests::clears_active_handoff_explicitly",
-          "realtime_conversation::tests::extracts_text_from_handoff_request_active_transcript_if_input_missing",
-          "realtime_conversation::tests::extracts_text_from_handoff_request_input_transcript_if_messages_missing",
-          "realtime_conversation::tests::ignores_empty_handoff_request_input_transcript",
-          "realtime_conversation::tests::natural_close_finishes_before_successor_and_ignores_old_identity",
-          "realtime_conversation::tests::omits_quicksilver_alpha_header_for_realtime_v2",
-          "realtime_conversation::tests::prefers_handoff_input_transcript_over_active_transcript",
-          "realtime_conversation::tests::realtime_headers_include_only_non_default_originator",
-          "realtime_conversation::tests::realtime_headers_keep_realtime_and_voice_session_ids_distinct",
-          "realtime_conversation::tests::streamed_handoff_preserves_a_bounded_final_tail::commentary",
-          "realtime_conversation::tests::streamed_handoff_preserves_a_bounded_final_tail::final_answer",
-          "realtime_conversation::tests::streamed_handoff_preserves_a_bounded_final_tail::legacy",
-          "realtime_conversation::tests::streamed_handoff_preserves_a_bounded_final_tail::partial_answer",
-          "realtime_conversation::tests::streamed_v3_handoff_omits_the_final_message_prefix",
-          "realtime_conversation::tests::uses_frameless_alpha_header_for_realtime_v3",
-          "realtime_conversation::tests::uses_quicksilver_alpha_header_for_realtime_v1",
-          "realtime_conversation::tests::wraps_handoff_with_transcript_delta",
-          "realtime_conversation::tests::wraps_realtime_delegation_input",
-          "realtime_conversation::tests::wraps_realtime_delegation_input_with_xml_escaping",
-          "realtime_conversation::tests::wraps_realtime_delegation_input_with_xml_escaping_without_transcript",
-          "session::async_compaction::tests::cancelled_turn_skips_launch_but_preserves_existing_work::manual_ready_reuse",
-          "session::async_compaction::tests::cancelled_turn_skips_launch_but_preserves_existing_work::optional_ready_adoption",
-          "session::tests::standalone_settings_invalidate_continuation_before_delivering_acceptance::finishing_turn",
-          "session::tests::standalone_settings_invalidate_continuation_before_delivering_acceptance::idle",
-          "session::tests::standalone_settings_invalidate_continuation_before_delivering_acceptance::reserved_turn",
-          "session_rollout_init_error::tests::conflict_and_unsupported_keep_their_session_initialization_categories",
-          "session_rollout_init_error::tests::storage_failures_remain_fatal_during_session_initialization",
-          "thread_manager::tests::mcp_invalidation_refreshes_threads_that_are_still_starting",
-          "tools::handlers::extension_tools::tests::image_generation_publication_preserves_extension_saved_path",
-          "tools::handlers::shell_spec::tests::exec_command_tool_matches_expected_spec",
-          "tools::spec_plan::tests::hosted_web_search_and_standalone_image_generation_follow_runtime_gates",
-          "turn_metadata::tests::detached_memory_responses_metadata_omits_empty_workspace_metadata",
-          "turn_metadata::tests::detached_memory_responses_metadata_starts_an_independent_root_turn",
-          "turn_metadata::tests::dropping_turn_metadata_aborts_unused_git_enrichment",
-          "turn_metadata::tests::execution_metadata_applies_captured_settings_to_responses_metadata",
-          "turn_metadata::tests::git_enrichment_discovers_the_repository_when_it_starts",
-          "turn_metadata::tests::memory_workspaces_times_out_pending_git_discovery",
-          "turn_metadata::tests::responses_api_metadata_accepts_previously_valid_reserved_keys",
-          "turn_metadata::tests::responses_api_metadata_rejects_reserved_keys",
-          "turn_metadata::tests::turn_metadata_state_bounds_trigger_only_for_analytics",
-          "turn_metadata::tests::turn_metadata_state_coalesces_concurrent_git_enrichment",
-          "turn_metadata::tests::turn_metadata_state_git_enrichment_cancellation_is_retryable_and_errors_stay_empty",
-          "turn_metadata::tests::turn_metadata_state_ignores_client_reserved_metadata_before_start",
-          "turn_metadata::tests::turn_metadata_state_includes_known_parent_for_non_thread_spawn_subagents_without_fork",
-          "turn_metadata::tests::turn_metadata_state_includes_model_and_reasoning_effort_only_in_request_meta",
-          "turn_metadata::tests::turn_metadata_state_includes_root_fork_lineage",
-          "turn_metadata::tests::turn_metadata_state_includes_sandbox_metadata",
-          "turn_metadata::tests::turn_metadata_state_includes_thread_spawn_subagent_parent_without_fork",
-          "turn_metadata::tests::turn_metadata_state_includes_turn_started_at_unix_ms_after_start",
-          "turn_metadata::tests::turn_metadata_state_marks_user_input_requested_during_turn_only_for_mcp_request_meta",
-          "turn_metadata::tests::turn_metadata_state_merges_client_metadata_without_replacing_reserved_fields",
-          "turn_metadata::tests::turn_metadata_state_omits_fork_lineage_for_context_inheriting_subagent",
-          "turn_metadata::tests::turn_metadata_state_overlays_compaction_only_on_compaction_requests::legacy_timestamp",
-          "turn_metadata::tests::turn_metadata_state_overlays_compaction_only_on_compaction_requests::target",
-          "turn_metadata::tests::turn_metadata_state_preserves_subagent_parent_after_git_enrichment"
-        ]
-      },
-      {
-        "package": "codex-core",
-        "kind": "test",
-        "target": "all",
-        "tests": [
-          "suite::abort_tasks::root_turn_suspension_preserves_unfinished_turn_history::recovers_root_after_stopping_child",
-          "suite::abort_tasks::root_turn_suspension_preserves_unfinished_turn_history::reports_child_writer_failure_separately",
-          "suite::apply_patch_system_aliases::case_variant_metadata_patch_cannot_write_without_approval::freeform",
-          "suite::apply_patch_system_aliases::case_variant_metadata_patch_cannot_write_without_approval::shell_interception",
-          "suite::base_instructions::catalog_and_model_changes_preserve_the_window_base::custom_instructions",
-          "suite::base_instructions::catalog_and_model_changes_preserve_the_window_base::empty_custom_instructions",
-          "suite::base_instructions::catalog_and_model_changes_preserve_the_window_base::flag_disabled",
-          "suite::base_instructions::catalog_and_model_changes_preserve_the_window_base::managed_incremental_instructions",
-          "suite::base_instructions::model_switches_refresh_the_window_base_across_compaction_and_restart",
-          "suite::base_instructions::rebuilding_retained_context_reasserts_current_instructions",
-          "suite::code_mode::dynamic_tools::code_mode_dynamic_tool_calls_pending_together_resolve_in_reverse_order",
-          "suite::compact::failed_compaction_preserves_history_after_restart",
-          "suite::compact::incomplete_response_during_compaction_is_terminal_and_counted::missing_usage",
-          "suite::compact::incomplete_response_during_compaction_is_terminal_and_counted::reported_usage",
-          "suite::compact::manual_compact_records_durable_and_local_token_usage",
-          "suite::compact::paginated_compaction_cold_resume_from_bounded_suffix",
-          "suite::extension_sandbox::generated_image_ui_item_is_file_backed_in_rollout",
-          "suite::guardian_history::guardian_attributes_local_compaction_to_assistant::json_transcript",
-          "suite::guardian_history::guardian_attributes_local_compaction_to_assistant::line_transcript",
-          "suite::guardian_review::guardian_review_recovers_after_compaction::failed_compaction_preserves_pending_evidence",
-          "suite::guardian_review::guardian_review_recovers_after_compaction::reuse_parent_checkpoint_and_newer_authorization",
-          "suite::guardian_review::guardian_review_recovers_after_compaction::without_parent_checkpoint",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::assistant_context_shares_user_budget",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::cloud_threads",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::default",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::desktop_create_thread",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::retired_opt_out",
-          "suite::guardian_sender_messages::guardian_receives_sender_user_messages_by_default::tui",
-          "suite::hooks::plugin_pre_tool_use_blocks_exec_command_before_execution",
-          "suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::preserves_persisted_root_when_executor_reports_none",
-          "suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::preserves_persisted_root_when_owner_reports_none",
-          "suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::uses_refreshed_executor_root",
-          "suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::uses_refreshed_owner_root",
-          "suite::resume::resume_uses_prepared_store_path_when_preparation_is_present",
-          "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::disabled",
-          "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_during_listing",
-          "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_during_startup",
-          "suite::rmcp_client::discovers_and_calls_new_mcp_tool_in_same_turn::notification_invalidates_cursor",
-          "suite::rmcp_client::local_stdio_server_uses_runtime_fallback_cwd_when_config_omits_cwd",
-          "suite::rmcp_client::oauth_refresh_tests::rejected_refresh_requires_reauthentication_after_runtime_rebuild",
-          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_api",
-          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_lite",
-          "suite::scenarios::mcp_tool_discovery_in_same_turn::code_mode",
-          "suite::scenarios::mcp_tool_discovery_in_same_turn::direct",
-          "suite::tools::empty_turn_environments_keeps_environment_backed_tools",
-          "suite::turn_input_submission::continue_turn_if_idle_starts_new_turn_with_internal_input",
-          "suite::unified_exec_process_events::guardian_sandbox_retry::guardian_rechecks_unsandboxed_retry_after_sandboxed_approval",
-          "suite::unified_exec_stdin_approval::stdin_reviews_current_grants_with_sandbox_prompts_disabled::explicit_metadata_grant_expiry",
-          "suite::unified_exec_stdin_approval::stdin_reviews_current_grants_with_sandbox_prompts_disabled::read_only_child_grant_expiry"
-        ]
-      },
-      {
-        "package": "codex-exec",
-        "kind": "lib",
-        "target": "codex_exec",
-        "tests": [
-          "tests::canceled_mcp_server_elicitation_response_uses_cancel_action"
-        ]
-      },
-      {
-        "package": "codex-exec-server",
-        "kind": "lib",
-        "target": "codex_exec_server",
-        "tests": [
-          "client::tests::cancelled_streaming_replacement_closes_pending_open",
-          "client::tests::old_executor_receives_buffered_replacement_and_keeps_read_only_opens",
-          "client_transport::tests::noise_handshake_reports_disconnect_reason",
-          "remote_file_system::path_uri_tests::concurrent_remote_metadata_requests_share_only_in_flight_results"
-        ]
-      },
-      {
-        "package": "codex-exec-server",
-        "kind": "test",
-        "target": "exec_process",
-        "tests": [
-          "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::unmasked"
-        ]
-      },
-      {
-        "package": "codex-exec-server",
-        "kind": "test",
-        "target": "file_stream",
-        "tests": [
-          "cancelled_streaming_replacement_invalidates_metadata",
-          "streaming_replacement_copies_binary_and_empty_files",
-          "streaming_replacement_preserves_partial_failure_and_releases_handles",
-          "streaming_replacement_writes_before_reading_the_next_block"
-        ]
-      },
-      {
-        "package": "codex-extension-items",
-        "kind": "lib",
-        "target": "codex_extension_items",
-        "tests": [
-          "tests::image_generation_input_images_survive_serialization"
-        ]
-      },
-      {
-        "package": "codex-git-utils",
-        "kind": "lib",
-        "target": "codex_git_utils",
-        "tests": [
-          "baseline::tests::diff_reports_added_modified_and_deleted_files",
-          "baseline::tests::ensure_recovers_from_unborn_repository",
-          "baseline::tests::reports_executable_bit_changes_as_modified",
-          "baseline::tests::reset_creates_fresh_baseline",
-          "baseline::tests::reset_drops_previous_history",
-          "baseline::tests::status_scan_does_not_write_added_file_blobs",
-          "baseline::tests::write_index_ignores_configured_hooks_path",
-          "info::diff_tests::tracked_and_untracked_patches_preserve_order_and_apply"
-        ]
-      },
-      {
-        "package": "codex-guardian-reviewer",
-        "kind": "lib",
-        "target": "codex_guardian_reviewer",
-        "tests": [
-          "pool::tests::tracked_review_stays_reserved_until_cleanup_finishes",
-          "retry::tests::stale_authorization_does_not_extend_the_deadline",
-          "retry::tests::stale_authorization_uses_the_shared_attempt_budget::exhausts_the_shared_budget",
-          "retry::tests::stale_authorization_uses_the_shared_attempt_budget::recovers_with_fresh_evidence",
-          "review::tests::async_approval_revalidates_without_waiting_for_tracked_cleanup::cancelled_action",
-          "review::tests::async_approval_revalidates_without_waiting_for_tracked_cleanup::current_action",
-          "review::tests::async_approval_revalidates_without_waiting_for_tracked_cleanup::invalidated_action"
-        ]
-      },
-      {
-        "package": "codex-guardian-v2",
-        "kind": "lib",
-        "target": "codex_guardian_v2",
-        "tests": [
-          "async_scorer::config::tests::classifier_mode_uses_local_override_then_model_default",
-          "async_scorer::decisions::tests::adapter_preserves_trusted_tool_authority_and_scope",
-          "async_scorer::decisions::tests::adapter_rejects_unsupported_evidence",
-          "async_scorer::extension::tests::decisions_lifecycle_tests::decisions_disagreement_failures_and_disabled_flag_preserve_baseline",
-          "async_scorer::extension::tests::decisions_lifecycle_tests::guardian_budget_rejects_both_backends_before_sending"
-        ]
-      },
-      {
-        "package": "codex-image-generation-extension",
-        "kind": "lib",
-        "target": "codex_image_generation_extension",
-        "tests": [
-          "tool::tests::referenced_files_record_the_exact_bytes_read_for_each_request",
-          "tool::tests::unreadable_or_invalid_reference_does_not_build_an_edit_request"
-        ]
-      },
-      {
-        "package": "codex-mcp",
-        "kind": "lib",
-        "target": "codex_mcp",
-        "tests": [
-          "connection_manager::tests::catalog_listing_preserves_legacy_apps_tools_during_failed_startup",
-          "connection_manager::tests::reconciliation_reuses_connection_without_relisting_regular_tools"
-        ]
-      },
-      {
-        "package": "codex-network-proxy",
-        "kind": "lib",
-        "target": "codex_network_proxy",
-        "tests": [
-          "network_policy::tests::evaluate_host_policy_still_denies_not_allowed_local_without_decider_override",
-          "remote_config::tests::remote_credential_mappings_follow_the_environment_and_broker_config",
-          "runtime::host_policy_tests::local_and_remote_approvals_recheck_dns_after_the_decider",
-          "runtime::host_policy_tests::unapproved_hosts_do_not_trigger_dns"
-        ]
-      },
-      {
-        "package": "codex-protocol",
-        "kind": "lib",
-        "target": "codex_protocol",
-        "tests": [
-          "sanitized_git_url::tests::git_info_deserialization_accepts_missing_repository_url",
-          "sanitized_git_url::tests::rejects_remote_helper_command_payloads",
-          "sanitized_git_url::tests::sanitizes_deeply_nested_remote_helpers_without_recursion",
-          "sanitized_git_url::tests::sanitizes_remote_helper_urls"
-        ]
-      },
-      {
-        "package": "codex-rmcp-client",
-        "kind": "lib",
-        "target": "codex_rmcp_client",
-        "tests": [
-          "auth_status::tests::discover_streamable_http_oauth_does_not_use_authorization_server_scopes",
-          "auth_status::tests::discover_streamable_http_oauth_follows_protected_resource_metadata",
-          "oauth::tests::credential_store_tests::keyring_rejection_respects_credential_scope"
-        ]
-      },
-      {
-        "package": "codex-rollout",
-        "kind": "lib",
-        "target": "codex_rollout",
-        "tests": [
-          "tests::filesystem_lookup_distinguishes_thread_ids_from_rollout_ids"
-        ]
-      },
-      {
-        "package": "codex-state",
-        "kind": "lib",
-        "target": "codex_state",
-        "tests": [
-          "sqlite::busy_retry::tests::queue_delete_survives_received_busy_and_preserves_other_messages",
-          "sqlite::busy_retry::tests::queue_enqueue_survives_received_busy_without_duplicating_the_message",
-          "sqlite::busy_retry::tests::queue_update_survives_received_busy_and_commits_once",
-          "sqlite::busy_retry::tests::retries_after_a_competing_writer_releases_its_lock",
-          "sqlite::tests::open_read_write_pool_initializes_fresh_database_settings",
-          "sqlite::tests::open_read_write_pool_preserves_delete_under_write_lock",
-          "sqlite::tests::open_read_write_pool_preserves_empty_database_lock_error"
-        ]
-      },
-      {
-        "package": "codex-thread-store",
-        "kind": "lib",
-        "target": "codex_thread_store",
-        "tests": [
-          "error::tests::unclassified_sqlx_failures_remain_internal",
-          "local::rollout_migration::tests::migration_preserves_image_generation_failure_metadata",
-          "local::rollout_migration::tests::migration_preserves_image_generation_input_observations",
-          "local::thread_history::read::tests::list_items_pages_whole_thread_and_per_turn_rows",
-          "local::thread_history_materialization::tests::blank_and_rejected_rollout_lines_advance_projection",
-          "local::thread_history_materialization::tests::catch_up_preserves_trailing_partial_line_boundaries"
-        ]
-      }
-    ],
-    "conditional_failures": [
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::bash_profile_fallback",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      },
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_bash",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      },
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_zsh_inherited_credentials",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      },
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::masked_zsh_profile_credentials",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      },
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::zsh_profile_gateway_fallback",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      },
-      {
-        "package": "codex-exec-server",
-        "target": "exec_process",
-        "test": "shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context::zsh_unsupported_profile_fallback",
-        "reason": "System DNS resolved the fixture public hostname to the 198.18/15 reserved range or could not resolve the second hostname. Native local-address protection rejected it. No retained Decodex remote-executor configuration consumer exists; host DNS and native policy remain unchanged."
-      }
-    ],
-    "source_fixture_launcher": {
-      "source": "codex-rs/app-server/src/main.rs",
-      "sha256": "102c374e3be3292c588e6bb358d6b67b1cc846b943e1c3017589c31580302343",
-      "build_command": [
-        "cargo",
-        "+stable",
-        "rustc",
-        "--locked",
-        "--release",
-        "--target",
-        "aarch64-apple-darwin",
-        "-p",
-        "codex-app-server",
-        "--bin",
-        "codex-app-server",
-        "--",
-        "-C",
-        "debug-assertions=yes"
-      ],
-      "scope": "Debug assertions enabled only on the original standalone source-test launcher; it is not the selected production CLI. Original registered harnesses and assertions are unchanged."
-    },
-    "reproduction": {
-      "source_build": "stable compiler, locked dependencies, source-pinned V8 pair and exact upstream tree",
-      "cargo_filter": "Build package/target groups and match exact registered package/test names; reject missing or zero selectors.",
-      "direct_harness_command": [
-        "<registered test binary>",
-        "--exact",
-        "<registered test name>",
-        "--nocapture"
-      ],
-      "direct_harness_environment": {
-        "CARGO_BIN_EXE_codex": "Exact qualified CLI",
-        "CARGO_BIN_EXE_codex-app-server": "Original standalone source-test launcher with its private fixture hooks",
-        "CARGO_BIN_EXE_codex-code-mode-host": "Exact qualified helper"
-      },
-      "fixture_identity_limit": "Nextest can supply Cargo binary paths for selected packages. Direct Rust harness execution preserves the explicit identities for original app-server and CLI integration fixtures.",
-      "timeout_seconds": 60
-    },
-    "python_tests": [
-      {
-        "source": "scripts/codex_package/test_v8.py",
-        "count": 12
-      },
-      {
-        "source": ".github/scripts/test_v8_canary_changes.py",
-        "count": 8
-      },
-      {
-        "source": ".github/scripts/test_contract_releases.py",
-        "count": 1
-      }
-    ],
-    "recovered_prior_distinct_identities_verified": 181
-  },
-  "fixture_sources": [
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
-      "sha256": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597"
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/incomplete_response.py",
-      "sha256": "40e1531728cfaf4acdbaa775723d8eaffe9845d0be148f3ba56d988056448c56"
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/native_session.py",
-      "sha256": "9cadea792cd3d085f18ae8751e90d7d2a90ee6ded8c5bc08db12f7edd2f8501e"
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/proxy_headers.py",
-      "sha256": "11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576"
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/terminal_controls.py",
-      "sha256": "d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c"
-    },
-    {
-      "source": "crates/decodex-runtime/tests/native_qualification/usage.py",
-      "sha256": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
-    }
-  ],
   "rg_helper": {
     "helper": "codex-path/rg",
-    "sha256": "334b1b2ec91f809c6594bbe1c750a5557839dbe986b295641e8a7867e4fffc91",
+    "sha256": "4c891a4bd4c02d46b59621084228d5b596d62ac38272bccce3bcab57ad997db4",
     "version": "ripgrep 15.2.0 (rev e89fff89ac)",
     "command": [
       "codex-path/rg",
@@ -818,41 +71,931 @@
     "actual_match_count": 1,
     "exit_code": 0
   },
+  "version": 1,
+  "status": "qualified_for_retained_decodex_consumers",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2460",
+  "qualified_scope": "macOS arm64 development package for current retained private-stdio consumers. Native test-only source assertions, actual packaged behavior and installed-app acceptance remain distinct.",
+  "retained_source_inclusion": {
+    "baseline": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
+    "candidate": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "records": [
+      {
+        "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
+        "baseline_sha256": "8aac372b665c74e67f969ed731c73b89eb8da6b40f4ce17f3739ec4727a4b8de",
+        "candidate_sha256": "8aac372b665c74e67f969ed731c73b89eb8da6b40f4ce17f3739ec4727a4b8de",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
+        "baseline_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
+        "candidate_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/app-server/src/bespoke_event_handling.rs",
+        "baseline_sha256": "b083bbd16c8bbce64fbb759f323c14b7ee304c0e4e1d57ca4109d9c2c9908d05",
+        "candidate_sha256": "b083bbd16c8bbce64fbb759f323c14b7ee304c0e4e1d57ca4109d9c2c9908d05",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/app-server/src/config_manager_service.rs",
+        "baseline_sha256": "75ff0c8a553c2cdeca5aa7eeaa340657e11b7388daec31da0bb4972e3de63a62",
+        "candidate_sha256": "75ff0c8a553c2cdeca5aa7eeaa340657e11b7388daec31da0bb4972e3de63a62",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
+        "baseline_sha256": "26474fd7cc6bb7682a97ac6166f718dcbcc6a415735b0db5aeb4f5f8e9b6d5fc",
+        "candidate_sha256": "26474fd7cc6bb7682a97ac6166f718dcbcc6a415735b0db5aeb4f5f8e9b6d5fc",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/app-server/src/request_processors/thread_attachments.rs",
+        "baseline_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
+        "candidate_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/cli/src/exec_server_command.rs",
+        "baseline_sha256": "d5963e40ef75c7a394f9a57a2b0b34c398fb9df88431848545a4fc40334c0ac6",
+        "candidate_sha256": "d5963e40ef75c7a394f9a57a2b0b34c398fb9df88431848545a4fc40334c0ac6",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/cli/src/exec_server_credential.rs",
+        "baseline_sha256": "9b114cdb16e9c2f993b7d38c3bb2ce189bf47e5d8eb7fd030c3ffede0a92e10f",
+        "candidate_sha256": "9b114cdb16e9c2f993b7d38c3bb2ce189bf47e5d8eb7fd030c3ffede0a92e10f",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/cli/src/exec_server_telemetry.rs",
+        "baseline_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
+        "candidate_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/code-mode-runtime/src/lib.rs",
+        "baseline_sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
+        "candidate_sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/code-mode-runtime/src/v8_init.rs",
+        "baseline_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
+        "candidate_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-api/src/api_bridge.rs",
+        "baseline_sha256": "fe77e6d628a20d0f00b667e7a0e8fd454067d6b0fa9983f4e383828941925243",
+        "candidate_sha256": "fe77e6d628a20d0f00b667e7a0e8fd454067d6b0fa9983f4e383828941925243",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-api/src/error.rs",
+        "baseline_sha256": "686d3ad35905ed691bfb2d2f80354621fcf3a5fe980d86cc885127d52ff4501f",
+        "candidate_sha256": "686d3ad35905ed691bfb2d2f80354621fcf3a5fe980d86cc885127d52ff4501f",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/client_tool_catalog.rs",
+        "baseline_sha256": "9164ef7b8308c1829a8ca78023315f401cd2b1f979a788a5c96bf7e6b708ab2a",
+        "candidate_sha256": "9164ef7b8308c1829a8ca78023315f401cd2b1f979a788a5c96bf7e6b708ab2a",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/connection_manager.rs",
+        "baseline_sha256": "511e74ced307c5c1c1d961365e45df8191f1aac3fe9d6b3a4a72a7b6664efaf9",
+        "candidate_sha256": "511e74ced307c5c1c1d961365e45df8191f1aac3fe9d6b3a4a72a7b6664efaf9",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
+        "baseline_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
+        "candidate_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/mcp/mod.rs",
+        "baseline_sha256": "00be667ab41841c69e58af812b9247039b2e3d45963465e23ee99232aec2b6cc",
+        "candidate_sha256": "00be667ab41841c69e58af812b9247039b2e3d45963465e23ee99232aec2b6cc",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/rmcp_client.rs",
+        "baseline_sha256": "5150ce518b972cf5d4120f1013825c8e7b726e3793b07a0297668e074c07cade",
+        "candidate_sha256": "5150ce518b972cf5d4120f1013825c8e7b726e3793b07a0297668e074c07cade",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/codex-mcp/src/tool_catalog_cache.rs",
+        "baseline_sha256": "169765ad9150c4c2398ccc68900e5152990f1757af50d6cf433b379b6d2c7ed5",
+        "candidate_sha256": "169765ad9150c4c2398ccc68900e5152990f1757af50d6cf433b379b6d2c7ed5",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/config/src/types.rs",
+        "baseline_sha256": "fa4079d7d864ad987b734843fa10b05825587bf61c38d9a5e304dc8c2edb4637",
+        "candidate_sha256": "fa4079d7d864ad987b734843fa10b05825587bf61c38d9a5e304dc8c2edb4637",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/connectors/src/connector_runtime/mod.rs",
+        "baseline_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
+        "candidate_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core-plugins/src/loader.rs",
+        "baseline_sha256": "527d03e06730ea3f75f043afac5b803b9d846849a6d8e78e1afcc5c7c4ee6f28",
+        "candidate_sha256": "527d03e06730ea3f75f043afac5b803b9d846849a6d8e78e1afcc5c7c4ee6f28",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/agent/control/spawn.rs",
+        "baseline_sha256": "afcb1cfc8b7f55e68359837bd8898705987408ddff900dac780de4ad6e19db20",
+        "candidate_sha256": "c8b969d68be900d1d7b138a0f55d60a2787473e54aed2696d3102702c4f4370e",
+        "byte_identical": false,
+        "equivalence": "The only change extracts text from the typed render of unchanged MultiAgentRoleInstructions. Existing full-history sanitization, spawn ownership and failure cleanup remain unchanged. The original fork regression and exact native prediction/defaults/child consumers verify retained behavior."
+      },
+      {
+        "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
+        "baseline_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
+        "candidate_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/mcp_tool_call.rs",
+        "baseline_sha256": "56f6c6a433c967616213b53d573448b562849c5f08d30f933cd8d5fc5b435063",
+        "candidate_sha256": "56f6c6a433c967616213b53d573448b562849c5f08d30f933cd8d5fc5b435063",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/session_rollout_init_error.rs",
+        "baseline_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
+        "candidate_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/thread_manager/shutdown.rs",
+        "baseline_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
+        "candidate_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/tools/approvals.rs",
+        "baseline_sha256": "5edd920573bac4b48f8568272eee2a4821fb8d742d449ce117102528530c2d94",
+        "candidate_sha256": "5edd920573bac4b48f8568272eee2a4821fb8d742d449ce117102528530c2d94",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/tools/handlers/dynamic.rs",
+        "baseline_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
+        "candidate_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/core/src/tools/handlers/mcp.rs",
+        "baseline_sha256": "8b14b0c469c5d95f5b051865dda4dd1c4bc28c06b422f52eb0dd70b23c2fa0a1",
+        "candidate_sha256": "8b14b0c469c5d95f5b051865dda4dd1c4bc28c06b422f52eb0dd70b23c2fa0a1",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/client.rs",
+        "baseline_sha256": "c407401ae99bac5d11f2d7c873bbe8e795f65913a4dda0190f1b1ea43f288507",
+        "candidate_sha256": "c407401ae99bac5d11f2d7c873bbe8e795f65913a4dda0190f1b1ea43f288507",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/client_transport.rs",
+        "baseline_sha256": "ad0ac131d3097f7e52103a662009d5761ee40b70e2d277cd30d2f171533636ba",
+        "candidate_sha256": "ad0ac131d3097f7e52103a662009d5761ee40b70e2d277cd30d2f171533636ba",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/local_file_system.rs",
+        "baseline_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
+        "candidate_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/process_sandbox.rs",
+        "baseline_sha256": "e49720e1d65e6d08087de666194c30a09fff4ce82b4c0d93285871181fbcb5e8",
+        "candidate_sha256": "e49720e1d65e6d08087de666194c30a09fff4ce82b4c0d93285871181fbcb5e8",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/remote_file_system.rs",
+        "baseline_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
+        "candidate_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/shell_snapshot.rs",
+        "baseline_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
+        "candidate_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec-server/src/shell_snapshot_credentials.rs",
+        "baseline_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
+        "candidate_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/exec/src/lib.rs",
+        "baseline_sha256": "36c6bb343db323ed6bb0b2679a4298d43db50bbf333409155ab44e96e2b4da7b",
+        "candidate_sha256": "36c6bb343db323ed6bb0b2679a4298d43db50bbf333409155ab44e96e2b4da7b",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions.rs",
+        "baseline_sha256": "2caa60795a370db7f774bf69e15e058d002c09265e9c8145a341ef352cc0b0ce",
+        "candidate_sha256": "2caa60795a370db7f774bf69e15e058d002c09265e9c8145a341ef352cc0b0ce",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
+        "baseline_sha256": "da7cc071f592e20f36e7e223edc6012e847342d18aa6209fed86be49f8aa9e98",
+        "candidate_sha256": "da7cc071f592e20f36e7e223edc6012e847342d18aa6209fed86be49f8aa9e98",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/ext/image-generation/src/tool.rs",
+        "baseline_sha256": "fd509b6d5cb6d36e54fa05e5b1f5e746a8bd9c49fda9c3addf77dd112bb7f5b2",
+        "candidate_sha256": "fd509b6d5cb6d36e54fa05e5b1f5e746a8bd9c49fda9c3addf77dd112bb7f5b2",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/ext/items/src/image_generation.rs",
+        "baseline_sha256": "58bc3f9b59132595e2fb0043561838c6ad5ef5fcad762b8255b762c66434c1fa",
+        "candidate_sha256": "58bc3f9b59132595e2fb0043561838c6ad5ef5fcad762b8255b762c66434c1fa",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/features/src/lib.rs",
+        "baseline_sha256": "92e730fa9d88a6254d5f395f81a2b585e493c18b5c90797a12e6d5452c9defa6",
+        "candidate_sha256": "15415c30dc075b60b9f43343226ced01e7646effa5935c3bc90d4645b0d745a8",
+        "byte_identical": false,
+        "equivalence": "The only addition is MultiEnvCopyFile, UnderDevelopment and default false. Existing flags/defaults are unchanged. Exact candidate feature-list confirms disabled."
+      },
+      {
+        "source": "codex-rs/file-system/src/environment_accessor.rs",
+        "baseline_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
+        "candidate_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/file-system/src/lib.rs",
+        "baseline_sha256": "dbeadeacd6b376fc767629760b97867b4ee4903b9e1ef91d7bfc2531b77dbfd8",
+        "candidate_sha256": "dbeadeacd6b376fc767629760b97867b4ee4903b9e1ef91d7bfc2531b77dbfd8",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/file-system/src/nfs.rs",
+        "baseline_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
+        "candidate_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/hooks/src/engine/command_runner.rs",
+        "baseline_sha256": "4dc62f137cc8aec5cbecfdb02cc4baf78241c1616a95f9d632a4a57a30afd6e0",
+        "candidate_sha256": "4dc62f137cc8aec5cbecfdb02cc4baf78241c1616a95f9d632a4a57a30afd6e0",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/hooks/src/engine/discovery.rs",
+        "baseline_sha256": "a9b1cdfd3953181b842322ab83c82a9e796f56c6fa67dddd931644f97b84ed3a",
+        "candidate_sha256": "a9b1cdfd3953181b842322ab83c82a9e796f56c6fa67dddd931644f97b84ed3a",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/hooks/src/engine/mcp_runner.rs",
+        "baseline_sha256": "41bfa87c68473efba77ab47c86f269fc667cc3a572927228d334b4b5176ab382",
+        "candidate_sha256": "41bfa87c68473efba77ab47c86f269fc667cc3a572927228d334b4b5176ab382",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/hooks/src/engine/plugin_fingerprint.rs",
+        "baseline_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
+        "candidate_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/hooks/src/engine/plugin_trust.rs",
+        "baseline_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
+        "candidate_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/network-proxy/src/runtime.rs",
+        "baseline_sha256": "a126021eb0601c5c80a64da5bce92b0408f4bdb5099556826e620e830eadb2b8",
+        "candidate_sha256": "a126021eb0601c5c80a64da5bce92b0408f4bdb5099556826e620e830eadb2b8",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/protocol/src/mcp_approval_meta.rs",
+        "baseline_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
+        "candidate_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/responses-api-proxy/src/lib.rs",
+        "baseline_sha256": "092e92662b9a564f98bd5ee157c09348465288a1656adcd5eb34d555dc551c1f",
+        "candidate_sha256": "092e92662b9a564f98bd5ee157c09348465288a1656adcd5eb34d555dc551c1f",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/rmcp-client/src/auth_status.rs",
+        "baseline_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
+        "candidate_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/rmcp-client/src/tool_list_changes.rs",
+        "baseline_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
+        "candidate_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/shell-command/src/shell_snapshot_restore.rs",
+        "baseline_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
+        "candidate_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/state/src/runtime/reclamation.rs",
+        "baseline_sha256": "6e8250e4c77570f5c9a68e609795e7263b0de74af5254c4cda665d0917683fb9",
+        "candidate_sha256": "6e8250e4c77570f5c9a68e609795e7263b0de74af5254c4cda665d0917683fb9",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/state/src/sqlite.rs",
+        "baseline_sha256": "d196a8a09a72bed7119f52b24576e4e247ef30c4f183cbd22ffab52f101582ef",
+        "candidate_sha256": "d196a8a09a72bed7119f52b24576e4e247ef30c4f183cbd22ffab52f101582ef",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/thread-store/src/error.rs",
+        "baseline_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
+        "candidate_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
+        "byte_identical": true,
+        "equivalence": null
+      },
+      {
+        "source": "codex-rs/thread-store/src/local/thread_history_materialization.rs",
+        "baseline_sha256": "0d94127f7e582a3da1e0364d8ce023be08e2a09e368e388e5d678133ae90e9e3",
+        "candidate_sha256": "0d94127f7e582a3da1e0364d8ce023be08e2a09e368e388e5d678133ae90e9e3",
+        "byte_identical": true,
+        "equivalence": null
+      }
+    ],
+    "reference_links_excluded": [
+      "codex-rs/com/modelcontextprotocol/rust-sdk/blob/98a54789b80110ad210495c4ad845c89e1980471/crates/rmcp/src/transport/auth.rs"
+    ]
+  },
+  "source_validation": {
+    "role": "Scoped execution evidence for this fixed macOS arm64 qualification. Recheck affected consumers before a future migration; these are not universal permanent gates.",
+    "rust_passed_count": 1060,
+    "python_passed_count": 12,
+    "command": [
+      "cargo",
+      "+stable",
+      "nextest",
+      "run",
+      "--locked",
+      "--cargo-profile",
+      "dev-small",
+      "--lib",
+      "-p",
+      "codex-arg0",
+      "-p",
+      "codex-tools",
+      "-p",
+      "codex-core-plugins",
+      "-p",
+      "codex-context-fragments",
+      "-p",
+      "codex-features",
+      "-p",
+      "codex-config",
+      "-p",
+      "codex-prompts",
+      "-p",
+      "codex-guardian-context",
+      "-p",
+      "codex-extension-api",
+      "-p",
+      "codex-skills-extension",
+      "-p",
+      "codex-core",
+      "-E",
+      "(not package(codex-core) and not package(codex-core-plugins)) or (package(codex-core-plugins) and test(startup_sync::)) or (package(codex-core) and (test(context::) or test(context_manager::) or test(session_prefix::) or test(guardian::input_budget) or test(spawn_agent_can_fork_parent_thread_history_with_sanitized_items) or test(build_initial_context_adds_multi_agent_v2_subagent_usage_hint_as_developer_message) or test(spawn_agent_tool_v2_requires_task_name) or test(send_message_tool_requires_message_and_has_no_output_schema) or test(followup_task_tool_requires_message_and_has_no_output_schema)))",
+      "--status-level",
+      "fail",
+      "--test-threads",
+      "4",
+      "--no-fail-fast"
+    ],
+    "working_directory": "target/codex-source/ce0323f2f2d3b25e82806cd555237da3db4e1897/source/codex-rs",
+    "environment": {
+      "RUST_MIN_STACK": "8388608",
+      "NEXTEST_PROFILE": "local",
+      "HOME": "A fresh system-temporary home; remove after the tests",
+      "CARGO_HOME": "Existing host-managed Cargo home",
+      "RUSTUP_HOME": "Existing host-managed Rustup home",
+      "CARGO_TARGET_DIR": "The task-owned upstream build output",
+      "CARGO_BUILD_JOBS": "4"
+    },
+    "command_authority": "Official source justfile test recipe: 8 MiB test stack, local Nextest profile and no-fail-fast. Stable compiler and --locked follow Decodex policy.",
+    "groups": [
+      {
+        "package": "codex-arg0",
+        "kind": "lib",
+        "target": "codex_arg0",
+        "executed_count": 8,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-config",
+        "kind": "lib",
+        "target": "codex_config",
+        "executed_count": 366,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-context-fragments",
+        "kind": "lib",
+        "target": "codex_context_fragments",
+        "executed_count": 3,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-core",
+        "kind": "lib",
+        "target": "codex_core",
+        "executed_count": 270,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-core-plugins",
+        "kind": "lib",
+        "target": "codex_core_plugins",
+        "executed_count": 24,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-extension-api",
+        "kind": "lib",
+        "target": "codex_extension_api",
+        "executed_count": 0,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-features",
+        "kind": "lib",
+        "target": "codex_features",
+        "executed_count": 44,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-guardian-context",
+        "kind": "lib",
+        "target": "codex_guardian_context",
+        "executed_count": 48,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-prompts",
+        "kind": "lib",
+        "target": "codex_prompts",
+        "executed_count": 41,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-skills-extension",
+        "kind": "lib",
+        "target": "codex_skills_extension",
+        "executed_count": 149,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      },
+      {
+        "package": "codex-tools",
+        "kind": "lib",
+        "target": "codex_tools",
+        "executed_count": 107,
+        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+      }
+    ],
+    "required_test_suffixes": [
+      "run_main_with_arg0_guard_keeps_aliases_alive_until_main_returns",
+      "janitor_removes_dirs_with_unlocked_lock",
+      "extract_zipball_preserves_only_unix_access_permissions",
+      "world_state_hash_tracks_typed_content_and_role",
+      "extension_owned_section_preserves_typed_content_and_attribution",
+      "code_mode_text_preserves_message_content",
+      "default_search_text_uses_model_visible_namespace_metadata_once",
+      "spawn_agent_tool_v2_requires_task_name",
+      "send_message_tool_requires_message_and_has_no_output_schema",
+      "followup_task_tool_requires_message_and_has_no_output_schema"
+    ],
+    "unmatched_selectors": [],
+    "selected_manifest_sha256": "fef69f6c12e212e577a61e31fbf35181e01d36bd84600a2d0aab7ad77157e795",
+    "selected_manifest_digest_algorithm": "SHA-256 of UTF-8 compact sorted-key JSON; sort package,binary_id,test; each row has package,binary_id,test,ignored.",
+    "outside_selection_count": 2969,
+    "zero_test_suites": [
+      "codex-extension-api: compiled, zero tests; no executed test credit"
+    ],
+    "python_command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "scripts/codex_package",
+      "-p",
+      "test_v8.py"
+    ],
+    "python_environment": {
+      "CODEX_REPO_ROOT": "The exact original source root",
+      "PYTHONPATH": "Its scripts directory"
+    },
+    "initial_attempts": "Preserved natively: missing source-list jobs option; default test stack aborts; real-home skill discovery; V8 import without CODEX_REPO_ROOT. Final complete selection passed with the official test stack and isolated HOME. No assertions or enforcement were changed."
+  },
+  "fixture_sources": [
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
+      "sha256": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/config_policy.py",
+      "sha256": "567b69a1baf28975d77bca94cdc0cfc6b96c3bc49bb6ac56a73683e695695162"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/incomplete_response.py",
+      "sha256": "40e1531728cfaf4acdbaa775723d8eaffe9845d0be148f3ba56d988056448c56"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/native_session.py",
+      "sha256": "90887f2a16e7f642d797eed5f4532851df36f5ff41fe54b8963b882e8d645870"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/proxy_headers.py",
+      "sha256": "11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/terminal_controls.py",
+      "sha256": "d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c"
+    },
+    {
+      "source": "crates/decodex-runtime/tests/native_qualification/usage.py",
+      "sha256": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
+    },
+    {
+      "source": "crates/decodex-components/tests/development.rs",
+      "sha256": "3d30a2f62ce7e188604dd47a1c96a302e95af7e1182d93c1ecf55d40253a538a"
+    }
+  ],
   "retained_consumers": {
     "count": 29,
     "actual_candidate_cli": 27,
     "local_search_projections": 2,
-    "requirements": "automations/upstream/retained-evidence.json#retained_native_consumers"
-  },
-  "installed_application": {
-    "changed_by_this_task": false,
-    "runtime_identity_verified": false,
-    "acceptance_claimed": false
-  },
-  "historical_scope": "The older exact 153-source-test selection remains a historical evidence gap. This qualification verifies the current source, all 181 recovered distinct prior test identities, current retained consumers and exact artifact/helpers; it does not rewrite older certification.",
-  "conditional_remote_scope": {
-    "current_consumer": "No retained decodex-runtime/decodex-codex remote-executor configuration or provisioning producer; native app-server stdio launch remains the integration boundary.",
-    "consumer_sources": [
-      "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS",
-      "crates/decodex-runtime/src/agent.rs#thread_params"
-    ],
-    "baseline_policy_comparison": [
+    "requirements": "automations/upstream/retained-evidence.json#retained_native_consumers",
+    "tests": [
       {
-        "source": "codex-rs/network-proxy/src/system_dns.rs",
-        "byte_identical": true,
-        "candidate_sha256": "788a91b0d63fdef29e65bff8331d95016663b6fed03aed8a51885a9bb0f50b90"
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
       },
       {
-        "source": "codex-rs/network-proxy/src/connect_policy.rs",
-        "byte_identical": true,
-        "candidate_sha256": "889369ea6450e848d20a4f8faef830b17180f32484004bea0d9b03d9e9cb3219"
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
       },
       {
-        "source": "codex-rs/network-proxy/src/network_policy.rs",
-        "byte_identical": true,
-        "candidate_sha256": "3597a95048303b97e30632fe981c6f0c4197fbb14ab82ddbcab06e096e3d5766"
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
+        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources",
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors",
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
       }
     ],
-    "scope_reopening": "Require a concrete retained remote consumer or fixture-compatible system DNS; preserve original assertions and native address protection. This qualification does not claim the conditional remote snapshot behavior."
+    "unmatched_selectors": []
+  },
+  "artifact_probes": {
+    "groups_passed": 5,
+    "requirements": "automations/upstream/retained-evidence.json#retained_artifact_probes",
+    "config_policy": {
+      "entrypoint": "crates/decodex-runtime/tests/native_qualification/config_policy.py",
+      "candidate_cases_passed": 8,
+      "previous_artifact_expected_failures": 2,
+      "previous_artifact_controls_passed": 6,
+      "previous_cli_sha256": "675062588212f601b9593145f6a240c96a3bb0c7440f9f1c03dadd1ed17af8eb",
+      "scope": "config/read only; no provider or account request"
+    }
+  },
+  "consumer_count": 29,
+  "consumer_limits": "27 selectors invoke the exact task-local component-store CLI and packaged helpers. Two native_search selectors test local projections. DECODEX_NATIVE_BINARY and DECODEX_TEST_CODEX_BINARY must both select the same CLI.",
+  "component_cache_repair": {
+    "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+    "entrypoint": "crates/decodex-components/tests/development.rs",
+    "command": [
+      "cargo",
+      "+stable",
+      "nextest",
+      "run",
+      "--locked",
+      "--all-features",
+      "-p",
+      "decodex-components",
+      "--test",
+      "development",
+      "--run-ignored",
+      "all",
+      "-E",
+      "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)"
+    ],
+    "environment": {
+      "DECODEX_TEST_DEVELOPMENT_RUNTIME": "Exact qualified package directory; keep helpers beside the CLI"
+    },
+    "passed_count": 1,
+    "behavior": "Verify import, reject damaged CLI/schema/Code Mode/rg helpers, repair from the exact local archive, preserve an older cache and previous selection after failed/wrong-commit import."
+  },
+  "decodex_validation": {
+    "library_command": [
+      "cargo",
+      "+stable",
+      "nextest",
+      "run",
+      "--locked",
+      "--all-features",
+      "--lib",
+      "-p",
+      "decodex-codex",
+      "-p",
+      "decodex-components",
+      "-p",
+      "decodex-runtime"
+    ],
+    "passed_count": 1052,
+    "ignored_count": 112,
+    "strict_affected_clippy": "passed with --all-targets --all-features and -D warnings",
+    "nightly_format": "cargo +nightly fmt --all --check passed",
+    "source_builder_tests_passed": 2,
+    "automation_configuration_tests_passed": 7
+  },
+  "development_preparation": {
+    "command": [
+      "cargo",
+      "make",
+      "prepare-codex"
+    ],
+    "source_files": [
+      {
+        "source": "scripts/macos/prepare_codex.mts",
+        "sha256": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b"
+      },
+      {
+        "source": "scripts/macos/build_codex_source.mts",
+        "sha256": "7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
+      }
+    ],
+    "source_integrity": "All 9285 official Git blobs matched again in the actual build source after source tests. The upstream Cargo lock is unchanged.",
+    "toolchain": "Unversioned stable for build/test; unversioned nightly for Rust format.",
+    "limits": "An explicitly rebuilt package has its own identity and requires affected qualification. Startup and app packaging never compile Codex."
+  },
+  "dependency_risk": {
+    "database_commit": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
+    "baseline_findings_count": 7,
+    "candidate_findings_count": 4,
+    "new_findings_count": 0,
+    "removed_advisories": [
+      "RUSTSEC-2026-0367",
+      "RUSTSEC-2026-0368",
+      "RUSTSEC-2026-0369"
+    ],
+    "remaining_advisories": [
+      "RUSTSEC-2026-0118",
+      "RUSTSEC-2026-0119",
+      "RUSTSEC-2026-0194",
+      "RUSTSEC-2026-0195"
+    ],
+    "new_registry_package_checksums_matched": 12,
+    "risk_delta": "improved",
+    "limits": "Source- and advisory-snapshot-bounded evidence. No broad malware-free claim."
+  },
+  "installed_application": "No installation, release, publication or installed-app validation in this maintenance run.",
+  "historical_scope": "The older exact 153-source-test selection remains a historical evidence gap. This qualification verifies the current source, all 181 recovered distinct prior test identities, current retained consumers and exact artifact/helpers; it does not rewrite older certification.",
+  "conditional_remote_scope": {
+    "prior_source_commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
+    "prior_cases_failed": 6,
+    "current_run": "Not executed or qualified; no retained remote executor consumer. Prior failure evidence remains native."
+  },
+  "limits": [
+    "Source review, executed tests, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
+    "The older exact 153-test manifest remains an unrecovered historical evidence limit. This qualification does not rewrite earlier certification or duplicate the manual historical audit.",
+    "No live provider, real account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
+    "Production V8 guard flags remain; no standalone optimized d8 security regression or memory/latency benchmark was executed.",
+    "Six conditional remote-credential snapshot cases failed in the previous 0e675021 qualification under host DNS. They were not repeated here: retained consumers use private stdio and do not provision a remote executor. That conditional behavior remains outside qualification; source address policy is unchanged.",
+    "Cargo audit retains four inherited hickory-proto/quick-xml findings. No new advisory was introduced; registry hashes and provenance do not establish benign behavior."
+  ],
+  "documentation_lifecycle": {
+    "status": "incomplete_unrelated_historical_scope",
+    "requested_pages": [
+      "openwiki/operations/codex-upstream-autopilot.md",
+      "openwiki/testing/upstream-acceptance-boundaries.md"
+    ],
+    "accepted_total_pages": 40,
+    "first_pending_page": "openwiki/architecture/chief-coordination.md",
+    "completed_pages": 0,
+    "reason": "OpenWiki inserted unrelated stale-Claim jobs before the two requested pages. User maintenance definition requires retaining incomplete lifecycle instead of expanding delivery scope. No page prose or Claim sidecars were hand-edited.",
+    "next_action": "Resume this supported page-job run in the preserved worktree under a repository-wide Wiki maintenance owner. Do not report finish complete.",
+    "merge_boundary": "Runtime repair and portable evidence can deliver independently; wiki prose remains unchanged.",
+    "owner": "Repository-wide OpenWiki reconciliation remains unassigned; native maintenance state retains the continuation."
   }
 }
