@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cc62ee6bece5deadc6f728f58102c2d15918f6736b0d698df96cddead718fe26",
+  "pageVersion": "sha256:b2a4e8e4133ac775b9fd5007439a004b0b376a8de35b9d05bad1fb8fd9633eda",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -42,7 +42,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -110,7 +110,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         }
       ]
     },
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:5e6c9cd13bda532ca7412012d2382b87785a94f4c38fdaca0eaa9a27897de0a6"
+          "version": "repo-file-v1:sha256:97917a15c8cb9e7b2ba9713a3573f36721cd43c22e615c2895527939bfa0d4ef"
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
@@ -145,10 +145,34 @@
           "version": "repo-lines-v1:sha256:ff9f4d5d56b7903155a4ed2bcd23c0ca8ddc7f9540a7d48a2dfaf8ae4626f7fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxNzc0M2U5YWE5NzI5M2I1ZjUzNDY2Mjk2OTVkM2I4M2E0NWM5ZDczYWFmMTI0OTgzMGEzZmIxYzNiMWQ1N2Y3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZDdiNDg4ZDgyNzNiNmFhMWViYTFlMmFjN2ZkMzJmZDc2MTIyM2UyMDJmNWNjMDkwOTkxMTQ1YjNkYTUxYTIyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYjNjMWM5OTdjNjQ1Yjc1ZDMzMTg5NTRlY2JlZjU3YmM4NzdkNjA0ZjJkM2U5M2YxN2ZmY2Y5OGVlMzVmOGVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIn0"
         }
       ]
+    },
+    {
+      "id": "claim_bf0303b659d841c2b4f82b52c06e6a26",
+      "statement": "The portable upstream evidence index retains current validation requirements and qualification limits in the repository, while native automation state owns the live cursor and detailed run receipts; raw logs, build products and personal runtime data stay outside the repository.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L3-L13",
+          "version": "repo-lines-v1:sha256:f1fce2062bb9875dfe6d1e407690e1a33b5582551a963117d6078c306cd692c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjMDczZWIwMjI0YWQyNDkwYjU5MTE5ZDEwZmQzY2M3Zjk4ZDJiOTg0MDcxNWU2OTA5MDMzMDY4YmM0NzdhYmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNzA5M2M3YmU5YWM0NzQ3MjQ1ZjYzYWVkMjM4NjMyNGRiNjI2NTRhMTkzYzM2MDhkMjNhNWNjZDkwMTQ2MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwZGM5N2I5ODJiYjJjNmQwOWIxYzVmOTE2MjMyNjlkOWM1Y2MzNGU4Nzc0ZTIxOGQ2NzI0YjNhOWY4OTk4MTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmMjkwMzcyNGQ5ZmExM2I2NWFiYzdhMmY5YzEzZGMzMjAwYmYzNmM2ZWFiNTEyNDNjYWJlZTgyMDZkZmQ3MzkifQ"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:dbd769ae10986e4ecd9ebf4a323fa3877de25f1f25156f7793f7a0bf1b27be14"
+        }
+      ]
+    },
+    {
+      "id": "claim_9292580d95e145b1888521657c15a69b",
+      "statement": "Missing local artifacts or receipts must not stop independent source review; the maintainer reconstructs affected proof and separately qualifies a rebuilt exact artifact before a runtime migration without treating it as the deleted original.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L11-L13",
+          "version": "repo-lines-v1:sha256:83ef8d9ca302e5222203c1118c9731f07a1e83ba02b5253de33142d76b979647:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFiOTZiNWY0MTJiZDZiM2UwNTExOWYxZGY5YjQyMWI4MTU1OWIzYzZiMGVlMjVkYzVlNTBhYjIwMzY0ZWUwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjM3MDkzYzdiZTlhYzQ3NDcyNDVmNjNhZWQyMzg2MzI0ZGI2MjY1NGExOTNjMzYwOGQyM2E1Y2NkOTAxNDYxZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBhZGFlMDMzNjM5YmExMDc3MTA1MDRiMTk1ZjQ2NzljYTFmMDQwNTNiMWEwOTM3NjhlZmZkNmE5YTJhODc0YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWYyOTAzNzI0ZDlmYTEzYjY1YWJjN2EyZjljMTNkYzMyMDBiZjM2YzZlYWI1MTI0M2NhYmVlODIwNmRmZDczOSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-17T01:35:30.324Z"
   }
 }
