@@ -1754,24 +1754,10 @@ impl AgentSurface {
 			));
 		}
 
-		if let Some(event) = self.snapshot.as_ref().and_then(|snapshot| {
-			snapshot
-				.pending_events
-				.iter()
-				.find(|event| event.event_kind == "thread_in_use_needs_attention")
-		}) {
-			let name = self
-				.snapshot
-				.as_ref()
-				.and_then(|snapshot| {
-					snapshot.work_items.iter().find(|work| work.id == event.work_item_id)
-				})
-				.map(|work| self.work_label(work))
-				.unwrap_or_else(|| "This conversation".into());
-
+		if self.selected.as_deref().is_some_and(|work| self.thread_in_use(work)) {
 			return Some((
 				"In use by another app",
-				format!("{name} is in use by another app."),
+				"This conversation is in use by another app.".into(),
 				false,
 			));
 		}
@@ -1782,8 +1768,9 @@ impl AgentSurface {
 			LoadState::Capacity { .. } => "Work view unavailable",
 			_ => {
 				let pending = self.snapshot.as_ref()?.pending_events.iter().find(|event| {
-					event.event_kind.ends_with("_needs_attention")
-						|| event.event_kind.ends_with("_failed")
+					Some(&event.work_item_id) == self.selected.as_ref()
+						&& (event.event_kind.ends_with("_needs_attention")
+							|| event.event_kind.ends_with("_failed"))
 				})?;
 
 				return Some((
@@ -3797,6 +3784,17 @@ mod tests {
 			assert_eq!(s.status_notice().unwrap().0, "In use by another app");
 			assert!(s.thread_in_use("agent"));
 			assert!(!s.thread_in_use("another-agent"));
+			s.selected = Some("another-agent".into());
+			assert!(
+				s.status_notice().is_none(),
+				"another conversation's lock is not a current notice"
+			);
+			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
+				"event_processing_failed".into();
+			assert!(s.status_notice().is_none(), "another conversation's failure stays scoped");
+			s.selected = Some("agent".into());
+			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
+				"thread_in_use_needs_attention".into();
 
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 
