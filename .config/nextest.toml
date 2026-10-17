@@ -7,6 +7,7 @@ default-filter = 'not (binary_id(decodex-gpui::bin/decodex-native-glass-probe) o
 # cleanup. Serialize this group so validation results do not depend on host load.
 [test-groups]
 app-server-process = { max-threads = 1 }
+native-media = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter     = 'test(account_launch::process::tests::)'
@@ -18,4 +19,11 @@ test-group = 'app-server-process'
 [[profile.default.overrides]]
 filter           = 'binary_id(decodex-cli::signal_shutdown)'
 test-group       = 'app-server-process'
+threads-required = 'num-test-threads'
+
+# Native ICE and audio playout use wall-clock deadlines. Give each media
+# exchange the runner while it checks real packet flow and mute transitions.
+[[profile.default.overrides]]
+filter           = 'test(voice::transport::tests::native_call_exchanges) or test(voice::transport::tests::remote_channel_loss)'
+test-group       = 'native-media'
 threads-required = 'num-test-threads'
