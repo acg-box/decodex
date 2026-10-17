@@ -54,6 +54,7 @@ use crate::{
 		},
 		workspace_symbols,
 	},
+	ui_feedback::Tone,
 	ui_loading,
 	ui_motion::{self, SmoothControl, TabReveal},
 };
@@ -93,19 +94,10 @@ fn connection_recovery_notice(
 	} else {
 		("connection-open-diagnostics", "Open Diagnostics")
 	};
-	gpui::div()
-		.id("conversation-unavailable")
+	Tone::Error
+		.row("conversation-unavailable", message)
 		.debug_selector(|| "conversation-unavailable".into())
-		.role(Role::Status)
-		.aria_label(message)
-		.flex()
 		.flex_wrap()
-		.items_center()
-		.gap_2()
-		.text_size(gpui::px(11.))
-		.line_height(gpui::px(17.))
-		.text_color(gpui::rgb(TEXT_MUTED))
-		.child(message)
 		.child(
 			gpui::div()
 				.id(id)
@@ -878,20 +870,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if reason == THREAD_LOCKED_MESSAGE {
-			return gpui::div()
-				.id("conversation-unavailable")
+			return Tone::Warning
+				.row("conversation-unavailable", THREAD_LOCKED_MESSAGE)
 				.debug_selector(|| "conversation-unavailable".into())
-				.role(Role::Status)
-				.aria_label(THREAD_LOCKED_MESSAGE)
-				.h(gpui::px(40.))
-				.flex()
+				.min_h(gpui::px(40.))
 				.items_center()
-				.justify_start()
-				.gap(gpui::px(8.))
-				.text_size(gpui::px(12.))
-				.text_color(gpui::rgb(TEXT_MUTED))
-				.child(workspace_symbols::icon(super::super::workspace_symbols::Symbol::Lock))
-				.child(THREAD_LOCKED_MESSAGE)
 				.into_any_element();
 		}
 
@@ -917,23 +900,10 @@ impl AgentSurface {
 			}
 		};
 
-		gpui::div()
-			.id("conversation-unavailable")
+		Tone::Warning
+			.row("conversation-unavailable", title)
 			.debug_selector(|| "conversation-unavailable".into())
-			.role(Role::Status)
-			.aria_label(title)
-			.text_color(gpui::rgb(TEXT))
-			.flex()
 			.flex_wrap()
-			.items_center()
-			.gap_x(gpui::px(10.))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(11.))
-					.line_height(gpui::px(17.))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(title),
-			)
 			.when(detail.is_some(), |d| {
 				d.child(
 					gpui::div().flex().items_center().child(
@@ -989,16 +959,19 @@ impl AgentSurface {
 			return gpui::div()
 				.flex_none()
 				.w_full()
-				.when(!feedback.is_empty() && !matches!(feedback, "Sent" | "Sending…"), |d| {
-					d.child(
-						gpui::div()
-							.px(gpui::px(ui_theme::CONVERSATION_INSET))
-							.py(gpui::px(6.))
-							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child(feedback.to_owned()),
-					)
-				})
+				.when(
+					!feedback.is_empty()
+						&& !matches!(feedback.message.as_str(), "Sent" | "Sending…"),
+					|d| {
+						d.child(
+							feedback
+								.tone
+								.row("native-conversation-feedback", &feedback.message)
+								.px(gpui::px(ui_theme::CONVERSATION_INSET))
+								.py(gpui::px(4.)),
+						)
+					},
+				)
 				.child(self.render_composer(window, cx));
 		}
 
@@ -2405,52 +2378,48 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
-		let label = if self.uncertain {
-			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
+		let status = if self.uncertain {
+			Some((
+				"Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.",
+				Tone::Warning,
+			))
 		} else if let Some(notice) = self.draft_storage_notice() {
-			Some(notice)
+			Some((notice, Tone::Error))
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
-			Some("In use in another app · Your message is saved and waiting")
-		} else if pending.iter().any(|event| {
-			event.event_kind.ends_with("_needs_attention") || event.event_kind.ends_with("_failed")
-		}) {
-			Some("This conversation needs attention. Its current operation could not complete.")
+			Some(("In use by another app · Your draft is kept", Tone::Warning))
+		} else if pending.iter().any(|event| event.event_kind.ends_with("_failed")) {
+			Some(("The current operation could not complete.", Tone::Error))
+		} else if pending.iter().any(|event| event.event_kind.ends_with("_needs_attention")) {
+			Some(("This conversation needs attention.", Tone::Warning))
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			Some("Connection unavailable · Reconnecting")
+			Some(("Connection unavailable · Reconnecting", Tone::Warning))
 		} else if compacting {
-			Some("Compacting context")
-		} else if !self.feedback.is_empty() && self.feedback != "Message saved · Waiting for agent…"
+			Some(("Compacting context", Tone::Neutral))
+		} else if !self.feedback.is_empty()
+			&& self.feedback.message != "Message saved · Waiting for agent…"
 		{
-			Some(self.feedback.as_str())
+			Some((self.feedback.message.as_str(), self.feedback.tone))
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
-				AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running => None,
 				AgentDispatchStateDto::Unknown =>
-					Some("Connection interrupted · Checking delivery"),
-				AgentDispatchStateDto::Idle => None,
+					Some(("Connection interrupted · Checking delivery", Tone::Warning)),
+				_ => None,
 			})
 		}
-		.or_else(|| notice.as_ref().map(|(_, detail, _)| detail.as_str()))
-		.or_else(|| (!self.archive.feedback.is_empty()).then_some(self.archive.feedback.as_str()));
-		let Some(label) = label else {
+		.or_else(|| notice.as_ref().map(|(_, detail, _)| (detail.as_str(), Tone::Error)))
+		.or_else(|| {
+			(!self.archive.feedback.is_empty())
+				.then_some((self.archive.feedback.as_str(), Tone::Neutral))
+		});
+		let Some((label, tone)) = status else {
 			return gpui::div().into_any_element();
 		};
 
-		gpui::div()
-			.id("conversation-activity-status")
+		tone.row("conversation-activity-status", label)
 			.debug_selector(|| "conversation-activity-status".into())
-			.role(Role::Status)
-			.aria_label(label.to_owned())
 			.w_full()
-			.px_4()
-			.py(gpui::px(3.))
-			.flex()
-			.items_center()
-			.justify_center()
-			.gap_3()
-			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.child(label.to_owned())
+			.px(gpui::px(ui_theme::CONVERSATION_INSET))
+			.py(gpui::px(4.))
 			.when(self.can_keep_both_drafts(), |row| row.child(self.keep_both_draft_button(cx)))
 			.into_any_element()
 	}
@@ -2596,7 +2565,7 @@ mod tests {
 				s.workspace_action(
 					"test-action".into(),
 					"Action".into(),
-					|s, _| s.feedback.push('x'),
+					|s, _| s.feedback.message.push('x'),
 					cx,
 				)
 			})
@@ -2991,7 +2960,9 @@ mod tests {
 		let bounds = visual.debug_bounds("test-action").expect("workspace action");
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
-		surface.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "click activates action"));
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.feedback.message, "x", "click activates action")
+		});
 
 		for key in ["enter", "space"] {
 			visual.simulate_event(gpui::KeyDownEvent {
@@ -2999,13 +2970,15 @@ mod tests {
 				is_held: true,
 				prefer_character_input: false,
 			});
-			surface
-				.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "held key repeats action"));
+			surface.read_with(visual, |s, _| {
+				assert_eq!(s.feedback.message, "x", "held key repeats action")
+			});
 		}
 
 		visual.simulate_keystrokes("enter space");
-		surface
-			.read_with(visual, |s, _| assert_eq!(s.feedback, "xxx", "fresh keys activate action"));
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.feedback.message, "xxx", "fresh keys activate action")
+		});
 	}
 
 	#[gpui::test]
@@ -3040,7 +3013,7 @@ mod tests {
 
 			s.interrupt_current(cx);
 
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert_eq!(s.composer.read(cx).content(), "Retained manager draft");
 
 			s.state = LoadState::Unavailable;

@@ -1,4 +1,5 @@
 //! Live media controls; subscription signaling and task execution stay in the service.
+use crate::ui_feedback::Feedback;
 #[cfg(target_os = "macos")]
 #[path = "native_voice_audio.rs"]
 mod audio;
@@ -355,9 +356,11 @@ impl AgentSurface {
 			Ok(text) => {
 				voice.request =
 					Some(AgentVoiceRequest::Speak { session_id: session.clone(), text });
-				self.feedback = "Sending read-aloud request…".into();
+				self.feedback = Feedback::neutral("Sending read-aloud request…");
 			},
-			Err(_) => self.feedback = "This reply is too long to read aloud in one request.".into(),
+			Err(_) =>
+				self.feedback =
+					Feedback::warning("This reply is too long to read aloud in one request."),
 		}
 
 		cx.notify();
@@ -407,7 +410,7 @@ impl AgentSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = "Send a message before starting voice chat.".into();
+			self.feedback = Feedback::warning("Send a message before starting voice chat.");
 
 			cx.notify();
 
@@ -422,21 +425,21 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			runtime.block_on(AgentClient::new(profile).voice_settings(query_work)).ok()
 		});
-		self.feedback = "Checking voice availability…".into();
+		self.feedback = Feedback::neutral("Checking voice availability…");
 		self.voice_task = Some(cx.spawn_in(window, async move |surface, cx| {
             let result = future.await;
             let _ = cx.update(|window, cx| {
                 let _ = surface.update(cx, |s, cx| {
                     s.voice_task = None;
                     if s.generation != generation || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
-                        s.feedback = "Voice start canceled because the conversation changed.".into();
+                        s.feedback = Feedback::neutral("Voice start canceled because the conversation changed.");
                         cx.notify();
                         return;
                     }
                     if matches!(result, Some(AgentVoiceSettingsResult::Available { ref work_id, .. }) if work_id == &work) {
                         s.start_allowed_voice(work, window, cx);
                     } else {
-                        s.feedback = "Voice is unavailable or disabled by managed policy.".into();
+                        s.feedback = Feedback::warning("Voice is unavailable or disabled by managed policy.");
                         cx.notify();
                     }
                 });
@@ -459,7 +462,7 @@ impl AgentSurface {
 		let options = match self.voice_call_options(work.as_str(), cx) {
 			Ok(options) => options,
 			Err(message) => {
-				self.feedback = message.into();
+				self.feedback = Feedback::error(message);
 
 				cx.notify();
 
@@ -469,7 +472,8 @@ impl AgentSurface {
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
-				self.feedback = "Voice chat requires the latest signed Decodex app.".into();
+				self.feedback =
+					Feedback::error("Voice chat requires the latest signed Decodex app.");
 
 				cx.notify();
 
@@ -478,7 +482,7 @@ impl AgentSurface {
 		};
 
 		if !media.command(serde_json::json!({"operation":"start","input":self.audio_input})) {
-			self.feedback = "The audio host could not start.".into();
+			self.feedback = Feedback::error("The audio host could not start.");
 
 			cx.notify();
 
@@ -577,8 +581,9 @@ impl AgentSurface {
 				},
 				Some("error" | "ended") => {
 					if event["type"] == "error" {
-						self.feedback =
-							event["message"].as_str().unwrap_or("Voice disconnected.").into();
+						self.feedback = Feedback::error(
+							event["message"].as_str().unwrap_or("Voice disconnected."),
+						);
 					}
 
 					let _ = self.retire_voice_media();
@@ -620,9 +625,9 @@ impl AgentSurface {
 		} else {
 			// Signaling can disconnect while WebRTC still sends microphone audio.
 			// Dropping media stops local capture; the loop then stops this exact session.
-			self.feedback = self
-				.retire_voice_media()
-				.unwrap_or_else(|| "Voice stopped because the service connection was lost.".into());
+			self.feedback = Feedback::error(self.retire_voice_media().unwrap_or_else(|| {
+				"Voice stopped because the service connection was lost.".into()
+			}));
 
 			cx.notify();
 		}
@@ -639,7 +644,7 @@ impl AgentSurface {
 			},
 			AgentVoicePhase::Ready => {
 				if let Some(message) = status.message {
-					self.feedback = message.as_str().into();
+					self.feedback = Feedback::warning(message.as_str());
 				}
 
 				if !voice.answered
@@ -652,7 +657,11 @@ impl AgentSurface {
 			},
 			AgentVoicePhase::Ended | AgentVoicePhase::Failed => {
 				if let Some(message) = status.message {
-					self.feedback = message.as_str().into();
+					self.feedback = if status.phase == AgentVoicePhase::Failed {
+						Feedback::error(message.as_str())
+					} else {
+						Feedback::neutral(message.as_str())
+					};
 				}
 
 				let _ = self.retire_voice_media();
@@ -678,7 +687,7 @@ impl AgentSurface {
 			while let Some(event) = media.poll() {
 				if event["type"] == "devices" {
 					if let Some(message) = event["message"].as_str() {
-						self.feedback = message.to_owned();
+						self.feedback = Feedback::warning(message);
 					}
 					self.audio_inputs = event["inputs"]
 						.as_array()
@@ -901,9 +910,11 @@ impl AgentSurface {
 								{
 									voice.muted = muted;
 								} else {
-									s.feedback = s.retire_voice_media().unwrap_or_else(|| {
-										"Voice stopped because the microphone control could not be updated.".into()
-									});
+									s.feedback = Feedback::error(
+										s.retire_voice_media().unwrap_or_else(|| {
+											"Voice stopped because the microphone control could not be updated.".into()
+										}),
+									);
 								}
 							}
 
@@ -1798,7 +1809,7 @@ mod tests {
 	fn starting_media_retires_availability_feedback(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
-			s.feedback = "Checking voice availability…".into();
+			s.feedback = crate::ui_feedback::Feedback::neutral("Checking voice availability…");
 			s.prepare_voice_ui(
 				Default::default(),
 				Media,
@@ -1813,6 +1824,47 @@ mod tests {
 				"Ending the call must not resurrect availability feedback"
 			);
 			cx.notify();
+		});
+	}
+
+	#[gpui::test]
+	fn voice_feedback_distinguishes_failure_from_notices_and_normal_end(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::ui_feedback::Tone;
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.composer.update(cx, |input, cx| input.set_content("Unsent draft", cx));
+			for (phase, tone, ended) in [
+				(AgentVoicePhase::Ready, Tone::Warning, false),
+				(AgentVoicePhase::Failed, Tone::Error, true),
+				(AgentVoicePhase::Ended, Tone::Neutral, true),
+			] {
+				s.prepare_voice_ui(
+					Default::default(),
+					Media,
+					&EntityId::new("call").unwrap(),
+					EntityId::new("agent").unwrap(),
+				);
+				let status = decodex_protocol::AgentVoiceStatus {
+					session_id: EntityId::new("old-call").unwrap(),
+					phase,
+					answer: None,
+					message: decodex_protocol::WireText::new("Operation detail").ok(),
+				};
+				s.apply_voice_status(status.clone(), cx);
+				assert!(s.feedback.is_empty(), "an old call cannot replace current feedback");
+				s.apply_voice_status(
+					decodex_protocol::AgentVoiceStatus {
+						session_id: EntityId::new("call").unwrap(),
+						..status
+					},
+					cx,
+				);
+				assert_eq!(s.feedback.tone, tone);
+				assert_eq!(s.voice.is_none(), ended);
+				assert_eq!(s.composer.read(cx).content(), "Unsent draft");
+			}
 		});
 	}
 

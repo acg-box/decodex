@@ -1,4 +1,5 @@
 //! Questions share the input surface while retaining a separate answer draft.
+use crate::ui_feedback::Feedback;
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{AnyElement, AppContext as _, Bounds, KeyDownEvent, Point, prelude::FluentBuilder as _};
@@ -206,7 +207,7 @@ impl AgentSurface {
 			return true;
 		};
 		if let Err(message) = decodex_protocol::agent_async_question_reply(source, &answer) {
-			self.feedback = message;
+			self.feedback = Feedback::error(message);
 			cx.notify();
 			return true;
 		}
@@ -289,12 +290,13 @@ impl AgentSurface {
 					return;
 				}
 				if !visible.get() {
-					self.feedback = "Show the entire suggested answer before sending.".into();
+					self.feedback =
+						Feedback::warning("Show the entire suggested answer before sending.");
 					cx.notify();
 					return;
 				}
 				if let Err(message) = decodex_protocol::agent_async_question_reply(source, answer) {
-					self.feedback = message;
+					self.feedback = Feedback::error(message);
 					cx.notify();
 					return;
 				}
@@ -733,7 +735,7 @@ mod tests {
 		visual.simulate_click(option.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
 			assert_eq!(
-				s.feedback, "No service profile is configured.",
+				s.feedback.message, "No service profile is configured.",
 				"one click reaches submission"
 			);
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
@@ -751,7 +753,7 @@ mod tests {
 		surface.read_with(visual, |s, _| assert!(s.feedback.is_empty()));
 		visual.simulate_keystrokes("enter");
 		surface.read_with(visual, |s, cx| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
 		});
 	}
@@ -809,7 +811,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.restored_question_drafts[0].text, "For the librarians");
 			s.submit(cx);
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert_eq!(
 				s.conversation_composer().read(cx).content(),
 				"For the librarians",
@@ -868,7 +870,7 @@ mod tests {
 				let action =
 					QuestionAction::Send { answer: "Markdown".into(), visible: visible.clone() };
 				s.perform_question_action(&target(), &action, window, cx);
-				assert_eq!(s.feedback, "Show the entire suggested answer before sending.");
+				assert_eq!(s.feedback.message, "Show the entire suggested answer before sending.");
 				s.feedback.clear();
 				visible.set(true);
 				s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =

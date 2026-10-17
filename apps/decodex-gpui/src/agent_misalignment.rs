@@ -212,7 +212,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			s.feedback.clear();
 

@@ -1,4 +1,5 @@
 //! One explicit native image preview, bounded and tied to the selected source.
+#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use std::{sync::Arc, time::Duration};
 
 use gpui::{AnyElement, ImageFormat, ObjectFit};
@@ -62,7 +63,7 @@ impl AgentSurface {
 		)?;
 
 		self.profile = Some(profile);
-		self.feedback = "Image preview from an isolated native service".into();
+		self.feedback = Feedback::neutral("Image preview from an isolated native service");
 
 		self.load_native_media(request, cx);
 

@@ -1,4 +1,5 @@
 //! Explicit typed replies to live MCP elicitation requests.
+use crate::ui_feedback::Feedback;
 use std::rc::Rc;
 
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
@@ -125,7 +126,7 @@ impl AgentSurface {
 				let response = serde_json::json!({"action":"accept","content":content,"_meta":persist.map(|scope|serde_json::json!({"persist":scope}))});
 
 				if let Err(message) = decodex_protocol::validate_mcp_response(&value, &response) {
-					self.feedback = message;
+					self.feedback = Feedback::error(message);
 
 					cx.notify();
 
@@ -135,7 +136,7 @@ impl AgentSurface {
 				self.respond(response.to_string(), cx);
 			},
 			Err(message) => {
-				self.feedback = message;
+				self.feedback = Feedback::error(message);
 
 				cx.notify();
 			},
@@ -494,7 +495,7 @@ connection_initializing: false,
 
             s.submit_mcp_form_with_scope(7,Some("always"),cx);
 
-            assert_eq!(s.feedback,"This persistence scope was not offered");
+            assert_eq!(s.feedback.message,"This persistence scope was not offered");
 
             s.feedback.clear();
             s.submit_mcp_form_with_scope(6,Some("session"),cx);
@@ -518,7 +519,7 @@ connection_initializing: false,
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert!(s.submission.command.is_none());
 		});
 
@@ -546,7 +547,7 @@ connection_initializing: false,
 				s.submit_mcp_form(7, cx);
 
 				assert_eq!(
-					s.feedback,
+					s.feedback.message,
 					if schema.is_object() {
 						"Unsupported choice constraints"
 					} else {
@@ -621,7 +622,7 @@ connection_initializing: false,
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			let request = AgentRequestResult::Available {
 				event_id: 8,
@@ -672,7 +673,7 @@ connection_initializing: false,
             assert_eq!(s.mcp_answers["agree"],false);
 
             s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
-            s.submit_mcp_form(7,cx);assert_eq!(s.feedback,"No service profile is configured.");
+            s.submit_mcp_form(7,cx);assert_eq!(s.feedback.message,"No service profile is configured.");
         });
 		}
 	}

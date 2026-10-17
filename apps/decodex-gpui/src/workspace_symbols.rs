@@ -13,8 +13,8 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 37]> = LazyLock::new(|| {
-	let sources: [&[u8]; 37] = [
+static IMAGES: LazyLock<[Arc<Image>; 36]> = LazyLock::new(|| {
+	let sources: [&[u8]; 36] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
@@ -41,7 +41,6 @@ static IMAGES: LazyLock<[Arc<Image>; 37]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/power-off.png"),
 		include_bytes!("../../../assets/workspace-symbols/eye.png"),
 		include_bytes!("../../../assets/workspace-symbols/eye-slash.png"),
-		include_bytes!("../../../assets/workspace-symbols/lock.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-sign-in.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-warning.png"),
 		include_bytes!("../../../assets/workspace-symbols/reset-cards.png"),
@@ -84,7 +83,6 @@ pub(super) enum Symbol {
 	PowerOff,
 	Eye,
 	EyeSlash,
-	Lock,
 	AccountSignIn,
 	AccountWarning,
 	ResetCards,

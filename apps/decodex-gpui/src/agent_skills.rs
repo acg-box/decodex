@@ -1,4 +1,5 @@
 //! Select native skill references for the existing composer and draft owner.
+use crate::ui_feedback::Feedback;
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 
@@ -116,7 +117,7 @@ impl AgentSurface {
 		let filter =
 			self.skills.search.as_ref().map(|input| input.read(cx).content()).unwrap_or("");
 		let Ok(filter) = WireText::new(filter) else {
-			self.feedback = "Skill search is too long.".into();
+			self.feedback = Feedback::warning("Skill search is too long.");
 
 			cx.notify();
 
@@ -173,7 +174,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.attachments.len() >= 16 {
-			self.feedback = "Select at most 16 files, folders or skills.".into();
+			self.feedback = Feedback::warning("Select at most 16 files, folders or skills.");
 		} else {
 			let attachment = AgentAttachmentDto {
 				path: skill.path.clone(),

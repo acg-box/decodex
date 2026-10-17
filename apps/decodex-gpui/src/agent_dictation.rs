@@ -1,4 +1,5 @@
 //! Subscription dictation edits a draft; only the ordinary Send action starts work.
+use crate::ui_feedback::Feedback;
 use std::{
 	collections::VecDeque,
 	future::{self, Future as _},
@@ -44,7 +45,8 @@ impl AgentSurface {
 
 		let Some(profile) = self.profile.clone() else { return };
 		let Ok(mut media) = Media::new(window) else {
-			self.feedback = "Dictation requires the current signed macOS application.".into();
+			self.feedback =
+				Feedback::error("Dictation requires the current signed macOS application.");
 
 			cx.notify();
 
@@ -52,7 +54,7 @@ impl AgentSurface {
 		};
 
 		if !media.command(serde_json::json!({"operation":"dictate","input":self.audio_input})) {
-			self.feedback = "The microphone could not start.".into();
+			self.feedback = Feedback::error("The microphone could not start.");
 
 			cx.notify();
 
@@ -95,7 +97,9 @@ impl AgentSurface {
 						s.apply_dictation(response, cx)
 					} else if s.dictation.is_some() {
 						s.dictation = None;
-						s.feedback="Dictation connection was lost. Your received text remains in the draft.".into();
+						s.feedback = Feedback::error(
+							"Dictation connection was lost. Your received text remains in the draft.",
+						);
 
 						cx.notify();
 					}
@@ -160,7 +164,7 @@ impl AgentSurface {
 
 		if self.composer.read(cx).content() != dictation.expected {
 			self.dictation = None;
-			self.feedback = "Dictation stopped to preserve your edit.".into();
+			self.feedback = Feedback::warning("Dictation stopped to preserve your edit.");
 
 			cx.notify();
 
@@ -181,8 +185,9 @@ impl AgentSurface {
 					{
 						dictation.audio.push_back(audio);
 					} else {
-						self.feedback =
-							"Microphone returned invalid audio. Try recording again.".into();
+						self.feedback = Feedback::error(
+							"Microphone returned invalid audio. Try recording again.",
+						);
 						self.dictation = None;
 						cx.notify();
 						return None;
@@ -195,7 +200,9 @@ impl AgentSurface {
 						> decodex_protocol::MAX_DICTATION_BACKLOG_BYTES
 					{
 						self.dictation = None;
-						self.feedback="Dictation stopped because audio delivery fell behind. Your received text remains in the draft.".into();
+						self.feedback = Feedback::error(
+							"Dictation stopped because audio delivery fell behind. Your received text remains in the draft.",
+						);
 
 						cx.notify();
 
@@ -215,8 +222,9 @@ impl AgentSurface {
 				},
 				Some("ended") => dictation.capture_ended = true,
 				Some("error") => {
-					self.feedback =
-						event["message"].as_str().unwrap_or("Microphone disconnected.").into();
+					self.feedback = Feedback::error(
+						event["message"].as_str().unwrap_or("Microphone disconnected."),
+					);
 					self.dictation = None;
 
 					cx.notify();
@@ -288,9 +296,9 @@ impl AgentSurface {
 				}
 			},
 			DictationPhase::Failed => {
-				self.feedback = status
-					.message
-					.map_or_else(|| "Dictation failed.".into(), |m| m.as_str().into());
+				self.feedback = Feedback::error(
+					status.message.as_ref().map_or("Dictation failed.", |m| m.as_str()),
+				);
 				self.dictation = None;
 			},
 			_ => {},
@@ -734,11 +742,11 @@ mod tests {
 			assert!(!s.sending);
 			s.apply_dictation(response(DictationPhase::Finalizing, "partial"), cx);
 			assert!(s.dictation.is_some());
-			assert_ne!(s.feedback, "No service profile is configured.");
+			assert_ne!(s.feedback.message, "No service profile is configured.");
 			s.apply_dictation(response(DictationPhase::Complete, "Final correction."), cx);
 			assert!(s.dictation.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Draft Final correction.");
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			s.feedback.clear();
 			s.apply_dictation(response(DictationPhase::Complete, "duplicate"), cx);
 			assert!(s.feedback.is_empty());
@@ -783,7 +791,7 @@ mod tests {
 					cx,
 				);
 				assert!(!s.sending);
-				assert_ne!(s.feedback, "No service profile is configured.");
+				assert_ne!(s.feedback.message, "No service profile is configured.");
 				assert_eq!(
 					s.composer.read(cx).content(),
 					match outcome {

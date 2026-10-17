@@ -1,4 +1,5 @@
 //! Compact Agent composer. Controls apply to the next submitted message.
+use crate::ui_feedback::Feedback;
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
@@ -181,7 +182,7 @@ impl AgentSurface {
 		(self.sending && self.workspace.opening_work.is_none() && self.running_turn().is_none())
 			|| (self.running_turn().is_none()
 				&& self.composer.read(cx).content().trim().is_empty()
-				&& (self.feedback == "Message saved · Waiting for agent…"
+				&& (self.feedback.message == "Message saved · Waiting for agent…"
 					|| self.snapshot.as_ref().is_some_and(|snapshot| {
 						snapshot.work_items.iter().any(|work| {
 							Some(&work.id) == self.selected.as_ref()
@@ -288,7 +289,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.feedback = "No service profile is configured.".into();
+			self.feedback = Feedback::error("No service profile is configured.");
 
 			cx.notify();
 
@@ -334,29 +335,35 @@ impl AgentSurface {
 		});
 
 		self.interrupt_task = Some(cx.spawn(async move |surface, cx| {
-            let result = request.await;
-            let _ = surface.update(cx, |s, cx| {
-                if s.interrupting.as_ref() != Some(&target) { return; }
+			let result = request.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.interrupting.as_ref() != Some(&target) {
+					return;
+				}
 
-                let accepted = match result {
-                    Ok((result, snapshot)) => {
-                        if let Some(snapshot) = snapshot { s.apply_result(Ok(snapshot)); }
+				let accepted = match result {
+					Ok((result, snapshot)) => {
+						if let Some(snapshot) = snapshot {
+							s.apply_result(Ok(snapshot));
+						}
 
-                        matches!(result, Ok(AgentCommandResponse::Accepted { .. }))
-                    }
+						matches!(result, Ok(AgentCommandResponse::Accepted { .. }))
+					},
 
-                    Err(_) => false,
-                };
+					Err(_) => false,
+				};
 
-                if !accepted && s.interrupting.as_ref() == Some(&target) {
-                    s.interrupting = None;
-                    s.feedback = "Stopping could not be confirmed. If the response is still running, press Stop again.".into();
-                }
+				if !accepted && s.interrupting.as_ref() == Some(&target) {
+					s.interrupting = None;
+					s.feedback = Feedback::warning(
+						"Stopping could not be confirmed. If the response is still running, press Stop again.",
+					);
+				}
 
-                s.load_history(cx);
-                cx.notify();
-            });
-        }));
+				s.load_history(cx);
+				cx.notify();
+			});
+		}));
 
 		cx.notify();
 	}
@@ -1401,13 +1408,13 @@ impl AgentSurface {
 	fn attach_paths(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
 		for path in paths {
 			if self.attachments.len() >= 16 {
-				self.feedback = "Attach at most 16 files or folders.".into();
+				self.feedback = Feedback::warning("Attach at most 16 files or folders.");
 
 				break;
 			}
 
 			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file() || p.is_dir()) else {
-				self.feedback = "The selected file or folder is not available.".into();
+				self.feedback = Feedback::error("The selected file or folder is not available.");
 
 				continue;
 			};
@@ -1436,7 +1443,8 @@ impl AgentSurface {
 				ClipboardEntry::Image(image) => match save_clipboard_image(image) {
 					Ok(path) => self.attach_paths(vec![path], cx),
 					Err(error) => {
-						self.feedback = format!("Cannot attach clipboard image: {error}");
+						self.feedback =
+							Feedback::error(format!("Cannot attach clipboard image: {error}"));
 
 						cx.notify();
 					},
@@ -1779,7 +1787,8 @@ mod tests {
 				},
 			);
 
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
 
@@ -1942,7 +1951,7 @@ mod tests {
 
 			assert!(!s.escape_stop_armed());
 			assert_eq!(
-				s.feedback, "No service profile is configured.",
+				s.feedback.message, "No service profile is configured.",
 				"second Escape reaches the native interrupt path"
 			);
 		});
@@ -1961,7 +1970,8 @@ mod tests {
 			assert!(s.awaiting_start(cx));
 
 			s.sending = false;
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			assert!(s.awaiting_start(cx));
 
@@ -2036,7 +2046,7 @@ mod tests {
 
 			s.interrupt_current(cx);
 
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 
 			s.uncertain = false;
 

@@ -1,4 +1,5 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
+#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use tokio::runtime::Builder;
 
 #[cfg(feature = "visual-capture")] use crate::shell::agent_surface::ClientProfile;
@@ -85,7 +86,8 @@ impl AgentSurface {
 		self.composer.update(cx, |input, cx| input.set_content("Later draft retained.", cx));
 
 		self.uncertain = true;
-		self.feedback = "Acceptance unknown. Waiting for the exact native receipt.".into();
+		self.feedback =
+			Feedback::warning("Acceptance unknown. Waiting for the exact native receipt.");
 		self.submission.pending = Some(PendingCommand {
 			recovery: None,
 			key: Some(identity.submission_id.clone()),
@@ -152,7 +154,7 @@ mod tests {
 				s.draft_profiles.files.insert("root".into(), vec![sent.clone(), later.clone()]);
 
 				s.uncertain = true;
-				s.feedback = "Acceptance unknown".into();
+				s.feedback = crate::ui_feedback::Feedback::warning("Acceptance unknown");
 				s.submission.pending = Some(PendingCommand {
 					recovery: None,
 					key: Some(identity.submission_id.clone()),

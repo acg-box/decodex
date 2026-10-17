@@ -27,6 +27,7 @@ mod native_updater;
 mod panel_preferences;
 mod settings_surface;
 mod shell;
+mod ui_feedback;
 mod ui_frame;
 mod ui_layout;
 mod ui_loading;

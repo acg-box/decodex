@@ -287,7 +287,7 @@ fn managed_voice_preflight_rejects_unavailable_or_changed_source(cx: &mut TestAp
 			assert!(s.voice.is_none());
 			assert!(s.voice_task.is_none());
 			assert_eq!(
-				s.feedback,
+				s.feedback.message,
 				if changed_source {
 					"Voice start canceled because the conversation changed."
 				} else {

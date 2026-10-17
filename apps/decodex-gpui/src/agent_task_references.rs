@@ -1,4 +1,5 @@
 //! Explicit task selection and per-manager composer drafts.
+use crate::ui_feedback::Feedback;
 use gpui::{AnyElement, AppContext as _, KeyDownEvent};
 
 #[cfg(test)] use crate::shell::agent_surface::composer::{AgentActionDto, HistoryText};
@@ -67,7 +68,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.task_references.len() >= 16 {
-			self.feedback = "Select at most 16 tasks.".into();
+			self.feedback = Feedback::warning("Select at most 16 tasks.");
 		} else {
 			self.task_references.push(reference);
 

@@ -1,4 +1,5 @@
 //! Agent conversation and work overview. The service owns records and execution.
+use crate::ui_feedback::Feedback;
 
 #[path = "agent_activity.rs"] mod activity;
 #[path = "agent_tree.rs"] mod agent_tree;
@@ -230,7 +231,7 @@ pub(crate) struct AgentSurface {
 	command_epoch: u64,
 	sending: bool,
 	uncertain: bool,
-	feedback: String,
+	feedback: Feedback,
 	history: Option<(String, AgentHistoryResult)>,
 	history_task: Option<Task<()>>,
 	history_requested_for: Option<String>,
@@ -273,7 +274,7 @@ impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code, reason = "capture-only interaction proof shares the main module")]
 	pub(crate) fn visual_send_evidence(&self, cx: &Context<Self>) -> serde_json::Value {
-		serde_json::json!({"snapshot":self.snapshot,"history":self.history,"feedback":self.feedback,"sending":self.sending,"uncertain":self.uncertain,"draft":self.composer.read(cx).content()})
+		serde_json::json!({"snapshot":self.snapshot,"history":self.history,"feedback":self.feedback.message,"sending":self.sending,"uncertain":self.uncertain,"draft":self.composer.read(cx).content()})
 	}
 
 	/// Render only protocol-read observations; the capture has no command profile.
@@ -305,7 +306,8 @@ impl AgentSurface {
 			surface.prepare_question_inputs(&request, cx);
 		}
 
-		surface.feedback = "Read-only capture of a disposable service projection".into();
+		surface.feedback =
+			Feedback::neutral("Read-only capture of a disposable service projection");
 
 		surface
 	}
@@ -416,7 +418,7 @@ impl AgentSurface {
 			command_epoch: 0,
 			sending: false,
 			uncertain: false,
-			feedback: String::new(),
+			feedback: Feedback::default(),
 			history: None,
 			history_task: None,
 			history_requested_for: None,
@@ -578,7 +580,7 @@ impl AgentSurface {
 							surface.timeline.latest_follow_work = Some(id.clone());
 						}
 
-						if surface.feedback == "Message saved · Waiting for agent…" {
+						if surface.feedback.message == "Message saved · Waiting for agent…" {
 							let last_reply = |history: &AgentHistoryResult| match history {
 								AgentHistoryResult::Available { entries, .. } => entries
 									.iter()
@@ -762,9 +764,9 @@ impl AgentSurface {
 			return;
 		}
 		if !serde_json::from_str::<serde_json::Value>(&json).is_ok_and(|value| value.is_object()) {
-			self.feedback =
-				"Response must be a JSON object that matches the displayed provider request."
-					.into();
+			self.feedback = Feedback::warning(
+				"Response must be a JSON object that matches the displayed provider request.",
+			);
 
 			cx.notify();
 
@@ -793,10 +795,10 @@ impl AgentSurface {
 		}
 
 		let Ok(response_json) = HistoryText::new(json) else {
-			self.feedback = format!(
+			self.feedback = Feedback::warning(format!(
 				"Response is too large after encoding (limit {} bytes). Shorten your answers and retry; your entries are preserved.",
 				decodex_protocol::MAX_HISTORY_INLINE_BYTES
-			);
+			));
 
 			cx.notify();
 
@@ -917,7 +919,7 @@ impl AgentSurface {
 		}
 
 		if let Some(error) = self.composer_capability_error(cx) {
-			self.feedback = error.into();
+			self.feedback = Feedback::error(error);
 
 			cx.notify();
 
@@ -965,7 +967,7 @@ impl AgentSurface {
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
-				self.feedback = message;
+				self.feedback = Feedback::error(message);
 
 				cx.notify();
 			},
@@ -1027,7 +1029,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.feedback = "No service profile is configured.".into();
+			self.feedback = Feedback::error("No service profile is configured.");
 
 			cx.notify();
 
@@ -1036,7 +1038,7 @@ impl AgentSurface {
 
 		if !self.command_connection_ready() {
 			self.feedback =
-				"Connection unavailable. Draft retained; refresh before sending.".into();
+				Feedback::error("Connection unavailable. Draft retained; refresh before sending.");
 
 			cx.notify();
 
@@ -1048,7 +1050,7 @@ impl AgentSurface {
 			match self.command_draft_copy(cx) {
 				Ok(copy) => Some(copy),
 				Err(message) => {
-					self.feedback = message.into();
+					self.feedback = Feedback::error(message);
 
 					cx.notify();
 
@@ -1081,7 +1083,7 @@ impl AgentSurface {
 		}
 
 		self.sending = true;
-		self.feedback = "Sending…".into();
+		self.feedback = Feedback::neutral("Sending…");
 
 		if pending.steer.is_some() {
 			self.submission.pending = Some(pending.clone());
@@ -1230,9 +1232,9 @@ impl AgentSurface {
 		match result {
 			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
-					"Message saved · Waiting for agent…".into()
+					Feedback::neutral("Message saved · Waiting for agent…")
 				} else {
-					String::new()
+					Feedback::default()
 				};
 
 				if draft == Some(surface.composer.read(cx).content()) {
@@ -1243,14 +1245,15 @@ impl AgentSurface {
 				}
 			},
 			Ok(AgentCommandResponse::Rejected { error }) =>
-				surface.feedback = format!("Not accepted: {error:?}. Draft retained."),
+				surface.feedback =
+					Feedback::error(format!("Not accepted: {error:?}. Draft retained.")),
 			Ok(AgentCommandResponse::PotentiallyDispatched { failure }) => {
 				surface.uncertain = true;
-				surface.feedback = format!(
+				surface.feedback = Feedback::warning(format!(
 					"Acceptance unknown: {failure:?}. Draft retained. Sending is blocked to prevent duplicate effects; inspect history and service state."
-				);
+				));
 			},
-			Err(message) => surface.feedback = message,
+			Err(message) => surface.feedback = Feedback::error(message),
 		}
 	}
 
@@ -1314,7 +1317,9 @@ impl AgentSurface {
 		if self.sending {
 			self.uncertain = true;
 			self.sending = false;
-			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
+			self.feedback = Feedback::warning(
+				"Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.",
+			);
 		}
 
 		self.question_notices = Default::default();
@@ -1616,7 +1621,7 @@ impl AgentSurface {
 				}) {
 					self.interrupting = None;
 				}
-				if self.feedback == "Message saved · Waiting for agent…"
+				if self.feedback.message == "Message saved · Waiting for agent…"
 					&& snapshot.work_items.iter().any(|work| {
 						Some(&work.id) == self.selected.as_ref()
 							&& (work.dispatch_state != AgentDispatchStateDto::Idle
@@ -1745,11 +1750,11 @@ impl AgentSurface {
 		}
 		if !self.sending
 			&& !self.feedback.is_empty()
-			&& self.feedback != "Message saved · Waiting for agent…"
+			&& self.feedback.message != "Message saved · Waiting for agent…"
 		{
 			return Some((
 				if self.uncertain { "Check delivery" } else { "Message status" },
-				self.feedback.clone(),
+				self.feedback.message.clone(),
 				false,
 			));
 		}
@@ -2093,7 +2098,7 @@ impl AgentSurface {
 		let active = self.response_in_progress(work)
 			|| (self.native_agents.selected.is_none()
 				&& self.selected.as_ref() == Some(&work.id)
-				&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+				&& (self.sending || self.feedback.message == "Message saved · Waiting for agent…"));
 
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
@@ -3149,7 +3154,7 @@ mod tests {
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
 			assert_eq!(
-				surface.feedback,
+				surface.feedback.message,
 				"Refresh account defaults for this directory before sending."
 			);
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
@@ -3161,7 +3166,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
-			assert_eq!(surface.feedback, "No service profile is configured.");
+			assert_eq!(surface.feedback.message, "No service profile is configured.");
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
 		});
@@ -3308,7 +3313,8 @@ mod tests {
 				work.active_turn_id = None;
 			}
 
-			s.feedback = "Message saved · Waiting for agent…".into();
+			s.feedback =
+				crate::ui_feedback::Feedback::neutral("Message saved · Waiting for agent…");
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
 
@@ -3385,7 +3391,7 @@ mod tests {
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |surface, _| {
-			assert_eq!(surface.feedback, "No service profile is configured.");
+			assert_eq!(surface.feedback.message, "No service profile is configured.");
 			assert!(!surface.sending);
 		});
 	}

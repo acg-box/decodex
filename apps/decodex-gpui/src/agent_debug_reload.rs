@@ -1,5 +1,6 @@
 //! Reload presentation reads without replacing drafts or restarting runtime work.
 use super::{AgentSurface, Context, LoadState};
+use crate::ui_feedback::Feedback;
 
 impl AgentSurface {
 	pub(crate) fn debug_reload(&mut self, cx: &mut Context<Self>) -> bool {
@@ -10,8 +11,9 @@ impl AgentSurface {
 			|| self.sending
 			|| self.submission.command.is_some()
 		{
-			self.feedback =
-				"Finish voice input or the pending send before reloading the workspace.".into();
+			self.feedback = Feedback::warning(
+				"Finish voice input or the pending send before reloading the workspace.",
+			);
 			cx.notify();
 			return false;
 		}

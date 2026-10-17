@@ -1,4 +1,5 @@
 //! Explicit conflict reconciliation; copies retain exact service ownership.
+use crate::ui_feedback::Feedback;
 #[path = "agent_draft_export.rs"] mod export;
 
 use crate::shell::agent_surface::drafts::storage::{
@@ -275,7 +276,7 @@ impl AgentSurface {
 			self.restore_unbound_draft(cx);
 		}
 
-		self.feedback = "Draft changes saved. Nothing was sent.".into();
+		self.feedback = Feedback::success("Draft changes saved. Nothing was sent.");
 
 		self.save_draft_document(cx);
 	}

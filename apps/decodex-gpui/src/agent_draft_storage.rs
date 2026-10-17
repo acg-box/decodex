@@ -1,4 +1,5 @@
 //! Local cold recovery and background publication of unsent desktop inputs.
+use crate::ui_feedback::Feedback;
 #[path = "agent_ordinary_storage.rs"] mod ordinary;
 #[path = "agent_draft_recovery.rs"] mod recovery;
 
@@ -405,9 +406,9 @@ impl AgentSurface {
 						storage.quitting = false;
 
 						if result == Some(false) {
-							surface.feedback =
-								"Quit canceled: drafts are not saved. Keep this window open."
-									.into();
+							surface.feedback = Feedback::error(
+								"Quit canceled: drafts are not saved. Keep this window open.",
+							);
 						}
 
 						cx.notify();
@@ -851,7 +852,9 @@ impl Drafts {
 		});
 
 		if result.uncertain {
-			result.feedback = "Previous submission acceptance is unknown. Inspect the conversation before sending again.".into();
+			result.feedback = Feedback::warning(
+				"Previous submission acceptance is unknown. Inspect the conversation before sending again.",
+			);
 		}
 
 		result

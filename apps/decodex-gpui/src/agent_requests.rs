@@ -1,4 +1,5 @@
 //! Provider request forms bound to the exact persisted request event.
+use crate::ui_feedback::Feedback;
 
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, prelude::FluentBuilder as _};
 use serde_json::{Map, Value};
@@ -498,7 +499,7 @@ impl AgentSurface {
 			let text = input.read(cx).content().trim();
 
 			if text.is_empty() {
-				self.feedback = "Answer each question before sending.".into();
+				self.feedback = Feedback::warning("Answer each question before sending.");
 
 				cx.notify();
 
@@ -845,7 +846,7 @@ mod timing_tests {
 				visual.simulate_click(allow.center(), gpui::Modifiers::default());
 				surface.read_with(visual, |s, _| {
 					assert_eq!(
-						s.feedback, "No service profile is configured.",
+						s.feedback.message, "No service profile is configured.",
 						"must reach dispatch, not reject the full grant as oversized"
 					);
 				});
@@ -938,7 +939,7 @@ connection_initializing: false,
 			s.question_inputs["format"].update(cx, |input, cx| input.set_content("PDF", cx));
 			s.submit_answers(cx);
 
-			assert_eq!(s.feedback, "No service profile is configured.");
+			assert_eq!(s.feedback.message, "No service profile is configured.");
 			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
 		});
 	}

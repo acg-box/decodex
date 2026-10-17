@@ -66,7 +66,7 @@ struct Drafts {
 	tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	uncertain: bool,
 	steer_pending: Option<PendingCommand>,
-	feedback: String,
+	feedback: crate::ui_feedback::Feedback,
 }
 
 impl AgentSurface {
@@ -161,7 +161,7 @@ impl AgentSurface {
 			tasks: mem::take(&mut self.draft_profiles.tasks),
 			uncertain: self.uncertain,
 			steer_pending: self.submission.pending.take(),
-			feedback: if self.uncertain { self.feedback.clone() } else { String::new() },
+			feedback: if self.uncertain { self.feedback.clone() } else { Default::default() },
 		}
 	}
 
