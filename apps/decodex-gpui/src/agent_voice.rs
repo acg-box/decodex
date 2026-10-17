@@ -356,7 +356,7 @@ impl AgentSurface {
 			Ok(text) => {
 				voice.request =
 					Some(AgentVoiceRequest::Speak { session_id: session.clone(), text });
-				self.feedback = Feedback::neutral("Sending read-aloud request…");
+				self.feedback = Feedback::loading("Sending read-aloud request…");
 			},
 			Err(_) =>
 				self.feedback =
@@ -425,7 +425,7 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			runtime.block_on(AgentClient::new(profile).voice_settings(query_work)).ok()
 		});
-		self.feedback = Feedback::neutral("Checking voice availability…");
+		self.feedback = Feedback::loading("Checking voice availability…");
 		self.voice_task = Some(cx.spawn_in(window, async move |surface, cx| {
             let result = future.await;
             let _ = cx.update(|window, cx| {

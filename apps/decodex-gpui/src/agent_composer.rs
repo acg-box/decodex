@@ -407,8 +407,20 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		let capsule = composer_capsule(native);
-		if let Some(reason) = self.composer_unavailable_reason() {
-			return self.render_blocked_composer(capsule, reason, window, cx);
+		let (blocked, opacity) = crate::ui_feedback::composer_block(
+			self.feedback_scope(),
+			self.composer_unavailable_reason(),
+			window,
+			cx,
+		);
+		let ready = crate::ui_motion::value(
+			"composer-ready-opacity",
+			if blocked.is_none() { 1. } else { 0. },
+			window,
+			cx,
+		);
+		if let Some(reason) = blocked {
+			return self.render_blocked_composer(capsule, reason, opacity, window, cx);
 		}
 		self.update_question_placeholder(cx);
 		let editor = gpui::div()
@@ -456,58 +468,73 @@ impl AgentSurface {
 					s.attach_paths(paths.0.to_vec(), cx);
 				}
 			}))
-			.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
-				d.child(self.composer_question_panel(cx))
-			})
-			.when(
-				self.native_agents.selected.is_none() && self.async_question_composer().is_none(),
-				|d| d.children(self.attachment_row(cx)).children(self.task_reference_row(cx)),
-			)
-			.map(|capsule| {
-				let controls = gpui::div()
-					.id("composer-action-row")
-					.debug_selector(|| "composer-action-row".into())
+			.child(
+				gpui::div()
 					.w_full()
-					.min_w_0()
 					.flex()
-					.items_center()
+					.flex_col()
 					.gap(gpui::px(4.))
+					.opacity(ready)
+					.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
+						d.child(self.composer_question_panel(cx))
+					})
 					.when(
 						self.native_agents.selected.is_none()
-							&& self.dictation.is_none()
-							&& self.voice.is_none()
 							&& self.async_question_composer().is_none(),
 						|d| {
-							d.child(self.composer_control(
-								"attach",
-								"+".into(),
-								"Attachments, skills and microphone",
-								|s, cx| s.toggle_composer_menu("attachments", cx),
-								cx,
-							))
+							d.children(self.attachment_row(cx))
+								.children(self.task_reference_row(cx))
 						},
-					);
-				if self.voice.is_some() {
-					capsule.child(controls.child(editor).child(self.composer_toolbar(window, cx)))
-				} else {
-					capsule
-						.when(
-							!(self.native_agents.selected.is_some()
-								&& matches!(
-									self.native_agents.connection,
-									super::native_agents::NativeConnection::ParentManaged
-								)),
-							|capsule| capsule.child(editor),
-						)
-						.child(controls.child(self.composer_toolbar(window, cx)))
-				}
-			})
+					)
+					.map(|capsule| {
+						let controls = gpui::div()
+							.id("composer-action-row")
+							.debug_selector(|| "composer-action-row".into())
+							.w_full()
+							.min_w_0()
+							.flex()
+							.items_center()
+							.gap(gpui::px(4.))
+							.when(
+								self.native_agents.selected.is_none()
+									&& self.dictation.is_none()
+									&& self.voice.is_none()
+									&& self.async_question_composer().is_none(),
+								|d| {
+									d.child(self.composer_control(
+										"attach",
+										"+".into(),
+										"Attachments, skills and microphone",
+										|s, cx| s.toggle_composer_menu("attachments", cx),
+										cx,
+									))
+								},
+							);
+						if self.voice.is_some() {
+							capsule.child(
+								controls.child(editor).child(self.composer_toolbar(window, cx)),
+							)
+						} else {
+							capsule
+								.when(
+									!(self.native_agents.selected.is_some()
+										&& matches!(
+											self.native_agents.connection,
+											super::native_agents::NativeConnection::ParentManaged
+										)),
+									|capsule| capsule.child(editor),
+								)
+								.child(controls.child(self.composer_toolbar(window, cx)))
+						}
+					}),
+			)
 	}
 
 	fn render_blocked_composer(
 		&self,
 		capsule: Stateful<Div>,
 		reason: &'static str,
+		opacity: f32,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
@@ -535,6 +562,7 @@ impl AgentSurface {
 			gpui::div()
 				.id("composer-blocked")
 				.debug_selector(|| "composer-blocked".into())
+				.opacity(opacity)
 				.w_full()
 				.min_h(gpui::px(51.))
 				.px(gpui::px(8.))

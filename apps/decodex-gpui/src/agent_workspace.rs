@@ -54,7 +54,7 @@ use crate::{
 		},
 		workspace_symbols,
 	},
-	ui_feedback::Tone,
+	ui_feedback::{self, Feedback, Tone},
 	ui_loading,
 	ui_motion::{self, SmoothControl, TabReveal},
 };
@@ -964,20 +964,12 @@ impl AgentSurface {
 			return gpui::div()
 				.flex_none()
 				.w_full()
-				.when(
-					!feedback.is_empty()
-						&& !matches!(feedback.message.as_str(), "Sent" | "Sending…"),
-					|d| {
-						d.child(
-							feedback.tone.banner(
-								feedback
-									.tone
-									.row("native-conversation-feedback", &feedback.message)
-									.justify_center(),
-							),
-						)
-					},
-				)
+				.child(ui_feedback::notice(
+					"conversation-feedback",
+					self.feedback_scope(),
+					(!matches!(feedback.message.as_str(), "Sent" | "Sending…"))
+						.then(|| feedback.clone()),
+				))
 				.child(self.render_composer(window, cx));
 		}
 
@@ -2356,12 +2348,30 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn feedback_scope(&self) -> SharedString {
+		format!(
+			"{:?}:{:?}:{:?}",
+			self.selected, self.native_agents.selected, self.workspace.new_conversation
+		)
+		.into()
+	}
+
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
+		ui_feedback::notice(
+			"conversation-feedback",
+			self.feedback_scope(),
+			self.conversation_feedback(),
+		)
+		.action(self.can_keep_both_drafts().then(|| self.keep_both_draft_button(cx)))
+		.into_any_element()
+	}
+
+	fn conversation_feedback(&self) -> Option<Feedback> {
 		if self.connection_initializing()
 			|| (self.composer_unavailable_reason().is_some()
 				&& self.draft_storage_notice().is_none())
 		{
-			return gpui::div().into_any_element();
+			return None;
 		}
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
@@ -2381,55 +2391,40 @@ impl AgentSurface {
 		let compacting = selected.is_some_and(|work| self.has_active_compaction(work));
 
 		if self.sending && !compacting {
-			return gpui::div().into_any_element();
+			return None;
 		}
 
-		let status = if self.uncertain {
-			Some((
+		if self.uncertain {
+			Some(Feedback::warning(
 				"Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.",
-				Tone::Warning,
 			))
 		} else if let Some(notice) = self.draft_storage_notice() {
-			Some((notice, Tone::Error))
+			Some(Feedback::error(notice))
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
-			Some(("In use by another app · Your draft is kept", Tone::Warning))
+			Some(Feedback::warning("In use by another app · Your draft is kept"))
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_failed")) {
-			Some(("The current operation could not complete.", Tone::Error))
+			Some(Feedback::error("The current operation could not complete."))
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_needs_attention")) {
-			Some(("This conversation needs attention.", Tone::Warning))
+			Some(Feedback::warning("This conversation needs attention."))
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			Some(("Connection unavailable · Reconnecting", Tone::Warning))
+			Some(Feedback::warning("Connection unavailable · Reconnecting"))
 		} else if compacting {
-			Some(("Compacting context", Tone::Neutral))
+			Some(Feedback::loading("Compacting context"))
 		} else if !self.feedback.is_empty()
 			&& self.feedback.message != "Message saved · Waiting for agent…"
 		{
-			Some((self.feedback.message.as_str(), self.feedback.tone))
+			Some(self.feedback.clone())
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				AgentDispatchStateDto::Unknown =>
-					Some(("Connection interrupted · Checking delivery", Tone::Warning)),
+					Some(Feedback::warning("Connection interrupted · Checking delivery")),
 				_ => None,
 			})
 		}
-		.or_else(|| notice.as_ref().map(|(_, detail, _)| (detail.as_str(), Tone::Error)))
+		.or_else(|| notice.as_ref().map(|(_, detail, _)| Feedback::error(detail)))
 		.or_else(|| {
-			(!self.archive.feedback.is_empty())
-				.then_some((self.archive.feedback.as_str(), Tone::Neutral))
-		});
-		let Some((label, tone)) = status else {
-			return gpui::div().into_any_element();
-		};
-
-		tone.banner(
-			tone.row("conversation-activity-status", label)
-				.debug_selector(|| "conversation-activity-status".into())
-				.justify_center()
-				.when(self.can_keep_both_drafts(), |row| {
-					row.child(self.keep_both_draft_button(cx))
-				}),
-		)
-		.into_any_element()
+			(!self.archive.feedback.is_empty()).then(|| Feedback::neutral(&self.archive.feedback))
+		})
 	}
 }
 
@@ -2760,6 +2755,8 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("agent-composer").is_some());
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
+		thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 	}
 
@@ -3102,6 +3099,11 @@ mod tests {
 		});
 		visual.update(|window, cx| {
 			window.draw(cx).clear(cx);
+		});
+		assert!(visual.debug_bounds("composer-blocked").is_some(), "retain the lock during exit");
+		thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
+			crate::ui_frame::draw_frame(window, cx);
 			window.focus(&input.focus_handle(cx), cx);
 		});
 		assert!(visual.debug_bounds("composer-blocked").is_none());
