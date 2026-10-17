@@ -7,7 +7,7 @@ default-filter = 'not (binary_id(decodex-gpui::bin/decodex-native-glass-probe) o
 # cleanup. Serialize this group so validation results do not depend on host load.
 [test-groups]
 app-server-process = { max-threads = 1 }
-native-media = { max-threads = 1 }
+native-media       = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter     = 'test(account_launch::process::tests::)'

@@ -51,7 +51,7 @@ libc                   = { version = "~0.2" }
 libwebrtc              = { version = "~0.3" }
 objc2-audio-toolbox    = { version = "~0.3", default-features = false, features = ["AUComponent", "AudioComponent", "AudioUnitProperties", "objc2-core-audio-types", "std"] }
 objc2-core-audio-types = { version = "~0.3", default-features = false, features = ["CoreAudioBaseTypes", "std"] }
-objc2-core-foundation = { version = "~0.3", default-features = false, features = ["CFString", "std"] }
+objc2-core-foundation  = { version = "~0.3", default-features = false, features = ["CFString", "std"] }
 percent-encoding       = { version = "~2.3" }
 redb                   = { version = "~4.3", default-features = false }
 regex                  = { version = "~1.13" }
