@@ -17,9 +17,9 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::wire_test_support;
 use crate::{
 	shell::agent_surface::{
-		self, AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, ClientProfile,
-		Context, EntityId, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
-		SharedString, Styled, StyledImage, Task, WireText, auth_recovery_entry, markdown,
+		self, AgentClient, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
+		StyledImage, Task, WireText, auth_recovery_entry, markdown,
 	},
 	ui_loading, ui_motion,
 };

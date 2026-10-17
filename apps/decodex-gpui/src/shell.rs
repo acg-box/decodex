@@ -87,13 +87,14 @@ use decodex_protocol::{
 	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus,
 	AccountObservedStateDto, AccountOperationKindDto, AccountOperationPhaseDto,
-	AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto, AccountSelectionModeDto,
-	AppServerCapability, ClientFailure, ClientProfile, ConversationNativeSettings,
-	ConversationRecoveryAction, ConversationState, ConversationSummary, DesktopOrdinaryDraft,
-	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, EntityRevision, HistoryItemDto,
-	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, IdempotencyKey,
-	NativeProcessDiagnostics, WireText,
+	AccountProfileResult, AccountSelectionModeDto, AppServerCapability, ClientFailure,
+	ClientProfile, ConversationNativeSettings, ConversationRecoveryAction, ConversationState,
+	ConversationSummary, DesktopOrdinaryDraft, DoctorComponent, DoctorIssue, DoctorStatus,
+	EntityId, EntityRevision, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryTurnRole, IdempotencyKey, NativeProcessDiagnostics, WireText,
 };
+#[cfg(any(test, feature = "visual-capture"))]
+use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto};
 #[cfg(feature = "visual-capture")] use decodex_protocol::{ConversationTitle, ProviderThreadId};
 use quota_meter::ResetFill;
 

@@ -1,6 +1,7 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
+#[cfg(any(test, feature = "visual-capture"))] use super::Brief;
 use super::{
-	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Brief, Context, FluentBuilder, GREEN,
+	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, FluentBuilder, GREEN,
 	InteractiveElement, IntoElement, ParentElement, Row, Styled, TEXT_MUTED,
 };
 use crate::ui_theme::TEXT;

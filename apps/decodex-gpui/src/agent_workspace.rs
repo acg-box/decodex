@@ -40,16 +40,18 @@ fn action_accessible_label(id: &str, label: &str) -> String {
 }
 
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
+#[cfg(any(test, feature = "visual-capture"))]
+use crate::shell::agent_surface::{
+	AgentRequestResult, AgentSnapshotDto, AgentSnapshotResult, ConversationReasoningEffort,
+};
 use crate::{
 	shell::{
 		WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
-			AgentDispatchStateDto, AgentHistoryResult, AgentRequestResult, AgentSnapshotDto,
-			AgentSnapshotResult, AgentSurface, AgentWorkItemDto, Context,
-			ConversationReasoningEffort, FluentBuilder, InteractiveElement, IntoElement, LoadState,
-			ParentElement, Render, Role, SharedString, StatefulInteractiveElement, Styled,
-			SubmitComposer, Window, activity::HistoryScrollAnchor, creation_setup, graph, prompts,
-			ui_theme,
+			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
+			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
+			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
+			activity::HistoryScrollAnchor, creation_setup, graph, prompts, ui_theme,
 		},
 		workspace_symbols,
 	},

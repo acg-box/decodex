@@ -2,9 +2,8 @@
 use tokio::runtime::Builder;
 
 #[cfg(feature = "visual-capture")] use crate::shell::agent_surface::ClientProfile;
-use crate::shell::agent_surface::{
-	AgentClient, AgentCommandResponse, AgentSurface, Context, PendingCommand,
-};
+#[cfg(any(test, feature = "visual-capture"))] use crate::shell::agent_surface::PendingCommand;
+use crate::shell::agent_surface::{AgentClient, AgentCommandResponse, AgentSurface, Context};
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	ConversationWorkingDirectory, EntityId, IdempotencyKey, WireText,
