@@ -30,6 +30,7 @@ mod shell;
 mod ui_frame;
 mod ui_loading;
 mod ui_motion;
+mod ui_performance;
 mod ui_preferences;
 mod ui_scroll;
 mod ui_theme;

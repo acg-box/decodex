@@ -224,6 +224,7 @@ pub(crate) struct Shell {
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
 	titlebar: native_titlebar::Titlebar,
+	performance: Entity<crate::ui_performance::PerformanceIsland>,
 	navigation: navigation::NavigationHistory,
 	status_open: bool,
 	dismissed_notifications: RefCell<HashSet<(String, String)>>,
@@ -304,6 +305,7 @@ impl Shell {
 		.detach();
 
 		let agent = cx.new(AgentSurface::new);
+		let performance = cx.new(crate::ui_performance::PerformanceIsland::new);
 
 		cx.observe(&agent, |shell, _, cx| {
 			shell.record_navigation(cx);
@@ -330,6 +332,7 @@ impl Shell {
 
 		window.focus(&root_focus, cx);
 		Self {
+			performance,
 			settings_window: None,
 			settings_selected: Destination::Settings,
 			selected: Destination::Agent,
@@ -2730,6 +2733,23 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
+		.child(
+			gpui::div()
+				.absolute()
+				.top(gpui::px(CONTROL_MARGIN))
+				.left_0()
+				.right_0()
+				.flex()
+				.justify_center()
+				.child(
+					gpui::div()
+						.relative()
+						.child(shell.performance.clone())
+						.when(crate::ui_performance::preference(None), |island| {
+							island.child(shell.titlebar.control())
+						}),
+				),
+		)
 		.child(shell.titlebar.sync())
 		.into_any_element()
 }
@@ -7859,6 +7879,28 @@ mod tests {
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true)]);
+	}
+
+	#[gpui::test]
+	fn performance_island_excludes_only_its_visible_control_from_native_dragging(
+		cx: &mut TestAppContext,
+	) {
+		crate::ui_performance::preference(Some(true));
+		let (shell, visual) = open_shell(cx);
+		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		let pill = visual.debug_bounds("performance-island-toggle").expect("debug activity");
+		let region = visual.debug_bounds("window-drag-region").unwrap();
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert!(controls.iter().any(|b| b.contains(&pill.center())));
+		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		assert!(!controls.iter().any(|b| b.contains(&blank)));
+		crate::ui_performance::preference(Some(false));
+		visual.update(|window, cx| {
+			cx.refresh_windows();
+			window.draw(cx).clear(cx);
+		});
+		assert!(visual.debug_bounds("performance-island-toggle").is_none());
 	}
 
 	#[gpui::test]

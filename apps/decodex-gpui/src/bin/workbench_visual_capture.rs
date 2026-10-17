@@ -52,6 +52,7 @@ mod shell;
 #[path = "../ui_loading.rs"]
 mod ui_loading;
 #[path = "../ui_motion.rs"] mod ui_motion;
+#[path = "../ui_performance.rs"] mod ui_performance;
 #[allow(dead_code)]
 #[path = "../ui_preferences.rs"]
 mod ui_preferences;

@@ -807,6 +807,14 @@ impl SettingsSurface {
 						)).child(self.glass_controls(cx)),
 				)
 				.child(
+					group().child(settings_group_title("Developer"))
+						.child(self.preference_control(
+							"debug-mode", "debug-mode-knob", "Debug mode",
+							crate::ui_performance::preference, cx,
+						)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+							.child("Show live rendering and system GPU metrics in the top bar.")),
+				)
+				.child(
 					group()
 						.child(settings_group_title("Panel layout"))
 						.child(self.panel_controls(cx)),
@@ -1160,6 +1168,27 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 		visual.simulate_click(toggle.center(), Default::default());
 		assert!(crate::ui_theme::composer_glass(None));
+	}
+
+	#[gpui::test]
+	fn debug_mode_is_opt_in_and_can_be_disabled_again(cx: &mut TestAppContext) {
+		assert!(!crate::ui_performance::preference(None));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(620.)));
+			window.draw(cx).clear(cx);
+		});
+		let toggle = visual.debug_bounds("debug-mode").expect("debug switch");
+		assert!(toggle.bottom() < gpui::px(620.));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(crate::ui_performance::preference(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(!crate::ui_performance::preference(None));
 	}
 
 	#[gpui::test]
