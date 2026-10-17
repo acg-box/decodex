@@ -50,7 +50,18 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 				.await
 				.unwrap();
 			let id = started["thread"]["id"].as_str().unwrap();
-			let rows = session.client.mcp_server_statuses(id).await.unwrap();
+			let rows = loop {
+				let rows = session.client.mcp_server_statuses(id).await.unwrap();
+
+				if rows.len() == 3
+					&& rows.iter().all(|row| {
+						row["runtimeStatus"]
+							== if row["name"] == "healthy" { "connected" } else { "failed" }
+					}) {
+					break rows;
+				}
+				time::sleep(Duration::from_millis(10)).await;
+			};
 
 			assert_eq!(rows.len(), 3);
 
@@ -84,6 +95,15 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 			for mode in ["healthy", "tools-error", "init-error"] {
 				let row = rows.iter().find(|row| row["name"] == mode).unwrap();
 
+				if mode == "healthy" {
+					assert_eq!(
+						row["toolListMeta"],
+						serde_json::json!({"fixture/catalog":{"page":1,"opaque":[1,"first",null]}}),
+						"first-page opaque metadata must survive tool and status pagination"
+					);
+				} else {
+					assert!(row["toolListMeta"].is_null());
+				}
 				if mode == "init-error" {
 					assert!(row["serverCapabilities"].is_null());
 				} else {

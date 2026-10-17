@@ -21,7 +21,13 @@ for line in sys.stdin:
             }},
         }}
     elif method == "tools/list":
-        response = {"result": {"tools": []}}
+        second = (request.get("params") or {}).get("cursor") == "second"
+        result = {"tools": [], "_meta": {
+            "fixture/catalog": {"page": 2 if second else 1, "opaque": [1, "first", None]}
+        }}
+        if not second:
+            result["nextCursor"] = "second"
+        response = {"result": result}
     else:
         response = {"result": {}}
     print(json.dumps({"jsonrpc": "2.0", "id": request["id"], **response}), flush=True)
