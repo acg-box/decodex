@@ -236,9 +236,49 @@
       "id": "mermaid-punctuation-and-flowchart-grammar",
       "evidence_commit": "9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c",
       "status": "awaiting_user_decision",
-      "value": "Render multiline flowchart labels alongside the earlier bounded grammar proposal.",
-      "maintenance_cost": "Local parser and box layout changes, grammar/width/source-copy regressions and GPUI visual checks.",
-      "recommendation": "Defer pending explicit user choice; current complete-source fallback remains usable."
+      "value": "Other previously proposed bounded flowchart punctuation and grammar forms; multiline node labels are now a separately approved retained subset.",
+      "maintenance_cost": "Additional local parser and edge grammar changes with width/source-copy and GPUI regressions.",
+      "recommendation": "Defer broader grammar pending explicit user choice.",
+      "retained_subset": "mermaid_multiline_flowchart_nodes"
     }
-  ]
+  ],
+  "retained_presentation": {
+    "mermaid_multiline_flowchart_nodes": {
+      "upstream_commit": "9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c",
+      "scope": "Exact <br>, <br/> and <br /> forms in quoted/unquoted flowchart node labels. Forty display cells per visible line; decision marker only on first line. Other markup, edge line breaks and unsupported punctuation keep complete-source fallback.",
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_mermaid/parse.rs#node_label",
+        "apps/decodex-gpui/src/agent_mermaid/draw.rs#render"
+      ],
+      "tests": [
+        "apps/decodex-gpui/src/agent_mermaid/tests.rs",
+        "apps/decodex-gpui/src/agent_mermaid_tests.rs"
+      ],
+      "validation_command": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--all-features",
+        "--all-targets",
+        "-p",
+        "decodex-gpui",
+        "-E",
+        "test(markdown::mermaid::) | test(markdown::mermaid_view::tests::)",
+        "--retries",
+        "0",
+        "--no-fail-fast"
+      ],
+      "validation_result": {
+        "before": "Two new positive regressions failed against the original production parser/layout.",
+        "after_passed": 25,
+        "unmatched_selectors": [],
+        "strict_package_clippy": "passed",
+        "nightly_format": "passed"
+      },
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2457",
+      "limits": "Automated parser/layout and GPUI viewport/copy fixtures. This record does not establish installed-app or live-provider acceptance. Broader optional grammar remains separate."
+    }
+  }
 }

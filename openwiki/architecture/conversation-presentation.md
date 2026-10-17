@@ -10,12 +10,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
+  - id: openwiki-source-bbf48964e1bd60f04ecb7f62
+    resource: repo://apps/decodex-gpui/src/agent_mermaid_tests.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
     resource: repo://apps/decodex-gpui/src/agent_mermaid_view.rs
   - id: openwiki-source-d626966ee70bffd764516a59
     resource: repo://apps/decodex-gpui/src/agent_mermaid/draw.rs
   - id: openwiki-source-63e4988aff5dd37bc614412f
     resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
+  - id: openwiki-source-cdf91143ee7350a723ed596e
+    resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
@@ -44,6 +48,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-64d7588c1af50398568a792e
@@ -54,10 +60,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-15T20:50:23.059Z" }
+generated: { by: "codex", at: "2026-10-17T05:27:59.815Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T20:50:23.059Z
+    at: 2026-10-17T05:27:59.815Z
 ---
 
 
@@ -120,6 +126,10 @@ Streamed model output, dictation and Live captions share a grapheme-safe text re
 ## Mermaid flowcharts
 
 The bounded Mermaid renderer supports stadium start/end nodes such as `A([Start])` alongside rectangular and decision nodes. It draws stadium nodes with rounded corners in all four flowchart directions. Repeated declarations must agree on label and shape. Malformed or unsupported diagrams retain the complete source fallback. Wide supported diagrams scroll horizontally, and the copy action retains the original Mermaid source.
+
+Flowchart node labels accept `<br>`, `<br/>` and `<br />` as line breaks in quoted or unquoted labels. For example, `A["Request<br/>completed"]` renders two visible lines. The 40-display-cell bound applies to each line, and a decision node places its diamond marker on the first line only. Rectangular, decision and stadium nodes retain their routing and width checks in all four directions.
+
+Other HTML, break tags in edge labels, empty labels, malformed quotes and unsupported text retain complete-source fallback. The viewport scrolls wide diagrams without wrapping, and Copy Mermaid source keeps the original tags, quotes and line endings. The [portable evidence index](../../automations/upstream/retained-evidence.json) retains the exact test selector and limits. General punctuation and edge grammar remain separate adoption decisions.
 
 ## Change and verify
 
