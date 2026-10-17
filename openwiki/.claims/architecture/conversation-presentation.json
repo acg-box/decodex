@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c264e1f997b8a1956a6b7ea7f869bb3391e7e8f353d5ebd2a3d424830191a37f",
+  "pageVersion": "sha256:b7c9756cd1633eed983c5f58f602c0d2d4828e60af410d1bff2cefc395966839",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -52,11 +52,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/draw.rs",
-          "version": "repo-file-v1:sha256:b2e78b6a4f58e736eff52b89c091d930e7c8a552169a54d1c006cf74efa32462"
+          "version": "repo-file-v1:sha256:b1ee47a6048f0b48c55024a7bcead1084fcd1faeff43793026d99e8d2744683b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/parse.rs",
-          "version": "repo-file-v1:sha256:b1aa1a9230393cd057c29419aee9907c4275dab031544b26e8f68067a9910e5a"
+          "version": "repo-file-v1:sha256:86b2a1c32f8006ee9ab7a044552a4442e03f21c2490e9fa5ac901d69e776d850"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
@@ -205,10 +205,46 @@
           "version": "repo-lines-v1:sha256:c0481432ff24fee5cc143947297aa8b2bc9ea8ece1f2e64790f227bac0a6bb0c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDY1ZjAzODY3NWQ5NmEzNWZhNjYwY2JjMGIxYWIzYmU0NjVmODk4ZjZjYjlmYmI3YmI5MGNhODliNWMzMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5ODc3MDAxOWZlZTNlNWU5ZWM4MWY0Mzk5ZWM5M2I1NjljZTRjMWU0YjM2YjI2MTEzYTM2YmU1ZDRlYWJiNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4MGQ5MGU5M2I3YmU0NzdkZTIyYTY4NjY2YjRmNTdlMWQ0YWY0NDQ1NzExYWY5YWEzMjQ1NDM4MmU3ZmNhMTQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b690f9334fc04013b59557364bb5b6f7",
+      "statement": "Flowchart node labels decode exactly <br>, <br/> and <br /> in quoted or unquoted labels, validate each visible line against the existing 40-cell bound, and draw the decision marker only on the first line.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid/draw.rs",
+          "version": "repo-file-v1:sha256:b1ee47a6048f0b48c55024a7bcead1084fcd1faeff43793026d99e8d2744683b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid/parse.rs",
+          "version": "repo-file-v1:sha256:86b2a1c32f8006ee9ab7a044552a4442e03f21c2490e9fa5ac901d69e776d850"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid/tests.rs",
+          "version": "repo-file-v1:sha256:7cf9c2043be49ad7faeaa3b70f0e91eb3431a0ee78e13e6082e420c5d890403b"
+        }
+      ]
+    },
+    {
+      "id": "claim_528affd4c530424c9480ecfe1c3216e6",
+      "statement": "Multiline Mermaid diagrams retain exact source tags and line endings for copying and complete-source fallback for unsupported markup or incomplete fences; the GPUI regression checks narrow-window scrolling without wrapping.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid_tests.rs",
+          "version": "repo-file-v1:sha256:4314275961a4711304b58b7516643ecd4f6c8ca63c17f1bba52223d4b9cee016"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
+          "version": "repo-file-v1:sha256:49c64720ee124ea8298a210af636648db3d891cb46b07a2691c1c88ea2be9d0d"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:94cb983cf8c368491e8b61e2467526a7225100aecd9faf92a06a58d3f5df0dac"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-15T20:50:23.059Z"
+    "at": "2026-10-17T05:27:59.815Z"
   }
 }

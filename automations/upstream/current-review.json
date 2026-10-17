@@ -54,8 +54,12 @@
       "tests_read": "mermaid/src/tests.rs#stadiums_with_other_shapes_in_every_direction,quoted_flowchart_labels_reject_malformed_and_unsafe_text,rejects_partial_or_unsupported_input,source_graph_and_width_limits; tui/src/streaming/mermaid_tests.rs#mermaid_stream_closes_resizes_and_preserves_raw_source,mermaid_controller_keeps_diagram_mutable_and_returns_original_source",
       "decodex_consumer": "apps/decodex-gpui/src/agent_mermaid/parse.rs#check_label rejects<,>,quotes and controls. Its tests intentionally preserve unsupported source. The native TUI renderer is not the GPUI renderer.",
       "tests_executed": [],
-      "validation_and_limits": "Do not expand the local grammar automatically. Optional multiline-label rendering has a current safe source fallback; no correctness defect established.",
-      "runtime_delivery": "No local capability adoption; see the public delivery reference and qualification limits."
+      "validation_and_limits": "Initial source review classified multiline node labels as optional. The user then approved this subset. The bounded local parser/layout and GPUI adaptation passed25 selected tests after two new positive regressions failed against the original implementation. Unsupported broader punctuation/edge grammar remains a separate decision.",
+      "runtime_delivery": "The upstream TUI renderer remains separate. Approved local GPUI multiline-label adoption is recorded in PR2457 and retained-evidence.json; native-runtime qualification and installed-app acceptance remain distinct.",
+      "local_adaptation": {
+        "delivery_reference": "https://github.com/acg-box/decodex/pull/2457",
+        "requirements": "automations/upstream/retained-evidence.json#retained_presentation.mermaid_multiline_flowchart_nodes"
+      }
     },
     {
       "commit": "592964c0cb4d8f1b0c32d2a81f2bc602e7ae88cc",

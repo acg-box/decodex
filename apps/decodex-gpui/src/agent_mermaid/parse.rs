@@ -136,7 +136,7 @@ fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
 		let (label, remaining) =
 			rest[open.len()..].split_once(close).ok_or(RenderError::Unsupported)?;
 
-		check_label(label)?;
+		let label = node_label(label)?;
 
 		*rest = remaining;
 
@@ -146,10 +146,33 @@ fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
 			return Err(RenderError::Unsupported);
 		}
 
-		node.label = label.to_owned();
+		node.label = label;
 		node.shape = shape;
 		node.declared = true;
 	}
 
 	Ok(index)
+}
+
+// Adapted from openai/codex at 9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c.
+fn node_label(label: &str) -> Result<String, RenderError> {
+	let label = if let Some(quoted) = label.strip_prefix('"') {
+		if quoted.starts_with('`') {
+			return Err(RenderError::Unsupported);
+		}
+
+		quoted.strip_suffix('"').ok_or(RenderError::Unsupported)?
+	} else {
+		label
+	};
+	let label = label.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n");
+
+	if label.trim().is_empty() {
+		return Err(RenderError::Unsupported);
+	}
+	for line in label.split('\n').filter(|line| !line.is_empty()) {
+		check_label(line)?;
+	}
+
+	Ok(label)
 }
