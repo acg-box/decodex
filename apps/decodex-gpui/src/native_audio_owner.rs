@@ -1,6 +1,6 @@
-//! Sole owner of the application's Apple audio graph. Network work never runs here.
+//! Sole owner of Apple audio I/O. Network work never runs here.
 //!
-//! A session leases PCM queues, not the thread-bound engine. Cancellation pauses hardware
+//! A session leases PCM queues, not thread-bound hardware. Cancellation pauses capture
 //! independently of transport teardown. Returned queues permit warm reuse; a new session
 //! that overtakes teardown gets a fresh graph. Identity checks discard late old releases.
 //! Standard channels and atomics provide the existing process-local lifecycle; no async
@@ -22,6 +22,13 @@ pub(in crate::shell::agent_surface::voice) enum Mode {
 	Live,
 }
 impl Mode {
+	fn slot(self) -> usize {
+		match self {
+			Self::Dictation => 0,
+			Self::Live => 1,
+		}
+	}
+
 	fn rate(self) -> f64 {
 		match self {
 			Self::Dictation => f64::from(decodex_protocol::DICTATION_SAMPLE_RATE),
@@ -57,10 +64,14 @@ struct Key {
 }
 enum Command {
 	#[cfg(test)]
-	CheckPrepared(SyncSender<bool>),
+	CheckPrepared(Mode, SyncSender<bool>),
 	#[cfg(test)]
 	CheckCaptureChannels(SyncSender<Option<u32>>),
-	Prepare(Key),
+	Prepare(u32),
+	PrepareLive {
+		device: u32,
+		cancelled: Arc<AtomicBool>,
+	},
 	Start {
 		key: Key,
 		state: Arc<State>,
@@ -222,9 +233,6 @@ impl Prepared {
 			engine.pause();
 			return true;
 		}
-		if engine.pump().is_err() {
-			return false;
-		}
 		if engine.running() {
 			self.recovery = None;
 			return true;
@@ -251,7 +259,11 @@ impl Prepared {
 
 	fn pause(&self) {
 		if let Some(engine) = &self.engine {
-			engine.pause();
+			if self.state.as_ref().is_some_and(|state| state.cancelled.load(Ordering::Acquire)) {
+				engine.cancel();
+			} else {
+				engine.pause();
+			}
 		}
 		if let Some(state) = &self.state {
 			state.running.store(false, Ordering::Release);
@@ -294,8 +306,6 @@ fn start(
 	if state.cancelled.load(Ordering::Acquire) {
 		return Err(AudioError::Cancelled);
 	}
-	while graph.pcm.as_mut().expect("available PCM").captured.pop().is_ok() {}
-	graph.engine().clear_playback().map_err(|()| AudioError::Start)?;
 	graph.follow_route().map_err(|()| AudioError::Prepare)?;
 	if graph.engine().configuration_changed() && key.mode == Mode::Dictation {
 		graph.rebuild().map_err(|()| AudioError::Prepare)?;
@@ -303,7 +313,9 @@ fn start(
 	if state.cancelled.load(Ordering::Acquire) {
 		return Err(AudioError::Cancelled);
 	}
-	graph.engine.as_mut().expect("prepared device").reset_capture();
+	graph.engine().reset_capture().map_err(|()| AudioError::Start)?;
+	while graph.pcm.as_mut().expect("available PCM").captured.pop().is_ok() {}
+	graph.engine().clear_playback().map_err(|()| AudioError::Start)?;
 	graph.recovery = None;
 	graph.paused = false;
 	graph.engine().resume().map_err(|()| AudioError::Start)?;
@@ -312,11 +324,11 @@ fn start(
 	Ok(Session { state, pcm: graph.pcm.take(), owner: commands.clone() })
 }
 fn worker(inbox: Receiver<Command>) {
-	// VoiceProcessingIO changes the process-local input streams even while stopped.
-	// Retain only one graph, releasing the old mode before preparing the next.
-	let mut cached: Option<Prepared> = None;
+	// Input-only dictation can coexist with a paused Live graph. Keep each prepared
+	// resource, but grant capture to only one session across both modes.
+	let mut cached: [Option<Prepared>; 2] = [None, None];
 	loop {
-		let active = cached.as_ref().is_some_and(|graph| graph.state.is_some());
+		let active = cached.iter().flatten().any(|graph| graph.state.is_some());
 		let command = if active {
 			inbox.recv_timeout(Duration::from_millis(5))
 		} else {
@@ -325,26 +337,36 @@ fn worker(inbox: Receiver<Command>) {
 		match command {
 			#[cfg(test)]
 			Ok(Command::CheckCaptureChannels(reply)) => {
-				let channels =
-					cached.as_ref().filter(|graph| graph.key.mode == Mode::Dictation).map(
-						|graph| unsafe { graph.engine().sink.inputFormatForBus(0).channelCount() },
-					);
+				let channels = cached[Mode::Dictation.slot()]
+					.as_ref()
+					.filter(|graph| graph.key.mode == Mode::Dictation)
+					.map(|graph| graph.engine().capture_channels().expect("input format"));
 				let _ = reply.send(channels);
 			},
 			#[cfg(test)]
-			Ok(Command::CheckPrepared(reply)) => {
-				let quiet = cached.as_ref().is_some_and(|graph| {
-					!graph.engine().running()
-						&& graph.pcm.as_ref().is_some_and(|pcm| pcm.captured.is_empty())
-				});
+			Ok(Command::CheckPrepared(mode, reply)) => {
+				let quiet = cached[mode.slot()]
+					.as_ref()
+					.is_some_and(|graph| !graph.engine().running() && graph.pcm.is_some());
 				let _ = reply.send(quiet);
 			},
-			Ok(Command::Prepare(key)) =>
-				if !cached.as_ref().is_some_and(|graph| graph.state.is_some()) {
-					let _ = prepare(&mut cached, key);
+			Ok(Command::Prepare(device)) =>
+				if !cached.iter().flatten().any(|graph| graph.state.is_some()) {
+					let _ = prepare(
+						&mut cached[Mode::Dictation.slot()],
+						Key { device, mode: Mode::Dictation },
+					);
 				},
+			Ok(Command::PrepareLive { device, cancelled }) => {
+				if !cancelled.load(Ordering::Acquire)
+					&& !cached.iter().flatten().any(|graph| graph.state.is_some())
+				{
+					let _ =
+						prepare(&mut cached[Mode::Live.slot()], Key { device, mode: Mode::Live });
+				}
+			},
 			Ok(Command::Start { key, state, commands, reply }) => {
-				let busy = cached.as_ref().is_some_and(|graph| {
+				let busy = cached.iter().flatten().any(|graph| {
 					graph
 						.state
 						.as_ref()
@@ -353,12 +375,12 @@ fn worker(inbox: Receiver<Command>) {
 				let result = if busy {
 					Err(AudioError::Busy)
 				} else {
-					if let Some(graph) = &cached
-						&& graph.engine().running()
-					{
-						graph.pause();
+					for graph in cached.iter().flatten() {
+						if graph.engine().running() {
+							graph.pause();
+						}
 					}
-					let slot = &mut cached;
+					let slot = &mut cached[key.mode.slot()];
 					let result = start(slot, key, state, &commands);
 					if matches!(result, Err(AudioError::Prepare | AudioError::Start)) {
 						*slot = None;
@@ -368,26 +390,28 @@ fn worker(inbox: Receiver<Command>) {
 				let _ = reply.send(result);
 			},
 			Ok(Command::Pause { state, reply }) => {
-				let drained =
-					if let Some(graph) = cached.as_mut().filter(|graph| graph.matches(&state)) {
-						graph.paused = true;
-						graph.pause();
-						graph
-							.engine
-							.as_mut()
-							.expect("prepared device")
-							.finish_capture()
-							.map_err(|()| AudioError::Capture)
-					} else {
-						Ok(true)
-					};
+				let drained = if let Some(graph) =
+					cached.iter_mut().flatten().find(|graph| graph.matches(&state))
+				{
+					graph.paused = true;
+					graph.pause();
+					graph
+						.engine
+						.as_mut()
+						.expect("prepared device")
+						.finish_capture()
+						.map_err(|()| AudioError::Capture)
+				} else {
+					Ok(true)
+				};
 				if !matches!(drained, Ok(false)) {
 					state.cancelled.store(true, Ordering::Release);
 				}
 				let _ = reply.send(drained);
 			},
 			Ok(Command::Release { state, pcm }) => {
-				if let Some(graph) = cached.as_mut().filter(|graph| graph.matches(&state)) {
+				if let Some(graph) = cached.iter_mut().flatten().find(|graph| graph.matches(&state))
+				{
 					graph.pause();
 					graph.pcm = Some(pcm);
 					graph.state = None;
@@ -396,18 +420,20 @@ fn worker(inbox: Receiver<Command>) {
 			Err(mpsc::RecvTimeoutError::Disconnected) => break,
 			Err(mpsc::RecvTimeoutError::Timeout) => {},
 		}
-		if let Some(graph) = &mut cached
-			&& let Some(state) = graph.state.clone()
-		{
-			if graph.paused || state.cancelled.load(Ordering::Acquire) {
-				if graph.engine().running() {
-					graph.pause();
+		for slot in &mut cached {
+			if let Some(graph) = slot
+				&& let Some(state) = graph.state.clone()
+			{
+				if graph.paused || state.cancelled.load(Ordering::Acquire) {
+					if graph.engine().running() {
+						graph.pause();
+					}
+				} else if !graph.maintain_route() {
+					state.running.store(false, Ordering::Release);
+					*slot = None;
+				} else {
+					state.level.store(graph.engine().level().to_bits(), Ordering::Relaxed);
 				}
-			} else if !graph.maintain_route() {
-				state.running.store(false, Ordering::Release);
-				cached = None;
-			} else {
-				state.level.store(graph.engine().level().to_bits(), Ordering::Relaxed);
 			}
 		}
 	}
@@ -418,7 +444,12 @@ fn owner() -> Result<&'static Owner, AudioError> {
 }
 pub(in crate::shell::agent_surface::voice) fn warm(device: u32) {
 	if let Ok(owner) = owner() {
-		let _ = owner.commands.send(Command::Prepare(Key { device, mode: Mode::Dictation }));
+		let _ = owner.commands.send(Command::Prepare(device));
+	}
+}
+pub(in crate::shell::agent_surface::voice) fn warm_live(device: u32, cancelled: Arc<AtomicBool>) {
+	if let Ok(owner) = owner() {
+		let _ = owner.commands.send(Command::PrepareLive { device, cancelled });
 	}
 }
 #[cfg(test)]

@@ -103,7 +103,14 @@ impl Transport {
 		std::thread::Builder::new()
 			.name("native-voice".into())
 			.spawn(move || match input {
-				Input::Device(id) => call.run(Audio::Pending { device: id, cancelled: stopped }),
+				Input::Device(id) => {
+					// Prepare DSP during signaling, but start capture only after connection.
+					crate::shell::agent_surface::voice::audio::owner::warm_live(
+						id,
+						stopped.clone(),
+					);
+					call.run(Audio::Pending { device: id, cancelled: stopped });
+				},
 				#[cfg(test)]
 				Input::Pcm(pcm) => call.run(Audio::Pcm(pcm)),
 			})
@@ -494,15 +501,6 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn remote_channel_loss_reports_failure_and_releases_buffers() {
 		call_lifecycle(true).await;
-	}
-
-	#[tokio::test]
-	async fn connecting_does_not_open_the_selected_audio_device() {
-		// An invalid device must not be touched until a peer answer connects.
-		let transport = Transport::start_device(u32::MAX).unwrap();
-		event(&transport, "offer").await;
-		assert_eq!(transport.level(), 0.);
-		drop(transport);
 	}
 
 	#[tokio::test]

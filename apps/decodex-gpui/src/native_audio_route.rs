@@ -1,5 +1,6 @@
 //! CoreAudio's default input is a policy, not a permanently selected device ID.
 use block2::RcBlock;
+use objc2_core_foundation::{CFRetained, CFString};
 use std::{
 	ffi::c_void,
 	sync::{
@@ -61,6 +62,27 @@ impl Route {
 		self.requested
 	}
 
+	pub(super) fn input_uid(&self) -> Result<CFRetained<CFString>, ()> {
+		let address = Address { selector: u32::from_be_bytes(*b"uid "), ..INPUT };
+		let mut value: *mut CFString = std::ptr::null_mut();
+		let mut size = size_of_val(&value) as u32;
+		let status = unsafe {
+			AudioObjectGetPropertyData(
+				self.selected,
+				&address,
+				0,
+				std::ptr::null(),
+				&mut size,
+				(&raw mut value).cast(),
+			)
+		};
+		if status != 0 {
+			return Err(());
+		}
+		// CoreAudio returns a retained CFString for the device UID.
+		Ok(unsafe { CFRetained::from_raw(std::ptr::NonNull::new(value).ok_or(())?) })
+	}
+
 	pub(super) fn new(requested: u32) -> Result<Self, ()> {
 		let changed = Arc::new(AtomicBool::new(false));
 		let listener: RcBlock<Listener> = {
@@ -107,10 +129,6 @@ impl Route {
 			return Ok(self.requested);
 		}
 		read(&INPUT)
-	}
-
-	pub(super) fn is_default_input(&self) -> Result<bool, ()> {
-		Ok(self.selected == read(&INPUT)?)
 	}
 
 	pub(super) fn update(&mut self) -> Result<(bool, bool), ()> {

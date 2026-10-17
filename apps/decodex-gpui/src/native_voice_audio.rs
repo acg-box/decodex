@@ -1,57 +1,41 @@
-//! Apple voice processing with a direct, bounded PCM path to the native transport.
+//! Bounded Apple audio I/O. Dictation opens only an input queue; Live owns duplex DSP.
 #![cfg_attr(test, allow(dead_code))]
-#[path = "native_audio_converter.rs"] mod converter;
+#[path = "native_input_queue.rs"] mod input;
+#[path = "native_live_audio.rs"] mod live;
 #[path = "native_audio_owner.rs"] pub(super) mod owner;
 #[path = "native_audio_route.rs"] mod route;
-use converter::CaptureConverter;
+use objc2::runtime::Bool;
+use objc2_core_audio_types::AudioBufferList;
 use route::Route;
+use rtrb::{Consumer, Producer, RingBuffer};
 use std::{
 	ptr::NonNull,
 	rc::Rc,
 	slice,
 	sync::{
 		Arc, Mutex,
-		atomic::{AtomicBool, AtomicU32, Ordering},
+		atomic::{AtomicU32, Ordering},
 	},
 };
 
-use block2::RcBlock;
-use objc2::{
-	AnyThread,
-	rc::Retained,
-	runtime::{Bool, ProtocolObject},
-};
-use objc2_audio_toolbox::AUAudioUnit;
-use objc2_avf_audio::{
-	AVAudioEngine, AVAudioEngineConfigurationChangeNotification, AVAudioFormat, AVAudioSinkNode,
-	AVAudioSourceNode, AVAudioVoiceProcessingOtherAudioDuckingConfiguration,
-	AVAudioVoiceProcessingOtherAudioDuckingLevel,
-};
-use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
-use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol};
-use rtrb::{Consumer, Producer, RingBuffer};
-
 pub(super) const LIVE_SAMPLE_RATE: u32 = 48_000;
 pub(super) const LIVE_FRAME_SAMPLES: u32 = LIVE_SAMPLE_RATE / 100;
-
 pub(super) struct Pcm {
 	pub(super) captured: Consumer<f32>,
 	pub(super) playback: Producer<f32>,
 }
-
 #[derive(Clone)]
 struct Ports {
 	captured: Arc<Mutex<Producer<f32>>>,
 	output: Arc<Mutex<Consumer<f32>>>,
 	level: Arc<AtomicU32>,
 }
+enum Hardware {
+	Input(input::Input),
+	Live(live::Live),
+}
 pub(super) struct Device {
-	engine: Retained<AVAudioEngine>,
-	sink: Retained<AVAudioSinkNode>,
-	source: Option<Retained<AVAudioSourceNode>>,
-	configuration_changed: Arc<AtomicBool>,
-	observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
-	converter: Option<CaptureConverter>,
+	hardware: Hardware,
 	sample_rate: f64,
 	route: Route,
 	ports: Ports,
@@ -59,23 +43,31 @@ pub(super) struct Device {
 }
 impl Device {
 	fn resume(&self) -> Result<(), ()> {
-		unsafe {
-			self.engine
-				.startAndReturnError()
-				.map_err(|error| eprintln!("DecodexAudio engine_start_failed: {error}"))
+		match &self.hardware {
+			Hardware::Input(input) => input.start(),
+			Hardware::Live(live) => live.start(),
 		}
 	}
 
 	fn stop_for_route(&self) {
 		self.ports.level.store(0, Ordering::Relaxed);
-		unsafe {
-			self.engine.stop();
+		match &self.hardware {
+			Hardware::Input(input) => input.stop(),
+			Hardware::Live(live) => live.stop(),
 		}
 	}
 
 	pub(super) fn pause(&self) {
-		unsafe {
-			self.engine.pause();
+		match &self.hardware {
+			Hardware::Input(input) => input.stop(),
+			Hardware::Live(live) => live.pause(),
+		}
+	}
+
+	fn cancel(&self) {
+		match &self.hardware {
+			Hardware::Input(input) => input.cancel(),
+			Hardware::Live(live) => live.pause(),
 		}
 	}
 
@@ -92,165 +84,51 @@ impl Device {
 
 	fn rebuild(old: Self) -> Result<Self, ()> {
 		let started = std::time::Instant::now();
-		eprintln!("DecodexAudio route_rebuild_begin");
 		let ports = old.ports.clone();
 		ports.level.store(0, Ordering::Relaxed);
 		let device = old.route.requested();
 		let rate = old.sample_rate;
-		let duplex = old.source.is_some();
+		let duplex = matches!(old.hardware, Hardware::Live(_));
 		drop(old);
-		eprintln!("DecodexAudio route_release_ms={:.3}", started.elapsed().as_secs_f64() * 1000.);
 		let rebuilt = Self::build(device, rate, duplex, ports);
 		eprintln!("DecodexAudio route_build_ms={:.3}", started.elapsed().as_secs_f64() * 1000.);
 		rebuilt
 	}
 
 	fn build(device: u32, sample_rate: f64, duplex: bool, ports: Ports) -> Result<Self, ()> {
-		let (capture, raw) = if duplex {
-			(ports.captured.clone(), None)
+		let started = std::time::Instant::now();
+		let route = Route::new(device)?;
+		let hardware = if duplex {
+			Hardware::Live(live::Live::new(device, sample_rate, &ports)?)
 		} else {
-			let (send, receive) = RingBuffer::new(19_200);
-			(Arc::new(Mutex::new(send)), Some(receive))
+			Hardware::Input(input::Input::new(&route, sample_rate, ports.clone())?)
 		};
-		let rendered_output = ports.output.clone();
-		let captured_level = ports.level.clone();
-		let receive = RcBlock::new(
-			move |_: NonNull<AudioTimeStamp>, count: u32, buffers: NonNull<AudioBufferList>| unsafe {
-				capture_audio(count, buffers, &capture, &captured_level)
-			},
+		eprintln!(
+			"DecodexAudio device_open input={device} duplex={duplex} prepare_ms={:.3}",
+			started.elapsed().as_secs_f64() * 1000.
 		);
-		let render = RcBlock::new(
-			move |silence: NonNull<Bool>,
-			      _: NonNull<AudioTimeStamp>,
-			      count: u32,
-			      buffers: NonNull<AudioBufferList>| {
-				unsafe { render_audio(silence, count, buffers, &rendered_output) }
-			},
-		);
+		Ok(Self { hardware, sample_rate, route, ports, _thread: std::marker::PhantomData })
+	}
 
-		// Engine configuration and lifetime operations remain on the creating thread.
-		// Blocks only access bounded queues; they do not allocate, wait or touch UI state.
-		unsafe {
-			let route = Route::new(device)?;
-			let engine = AVAudioEngine::new();
-			let input = engine.inputNode();
-
-			// Select the input before voice processing combines the input and output units.
-			// Changing CurrentDevice on bus 0 of the shared voice unit selects the output.
-			let unit: Retained<AUAudioUnit> = input.AUAudioUnit();
-			// Preserve the engine's aggregate for the system input. In particular,
-			// replacing the Bluetooth aggregate with its physical input can start
-			// an engine that never invokes its sink. Explicit other inputs still bind.
-			let selected = if !duplex && route.is_default_input()? { 0 } else { device };
-			if selected != 0 && unit.deviceID() != selected {
-				unit.setDeviceID_error(selected).map_err(|_| ())?;
-			}
-			if duplex {
-				input.setVoiceProcessingEnabled_error(true).map_err(|_| ())?;
-				input.setVoiceProcessingOtherAudioDuckingConfiguration(
-					AVAudioVoiceProcessingOtherAudioDuckingConfiguration {
-						enableAdvancedDucking: Bool::NO,
-						duckingLevel: AVAudioVoiceProcessingOtherAudioDuckingLevel::Min,
-					},
-				);
-			}
-
-			let format = AVAudioFormat::initStandardFormatWithSampleRate_channels(
-				AVAudioFormat::alloc(),
-				sample_rate,
-				1,
-			)
-			.ok_or(())?;
-			let sink = AVAudioSinkNode::initWithReceiverBlock(
-				AVAudioSinkNode::alloc(),
-				RcBlock::as_ptr(&receive),
-			);
-			engine.attachNode(&sink);
-			let converter = if let Some(raw) = raw {
-				// The client/output format can still describe the previous device after a
-				// Bluetooth route change. The hardware/input scope owns the new rate.
-				engine.connect_to_format(&input, &sink, None);
-				let hardware = sink.inputFormatForBus(0);
-				Some(CaptureConverter::new(
-					raw,
-					ports.captured.clone(),
-					hardware.sampleRate(),
-					sample_rate,
-				)?)
-			} else {
-				engine.connect_to_format(&input, &sink, Some(&format));
-				None
-			};
-			// Dictation has no playback or echo to cancel. Do not activate an output unit.
-			let source = if duplex {
-				let source = AVAudioSourceNode::initWithFormat_renderBlock(
-					AVAudioSourceNode::alloc(),
-					&format,
-					RcBlock::as_ptr(&render),
-				);
-				engine.attachNode(&source);
-				engine.connect_to_format(&source, &engine.mainMixerNode(), Some(&format));
-				// Voice processing requires matching client input/output rates.
-				engine.connect_to_format(
-					&engine.mainMixerNode(),
-					&engine.outputNode(),
-					Some(&format),
-				);
-				Some(source)
-			} else {
-				None
-			};
-			let configuration_changed = Arc::new(AtomicBool::new(false));
-			let changed = configuration_changed.clone();
-			let callback = RcBlock::new(move |_: NonNull<NSNotification>| {
-				changed.store(true, Ordering::Release);
-			});
-			// Never operate on the engine in Apple's notification queue. The owner handles it.
-			let observer = NSNotificationCenter::defaultCenter()
-				.addObserverForName_object_queue_usingBlock(
-					Some(AVAudioEngineConfigurationChangeNotification),
-					Some(&engine),
-					None,
-					&callback,
-				);
-			let device = Self {
-				engine,
-				sink,
-				source,
-				ports,
-				configuration_changed,
-				observer,
-				converter,
-				sample_rate,
-				route,
-				_thread: std::marker::PhantomData,
-			};
-
-			device.engine.prepare();
-
-			Ok(device)
+	fn finish_capture(&self) -> Result<bool, ()> {
+		match &self.hardware {
+			Hardware::Input(input) => input.finished(),
+			Hardware::Live(_) => Ok(true),
 		}
 	}
 
-	fn pump(&mut self) -> Result<(), ()> {
-		if let Some(converter) = &mut self.converter {
-			converter.pump()?;
-		}
-		Ok(())
-	}
-
-	fn finish_capture(&mut self) -> Result<bool, ()> {
-		self.converter.as_mut().map_or(Ok(true), CaptureConverter::finish)
-	}
-
-	fn reset_capture(&mut self) {
-		if let Some(converter) = &mut self.converter {
-			converter.reset();
+	fn reset_capture(&self) -> Result<(), ()> {
+		match &self.hardware {
+			Hardware::Input(input) => input.reset(),
+			Hardware::Live(_) => Ok(()),
 		}
 	}
 
 	fn configuration_changed(&self) -> bool {
-		self.configuration_changed.swap(false, Ordering::AcqRel)
+		match &self.hardware {
+			Hardware::Live(live) => live.changed(),
+			Hardware::Input(_) => false,
+		}
 	}
 
 	fn clear_playback(&self) -> Result<(), ()> {
@@ -260,27 +138,31 @@ impl Device {
 	}
 
 	pub(super) fn running(&self) -> bool {
-		unsafe { self.engine.isRunning() }
+		match &self.hardware {
+			Hardware::Input(input) => input.running().unwrap_or(false),
+			Hardware::Live(live) => live.running(),
+		}
 	}
 
 	pub(super) fn level(&self) -> f32 {
 		f32::from_bits(self.ports.level.load(Ordering::Relaxed))
 	}
+
+	#[cfg(test)]
+	fn capture_channels(&self) -> Option<u32> {
+		match &self.hardware {
+			Hardware::Input(input) => input.channels(),
+			Hardware::Live(_) => None,
+		}
+	}
 }
 impl Drop for Device {
 	fn drop(&mut self) {
-		unsafe {
-			NSNotificationCenter::defaultCenter().removeObserver((*self.observer).as_ref());
-			self.engine.stop();
-			self.engine.disconnectNodeInput(&self.sink);
-			if let Some(source) = &self.source {
-				self.engine.disconnectNodeOutput(source);
-			}
-			self.engine.detachNode(&self.sink);
-			if let Some(source) = &self.source {
-				self.engine.detachNode(source);
-			}
-		}
+		eprintln!(
+			"DecodexAudio device_close input={} duplex={}",
+			self.route.requested(),
+			matches!(self.hardware, Hardware::Live(_))
+		);
 	}
 }
 
