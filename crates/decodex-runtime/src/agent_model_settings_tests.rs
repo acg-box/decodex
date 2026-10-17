@@ -319,3 +319,66 @@ async fn model_settings_do_not_read_a_foreign_thread() {
 		.is_err()
 	);
 }
+
+#[tokio::test]
+async fn model_settings_read_other_conversations_hosted_by_the_same_process() {
+	let home = tempfile::tempdir().unwrap();
+	let (local, remote) = io::duplex(4_096);
+	let (r, w) = io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	owner
+		.store
+		.create_agent_manager(AgentWorkItem {
+			id: "chat".into(),
+			parent_goal_id: Some("root".into()),
+			kind: AgentWorkKind::Goal,
+			title: "Other conversation".into(),
+			instructions: "Other conversation".into(),
+			codex_thread_id: None,
+			status: AgentWorkStatus::Open,
+			next_check_at_micros: None,
+			created_at_micros: 1,
+			updated_at_micros: 1,
+			active_turn_id: None,
+			dispatch_state: AgentDispatchState::Idle,
+		})
+		.await
+		.unwrap();
+	owner.store.bind_agent_thread("chat".into(), "chat-thread".into()).await.unwrap();
+	let mut key = owner.key.clone();
+	key.work = "chat".into();
+	key.thread = "chat-thread".into();
+	let (release, released) = oneshot::channel::<()>();
+	let server = tokio::spawn(async move {
+		let (r, mut w) = io::split(remote);
+		let mut lines = BufReader::new(r).lines();
+		let request: Value =
+			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+		assert_eq!(request["method"], "thread/read");
+		assert_eq!(request["params"]["threadId"], "chat-thread");
+		let response = serde_json::json!({"id":request["id"],"result":{"thread":{
+			"id":"chat-thread","model":"configured-model","reasoningEffort":"medium",
+			"modelProvider":"openai"
+		}}});
+		w.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+		let _ = released.await;
+	});
+	let result =
+		agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) }).await;
+	let _ = release.send(());
+	assert!(
+		matches!(result, AgentModelSettingsResult::Available { ref work_id, ref thread_id, model:Some(ref model), .. }
+			if work_id.as_str()=="chat" && thread_id.as_str()=="chat-thread" && model.as_str()=="configured-model"),
+		"a user model read must include other conversations in the same host: {result:?}"
+	);
+	assert!(
+		!owner
+			.store
+			.agent_thread_is_owned(key.work, key.thread, Some(key.generation.as_str().into()))
+			.await
+			.unwrap(),
+		"reading another conversation must not grant agent execution authority"
+	);
+	server.await.unwrap();
+}
