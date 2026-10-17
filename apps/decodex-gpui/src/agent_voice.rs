@@ -419,7 +419,7 @@ impl AgentSurface {
 		let Some(target) = self.voice_option_target(work.as_str()) else {
 			return;
 		};
-		let generation = self.generation;
+		let source = profile.clone();
 		let query_work = work.clone();
 		let future = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -431,7 +431,7 @@ impl AgentSurface {
             let _ = cx.update(|window, cx| {
                 let _ = surface.update(cx, |s, cx| {
                     s.voice_task = None;
-                    if s.generation != generation || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
+                    if s.profile.as_ref() != Some(&source) || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
                         s.feedback = Feedback::neutral("Voice start canceled because the conversation changed.");
                         cx.notify();
                         return;

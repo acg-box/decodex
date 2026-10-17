@@ -227,8 +227,10 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 }
 
 #[gpui::test]
-fn managed_voice_preflight_rejects_unavailable_or_changed_source(cx: &mut TestAppContext) {
-	for changed_source in [false, true] {
+fn managed_voice_preflight_tracks_the_service_and_thread_without_rejecting_snapshot_refreshes(
+	cx: &mut TestAppContext,
+) {
+	for (changed_source, refresh) in [(false, false), (true, false), (false, true)] {
 		let (_directory, profile, server) =
 			wire_test_support::fixture(move |listener| async move {
 				let mut socket = wire_test_support::accept(&listener).await;
@@ -276,6 +278,11 @@ fn managed_voice_preflight_rejects_unavailable_or_changed_source(cx: &mut TestAp
 				if changed_source {
 					s.snapshot.as_mut().unwrap().runtime_source =
 						Some(EntityId::new("replacement-runtime").unwrap());
+				}
+				if refresh {
+					// Ordinary snapshot reads increment this counter without changing the call
+					// target.
+					s.generation += 1;
 				}
 			});
 			VoicePanel(surface)
