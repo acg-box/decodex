@@ -4,9 +4,19 @@ use super::*;
 #[gpui::test]
 fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut gpui::TestAppContext) {
 	preference(Some(true));
-	let (island, visual) = cx.add_window_view(|_, cx| PerformanceIsland::new(cx));
+	let (island, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+		island.metrics.fps = 165.;
+		island.metrics.draw_frames = 1;
+		island.host.gpu_percent = Some(100.);
+		island
+	});
 	visual.update(|window, cx| window.draw(cx).clear(cx));
 	let toggle = visual.debug_bounds("performance-island-toggle").expect("island control");
+	let fps = visual.debug_bounds("performance-fps").unwrap();
+	let gpu = visual.debug_bounds("performance-gpu-label").unwrap();
+	assert!(gpu.left() - fps.right() >= gpui::px(12.));
+	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < toggle.right());
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
 	visual.update(|window, cx| window.draw(cx).clear(cx));
 	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));

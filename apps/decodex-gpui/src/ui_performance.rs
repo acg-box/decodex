@@ -174,7 +174,7 @@ impl Render for PerformanceIsland {
 		let expanded = self.expansion.is_open();
 		let width = ui_motion::value(
 			"activity-island-width",
-			if expanded { 272. } else { 208. },
+			if expanded { 272. } else { 148. },
 			window,
 			cx,
 		);
@@ -185,6 +185,8 @@ impl Render for PerformanceIsland {
 			cx,
 		);
 		let fraction = ((height - 28.) / 68.).clamp(0., 1.);
+		// Reveal the detail labels only when the opening capsule can fit their columns.
+		let details_opacity = ((fraction - 0.65) / 0.35).clamp(0., 1.);
 		let fps = if self.metrics.draw_frames == 0 {
 			"—".into()
 		} else {
@@ -261,11 +263,11 @@ impl Render for PerformanceIsland {
 								}))
 								.child(readout::header(self, fps)),
 						)
-						.when(fraction > 0.001, |d| {
+						.when(details_opacity > 0.001, |d| {
 							d.child(
 								gpui::div()
 									.w_full()
-									.opacity(fraction)
+									.opacity(details_opacity)
 									.child(readout::details(self, window, cx)),
 							)
 						}),

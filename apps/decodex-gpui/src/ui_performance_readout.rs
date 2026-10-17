@@ -46,7 +46,12 @@ pub(super) fn header(island: &PerformanceIsland, fps: String) -> AnyElement {
 				.flex()
 				.items_baseline()
 				.gap_1()
-				.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("System GPU"))
+				.child(
+					gpui::div()
+						.debug_selector(|| "performance-gpu-label".into())
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child("GPU"),
+				)
 				.child(number("gpu", gpu).w(gpui::px(32.))),
 		)
 		.into_any_element()
