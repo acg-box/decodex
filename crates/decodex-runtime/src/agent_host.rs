@@ -386,10 +386,6 @@ impl AgentHost {
 		native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
 	}
 
-	pub(crate) fn startup_state(&self) -> watch::Receiver<bool> {
-		self.initializing.subscribe()
-	}
-
 	pub(crate) fn connection_initializing(&self) -> bool {
 		*self.initializing.borrow()
 	}
@@ -2117,6 +2113,10 @@ impl AgentHost {
 
 			return None;
 		};
+		if let Some(observations) = &self.observations {
+			let _phase = crate::startup_trace::Phase::new("initial_account_observations");
+			observations.wait_for_initial_observation().await;
+		}
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {

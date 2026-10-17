@@ -285,7 +285,8 @@ impl ClientLifecycle {
 			initialize_cache(&client_cache_root, cache_limits, cache_authority.clone());
 		let history_pager =
 			HistoryPager::production(&cache_parent, HISTORY_PAGE_CACHE_SCHEMA_GENERATION);
-		let view = quarantine.map_or(ConnectionView::Stopped, |quarantine| {
+		// Preparation belongs to the first connection. Stopped is a terminal state.
+		let view = quarantine.map_or(ConnectionView::Connecting { attempt: 1 }, |quarantine| {
 			ConnectionView::Quarantined { reason: quarantine.reason, recovery: quarantine.recovery }
 		});
 

@@ -54,6 +54,7 @@ pub(crate) struct AccountObservationService {
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
 	observation_generation: Sender<u64>,
+	initial_observation_complete: Sender<bool>,
 }
 impl AccountObservationService {
 	#[cfg(test)]
@@ -93,7 +94,13 @@ impl AccountObservationService {
 			state: Arc::new(RwLock::new(AccountObservationState::default())),
 			refresh_requested: Arc::new(Notify::new()),
 			observation_generation,
+			initial_observation_complete: watch::channel(false).0,
 		}
+	}
+
+	/// Finish the first provider checks before process admission uses their quota facts.
+	pub(crate) async fn wait_for_initial_observation(&self) {
+		let _ = self.initial_observation_complete.subscribe().wait_for(|complete| *complete).await;
 	}
 
 	/// Request one coalesced background refresh without making a client wait for provider work.
@@ -193,6 +200,7 @@ impl AccountObservationService {
 		let mut pending = HashSet::new();
 		let mut task_accounts = HashMap::new();
 		let mut observations = JoinSet::new();
+		let mut initial_tasks = None;
 
 		loop {
 			if *stop.borrow() {
@@ -206,6 +214,7 @@ impl AccountObservationService {
 					if result.is_err() || *stop.borrow_and_update() {
 						break;
 					}
+					continue;
 				},
 				() = self.refresh_requested.notified() => {
 					self.schedule_current_accounts(
@@ -247,6 +256,16 @@ impl AccountObservationService {
 						&mut observations,
 					).await;
 				},
+			}
+			if !*self.initial_observation_complete.borrow() {
+				let initial = initial_tasks
+					.get_or_insert_with(|| task_accounts.keys().copied().collect::<HashSet<_>>());
+				initial.retain(|task| task_accounts.contains_key(task));
+				if initial.is_empty() {
+					// Both successful and failed checks complete startup. A queued refresh
+					// has a new task ID and must not keep the initial round open.
+					self.initial_observation_complete.send_replace(true);
+				}
 			}
 		}
 

@@ -7682,6 +7682,52 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn initial_account_observation_waits_for_checks_and_finishes_on_provider_failure() {
+		let (_directory, _store, service, _account, shared) =
+			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
+		let initial = observations.wait_for_initial_observation();
+		tokio::pin!(initial);
+		assert!(futures_util::poll!(initial.as_mut()).is_pending());
+
+		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
+		tokio::time::timeout(std::time::Duration::from_secs(1), initial)
+			.await
+			.expect("failed provider checks must finish startup, not leave a loading screen");
+		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+		observations.request_refresh();
+		let refreshed = observations.wait_for_initial_observation();
+		tokio::pin!(refreshed);
+		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
+		stop.send_replace(true);
+		daemon.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn initial_account_observation_finishes_without_accounts() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let service = AccountService::new(
+			store.clone(),
+			Arc::new(SqliteCredentialStore::new(store)),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
+		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
+		tokio::time::timeout(
+			std::time::Duration::from_secs(1),
+			observations.wait_for_initial_observation(),
+		)
+		.await
+		.expect("an empty registry needs no provider wait");
+		stop.send_replace(true);
+		daemon.await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn recovery_preparation_rechecks_current_account_revision_and_observation() {
 		let (_directory, store, service, account, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;

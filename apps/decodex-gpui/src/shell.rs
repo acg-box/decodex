@@ -263,11 +263,16 @@ impl Shell {
 		self.reset_cards.profile = profile.clone();
 
 		let cwd = self.conversations.working_directory();
+		let connection = self.connection;
 
 		self.agent.update(cx, |surface, cx| {
 			surface.bind_profile(profile, cx);
 			surface.seed_context(cwd, vec![], cx);
-			surface.refresh(cx);
+			match connection {
+				ConnectionView::Online { .. } => surface.refresh(cx),
+				ConnectionView::Connecting { .. } | ConnectionView::OfflineRetrying { .. } => {},
+				_ => surface.mark_stale(cx),
+			}
 		});
 		self.reset_ordinary_draft_binding(cx);
 
@@ -2534,7 +2539,15 @@ fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) 
 			ConnectionView::Online { generation: before, .. },
 			ConnectionView::Online { generation: after, .. },
 		) => before != after,
-		_ => previous != next,
+		(ConnectionView::Online { .. }, _) => true,
+		(
+			_,
+			ConnectionView::Incompatible(_)
+			| ConnectionView::Quarantined { .. }
+			| ConnectionView::ShuttingDown
+			| ConnectionView::Stopped,
+		) => previous != next,
+		_ => false,
 	}
 }
 
@@ -2548,13 +2561,38 @@ fn online_cursor_progress_does_not_invalidate_the_conversation() {
 	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
 }
 
+#[test]
+fn connection_progress_is_not_a_disconnect_and_terminal_startup_failures_are_actionable() {
+	let connecting = ConnectionView::Connecting { attempt: 1 };
+	let retrying =
+		ConnectionView::OfflineRetrying { next_attempt: 2, delay: Duration::from_millis(100) };
+	let retry = ConnectionView::Connecting { attempt: 2 };
+	let online = ConnectionView::Online { generation: 1, applied: None };
+	for (before, after) in [(connecting, retrying), (retrying, retry), (retry, online)] {
+		assert!(!connection_requires_recovery(before, after));
+	}
+	assert!(connection_requires_recovery(online, retrying));
+	for terminal in [
+		ConnectionView::Stopped,
+		ConnectionView::Incompatible(crate::client_lifecycle::CompatibilityReason::InvalidEndpoint),
+		ConnectionView::Quarantined {
+			reason: crate::client_lifecycle::QuarantineReason::StableServerIdentity,
+			recovery: crate::client_lifecycle::QuarantineRecovery::OperatorRequired,
+		},
+	] {
+		assert!(connection_requires_recovery(connecting, terminal));
+		assert!(!connection_requires_recovery(terminal, terminal));
+	}
+}
+
 fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx: &mut AsyncApp) {
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
 			if connection_requires_recovery(shell.connection, view) {
 				shell.account_activity.clear();
 				shell.agent.update(cx, AgentSurface::mark_stale);
-			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
+			}
+			if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
 				shell.agent.update(cx, |s, cx| s.refresh(cx));
 			}
 

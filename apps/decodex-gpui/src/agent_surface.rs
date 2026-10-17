@@ -1371,8 +1371,10 @@ impl AgentSurface {
 		self.guardian = Default::default();
 		self.archive = Default::default();
 		self.selected = self.composer_manager.clone();
-		self.state = LoadState::Idle;
-		self.refresh(cx);
+		// Binding restores local state. The retained-session owner starts the first
+		// read after its connection is online, not while the daemon is starting.
+		self.state = if self.profile.is_some() { LoadState::Idle } else { LoadState::Unavailable };
+		self.status_before_refresh = None;
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				cx.background_executor().timer(Duration::from_millis(500)).await;
@@ -2587,7 +2589,7 @@ pub(crate) fn compact_tokens(value: u64) -> String {
 }
 
 fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
-	has_profile && *state != LoadState::Loading
+	has_profile && !matches!(state, LoadState::Idle | LoadState::Loading)
 }
 
 // This startup advisory describes the Codex environment, not a failed turn.
@@ -3033,13 +3035,114 @@ mod tests {
 	}
 
 	#[test]
-	fn snapshot_poll_requires_a_profile_and_no_in_flight_read() {
+	fn snapshot_poll_waits_for_the_first_online_read_and_does_not_overlap_requests() {
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Unavailable));
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Stale));
-		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Idle));
+		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Idle));
 		assert!(!agent_surface::should_poll_snapshot(false, &LoadState::Unavailable));
 		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Loading));
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Ready));
+	}
+
+	#[gpui::test]
+	fn startup_waits_for_transport_before_reading_and_keeps_one_loading_surface(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::{
+			client_lifecycle::ConnectionView,
+			shell::{self, Shell},
+		};
+		let (_root, profile, _) = super::drafts::tests::profiles();
+		let initial = ConnectionView::Connecting { attempt: 1 };
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			Shell::new(window, cx, initial).with_agent_profile(Some(profile), cx)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+		agent.update(visual, |s, cx| {
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		let (sender, views) = std::sync::mpsc::channel();
+		let mut app = visual.update(|_, cx| cx.to_async());
+		for view in [
+			initial,
+			ConnectionView::OfflineRetrying {
+				next_attempt: 2,
+				delay: std::time::Duration::from_millis(100),
+			},
+			ConnectionView::Connecting { attempt: 2 },
+		] {
+			sender.send(view).unwrap();
+			shell::publish_views(&shell.downgrade(), &views, &mut app);
+			visual.executor().advance_clock(std::time::Duration::from_millis(750));
+			visual.run_until_parked();
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+			assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+			agent.read_with(visual, |s, cx| {
+				assert_eq!(s.state, LoadState::Idle);
+				assert!(s.task.is_none(), "do not race daemon startup with an Agent query");
+				assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			});
+		}
+		sender.send(ConnectionView::Online { generation: 1, applied: None }).unwrap();
+		shell::publish_views(&shell.downgrade(), &views, &mut app);
+		agent.update(visual, |s, cx| {
+			assert_eq!(s.state, LoadState::Loading);
+			assert!(s.task.is_some(), "online starts the first Agent read immediately");
+			// Replace the socket read with controlled native-startup observations.
+			s.generation += 1;
+			s.task = None;
+			s.apply_refreshed_snapshot(
+				Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					agent_slots: Default::default(),
+					context_references: vec![],
+					connection_initializing: true,
+					runtime_source: None,
+					workspaces: vec![],
+					dependencies: vec![],
+					work_items: vec![],
+					pending_events: vec![],
+				})),
+				cx,
+			);
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_some());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+		agent.update(visual, |s, cx| {
+			let mut ready = s.snapshot.clone().unwrap();
+			ready.connection_initializing = false;
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(ready)), cx);
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
+	}
+
+	#[gpui::test]
+	fn a_terminal_startup_configuration_error_is_not_hidden_by_loading(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::{
+			client_lifecycle::{CompatibilityReason, ConnectionView},
+			shell::Shell,
+		};
+		let (_, visual) = cx.add_window_view(|window, cx| {
+			Shell::new(
+				window,
+				cx,
+				ConnectionView::Incompatible(CompatibilityReason::Startup(
+					decodex_protocol::ClientFailure::ConfigurationMissing,
+				)),
+			)
+			.with_agent_profile(None, cx)
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
+		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
 	}
 
 	#[gpui::test]
