@@ -319,6 +319,7 @@ impl AgentSurface {
 		surface
 	}
 
+	#[expect(clippy::too_many_lines, reason = "Keep the single owned-state initializer together")]
 	fn with_inputs(inputs: AgentInputs, cx: &mut Context<Self>) -> Self {
 		let AgentInputs { model, cwd, composer } = inputs;
 		let owner = cx.entity();

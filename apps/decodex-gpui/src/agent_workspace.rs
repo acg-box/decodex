@@ -21,6 +21,24 @@ fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
 	}
 }
 
+fn action_accessible_label(id: &str, label: &str) -> String {
+	if id.starts_with("attention-") {
+		format!("{label} pending decisions · open next")
+	} else {
+		match id {
+			"new-project" => "New project",
+			"graph-up" => "Parent work scope",
+			"graph-close" => "Close Dock",
+			"handoff-close" => "Collapse task details",
+			"zoom-in" => "Zoom in",
+			"zoom-out" => "Zoom out",
+			"inspect-work" => "Work details",
+			_ => label,
+		}
+		.to_owned()
+	}
+}
+
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 use crate::{
 	shell::{
@@ -441,21 +459,7 @@ impl AgentSurface {
 		} else {
 			false
 		};
-		let accessible = if id.starts_with("attention-") {
-			format!("{label} pending decisions · open next")
-		} else {
-			match id.as_str() {
-				"new-project" => "New project",
-				"graph-up" => "Parent work scope",
-				"graph-close" => "Close Dock",
-				"handoff-close" => "Collapse task details",
-				"zoom-in" => "Zoom in",
-				"zoom-out" => "Zoom out",
-				"inspect-work" => "Work details",
-				_ => label.as_str(),
-			}
-			.to_owned()
-		};
+		let accessible = action_accessible_label(&id, &label);
 		let expanded = match id.as_str() {
 			"graph-expand" => Some(self.workspace.graph_expanded),
 			"chat-expand" => Some(self.workspace.chat_expanded),
@@ -1252,37 +1256,7 @@ impl AgentSurface {
 		);
 
 		if floating_composer && !self.workspace.browsing {
-			let owner = cx.entity();
-			chat = chat.child(
-				gpui::div()
-					.debug_selector(|| "floating-composer".into())
-					.absolute()
-					.left_0()
-					.right_0()
-					.bottom_0()
-					.child(self.composer_footer(window, cx))
-					.child(
-						gpui::canvas(
-							move |bounds, _, cx| {
-								let height = f32::from(bounds.size.height);
-								if (owner.read(cx).workspace.composer_overlay_height - height).abs()
-									> 0.5
-								{
-									let owner = owner.clone();
-									cx.defer(move |cx| {
-										owner.update(cx, |s, cx| {
-											s.workspace.composer_overlay_height = height;
-											cx.notify();
-										})
-									});
-								}
-							},
-							|_, _, _, _| {},
-						)
-						.absolute()
-						.inset_0(),
-					),
-			);
+			chat = chat.child(self.floating_composer(window, cx));
 		} else if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
@@ -1308,6 +1282,36 @@ impl AgentSurface {
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
+	}
+
+	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let owner = cx.entity();
+		gpui::div()
+			.debug_selector(|| "floating-composer".into())
+			.absolute()
+			.left_0()
+			.right_0()
+			.bottom_0()
+			.child(self.composer_footer(window, cx))
+			.child(
+				gpui::canvas(
+					move |bounds, _, cx| {
+						let height = f32::from(bounds.size.height);
+						if (owner.read(cx).workspace.composer_overlay_height - height).abs() > 0.5 {
+							let owner = owner.clone();
+							cx.defer(move |cx| {
+								owner.update(cx, |s, cx| {
+									s.workspace.composer_overlay_height = height;
+									cx.notify();
+								})
+							});
+						}
+					},
+					|_, _, _, _| {},
+				)
+				.absolute()
+				.inset_0(),
+			)
 	}
 
 	fn workspace_frame(

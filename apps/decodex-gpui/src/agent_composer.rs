@@ -388,61 +388,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		let capsule = composer_capsule(native);
 		if let Some(reason) = self.composer_unavailable_reason() {
-			use gpui::Focusable as _;
-			let input = self.conversation_composer();
-			if input.focus_handle(cx).is_focused(window) {
-				window.blur(cx);
-			}
-			if self.composer_menu.is_some() {
-				let owner = cx.entity().downgrade();
-				cx.defer(move |cx| {
-					let _ = owner.update(cx, |s, cx| {
-						s.composer_menu_content = None;
-						s.dismiss_composer_menu(cx);
-					});
-				});
-			}
-			let draft = input.read(cx).content().to_owned();
-			let draft_key = format!(
-				"composer-saved-draft-{:?}-{}",
-				input.entity_id(),
-				self.selected.as_deref().unwrap_or("new")
-			);
-			return capsule.child(
-				gpui::div()
-					.id("composer-blocked")
-					.debug_selector(|| "composer-blocked".into())
-					.w_full()
-					.min_h(gpui::px(51.))
-					.px(gpui::px(8.))
-					.flex()
-					.flex_col()
-					.justify_center()
-					.child(self.connection_notice(reason, cx))
-					.when(!draft.is_empty(), |d| {
-						d.child(
-							gpui::div()
-								.id("composer-retained-draft")
-								.debug_selector(|| "composer-retained-draft".into())
-								.w_full()
-								.max_h(gpui::px(120.))
-								.pb(gpui::px(4.))
-								.overflow_y_scroll()
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(agent_surface::selectable_text::SelectableText::plain(
-									draft_key, draft,
-								)),
-						)
-					})
-					.when(self.voice.is_some() || self.dictation.is_some(), |d| {
-						d.child(self.workspace_action(
-							"composer-stop-recording".into(),
-							"Stop recording".into(),
-							|s, cx| s.stop_voice(cx),
-							cx,
-						))
-					}),
-			);
+			return self.render_blocked_composer(capsule, reason, window, cx);
 		}
 		self.update_question_placeholder(cx);
 		let editor = gpui::div()
@@ -536,6 +482,70 @@ impl AgentSurface {
 						.child(controls.child(self.composer_toolbar(window, cx)))
 				}
 			})
+	}
+
+	fn render_blocked_composer(
+		&self,
+		capsule: Stateful<Div>,
+		reason: &'static str,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		use gpui::Focusable as _;
+		let input = self.conversation_composer();
+		if input.focus_handle(cx).is_focused(window) {
+			window.blur(cx);
+		}
+		if self.composer_menu.is_some() {
+			let owner = cx.entity().downgrade();
+			cx.defer(move |cx| {
+				let _ = owner.update(cx, |s, cx| {
+					s.composer_menu_content = None;
+					s.dismiss_composer_menu(cx);
+				});
+			});
+		}
+		let draft = input.read(cx).content().to_owned();
+		let draft_key = format!(
+			"composer-saved-draft-{:?}-{}",
+			input.entity_id(),
+			self.selected.as_deref().unwrap_or("new")
+		);
+		capsule.child(
+			gpui::div()
+				.id("composer-blocked")
+				.debug_selector(|| "composer-blocked".into())
+				.w_full()
+				.min_h(gpui::px(51.))
+				.px(gpui::px(8.))
+				.flex()
+				.flex_col()
+				.justify_center()
+				.child(self.connection_notice(reason, cx))
+				.when(!draft.is_empty(), |d| {
+					d.child(
+						gpui::div()
+							.id("composer-retained-draft")
+							.debug_selector(|| "composer-retained-draft".into())
+							.w_full()
+							.max_h(gpui::px(120.))
+							.pb(gpui::px(4.))
+							.overflow_y_scroll()
+							.text_color(gpui::rgb(TEXT_MUTED))
+							.child(agent_surface::selectable_text::SelectableText::plain(
+								draft_key, draft,
+							)),
+					)
+				})
+				.when(self.voice.is_some() || self.dictation.is_some(), |d| {
+					d.child(self.workspace_action(
+						"composer-stop-recording".into(),
+						"Stop recording".into(),
+						|s, cx| s.stop_voice(cx),
+						cx,
+					))
+				}),
+		)
 	}
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -88,7 +88,7 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 	Some(format!("Decodex diagnostics\nReport state: {:?}\n{report}", snapshot.load))
 }
 
-pub(super) fn content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
 	let presentation = health_presentation(snapshot);
 	let expanded = shell.diagnostics.expanded;
@@ -184,88 +184,99 @@ pub(super) fn content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) 
 				.text_color(gpui::rgb(WB_TEXT_MUTED))
 				.child("Checks cover local services. Chat errors appear in the input bar."),
 		)
-		.child(
-			gpui::div()
-				.id("health-details-toggle")
-				.debug_selector(|| "health-details-toggle".into())
-				.role(Role::Button)
-				.tab_index(0)
-				.aria_label("Technical details")
-				.aria_expanded(expanded)
-				.w_full()
-				.py_3()
-				.flex()
-				.items_center()
-				.gap_2()
-				.border_t_1()
-				.border_color(gpui::rgba(0xffffff10))
-				.cursor_pointer()
-				.text_color(gpui::rgb(WB_TEXT_MUTED))
-				.hover(|el| el.text_color(gpui::rgb(WB_TEXT)))
-				.focus_visible(|el| el.bg(gpui::rgba(HOVER_FILL)))
-				.on_click(cx.listener(|shell, _, _, cx| {
-					shell.diagnostics.expanded = !shell.diagnostics.expanded;
-					cx.notify();
-				}))
-				.on_key_down(cx.listener(|shell, event: &gpui::KeyDownEvent, _, cx| {
-					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
-					{
-						shell.diagnostics.expanded = !shell.diagnostics.expanded;
-						cx.notify();
-						cx.stop_propagation();
-					}
-				}))
-				.child(if expanded { "⌄" } else { "›" })
-				.child("Technical details")
-				.smooth(),
-		);
+		.child(details_toggle(shell, cx));
 	if expanded {
-		content = content.child(
-			gpui::div()
-				.id("health-components")
-				.debug_selector(|| "health-components".into())
-				.flex()
-				.flex_col()
-				.gap_5()
-				.child(
-					gpui::div()
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(gpui::div().font_weight(FontWeight::MEDIUM).child("Agent process"))
-						.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(
-							native_process_summary(
-								snapshot.report.as_ref().and_then(|report| report.native_process()),
-							),
-						)),
-				)
-				.child(health_component_section(
-					"health-core-components",
-					"Local services",
-					"",
-					0,
-					&HEALTH_CORE_COMPONENTS,
-					snapshot,
-				))
-				.child(health_component_section(
-					"health-app-server-components",
-					"Codex capabilities",
-					"Not checked in this report",
-					HEALTH_CORE_COMPONENTS.len(),
-					&HEALTH_APP_SERVER_COMPONENTS,
-					snapshot,
-				))
-				.child(health_component_section(
-					"health-optional-components",
-					"Optional features",
-					"",
-					HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
-					&HEALTH_OPTIONAL_COMPONENTS,
-					snapshot,
-				)),
-		);
+		content = content.child(technical_details(snapshot));
 	}
 
+	content.into_any_element()
+}
+
+fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
+	let expanded = shell.diagnostics.expanded;
+	gpui::div()
+		.id("health-details-toggle")
+		.debug_selector(|| "health-details-toggle".into())
+		.role(Role::Button)
+		.tab_index(0)
+		.aria_label("Technical details")
+		.aria_expanded(expanded)
+		.w_full()
+		.py_3()
+		.flex()
+		.items_center()
+		.gap_2()
+		.border_t_1()
+		.border_color(gpui::rgba(0xffffff10))
+		.cursor_pointer()
+		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.hover(|el| el.text_color(gpui::rgb(WB_TEXT)))
+		.focus_visible(|el| el.bg(gpui::rgba(HOVER_FILL)))
+		.on_click(cx.listener(|shell, _, _, cx| {
+			shell.diagnostics.expanded = !shell.diagnostics.expanded;
+			cx.notify();
+		}))
+		.on_key_down(cx.listener(|shell, event: &gpui::KeyDownEvent, _, cx| {
+			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				shell.diagnostics.expanded = !shell.diagnostics.expanded;
+				cx.notify();
+				cx.stop_propagation();
+			}
+		}))
+		.child(if expanded { "⌄" } else { "›" })
+		.child("Technical details")
+		.smooth()
+		.into_any_element()
+}
+
+fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
+	gpui::div()
+		.id("health-components")
+		.debug_selector(|| "health-components".into())
+		.flex()
+		.flex_col()
+		.gap_5()
+		.child(
+			gpui::div()
+				.flex()
+				.flex_col()
+				.gap_2()
+				.child(gpui::div().font_weight(FontWeight::MEDIUM).child("Agent process"))
+				.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(
+					native_process_summary(
+						snapshot.report.as_ref().and_then(|report| report.native_process()),
+					),
+				)),
+		)
+		.child(health_component_section(
+			"health-core-components",
+			"Local services",
+			"",
+			0,
+			&HEALTH_CORE_COMPONENTS,
+			snapshot,
+		))
+		.child(health_component_section(
+			"health-app-server-components",
+			"Codex capabilities",
+			"Not checked in this report",
+			HEALTH_CORE_COMPONENTS.len(),
+			&HEALTH_APP_SERVER_COMPONENTS,
+			snapshot,
+		))
+		.child(health_component_section(
+			"health-optional-components",
+			"Optional features",
+			"",
+			HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
+			&HEALTH_OPTIONAL_COMPONENTS,
+			snapshot,
+		))
+		.into_any_element()
+}
+
+pub(super) fn content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> AnyElement {
+	let content = summary_content(shell, standalone, cx);
 	// The viewport must not contribute the report's intrinsic height to Settings.
 	// One bounded scroll area owns all content, including expanded details.
 	gpui::div()
