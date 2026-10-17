@@ -26,27 +26,36 @@ pub(super) struct Panel {
 	observations: BTreeMap<String, AgentModelSettingsResult>,
 	work: Option<String>,
 	task: Option<Task<()>>,
-	read_at: Option<std::time::Instant>,
+	read_at: BTreeMap<String, std::time::Instant>,
 	epoch: u64,
 }
 
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
-		if self.is_new_conversation()
-			|| self.sending
-			|| self.profile.is_none()
-			|| self.model_settings.read_at.is_some_and(|at| at.elapsed().as_secs() < 2)
-		{
+		if self.is_new_conversation() || self.sending || self.profile.is_none() {
 			return;
 		}
 
-		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
+		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id())
+			&& self.model_settings.read_at.get(&owner).is_none_or(|at| at.elapsed().as_secs() >= 2)
+		{
 			self.read_model_settings(&owner, cx);
 		}
 	}
 
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
-		let Some(model) = self.composer_model_value(cx) else { return "Task model".into() };
+		let Some(model) = self.composer_model_value(cx) else {
+			let owner = self.composer_manager.clone().or_else(|| self.root_id());
+			return if owner
+				.as_ref()
+				.is_some_and(|owner| self.model_settings.observations.contains_key(owner))
+			{
+				"Model unavailable"
+			} else {
+				"Loading model…"
+			}
+			.into();
+		};
 
 		if let Some(AgentCapabilitiesResult::Available { models, .. }) =
 			self.current_model_catalog(cx)
@@ -58,43 +67,51 @@ impl AgentSurface {
 		model
 	}
 
-	pub(super) fn composer_model_value(&self, cx: &Context<Self>) -> Option<String> {
-		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else {
-			return Some(self.model.read(cx).content().into());
-		};
-
-		if let Some(model) = self.draft_profiles.execution.choice(&owner).model {
-			return Some(model.as_str().into());
-		}
-		if let Some(AgentModelSettingsResult::Available { model: Some(model), .. }) =
-			self.model_settings.observations.get(&owner)
+	fn composer_model_settings(&self, cx: &Context<Self>) -> (Option<String>, Option<String>) {
+		let (model, effort) = if let Some(owner) =
+			self.composer_manager.clone().or_else(|| self.root_id())
 		{
-			return Some(model.as_str().into());
-		}
+			let choice = self.draft_profiles.execution.choice(&owner);
+			let (model, effort) = match self.model_settings.observations.get(&owner) {
+				Some(AgentModelSettingsResult::Available { model, reasoning_effort, .. }) => (
+					model.as_ref().map(|value| value.as_str().to_owned()),
+					reasoning_effort.as_ref().map(|value| value.as_str().to_owned()),
+				),
+				_ => (None, None),
+			};
+			(
+				choice.model.map(|value| value.as_str().to_owned()).or(model),
+				choice.reasoning_effort.map(|value| value.as_str().to_owned()).or(effort),
+			)
+		} else {
+			(
+				Some(self.model.read(cx).content().to_owned()),
+				self.creation_effort().map(|value| value.as_str().to_owned()),
+			)
+		};
+		let effort = effort.or_else(|| {
+			let AgentCapabilitiesResult::Available { models, .. } =
+				self.current_model_catalog(cx)?
+			else {
+				return None;
+			};
+			models
+				.iter()
+				.find(|entry| Some(entry.model.as_str()) == model.as_deref())?
+				.default_effort
+				.as_ref()
+				.map(|value| value.as_str().to_owned())
+		});
 
-		None
+		(model, effort)
 	}
 
-	pub(super) fn composer_effort_value(&self) -> String {
-		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else {
-			return if self.creation_inherit_effort {
-				"Inherited".into()
-			} else {
-				self.effort.as_str().into()
-			};
-		};
+	pub(super) fn composer_model_value(&self, cx: &Context<Self>) -> Option<String> {
+		self.composer_model_settings(cx).0
+	}
 
-		if let Some(effort) = self.draft_profiles.execution.choice(&owner).reasoning_effort {
-			return effort.as_str().into();
-		}
-
-		if let Some(AgentModelSettingsResult::Available {
-			reasoning_effort: Some(effort), ..
-		}) = self.model_settings.observations.get(&owner)
-		{
-			return effort.as_str().into();
-		}
-		"Inherited".into()
+	pub(super) fn composer_effort_value(&self, cx: &Context<Self>) -> Option<String> {
+		self.composer_model_settings(cx).1
 	}
 
 	fn adopt_composer_observation(
@@ -128,6 +145,17 @@ impl AgentSurface {
 			Panel { epoch: self.model_settings.epoch.wrapping_add(1), ..Default::default() };
 	}
 
+	pub(super) fn cancel_model_settings_read(&mut self) {
+		self.model_settings.epoch = self.model_settings.epoch.wrapping_add(1);
+		if self.model_settings.task.is_some()
+			&& let Some(work) = &self.model_settings.work
+		{
+			self.model_settings.read_at.remove(work);
+		}
+		self.model_settings.task = None;
+		self.model_settings.work = None;
+	}
+
 	pub(super) fn invalidate_model_settings(&mut self, next: &AgentSnapshotDto) {
 		if self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
 			!= next.runtime_source.as_ref()
@@ -137,15 +165,33 @@ impl AgentSurface {
 			return;
 		}
 
-		let changed = self.model_settings.observations.keys().chain(self.model_settings.work.iter()).any(|work| {
+		let rebound =
+			self.model_settings.observations.keys().chain(self.model_settings.work.iter()).any(
+				|work| {
+					let before = self
+						.snapshot
+						.as_ref()
+						.and_then(|s| s.work_items.iter().find(|w| &w.id == work));
+					let after = next.work_items.iter().find(|w| &w.id == work);
+
+					!matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id)
+				},
+			);
+
+		if rebound {
+			self.reset_model_settings();
+			return;
+		}
+
+		let lifecycle_changed = self.model_settings.read_at.keys().any(|work| {
 			let before = self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 			let after = next.work_items.iter().find(|w| &w.id == work);
-
-			!matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.active_turn_id==b.active_turn_id && a.dispatch_state==b.dispatch_state)
+			!matches!((before, after), (Some(a), Some(b)) if a.active_turn_id == b.active_turn_id && a.dispatch_state == b.dispatch_state)
 		});
-
-		if changed {
-			self.reset_model_settings();
+		if lifecycle_changed {
+			// The same thread keeps its last observation while a fresh read completes.
+			self.cancel_model_settings_read();
+			self.model_settings.read_at.clear();
 		}
 	}
 
@@ -157,7 +203,7 @@ impl AgentSurface {
 		let owner = work.id.clone();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
 			"native-model-settings-read".into(),
-			"Refresh task model".into(),
+			"Refresh model".into(),
 			self.model_settings.task.is_some(),
 			cx,
 			move |s, cx| s.read_model_settings(&owner, cx),
@@ -195,12 +241,6 @@ impl AgentSurface {
 			return;
 		}
 
-		let composer = self.composer_manager.clone().or_else(|| self.root_id());
-
-		self.model_settings
-			.observations
-			.retain(|key, _| self.selected.as_ref() == Some(key) || composer.as_ref() == Some(key));
-
 		self.model_settings.work = Some(work.into());
 
 		cx.notify();
@@ -228,7 +268,7 @@ impl AgentSurface {
 
 		let epoch = self.model_settings.epoch;
 
-		self.model_settings.read_at = Some(std::time::Instant::now());
+		self.model_settings.read_at.insert(work.into(), std::time::Instant::now());
 
 		let work = work.to_owned();
 		let future = cx.background_executor().spawn(async move {
@@ -295,7 +335,7 @@ fn settings_text(state: &AgentModelSettingsResult) -> String {
 			model_provider,
 			..
 		} => format!(
-			"Account: {}\nModel provider: {}\nTask model: {}\nReasoning effort: {}",
+			"Account: {}\nModel provider: {}\nModel: {}\nReasoning effort: {}",
 			account_id.as_str(),
 			model_provider.as_ref().map_or("Not reported", |v| v.as_str()),
 			model.as_ref().map_or("Not reported", |v| v.as_str()),

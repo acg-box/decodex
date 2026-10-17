@@ -29,7 +29,11 @@ impl Intents {
 		Self { revision, choices }
 	}
 
-	fn change(&mut self, owner: String, update: impl FnOnce(&mut AgentExecutionOverrides)) {
+	pub(super) fn change(
+		&mut self,
+		owner: String,
+		update: impl FnOnce(&mut AgentExecutionOverrides),
+	) {
 		self.revision = self.revision.wrapping_add(1);
 
 		let value = self.choices.entry(owner).or_default();
@@ -44,7 +48,11 @@ impl Intents {
 	}
 
 	pub(super) fn capture(&self, action: &AgentActionDto) -> Option<(String, u64)> {
-		let AgentActionDto::SendConfigured { root_id, execution, .. } = action else { return None };
+		let (root_id, execution) = match action {
+			AgentActionDto::SendConfigured { root_id, execution, .. } => (root_id, execution),
+			AgentActionDto::NewConversation { work_id, execution, .. } => (work_id, execution),
+			_ => return None,
+		};
 		let (revision, choice) = self.choices.get(root_id.as_str())?;
 
 		(choice == execution && !choice.is_empty()).then(|| (root_id.as_str().into(), *revision))

@@ -5159,7 +5159,19 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.execution
 		.reasoning_effort
 		.as_ref()
-		.map_or("Inherited", |effort| effort.as_str())
+		.map(|effort| effort.as_str())
+		.or_else(|| {
+			shell
+				.quick
+				.catalog
+				.as_ref()?
+				.iter()
+				.find(|model| model.model == shell.quick.execution.model)?
+				.default_effort
+				.as_ref()
+				.map(|effort| effort.as_str())
+		})
+		.unwrap_or("Not reported")
 		.to_uppercase();
 	let fast_enabled = shell.quick.execution.fast;
 	let send = composer_send(can_send, cx);

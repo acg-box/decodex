@@ -16,7 +16,7 @@ use crate::shell::agent_surface::{
 	AgentActionDto, ClientProfile, LoadState,
 	capabilities::{
 		AgentCapabilitiesResult, AgentModelDto, AgentSurface, ConversationReasoningEffort,
-		IntoElement, ParentElement,
+		IntoElement,
 	},
 };
 use decodex_protocol::{
@@ -31,9 +31,7 @@ struct EffortView {
 }
 impl Render for EffortView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| {
-			gpui::div().child(s.creation_effort_toggle(cx)).child(s.effort_scale(cx))
-		})
+		self.surface.update(cx, |s, cx| s.effort_scale(cx))
 	}
 }
 
@@ -241,9 +239,7 @@ fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut TestApp
 }
 
 #[gpui::test]
-fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
-	cx: &mut TestAppContext,
-) {
+fn new_chat_uses_the_same_reasoning_slider_and_sends_the_selected_value(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = profile();
 	let surface = cx.new(AgentSurface::new);
 
@@ -263,7 +259,10 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 		s.mark_model_intent(cx);
 		s.mark_tier_intent();
 
-		s.capabilities = Some(catalog(vec![ConversationReasoningEffort::High]));
+		s.capabilities = Some(catalog(vec![
+			ConversationReasoningEffort::Low,
+			ConversationReasoningEffort::High,
+		]));
 
 		assert!(s.composer_capability_error(cx).is_some());
 	});
@@ -275,13 +274,13 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 		window.draw(cx).clear(cx);
 	});
 
-	let button = visual.debug_bounds("creation-native-effort").unwrap();
+	let slider = visual.debug_bounds("reasoning-slider").unwrap();
 
-	visual.simulate_click(button.center(), Default::default());
+	visual.simulate_click(slider.center(), Default::default());
 	visual.run_until_parked();
 	surface.update(visual, |s, cx| {
-		assert!(s.creation_inherit_effort);
-		assert_eq!(s.composer_effort_value(), "Inherited");
+		assert!(!s.creation_inherit_effort);
+		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 		assert!(s.composer_capability_error(cx).is_none());
 		assert!(s.submission.command.is_none(), "selection alone does not send");
 
@@ -293,8 +292,8 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 		panic!("configured start")
 	};
 
-	assert!(start.effort.is_none());
-	assert!(execution.reasoning_effort.is_none());
+	assert_eq!(start.effort, Some(ConversationReasoningEffort::High));
+	assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::High));
 	assert_eq!(start.model.as_str(), "configured-model");
 }
 
@@ -334,7 +333,7 @@ fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_eff
 
 		s.apply_creation_defaults(cx);
 
-		assert_eq!(s.composer_effort_value(), "Inherited");
+		assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 		assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
 
 		s.reconcile_model_options(cx);

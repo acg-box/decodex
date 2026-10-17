@@ -32,27 +32,30 @@ impl AgentSurface {
 		}
 	}
 
-	fn configured_effort_label(&self) -> AnyElement {
+	fn configured_effort_label(&self, cx: &Context<Self>) -> AnyElement {
 		gpui::div()
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
 			.text_size(gpui::px(12.))
 			.text_color(gpui::rgb(TEXT))
-			.child(format!("{} · configured", controls::level_label(&self.composer_effort_value())))
+			.child(
+				self.composer_effort_value(cx)
+					.as_deref()
+					.map(controls::level_label)
+					.unwrap_or_else(|| "Reasoning not reported".into()),
+			)
 			.into_any_element()
 	}
 
 	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
-		if self.root_id().is_none() && self.creation_inherit_effort {
-			return gpui::div().child("Inherited from native configuration").into_any_element();
-		}
-
 		self.explicit_effort_scale(cx)
 	}
 
 	fn handle_effort_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) {
 		let levels = self.model_efforts(cx);
-		let current = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
+		let effort = self.composer_effort_value(cx);
+		let current =
+			levels.iter().position(|v| Some(v.as_str()) == effort.as_deref()).unwrap_or(0);
 		let next = match e.keystroke.key.as_str() {
 			"left" | "down" => current.saturating_sub(1),
 			"right" | "up" => (current + 1).min(levels.len().saturating_sub(1)),
@@ -77,10 +80,13 @@ impl AgentSurface {
 		let count = levels.len();
 
 		if count == 0 {
-			return self.configured_effort_label();
+			return self.configured_effort_label(cx);
 		}
 
-		let index = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
+		let effort = self.composer_effort_value(cx);
+		let index = levels.iter().position(|v| Some(v.as_str()) == effort.as_deref()).unwrap_or(0);
+		let label =
+			effort.as_deref().map(controls::level_label).unwrap_or_else(|| "Not reported".into());
 		let fraction =
 			self.effort_pointer.unwrap_or(index as f32 / count.saturating_sub(1).max(1) as f32);
 		let measured = cx.entity().downgrade();
@@ -99,7 +105,7 @@ impl AgentSurface {
 					.text_size(gpui::px(12.))
 					.whitespace_nowrap()
 					.text_color(gpui::rgb(TEXT))
-					.child(controls::level_label(&self.composer_effort_value())),
+					.child(label.clone()),
 			)
 			.child(
 				gpui::div()
@@ -108,10 +114,7 @@ impl AgentSurface {
 					.role(Role::Slider)
 					.track_focus(&self.effort_focus)
 					.tab_index(0)
-					.aria_label(format!(
-						"Reasoning: {}. Use Left and Right to adjust.",
-						controls::level_label(&self.composer_effort_value())
-					))
+					.aria_label(format!("Reasoning: {}. Use Left and Right to adjust.", label))
 					.flex_1()
 					.h(gpui::px(24.))
 					.relative()

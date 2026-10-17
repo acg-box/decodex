@@ -253,8 +253,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn model_efforts(&self, cx: &Context<Self>) -> Vec<ConversationReasoningEffort> {
-		self.selected_model(cx)
-			.map_or_else(|| vec![self.effort.clone()], |model| model.efforts.clone())
+		self.selected_model(cx).map_or_else(Vec::new, |model| model.efforts.clone())
 	}
 
 	pub(super) fn reconcile_model_options(&mut self, cx: &mut Context<Self>) {

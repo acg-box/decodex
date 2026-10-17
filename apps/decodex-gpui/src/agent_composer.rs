@@ -1092,8 +1092,10 @@ impl AgentSurface {
 					)
 				})
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
-				.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
-				.child(controls::effort_indicator(&self.composer_effort_value()))
+				.when_some(self.composer_effort_value(cx), |row, effort| {
+					row.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
+						.child(controls::effort_indicator(&effort))
+				})
 				.into_any_element(),
 			_ => gpui::div().child(label).into_any_element(),
 		}
@@ -1210,7 +1212,6 @@ impl AgentSurface {
 					.rounded_full()
 					.flex()
 					.items_center()
-					.child(self.creation_effort_toggle(cx))
 					.child(gpui::div().flex_1().min_w_0().child(self.effort_scale(cx))),
 			)
 			.into_any_element()
@@ -1223,6 +1224,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		if menu == "model" {
+			if let Some(effort) = self
+				.composer_effort_value(cx)
+				.and_then(|effort| ConversationReasoningEffort::new(effort).ok())
+			{
+				self.effort = effort;
+			}
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
 			self.mark_model_intent(cx);
 			self.reconcile_selected_model_effort(cx);

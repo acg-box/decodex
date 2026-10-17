@@ -330,7 +330,7 @@ impl AgentSurface {
 			self.workspace.graph_expanded = false;
 		}
 
-		self.reset_model_settings();
+		self.cancel_model_settings_read();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
 		self.reset_task_models();
