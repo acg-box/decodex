@@ -1,10 +1,9 @@
-//! Bounded Apple audio I/O. Dictation opens only an input queue; Live owns duplex DSP.
+//! Native audio resources: input-only dictation and WebRTC's duplex voice device.
 #![cfg_attr(test, allow(dead_code))]
 #[path = "native_input_queue.rs"] mod input;
 #[path = "native_live_audio.rs"] mod live;
 #[path = "native_audio_owner.rs"] pub(super) mod owner;
 #[path = "native_audio_route.rs"] mod route;
-use objc2::runtime::Bool;
 use objc2_core_audio_types::AudioBufferList;
 use route::Route;
 use rtrb::{Consumer, Producer, RingBuffer};
@@ -49,25 +48,17 @@ impl Device {
 		}
 	}
 
-	fn stop_for_route(&self) {
-		self.ports.level.store(0, Ordering::Relaxed);
+	pub(super) fn pause(&self) {
 		match &self.hardware {
 			Hardware::Input(input) => input.stop(),
 			Hardware::Live(live) => live.stop(),
 		}
 	}
 
-	pub(super) fn pause(&self) {
-		match &self.hardware {
-			Hardware::Input(input) => input.stop(),
-			Hardware::Live(live) => live.pause(),
-		}
-	}
-
 	fn cancel(&self) {
 		match &self.hardware {
 			Hardware::Input(input) => input.cancel(),
-			Hardware::Live(live) => live.pause(),
+			Hardware::Live(live) => live.stop(),
 		}
 	}
 
@@ -99,7 +90,7 @@ impl Device {
 		let started = std::time::Instant::now();
 		let route = Route::new(device)?;
 		let hardware = if duplex {
-			Hardware::Live(live::Live::new(device, sample_rate, &ports)?)
+			Hardware::Live(live::Live::new(device)?)
 		} else {
 			Hardware::Input(input::Input::new(&route, sample_rate, ports.clone())?)
 		};
@@ -124,13 +115,6 @@ impl Device {
 		}
 	}
 
-	fn configuration_changed(&self) -> bool {
-		match &self.hardware {
-			Hardware::Live(live) => live.changed(),
-			Hardware::Input(_) => false,
-		}
-	}
-
 	fn clear_playback(&self) -> Result<(), ()> {
 		let mut output = self.ports.output.lock().map_err(|_| ())?;
 		while output.pop().is_ok() {}
@@ -146,6 +130,13 @@ impl Device {
 
 	pub(super) fn level(&self) -> f32 {
 		f32::from_bits(self.ports.level.load(Ordering::Relaxed))
+	}
+
+	fn live_factory(&self) -> Option<libwebrtc::peer_connection_factory::PeerConnectionFactory> {
+		match &self.hardware {
+			Hardware::Live(live) => Some(live.factory()),
+			Hardware::Input(_) => None,
+		}
 	}
 
 	#[cfg(test)]
@@ -207,35 +198,5 @@ unsafe fn capture_audio(
 			.store((energy / count.max(1) as f32).sqrt().min(1.).to_bits(), Ordering::Relaxed);
 	}
 
-	0
-}
-
-/// # Safety
-/// The output unit supplies valid writable Float32 mono storage for this callback.
-unsafe fn render_audio(
-	mut silence: NonNull<Bool>,
-	count: u32,
-	mut buffers: NonNull<AudioBufferList>,
-	output: &Mutex<Consumer<f32>>,
-) -> i32 {
-	let buffers = unsafe { buffers.as_mut() };
-	if buffers.mNumberBuffers != 1 {
-		return -50;
-	}
-	let buffer = &mut buffers.mBuffers[0];
-	if buffer.mData.is_null() || (buffer.mDataByteSize as usize) < count as usize * size_of::<f32>()
-	{
-		return -50;
-	}
-	let samples = unsafe { slice::from_raw_parts_mut(buffer.mData.cast::<f32>(), count as usize) };
-	samples.fill(0.);
-	if let Ok(mut output) = output.try_lock() {
-		for sample in samples.iter_mut() {
-			*sample = output.pop().unwrap_or(0.);
-		}
-	}
-	unsafe {
-		*silence.as_mut() = Bool::new(samples.iter().all(|sample| *sample == 0.));
-	}
 	0
 }

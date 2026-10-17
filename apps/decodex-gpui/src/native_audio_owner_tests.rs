@@ -1,17 +1,69 @@
 use super::*;
+use libwebrtc::peer_connection_factory::native::PeerConnectionFactoryExt as _;
+
+#[test]
+#[ignore = "Requires authorized microphone; verifies Live preparation and deferred capture"]
+fn prepared_live_reserves_its_factory_without_starting_io() {
+	let owner = Owner::new().unwrap();
+	owner.commands.send(Command::Prepare(0)).unwrap();
+	for mode in [Mode::Dictation, Mode::Live] {
+		let (reply, ready) = mpsc::sync_channel(1);
+		owner.commands.send(Command::CheckPrepared(mode, reply)).unwrap();
+		assert!(ready.recv_timeout(Duration::from_secs(5)).unwrap());
+	}
+	let cancelled = Arc::new(AtomicBool::new(false));
+	let mut session =
+		owner.start(Key { device: 0, mode: Mode::Live }, cancelled.clone(), false).unwrap();
+	let (state, _) = session.parts();
+	let factory = session.live_factory();
+	thread::sleep(Duration::from_millis(200));
+	assert!(!state.running());
+	assert!(!factory.adm_recording_enabled());
+	assert!(!factory.adm_playout_enabled());
+	assert!(!factory.recording_is_initialized());
+	assert!(!factory.playout_is_initialized());
+	assert!(matches!(
+		owner.start(
+			Key { device: 0, mode: Mode::Dictation },
+			Arc::new(AtomicBool::new(false)),
+			true
+		),
+		Err(AudioError::Busy)
+	));
+	session.resume().unwrap();
+	assert!(state.running());
+	assert!(factory.recording_is_initialized());
+	cancelled.store(true, Ordering::Release);
+	let deadline = Instant::now() + Duration::from_secs(1);
+	while state.running() && Instant::now() < deadline {
+		thread::sleep(Duration::from_millis(5));
+	}
+	assert!(!state.running());
+	assert!(!factory.adm_recording_enabled());
+	assert!(!factory.adm_playout_enabled());
+	assert!(matches!(session.resume(), Err(AudioError::Cancelled)));
+}
 
 #[test]
 fn cancelled_queued_start_does_not_open_hardware() {
 	let owner = Owner::new().unwrap();
-	owner
-		.commands
-		.send(Command::PrepareLive { device: u32::MAX, cancelled: Arc::new(AtomicBool::new(true)) })
-		.unwrap();
+	assert!(matches!(
+		owner.start(
+			Key { device: u32::MAX, mode: Mode::Live },
+			Arc::new(AtomicBool::new(true)),
+			false,
+		),
+		Err(AudioError::Cancelled)
+	));
 	let (reply, ready) = mpsc::sync_channel(1);
 	owner.commands.send(Command::CheckPrepared(Mode::Live, reply)).unwrap();
 	assert!(!ready.recv_timeout(Duration::from_secs(2)).unwrap());
 	assert!(matches!(
-		owner.start(Key { device: u32::MAX, mode: Mode::Live }, Arc::new(AtomicBool::new(true))),
+		owner.start(
+			Key { device: u32::MAX, mode: Mode::Live },
+			Arc::new(AtomicBool::new(true)),
+			true
+		),
 		Err(AudioError::Cancelled)
 	));
 }
@@ -30,10 +82,7 @@ fn production_owner_captures_across_modes_and_stops_before_transport_teardown() 
 	{
 		let requested = std::time::Instant::now();
 		if mode == Mode::Live {
-			owner
-				.commands
-				.send(Command::PrepareLive { device, cancelled: Arc::new(AtomicBool::new(false)) })
-				.unwrap();
+			owner.commands.send(Command::Prepare(device)).unwrap();
 			let (reply, ready) = mpsc::sync_channel(1);
 			owner.commands.send(Command::CheckPrepared(Mode::Live, reply)).unwrap();
 			assert!(
@@ -44,11 +93,10 @@ fn production_owner_captures_across_modes_and_stops_before_transport_teardown() 
 		let capture_requested = std::time::Instant::now();
 		let mut first = true;
 		let mut session =
-			owner.start(Key { device, mode }, Arc::new(AtomicBool::new(false))).unwrap();
+			owner.start(Key { device, mode }, Arc::new(AtomicBool::new(false)), true).unwrap();
 		let (state, pcm) = session.parts();
 		let until = std::time::Instant::now() + Duration::from_secs(2);
 		let mut captured = 0;
-		let mut rendered = 0;
 		while std::time::Instant::now() < until {
 			assert!(state.running());
 			while pcm.captured.pop().is_ok() {
@@ -63,23 +111,21 @@ fn production_owner_captures_across_modes_and_stops_before_transport_teardown() 
 				}
 				captured += 1;
 			}
-			while pcm.playback.push(0.).is_ok() {
-				rendered += 1;
-			}
 			thread::sleep(Duration::from_millis(10));
 		}
-		assert!(captured > mode.rate() as usize);
 		if mode == Mode::Live {
-			assert!(rendered - (4_800 - pcm.playback.slots()) > mode.rate() as usize);
+			assert!(session.live_factory().recording_is_initialized());
+		} else {
+			assert!(captured > mode.rate() as usize);
 		}
 		session.pause().unwrap();
 		assert!(!state.running());
 	}
 	let cancelled = Arc::new(AtomicBool::new(false));
-	let mut old = owner.start(Key { device, mode: Mode::Live }, cancelled.clone()).unwrap();
+	let mut old = owner.start(Key { device, mode: Mode::Live }, cancelled.clone(), true).unwrap();
 	let (old_state, _) = old.parts();
 	assert!(matches!(
-		owner.start(Key { device, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false))),
+		owner.start(Key { device, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)), true),
 		Err(AudioError::Busy)
 	));
 	cancelled.store(true, Ordering::Release);
@@ -92,7 +138,7 @@ fn production_owner_captures_across_modes_and_stops_before_transport_teardown() 
 		"capture must stop while the old transport still retains its session"
 	);
 	let mut next = owner
-		.start(Key { device, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)))
+		.start(Key { device, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)), true)
 		.unwrap();
 	let (next_state, _) = next.parts();
 	drop(old); // A late old release must not stop the new session.
@@ -102,11 +148,11 @@ fn production_owner_captures_across_modes_and_stops_before_transport_teardown() 
 
 #[test]
 #[ignore = "Requires authorized microphone; change system routes during each 25-second capture"]
-fn production_owner_keeps_capturing_through_system_route_changes() {
+fn production_owner_keeps_dictating_through_system_route_changes() {
 	let owner = Owner::new().unwrap();
-	for mode in [Mode::Dictation, Mode::Live] {
+	for mode in [Mode::Dictation] {
 		let mut session =
-			owner.start(Key { device: 0, mode }, Arc::new(AtomicBool::new(false))).unwrap();
+			owner.start(Key { device: 0, mode }, Arc::new(AtomicBool::new(false)), true).unwrap();
 		let (state, pcm) = session.parts();
 		let started = Instant::now();
 		let mut last_pcm = started;
@@ -154,7 +200,7 @@ fn prepared_dictation_starts_without_recording_during_preparation() {
 		);
 		let requested = Instant::now();
 		let mut session =
-			owner.start(Key { device, mode }, Arc::new(AtomicBool::new(false))).unwrap();
+			owner.start(Key { device, mode }, Arc::new(AtomicBool::new(false)), true).unwrap();
 		let (state, pcm) = session.parts();
 		while pcm.captured.pop().is_err() {
 			assert!(state.running());
@@ -191,7 +237,7 @@ fn default_dictation_keeps_warm_capture_and_does_not_pin_a_physical_device() {
 	for attempt in 0..5 {
 		let requested = Instant::now();
 		let mut session = owner
-			.start(Key { device: 0, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)))
+			.start(Key { device: 0, mode: Mode::Dictation }, Arc::new(AtomicBool::new(false)), true)
 			.unwrap();
 		let (reply, channels) = mpsc::sync_channel(1);
 		owner.commands.send(Command::CheckCaptureChannels(reply)).unwrap();

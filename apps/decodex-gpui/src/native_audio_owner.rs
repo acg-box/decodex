@@ -1,11 +1,11 @@
-//! Sole owner of Apple audio I/O. Network work never runs here.
+//! Sole owner of native audio I/O. Network work never runs here.
 //!
-//! A session leases PCM queues, not thread-bound hardware. Cancellation pauses capture
-//! independently of transport teardown. Returned queues permit warm reuse; a new session
-//! that overtakes teardown gets a fresh graph. Identity checks discard late old releases.
-//! Standard channels and atomics provide the existing process-local lifecycle; no async
-//! runtime or alternate capture backend is added. Hardware route changes stay in this owner.
+//! Sessions reserve dictation queues or one prewarmed WebRTC factory. Cancellation stops
+//! capture independently of transport teardown. Dictation returns its reusable queue;
+//! Live prepares the next factory after release because WebRTC retires its native device
+//! with the last peer. Identity checks discard late releases from an old session.
 use super::{Device, Pcm};
+use libwebrtc::peer_connection_factory::PeerConnectionFactory;
 use std::{
 	sync::{
 		Arc, OnceLock,
@@ -68,15 +68,16 @@ enum Command {
 	#[cfg(test)]
 	CheckCaptureChannels(SyncSender<Option<u32>>),
 	Prepare(u32),
-	PrepareLive {
-		device: u32,
-		cancelled: Arc<AtomicBool>,
-	},
 	Start {
 		key: Key,
+		record: bool,
 		state: Arc<State>,
 		commands: Sender<Self>,
 		reply: SyncSender<Result<Session, AudioError>>,
+	},
+	Resume {
+		state: Arc<State>,
+		reply: SyncSender<Result<(), AudioError>>,
 	},
 	Pause {
 		state: Arc<State>,
@@ -105,6 +106,7 @@ pub(in crate::shell::agent_surface::voice) struct Session {
 	state: Arc<State>,
 	pcm: Option<Pcm>,
 	owner: Sender<Command>,
+	factory: Option<PeerConnectionFactory>,
 }
 impl Session {
 	/// Called on a capture/transport worker, never on the UI thread.
@@ -113,7 +115,27 @@ impl Session {
 		mode: Mode,
 		cancelled: Arc<AtomicBool>,
 	) -> Result<Self, AudioError> {
-		owner()?.start(Key { device, mode }, cancelled)
+		owner()?.start(Key { device, mode }, cancelled, true)
+	}
+
+	/// Reserve Live's prepared factory before signaling, without enabling I/O.
+	pub(in crate::shell::agent_surface::voice) fn prepare_live(
+		device: u32,
+		cancelled: Arc<AtomicBool>,
+	) -> Result<Self, AudioError> {
+		owner()?.start(Key { device, mode: Mode::Live }, cancelled, false)
+	}
+
+	pub(in crate::shell::agent_surface::voice) fn live_factory(&self) -> PeerConnectionFactory {
+		self.factory.as_ref().expect("Live session factory").clone()
+	}
+
+	pub(in crate::shell::agent_surface::voice) fn resume(&self) -> Result<(), AudioError> {
+		let (reply, done) = mpsc::sync_channel(1);
+		self.owner
+			.send(Command::Resume { state: self.state.clone(), reply })
+			.map_err(|_| AudioError::Worker)?;
+		done.recv().map_err(|_| AudioError::Worker)?
 	}
 
 	pub(in crate::shell::agent_surface::voice) fn parts(&mut self) -> (Arc<State>, &mut Pcm) {
@@ -150,7 +172,12 @@ impl Owner {
 		Ok(Self { commands })
 	}
 
-	fn start(&self, key: Key, cancelled: Arc<AtomicBool>) -> Result<Session, AudioError> {
+	fn start(
+		&self,
+		key: Key,
+		cancelled: Arc<AtomicBool>,
+		record: bool,
+	) -> Result<Session, AudioError> {
 		let state = Arc::new(State {
 			cancelled,
 			running: AtomicBool::new(false),
@@ -160,6 +187,7 @@ impl Owner {
 		self.commands
 			.send(Command::Start {
 				key,
+				record,
 				state: state.clone(),
 				commands: self.commands.clone(),
 				reply,
@@ -189,12 +217,8 @@ impl Prepared {
 		let (input, output) = self.engine.as_mut().ok_or(())?.route.update()?;
 		if input && self.key.mode == Mode::Dictation {
 			self.rebuild()?;
-		} else if (input || output) && self.key.mode == Mode::Live {
-			// VoiceProcessingIO converts hardware formats to the fixed client format.
-			// Keep its DSP graph when system input or output changes.
-			self.engine().stop_for_route();
-			self.recovery = None;
 		}
+		// The native WebRTC device follows its selected route and owns Live recovery.
 		if input || output {
 			eprintln!("DecodexAudio route_change input={input} output={output}");
 		}
@@ -216,16 +240,7 @@ impl Prepared {
 		let Ok(route_changed) = self.follow_route() else {
 			return false;
 		};
-		let configuration_changed = self.engine().configuration_changed();
-		if !route_changed
-			&& configuration_changed
-			&& !self.engine().running()
-			&& self.key.mode == Mode::Dictation
-			&& self.rebuild().is_err()
-		{
-			return false;
-		}
-		let changed = configuration_changed || route_changed;
+		let changed = route_changed;
 		let Some(engine) = self.engine.as_mut() else {
 			return false;
 		};
@@ -298,6 +313,7 @@ fn start(
 	key: Key,
 	state: Arc<State>,
 	commands: &Sender<Command>,
+	record: bool,
 ) -> Result<Session, AudioError> {
 	if state.cancelled.load(Ordering::Acquire) {
 		return Err(AudioError::Cancelled);
@@ -306,26 +322,39 @@ fn start(
 	if state.cancelled.load(Ordering::Acquire) {
 		return Err(AudioError::Cancelled);
 	}
-	graph.follow_route().map_err(|()| AudioError::Prepare)?;
-	if graph.engine().configuration_changed() && key.mode == Mode::Dictation {
-		graph.rebuild().map_err(|()| AudioError::Prepare)?;
+	if record {
+		resume(graph, &state)?;
 	}
+	graph.paused = !record;
+	graph.state = Some(state.clone());
+	Ok(Session {
+		state,
+		pcm: graph.pcm.take(),
+		owner: commands.clone(),
+		factory: graph.engine().live_factory(),
+	})
+}
+fn resume(graph: &mut Prepared, state: &Arc<State>) -> Result<(), AudioError> {
+	if state.cancelled.load(Ordering::Acquire) {
+		return Err(AudioError::Cancelled);
+	}
+	graph.follow_route().map_err(|()| AudioError::Prepare)?;
 	if state.cancelled.load(Ordering::Acquire) {
 		return Err(AudioError::Cancelled);
 	}
 	graph.engine().reset_capture().map_err(|()| AudioError::Start)?;
-	while graph.pcm.as_mut().expect("available PCM").captured.pop().is_ok() {}
+	if let Some(pcm) = graph.pcm.as_mut() {
+		while pcm.captured.pop().is_ok() {}
+	}
 	graph.engine().clear_playback().map_err(|()| AudioError::Start)?;
 	graph.recovery = None;
 	graph.paused = false;
 	graph.engine().resume().map_err(|()| AudioError::Start)?;
 	state.running.store(true, Ordering::Release);
-	graph.state = Some(state.clone());
-	Ok(Session { state, pcm: graph.pcm.take(), owner: commands.clone() })
+	Ok(())
 }
 fn worker(inbox: Receiver<Command>) {
-	// Input-only dictation can coexist with a paused Live graph. Keep each prepared
-	// resource, but grant capture to only one session across both modes.
+	// Keep each prepared resource, but lease only one session across both modes.
 	let mut cached: [Option<Prepared>; 2] = [None, None];
 	loop {
 		let active = cached.iter().flatten().any(|graph| graph.state.is_some());
@@ -352,20 +381,11 @@ fn worker(inbox: Receiver<Command>) {
 			},
 			Ok(Command::Prepare(device)) =>
 				if !cached.iter().flatten().any(|graph| graph.state.is_some()) {
-					let _ = prepare(
-						&mut cached[Mode::Dictation.slot()],
-						Key { device, mode: Mode::Dictation },
-					);
+					for mode in [Mode::Dictation, Mode::Live] {
+						let _ = prepare(&mut cached[mode.slot()], Key { device, mode });
+					}
 				},
-			Ok(Command::PrepareLive { device, cancelled }) => {
-				if !cancelled.load(Ordering::Acquire)
-					&& !cached.iter().flatten().any(|graph| graph.state.is_some())
-				{
-					let _ =
-						prepare(&mut cached[Mode::Live.slot()], Key { device, mode: Mode::Live });
-				}
-			},
-			Ok(Command::Start { key, state, commands, reply }) => {
+			Ok(Command::Start { key, record, state, commands, reply }) => {
 				let busy = cached.iter().flatten().any(|graph| {
 					graph
 						.state
@@ -381,12 +401,21 @@ fn worker(inbox: Receiver<Command>) {
 						}
 					}
 					let slot = &mut cached[key.mode.slot()];
-					let result = start(slot, key, state, &commands);
+					let result = start(slot, key, state, &commands, record);
 					if matches!(result, Err(AudioError::Prepare | AudioError::Start)) {
 						*slot = None;
 					}
 					result
 				};
+				let _ = reply.send(result);
+			},
+			Ok(Command::Resume { state, reply }) => {
+				let result = cached
+					.iter_mut()
+					.flatten()
+					.find(|graph| graph.matches(&state))
+					.ok_or(AudioError::Cancelled)
+					.and_then(|graph| resume(graph, &state));
 				let _ = reply.send(result);
 			},
 			Ok(Command::Pause { state, reply }) => {
@@ -410,11 +439,22 @@ fn worker(inbox: Receiver<Command>) {
 				let _ = reply.send(drained);
 			},
 			Ok(Command::Release { state, pcm }) => {
-				if let Some(graph) = cached.iter_mut().flatten().find(|graph| graph.matches(&state))
+				if let Some(slot) = cached
+					.iter_mut()
+					.find(|slot| slot.as_ref().is_some_and(|graph| graph.matches(&state)))
 				{
+					let graph = slot.as_mut().expect("matching session");
 					graph.pause();
-					graph.pcm = Some(pcm);
-					graph.state = None;
+					if graph.key.mode == Mode::Live {
+						// WebRTC's last peer terminates its platform ADM. Consume each
+						// prepared factory once; prime the next while transport closes.
+						let key = graph.key;
+						*slot = None;
+						let _ = prepare(slot, key);
+					} else {
+						graph.pcm = Some(pcm);
+						graph.state = None;
+					}
 				}
 			},
 			Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -445,11 +485,6 @@ fn owner() -> Result<&'static Owner, AudioError> {
 pub(in crate::shell::agent_surface::voice) fn warm(device: u32) {
 	if let Ok(owner) = owner() {
 		let _ = owner.commands.send(Command::Prepare(device));
-	}
-}
-pub(in crate::shell::agent_surface::voice) fn warm_live(device: u32, cancelled: Arc<AtomicBool>) {
-	if let Ok(owner) = owner() {
-		let _ = owner.commands.send(Command::PrepareLive { device, cancelled });
 	}
 }
 #[cfg(test)]

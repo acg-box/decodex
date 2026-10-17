@@ -23,6 +23,7 @@ use libwebrtc::{
 		native::PeerConnectionFactoryExt as _,
 	},
 	session_description::{SdpType, SessionDescription},
+	stats::RtcStats,
 };
 use serde_json::{self, Value};
 use tokio::{
@@ -32,7 +33,7 @@ use tokio::{
 
 use crate::shell::agent_surface::voice::audio::{
 	LIVE_FRAME_SAMPLES, LIVE_SAMPLE_RATE, Pcm,
-	owner::{AudioError, Mode, Session, State},
+	owner::{AudioError, Session, State},
 };
 
 #[cfg(test)]
@@ -103,13 +104,12 @@ impl Transport {
 		std::thread::Builder::new()
 			.name("native-voice".into())
 			.spawn(move || match input {
-				Input::Device(id) => {
-					// Prepare DSP during signaling, but start capture only after connection.
-					crate::shell::agent_surface::voice::audio::owner::warm_live(
-						id,
-						stopped.clone(),
-					);
-					call.run(Audio::Pending { device: id, cancelled: stopped });
+				Input::Device(id) => match Session::prepare_live(id, stopped.clone()) {
+					Ok(session) => call.run(Audio::Device(session)),
+					Err(error) if !stopped.load(Ordering::Acquire) => call
+						.output
+						.send(serde_json::json!({"type":"error","message":error.message()})),
+					Err(_) => {},
 				},
 				#[cfg(test)]
 				Input::Pcm(pcm) => call.run(Audio::Pcm(pcm)),
@@ -144,29 +144,22 @@ impl Drop for Transport {
 }
 
 enum Audio {
-	Pending {
-		device: u32,
-		cancelled: Arc<AtomicBool>,
-	},
 	Device(Session),
 	#[cfg(test)]
 	Pcm(Pcm),
 }
 impl Audio {
 	fn activate(&mut self) -> Result<(), AudioError> {
-		if let Self::Pending { device, cancelled } = self {
-			*self = Self::Device(Session::start(*device, Mode::Live, cancelled.clone())?);
-		}
-		let pcm = self.pcm();
-		for _ in 0..pcm.captured.slots() {
-			let _ = pcm.captured.pop();
+		match self {
+			Self::Device(session) => session.resume()?,
+			#[cfg(test)]
+			Self::Pcm(pcm) => while pcm.captured.pop().is_ok() {},
 		}
 		Ok(())
 	}
 
 	fn state(&mut self) -> Option<Arc<State>> {
 		match self {
-			Self::Pending { .. } => None,
 			Self::Device(session) => Some(session.parts().0),
 			#[cfg(test)]
 			Self::Pcm(_) => None,
@@ -175,10 +168,25 @@ impl Audio {
 
 	fn pcm(&mut self) -> &mut Pcm {
 		match self {
-			Self::Pending { .. } => unreachable!("audio is activated before PCM delivery"),
 			Self::Device(session) => session.parts().1,
 			#[cfg(test)]
 			Self::Pcm(pcm) => pcm,
+		}
+	}
+
+	fn factory(&self) -> PeerConnectionFactory {
+		match self {
+			Self::Device(session) => session.live_factory(),
+			#[cfg(test)]
+			Self::Pcm(_) => PeerConnectionFactory::default(),
+		}
+	}
+
+	fn manual(&self) -> bool {
+		match self {
+			Self::Device(_) => false,
+			#[cfg(test)]
+			Self::Pcm(_) => true,
 		}
 	}
 }
@@ -237,9 +245,9 @@ async fn run(
 	level: Arc<AtomicU32>,
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) {
-	let factory = PeerConnectionFactory::default();
+	let factory = audio.factory();
 
-	// Apple owns capture, playback and DSP. No second audio device or processing chain.
+	// The owner enables native capture and playback only after the call connects.
 	factory.set_adm_recording_enabled(false);
 	factory.set_adm_playout_enabled(false);
 
@@ -319,20 +327,28 @@ async fn run_media(
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) -> Result<(), &'static str> {
 	let started = Instant::now();
-	let source = NativeAudioSource::new(AudioSourceOptions::default(), LIVE_SAMPLE_RATE, 1, 40);
-	let track = factory.create_audio_track("microphone", source.clone());
+	let source = audio
+		.manual()
+		.then(|| NativeAudioSource::new(AudioSourceOptions::default(), LIVE_SAMPLE_RATE, 1, 40));
+	let track = match &source {
+		Some(source) => factory.create_audio_track("microphone", source.clone()),
+		None => factory.create_device_audio_track("microphone"),
+	};
 
-	peer.0
+	let sender = peer
+		.0
 		.add_track(track.clone().into(), &["microphone"])
 		.map_err(|_| "The microphone track could not start.")?;
 
 	let (tracks, mut incoming) = sync::mpsc::channel(1);
 
-	peer.0.on_track(Some(Box::new(move |event| {
-		if let MediaStreamTrack::Audio(track) = event.track {
-			let _ = tracks.try_send(track);
-		}
-	})));
+	if source.is_some() {
+		peer.0.on_track(Some(Box::new(move |event| {
+			if let MediaStreamTrack::Audio(track) = event.track {
+				let _ = tracks.try_send(track);
+			}
+		})));
+	}
 
 	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
 
@@ -383,6 +399,8 @@ async fn run_media(
 	clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
 	let mut frame = AudioFrame::new(LIVE_SAMPLE_RATE, 1, LIVE_FRAME_SAMPLES);
+	let mut next_meter = Instant::now();
+	let mut awaiting_capture = None;
 
 	loop {
 		tokio::select! {
@@ -417,6 +435,7 @@ async fn run_media(
 					audio.activate().map_err(AudioError::message)?;
 					eprintln!("DecodexVoice ready_ms={} audio_start_ms={}", started.elapsed().as_millis(), audio_start.elapsed().as_millis());
 					announced = true;
+					awaiting_capture = Some(audio_start);
 					events.send(serde_json::json!({"type":"connected"}));
 				}
 				if matches!(peer.0.connection_state(), PeerConnectionState::Failed | PeerConnectionState::Disconnected | PeerConnectionState::Closed)
@@ -425,12 +444,11 @@ async fn run_media(
 				}
 				if !announced && Instant::now() >= deadline { return Err("The audio connection timed out."); }
 				if !announced { continue; }
-				if let Some(device) = audio.state() {
-					if !device.running() { return Err("The audio device stopped. Select a device and start a new call."); }
-					level.store(device.level().to_bits(), Ordering::Relaxed);
-				}
-				let pcm = audio.pcm();
-				if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
+				if let Some(device) = audio.state()
+					&& !device.running() { return Err("The audio device stopped. Select a device and start a new call."); }
+				if let Some(source) = &source {
+					let pcm = audio.pcm();
+					if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
 					for sample in frame.data.to_mut() {
 						let value = pcm.captured.pop().unwrap_or(0.0);
 
@@ -438,6 +456,23 @@ async fn run_media(
 					}
 
 					source.capture_frame(&frame).await.map_err(|_| "Microphone audio could not be delivered.")?;
+					}
+				} else if Instant::now() >= next_meter {
+					// Native WebRTC owns PCM and AEC timing. Read its source meter at
+					// 20 Hz; the composer interpolates visual feedback independently.
+					next_meter = Instant::now() + Duration::from_millis(50);
+					if let Ok(stats) = sender.get_stats().await {
+						for stat in stats {
+							if let RtcStats::MediaSource(source) = stat
+								&& source.source.kind == "audio" {
+								level.store((source.audio.audio_level as f32).to_bits(), Ordering::Relaxed);
+								if source.audio.total_samples_duration > 0.
+									&& let Some(since) = awaiting_capture.take() {
+									eprintln!("DecodexVoice capture_observed_after_start_ms={}", since.elapsed().as_millis());
+								}
+							}
+						}
+					}
 				}
 			},
 		}
@@ -451,7 +486,10 @@ mod tests {
 		peer_connection::AnswerOptions,
 		peer_connection_factory::native::PeerConnectionFactoryExt as _,
 	};
-	use tokio::{sync::mpsc, time};
+	use tokio::{
+		sync::mpsc,
+		time::{self, Instant},
+	};
 
 	use crate::shell::agent_surface::voice::transport::{
 		AudioFrame, AudioSourceOptions, Command, ContinualGatheringPolicy, Duration,
@@ -459,6 +497,96 @@ mod tests {
 		PeerConnectionFactory, RtcConfiguration, SdpType, SessionDescription, Transport, Value,
 		oneshot,
 	};
+
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	#[ignore = "Requires authorized microphone; sends native microphone audio only to a loopback peer"]
+	async fn native_device_calls_use_prewarmed_dsp_across_dictation() {
+		use crate::shell::agent_surface::voice::audio::owner::{self, Mode, Session};
+		use std::sync::{Arc, atomic::AtomicBool};
+		time::timeout(Duration::from_secs(45), async {
+			owner::warm(0);
+			for attempt in 0..3 {
+				let transport = Transport::start_device(0).unwrap();
+				let factory = PeerConnectionFactory::default();
+				factory.set_adm_recording_enabled(false);
+				factory.set_adm_playout_enabled(false);
+				let mut config = RtcConfiguration::default();
+				config.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
+				let peer = Peer(factory.create_peer_connection(config).unwrap());
+				let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
+				peer.0
+					.add_track(
+						factory.create_audio_track("remote", source.clone()).into(),
+						&["remote"],
+					)
+					.unwrap();
+				let (tracks, mut received) = mpsc::channel(1);
+				peer.0.on_track(Some(Box::new(move |event| {
+					if let MediaStreamTrack::Audio(track) = event.track {
+						let _ = tracks.try_send(track);
+					}
+				})));
+				// The fixture accepts the caption channel without sending provider data.
+				peer.0.on_data_channel(Some(Box::new(|_| {})));
+				connect_fixture_peer(&peer, &transport).await;
+				let connected = Instant::now();
+				let mut stream = NativeAudioStream::new(received.recv().await.unwrap(), 48_000, 1);
+				let silent = tokio::spawn(async move {
+					let frame = AudioFrame::new(48_000, 1, 480);
+					loop {
+						source.capture_frame(&frame).await.unwrap();
+						time::sleep(Duration::from_millis(10)).await;
+					}
+				});
+				let first =
+					time::timeout(Duration::from_secs(2), stream.next()).await.unwrap().unwrap();
+				eprintln!(
+					"native_live_first_remote_pcm_ms={:.3} attempt={attempt}",
+					connected.elapsed().as_secs_f64() * 1000.
+				);
+				let mut samples = first.data.len();
+				let until = Instant::now() + Duration::from_secs(1);
+				while Instant::now() < until {
+					samples += time::timeout(Duration::from_secs(1), stream.next())
+						.await
+						.unwrap()
+						.unwrap()
+						.data
+						.len();
+				}
+				assert!(samples >= 24_000, "native capture must reach the remote peer");
+				assert!(transport.command(Command::Mute(true)));
+				time::sleep(Duration::from_millis(100)).await;
+				assert!(transport.command(Command::Mute(false)));
+				drop(transport);
+				silent.abort();
+				let _ = silent.await;
+				let mut dictation = None;
+				let until = Instant::now() + Duration::from_secs(2);
+				while dictation.is_none() && Instant::now() < until {
+					match Session::start(0, Mode::Dictation, Arc::new(AtomicBool::new(false))) {
+						Ok(session) => dictation = Some(session),
+						Err(super::AudioError::Busy) =>
+							time::sleep(Duration::from_millis(10)).await,
+						Err(error) => panic!("dictation failed: {error:?}"),
+					}
+				}
+				let mut dictation =
+					dictation.expect("Live must release capture before peer teardown");
+				let (state, pcm) = dictation.parts();
+				let until = Instant::now() + Duration::from_secs(1);
+				while pcm.captured.pop().is_err() {
+					assert!(state.running());
+					assert!(Instant::now() < until);
+					time::sleep(Duration::from_millis(2)).await;
+				}
+				drop(dictation);
+				time::sleep(Duration::from_millis(200)).await;
+			}
+		})
+		.await
+		.expect("native device call lifecycle");
+	}
 
 	async fn event(transport: &Transport, kind: &str) -> Value {
 		time::timeout(Duration::from_secs(15), async {

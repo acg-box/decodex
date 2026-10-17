@@ -35,8 +35,7 @@ futures-util           = { workspace = true }
 libwebrtc              = { workspace = true }
 objc2                  = { workspace = true }
 objc2-app-kit          = { workspace = true, features = ["NSEvent"] }
-objc2-audio-toolbox    = { workspace = true, features = ["AUAudioUnit", "AudioQueue", "objc2-core-foundation"] }
-objc2-avf-audio        = { workspace = true }
+objc2-audio-toolbox    = { workspace = true, features = ["AudioQueue", "objc2-core-foundation"] }
 objc2-core-audio-types = { workspace = true }
 objc2-core-foundation = { workspace = true }
 objc2-foundation       = { workspace = true, features = ["NSNotification", "NSOperation", "block2"] }

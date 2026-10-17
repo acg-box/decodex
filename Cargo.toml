@@ -50,7 +50,6 @@ httparse               = { version = "~1.10" }
 libc                   = { version = "~0.2" }
 libwebrtc              = { version = "~0.3" }
 objc2-audio-toolbox    = { version = "~0.3", default-features = false, features = ["AUComponent", "AudioComponent", "AudioUnitProperties", "objc2-core-audio-types", "std"] }
-objc2-avf-audio        = { version = "~0.3", default-features = false, features = ["AVAudioBuffer", "AVAudioConverter", "AVAudioEngine", "AVAudioFormat", "AVAudioIONode", "AVAudioMixerNode", "AVAudioMixing", "AVAudioNode", "AVAudioSinkNode", "AVAudioSourceNode", "AVAudioTypes", "block2", "objc2-audio-toolbox", "objc2-core-audio-types", "std"] }
 objc2-core-audio-types = { version = "~0.3", default-features = false, features = ["CoreAudioBaseTypes", "std"] }
 objc2-core-foundation = { version = "~0.3", default-features = false, features = ["CFString", "std"] }
 percent-encoding       = { version = "~2.3" }
