@@ -107,7 +107,6 @@ impl GlassPanel {
 				glass.addSubview(&gpu);
 
 				let _: () = objc2::msg_send![&*native, setHasShadow: false];
-				let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			}
 
 			content.addSubview(&glass);
@@ -116,6 +115,9 @@ impl GlassPanel {
 			let _: () = objc2::msg_send![&*native, setLevel: 0_isize];
 			let _: () = objc2::msg_send![&*native, setMovable: false];
 			let _: () = objc2::msg_send![&*native, setExcludedFromWindowsMenu: true];
+			// Attachment precedes the owner's first placement. Start transparent so
+			// native ordering cannot expose a frame before bounds and arrival are ready.
+			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
 			if radius.is_some() {
@@ -135,7 +137,7 @@ impl GlassPanel {
 				parent,
 				frame: None,
 				visible: false,
-				opacity: Cell::new(if radius.is_some() { 1. } else { 0. }),
+				opacity: Cell::new(0.),
 				window_observer,
 			})
 		}
