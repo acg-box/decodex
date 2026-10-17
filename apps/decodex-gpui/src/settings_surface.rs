@@ -800,7 +800,11 @@ impl SettingsSurface {
 				.flex_col()
 				.gap(gpui::px(24.))
 				.child(
-					group().child(settings_group_title("Materials")).child(self.glass_controls(cx)),
+					group().child(settings_group_title("Materials"))
+						.child(self.preference_control(
+							"composer-liquid-glass", "composer-liquid-glass-knob",
+							"Liquid Glass input bar", ui_theme::composer_glass, cx,
+						)).child(self.glass_controls(cx)),
 				)
 				.child(
 					group()
@@ -1135,6 +1139,27 @@ mod tests {
 		visual.simulate_click(regular.center(), Default::default());
 
 		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+	}
+
+	#[gpui::test]
+	fn composer_glass_switch_defaults_to_on_and_retains_the_users_choice(cx: &mut TestAppContext) {
+		assert!(crate::ui_theme::composer_glass(None));
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(900.)));
+			window.draw(cx).clear(cx);
+		});
+		let toggle =
+			visual.debug_bounds("composer-liquid-glass").expect("composer material switch");
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(!crate::ui_theme::composer_glass(None));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.simulate_click(toggle.center(), Default::default());
+		assert!(crate::ui_theme::composer_glass(None));
 	}
 
 	#[gpui::test]

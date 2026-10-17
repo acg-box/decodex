@@ -1,6 +1,4 @@
 //! Native composition boundary for the existing Agent composer.
-use std::time::Duration;
-
 use gpui::{
 	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
 	Focusable, MouseButton, Pixels, Render, Role, StatefulInteractiveElement as _, Subscription,
@@ -30,7 +28,6 @@ pub(super) struct NativeComposer {
 	height: f32,
 	creating: bool,
 	failed: bool,
-	resume_after: Option<std::time::Instant>,
 }
 impl Default for NativeComposer {
 	fn default() -> Self {
@@ -41,7 +38,6 @@ impl Default for NativeComposer {
 			height: 42.,
 			creating: false,
 			failed: false,
-			resume_after: None,
 		}
 	}
 }
@@ -177,31 +173,10 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
-		// Inline tool disclosures do not cover or replace the native composer.
-		let requested = allowed
-			&& !self.workspace_connecting()
-			&& !self.workspace.browsing
-			&& self.snapshot.is_some()
-			&& !self.selected_is_archived()
-			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
-			&& native_glass_panel::available()
-			&& self.resources.is_none()
-			&& self.integrations.is_none()
-			&& self.usage_estimate.is_none()
-			&& !self.workspace.graph_expanded;
-		let now = std::time::Instant::now();
-
-		if !requested {
-			self.native_composer.resume_after = Some(now + Duration::from_millis(200));
-		}
-
-		let settling = self.native_composer.resume_after.is_some_and(|until| until > now);
-
-		if requested && settling {
-			ui_motion::request_frame(window, cx);
-		}
-
-		let enabled = requested && !settling && !self.native_composer.failed;
+		// Inspector inventories are cached data, not modal surfaces. They must
+		// never replace the composer's material, even after Details closes.
+		let enabled = self.native_composer_requested(allowed, native_glass_panel::available())
+			&& !self.native_composer.failed;
 
 		if enabled
 			&& !self.native_composer.enabled

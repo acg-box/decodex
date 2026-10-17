@@ -80,6 +80,12 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
+/// The composer keeps its native material unless the user selects a plain surface.
+pub(crate) fn composer_glass(value: Option<bool>) -> bool {
+	static CACHE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+	crate::ui_preferences::boolean("composerLiquidGlass", &CACHE, value, true)
+}
+
 pub(crate) fn floating_group() -> Div {
 	gpui::div()
 		.h(gpui::px(CONTROL_GROUP_HEIGHT))

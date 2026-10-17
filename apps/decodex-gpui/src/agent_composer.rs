@@ -98,6 +98,19 @@ fn composer_capsule(native: bool) -> Stateful<Div> {
 }
 
 impl AgentSurface {
+	#[cfg(any(test, target_os = "macos"))]
+	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
+		allowed
+			&& ui_theme::composer_glass(None)
+			&& supported
+			&& !self.workspace_connecting()
+			&& !self.workspace.browsing
+			&& self.snapshot.is_some()
+			&& !self.selected_is_archived()
+			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
+			&& !self.workspace.graph_expanded
+	}
+
 	/// Move keyboard and accessibility focus into the current message editor.
 	pub(crate) fn focus_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		use gpui::Focusable as _;
@@ -1509,6 +1522,31 @@ mod tests {
 		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
 		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
 	};
+
+	#[gpui::test]
+	fn inspector_readback_does_not_remove_glass_or_change_the_draft(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			assert!(s.native_composer_requested(true, true));
+			s.resources = Some((
+				s.selected.clone().unwrap(),
+				Some(decodex_protocol::AgentResourcesResult::Unavailable),
+			));
+			s.workspace.details_visible = true;
+			assert!(s.native_composer_requested(true, true));
+			s.workspace.details_visible = false;
+			assert!(s.native_composer_requested(true, true));
+			assert!(!s.native_composer_requested(false, true));
+			assert!(!s.native_composer_requested(true, false));
+			crate::ui_theme::composer_glass(Some(false));
+			assert!(!s.native_composer_requested(true, true));
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			crate::ui_theme::composer_glass(Some(true));
+			assert!(s.native_composer_requested(true, true));
+		});
+	}
 
 	#[test]
 	fn native_model_menu_fits_above_the_trigger_without_covering_it() {
