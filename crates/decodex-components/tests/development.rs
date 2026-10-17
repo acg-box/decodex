@@ -32,6 +32,14 @@ fn fixed_commit_import_offline_repair_and_wrong_commit_rejection() {
 	fs::write(installed.schemas.join("ClientRequest.json"), "damaged schema")
 		.expect("damage schema");
 	store.ensure(&lock, |_| {}).expect("repair schema from exact artifact");
+	for relative in ["bin/codex-code-mode-host", "codex-path/rg"] {
+		let helper = installed.root.join(relative);
+		let expected = fs::read(artifact.join(relative)).expect("qualified helper");
+		fs::write(&helper, "damaged helper").expect("damage isolated helper");
+		assert!(store.installed(&lock).is_err(), "reject damaged {relative}");
+		store.ensure(&lock, |_| {}).expect("repair helper from exact artifact");
+		assert_eq!(fs::read(&helper).expect("repaired helper"), expected);
+	}
 	assert!(store.installed(&lock).expect("fully verified").is_some());
 	assert_eq!(fs::read_to_string(previous.join("keep")).expect("older data"), "preserve");
 
