@@ -57,6 +57,7 @@ pub(crate) enum AccountApiRuntimeError {
 
 enum PendingAccountApiObservation {
 	Pending(Box<AccountApiObservation>),
+	RecoveryProbe(Box<AccountApiObservation>),
 	CredentialError { error: AccountApiRuntimeError },
 }
 impl PendingAccountApiObservation {
@@ -75,7 +76,8 @@ impl PendingAccountApiObservation {
 
 	fn account_revision(&self) -> i64 {
 		match self {
-			Self::Pending(observation) => observation.account_revision,
+			Self::Pending(observation) | Self::RecoveryProbe(observation) =>
+				observation.account_revision,
 			Self::CredentialError { .. } => 0,
 		}
 	}
@@ -85,13 +87,13 @@ impl PendingAccountApiObservation {
 			Self::Pending(observation) =>
 				matches!(observation.inventory, Err(AccountApiRuntimeError::Unauthorized))
 					|| matches!(observation.profile, Err(AccountApiRuntimeError::Unauthorized)),
-			Self::CredentialError { .. } => false,
+			Self::CredentialError { .. } | Self::RecoveryProbe(_) => false,
 		}
 	}
 
 	fn into_observation(self) -> AccountApiObservation {
 		match self {
-			Self::Pending(observation) => *observation,
+			Self::Pending(observation) | Self::RecoveryProbe(observation) => *observation,
 			Self::CredentialError { error } => AccountApiObservation {
 				account_revision: 0,
 				provider: None,
@@ -102,7 +104,7 @@ impl PendingAccountApiObservation {
 	}
 
 	fn with_auth_retry_error(mut self, error: AccountApiRuntimeError) -> Self {
-		if let Self::Pending(observation) = &mut self {
+		if let Self::Pending(observation) | Self::RecoveryProbe(observation) = &mut self {
 			if matches!(observation.inventory, Err(AccountApiRuntimeError::Unauthorized)) {
 				observation.inventory = Err(error);
 			}
@@ -301,17 +303,31 @@ impl AccountApiRuntime {
 		let profile = profile.map_err(map_request_error).and_then(|body| {
 			decodex_codex::decode_account_api_profile(&body).map_err(map_protocol_error)
 		});
+		if usage.is_ok()
+			&& profile.is_ok()
+			&& let Err(error) = self.accounts.accept_observation_recovery(&credential).await
+		{
+			return PendingAccountApiObservation::failed(
+				credential.account_revision,
+				map_account_service_error(error),
+			);
+		}
 		let inventory = match usage {
 			Ok(usage) => self.enrich_inventory(&credential, usage).await,
 			Err(error) => Err(error),
 		};
 
-		PendingAccountApiObservation::Pending(Box::new(AccountApiObservation {
+		let observation = Box::new(AccountApiObservation {
 			account_revision: credential.account_revision,
 			provider: Some(credential.binding.provider.clone()),
 			inventory,
 			profile,
-		}))
+		});
+		if credential.is_recovery_probe() {
+			PendingAccountApiObservation::RecoveryProbe(observation)
+		} else {
+			PendingAccountApiObservation::Pending(observation)
+		}
 	}
 
 	async fn enrich_inventory(
@@ -629,6 +645,16 @@ mod tests {
 			assert_eq!(observation.inventory, Err(error));
 			assert_eq!(observation.profile, Err(error));
 		}
+	}
+
+	#[test]
+	fn failed_recovery_probe_never_replays_a_rejected_refresh() {
+		let normal = PendingAccountApiObservation::failed(7, AccountApiRuntimeError::Unauthorized);
+		assert!(normal.requires_auth_retry());
+		let probe =
+			PendingAccountApiObservation::RecoveryProbe(Box::new(normal.into_observation()));
+		assert!(!probe.requires_auth_retry());
+		assert_eq!(probe.into_observation().profile, Err(AccountApiRuntimeError::Unauthorized));
 	}
 
 	#[test]

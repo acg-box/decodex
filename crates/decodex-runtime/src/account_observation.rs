@@ -887,7 +887,10 @@ fn profile_status_semantically_equal(
 }
 
 fn account_observation_is_schedulable(account: &AccountRecord) -> bool {
-	!account.tombstoned && account.credential.is_some() && account.unsettled_operation.is_none()
+	!account.tombstoned
+		&& account.credential.is_some()
+		&& (account.unsettled_operation.is_none()
+			|| crate::account_service::rejected_refresh_recovery(account).is_some())
 }
 
 fn plan_observation_round<T>(
@@ -1226,7 +1229,7 @@ mod tests {
 	}
 
 	#[test]
-	fn recovery_required_account_is_suppressed_on_every_scheduler_wake() {
+	fn rejected_refresh_can_be_probed_while_ambiguous_recovery_stays_suppressed() {
 		let account_id = account(9);
 		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000099").unwrap();
 		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-9").unwrap();
@@ -1256,7 +1259,9 @@ mod tests {
 			tombstoned: false,
 		};
 
-		assert!(!account_observation::account_observation_is_schedulable(&record));
+		assert!(account_observation::account_observation_is_schedulable(&record));
+		record.unsettled_operation.as_mut().unwrap().recovery_code =
+			Some("provider_refresh_ambiguous".to_owned());
 		assert!(!account_observation::account_observation_is_schedulable(&record));
 
 		record.unsettled_operation = None;

@@ -2459,7 +2459,10 @@ pub enum AgentError {
 	/// Exact native resume refused because the selected session is archived.
 	ThreadArchived,
 	/// Another Codex client owns the persisted thread writer; no turn was dispatched.
-	ThreadOwnedElsewhere { thread_id: String },
+	ThreadOwnedElsewhere {
+		/// Native thread that another application currently owns.
+		thread_id: String,
+	},
 	/// The provider transport failed.
 	Transport(ClientError),
 	/// Durable state could not be read or updated.
