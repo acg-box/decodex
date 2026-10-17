@@ -1,19 +1,16 @@
 //! An opt-in performance activity in the window's shared top-center space.
 #[path = "ui_performance_chart.rs"] mod chart;
 #[path = "performance_host.rs"] mod host;
+#[path = "ui_performance_readout.rs"] mod readout;
 #[cfg(test)]
 #[path = "ui_performance_tests.rs"]
 mod tests;
-use crate::{
-	ui_motion,
-	ui_theme::{TEXT, TEXT_MUTED},
-};
+use crate::{ui_motion, ui_theme::TEXT};
 use gpui::{
-	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window,
-	prelude::*, profiler::FrameDurationSnapshot,
+	Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window, prelude::*,
+	profiler::FrameDurationSnapshot,
 };
 use std::{
-	collections::VecDeque,
 	sync::atomic::AtomicU8,
 	time::{Duration, Instant},
 };
@@ -86,9 +83,7 @@ pub(crate) struct PerformanceIsland {
 	host: host::HostSample,
 	cpu_percent: Option<f64>,
 	display_hz: Option<f64>,
-	history: VecDeque<f64>,
-	sampled_at: Instant,
-	sample_period: Duration,
+	history: chart::History,
 }
 impl PerformanceIsland {
 	pub(crate) fn new(_: &mut Context<Self>) -> Self {
@@ -99,9 +94,7 @@ impl PerformanceIsland {
 			host: host::HostSample::default(),
 			cpu_percent: None,
 			display_hz: None,
-			history: VecDeque::new(),
-			sampled_at: Instant::now(),
-			sample_period: Duration::from_millis(500),
+			history: chart::History::new(),
 		}
 	}
 
@@ -142,7 +135,6 @@ impl PerformanceIsland {
 							.zip(s.host.cpu_seconds)
 							.map(|(next, last)| ((next - last) / seconds * 100.).max(0.));
 						s.host = host;
-						s.sample_period = Duration::from_secs_f64(seconds);
 						let metrics = Metrics::collect(frames.clone(), &previous_frames, seconds)
 							.unwrap_or_default();
 						s.record(metrics);
@@ -161,63 +153,9 @@ impl PerformanceIsland {
 		// GPUI's animation histogram excludes inactive windows. Draw samples
 		// remain valid with full background rendering; missing data is not zero.
 		if metrics.draw_frames > 0 {
-			self.sampled_at = Instant::now();
-			self.history.push_back(metrics.draw_ms);
-			if self.history.len() > 32 {
-				self.history.pop_front();
-			}
+			chart::record(&mut self.history, Instant::now(), metrics.draw_ms);
 		}
 		self.metrics = metrics;
-	}
-
-	fn details(&self, window: &mut Window, cx: &mut gpui::App) -> AnyElement {
-		let budget = self
-			.display_hz
-			.map_or_else(|| "—".into(), |hz| format!("{hz:.0} Hz · {:.2} ms", 1_000. / hz));
-		let cpu = self.cpu_percent.map_or_else(|| "—".into(), |v| format!("{v:.0}%"));
-		let rows = [
-			("CPU", cpu),
-			("Peak RAM", bytes(self.host.peak_memory_bytes)),
-			("Latency p95", timing(self.metrics.submit_ms, self.metrics.ready_samples)),
-		];
-		gpui::div()
-			.debug_selector(|| "performance-island-details".into())
-			.w(gpui::px(302.))
-			.px_3()
-			.pb_2()
-			.pt_1()
-			.flex()
-			.flex_col()
-			.gap_1()
-			.child(
-				gpui::div()
-					.flex()
-					.justify_between()
-					.child(format!(
-						"Draw p95 {}",
-						timing(self.metrics.draw_ms, self.metrics.draw_frames)
-					))
-					.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(budget)),
-			)
-			.child(chart::render(
-				&self.history,
-				self.display_hz.map(|hz| 1_000. / hz),
-				self.sampled_at.elapsed(),
-				self.sample_period,
-				window,
-				cx,
-			))
-			.child(gpui::div().flex().justify_between().gap_2().children(rows.into_iter().map(
-				|(label, value)| {
-					gpui::div()
-						.flex()
-						.gap_1()
-						.whitespace_nowrap()
-						.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label))
-						.child(value)
-				},
-			)))
-			.into_any_element()
 	}
 
 	fn gpu_label(&self) -> String {
@@ -242,16 +180,17 @@ impl Render for PerformanceIsland {
 		);
 		let height = ui_motion::value(
 			"activity-island-height",
-			if expanded { 116. } else { 28. },
+			if expanded { 124. } else { 28. },
 			window,
 			cx,
 		);
-		let fraction = ((height - 28.) / 88.).clamp(0., 1.);
-		let label = if self.metrics.draw_frames == 0 {
-			"Measuring…".into()
+		let fraction = ((height - 28.) / 96.).clamp(0., 1.);
+		let fps = if self.metrics.draw_frames == 0 {
+			"—".into()
 		} else {
-			format!("{:.0} FPS  ·  {}", self.metrics.fps, self.gpu_label())
+			format!("{:.0}", self.metrics.fps)
 		};
+		let label = format!("{fps} FPS · {}", self.gpu_label());
 		gpui::div()
 			.relative()
 			.w(gpui::px(width))
@@ -264,6 +203,9 @@ impl Render for PerformanceIsland {
 						.relative()
 						.w_full()
 						.h(gpui::px(height))
+						.flex()
+						.flex_col()
+						.items_center()
 						.overflow_hidden()
 						.rounded(gpui::px(14. + fraction * 6.))
 						.bg(gpui::rgb(0x141418))
@@ -272,6 +214,7 @@ impl Render for PerformanceIsland {
 						.text_size(gpui::px(11.))
 						.line_height(gpui::px(16.))
 						.text_color(gpui::rgb(TEXT))
+						.font_features(readout::figures())
 						.on_hover(cx.listener(|s, hovered, _, cx| {
 							let next = s.expansion.hovered(*hovered);
 							if s.expansion != next {
@@ -294,7 +237,8 @@ impl Render for PerformanceIsland {
 								.aria_expanded(expanded)
 								.tab_index(0)
 								.h(gpui::px(28.))
-								.px_3()
+								.w_full()
+								.flex_none()
 								.flex()
 								.items_center()
 								.justify_center()
@@ -315,10 +259,14 @@ impl Render for PerformanceIsland {
 										cx.stop_propagation();
 									}
 								}))
-								.child(label),
+								.child(readout::header(self, fps)),
 						)
 						.when(fraction > 0.001, |d| {
-							d.child(gpui::div().opacity(fraction).child(self.details(window, cx)))
+							d.child(
+								gpui::div()
+									.opacity(fraction)
+									.child(readout::details(self, window, cx)),
+							)
 						}),
 				)
 				.with_priority(2),
