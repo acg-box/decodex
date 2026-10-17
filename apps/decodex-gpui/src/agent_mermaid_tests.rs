@@ -32,6 +32,8 @@ fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 	for source in [
 		"flowchart TD; A[请求] --> B[Reply]",
 		"flowchart LR; A([开始]) --> B[Work] --> C([结束])",
+		"flowchart TD; A[\"请求<br>Ready\"] --> B{\"Done?<br />Retry?\"}",
+		"flowchart LR; A([请求<br/>完成]) --> B[Reply]",
 		"sequenceDiagram; A->>B: request; B-->>A: response",
 		"stateDiagram-v2; [*] --> Active; Active --> [*]",
 		"classDiagram; Order \"1\" *-- \"many\" Item : contains",
@@ -71,6 +73,7 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 	for source in [
 		"pie; Cats: 2".to_owned(),
 		"flowchart TD; A[unclosed".to_owned(),
+		"flowchart TD; A[one<br class='x'>two]".to_owned(),
 		"flowchart TD; click A https://example.test".to_owned(),
 		"x".repeat(16 * 1_024 + 1),
 	] {
@@ -83,8 +86,7 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 
 #[gpui::test]
 fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppContext) {
-	let source =
-		"flowchart LR; A([Request with a longer label]) --> B[Reply with a longer label]  \r\n";
+	let source = "flowchart LR; A([\"Request with a longer label<br/>completed\"]) --> B[Reply with a longer label<br />ready]  \r\n";
 	let (preview, visual) =
 		cx.add_window_view(|_, _| Preview { text: format!("```mermaid\r\n{source}```") });
 	let mut previous_size = None;
@@ -132,7 +134,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 	});
 
 	preview.update(visual, |s, cx| {
-		s.text = "```mermaid\ngraph TD; A --> B\n".into();
+		s.text = format!("```mermaid\r\n{source}");
 
 		cx.notify();
 	});

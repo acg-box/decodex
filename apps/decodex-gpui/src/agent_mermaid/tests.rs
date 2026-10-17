@@ -36,7 +36,7 @@ fn rejects_partial_or_unsupported_input() {
 		"flowchart TD; click A",
 		"flowchart TD; A((circle))",
 		"flowchart TD; A -->|unclosed B",
-		"flowchart TD; A[\"quoted\"]",
+		"flowchart TD; A[\"unclosed quote]",
 		"flowchart TD; A[foo;bar]",
 		"flowchart TD; A[لا]",
 		"flowchart TD; A -->|yes┐| B",
@@ -280,6 +280,82 @@ fn unsupported_long_shape_delimiters_keep_source_fallback() {
 			mermaid::render(&format!("flowchart TD; {declaration}"), 100),
 			Err(RenderError::Unsupported),
 			"{declaration}"
+		);
+	}
+}
+
+#[test]
+fn multiline_flowchart_nodes_preserve_lines_in_every_direction() {
+	for direction in ["TD", "BT", "LR", "RL"] {
+		let source = format!(
+			"flowchart {direction}; A; A([\"请求<br>Ready\"]) --> B[Work<br/>next] --> C{{\"Done?<br />Retry?\"}}; C --> A"
+		);
+		let output = mermaid::render(&source, 100).expect("multiline flowchart");
+
+		for (first, second) in [("请求", "Ready"), ("Work", "next"), ("◇ Done?", "Retry?")] {
+			let first_row =
+				output.lines().position(|line| line.contains(first)).expect("first line");
+			let second_row =
+				output.lines().position(|line| line.contains(second)).expect("second line");
+
+			assert_eq!(second_row, first_row + 1, "{direction}: {output}");
+		}
+
+		assert_eq!(output.matches('◇').count(), 1);
+		assert!(!output.contains("<br"));
+		assert!(output.contains('╭') && output.contains('╯'));
+
+		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered width");
+
+		assert_eq!(mermaid::render(&source, width), Ok(output));
+		assert_eq!(mermaid::render(&source, width - 1), Err(RenderError::TooWide));
+	}
+}
+
+#[test]
+fn multiline_flowchart_labels_keep_per_line_width_and_canvas_limits() {
+	let source = format!("graph LR; A[\"{}<br/>{}\"] --> B[Done]", "界".repeat(20), "x".repeat(40));
+
+	assert!(mermaid::render(&source, 100).is_ok());
+	assert_eq!(
+		mermaid::render(&format!("graph TD; A[ok<br />{}]", "界".repeat(21)), 100),
+		Err(RenderError::Limit)
+	);
+	assert_eq!(
+		mermaid::render(&format!("graph TD; A[{}{}]", "x".repeat(40), "<br>".repeat(3_000)), 100),
+		Err(RenderError::Limit)
+	);
+
+	for tag in ["<br>", "<br/>", "<br />"] {
+		let source = format!("graph TD; A[one{tag}two]; A[\"one<br>two\"]");
+		let output = mermaid::render(&source, 100).expect("equivalent multiline declarations");
+
+		assert_eq!(output.matches("one").count(), 1);
+		assert_eq!(output.matches("two").count(), 1);
+	}
+}
+
+#[test]
+fn malformed_multiline_labels_and_edge_breaks_keep_source_fallback() {
+	for body in [
+		"A[<br/><br />]",
+		"A[one<br> <br>two]",
+		"A[one<br><b>two</b>]",
+		"A[one<br class='x'>two]",
+		"A[one<BR>two]",
+		"A[one<br\t/>two]",
+		"A[one<br>e\u{301}]",
+		"A[one<br>\u{1b}]",
+		"A[\"one<br>two]",
+		"A[\"one\"<br>two\"]",
+		"A[\"`one<br>two`\"]",
+		"A -->|one<br>two| B",
+		"A[one<br>two]; A[one<br>other]",
+	] {
+		assert_eq!(
+			mermaid::render(&format!("flowchart TD; {body}"), 100),
+			Err(RenderError::Unsupported),
+			"{body}"
 		);
 	}
 }

@@ -23,3 +23,8 @@ Stadium node parsing and rounded-corner rendering follow upstream commit
 Entity escape rejection before statement splitting follows upstream commit
 `659b35f1316eda27ef61850dd0832c4a4e95c120`. The broader label grammar from
 that commit is not included.
+
+Multiline flowchart node labels and their drawing follow upstream commit
+`9fcb1f5ed49c938b6fa5a9b4c8f897f3ddfd734c`. This includes the three explicit
+break tags and quoted node labels within the existing strict label subset;
+the broader punctuation and edge grammar is not included.
