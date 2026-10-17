@@ -38,7 +38,7 @@ pub(super) fn render(
 	gpui::div()
 		.debug_selector(|| "performance-island-chart".into())
 		.w_full()
-		.h(gpui::px(32.))
+		.h(gpui::px(28.))
 		.flex_none()
 		.overflow_hidden()
 		.child(
