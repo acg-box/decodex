@@ -11,6 +11,8 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-75f737a722500e44692521ca
@@ -27,10 +29,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+generated: { by: "codex", at: "2026-10-17T01:35:30.324Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:36:25.710Z
+    at: 2026-10-17T01:35:30.324Z
 ---
 
 
@@ -66,6 +68,14 @@ The runtime lock can select an exact official source archive. Use the explicit d
 1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
 2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The component store checks the executable and helper commit, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
+
+## Retain evidence after artifact cleanup
+
+The [portable evidence index](../../automations/upstream/retained-evidence.json) keeps current retained behavior requirements, exact test entrypoints, artifact and helper identities, public delivery references and qualification limits. The native automation directory still owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
+
+Keep the index compact and use Git history for replaced entries. Keep binaries, build trees, account fixtures, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
+
+Missing local products or logs do not block independent source review. Reconcile the index with current source, tests and public delivery evidence. Reconstruct only the affected proof and prepare an exact artifact again when required. Qualify the rebuilt artifact separately; do not identify it as the deleted original. Record unrecovered historical claims as unknown, scope a proof gap to the action that needs it, and retain the existing cursor and runtime baseline until their own requirements are met.
 
 ## Select an official Release
 

@@ -34,6 +34,21 @@ batch evidence separately.
 A source-review cursor must not imply that all adaptation or acceptance is done.
 No-op runs stay quiet; report useful merged changes or actionable blockers.
 
+Keep the portable retention index in [retained-evidence.json](retained-evidence.json).
+It records retained behavior requirements, exact validation entrypoints, artifact
+identities and qualification limits. It is not the live cursor or a task journal.
+Update current entries and let Git retain older versions. Keep raw logs, build
+products, personal paths, account fixtures and native scheduler state outside the
+repository. Preserve reusable custom regression fixtures with their test owner.
+
+Build directories and old local receipts can be removed. If they are absent,
+continue independent source review and reconstruct only the affected proof from
+the index, current source, tests and public delivery records. Prepare the exact
+artifact again when required. A rebuilt artifact needs its own qualification;
+do not treat it as the deleted original or require the user to restore old builds.
+Scope an evidence gap to the action that needs it. Never infer a new source-review
+cursor or a passed test from missing logs.
+
 The portfolio also retains the independent content manager and publisher
 configuration. This upstream task does not manage those roles, OpenWiki, or the
 website. Rendering the portfolio is read-only; it does not register or
