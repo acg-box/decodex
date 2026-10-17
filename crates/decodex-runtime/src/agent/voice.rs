@@ -243,11 +243,18 @@ impl AgentCoordinator {
 
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 
-			let resumed = self
-				.client
-				.thread_resume(params)
-				.await
-				.map_err(|error| agent::resume_error(error, &thread))?;
+			let resumed = match self.client.thread_resume(params).await {
+				Ok(resumed) => resumed,
+				Err(error) => {
+					let error = agent::resume_error(error, &thread);
+					if matches!(error, AgentError::ThreadOwnedElsewhere { .. }) {
+						self.store
+							.record_agent_thread_in_use(work_id.as_str().into(), error.to_string())
+							.await?;
+					}
+					return Err(error);
+				},
+			};
 
 			if agent::exact(&resumed, "/thread/id")? != thread {
 				return Err(AgentError::Invalid("voice thread differs".into()));

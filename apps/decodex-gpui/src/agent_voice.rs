@@ -665,6 +665,10 @@ impl AgentSurface {
 				}
 
 				let _ = self.retire_voice_media();
+				if status.phase == AgentVoicePhase::Failed {
+					// Resume may have discovered the shared conversation lock.
+					self.refresh(cx);
+				}
 			},
 		}
 

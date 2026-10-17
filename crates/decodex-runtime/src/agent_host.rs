@@ -1115,6 +1115,14 @@ impl AgentHost {
 			}
 
 			let detail = match error {
+				AgentError::ThreadOwnedElsewhere { .. } => {
+					// Resume records the shared conversation lock. The composer renders it;
+					// do not add a second, misleading voice connection error.
+					self.voice.update(&id, AgentVoicePhase::Failed, None, None);
+					return;
+				},
+				AgentError::ThreadArchived =>
+					"This conversation is archived. Restore it before starting Live.".into(),
 				AgentError::Transport(ClientError::Remote(error)) =>
 					agent_voice::provider_error_message(&error.message).into(),
 				AgentError::Invalid(message) => message,

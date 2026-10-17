@@ -21,17 +21,18 @@ use decodex_protocol::{
 
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
-	for (voice, config_fails, policy, hosted) in [
-		("juniper", false, None, false),
-		("juniper", false, None, true),
-		("aube", false, None, false),
-		("future_voice", false, Some(true), false),
-		("juniper", true, None, false),
-		("juniper", false, Some(false), false),
+	for (voice, config_fails, policy, hosted, occupied) in [
+		("juniper", false, None, false, false),
+		("juniper", false, None, true, false),
+		("juniper", false, None, true, true),
+		("aube", false, None, false, false),
+		("future_voice", false, Some(true), false, false),
+		("juniper", true, None, false, false),
+		("juniper", false, Some(false), false, false),
 	] {
 		let thread = if hosted { "hosted-voice-thread" } else { "voice-thread" };
 		let work = if hosted { "conversation" } else { "root" };
-		let fails = config_fails || policy == Some(false);
+		let fails = config_fails || policy == Some(false) || occupied;
 		let home = tempfile::tempdir().unwrap();
 		let (local, remote) = io::duplex(8_192);
 		let (read, write) = io::split(local);
@@ -44,6 +45,8 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 			while let Some(line) = lines.next_line().await.unwrap() {
 				let request: Value = serde_json::from_str(&line).unwrap();
 				let mut response = match request["method"].as_str().unwrap() {
+					"thread/resume" if occupied =>
+						serde_json::json!({"error":{"code":-32_600,"message":format!("thread {thread} already has an active writer")}}),
 					"thread/read" | "thread/resume" =>
 						serde_json::json!({"result":{"thread":{"id":thread,"cwd":"/tmp","turns":[]}}}),
 					"config/read" if config_fails =>
@@ -127,6 +130,11 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 
 		assert_eq!(starts.len(), usize::from(!fails));
 		assert_eq!(owned.store.open_agent_voice_calls().await.unwrap().len(), usize::from(!fails));
+		let blocked = owned.store.list_agent_thread_in_use_events().await.unwrap();
+		assert_eq!(blocked.len(), usize::from(occupied));
+		if occupied {
+			assert_eq!(blocked[0].work_item_id, work);
+		}
 
 		if let Some(start) = starts.first() {
 			assert_eq!(start["params"]["threadId"], thread);
