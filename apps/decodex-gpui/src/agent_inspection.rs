@@ -1,5 +1,5 @@
 //! Compact conversation inspection, independent of transcript layout.
-use gpui::{AnyElement, Div, MouseDownEvent};
+use gpui::{AnyElement, Div};
 use reqwest::Url;
 use serde_json::Value;
 
@@ -36,14 +36,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(14.))
-			.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
-				if s.menu_trigger_bounds
-					.get("inspect-work")
-					.is_some_and(|bounds| bounds.contains(&event.position))
-				{
-					return;
-				}
-
+			.on_mouse_down_out(cx.listener(|s, _, _, cx| {
 				s.workspace.details_visible = false;
 
 				cx.notify();

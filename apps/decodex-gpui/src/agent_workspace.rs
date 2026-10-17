@@ -32,7 +32,6 @@ fn action_accessible_label(id: &str, label: &str) -> String {
 			"handoff-close" => "Collapse task details",
 			"zoom-in" => "Zoom in",
 			"zoom-out" => "Zoom out",
-			"inspect-work" => "Work details",
 			_ => label,
 		}
 		.to_owned()
@@ -470,7 +469,7 @@ impl AgentSurface {
 		let icon = panel_icon(&id, expanded);
 		let closes_dock = id == "graph-close";
 		let icon_only = icon.is_some();
-		let show_tip = is_tab || icon_only || id.starts_with("attention-") || id == "inspect-work";
+		let show_tip = is_tab || icon_only || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
@@ -1432,17 +1431,7 @@ impl AgentSurface {
 					gpui::div()
 						.absolute()
 						.top(gpui::px(8. + (1. - presence) * 5.))
-						.left(gpui::px(
-							self.menu_trigger_bounds
-								.get("inspect-work")
-								.map(|bounds| {
-									f32::from(bounds.origin.x + bounds.size.width)
-										- self.workspace_sidebar_width(window)
-										- 320.
-								})
-								.unwrap_or(12.)
-								.max(12.),
-						))
+						.left(gpui::px(12.))
 						.w(gpui::px(320.))
 						.max_w_full()
 						.opacity(presence)

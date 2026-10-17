@@ -1826,43 +1826,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_details_button(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let target = cx.entity();
-		gpui::div()
-			.relative()
-			.flex_none()
-			.child(self.workspace_action(
-				"inspect-work".into(),
-				"⋯".into(),
-				|s, cx| {
-					s.workspace.details_visible = !s.workspace.details_visible;
-
-					if s.workspace.details_visible
-						&& let Some(work) = s.selected.clone()
-						&& s.resources.as_ref().is_none_or(|(owner, _)| owner != &work)
-					{
-						s.toggle_resources(&work, cx);
-					}
-
-					cx.notify();
-				},
-				cx,
-			))
-			.child(
-				gpui::canvas(
-					move |bounds, _, cx| {
-						target.update(cx, |s, _| {
-							s.menu_trigger_bounds.insert("inspect-work", bounds);
-						});
-					},
-					|_, _, _, _| {},
-				)
-				.absolute()
-				.inset_0(),
-			)
-			.into_any_element()
-	}
-
 	fn details(
 		&self,
 		snapshot: &AgentSnapshotDto,

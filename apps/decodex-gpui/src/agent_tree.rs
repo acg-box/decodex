@@ -107,9 +107,7 @@ impl AgentSurface {
 								.text_color(gpui::rgb(TEXT_MUTED))
 								.child(self.agent_count().to_string()),
 						)
-					})
-					.child(gpui::div().flex_1())
-					.child(self.work_details_button(cx)),
+					}),
 			)
 			.child(list.smooth_scroll("agent-tree-scroll"))
 			.child(self.sidebar_resize_handle(Panel::Right, cx))
