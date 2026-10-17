@@ -62,8 +62,17 @@ impl AgentSurface {
 			self.timeline.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
 		let records_key = format!("local-records-{}", work.id);
 		let expanded = diagnostics && self.timeline.expanded_records.contains(&records_key);
+		let mut saved = BTreeMap::new();
+
+		if let Some((older, _)) = self.timeline.older_history.get(&work.id) {
+			for entry in older {
+				saved.insert(entry.id, entry);
+			}
+		}
+
+		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 		let has_records = cursor.is_some()
-			|| entries.iter().any(|entry| {
+			|| saved.values().any(|entry| {
 				entry.kind == "auth_recovery"
 					|| receipt_label(entry) == Some("Local execution record")
 			});
@@ -74,16 +83,6 @@ impl AgentSurface {
 		if expanded {
 			rows.extend(self.earlier_local_records(cursor.is_some(), cx));
 		}
-
-		let mut saved = BTreeMap::new();
-
-		if let Some((older, _)) = self.timeline.older_history.get(&work.id) {
-			for entry in older {
-				saved.insert(entry.id, entry);
-			}
-		}
-
-		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 
 		for entry in saved.values() {
 			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
@@ -200,6 +199,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		gpui::div()
 			.id("local-records-toggle")
+			.debug_selector(|| "local-records-toggle".into())
 			.cursor_pointer()
 			.text_size(gpui::px(11.))
 			.child(agent_surface::muted(if expanded {
@@ -250,6 +250,20 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 		return Some("Automatic retry");
 	}
 	if entry.kind == "execution_notice" {
+		// Native history owns turn failures in their original position. These
+		// saved diagnostics must not reappear after the latest successful reply.
+		if entry.receipt.as_ref().is_some_and(|receipt| {
+			matches!(
+				receipt.event_kind.as_str(),
+				"agent_turn_completed"
+					| "worker_turn_completed"
+					| "native_warning"
+					| "config_warning"
+					| "strict_review_notice"
+			)
+		}) {
+			return Some("Local execution record");
+		}
 		return Some("Execution notice");
 	}
 	if entry.kind == "automation" {
@@ -277,6 +291,85 @@ mod tests {
 	use crate::shell::agent_surface::native_timeline::receipts::{
 		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, AgentTimelineContent,
 	};
+	#[gpui::test]
+	fn old_native_diagnostics_stay_in_details_and_unsent_input_stays_inline(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			s.workspace.details_visible = true;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			let Some((_, AgentHistoryResult::Available { entries, next_before, .. })) =
+				&mut s.history
+			else {
+				panic!("fixture history")
+			};
+			entries.clear();
+			*next_before = None;
+			let record = |id, kind: &str, event: &str| AgentHistoryEntryDto {
+				id,
+				kind: kind.into(),
+				text: "Saved local record".into(),
+				created_at_micros: id,
+				native_source: None,
+				turn_id: None,
+				weather: vec![],
+				activity: None,
+				usage: None,
+				duration_ms: None,
+				receipt: Some(decodex_protocol::AgentHistoryReceiptDto {
+					voice_session_id: None,
+					event_kind: event.into(),
+					delivered_turn_id: None,
+					disposed: false,
+				}),
+			};
+			entries.push(record(93, "unsent_input", "user_message"));
+			s.timeline.older_history.insert(
+				work.id.clone(),
+				(
+					vec![
+						record(91, "execution_notice", "native_warning"),
+						record(92, "execution_notice", "agent_turn_completed"),
+					],
+					None,
+				),
+			);
+			s.timeline.native.binding = Some(super::super::Binding {
+				work: work.id.clone(),
+				thread: "native-thread".into(),
+				account: "account".into(),
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("local-receipt-91").is_none());
+		assert!(visual.debug_bounds("local-receipt-92").is_none());
+		assert!(visual.debug_bounds("local-receipt-93").is_some());
+		assert!(visual.debug_bounds("local-records-toggle").is_some());
+		surface.update(visual, |s, cx| {
+			s.timeline
+				.expanded_records
+				.insert(format!("local-records-{}", s.selected.as_ref().unwrap()));
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("local-receipt-91").is_some());
+		assert!(visual.debug_bounds("local-receipt-92").is_some());
+		assert!(visual.debug_bounds("local-receipt-93").is_some());
+	}
+
 	#[gpui::test]
 	fn unfinished_output_is_visible_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -541,6 +634,23 @@ mod tests {
 		entry.text = "Codex warning: Previous instructions retained".into();
 
 		assert_eq!(receipts::receipt_label(&entry), Some("Execution notice"));
+
+		entry.receipt = Some(decodex_protocol::AgentHistoryReceiptDto {
+			voice_session_id: None,
+			event_kind: "native_warning".into(),
+			delivered_turn_id: None,
+			disposed: false,
+		});
+		for kind in [
+			"native_warning",
+			"config_warning",
+			"agent_turn_completed",
+			"worker_turn_completed",
+			"strict_review_notice",
+		] {
+			entry.receipt.as_mut().unwrap().event_kind = kind.into();
+			assert_eq!(receipts::receipt_label(&entry), Some("Local execution record"));
+		}
 	}
 	#[test]
 	fn partial_replacement_requires_complete_exact_native_content() {
