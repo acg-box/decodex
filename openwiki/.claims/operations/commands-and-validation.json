@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5d3bfad9a7e6f9cf2b771f2a78101c18ef0c07a2796e392ff47f410294a9119f",
+  "pageVersion": "sha256:d617e858dc9689f1e8d8bec106da8c1ea15fa08db3ccfef73e02908cc230ca6d",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -93,7 +93,7 @@
           "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1448-L1456",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1488-L1496",
           "version": "repo-lines-v1:sha256:b70e31578866d930e476716273df97922fe6e05772b5029ff4fcd7a1e3e0994f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRjMzRlN2E1ZDZhNzg1MmVkNmI5YjQwY2Q1Yjk2MzgzNDFiMjMyNDk2YjI3YzY0Nzc1NDM2YWU4NjRjYjdlYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0MDQ3ZmRlMGE5MDI5MDllMmI5YmVlYzhiMzJlMmQzNTdlN2VkNzNjMjg5Y2Y2N2Q0NTY5ZDUyMzZkNTE0YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWY5NDA5MzllMmUzZTEwZDk1OTQzNjEwNGU5MjU0ZjViYzI4NmQ4MTE0ZjZiYzkxYjJkMGE5MzE2NGYzMTU1OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDA0ZDQ3YmZkODczODFhYmY2NGU1Y2NmYzFlNGEwMjQ1ZWFlMGU4YTNmNzM0ZjM0NDYxOTliMjMwOWU4YmY4OCJ9"
         },
         {
@@ -111,10 +111,78 @@
           "version": "repo-file-v1:sha256:a9d75f83ae3593c93f982a3ad4edb0a30d972d22fb266b3d2f048aefe6822199"
         }
       ]
+    },
+    {
+      "id": "claim_112c0b4a591a4d5583c836a1114d2020",
+      "statement": "Retained native qualification uses the portable evidence index, explicit selected CLI/helpers and actual test registration; ignored native fixtures must be selected explicitly and zero or missing selectors are not execution evidence.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:b5d36c9b209098142be327a090a0ee598c141fbb250c0017548df8f41617f3b3"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:62870ed804095840327b6be13b8b5362abcd490892f63647b97954fde5cbcb5d"
+        }
+      ]
+    },
+    {
+      "id": "claim_a553988770c04943a265c2d9a7c6f80b",
+      "statement": "Reusable native artifact probes accept explicit binary, source commit and output environment, use synthetic loopback providers and system-temporary homes, and clean up their child processes and servers.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
+          "version": "repo-file-v1:sha256:998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/native_session.py",
+          "version": "repo-file-v1:sha256:9cadea792cd3d085f18ae8751e90d7d2a90ee6ded8c5bc08db12f7edd2f8501e"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/proxy_headers.py",
+          "version": "repo-file-v1:sha256:11ab168a092e53af78ba3a8cdb7950b8c50466d707daec710fc84587cb165576"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/terminal_controls.py",
+          "version": "repo-file-v1:sha256:d8f2383b7c391a0d1d48df724ab5f7a7b8edb91e5369231c26965d62942c417c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/usage.py",
+          "version": "repo-file-v1:sha256:e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
+        }
+      ]
+    },
+    {
+      "id": "claim_ac1ea31e3d7e42feb84ea4c46ed906ae",
+      "statement": "Hook qualification checks actual script effects after trust, content, enablement and restart changes; parallel tool qualification requires concurrent outstanding requests and ordered results; MCP qualification waits for discovery before comparing opaque metadata across paging and restart.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+          "version": "repo-file-v1:sha256:0676578bee4d6f6c5161d76d728fad1f6ff4d80d54c03f49a8720739654d3c3e"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+          "version": "repo-file-v1:sha256:fa1b3c573d26a91c035b5db91c137755a808a2067ebaeec31017be17cef001d7"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
+          "version": "repo-file-v1:sha256:b2a42cf36eb8077579e2b3377640c468027d8bea7d13051ce706cd380e90b3fc"
+        }
+      ]
+    },
+    {
+      "id": "claim_e52d8cb77a3d41a8acda75806a31a102",
+      "statement": "Upstream source app-server fixtures can need a standalone launcher with private hooks. The recorded exact harness and environment keep that launcher separate from the production CLI and preserve original assertions and timeouts.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-13T07:14:35.295Z"
+    "at": "2026-10-17T05:00:17.787Z"
   }
 }

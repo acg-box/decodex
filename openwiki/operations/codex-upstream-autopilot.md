@@ -9,8 +9,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
+    resource: repo://automations/upstream/current-review.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -29,10 +33,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-17T01:35:30.324Z" }
+generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T01:35:30.324Z
+    at: 2026-10-17T05:00:17.787Z
 ---
 
 
@@ -71,9 +75,9 @@ The runtime lock can select an exact official source archive. Use the explicit d
 
 ## Retain evidence after artifact cleanup
 
-The [portable evidence index](../../automations/upstream/retained-evidence.json) keeps current retained behavior requirements, exact test entrypoints, artifact and helper identities, public delivery references and qualification limits. The native automation directory still owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
+The [portable evidence index](../../automations/upstream/retained-evidence.json) keeps current retained behavior requirements, exact test entrypoints, artifact and helper identities, public delivery references and qualification limits. The linked [current source review](../../automations/upstream/current-review.json) records each reviewed behavior, source and test references, concrete consumers and validation limits. The [current qualification](../../automations/upstream/qualification.json) records the exact CLI and helpers, reusable fixture hashes and executed test identities. These current records are replaced when the baseline changes; Git retains earlier versions. The native automation directory still owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
 
-Keep the index compact and use Git history for replaced entries. Keep binaries, build trees, account fixtures, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
+Keep the index compact and use Git history for replaced entries. Keep binaries, build trees, real account data, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
 
 Missing local products or logs do not block independent source review. Reconcile the index with current source, tests and public delivery evidence. Reconstruct only the affected proof and prepare an exact artifact again when required. Qualify the rebuilt artifact separately; do not identify it as the deleted original. Record unrecovered historical claims as unknown, scope a proof gap to the action that needs it, and retain the existing cursor and runtime baseline until their own requirements are met.
 
