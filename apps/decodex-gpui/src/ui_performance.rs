@@ -264,6 +264,7 @@ impl Render for PerformanceIsland {
 						.when(fraction > 0.001, |d| {
 							d.child(
 								gpui::div()
+									.w_full()
 									.opacity(fraction)
 									.child(readout::details(self, window, cx)),
 							)

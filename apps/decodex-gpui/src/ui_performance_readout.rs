@@ -64,7 +64,7 @@ pub(super) fn details(
 	];
 	gpui::div()
 		.debug_selector(|| "performance-island-details".into())
-		.w(gpui::px(270.))
+		.w_full()
 		.px_3()
 		.pb(gpui::px(6.))
 		.flex_none()
