@@ -329,6 +329,7 @@
     "source_review_evidence": "automations/upstream/current-review.json",
     "selected_runtime_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
     "runtime_disposition": "Retain the qualified baseline. The new source delta has no necessary retained-capability repair; the Arc allocation optimization is native-owned and not adopted in this batch.",
-    "qualification_limits": "The existing qualification.json describes ce0323f2 only. No binary or behavior qualification is claimed for 8c076942. New automatic root waking remains an optional decision."
+    "qualification_limits": "The existing qualification.json describes ce0323f2 only. No binary or behavior qualification is claimed for 8c076942. New automatic root waking remains an optional decision.",
+    "delivery_reference": "https://github.com/acg-box/decodex/pull/2462"
   }
 }

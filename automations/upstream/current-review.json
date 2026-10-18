@@ -629,5 +629,10 @@
       "source_review_status": "complete",
       "upstream_reference": "https://github.com/openai/codex/commit/8c076942cb70fba8e5c4732c23f1faabc4aed484"
     }
-  ]
+  ],
+  "source_archive": {
+    "url": "https://codeload.github.com/openai/codex/tar.gz/8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0"
+  },
+  "source_review_delivery_reference": "https://github.com/acg-box/decodex/pull/2462"
 }
