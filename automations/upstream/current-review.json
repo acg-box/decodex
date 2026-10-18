@@ -1,858 +1,638 @@
 {
   "version": 1,
-  "scope": "Current fixed source-review evidence for retained consumers. Native automation state owns the live cursor and pending work. Git retains replaced evidence; this is not a run log or native definition.",
-  "start_exclusive": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
-  "end_inclusive": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-  "count": 13,
-  "implementation_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-  "decodex_consumer_baseline": "a21e4b200810ecb49f36e90e15fdcdecca8f2d44",
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2460",
+  "scope": "Current fixed source-review evidence. Native automation state owns the live cursor and pending work. Git retains replaced evidence; this is not a run log or native definition.",
+  "start_exclusive": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+  "end_inclusive": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "count": 5,
+  "implementation_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "decodex_consumer_baseline": "f6cfdd006d3cb88675e07596325805940a12ed27",
+  "selected_runtime_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+  "selected_runtime_qualification": "automations/upstream/qualification.json",
+  "qualified_runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2460",
   "classification_counts": {
-    "not applicable": 7,
-    "necessary repair": 2,
-    "optional decision": 1,
-    "native-owned": 3
+    "not applicable": 3,
+    "native-owned": 1,
+    "optional decision": 1
+  },
+  "review_summary": {
+    "screened_count": 5,
+    "completed_source_review_count": 5,
+    "tests_read_unique_function_count": 30,
+    "tests_read_count_unit": "Distinct Rust test functions; parameter expansions and loop cases are not execution counts.",
+    "upstream_tests_executed_count": 0,
+    "native_behavior_tests_executed_count": 0,
+    "runtime_migration": "Not selected: no required retained-capability repair was found.",
+    "artifact_readback": "The retained CLI, Code Mode host and rg match the certified SHA-256 values and pass strict signature checks. Fresh generated schema matches 55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea. Identity checks do not qualify the five newer source changes.",
+    "source_integrity": "All 9290 official archive blobs match the exact fetched Git tree. Source integrity is not executed behavior evidence.",
+    "limits": "No new upstream binary, source/native regression execution, live provider/account, transport/compression/performance or installed-app acceptance. Prior qualification is reused only for the unchanged ce0323f2 CLI/helpers and its recorded behavior limits."
+  },
+  "test_reconstruction": {
+    "source": "Official archive at the fixed implementation_snapshot; compare retained source and test-body digests.",
+    "registration": "cargo +stable nextest list --locked -p <package> --lib -E test(<test>) --message-format json; use --test all instead of --lib for integration:all entries.",
+    "execution": "cargo +stable nextest run --locked -p <package> --lib -E test(<test>) --no-fail-fast; first inspect exact registration and require a nonzero match. Use --test all for integration:all.",
+    "authority": "Use the unversioned stable toolchain, official justfile local Nextest profile and 8 MiB stack; isolated system-temporary HOME with existing host CARGO_HOME/RUSTUP_HOME. These commands were not executed in this source-only review.",
+    "selection_limit": "Recorded selectors identify reviewed test bodies. They are not a mandatory universal qualification gate or an assertion of expanded test counts."
   },
   "records": [
     {
-      "commit": "b9775a0d57b09b43e5bab17a245ec053cc6b4426",
+      "commit": "8d9f6466ff0294785d56f55b1fe363d132fe4133",
       "disposition": "not applicable",
-      "changed_behavior": "Windows package uninstall reads the owner current desktop.uninstall_codex_home preference; ordinary installs retain home by default, OEM preinstalls retain the deletion default, explicit booleans override either, invalid/unreadable config preserves data and retained homes lose sandbox group permissions.",
-      "affected_symbols": "windows-sandbox-service/src/uninstall_policy.rs#clean_uninstall_enabled; package_lifecycle.rs#PackageLifecycle::new,#cleanup; package_lifecycle/cleanup.rs#clean_up",
+      "changed_behavior": "TCP and Unix-domain app-server WebSockets negotiate zstd-stream-v1, retain one stream per direction, emit binary JSON, and bound decoded messages to 64 MiB and windows to 1 MiB. Invalid compressed data or text on a compressed connection closes that connection. Existing plain text fallback and ping/pong remain. Audit/deny add three unmaintained Linux zbus transitive advisory exceptions; the lock adds zstd to the transport dependency list without selecting a new package version.",
+      "affected_symbols": "app-server-transport/src/transport/websocket.rs#websocket_upgrade_handler,#run_websocket_connection,#run_websocket_inbound_loop,#run_websocket_outbound_loop; transport/unix_socket.rs#run_control_socket_acceptor; websocket_compression.rs#ZstdEncoder::encode,#ZstdDecoder::decode",
       "tests_read": [
-        "uninstall_policy::tests::missing_preference_uses_preinstall_default",
-        "uninstall_policy::tests::explicit_preference_overrides_preinstall_default",
-        "uninstall_policy::tests::malformed_or_invalid_preference_preserves_home",
-        "uninstall_policy::tests::unreadable_config_preserves_home"
+        {
+          "source": "codex-rs/app-server-transport/src/websocket_compression_tests.rs",
+          "test": "response_header_selects_compression_or_plain_fallback",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            7,
+            18
+          ],
+          "body_sha256": "4f9f96abe6f86e92df597287e12fa0e6d24952a40b0d7770b81e7cc57baf1e8c"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/websocket_compression_tests.rs",
+          "test": "messages_keep_history_and_have_independent_size_limits",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            21,
+            36
+          ],
+          "body_sha256": "c526c56b383736851b7378a883f3de9057a54b299c197e578eee8105adc39407"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/websocket_compression_tests.rs",
+          "test": "decoded_size_limit_covers_output_larger_than_scratch_buffer",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            39,
+            48
+          ],
+          "body_sha256": "c00eda6129e1586161592a57eddadcd25eab1e7c08edf4ba52eb985fddfe6d34"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/websocket_compression_tests.rs",
+          "test": "malformed_compressed_data_fails",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            51,
+            58
+          ],
+          "body_sha256": "1ae1fbf15eaa685c7837cba4a21c72c2df8a4bd8365c887b39169be440eb7217"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/websocket_compression_tests.rs",
+          "test": "larger_compression_window_is_rejected",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            61,
+            73
+          ],
+          "body_sha256": "4b06ede03b3dc905eae8cb70fd7ed6ec515cf485d539a053b266cc7355dcfd57"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/transport/websocket_compression_tests.rs",
+          "test": "tcp_compression_negotiates_and_retains_history",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            25,
+            77
+          ],
+          "body_sha256": "e92f8b7b5278126b0e576e222b5d5f7e101014931d7035453027777975dcc8e2"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/transport/websocket_compression_tests.rs",
+          "test": "local_socket_compression_negotiates_and_retains_history",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            80,
+            131
+          ],
+          "body_sha256": "d2750f6dfb7cfa96d19e9f7207c4b445d8edef4a292615f0a02fe028ea12c857"
+        }
       ],
-      "decodex_consumer": "No Decodex consumer: current scripts/macos/build_codex_source.mts targets aarch64-apple-darwin; current crates/apps/scripts have no windows-sandbox-service consumer. Windows uninstall is cfg-gated and not linked into the selected macOS path.",
+      "decodex_consumer": "No current compressed app-server transport consumer. crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS fixes production to app-server --stdio; crates/decodex-codex/src/app_server_client.rs implements line-delimited JSON over private pipes. Upstream app-server-transport/src/transport/stdio.rs#start_stdio_connection is unchanged and has no compression codec. Current manifests do not link the upstream transport crate directly.",
+      "validation_and_limits": "Read the complete commit diff, codecs, listener integration and regression bodies. The later 7b44ac16 commit narrows negotiation behind a disabled default. No WebSocket/UDS transport, Linux dependency or compression performance test executed; these paths are outside the retained stdio boundary.",
+      "runtime_delivery": "No runtime migration required for the current private-stdio consumer.",
+      "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "original_commit_diff_sha256": "290ec2503eb267245175a3682eedc47c165029a57769aff34b2cc2ac407ce4e5",
+      "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
       "tests_executed": [],
-      "validation_and_limits": "Read complete added policy/test bodies and owner-impersonated cleanup. No Windows service/ACL execution or hardware acceptance.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+      "tests_executed_count": 0,
       "source_digests": [
         {
-          "path": "codex-rs/windows-sandbox-service/src/uninstall_policy.rs",
-          "sha256": "efb7f1b6d0a177328048be4beb8132757f639959c8939f0e9650d4a1cdb1166f"
+          "path": "codex-rs/app-server-transport/src/transport/websocket.rs",
+          "sha256": "38cb8c3e8e3fb77da1849644d1230814828973f19ec94eb8f6bba40dd62995cc"
         },
         {
-          "path": "codex-rs/windows-sandbox-service/src/uninstall_policy_tests.rs",
-          "sha256": "f98ae56896b3fea1c62e088dd5881c2eec13b85f11ed80a07d0e9cdd992a4a5c"
+          "path": "codex-rs/app-server-transport/src/transport/unix_socket.rs",
+          "sha256": "a2ff08a28cb52c8a11895bb4cff41401180fb0efd0491984b77af381e7efafe3"
         },
         {
-          "path": "codex-rs/windows-sandbox-service/src/package_lifecycle/cleanup.rs",
-          "sha256": "91b1bcc281fa0bc921ea711c6014130f94295b18ba0d060d9b6033084fc0dd4b"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "3076caafdf674e0237866a22b647cd9c6931891c",
-      "disposition": "not applicable",
-      "changed_behavior": "Bazel ICU integration now loads workspace-owned third_party/v8/icu.BUILD.bazel and uses the shared V8 custom-libc++ selector for flags and runtime dependencies.",
-      "affected_symbols": "third_party/v8/icu.BUILD.bazel#_ICU_V8_COPTS,#_ICU_V8_RUNTIME_DEPS,#icuuc,#icui18n,#icu; patches/v8_module_deps.patch#icu build_file; third_party/v8/BUILD.bazel#use_rusty_v8_custom_libcxx",
-      "tests_read": [],
-      "decodex_consumer": "No changed consumer: scripts/macos/build_codex_source.mts invokes the upstream Cargo package builder with stable --locked; it does not run Bazel or compile ICU from these rules. The Rust V8 release manifest and package artifact acquisition remain separate.",
-      "tests_executed": [],
-      "validation_and_limits": "Read the complete new rule and affected selection/wiring. No Bazel execution; this commit adds no behavior test. Candidate Code Mode behavior is qualified separately.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "third_party/v8/icu.BUILD.bazel",
-          "sha256": "2fa6736b25508e37567f9f02a1e0d25584db6cef70dd59b354e986ad42d00ef5"
+          "path": "codex-rs/app-server-transport/src/transport/stdio.rs",
+          "sha256": "e4f83304498aec2e9ccad9ad3a0af66965ab93508a4a6923f993731adcd69c19"
         },
         {
-          "path": "third_party/v8/BUILD.bazel",
-          "sha256": "421bea1d609d9de4d534633065dfd5bb5d9a35c625a9b38cc7a75f6ba9f0ef5d"
+          "path": "codex-rs/app-server-transport/src/websocket_compression.rs",
+          "sha256": "ab27095d256a46acc318eed1a4706058f1aa310650ad9dda6a1e21da696c47f7"
         },
         {
-          "path": "patches/v8_module_deps.patch",
-          "sha256": "19a010c383c68878649fa1b03b0b136e7c3a7c57dbcccfe4c977b8ea97f40012"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "859bbc87fc80c18a72e08b181e301ddb4f8dabea",
-      "disposition": "not applicable",
-      "changed_behavior": "The upstream release job briefly creates prereleases as drafts, uploads assets and only then publishes; this is reversed by 221e4e7c in the same reviewed range.",
-      "affected_symbols": ".github/workflows/rust-release.yml#release.Create GitHub Release",
-      "tests_read": [],
-      "decodex_consumer": "No current runtime or workflow consumer: Decodex prepares a fixed official source archive with Cargo; it does not execute the upstream release publication job.",
-      "tests_executed": [],
-      "validation_and_limits": "Read diff and full create/upload/edit implementation, including failure propagation. No release or publication performed; no changed test body. Net fixed-target behavior is the original behavior after the following revert.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": ".github/workflows/rust-release.yml",
-          "sha256": "f0ec1861688535015b2245f3ceb8c465481757e3cd63558538282fcd3a81d673"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "221e4e7c05386d06aa7b91da2a9b04f7f2bd921f",
-      "disposition": "not applicable",
-      "changed_behavior": "Restore direct non-draft prerelease creation so GitHub emits prereleased events, while stable releases stay drafts through upload. Reverses 859bbc87 exactly at the changed block.",
-      "affected_symbols": ".github/workflows/rust-release.yml#release.Create GitHub Release",
-      "tests_read": [],
-      "decodex_consumer": "No current runtime/workflow consumer: the selected development path consumes exact official source rather than reacting to prereleased events. Formal release qualification policy remains separate.",
-      "tests_executed": [],
-      "validation_and_limits": "Read diff and full creation/upload/publish block. No live release events or publication tested; no changed source test.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": ".github/workflows/rust-release.yml",
-          "sha256": "f0ec1861688535015b2245f3ceb8c465481757e3cd63558538282fcd3a81d673"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "835d3049f03ea71491299b2548c5ab8fa932f897",
-      "disposition": "not applicable",
-      "changed_behavior": "Voice release workflows pass BuildBuddy credentials through the shared preparation action/wrapper and scope macOS/Windows jobs to the bazel environment without deployments.",
-      "affected_symbols": ".github/workflows/rust-release.yml#build-rust-binaries,#build-voice-runtime; rust-release-windows.yml#build-windows-voice; .github/scripts/run_bazel_with_buildbuddy.py#is_trusted_upstream_run,#remote_config,#bazel_command",
-      "tests_read": [],
-      "decodex_consumer": "No changed current consumer: Decodex source preparation calls the native Cargo package builder and never runs upstream release CI or configures BuildBuddy. Native subscription voice consumers remain app-server APIs.",
-      "tests_executed": [],
-      "validation_and_limits": "Read changed job bodies plus complete shared preparation and wrapper. No credentials acquired, Bazel host/tool change, CI release execution or physical voice acceptance. No changed test body.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": ".github/workflows/rust-release.yml",
-          "sha256": "f0ec1861688535015b2245f3ceb8c465481757e3cd63558538282fcd3a81d673"
+          "path": "codex-rs/.cargo/audit.toml",
+          "sha256": "bb42cdef4ef4929cfb53d4fbd0af9f061f4ab1483a00f2816bb3a4cfd85f9edc"
         },
         {
-          "path": ".github/workflows/rust-release-windows.yml",
-          "sha256": "26a4833a4a9b0eb31a8fe394f784e3a32b1e409f232781316eb876dbe396c7b9"
-        },
-        {
-          "path": ".github/actions/prepare-bazel-ci/action.yml",
-          "sha256": "24013aa7e7eea53710e15751c07299f79f278d93f0991bd7298253390cf626ca"
-        },
-        {
-          "path": ".github/scripts/run_bazel_with_buildbuddy.py",
-          "sha256": "9bde86d11cfd4271dadc0b942d6b2d2cd90c59600b7e807b66a14eb49b5e1fff"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "527c5deb74e5cc390f8838ac361e340cb23c2234",
-      "disposition": "necessary repair",
-      "changed_behavior": "Arg0 helper guards close the file lock before dropping the temporary directory; Unix janitor renames a stale locked directory, closes the lock, then deletes the retired path to avoid NFS silly rename and publication races.",
-      "affected_symbols": "arg0/src/lib.rs#Arg0PathEntryGuard,#prepare_path_env_var_with_aliases,#prepare_aliases_in_home,#janitor_cleanup,#run_main_with_arg0_guard",
-      "tests_read": [
-        "tests::run_main_with_arg0_guard_keeps_aliases_alive_until_main_returns",
-        "tests::helper_cleanup_is_isolated_from_other_platforms_and_legacy_clients",
-        "tests::janitor_skips_dirs_without_lock_file",
-        "tests::janitor_skips_dirs_with_held_lock",
-        "tests::janitor_removes_dirs_with_unlocked_lock"
-      ],
-      "decodex_consumer": "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS launches exact Codex CLI with app-server --stdio. Its CLI entrypoint always attempts arg0 alias preparation, even with a package path directory, and retains guard through main. Existing supervised process and temporary native fixture cleanup consume this lifecycle.",
-      "tests_executed": [
-        {
-          "package": "codex-arg0",
-          "kind": "lib",
-          "target": "codex_arg0",
-          "executed_count": 8,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        }
-      ],
-      "validation_and_limits": "Eight original arg0 tests and all 29 retained consumers passed against the qualified package. Local filesystem lifetime/cleanup is covered; no NFS mount or Windows behavior measured.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/arg0/src/lib.rs",
-          "sha256": "c2e09deecca9af9307029e8ff62b384e314ee07f70080df249fa38e435c610ee"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "Exact package qualified for retained consumers in this change; https://github.com/acg-box/decodex/pull/2460",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "82d958597f672b0f05c8f1fe3a43a9b93dc28ba5",
-      "disposition": "optional decision",
-      "changed_behavior": "Add a default-off, under-development multi_env_copy_file feature and install the existing copy-file extension in app-server registries/debug prompt construction only when enabled.",
-      "affected_symbols": "features/src/lib.rs#Feature::MultiEnvCopyFile,#FEATURES; app-server/src/extensions.rs#thread_extensions; cli/src/main.rs#run_debug_prompt_input_command; ext/multi-env-copy-file/src/extension.rs#install",
-      "tests_read": [],
-      "decodex_consumer": "Existing private-stdio app-server launch receives the default-off registry. Current crates/apps/scripts have no multi_env_copy_file setting or cross-environment selection/transfer workflow. No local feature override is added. Deduplicate potential adoption into authenticated-remote-executor.",
-      "tests_executed": [
-        {
-          "package": "codex-features",
-          "kind": "lib",
-          "target": "codex_features",
-          "executed_count": 44,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        }
-      ],
-      "validation_and_limits": "The original feature library tests passed and exact candidate features list reports multi_env_copy_file disabled. No copy workflow is enabled or qualified; adoption stays in authenticated-remote-executor.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/features/src/lib.rs",
-          "sha256": "15415c30dc075b60b9f43343226ced01e7646effa5935c3bc90d4645b0d745a8"
-        },
-        {
-          "path": "codex-rs/app-server/src/extensions.rs",
-          "sha256": "e80be0552b5b6971361fd7580b01028aac73e0910642affa6c99da4e44d4856a"
-        },
-        {
-          "path": "codex-rs/ext/multi-env-copy-file/src/extension.rs",
-          "sha256": "17161cd11a55f99c8993632168c0917d8911ea614d1a6e0a443b72560d0b4182"
-        },
-        {
-          "path": "codex-rs/app-server/src/mcp_refresh.rs",
-          "sha256": "ce794dd0bcdbfdb8188e3bfef2eb60c9c3a04378df4147e9e662418c750da640"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not enabled; user decision remains with authenticated-remote-executor",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "5009a99dfc07830ddf7464c26f310a2b8532b55d",
-      "disposition": "not applicable",
-      "changed_behavior": "TUI slash and shell sigils use PromptPrefix outside editable text; canonical draft APIs restore prefixes/offsets, owned command elements stay out of exports, backward deletion respects selection, and Vim Replace can restore overwritten Unicode text.",
-      "affected_symbols": "tui/src/bottom_pane/chat_composer/draft_state.rs#PromptPrefix; chat_composer.rs#current_text,#current_text_elements,#imported_text_for_textarea,#sync_prompt_prefix_from_text,#enabled_prompt_prefix_for_text; slash_input.rs#sync_slash_command_elements,#unmark_slash_command_element; history_search.rs#history_search_highlight_ranges; textarea/vim_commands.rs#absorb_prompt_prefix",
-      "tests_read": [
-        "bottom_pane::chat_composer::tests::slash_command_cursor_uses_absorbed_prefix",
-        "bottom_pane::chat_composer::tests::backspace_removes_absorbed_prompt_prefixes",
-        "bottom_pane::chat_composer::tests::dynamic_slash_command_becomes_editable_and_is_not_exported",
-        "bottom_pane::chat_composer::tests::unowned_element_spanning_slash_command_is_preserved",
-        "bottom_pane::chat_composer::history_search_paste_tests::history_search_highlights_absorbed_prompt_prefix_match",
-        "bottom_pane::chat_composer::mouse_tests::backspace_deletes_a_body_selection_before_an_absorbed_prefix",
-        "bottom_pane::chat_composer::vim_history_tests::vim_replace_delete_backward_restores_characters_hidden_by_prompt_prefixes"
-      ],
-      "decodex_consumer": "No shared composer consumer: apps/decodex-gpui/src/agent_composer.rs implements the GPUI composer using local ComposerInput/AgentClient. Retained native launch uses app-server --stdio. Current Cargo manifests do not depend on codex-tui, and the Ratatui notices describe separate derived Mermaid/math rendering.",
-      "tests_executed": [],
-      "validation_and_limits": "Read relevant prefix/draft/selection/search/restore diffs, current implementation and new regression bodies. No TUI rendering/input test executed. No transfer of this TUI capability into GPUI.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/tui/src/bottom_pane/chat_composer/draft_state.rs",
-          "sha256": "c4754f5006e6c540c9f34e2dea2768aa5a99a61ac02fa9615adf210fbee6540d"
-        },
-        {
-          "path": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
-          "sha256": "0c943600fbd0bcd6ef6df7eaa6f3c414ff8fa71a55c5bf86b80e46f648a12934"
-        },
-        {
-          "path": "codex-rs/tui/src/bottom_pane/chat_composer/slash_input.rs",
-          "sha256": "90488fd4b38063e1e4ff6ed58e74913d0f7d25cec0e9acecc86b177d92f318f0"
-        },
-        {
-          "path": "codex-rs/tui/src/bottom_pane/textarea/vim_commands.rs",
-          "sha256": "3e427554e1c743c382e6dcfd95f3573a9f9e925595e56145bea3a524a89d3f95"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "e16b631d08cdf82773831f9bbfb793da687d5299",
-      "disposition": "native-owned",
-      "changed_behavior": "Tool JsonSchema stores immutable strings/sequences in boxed strings/slices and boxes optional maps, reducing retained capacity and node size. Constructors, search traversal and catalog encryption overlays adapt while Serde field names and JSON wire shape stay unchanged.",
-      "affected_symbols": "tools/src/json_schema/types.rs#JsonSchema,#JsonSchemaType,#JsonSchema constructors; tools/src/tool_search.rs#append_schema_search_text; core/src/tools/multi_agent_tool.rs#multi_agent_v2_handler",
-      "tests_read": [
-        "json_schema::tests::parse_tool_input_schema_fills_default_properties_for_nullable_object_union",
-        "json_schema::tests::parse_tool_input_schema_fills_default_items_for_nullable_array_union",
-        "json_schema::tests::parse_tool_input_schema_preserves_nested_nullable_type_union",
-        "json_schema::tests::parse_tool_input_schema_preserves_type_unions_without_rewriting_to_any_of",
-        "json_schema::tests::parse_tool_input_schema_preserves_explicit_enum_type_union",
-        "json_schema::tests::parse_tool_input_schema_preserves_refs_and_prunes_unreachable_defs",
-        "json_schema::tests::parse_tool_input_schema_preserves_refs_from_properties_named_def_tables",
-        "json_schema::tests::parse_tool_input_schema_handles_cyclic_local_refs",
-        "json_schema::tests::parse_tool_input_schema_preserves_legacy_definitions",
-        "json_schema::tests::parse_tool_input_schema_preserves_unresolved_and_external_refs",
-        "json_schema::tests::parse_tool_input_schema_preserves_nested_defs_ref_parent",
-        "json_schema::tests::parse_tool_input_schema_preserves_percent_encoded_definition_refs",
-        "json_schema::tests::parse_tool_input_schema_drops_malformed_definition_tables",
-        "tool_search::tests::default_search_text_uses_model_visible_namespace_metadata_once",
-        "tools::handlers::multi_agents_spec::tests::spawn_agent_tool_v2_requires_task_name",
-        "tools::handlers::multi_agents_spec::tests::send_message_tool_requires_message_and_has_no_output_schema",
-        "tools::handlers::multi_agents_spec::tests::followup_task_tool_requires_message_and_has_no_output_schema"
-      ],
-      "decodex_consumer": "The retained app-server builds native tool catalogs and Code Mode schemas; current account_launch/process.rs enables native description-first tools and retains native multi_agent_v2. Decodex sends its admitted tools through the bridge and keeps discovery/readability in agent_process. No Rust JsonSchema ABI is exposed to Decodex; JSON serialization is the integration boundary.",
-      "tests_executed": [
-        {
-          "package": "codex-tools",
-          "kind": "lib",
-          "target": "codex_tools",
-          "executed_count": 107,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        },
-        {
-          "package": "codex-core",
-          "kind": "lib",
-          "test": "tools::handlers::multi_agents_spec::tests::followup_task_tool_requires_message_and_has_no_output_schema"
-        },
-        {
-          "package": "codex-core",
-          "kind": "lib",
-          "test": "tools::handlers::multi_agents_spec::tests::send_message_tool_requires_message_and_has_no_output_schema"
-        },
-        {
-          "package": "codex-core",
-          "kind": "lib",
-          "test": "tools::handlers::multi_agents_spec::tests::spawn_agent_tool_v2_requires_task_name"
-        }
-      ],
-      "validation_and_limits": "All 107 original tools-library tests plus the three affected agent-spec cases passed. The exact native Code Mode/catalog consumers passed; the canonical schema is unchanged. No memory benchmark was run.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/tools/src/json_schema/types.rs",
-          "sha256": "20e6c81ed17bb75110d3b8ea224b975ce8266a0d23411854ce3f5522365be1a5"
-        },
-        {
-          "path": "codex-rs/tools/src/json_schema_tests.rs",
-          "sha256": "c20854b48f2e0c96868449915e388518d21523f67234effdd76ef5128ef8bf3f"
-        },
-        {
-          "path": "codex-rs/tools/src/tool_search.rs",
-          "sha256": "1a1619b8facc35845d1a8409cb09403b76c5b5f2a7766f376c6f3d4955b9ee9d"
-        },
-        {
-          "path": "codex-rs/tools/src/tool_search_tests.rs",
-          "sha256": "63563805b668977ec2a718341e8d460dc61407f7342de852a0641025368ab4ed"
-        },
-        {
-          "path": "codex-rs/core/src/tools/multi_agent_tool.rs",
-          "sha256": "8bd91bd845e09c813b1a6d927c5982859324acff18cfbd48c0af5bda96160fe6"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "Exact package qualified for retained consumers in this change; https://github.com/acg-box/decodex/pull/2460",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "df8990e2614c8834ae9dc0327eb4834c821e34cc",
-      "disposition": "native-owned",
-      "changed_behavior": "Official source upgrades zip 2.4.2 to 9.0.0 with explicitly preserved compression/crypto feature intent; curated plugin extraction handles fallible names and applies sanitized access permissions to the open file handle, excluding special Unix bits.",
-      "affected_symbols": "core-plugins/src/startup_sync.rs#extract_zipball_to_dir; Cargo.toml#workspace.dependencies.zip",
-      "tests_read": [
-        "startup_sync::tests::extract_zipball_preserves_only_unix_access_permissions",
-        "startup_sync::tests::sync_openai_plugins_repo_via_http_cleans_up_staged_dir_on_extract_failure",
-        "startup_sync::tests::sync_openai_plugins_repo_skips_archive_download_when_sha_matches"
-      ],
-      "decodex_consumer": "Native plugin acquisition stays Codex-owned. The retained app-server registry installs native MCP/plugins/skills extensions; current Decodex agent_plugins and agent_skills read installed native observations/catalogs while local plugin install/reconcile APIs remain retired. Thus compatibility of native startup/plugin contents matters without adding a local management workflow.",
-      "tests_executed": [
-        {
-          "package": "codex-core-plugins",
-          "kind": "lib",
-          "target": "codex_core_plugins",
-          "executed_count": 24,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        }
-      ],
-      "validation_and_limits": "All 24 original startup-sync tests passed, including special-bit removal and invalid-archive cleanup. Cargo advisory findings decreased from seven to four with none added. No real-account plugin installation or remote acquisition acceptance.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/Cargo.toml",
-          "sha256": "05c9740164aa212e1719bae3ad2ec50320b14480ac4171e11cc4ba77782c4f9c"
+          "path": "codex-rs/deny.toml",
+          "sha256": "644d581a5380a9aa7e19cf03c3286de9515fac028343822793ba41149c35d8b3"
         },
         {
           "path": "codex-rs/Cargo.lock",
-          "sha256": "e1a4cee78181893964e4f6e3c598a76d947ae295813e56b038008fc8e2b96132"
-        },
-        {
-          "path": "codex-rs/core-plugins/src/startup_sync.rs",
-          "sha256": "57b3a9295919060467a976b70ea18dc0ebfd824f0e788c0c491df4038fe37641"
-        },
-        {
-          "path": "codex-rs/core-plugins/src/startup_sync_tests.rs",
-          "sha256": "6fc30d1786888341b10059d769d534cfdc01f5b0880443eac4c973e2878c9726"
+          "sha256": "6f63e126b80490d838f618f48a209ccaabe202d8dfd8c27d4ca692c7be4d6bfd"
         }
       ],
       "source_review_status": "complete",
-      "runtime_delivery": "Exact package qualified for retained consumers in this change; https://github.com/acg-box/decodex/pull/2460",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
+      "upstream_reference": "https://github.com/openai/codex/commit/8d9f6466ff0294785d56f55b1fe363d132fe4133"
     },
     {
-      "commit": "d13db678cb5390f77d7fa6ba762f85b787fedcec",
-      "disposition": "not applicable",
-      "changed_behavior": "Managed upstream daemons/updaters launch directly with the shared background command helper; remove taskpolicy -b probing/wrapping and its tests/serialization, retain macOS 30-second readiness allowance for replacement daemons inheriting older background policy.",
-      "affected_symbols": "app-server-daemon/src/backend/pid_start.rs#PidBackend::start; background_command.rs#set_working_directory; app-server-daemon/src/lib.rs#START_TIMEOUT",
-      "tests_read": [
-        "removed parent tests background_command::tests::managed_process_preserves_pid_and_uses_background_priority_when_available",
-        "removed parent tests background_command::tests::timed_out_taskpolicy_probe_falls_back_to_direct_launch",
-        "cli/tests/daemon_startup.rs#auto_daemon_start_attaches_to_shared_server (wrapper body only; shared harness not executed)"
-      ],
-      "decodex_consumer": "No changed launcher consumer: current account_launch/process.rs#APP_SERVER_ARGS uses a directly supervised private app-server --stdio child. Current crates/apps/scripts have no codex-app-server-daemon or taskpolicy dependency/call. Decodex service ownership and its process supervisor remain local.",
-      "tests_executed": [],
-      "validation_and_limits": "Read launch construction/managed-daemon probe, retained working-directory function and removed process-policy test bodies. No managed-daemon or macOS QoS performance claim; source wrapper alone is not a completed integration test.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/app-server-daemon/src/backend/pid_start.rs",
-          "sha256": "8ded330f05e2119a5295090f5dc66ba3dd86dd361433d65c9cfc8ab772febc1d"
-        },
-        {
-          "path": "codex-rs/app-server-daemon/src/background_command.rs",
-          "sha256": "7cd772e5d60df1e8163daebfe8edbc05dd096fa6ee6f49f52ac31ef073ba5a6c"
-        },
-        {
-          "path": "codex-rs/cli/tests/daemon_startup.rs",
-          "sha256": "23cabab0518e53097195f3d0edb489f93c00b10d2bdbdc21c8197b5b7a9f4b90"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "not required",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "3b8f43a06bb3105e81406b35ff69f94977d18ae4",
-      "disposition": "necessary repair",
-      "changed_behavior": "Remove unconditional Serde unknown-field rejection from nested TUI keymap and profile TUI types. Shared normal loading can warn/ignore unknown fields; strict loading reports them with paths, while schemars still disallows extras and known-type errors remain errors.",
-      "affected_symbols": "config/src/profile_toml.rs#ProfileTui; config/src/tui_keymap.rs#TuiKeymap and typed contexts; config/src/strict_config.rs#config_error_from_ignored_toml_fields,#config_error_from_ignored_toml_value_fields_for_source,#unrecognized_config_fields_warning",
-      "tests_read": [
-        "strict_config::tests::type_errors_take_precedence_over_ignored_fields",
-        "strict_config::tests::strict_config_rejects_unknown_tui_key",
-        "strict_config::tests::strict_config_rejects_unknown_feature_key",
-        "strict_config::tests::generic_validation_does_not_apply_config_toml_tui_fields",
-        "removed keymap rejection tests and core config profile_tui_rejects_unsupported_settings bodies"
-      ],
-      "decodex_consumer": "The retained private app-server loads the same account CODEX_HOME config as native Codex, including TUI/profile tables. Current process.rs normal launch does not force --strict-config; an unknown native TUI key must not prevent config/read or retained startup. Local bridge reads/writes native configuration through config/read and config/batchWrite.",
-      "tests_executed": [
-        {
-          "package": "codex-config",
-          "kind": "lib",
-          "target": "codex_config",
-          "executed_count": 366,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        },
-        {
-          "kind": "exact artifact probe",
-          "entrypoint": "crates/decodex-runtime/tests/native_qualification/config_policy.py",
-          "executed_count": 8
-        }
-      ],
-      "validation_and_limits": "Exact previous artifact: two ordinary-mode failures, six controls pass. Exact candidate: all eight cases pass. The profile-table fixture leaves the table unselected and does not use retired profile selection. The 366 original config-library tests pass; strict and known-type errors remain enforced.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-      "source_digests": [
-        {
-          "path": "codex-rs/config/src/profile_toml.rs",
-          "sha256": "7a3e2fe14bf337c0d0574668e5dc1819e23e5e5b6321994cb48378c9e40cf578"
-        },
-        {
-          "path": "codex-rs/config/src/tui_keymap.rs",
-          "sha256": "32be812493df49841551a2c8f2b38b0b22794a4c3d9f9bc9a91022a0e386d6fe"
-        },
-        {
-          "path": "codex-rs/config/src/strict_config.rs",
-          "sha256": "db94dd50d072e5045524403796761ff494835213df624249eacd0e606fd5ef4a"
-        },
-        {
-          "path": "codex-rs/config/src/strict_config_tests.rs",
-          "sha256": "553a70d9958d70ee8b0507a1042eba79221031a0f4e9a47c45d8bce1fae2a0e4"
-        }
-      ],
-      "source_review_status": "complete",
-      "runtime_delivery": "Exact package qualified for retained consumers in this change; https://github.com/acg-box/decodex/pull/2460",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
-    },
-    {
-      "commit": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+      "commit": "1cc7dc8f2acc63ce6c1cb72271e6b90a76136c2b",
       "disposition": "native-owned",
-      "changed_behavior": "Contextual fragment bodies/rendering and extension prompt/world-state contributions carry ContentItem. Markers wrap InputText only; typed media retains producer attribution. Text world-state hashing keeps the prior CRLF/role algorithm; non-text uses serialized content and role. Context-window hints retain media, and shared content-to-tool-output conversion preserves image reference/detail and audio. Existing text producers keep their literal text and bounds.",
-      "affected_symbols": "context-fragments/src/fragment.rs#ContextualUserFragment::body,#render,#render_fragment; annotated_content.rs#AnnotatedContent::from_parts; core/src/context/world_state/mod.rs#WorldStateHash::from_fragment,#hash_component; token_budget_context.rs#TokenBudgetContext::render_with_hints; ext/extension-api/src/contributors/prompt.rs#PromptFragment; contributors/world_state.rs#RenderedWorldStateFragment; protocol/src/models.rs#ContentItem::into_text,#From<ContentItem>; tools/src/tool_output.rs#response_input_to_code_mode_result",
+      "changed_behavior": "ResponseItem::AdditionalTools stores tool declarations in Arc<[Value]>. Derived clones share immutable declarations instead of deep-copying a Vec; client, world-state and Guardian constructors and test fixtures use Arc::from. Serde sequence content, ordering, item identity and TS unknown[] stay the same. This is an internal allocation optimization, not a protocol or existing-capability correction.",
+      "affected_symbols": "protocol/src/models.rs#ResponseItem::AdditionalTools; core/src/client.rs#ModelClient::build_responses_request; core/src/context/world_state/top_level_tools.rs#TopLevelToolsState::render_diff; ext/guardian-v2/src/async_scorer/sampler.rs#LunaSampler::prepare_input",
       "tests_read": [
         {
-          "source": "codex-rs/context-fragments/src/answered_question_tests.rs",
-          "test": "question_context_is_bounded_and_keeps_unicode_boundaries",
-          "body_sha256": "eace6c686fc2c5470d8ffba278929117725888af58082b7502a4a6e9d5865d33"
+          "source": "codex-rs/protocol/src/models.rs",
+          "test": "response_item_id_getter_and_setter",
+          "package": "codex-protocol",
+          "entrypoint": "lib",
+          "body_lines": [
+            2795,
+            2819
+          ],
+          "body_sha256": "577850a0f1d42c68dc16e68b41ef76cdb9dd2b9875054ff52497206e88e60a65"
         },
         {
-          "source": "codex-rs/context-fragments/src/recap_prompt_tests.rs",
-          "test": "recap_prompt_bounds_the_entire_utf8_fragment",
-          "body_sha256": "08b5eeda4f7bb8a9b69fdfabecd7c2b58f670e7a519e028993922d2d4173c65f"
+          "source": "codex-rs/core/src/context/world_state/top_level_tools_tests.rs",
+          "test": "initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            259,
+            302
+          ],
+          "body_sha256": "834d9bb6a46d971fcab97b5808ccecc93ed939db5c6aeaec3d22055c3d1b226a"
         },
         {
-          "source": "codex-rs/context-fragments/src/recap_prompt_tests.rs",
-          "test": "recap_prompt_preserves_history_that_fits",
-          "body_sha256": "b5ec04938361ee940e746526b01070f03f5b5e91f3dc4e4fad428f51d6088bd4"
+          "source": "codex-rs/core/src/context/world_state/top_level_tools_tests.rs",
+          "test": "namespace_diff_contains_only_changed_and_added_tools",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            346,
+            404
+          ],
+          "body_sha256": "3bffab5e8982dd40c683f60abc80fe0b3420ef98798b7f1ca3d719617b332840"
+        },
+        {
+          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
+          "test": "mixed_output_preserves_order_and_restores_its_snapshot",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            471,
+            531
+          ],
+          "body_sha256": "5cdf51ce26395c611bc09886c0a9ff68dac6b4b8525443ca3ab9c147a242d924"
+        },
+        {
+          "source": "codex-rs/core/src/context_manager/updates_tests.rs",
+          "test": "updates_preserve_item_boundaries_roles_and_standalone_fragments",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            85,
+            123
+          ],
+          "body_sha256": "983bd5b48627be4f037cb31c48350b91c03b10b590372812d854d5f6b3dfdf96"
+        },
+        {
+          "source": "codex-rs/core/src/session/tests.rs",
+          "test": "assign_missing_response_item_ids_assigns_additional_tools_ids",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            364,
+            374
+          ],
+          "body_sha256": "9864b1c2e3165624e20da4c84a3cafe9559a64154bb9ff3d771d03123a09169c"
+        },
+        {
+          "source": "codex-rs/core/src/session/world_state_item_tests.rs",
+          "test": "initial_context_preserves_world_state_items_and_snapshot",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            85,
+            124
+          ],
+          "body_sha256": "ec8c0d207d0e5907988a66689a4d2d203a7a49a29b05f9fded394a9e6b22446a"
+        },
+        {
+          "source": "codex-rs/rollout/src/recorder_tests.rs",
+          "test": "recorder_preserves_additional_tools_in_both_history_modes",
+          "package": "codex-rollout",
+          "entrypoint": "lib",
+          "body_lines": [
+            617,
+            666
+          ],
+          "body_sha256": "81ae447d9eadfcf67211c546430bd6f71094fccac26b5d52170cd5ad5bb36ddc"
         },
         {
           "source": "codex-rs/core/src/agent/control_tests.rs",
           "test": "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
-          "body_sha256": "9a88f149b4d38ea8e8a250d547c9620d0e1082624d66157bacd16c8479af178a"
-        },
-        {
-          "source": "codex-rs/core/src/agents_md_tests.rs",
-          "test": "foreign_agents_md_uses_environment_native_paths",
-          "body_sha256": "fc7a57d4c35cae23711b29dd2be774c4c000754f2796599451ffbb9437fa5da1"
-        },
-        {
-          "source": "codex-rs/core/src/agents_md_tests.rs",
-          "test": "multi_environment_agents_md_renders_mixed_path_conventions",
-          "body_sha256": "eeaed6236cf1651c39be260dfb8f32abe3f1c820dd1c670d28032cbbdb78a163"
-        },
-        {
-          "source": "codex-rs/core/src/agents_md_tests.rs",
-          "test": "multiple_environment_docs_use_labeled_layout_and_preserve_source_order",
-          "body_sha256": "070f2d7664e25d0464ecf55c4df07fe17cd60827563540459561d4951fd633ba"
-        },
-        {
-          "source": "codex-rs/core/src/agents_md_tests.rs",
-          "test": "secondary_only_project_doc_uses_single_contributor_layout",
-          "body_sha256": "a4be29cc6508bba1315a5f23fd5e45623ee8876d3f50aeac1aabccabee459460"
-        },
-        {
-          "source": "codex-rs/core/src/agents_md_tests.rs",
-          "test": "primary_only_project_doc_preserves_legacy_layout_with_multiple_bound_environments",
-          "body_sha256": "ea1221b6be3e60e6341176cdcab1529dc6475ee61a22314c9d617cf6698cc258"
-        },
-        {
-          "source": "codex-rs/core/src/config/config_tests.rs",
-          "test": "multi_agent_v2_default_usage_hints_use_configured_thread_cap",
-          "body_sha256": "f4848ec6fbbc6cf6e866856ff7a47985112a091665dd90a0f3603bf6899e1778"
-        },
-        {
-          "source": "codex-rs/core/src/config/config_tests.rs",
-          "test": "multi_agent_v2_model_override_exposure_preserves_configured_usage_hints",
-          "body_sha256": "2c1c1c2ed68ca6d1c2f8d7ab271108895bcce3655f8d97945360d24df3b833f5"
-        },
-        {
-          "source": "codex-rs/core/src/config/config_tests.rs",
-          "test": "multi_agent_v2_exposes_model_overrides_by_default",
-          "body_sha256": "8072f7eefa8391f783d0fb3d33f50f72ca21a647fea4a0c7f60491c339b04478"
-        },
-        {
-          "source": "codex-rs/core/src/context/contextual_user_message_tests.rs",
-          "test": "renders_agents_instructions_with_legacy_directory_header",
-          "body_sha256": "ce272bc2145b4d981dbda83ca7969cbde05c184e8b38b5b6c9e4a5c815e2a8ff"
-        },
-        {
-          "source": "codex-rs/core/src/context/contextual_user_message_tests.rs",
-          "test": "renders_agents_instructions_without_directory_header",
-          "body_sha256": "c58e4fb384f3e6f2b1663d1d8710c13a9f10d9ac7b24c09743062f71d6ee1ef2"
-        },
-        {
-          "source": "codex-rs/core/src/context/contextual_user_message_tests.rs",
-          "test": "detects_internal_model_context_fragment",
-          "body_sha256": "7ebf4eaed019577dde0f030d7edf4d0a8bd28e9449cea878f08624bffe9e6b3a"
-        },
-        {
-          "source": "codex-rs/core/src/context/contextual_user_message_tests.rs",
-          "test": "contextual_user_fragment_is_dyn_compatible",
-          "body_sha256": "85b17802d6817daf77089a9e6a422d255aa45f1f1b3bea1c25f936329b813a1b"
-        },
-        {
-          "source": "codex-rs/core/src/context/node_repl_review_evidence_tests.rs",
-          "test": "evidence_snapshots_keep_response_order_and_escape_closing_markers",
-          "body_sha256": "52e898c9f043017781b582a610668bdeeed13ae28c8e09e133dca58ceb4b8bc6"
-        },
-        {
-          "source": "codex-rs/core/src/context/node_repl_review_evidence_tests.rs",
-          "test": "evidence_bounds_visible_text_and_marks_empty_completed_responses",
-          "body_sha256": "179c8bd491ece419979f30f5f832be9f253830ca7b43c041eddff6eea10e3e25"
-        },
-        {
-          "source": "codex-rs/core/src/context/node_repl_review_evidence_tests.rs",
-          "test": "evidence_evicts_complete_oldest_responses_and_rejects_oversized_items",
-          "body_sha256": "36b8960f6d7994676a8e6b6550ebd10760b9db1cd4e97e07fed523d2ae8fd3a1"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/collaboration_mode_tests.rs",
-          "test": "empty_catalog_collaboration_message_suppresses_legacy_instructions",
-          "body_sha256": "9574ce7fb70f388fe9e60c2121bd834fcf0b4bef2b1c3b808f93c51b7dea18e9"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/collaboration_mode_tests.rs",
-          "test": "legacy_collaboration_mode_snapshots_refresh_catalog_messages_once",
-          "body_sha256": "e6009a9797414da15078bc7b05e5c33e209b3172dafabe05dcb40e0506c82164"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/compact_permissions_tests.rs",
-          "test": "renders_only_newly_approved_prefixes",
-          "body_sha256": "d31f426d6cbb24e51f2b9feca8174dad5ffc9721ff48cba90a91be93a5dda7d9"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/compact_permissions_tests.rs",
-          "test": "does_not_duplicate_a_retained_legacy_update",
-          "body_sha256": "81af13b960e948097624def2a013038facfa18484f55f6c6b72df97155604da9"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "world_state_hash_tracks_typed_content_and_role",
-          "body_sha256": "0b1d3c81266c02dcd29f0610e444a3d3d2b2047709757f2379899c659609a064"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "render_diff_restores_the_typed_section_snapshot",
-          "body_sha256": "5aa1478cff10180c9267a96090f588cfc638db5500419623c81b5654ef7cd8a3"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "extension_owned_section_uses_its_snapshot_and_renderer",
-          "body_sha256": "d8f77c9f7e2e2533cf4bd5f67ef2af844d6f8849a44bc2e11c2b096e39b00621"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "extension_owned_section_preserves_typed_content_and_attribution",
-          "body_sha256": "d164cf659c56a37428a4818464995d389c2d86f7da3470c609bc5ec49d0252cb"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "missing_retained_fragment_is_rendered_again",
-          "body_sha256": "f883b66eb893a2de5787c99659a971b367742bc3d5a1c940a4e635df4fe3bbaa"
-        },
-        {
-          "source": "codex-rs/core/src/context/world_state/world_state_tests.rs",
-          "test": "unreadable_section_snapshot_is_treated_as_unknown",
-          "body_sha256": "1fefb9b96089c039465d4de117b1eac6a7b081bc0514e87faf86a01df80f4167"
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "test": "world_state_transitions_persist_changed_state_and_skip_unchanged_state",
-          "body_sha256": "7e8c1f6b12d1f3de483a8e8d597404b541dc606728f2cdd8458308cbceb71318"
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "test": "world_state_reconciles_matching_legacy_history_once",
-          "body_sha256": "b3aea45d992b876b626430157963138e9507a61f664edbf78e3438836d50a288"
-        },
-        {
-          "source": "codex-rs/core/src/context_manager/history_tests.rs",
-          "test": "drop_last_n_user_turns_preserves_annotations_for_surviving_developer_fragments",
-          "body_sha256": "d9b240a3ef64176eeeb3f4fa716a23d6cb182ea9e5e03c972a2201b1b3e54478"
-        },
-        {
-          "source": "codex-rs/core/src/event_mapping_tests.rs",
-          "test": "internal_model_context_does_not_parse_as_visible_turn_item",
-          "body_sha256": "a8597a5a4c9f02967951dfdc67529d293654791470fdcc2e4bfb77a88dfd7f1c"
-        },
-        {
-          "source": "codex-rs/core/src/session/tests.rs",
-          "test": "build_initial_context_adds_multi_agent_v2_subagent_usage_hint_as_developer_message",
-          "body_sha256": "4a9b1a00968a464f39ff9a727844ea93fda8b0caae02a463ec5544a92030fd60"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "ordering_follows_render_policy",
-          "body_sha256": "e1c9c3b48e7d6094aefd79d63a26dd942685a3da31a22967c9fd66070f7766f0"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "description_selection_follows_render_policy",
-          "body_sha256": "3fde23c8342a2186e91955c06223518b854927e2aca7c5f832dd491a0b151413"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "host_only_prompts_preserve_existing_behavior_with_and_without_aliases",
-          "body_sha256": "0c4e98b39737cfe24b5e375d4dbd3440382d65a032e56ae057d49e95d58187e2"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "path_aliases_are_used_without_budget_pressure_when_they_reduce_prompt_size",
-          "body_sha256": "ed52573e62c612649cc29a2f74691a4a8cad0a36439091072552485eb66cefdc"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "path_aliases_retain_every_skill_under_budget_pressure",
-          "body_sha256": "324886edf07e80a1b931337c595f0af9ad6e61581b59922e70b66a10b6345a76"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "mixed_catalogs_keep_absolute_authority_aware_rendering_under_budget_pressure",
-          "body_sha256": "a67f68089ce7696066bffddb288d5e9387e30d28ca924a12625e7543d79f55cd"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "omission_notice_follows_render_policy_and_is_charged_to_catalog_budget",
-          "body_sha256": "f0d875ed766ea235b4c5f1dabfe807bc9711abc7f2101390eca0b1db62316166"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "character_fallback_counts_multibyte_metadata_by_characters",
-          "body_sha256": "a898d8a76c3e93410ef6acd1161eda0f28ec862777e42d3a019c5a5f2dcc2546"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "catalog_report_counts_partial_description_truncation",
-          "body_sha256": "2f3670073cfc9b011973c9e5ce866bef2b0c01122a2e08319e10ed8093695ec6"
-        },
-        {
-          "source": "codex-rs/ext/skills/src/render_tests.rs",
-          "test": "catalog_emits_omission_marker_when_every_minimum_skill_line_exceeds_budget",
-          "body_sha256": "cf8c4f0a92c5ab2ea8adce8a2ecbda623ad8da350f4589e5ddcd22b2151475a6"
-        },
-        {
-          "source": "codex-rs/guardian-context/src/trusted_tool_tests.rs",
-          "test": "trusted_tool_context_attests_only_the_matching_source_and_identity",
-          "body_sha256": "b2f7bfbb233d50baed146d22875991336b8631ecc91294ef4f1f90ae9e145c8b"
-        },
-        {
-          "source": "codex-rs/guardian-context/src/trusted_tool_tests.rs",
-          "test": "trusted_tool_context_has_a_hard_token_budget",
-          "body_sha256": "604301e9200fdfda41380430a4a51cfe0a5e209895b70f8896973ed179b160d4"
-        },
-        {
-          "source": "codex-rs/prompts/src/guardian_instructions_tests.rs",
-          "test": "reviewer_policy_substitution_preserves_template_layout_and_appends_contract",
-          "body_sha256": "ab3c6c050e6bbc6a34235cfc41fa2189fba1ba67567d59efd6e7caddfd5c4994"
-        },
-        {
-          "source": "codex-rs/prompts/src/guardian_instructions_tests.rs",
-          "test": "reviewer_extra_policy_substitution_preserves_tenant_policy",
-          "body_sha256": "1b99c2b4f2c5e52d32d28be55ea521ab0bf2a06c3fc8d8a0d2dab410bbd2a7b4"
-        },
-        {
-          "source": "codex-rs/prompts/src/guardian_instructions_tests.rs",
-          "test": "reviewer_policy_substitution_keeps_inserted_policy_text_literal",
-          "body_sha256": "63e2ca0a07def9db31537da334220a951ecbe303c3da469330daa55041eb560c"
-        },
-        {
-          "source": "codex-rs/prompts/src/guardian_instructions_tests.rs",
-          "test": "classifier_policy_substitution_and_legacy_append_keep_one_terminal_contract_before_truncation",
-          "body_sha256": "00e3182caa9637c43438ed5ae55af9dfa074a39fdbcd600e6628b5182e45da5d"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "builds_permissions_from_profile",
-          "body_sha256": "055341d6d3d64448884750462233b84b0d479f87a094599bcd07c3d95d7bbd37"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "builds_permissions_from_profile_with_executor_denied_reads",
-          "body_sha256": "e94f19f31a24da2d928b4f71175def4ce348bb2a309da4dfc92e2be17abc1580"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "empty_catalog_permission_message_preserves_non_sandbox_sections",
-          "body_sha256": "d7e11044d8822efb9611bec924ff40f4746d4b6a6fca57834dfa87db8d808320"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "includes_request_rule_instructions_for_on_request",
-          "body_sha256": "e8b8591e3e9e96416a0e71d2aaf3c276f2b492d99e775b4aaec27cfc4dbd5825"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "includes_request_permissions_tool_instructions_for_unless_trusted_when_enabled",
-          "body_sha256": "fb26dafe43aa93cabe58923de10741c0c3e7a15ba6330d07842e16b9deba27e2"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "on_request_permission_guidance_matches_enabled_capabilities",
-          "body_sha256": "e84751c316dceb8ecebdb20d19a7fb6534ba10e9d2f32fd6f3d7eefa99980a52"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "empty_catalog_approval_message_suppresses_legacy_approval_section",
-          "body_sha256": "b5cff97ff0c3b42e6ef2c367bf77f8afef59200258d6ea5874dfdcde7b7eec69"
-        },
-        {
-          "source": "codex-rs/prompts/src/permissions_instructions_tests.rs",
-          "test": "bounds_permission_paths_at_whole_entry_boundaries",
-          "body_sha256": "0b59569542b436ca021dd162e4cc741e416e41ea14a8f6d5e123cc3e36addf73"
-        },
-        {
-          "source": "codex-rs/tools/src/tool_output_tests.rs",
-          "test": "code_mode_text_preserves_message_content",
-          "body_sha256": "0f966354411ff60bd83423adff7b4ece149f8a76c2e8ca0695c0544ebfca3ca4"
-        }
-      ],
-      "decodex_consumer": "The retained app-server owns model context, compaction, native fork/delegation prompts, skill/plugin instructions and Code Mode tool output. Current runtime launch keeps native content_item_kinds disabled for the live Responses boundary while enabling retained description-first/subagent defaults. Decodex consumes typed native history/events and config defaults through agent_process, agent transcript/media and context settings; it does not link the internal Rust fragment trait or register arbitrary extension media.",
-      "tests_executed": [
-        {
           "package": "codex-core",
-          "kind": "lib",
-          "target": "codex_core",
-          "executed_count": 270,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+          "entrypoint": "lib",
+          "body_lines": [
+            2819,
+            3239
+          ],
+          "body_sha256": "42d5537baf5c9d0413b3b71f1dbe239f0a807fe6f5f7cae535e0dd1941997b9a"
         },
         {
-          "package": "codex-context-fragments",
-          "kind": "lib",
-          "target": "codex_context_fragments",
-          "executed_count": 3,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+          "source": "codex-rs/core/src/agent/control_tests.rs",
+          "test": "spawn_agent_fork_strips_parent_usage_hints_from_compacted_history",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            3244,
+            3534
+          ],
+          "body_sha256": "23ed22314bb7d27a60a71a9d99a55718c8306a6c22d6d67cca3f22ebb3e71648",
+          "parameterization_read": "marked catalog hints; unmarked bundled hints"
         },
         {
-          "package": "codex-guardian-context",
-          "kind": "lib",
-          "target": "codex_guardian_context",
-          "executed_count": 48,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        },
-        {
-          "package": "codex-prompts",
-          "kind": "lib",
-          "target": "codex_prompts",
-          "executed_count": 41,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        },
-        {
-          "package": "codex-skills-extension",
-          "kind": "lib",
-          "target": "codex_skills_extension",
-          "executed_count": 149,
-          "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-        },
-        {
-          "package": "codex-tools",
-          "kind": "lib",
-          "test": "tool_output::tests::code_mode_text_preserves_message_content"
+          "source": "codex-rs/core/src/agent/control_tests.rs",
+          "test": "spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            3695,
+            4009
+          ],
+          "body_sha256": "08cc1208d51a7a40f5704ff849c3be09f7056902d7b8a051022d1e44afb8130e",
+          "parameterization_read": "filtered fork; preserve prefix fallback; each covers absent/present parent instructions"
         }
       ],
-      "validation_and_limits": "All selected context/fork/history/skills/permission source groups passed under the official 8 MiB stack/local profile and isolated process HOME. The original typed-media and hashing cases pass. All 29 retained consumers and all five artifact probe groups pass. No arbitrary typed-extension product surface, live provider or installed-app acceptance is claimed.",
-      "source_snapshot": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+      "decodex_consumer": "The retained native process owns Responses Lite tool declarations, history copies, native forks and Guardian input. crates/decodex-runtime/src/account_launch/agent_process.rs forwards typed app-server events; agent.rs supplies existing dynamic tools; agent_process_native_code_mode_tests.rs retains exact CLI/helper and tool-order contracts. Decodex does not link or clone the upstream internal ResponseItem Rust type.",
+      "validation_and_limits": "Read the full representation/constructor diff and affected serialization, world-state, history and fork test bodies. The selected CLI/helpers match the prior qualified ce0323f2 digests and generated schema; that source precedes this commit and does not contain the Arc optimization. No correctness regression or wire adaptation is established. No new artifact was built, no optimization was delivered, and no allocation, memory or latency benefit was measured.",
+      "runtime_delivery": "Optimization is absent from the retained ce0323f2 artifact and is not selected for a standalone migration. A future necessary migration must qualify the exact CLI and helpers against retained regressions before claiming this optimization.",
+      "selected_runtime_contains_change": false,
+      "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "original_commit_diff_sha256": "a3b2afdd5127142c5d6ea9af5e60d93714e0a68793a5c94750b7498f8b079b02",
+      "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
+      "tests_executed": [],
+      "tests_executed_count": 0,
       "source_digests": [
         {
-          "path": "codex-rs/context-fragments/src/fragment.rs",
-          "sha256": "3b169580db2a6a38d82256bf8266d374628ba196fe187b52e21cc801535f0f6c"
-        },
-        {
-          "path": "codex-rs/context-fragments/src/annotated_content.rs",
-          "sha256": "ce0a7463c27c4775f36a54354c9f257eacba4bdbfd29050b0e3f83839ac00461"
-        },
-        {
-          "path": "codex-rs/core/src/context/world_state/mod.rs",
-          "sha256": "0851a4c12ed7d6471ec3c70efcc8b54d0c889569369f2794b799206759e36e1b"
-        },
-        {
-          "path": "codex-rs/core/src/context/token_budget_context.rs",
-          "sha256": "5fb1c4defd686f1e464ad5aca5cfcb31f98dfb93ea14ce8258d22f014657b117"
-        },
-        {
-          "path": "codex-rs/ext/extension-api/src/contributors/prompt.rs",
-          "sha256": "5c1b346f0047fcf87e1b2537186264d0e3de8887fbef3cc8d7d259c0e41d4215"
-        },
-        {
-          "path": "codex-rs/ext/extension-api/src/contributors/world_state.rs",
-          "sha256": "781efccbef5d92f8fe11fdb67bb856a6c86a3ef0020395313d7df599ee44a52d"
-        },
-        {
           "path": "codex-rs/protocol/src/models.rs",
-          "sha256": "d0d35e9c14ac7edd4d7693a2efba6e16311d3ffabf859f69b3aa10bcd0e57bfe"
+          "sha256": "753498bc730ba21ded710d9aa2b2f9163e6bbe4eaa18f1c25d998c36138a54f7"
         },
         {
-          "path": "codex-rs/tools/src/tool_output.rs",
-          "sha256": "e07566b50ec4492ffafd6fa0b4704e22b3c32745213c6089f19b47baf3e873d3"
+          "path": "codex-rs/core/src/client.rs",
+          "sha256": "f6ac9c0a13b901056e548905c6c153b2a02064ecca7939433af78e8673939087"
         },
         {
-          "path": "codex-rs/protocol/tests/support/lib.rs",
-          "sha256": "afedc6f853631590e9dc789e1b76c15682d9d94a4a1c2e042b009edefb3df4f2"
+          "path": "codex-rs/core/src/context/world_state/top_level_tools.rs",
+          "sha256": "6c241cfe0904af7595737dd5677a445e6d85f0191c59569dd5533edc8acf29b2"
+        },
+        {
+          "path": "codex-rs/core/src/session/world_state_item_tests.rs",
+          "sha256": "1da73deb0f5c141f567b2fb601ae2232c5454ba828ff6bb1ca0cb89d040f4eba"
+        },
+        {
+          "path": "codex-rs/core/src/context_manager/updates_tests.rs",
+          "sha256": "219b5abe1d94b525ce786a56c81e37f5e37e224241df205ff45f84f6fbe609bf"
+        },
+        {
+          "path": "codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs",
+          "sha256": "4bc85fa35c1dc7d2783ae2d1a36ace984e44f32ea494571f7462515ee791717b"
+        },
+        {
+          "path": "codex-rs/rollout/src/recorder_tests.rs",
+          "sha256": "8f336fd4ce11ab92fbef2f6438c22c7db32c0e41e5959d5c8433d57939cffa14"
         }
       ],
       "source_review_status": "complete",
-      "runtime_delivery": "Exact package qualified for retained consumers in this change; https://github.com/acg-box/decodex/pull/2460",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2460"
+      "upstream_reference": "https://github.com/openai/codex/commit/1cc7dc8f2acc63ce6c1cb72271e6b90a76136c2b"
+    },
+    {
+      "commit": "ffd3429d754991183433b4d41b67551e5656ba27",
+      "disposition": "not applicable",
+      "changed_behavior": "Catalog cache identity for CodexAuth::Headers can use a stable account ID across opaque header rotation. Missing stable IDs, explicit provider API keys/bearer tokens and command auth remain credential-sensitive. Provider routing, configured headers and caller-established user/context isolation remain part of the boundary. The rotated-auth integration fixture now omits an account ID to retain invalidation coverage.",
+      "affected_symbols": "model-provider/src/models_identity.rs#identity; model-provider/src/provider.rs#ModelProvider; models-manager/src/manager.rs#ModelsEndpointClient::identity,#refresh_after_auth_change,#apply_remote_models; core/tests/suite/models_cache_auth.rs#header_auth",
+      "tests_read": [
+        {
+          "source": "codex-rs/model-provider/src/models_identity_tests.rs",
+          "test": "cache_identity_tracks_account_email_user_plan_and_auth_mode_but_not_token_refresh",
+          "package": "codex-model-provider",
+          "entrypoint": "lib",
+          "body_lines": [
+            23,
+            44
+          ],
+          "body_sha256": "d04e159e69ba53355ba89b1d93a349bc648891b64f790f7a6f017b63572ebf2a"
+        },
+        {
+          "source": "codex-rs/model-provider/src/models_identity_tests.rs",
+          "test": "cache_identity_tracks_provider_routing_and_effective_api_credentials",
+          "package": "codex-model-provider",
+          "entrypoint": "lib",
+          "body_lines": [
+            47,
+            65
+          ],
+          "body_sha256": "ddeb171372d99c0d9e623751ce22c2a5851f00746d3a49395be3e8dd491bed32"
+        },
+        {
+          "source": "codex-rs/model-provider/src/models_identity_tests.rs",
+          "test": "cache_identity_distinguishes_auth_requirements_and_unknown_plans",
+          "package": "codex-model-provider",
+          "entrypoint": "lib",
+          "body_lines": [
+            68,
+            89
+          ],
+          "body_sha256": "4d8aca125e2dc8611107095518fad696783287b7f713e974297760bc8bfc4dd0"
+        },
+        {
+          "source": "codex-rs/model-provider/src/models_identity_tests.rs",
+          "test": "cache_identity_tracks_catalog_url",
+          "package": "codex-model-provider",
+          "entrypoint": "lib",
+          "body_lines": [
+            92,
+            103
+          ],
+          "body_sha256": "01fd1947df1d7e14a4d431c841149d22269b69fc73a31d5cc1ee643dccd82256"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/models_cache_auth.rs",
+          "test": "auth_rotation_refreshes_before_turn_with_best_effort",
+          "package": "codex-core",
+          "entrypoint": "integration:all",
+          "body_lines": [
+            107,
+            239
+          ],
+          "body_sha256": "cd5fd533f41d709b7d644d02439e7611f2a9052881dc9904e03fc68d58f733da",
+          "parameterization_read": "user/mail refresh and fallback; auth timeout"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/models_cache_auth.rs",
+          "test": "auth_and_provider_switches_do_not_reuse_chatgpt_catalog",
+          "package": "codex-core",
+          "entrypoint": "integration:all",
+          "body_lines": [
+            242,
+            385
+          ],
+          "body_sha256": "31bae905b837e840984eeb2887c96c84a10fb3e69b743d464eca36821b29d9fb"
+        }
+      ],
+      "decodex_consumer": "No current CodexAuth::Headers host-injection consumer. process.rs#ProcessScopedCredentialSink::authenticate_chatgpt uses account/login/start type chatgptAuthTokens. Upstream request_processors/account_processor.rs#login_chatgpt_auth_tokens_response and external_auth.rs#ExternalAuthBridge call CodexAuth::from_external_chatgpt_tokens, which constructs ChatgptAuthTokens. Imported PATs use the separate PersonalAccessToken variant. Existing account-scoped process/catalog ownership is retained; no in-process SDK ModelProvider implementation is installed by Decodex.",
+      "validation_and_limits": "Read identity implementation, caller isolation contract, manager identity checks, both affected cache-auth integration test bodies and four identity unit-test bodies. The selected runtime lacks this new Headers rule, while the current ChatgptAuthTokens/PAT paths do not enter its changed branch. Tests for stable-account Headers reuse are not newly added in this commit; no such behavior is claimed or executed here.",
+      "runtime_delivery": "No runtime migration or host cache-isolation change required by the current retained auth variants.",
+      "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "original_commit_diff_sha256": "503d2d718704224ef7b74d9a7c1c4c91b1f38026e7b4e0c9598f5f6284a7cfda",
+      "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
+      "tests_executed": [],
+      "tests_executed_count": 0,
+      "source_digests": [
+        {
+          "path": "codex-rs/model-provider/src/models_identity.rs",
+          "sha256": "2db2543595fc0dd010187f49bcd3dbbb49e8d7ee00cc0d637df8640b2d2cb5bb"
+        },
+        {
+          "path": "codex-rs/model-provider/src/models_identity_tests.rs",
+          "sha256": "b0ce67ca3bb0fe17c0385c894c883593c68f790e9c4b66ebc744940cf70fca90"
+        },
+        {
+          "path": "codex-rs/model-provider/src/provider.rs",
+          "sha256": "d9720013af979f3f4f9cd4d413ce6ddff27328f80b5564499ed33ae4a0eef373"
+        },
+        {
+          "path": "codex-rs/models-manager/src/manager.rs",
+          "sha256": "d73493de176404cff5d0acdc06c47dfce3efd2f035b1a3228f166c54fef03095"
+        },
+        {
+          "path": "codex-rs/core/tests/suite/models_cache_auth.rs",
+          "sha256": "7af0d2b12870bd6689616c45ea038366856904d40940d855a1a18dbe324f5b18"
+        },
+        {
+          "path": "codex-rs/app-server/src/request_processors/account_processor.rs",
+          "sha256": "6e972bc1e5ac9b52822a4086bf40f8c7160c25982b837b6d04cb9270d2f89b20"
+        },
+        {
+          "path": "codex-rs/app-server/src/external_auth.rs",
+          "sha256": "06c20470609d680b0dcc17cc054bbff035b8db76f1afe32b6149492888db9227"
+        },
+        {
+          "path": "codex-rs/login/src/auth/manager.rs",
+          "sha256": "d5ad4321691df61378d05c09d009e344495e97b865d5b7cd5a8b931ed69c0a87"
+        }
+      ],
+      "source_review_status": "complete",
+      "upstream_reference": "https://github.com/openai/codex/commit/ffd3429d754991183433b4d41b67551e5656ba27"
+    },
+    {
+      "commit": "7b44ac1661433ae3a6f375fde873fa7123c935fe",
+      "disposition": "not applicable",
+      "changed_behavior": "features.app_server_websocket_compression is under development and disabled by default. TCP/UDS negotiation requires both the server flag and a matching client offer; absent/unsupported offers and disabled servers remain plain. App-server startup propagates the feature to both listeners. TUI daemon eligibility allows its boolean override without adding it to the shared server-feature comparison set.",
+      "affected_symbols": "features/src/lib.rs#Feature::AppServerWebSocketCompression,#FEATURES; app-server/src/lib.rs#run_main_with_transport_options; app-server-transport/src/transport/websocket.rs#websocket_upgrade_handler; transport/unix_socket.rs#run_control_socket_acceptor; tui/src/daemon_startup.rs#allowed_feature,#server_features",
+      "tests_read": [
+        {
+          "source": "codex-rs/app-server-transport/src/transport/websocket_compression_tests.rs",
+          "test": "tcp_compression_negotiates_and_retains_history",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            25,
+            77
+          ],
+          "body_sha256": "e92f8b7b5278126b0e576e222b5d5f7e101014931d7035453027777975dcc8e2"
+        },
+        {
+          "source": "codex-rs/app-server-transport/src/transport/websocket_compression_tests.rs",
+          "test": "local_socket_compression_negotiates_and_retains_history",
+          "package": "codex-app-server-transport",
+          "entrypoint": "lib",
+          "body_lines": [
+            80,
+            131
+          ],
+          "body_sha256": "d2750f6dfb7cfa96d19e9f7207c4b445d8edef4a292615f0a02fe028ea12c857"
+        },
+        {
+          "source": "codex-rs/app-server/tests/suite/v2/connection_handling_websocket_compression_tests.rs",
+          "test": "websocket_compression_requires_server_feature",
+          "package": "codex-app-server",
+          "entrypoint": "integration:all",
+          "body_lines": [
+            28,
+            84
+          ],
+          "body_sha256": "adf7cff8e77e124f46c83d956f5caebef88e57ac6e018c1f7fe54dccb37efdfe"
+        },
+        {
+          "source": "codex-rs/tui/src/daemon_startup_tests.rs",
+          "test": "audited_overrides_allow_daemon_without_allowing_arbitrary_config",
+          "package": "codex-tui",
+          "entrypoint": "lib",
+          "body_lines": [
+            9,
+            58
+          ],
+          "body_sha256": "71637172e37daa0bd757c293a6a30f03b7a57f6e5e8bd39860f17d3f7ef3b8f1"
+        },
+        {
+          "source": "codex-rs/tui/src/daemon_startup_tests.rs",
+          "test": "monorepo_wrapper_overrides_are_eligible_and_select_only_server_features",
+          "package": "codex-tui",
+          "entrypoint": "lib",
+          "body_lines": [
+            61,
+            104
+          ],
+          "body_sha256": "df951e6bc221b14d1d953e55d031055c2d536f4c7108808893edbf58de02f5be"
+        }
+      ],
+      "decodex_consumer": "Production launch remains process.rs#APP_SERVER_ARGS with app-server --stdio; no TCP/UDS app-server client or TUI daemon attachment exists. The local launch does not enable app_server_websocket_compression. The protocol bridge continues to own private stdio framing, not upstream daemon-startup override filtering.",
+      "validation_and_limits": "Read the flag/default, propagation and negotiation diffs; read enabled/disabled TCP/UDS roundtrip bodies, the public-listener initialization test and TUI override tests. No listener or TUI execution and no new transport capability. This commit qualifies the source meaning of the earlier compression commit; it does not qualify a selected artifact containing it.",
+      "runtime_delivery": "No runtime migration or compression flag added for private stdio.",
+      "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "original_commit_diff_sha256": "ed730bbb55db158d9f2ea084d31c52f33a4e0d5d90448c4d0ffb401d31339762",
+      "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
+      "tests_executed": [],
+      "tests_executed_count": 0,
+      "source_digests": [
+        {
+          "path": "codex-rs/features/src/lib.rs",
+          "sha256": "49b15418c1f7b5ed1dd35258d6741ea52c5fecaad777a7b5dc2ba98950e2d0fd"
+        },
+        {
+          "path": "codex-rs/core/config.schema.json",
+          "sha256": "ef42db0bf9aa5d8fe12536f5e79f8ddad9b3f2c681bf45cc2262c85537dfc97f"
+        },
+        {
+          "path": "codex-rs/app-server/src/lib.rs",
+          "sha256": "3eb58b19648cf17cdc06f96417e0a7e6c4707798b2f5e8da524a28104e73da04"
+        },
+        {
+          "path": "codex-rs/app-server-transport/src/transport/websocket.rs",
+          "sha256": "38cb8c3e8e3fb77da1849644d1230814828973f19ec94eb8f6bba40dd62995cc"
+        },
+        {
+          "path": "codex-rs/app-server-transport/src/transport/unix_socket.rs",
+          "sha256": "a2ff08a28cb52c8a11895bb4cff41401180fb0efd0491984b77af381e7efafe3"
+        },
+        {
+          "path": "codex-rs/tui/src/daemon_startup.rs",
+          "sha256": "b31ad381c6666229b03eae7df62136f15a05e5e6c458608528d058bc473a2ea2"
+        }
+      ],
+      "source_review_status": "complete",
+      "upstream_reference": "https://github.com/openai/codex/commit/7b44ac1661433ae3a6f375fde873fa7123c935fe"
+    },
+    {
+      "commit": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "disposition": "optional decision",
+      "changed_behavior": "Disabled-by-default wake_on_agent_messages lets direct agent delivery or a host mailbox start one new idle root turn after completion. Queue-only mail reuses prior turn attribution. Interruption, Plan mode and non-root child sources reject automatic admission; explicit trigger_turn and durable sleep retain their existing routes.",
+      "affected_symbols": "features/src/lib.rs#Feature::WakeOnAgentMessages,#FEATURES; core/src/session/handlers.rs#inter_agent_communication,#submission_loop; core/src/session/turn_input.rs#Session::reserve_pending_work_turn,#should_wake_on_agent_messages; core/src/tasks/mod.rs#Session::maybe_start_turn_for_pending_work_with_sub_id",
+      "tests_read": [
+        {
+          "source": "codex-rs/core/src/session/turn_input_tests.rs",
+          "test": "agent_message_wake_reservation_preserves_existing_boundaries",
+          "package": "codex-core",
+          "entrypoint": "lib",
+          "body_lines": [
+            861,
+            899
+          ],
+          "body_sha256": "edc497e5e4a7a8a6c40c0f8e288e3f9caafb737e02a68fa9139029146c0b4f1b",
+          "parameterization_read": "interrupted root; Plan root; inherited child flag"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
+          "test": "agent_mail_wakes_completed_root_when_enabled",
+          "package": "codex-core",
+          "entrypoint": "integration:all",
+          "body_lines": [
+            626,
+            697
+          ],
+          "body_sha256": "b57223057c8658ba2497767a44554b01274da5f115e81681babf4f1916f28116",
+          "parameterization_read": "direct Op and host mailbox"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/scenarios.rs",
+          "test": "child_completion_wakes_parent_after_final_answer",
+          "package": "codex-core",
+          "entrypoint": "integration:all",
+          "body_lines": [
+            1171,
+            1346
+          ],
+          "body_sha256": "f64d32ee792ada472dc85abd7e2f900a6a45a4578b967870287b697fe3810883"
+        }
+      ],
+      "decodex_consumer": "crates/decodex-runtime/src/agent.rs#ingest_automation_result,#wake_pending and #release_ready_workers own current durable external-evidence delivery. APP_SERVER_ARGS does not enable this feature. Native child execution is retained, but a second policy that automatically starts an idle root is a new product behavior; the current qualified source predates it.",
+      "validation_and_limits": "Read both delivery-path changes, the admission lock and prior-attribution implementation, all new regression bodies and the full child/parent request snapshot. Feature defaults off; no automatic wake was implemented, enabled, tested against a native artifact or represented as delivered. Interrupted/Plan/child assertions are source-review evidence only.",
+      "runtime_delivery": "Awaiting an explicit user decision; keep disabled. This optional decision does not block independent source review.",
+      "optional_proposal": "native-idle-root-agent-message-wake",
+      "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "original_commit_diff_sha256": "a2846d6924f4d6863a7f24d51e633a64345503862053fd270e7af799f6fcde77",
+      "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
+      "tests_executed": [],
+      "tests_executed_count": 0,
+      "source_digests": [
+        {
+          "path": "codex-rs/features/src/lib.rs",
+          "sha256": "49b15418c1f7b5ed1dd35258d6741ea52c5fecaad777a7b5dc2ba98950e2d0fd"
+        },
+        {
+          "path": "codex-rs/core/config.schema.json",
+          "sha256": "ef42db0bf9aa5d8fe12536f5e79f8ddad9b3f2c681bf45cc2262c85537dfc97f"
+        },
+        {
+          "path": "codex-rs/core/src/session/handlers.rs",
+          "sha256": "8cbc158a1291689b4caff0be1b323f11513a0a3b1d68acd012542e9877b7d49d"
+        },
+        {
+          "path": "codex-rs/core/src/session/turn_input.rs",
+          "sha256": "b0dfa1c4f32bb37103608ef1eb0afdcfa4b2f00d5be1fa2595d9ed45fc24ff65"
+        },
+        {
+          "path": "codex-rs/core/src/tasks/mod.rs",
+          "sha256": "f60826f32040ac7f95a5cf351767d58fe3fb7cfc09c90c873bba484b175cfc44"
+        },
+        {
+          "path": "codex-rs/core/tests/suite/snapshots/all__suite__scenarios__child_completion_wakes_parent_after_final_answer.snap",
+          "sha256": "e1892f19ce47a26d90a40d7125c650c94960265b7d9ec34e94a2977a6e71f7d0"
+        }
+      ],
+      "source_review_status": "complete",
+      "upstream_reference": "https://github.com/openai/codex/commit/8c076942cb70fba8e5c4732c23f1faabc4aed484"
     }
-  ]
+  ],
+  "source_archive": {
+    "url": "https://codeload.github.com/openai/codex/tar.gz/8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0"
+  },
+  "source_review_delivery_reference": "https://github.com/acg-box/decodex/pull/2462"
 }

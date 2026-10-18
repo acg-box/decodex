@@ -256,6 +256,18 @@
       "maintenance_cost": "Additional local parser and edge grammar changes with width/source-copy and GPUI regressions.",
       "recommendation": "Defer broader grammar pending explicit user choice.",
       "retained_subset": "mermaid_multiline_flowchart_nodes"
+    },
+    {
+      "id": "native-idle-root-agent-message-wake",
+      "evidence_commit": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "status": "awaiting_user_decision",
+      "value": "Let a late native child result or host mailbox message start a new idle root turn after its final answer.",
+      "maintenance_cost": "Medium: explicit enablement, ownership and duplicate-wake checks, stop/Plan/child boundaries, and additional model-call accounting.",
+      "recommendation": "Keep disabled. Existing Decodex external-evidence delivery already owns its wake policy; no retained defect requires a second automatic wake policy.",
+      "scope_boundary": "Different from defer_mailbox_preemption, which changes active-turn preemption. This feature changes whether an idle completed root starts a turn.",
+      "evidence": "codex-rs/core/src/session/turn_input.rs#should_wake_on_agent_messages; codex-rs/core/src/session/handlers.rs#inter_agent_communication; crates/decodex-runtime/src/agent.rs#wake_pending",
+      "default_enabled": false,
+      "implementation_selected": false
     }
   ],
   "retained_presentation": {
@@ -304,5 +316,20 @@
       "DECODEX_TEST_DEVELOPMENT_RUNTIME": "Exact qualified package directory"
     },
     "contract": "Reject damaged CLI, schema and both packaged helpers; repair from the verified local archive and preserve the previous selection and unrelated older cache."
+  },
+  "source_review_summary": {
+    "range_start_exclusive": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "range_end_inclusive": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "reviewed_count": 5,
+    "classification_counts": {
+      "not applicable": 3,
+      "native-owned": 1,
+      "optional decision": 1
+    },
+    "source_review_evidence": "automations/upstream/current-review.json",
+    "selected_runtime_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "runtime_disposition": "Retain the qualified baseline. The new source delta has no necessary retained-capability repair; the Arc allocation optimization is native-owned and not adopted in this batch.",
+    "qualification_limits": "The existing qualification.json describes ce0323f2 only. No binary or behavior qualification is claimed for 8c076942. New automatic root waking remains an optional decision.",
+    "delivery_reference": "https://github.com/acg-box/decodex/pull/2462"
   }
 }
