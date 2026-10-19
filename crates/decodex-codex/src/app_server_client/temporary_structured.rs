@@ -129,8 +129,8 @@ impl TemporaryStructuredThread {
 }
 
 impl AppServerClient {
-	/// Start an ephemeral thread without environment or connector tools.
-	/// Model-required Code Mode wrappers can remain; verify native permissions.
+	/// Start an ephemeral thread without environment access or connector tools.
+	/// Model-required tools can remain registered; native environment isolation blocks access.
 	/// Inherit the native approval policy; the private event route rejects interaction.
 	/// Cancellation during startup must wait for this result so the thread can be detached.
 	pub async fn start_temporary_structured(
