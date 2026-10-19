@@ -89,7 +89,7 @@
   },
   "version": "codex-cli 0.0.0",
   "status": "qualified_for_retained_decodex_consumers",
-  "delivery_reference": null,
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
   "qualified_scope": "Fixed official source; signed private-stdio development runtime on the qualifying macOS arm64 host, Code Mode and rg helpers, affected source tests and retained loopback native consumer regressions. No app installation or release.",
   "retained_source_inclusion": {
     "baseline": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
