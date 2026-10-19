@@ -1,20 +1,20 @@
 {
-  "source_commit": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-  "source_archive_sha256": "0cb204e7e0b4e0338cef5b74d0296fdfa1a44d8aafa1d9d6ffefb628ea440be6",
-  "cargo_lock_sha256": "e1a4cee78181893964e4f6e3c598a76d947ae295813e56b038008fc8e2b96132",
+  "source_commit": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "source_archive_sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0",
+  "cargo_lock_sha256": "6f63e126b80490d838f618f48a209ccaabe202d8dfd8c27d4ca692c7be4d6bfd",
   "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "adf8103611c0d36d19c027809edbd9f566882e9a1daf727926efebe56b52b45c",
-      "size": 253808480,
+      "sha256": "b833f4849d1dfd4b2e64db793d165fc1cc8abda311032c982a25c5f2e7825ac7",
+      "size": 254024816,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
       "pinned_commit_marker": true
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "59722b90c491e968f825b43d822c4a086ef2a89f581d9bd9ad31e885ebbe5d7e",
+      "sha256": "1ea4fd084acdd62d3a8115d264e238db109a51e4fdd04366c891b811ba5e6edc",
       "size": 68127856,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
@@ -22,7 +22,7 @@
     },
     {
       "path": "codex-path/rg",
-      "sha256": "4c891a4bd4c02d46b59621084228d5b596d62ac38272bccce3bcab57ad997db4",
+      "sha256": "389baafe91accb9f383418b28e7f28fea5432b1b4fe6736509bc25f624e4fad7",
       "size": 4009552,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
@@ -37,47 +37,51 @@
     "components": [
       {
         "name": "librusty_v8_ptrcomp_sandbox_release_aarch64-apple-darwin.a.gz",
-        "sha256": "feab9ae0384bebaa99c1d000654462c9d42123d587185c7876aaeef7d76ff749"
+        "sha256": "feab9ae0384bebaa99c1d000654462c9d42123d587185c7876aaeef7d76ff749",
+        "fresh_hash_match": true
       },
       {
         "name": "src_binding_ptrcomp_sandbox_release_aarch64-apple-darwin.rs",
-        "sha256": "b9d5652ebca515eb2bf4c2ee4a6551b2567117b5aa720f430d2032616dd7e3b5"
+        "sha256": "b9d5652ebca515eb2bf4c2ee4a6551b2567117b5aa720f430d2032616dd7e3b5",
+        "fresh_hash_match": true
       }
     ],
-    "checksum_chain": "Official package resolver verifies release manifest against the exact source trust file, then verifies archive and binding. Fresh cached file hashes rechecked.",
-    "limits": "Production guard flags unchanged; no standalone optimized d8 security regression."
+    "checksum_chain": "Official package resolver verifies release checksum manifest against the exact source trust file, then verifies the archive and binding. Fresh cached file hashes match this build selection.",
+    "limits": "Production guard flags unchanged; no standalone optimized d8 security regression.",
+    "release_checksum_manifest_sha256": "5cebc5830127b460ae8af23004430fd70b535bb22d599d68d024b60df08400d8",
+    "builder_overrides": "RUSTY_V8_ARCHIVE and RUSTY_V8_SRC_BINDING_PATH absent; official resolver selected the pinned artifacts."
   },
   "prepared_development_package": {
-    "sha256": "8ef9a9f30042dd1e78b01adf77164065a34b94102f36de6f0c4fb6cf13506759",
-    "entrypoint_sha256": "adf8103611c0d36d19c027809edbd9f566882e9a1daf727926efebe56b52b45c"
+    "sha256": "f348d253529e1d58044cbdf11a6188efe9f4580ff677288c09d0d8130809e4d8",
+    "entrypoint_sha256": "b833f4849d1dfd4b2e64db793d165fc1cc8abda311032c982a25c5f2e7825ac7"
   },
   "source_integrity": {
-    "verified_blob_count": 9285,
+    "verified_blob_count": 9290,
     "mismatches": 0,
-    "role": "Exact official Git blobs verified again in the actual package build source tree after tests."
+    "role": "All official archive blobs matched the fetched Git tree and the actual package build source. Cargo.lock remained unchanged."
   },
   "rg_helper": {
     "helper": "codex-path/rg",
-    "sha256": "4c891a4bd4c02d46b59621084228d5b596d62ac38272bccce3bcab57ad997db4",
+    "sha256": "389baafe91accb9f383418b28e7f28fea5432b1b4fe6736509bc25f624e4fad7",
     "version": "ripgrep 15.2.0 (rev e89fff89ac)",
     "command": [
       "codex-path/rg",
       "--no-config",
       "--json",
-      "^native-helper-\u03bb$"
+      "^native-helper-λ$"
     ],
-    "stdin": "native-helper-\u03bb\nnot-a-match\n",
+    "stdin": "native-helper-λ\nnot-a-match\n",
     "expected_match_count": 1,
     "actual_match_count": 1,
     "exit_code": 0
   },
   "version": 1,
   "status": "qualified_for_retained_decodex_consumers",
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2460",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2463",
   "qualified_scope": "macOS arm64 development package for current retained private-stdio consumers. Native test-only source assertions, actual packaged behavior and installed-app acceptance remain distinct.",
   "retained_source_inclusion": {
-    "baseline": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
-    "candidate": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "baseline": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "candidate": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
     "records": [
       {
         "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
@@ -235,10 +239,10 @@
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn.rs",
-        "baseline_sha256": "afcb1cfc8b7f55e68359837bd8898705987408ddff900dac780de4ad6e19db20",
+        "baseline_sha256": "c8b969d68be900d1d7b138a0f55d60a2787473e54aed2696d3102702c4f4370e",
         "candidate_sha256": "c8b969d68be900d1d7b138a0f55d60a2787473e54aed2696d3102702c4f4370e",
-        "byte_identical": false,
-        "equivalence": "The only change extracts text from the typed render of unchanged MultiAgentRoleInstructions. Existing full-history sanitization, spawn ownership and failure cleanup remain unchanged. The original fork regression and exact native prediction/defaults/child consumers verify retained behavior."
+        "byte_identical": true,
+        "equivalence": null
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
@@ -375,10 +379,10 @@
       },
       {
         "source": "codex-rs/features/src/lib.rs",
-        "baseline_sha256": "92e730fa9d88a6254d5f395f81a2b585e493c18b5c90797a12e6d5452c9defa6",
-        "candidate_sha256": "15415c30dc075b60b9f43343226ced01e7646effa5935c3bc90d4645b0d745a8",
+        "baseline_sha256": "15415c30dc075b60b9f43343226ced01e7646effa5935c3bc90d4645b0d745a8",
+        "candidate_sha256": "49b15418c1f7b5ed1dd35258d6741ea52c5fecaad777a7b5dc2ba98950e2d0fd",
         "byte_identical": false,
-        "equivalence": "The only addition is MultiEnvCopyFile, UnderDevelopment and default false. Existing flags/defaults are unchanged. Exact candidate feature-list confirms disabled."
+        "equivalence": "The fixed delta adds disabled-by-default WebSocket compression and idle-root wake feature definitions without changing the retained feature defaults. Exact production defaults and native retained regressions will verify behavior; source tests separately cover native wake boundaries."
       },
       {
         "source": "codex-rs/file-system/src/environment_accessor.rs",
@@ -507,13 +511,38 @@
         "equivalence": null
       }
     ],
-    "reference_links_excluded": [
-      "codex-rs/com/modelcontextprotocol/rust-sdk/blob/98a54789b80110ad210495c4ad845c89e1980471/crates/rmcp/src/transport/auth.rs"
+    "qualification_status": "Retained consumers, new native wake regression and affected source tests passed against the selected source and exact packaged runtime.",
+    "new_behavior_sources": [
+      {
+        "source": "codex-rs/core/src/session/handlers.rs",
+        "sha256": "8cbc158a1291689b4caff0be1b323f11513a0a3b1d68acd012542e9877b7d49d"
+      },
+      {
+        "source": "codex-rs/core/src/session/turn_input.rs",
+        "sha256": "b0dfa1c4f32bb37103608ef1eb0afdcfa4b2f00d5be1fa2595d9ed45fc24ff65"
+      },
+      {
+        "source": "codex-rs/core/src/tasks/mod.rs",
+        "sha256": "f60826f32040ac7f95a5cf351767d58fe3fb7cfc09c90c873bba484b175cfc44"
+      },
+      {
+        "source": "codex-rs/core/src/session/turn_input_tests.rs",
+        "sha256": "35425064b58366551b9dedcc69693b8ba5d032f8553fed1dc2d96b8d05bf3407"
+      },
+      {
+        "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
+        "sha256": "416e985784c531ab29c18a8bf64d741a257ad71ff47c910984cf9b9168a3b406"
+      },
+      {
+        "source": "codex-rs/core/tests/suite/scenarios.rs",
+        "sha256": "654d79ec4c92d2559ac2943f1e1e022356aa5c4cf509fa2fca897cf3e0edcbdb"
+      }
     ]
   },
   "source_validation": {
-    "role": "Scoped execution evidence for this fixed macOS arm64 qualification. Recheck affected consumers before a future migration; these are not universal permanent gates.",
-    "rust_passed_count": 1060,
+    "role": "Affected source tests for this fixed macOS arm64 migration. The prior broad source qualification remains in Git history; these selectors are not universal permanent gates.",
+    "rust_passed_count": 406,
+    "rust_test_executions_across_attempts": 791,
     "python_passed_count": 12,
     "command": [
       "cargo",
@@ -524,145 +553,95 @@
       "--cargo-profile",
       "dev-small",
       "--lib",
+      "--test",
+      "all",
       "-p",
-      "codex-arg0",
-      "-p",
-      "codex-tools",
-      "-p",
-      "codex-core-plugins",
-      "-p",
-      "codex-context-fragments",
+      "codex-core",
       "-p",
       "codex-features",
       "-p",
-      "codex-config",
+      "codex-model-provider",
       "-p",
-      "codex-prompts",
+      "codex-protocol",
       "-p",
-      "codex-guardian-context",
-      "-p",
-      "codex-extension-api",
-      "-p",
-      "codex-skills-extension",
-      "-p",
-      "codex-core",
+      "codex-rollout",
       "-E",
-      "(not package(codex-core) and not package(codex-core-plugins)) or (package(codex-core-plugins) and test(startup_sync::)) or (package(codex-core) and (test(context::) or test(context_manager::) or test(session_prefix::) or test(guardian::input_budget) or test(spawn_agent_can_fork_parent_thread_history_with_sanitized_items) or test(build_initial_context_adds_multi_agent_v2_subagent_usage_hint_as_developer_message) or test(spawn_agent_tool_v2_requires_task_name) or test(send_message_tool_requires_message_and_has_no_output_schema) or test(followup_task_tool_requires_message_and_has_no_output_schema)))",
-      "--status-level",
-      "fail",
+      "(package(codex-features)) or (package(codex-model-provider) and test(cache_identity_)) or (package(codex-protocol) and test(response_item_id_getter_and_setter)) or (package(codex-rollout) and test(recorder_preserves_additional_tools_in_both_history_modes)) or (package(codex-core) and (test(context::) or test(context_manager::) or test(session_prefix::) or test(session::turn_input::) or test(initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing) or test(namespace_diff_contains_only_changed_and_added_tools) or test(mixed_output_preserves_order_and_restores_its_snapshot) or test(updates_preserve_item_boundaries_roles_and_standalone_fragments) or test(assign_missing_response_item_ids_assigns_additional_tools_ids) or test(initial_context_preserves_world_state_items_and_snapshot) or test(spawn_agent_can_fork_parent_thread_history_with_sanitized_items) or test(spawn_agent_fork_strips_parent_usage_hints_from_compacted_history) or test(spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once) or test(agent_mail_wakes_completed_root_when_enabled) or test(child_completion_wakes_parent_after_final_answer) or test(auth_rotation_refreshes_before_turn_with_best_effort) or test(auth_and_provider_switches_do_not_reuse_chatgpt_catalog)))",
       "--test-threads",
       "4",
-      "--no-fail-fast"
+      "--status-level",
+      "pass",
+      "--success-output",
+      "final",
+      "--no-fail-fast",
+      "--retries",
+      "0"
     ],
-    "working_directory": "target/codex-source/ce0323f2f2d3b25e82806cd555237da3db4e1897/source/codex-rs",
+    "working_directory": "target/codex-source/8c076942cb70fba8e5c4732c23f1faabc4aed484/source/codex-rs",
     "environment": {
       "RUST_MIN_STACK": "8388608",
       "NEXTEST_PROFILE": "local",
-      "HOME": "A fresh system-temporary home; remove after the tests",
+      "INSTA_UPDATE": "no",
+      "HOME": "A fresh system-temporary home; clean it after execution",
       "CARGO_HOME": "Existing host-managed Cargo home",
       "RUSTUP_HOME": "Existing host-managed Rustup home",
       "CARGO_TARGET_DIR": "The task-owned upstream build output",
       "CARGO_BUILD_JOBS": "4"
     },
-    "command_authority": "Official source justfile test recipe: 8 MiB test stack, local Nextest profile and no-fail-fast. Stable compiler and --locked follow Decodex policy.",
+    "command_authority": "Official justfile local Nextest profile, 8 MiB stack and no-fail-fast; Decodex stable/locked policy. Explicit zero retries preserve first failures.",
     "groups": [
       {
-        "package": "codex-arg0",
-        "kind": "lib",
-        "target": "codex_arg0",
-        "executed_count": 8,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-      },
-      {
-        "package": "codex-config",
-        "kind": "lib",
-        "target": "codex_config",
-        "executed_count": 366,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-      },
-      {
-        "package": "codex-context-fragments",
-        "kind": "lib",
-        "target": "codex_context_fragments",
-        "executed_count": 3,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "package": "codex-core",
+        "binary_id": "codex-core",
+        "executed_count": 287
       },
       {
         "package": "codex-core",
-        "kind": "lib",
-        "target": "codex_core",
-        "executed_count": 270,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-      },
-      {
-        "package": "codex-core-plugins",
-        "kind": "lib",
-        "target": "codex_core_plugins",
-        "executed_count": 24,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-      },
-      {
-        "package": "codex-extension-api",
-        "kind": "lib",
-        "target": "codex_extension_api",
-        "executed_count": 0,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "binary_id": "codex-core::all",
+        "executed_count": 69
       },
       {
         "package": "codex-features",
-        "kind": "lib",
-        "target": "codex_features",
-        "executed_count": 44,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "binary_id": "codex-features",
+        "executed_count": 44
       },
       {
-        "package": "codex-guardian-context",
-        "kind": "lib",
-        "target": "codex_guardian_context",
-        "executed_count": 48,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "package": "codex-model-provider",
+        "binary_id": "codex-model-provider",
+        "executed_count": 4
       },
       {
-        "package": "codex-prompts",
-        "kind": "lib",
-        "target": "codex_prompts",
-        "executed_count": 41,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "package": "codex-protocol",
+        "binary_id": "codex-protocol",
+        "executed_count": 1
       },
       {
-        "package": "codex-skills-extension",
-        "kind": "lib",
-        "target": "codex_skills_extension",
-        "executed_count": 149,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
-      },
-      {
-        "package": "codex-tools",
-        "kind": "lib",
-        "target": "codex_tools",
-        "executed_count": 107,
-        "selector": "Combined source-validation expression in qualification.json; exact original registration at the fixed source."
+        "package": "codex-rollout",
+        "binary_id": "codex-rollout",
+        "executed_count": 1
       }
     ],
     "required_test_suffixes": [
-      "run_main_with_arg0_guard_keeps_aliases_alive_until_main_returns",
-      "janitor_removes_dirs_with_unlocked_lock",
-      "extract_zipball_preserves_only_unix_access_permissions",
-      "world_state_hash_tracks_typed_content_and_role",
-      "extension_owned_section_preserves_typed_content_and_attribution",
-      "code_mode_text_preserves_message_content",
-      "default_search_text_uses_model_visible_namespace_metadata_once",
-      "spawn_agent_tool_v2_requires_task_name",
-      "send_message_tool_requires_message_and_has_no_output_schema",
-      "followup_task_tool_requires_message_and_has_no_output_schema"
+      "agent_message_wake_reservation_preserves_existing_boundaries",
+      "agent_mail_wakes_completed_root_when_enabled",
+      "child_completion_wakes_parent_after_final_answer",
+      "auth_rotation_refreshes_before_turn_with_best_effort",
+      "auth_and_provider_switches_do_not_reuse_chatgpt_catalog",
+      "initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing",
+      "namespace_diff_contains_only_changed_and_added_tools",
+      "mixed_output_preserves_order_and_restores_its_snapshot",
+      "updates_preserve_item_boundaries_roles_and_standalone_fragments",
+      "assign_missing_response_item_ids_assigns_additional_tools_ids",
+      "initial_context_preserves_world_state_items_and_snapshot",
+      "recorder_preserves_additional_tools_in_both_history_modes",
+      "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
+      "spawn_agent_fork_strips_parent_usage_hints_from_compacted_history",
+      "spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once"
     ],
     "unmatched_selectors": [],
-    "selected_manifest_sha256": "fef69f6c12e212e577a61e31fbf35181e01d36bd84600a2d0aab7ad77157e795",
-    "selected_manifest_digest_algorithm": "SHA-256 of UTF-8 compact sorted-key JSON; sort package,binary_id,test; each row has package,binary_id,test,ignored.",
-    "outside_selection_count": 2969,
-    "zero_test_suites": [
-      "codex-extension-api: compiled, zero tests; no executed test credit"
-    ],
+    "selected_manifest_sha256": "3621b558f418aeb11a1098d5c6465b6daf0d5ef7334a7e89d25b77730c0431cf",
+    "selected_manifest_digest_algorithm": "SHA-256 of compact sorted-key UTF-8 JSON; sort package,binary_id,test; rows contain package,binary_id,test,ignored.",
+    "outside_selection_count": 5575,
     "python_command": [
       "python3",
       "-m",
@@ -677,9 +656,105 @@
       "CODEX_REPO_ROOT": "The exact original source root",
       "PYTHONPATH": "Its scripts directory"
     },
-    "initial_attempts": "Preserved natively: missing source-list jobs option; default test stack aborts; real-home skill discovery; V8 import without CODEX_REPO_ROOT. Final complete selection passed with the official test stack and isolated HOME. No assertions or enforcement were changed."
+    "initial_attempts": "The first filter used a file stem instead of the registered turn_input module and omitted three boundary cases. The initial 385 passing executions remain separate. Corrected registration and the complete 406-test selection passed; no skip markers or unmatched required selectors remain."
   },
   "fixture_sources": [
+    {
+      "source": "crates/decodex-components/tests/development.rs",
+      "sha256": "3d30a2f62ce7e188604dd47a1c96a302e95af7e1182d93c1ecf55d40253a538a"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+      "sha256": "1de06432cd52ac34465e8c2283a1c0d3d0615c9267aa2490d4f26f482615e6c5"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
+      "sha256": "f6e20a8e09dc9c4163d29bc89232ea3ef5cfc7300684eeae30fa036de8c8e6d6"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+      "sha256": "0676578bee4d6f6c5161d76d728fad1f6ff4d80d54c03f49a8720739654d3c3e"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+      "sha256": "1ce4b70252a3d5d330eb0226fd471a4d5b360d4f3a60e229957d452cbd21f0aa"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs",
+      "sha256": "cbe3b6a9adb0379fa928e95e054232a4b7299e5408e26b282d9b617842199d55"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+      "sha256": "fa1b3c573d26a91c035b5db91c137755a808a2067ebaeec31017be17cef001d7"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
+      "sha256": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
+      "sha256": "b2a42cf36eb8077579e2b3377640c468027d8bea7d13051ce706cd380e90b3fc"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs",
+      "sha256": "234090f9f26ff567d00d657ee228d49049bcab32ae1b271470bf726ab3882502"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs",
+      "sha256": "aea1db3a7282c4b40e5db9ee3dfe8e3ffcee0e0e3931d7c6bd5e1041f1765655"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+      "sha256": "19466b3021ea6d604c15df46e4744220e371f79f9b375506a701793b23ab7a2f"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs",
+      "sha256": "68aa1c261977f05143f8bb9f85d50db66d414ad9b16d738d84656a5fe70ef643"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs",
+      "sha256": "7b09a5c52b3559d54659ad7e6eef1087713f0efef0248dffefd521b77c021a8d"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs",
+      "sha256": "d164163cbdfd2e280635000db69c55e3ad88b191a6737a8d4abfbc960cbfe6a2"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+      "sha256": "764c0537366afc659d27d76a8ccc1bc40cba058cb559d33ba470efce14ae93f4"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+      "sha256": "1702990d1d598a4c7c50dee1470a0838554d82f256d68edd65b7334b0d787508"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+      "sha256": "fe732b4ccb293a639a1317a7f4df1d5902980172f74ae00138a1a8d2e3b64958"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+      "sha256": "0cee214b3a0c949a43d6823350ebde61a2d8d60335df4cc06ad5cd60c5513e71"
+    },
+    {
+      "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+      "sha256": "9fcb7d44d6ab13134c67a108fdbaeb87548a16b63fabd8bbd27e33dd443bde01"
+    },
+    {
+      "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs",
+      "sha256": "2e9d5e7daec1d0cf526e2d59832a9247e2e5d63eb7f3325eba1359103082b464"
+    },
+    {
+      "source": "crates/decodex-runtime/src/agent/tests/native_task_references.rs",
+      "sha256": "8cd2338c8b2a8a1a3168d4b5d82d76fe8f2767e14f797326cf86b5742bfae5ce"
+    },
+    {
+      "source": "crates/decodex-runtime/src/agent/tests/task_history.rs",
+      "sha256": "5130946a91621488eedb32c5f1c037be2aa6e27425f39844766b72df0722ff05"
+    },
+    {
+      "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+      "sha256": "b5f93b8786f30af8d819c4eed9beeaadf8f4f18148031cd27370e18b589cee97"
+    },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/apps_recovery.py",
       "sha256": "998764c0d4ff0c227602811d3424ee85df00231db3ef77c932afb5a979422597"
@@ -707,162 +782,193 @@
     {
       "source": "crates/decodex-runtime/tests/native_qualification/usage.py",
       "sha256": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
-    },
-    {
-      "source": "crates/decodex-components/tests/development.rs",
-      "sha256": "3d30a2f62ce7e188604dd47a1c96a302e95af7e1182d93c1ecf55d40253a538a"
     }
   ],
   "retained_consumers": {
-    "count": 29,
-    "actual_candidate_cli": 27,
+    "count": 30,
+    "actual_candidate_cli": 28,
     "local_search_projections": 2,
     "requirements": "automations/upstream/retained-evidence.json#retained_native_consumers",
     "tests": [
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
-        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
-        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
-        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs"
+        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources",
-        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors",
-        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+        "entrypoint": "lib"
       },
       {
         "package": "decodex-runtime",
         "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "entrypoint": "lib"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+        "entrypoint": "lib"
       }
     ],
     "unmatched_selectors": []
@@ -873,14 +979,11 @@
     "config_policy": {
       "entrypoint": "crates/decodex-runtime/tests/native_qualification/config_policy.py",
       "candidate_cases_passed": 8,
-      "previous_artifact_expected_failures": 2,
-      "previous_artifact_controls_passed": 6,
-      "previous_cli_sha256": "675062588212f601b9593145f6a240c96a3bb0c7440f9f1c03dadd1ed17af8eb",
-      "scope": "config/read only; no provider or account request"
+      "scope": "Current exact candidate config/read, including normal and strict modes; no provider or real account request."
     }
   },
-  "consumer_count": 29,
-  "consumer_limits": "27 selectors invoke the exact task-local component-store CLI and packaged helpers. Two native_search selectors test local projections. DECODEX_NATIVE_BINARY and DECODEX_TEST_CODEX_BINARY must both select the same CLI.",
+  "consumer_count": 30,
+  "consumer_limits": "Thirty selected Decodex regressions passed: 28 use the exact CLI and packaged helpers; two native_search tests are local projections. The new wake test executes enabled and disabled fixtures. No live provider, real account or installed-app acceptance.",
   "component_cache_repair": {
     "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
     "entrypoint": "crates/decodex-components/tests/development.rs",
@@ -923,15 +1026,21 @@
       "decodex-runtime"
     ],
     "passed_count": 1052,
-    "ignored_count": 112,
+    "ignored_count": 113,
     "strict_affected_clippy": "passed with --all-targets --all-features and -D warnings",
     "nightly_format": "cargo +nightly fmt --all --check passed",
     "source_builder_tests_passed": 2,
-    "automation_configuration_tests_passed": 7
+    "automation_configuration_tests_passed": 7,
+    "main_baseline_passed_count": 1052,
+    "main_baseline_ignored_count": 112,
+    "main_baseline": "7bf354b26b0211636eab05287d38ed9a2e610eff",
+    "native_consumer_passed_count": 30,
+    "automation_and_architecture_tests_passed": 16
   },
   "development_preparation": {
     "command": [
       "cargo",
+      "+stable",
       "make",
       "prepare-codex"
     ],
@@ -945,32 +1054,211 @@
         "sha256": "7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
       }
     ],
-    "source_integrity": "All 9285 official Git blobs matched again in the actual build source after source tests. The upstream Cargo lock is unchanged.",
+    "source_integrity": "All 9290 official blobs match the actual build source; the upstream Cargo lock is unchanged.",
     "toolchain": "Unversioned stable for build/test; unversioned nightly for Rust format.",
-    "limits": "An explicitly rebuilt package has its own identity and requires affected qualification. Startup and app packaging never compile Codex."
+    "limits": "An explicitly rebuilt package has its own identity and requires affected qualification. Startup and app packaging never compile Codex.",
+    "initial_attempt": "The initial exact release compilation passed. An isolated HOME hid the existing signing identity; complete the same package signatures in normal host context, then import through the explicit preparation command with a temporary component-store home. No source rebuild, identity/keychain change or global discovery change."
   },
   "dependency_risk": {
-    "database_commit": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
-    "baseline_findings_count": 7,
-    "candidate_findings_count": 4,
-    "new_findings_count": 0,
-    "removed_advisories": [
-      "RUSTSEC-2026-0367",
-      "RUSTSEC-2026-0368",
-      "RUSTSEC-2026-0369"
+    "baseline_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+    "candidate_source": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "baseline_package_count": 1473,
+    "candidate_package_count": 1473,
+    "new_or_source_changed_packages": [],
+    "removed_packages": [],
+    "risk_coverage": "complete",
+    "risk_delta": "unchanged",
+    "decision": "proceed",
+    "database": {
+      "head": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
+      "remote_ref": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
+      "advisory_count": 1338
+    },
+    "baseline_findings": [
+      [
+        "RUSTSEC-2023-0089",
+        "atomic-polyfill",
+        "1.0.3"
+      ],
+      [
+        "RUSTSEC-2024-0388",
+        "derivative",
+        "2.2.0"
+      ],
+      [
+        "RUSTSEC-2024-0436",
+        "paste",
+        "1.0.15"
+      ],
+      [
+        "RUSTSEC-2024-0449",
+        "unsafe-libyaml",
+        "0.2.11"
+      ],
+      [
+        "RUSTSEC-2025-0057",
+        "fxhash",
+        "0.2.1"
+      ],
+      [
+        "RUSTSEC-2025-0141",
+        "bincode",
+        "1.3.3"
+      ],
+      [
+        "RUSTSEC-2026-0118",
+        "hickory-proto",
+        "0.25.2"
+      ],
+      [
+        "RUSTSEC-2026-0119",
+        "hickory-proto",
+        "0.25.2"
+      ],
+      [
+        "RUSTSEC-2026-0194",
+        "quick-xml",
+        "0.39.4"
+      ],
+      [
+        "RUSTSEC-2026-0195",
+        "quick-xml",
+        "0.39.4"
+      ],
+      [
+        "RUSTSEC-2026-0205",
+        "scc",
+        "2.4.0"
+      ],
+      [
+        "RUSTSEC-2026-0221",
+        "event-listener",
+        "5.4.1"
+      ],
+      [
+        "RUSTSEC-2026-0370",
+        "zvariant",
+        "4.2.0"
+      ],
+      [
+        "RUSTSEC-2026-0371",
+        "zbus_names",
+        "3.0.0"
+      ],
+      [
+        "RUSTSEC-2026-0372",
+        "zvariant_derive",
+        "4.2.0"
+      ],
+      [
+        "yanked",
+        "spin",
+        "0.9.8"
+      ]
     ],
-    "remaining_advisories": [
-      "RUSTSEC-2026-0118",
-      "RUSTSEC-2026-0119",
-      "RUSTSEC-2026-0194",
-      "RUSTSEC-2026-0195"
+    "candidate_findings": [
+      [
+        "RUSTSEC-2023-0089",
+        "atomic-polyfill",
+        "1.0.3"
+      ],
+      [
+        "RUSTSEC-2024-0388",
+        "derivative",
+        "2.2.0"
+      ],
+      [
+        "RUSTSEC-2024-0436",
+        "paste",
+        "1.0.15"
+      ],
+      [
+        "RUSTSEC-2024-0449",
+        "unsafe-libyaml",
+        "0.2.11"
+      ],
+      [
+        "RUSTSEC-2025-0057",
+        "fxhash",
+        "0.2.1"
+      ],
+      [
+        "RUSTSEC-2025-0141",
+        "bincode",
+        "1.3.3"
+      ],
+      [
+        "RUSTSEC-2026-0118",
+        "hickory-proto",
+        "0.25.2"
+      ],
+      [
+        "RUSTSEC-2026-0119",
+        "hickory-proto",
+        "0.25.2"
+      ],
+      [
+        "RUSTSEC-2026-0194",
+        "quick-xml",
+        "0.39.4"
+      ],
+      [
+        "RUSTSEC-2026-0195",
+        "quick-xml",
+        "0.39.4"
+      ],
+      [
+        "RUSTSEC-2026-0205",
+        "scc",
+        "2.4.0"
+      ],
+      [
+        "RUSTSEC-2026-0221",
+        "event-listener",
+        "5.4.1"
+      ],
+      [
+        "RUSTSEC-2026-0370",
+        "zvariant",
+        "4.2.0"
+      ],
+      [
+        "RUSTSEC-2026-0371",
+        "zbus_names",
+        "3.0.0"
+      ],
+      [
+        "RUSTSEC-2026-0372",
+        "zvariant_derive",
+        "4.2.0"
+      ],
+      [
+        "yanked",
+        "spin",
+        "0.9.8"
+      ]
     ],
-    "new_registry_package_checksums_matched": 12,
-    "risk_delta": "improved",
-    "limits": "Source- and advisory-snapshot-bounded evidence. No broad malware-free claim."
+    "checks": [
+      {
+        "status": "finding",
+        "source": "RustSec advisory database; cargo audit --no-fetch with no ignore rules",
+        "details": "Four inherited vulnerabilities; identical unmaintained and yanked warnings in baseline and candidate."
+      },
+      {
+        "status": "checked-no-record",
+        "source": "Official upstream archive / Cargo.lock identity comparison",
+        "details": "No new or changed registry packages, versions, checksums or source identities."
+      },
+      {
+        "status": "unsupported",
+        "source": "Cargo ecosystem",
+        "details": "No ecosystem-wide authoritative malware attestation. No benign-behavior claim."
+      }
+    ],
+    "source_policy": "Preserve exact official source and Cargo.lock under fixed-commit maintenance authority; no manifest normalization or third-party source edit."
   },
-  "installed_application": "No installation, release, publication or installed-app validation in this maintenance run.",
-  "historical_scope": "The older exact 153-source-test selection remains a historical evidence gap. This qualification verifies the current source, all 181 recovered distinct prior test identities, current retained consumers and exact artifact/helpers; it does not rewrite older certification.",
+  "installed_application": "Not installed, released, restarted or accepted by this qualification.",
+  "historical_scope": "The older exact 153-source-test selection remains an unrecovered historical limit. The prior ce0323f2 qualification and recovered identities remain in Git history. This migration rechecks source inclusion, the affected source selection, retained Decodex consumers and the exact new artifact/helpers; it does not rewrite older certification.",
   "conditional_remote_scope": {
     "prior_source_commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
     "prior_cases_failed": 6,
@@ -987,15 +1275,38 @@
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_historical_scope",
     "requested_pages": [
-      "openwiki/operations/codex-upstream-autopilot.md",
-      "openwiki/testing/upstream-acceptance-boundaries.md"
+      "openwiki/architecture/chief-coordination.md",
+      "openwiki/decisions/upstream-product-scope.md"
     ],
     "accepted_total_pages": 40,
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "completed_pages": 0,
-    "reason": "OpenWiki inserted unrelated stale-Claim jobs before the two requested pages. User maintenance definition requires retaining incomplete lifecycle instead of expanding delivery scope. No page prose or Claim sidecars were hand-edited.",
-    "next_action": "Resume this supported page-job run in the preserved worktree under a repository-wide Wiki maintenance owner. Do not report finish complete.",
-    "merge_boundary": "Runtime repair and portable evidence can deliver independently; wiki prose remains unchanged.",
-    "owner": "Repository-wide OpenWiki reconciliation remains unassigned; native maintenance state retains the continuation."
+    "existing_claims_on_first_page": 13,
+    "claims_requiring_attention": 9,
+    "reason": "The supported lifecycle inserted unrelated stale-Claim jobs and requires historical coordination, archive, fork and retention reconciliation beyond this native wake adoption. The maintenance definition requires keeping that scope separate. No page prose, Claim sidecars or managed state were hand-edited.",
+    "next_action": "Use the supported lifecycle in a current assigned worktree to reconcile the first coordination page and the historical queue under the Wiki maintenance owner. Do not require restoration of an obsolete checkout.",
+    "merge_boundary": "Qualified native wake code and portable evidence can deliver independently; the Wiki lifecycle is explicitly incomplete.",
+    "owner": "Repository-wide OpenWiki maintenance remains unassigned."
+  },
+  "decodex_source_revision": "e15a7ce19c593b67242e684385442a2dfe470966",
+  "native_agent_message_wake": {
+    "native_feature": "wake_on_agent_messages",
+    "upstream_default_enabled": false,
+    "decodex_launch_enabled": true,
+    "user_decision": "Explicitly approved for adoption.",
+    "native_admission": "Queue-only late child results or host mailbox messages can start a new completed idle root turn. Native admission excludes an interrupted session, Plan mode and non-root sources. It reserves one active turn and inherits prior start options. Existing active-turn preemption and local external-evidence delivery keep their owners.",
+    "local_boundary": "AgentHost keeps polling events while work is idle. AgentCoordinator observes the new native turn and records its exact completion; it does not submit a second wake input.",
+    "tests": {
+      "native_fixture": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+      "native_fixture_cases": 2,
+      "disabled_requests": 4,
+      "enabled_requests": 5,
+      "production_defaults": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+      "production_defaults_cases": 4,
+      "source_boundary_cases": 3,
+      "source_mailbox_cases": 2,
+      "source_child_completion_cases": 1
+    },
+    "limits": "Deterministic loopback provider and native source assertions. No installed desktop interaction, live provider, real account exhaustion/rotation race or latency/cost benchmark."
   }
 }
