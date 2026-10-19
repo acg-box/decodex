@@ -1,28 +1,28 @@
 {
-  "source_commit": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
-  "source_archive_sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0",
-  "cargo_lock_sha256": "6f63e126b80490d838f618f48a209ccaabe202d8dfd8c27d4ca692c7be4d6bfd",
-  "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
+  "source_commit": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+  "source_archive_sha256": "6166fa237fcf5ff377f219f4bedb76b0a3b0bdbc5cf829cfc7332bd76ae6c202",
+  "cargo_lock_sha256": "347f074ccd14bc34c48c75022fadaf00af85d2024dd4c8e4a7cb653ed095a41b",
+  "schema_sha256": "12ed459d9774867a23126e6e7a9a145e093bbfaf2da8de495853e24ca6b974b5",
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "b833f4849d1dfd4b2e64db793d165fc1cc8abda311032c982a25c5f2e7825ac7",
-      "size": 254024816,
+      "sha256": "136057ed125e2ecdc3adfeb139bc446278c7a0603165e48f9c63824edee0deb9",
+      "size": 255054832,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
       "pinned_commit_marker": true
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "1ea4fd084acdd62d3a8115d264e238db109a51e4fdd04366c891b811ba5e6edc",
-      "size": 68127856,
+      "sha256": "1595ccfdf41a20c162493f861712571989231c7f7edc26c5b051944948963d22",
+      "size": 68128864,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
       "pinned_commit_marker": true
     },
     {
       "path": "codex-path/rg",
-      "sha256": "389baafe91accb9f383418b28e7f28fea5432b1b4fe6736509bc25f624e4fad7",
+      "sha256": "bd512985b7c4d38eaa2c0decad03acf8d856ed8ac23a1c7f5955143512be5dfa",
       "size": 4009552,
       "architecture": "Mach-O 64-bit executable arm64",
       "strict_deep_signature_verified": true,
@@ -34,35 +34,47 @@
     "artifact_profile": "ptrcomp_sandbox_release",
     "trusted_manifest_source": "third_party/v8/rusty_v8_152_2_0_release_manifests.sha256",
     "trusted_manifest_sha256": "1dd7c7f7d3d91af7f06a2846bddc6a1da7725acc67ecd7ab2c7dfc980dd8c6d4",
-    "components": [
-      {
-        "name": "librusty_v8_ptrcomp_sandbox_release_aarch64-apple-darwin.a.gz",
-        "sha256": "feab9ae0384bebaa99c1d000654462c9d42123d587185c7876aaeef7d76ff749",
-        "fresh_hash_match": true
-      },
+    "fresh_cached_components": [
       {
         "name": "src_binding_ptrcomp_sandbox_release_aarch64-apple-darwin.rs",
         "sha256": "b9d5652ebca515eb2bf4c2ee4a6551b2567117b5aa720f430d2032616dd7e3b5",
-        "fresh_hash_match": true
+        "size": 40056
+      },
+      {
+        "name": "librusty_v8_ptrcomp_sandbox_release_aarch64-apple-darwin.a.gz",
+        "sha256": "feab9ae0384bebaa99c1d000654462c9d42123d587185c7876aaeef7d76ff749",
+        "size": 24581993
+      },
+      {
+        "name": "rusty_v8_ptrcomp_sandbox_release_aarch64-apple-darwin.sha256",
+        "sha256": "5cebc5830127b460ae8af23004430fd70b535bb22d599d68d024b60df08400d8",
+        "size": 254
       }
     ],
-    "checksum_chain": "Official package resolver verifies release checksum manifest against the exact source trust file, then verifies the archive and binding. Fresh cached file hashes match this build selection.",
-    "limits": "Production guard flags unchanged; no standalone optimized d8 security regression.",
-    "release_checksum_manifest_sha256": "5cebc5830127b460ae8af23004430fd70b535bb22d599d68d024b60df08400d8",
-    "builder_overrides": "RUSTY_V8_ARCHIVE and RUSTY_V8_SRC_BINDING_PATH absent; official resolver selected the pinned artifacts."
+    "builder_override_presence": {
+      "RUSTY_V8_ARCHIVE": false,
+      "RUSTY_V8_SRC_BINDING_PATH": false
+    },
+    "limits": "Official package resolver and original checksum guard retained. No standalone optimized d8 security regression."
   },
   "prepared_development_package": {
-    "sha256": "f348d253529e1d58044cbdf11a6188efe9f4580ff677288c09d0d8130809e4d8",
-    "entrypoint_sha256": "b833f4849d1dfd4b2e64db793d165fc1cc8abda311032c982a25c5f2e7825ac7"
+    "sha256": "890022c90773844cbd5fb8a7ffecc34aab43e9147791ba7313489272ca254a65",
+    "size": 124528271,
+    "entrypoint_sha256": "136057ed125e2ecdc3adfeb139bc446278c7a0603165e48f9c63824edee0deb9"
   },
   "source_integrity": {
-    "verified_blob_count": 9290,
+    "source_commit": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+    "verified_blob_count": 9327,
     "mismatches": 0,
-    "role": "All official archive blobs matched the fetched Git tree and the actual package build source. Cargo.lock remained unchanged."
+    "errors": [],
+    "source_archive_sha256": "6166fa237fcf5ff377f219f4bedb76b0a3b0bdbc5cf829cfc7332bd76ae6c202",
+    "git_tree_listing_sha256": "1707d5622cd1a38e2dc674ce50b2cd9a0d1a560d94d25317d11e159de34d2803",
+    "cargo_lock_sha256": "347f074ccd14bc34c48c75022fadaf00af85d2024dd4c8e4a7cb653ed095a41b",
+    "role": "All official codeload archive blobs match the fixed fetched Git tree, actual package build source and review source. No toolchain source edits; builds explicitly use unversioned stable."
   },
   "rg_helper": {
     "helper": "codex-path/rg",
-    "sha256": "389baafe91accb9f383418b28e7f28fea5432b1b4fe6736509bc25f624e4fad7",
+    "sha256": "bd512985b7c4d38eaa2c0decad03acf8d856ed8ac23a1c7f5955143512be5dfa",
     "version": "ripgrep 15.2.0 (rev e89fff89ac)",
     "command": [
       "codex-path/rg",
@@ -75,573 +87,2191 @@
     "actual_match_count": 1,
     "exit_code": 0
   },
-  "version": 1,
+  "version": "codex-cli 0.0.0",
   "status": "qualified_for_retained_decodex_consumers",
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2463",
-  "qualified_scope": "macOS arm64 development package for current retained private-stdio consumers. Native test-only source assertions, actual packaged behavior and installed-app acceptance remain distinct.",
+  "delivery_reference": null,
+  "qualified_scope": "Fixed official source; signed private-stdio development runtime on the qualifying macOS arm64 host, Code Mode and rg helpers, affected source tests and retained loopback native consumer regressions. No app installation or release.",
   "retained_source_inclusion": {
-    "baseline": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-    "candidate": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "baseline": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "candidate": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
     "records": [
       {
         "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
         "baseline_sha256": "8aac372b665c74e67f969ed731c73b89eb8da6b40f4ce17f3739ec4727a4b8de",
         "candidate_sha256": "8aac372b665c74e67f969ed731c73b89eb8da6b40f4ce17f3739ec4727a4b8de",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
         "baseline_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
         "candidate_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/app-server/src/bespoke_event_handling.rs",
         "baseline_sha256": "b083bbd16c8bbce64fbb759f323c14b7ee304c0e4e1d57ca4109d9c2c9908d05",
         "candidate_sha256": "b083bbd16c8bbce64fbb759f323c14b7ee304c0e4e1d57ca4109d9c2c9908d05",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/app-server/src/config_manager_service.rs",
         "baseline_sha256": "75ff0c8a553c2cdeca5aa7eeaa340657e11b7388daec31da0bb4972e3de63a62",
         "candidate_sha256": "75ff0c8a553c2cdeca5aa7eeaa340657e11b7388daec31da0bb4972e3de63a62",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
         "baseline_sha256": "26474fd7cc6bb7682a97ac6166f718dcbcc6a415735b0db5aeb4f5f8e9b6d5fc",
         "candidate_sha256": "26474fd7cc6bb7682a97ac6166f718dcbcc6a415735b0db5aeb4f5f8e9b6d5fc",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/app-server/src/request_processors/thread_attachments.rs",
         "baseline_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
         "candidate_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/cli/src/exec_server_command.rs",
         "baseline_sha256": "d5963e40ef75c7a394f9a57a2b0b34c398fb9df88431848545a4fc40334c0ac6",
         "candidate_sha256": "d5963e40ef75c7a394f9a57a2b0b34c398fb9df88431848545a4fc40334c0ac6",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/cli/src/exec_server_credential.rs",
         "baseline_sha256": "9b114cdb16e9c2f993b7d38c3bb2ce189bf47e5d8eb7fd030c3ffede0a92e10f",
         "candidate_sha256": "9b114cdb16e9c2f993b7d38c3bb2ce189bf47e5d8eb7fd030c3ffede0a92e10f",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/cli/src/exec_server_telemetry.rs",
         "baseline_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
         "candidate_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/code-mode-runtime/src/lib.rs",
         "baseline_sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
         "candidate_sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/code-mode-runtime/src/v8_init.rs",
         "baseline_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
         "candidate_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/codex-api/src/api_bridge.rs",
         "baseline_sha256": "fe77e6d628a20d0f00b667e7a0e8fd454067d6b0fa9983f4e383828941925243",
         "candidate_sha256": "fe77e6d628a20d0f00b667e7a0e8fd454067d6b0fa9983f4e383828941925243",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/codex-api/src/error.rs",
         "baseline_sha256": "686d3ad35905ed691bfb2d2f80354621fcf3a5fe980d86cc885127d52ff4501f",
         "candidate_sha256": "686d3ad35905ed691bfb2d2f80354621fcf3a5fe980d86cc885127d52ff4501f",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/codex-mcp/src/client_tool_catalog.rs",
         "baseline_sha256": "9164ef7b8308c1829a8ca78023315f401cd2b1f979a788a5c96bf7e6b708ab2a",
         "candidate_sha256": "9164ef7b8308c1829a8ca78023315f401cd2b1f979a788a5c96bf7e6b708ab2a",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager.rs",
         "baseline_sha256": "511e74ced307c5c1c1d961365e45df8191f1aac3fe9d6b3a4a72a7b6664efaf9",
-        "candidate_sha256": "511e74ced307c5c1c1d961365e45df8191f1aac3fe9d6b3a4a72a7b6664efaf9",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "871002bb859bbf68e2ce1a649ff39b9741702709c4af5ef3795afa035136ce28",
+        "byte_identical": false,
+        "equivalence": "Additional native credential/session refresh bookkeeping; existing isolated MCP discovery, child requests and auth boundary regressions remain. Enterprise grants are conditional and not provisioned."
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
         "baseline_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
         "candidate_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/codex-mcp/src/mcp/mod.rs",
         "baseline_sha256": "00be667ab41841c69e58af812b9247039b2e3d45963465e23ee99232aec2b6cc",
-        "candidate_sha256": "00be667ab41841c69e58af812b9247039b2e3d45963465e23ee99232aec2b6cc",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "d6a6564229ff262c138cf79c7c38fd06318d79f4c89f33dddb0906207268d25f",
+        "byte_identical": false,
+        "equivalence": "Contributor-bound startup requirements and deferred hook discovery use the same retained MCP boundary; affected source and native discovery fixtures qualify this path."
       },
       {
         "source": "codex-rs/codex-mcp/src/rmcp_client.rs",
         "baseline_sha256": "5150ce518b972cf5d4120f1013825c8e7b726e3793b07a0297668e074c07cade",
-        "candidate_sha256": "5150ce518b972cf5d4120f1013825c8e7b726e3793b07a0297668e074c07cade",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "55d7ce9bc9f382d64ebc7f8bb3152baf1a089859302b85e251f0b7019905bb5c",
+        "byte_identical": false,
+        "equivalence": "EMA provenance and refresh changes preserve ordinary configured MCP requests; source authority/cancellation tests and retained child-MCP/discovery tests qualify the selected boundary."
       },
       {
         "source": "codex-rs/codex-mcp/src/tool_catalog_cache.rs",
         "baseline_sha256": "169765ad9150c4c2398ccc68900e5152990f1757af50d6cf433b379b6d2c7ed5",
         "candidate_sha256": "169765ad9150c4c2398ccc68900e5152990f1757af50d6cf433b379b6d2c7ed5",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/config/src/types.rs",
         "baseline_sha256": "fa4079d7d864ad987b734843fa10b05825587bf61c38d9a5e304dc8c2edb4637",
-        "candidate_sha256": "fa4079d7d864ad987b734843fa10b05825587bf61c38d9a5e304dc8c2edb4637",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "831505f34c59a4a8a7542998401f5dc26eb27c2325860b5a186cb15506890462",
+        "byte_identical": false,
+        "equivalence": "Native per-source unload delay replaces the prediction-specific change; existing detach contract does not promise immediate thread unload. No new local policy override."
       },
       {
         "source": "codex-rs/connectors/src/connector_runtime/mod.rs",
         "baseline_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
         "candidate_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core-plugins/src/loader.rs",
         "baseline_sha256": "527d03e06730ea3f75f043afac5b803b9d846849a6d8e78e1afcc5c7c4ee6f28",
         "candidate_sha256": "527d03e06730ea3f75f043afac5b803b9d846849a6d8e78e1afcc5c7c4ee6f28",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn.rs",
         "baseline_sha256": "c8b969d68be900d1d7b138a0f55d60a2787473e54aed2696d3102702c4f4370e",
         "candidate_sha256": "c8b969d68be900d1d7b138a0f55d60a2787473e54aed2696d3102702c4f4370e",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
         "baseline_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
         "candidate_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/mcp_tool_call.rs",
         "baseline_sha256": "56f6c6a433c967616213b53d573448b562849c5f08d30f933cd8d5fc5b435063",
         "candidate_sha256": "56f6c6a433c967616213b53d573448b562849c5f08d30f933cd8d5fc5b435063",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/session_rollout_init_error.rs",
         "baseline_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
         "candidate_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/thread_manager/shutdown.rs",
         "baseline_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
         "candidate_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/tools/approvals.rs",
         "baseline_sha256": "5edd920573bac4b48f8568272eee2a4821fb8d742d449ce117102528530c2d94",
         "candidate_sha256": "5edd920573bac4b48f8568272eee2a4821fb8d742d449ce117102528530c2d94",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/tools/handlers/dynamic.rs",
         "baseline_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
         "candidate_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/core/src/tools/handlers/mcp.rs",
         "baseline_sha256": "8b14b0c469c5d95f5b051865dda4dd1c4bc28c06b422f52eb0dd70b23c2fa0a1",
         "candidate_sha256": "8b14b0c469c5d95f5b051865dda4dd1c4bc28c06b422f52eb0dd70b23c2fa0a1",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/client.rs",
         "baseline_sha256": "c407401ae99bac5d11f2d7c873bbe8e795f65913a4dda0190f1b1ea43f288507",
         "candidate_sha256": "c407401ae99bac5d11f2d7c873bbe8e795f65913a4dda0190f1b1ea43f288507",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/client_transport.rs",
         "baseline_sha256": "ad0ac131d3097f7e52103a662009d5761ee40b70e2d277cd30d2f171533636ba",
         "candidate_sha256": "ad0ac131d3097f7e52103a662009d5761ee40b70e2d277cd30d2f171533636ba",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/local_file_system.rs",
         "baseline_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
         "candidate_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/process_sandbox.rs",
         "baseline_sha256": "e49720e1d65e6d08087de666194c30a09fff4ce82b4c0d93285871181fbcb5e8",
         "candidate_sha256": "e49720e1d65e6d08087de666194c30a09fff4ce82b4c0d93285871181fbcb5e8",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/remote_file_system.rs",
         "baseline_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
         "candidate_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot.rs",
         "baseline_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
         "candidate_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot_credentials.rs",
         "baseline_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
         "candidate_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/exec/src/lib.rs",
         "baseline_sha256": "36c6bb343db323ed6bb0b2679a4298d43db50bbf333409155ab44e96e2b4da7b",
         "candidate_sha256": "36c6bb343db323ed6bb0b2679a4298d43db50bbf333409155ab44e96e2b4da7b",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions.rs",
         "baseline_sha256": "2caa60795a370db7f774bf69e15e058d002c09265e9c8145a341ef352cc0b0ce",
         "candidate_sha256": "2caa60795a370db7f774bf69e15e058d002c09265e9c8145a341ef352cc0b0ce",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
         "baseline_sha256": "da7cc071f592e20f36e7e223edc6012e847342d18aa6209fed86be49f8aa9e98",
-        "candidate_sha256": "da7cc071f592e20f36e7e223edc6012e847342d18aa6209fed86be49f8aa9e98",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "2a9cb1a64979fe335954c53ef39812abd24bafab421c30ebbefd86de02998dfd",
+        "byte_identical": false,
+        "equivalence": "Bucketed native retry/routing/turn telemetry does not change the retained Guardian review identity or redaction contract; actual Guardian native fixtures and metric source tests cover affected paths."
       },
       {
         "source": "codex-rs/ext/image-generation/src/tool.rs",
         "baseline_sha256": "fd509b6d5cb6d36e54fa05e5b1f5e746a8bd9c49fda9c3addf77dd112bb7f5b2",
         "candidate_sha256": "fd509b6d5cb6d36e54fa05e5b1f5e746a8bd9c49fda9c3addf77dd112bb7f5b2",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/ext/items/src/image_generation.rs",
         "baseline_sha256": "58bc3f9b59132595e2fb0043561838c6ad5ef5fcad762b8255b762c66434c1fa",
         "candidate_sha256": "58bc3f9b59132595e2fb0043561838c6ad5ef5fcad762b8255b762c66434c1fa",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/features/src/lib.rs",
-        "baseline_sha256": "15415c30dc075b60b9f43343226ced01e7646effa5935c3bc90d4645b0d745a8",
-        "candidate_sha256": "49b15418c1f7b5ed1dd35258d6741ea52c5fecaad777a7b5dc2ba98950e2d0fd",
+        "baseline_sha256": "49b15418c1f7b5ed1dd35258d6741ea52c5fecaad777a7b5dc2ba98950e2d0fd",
+        "candidate_sha256": "ac138cc2607833f9189f8d6544d2b537f102aaf6fdee0e42aa00da88ae67ad83",
         "byte_identical": false,
-        "equivalence": "The fixed delta adds disabled-by-default WebSocket compression and idle-root wake feature definitions without changing the retained feature defaults. Exact production defaults and native retained regressions will verify behavior; source tests separately cover native wake boundaries."
+        "equivalence": "Incremental tools becomes the upstream stable default. Existing fork/prefix, cold resume, Code Mode and idle-root wake regressions remain; no new Decodex control is added."
       },
       {
         "source": "codex-rs/file-system/src/environment_accessor.rs",
         "baseline_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
         "candidate_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/file-system/src/lib.rs",
         "baseline_sha256": "dbeadeacd6b376fc767629760b97867b4ee4903b9e1ef91d7bfc2531b77dbfd8",
-        "candidate_sha256": "dbeadeacd6b376fc767629760b97867b4ee4903b9e1ef91d7bfc2531b77dbfd8",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "a993aeb0a31859d50256444a70092f7582bb9ae60fcb44ed4fb5ef2e6fc9c603",
+        "byte_identical": false,
+        "equivalence": "New LocalLogsDir export has no current upstream constructor consumer or Decodex caller. Existing filesystem behavior remains unchanged."
       },
       {
         "source": "codex-rs/file-system/src/nfs.rs",
         "baseline_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
         "candidate_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/hooks/src/engine/command_runner.rs",
         "baseline_sha256": "4dc62f137cc8aec5cbecfdb02cc4baf78241c1616a95f9d632a4a57a30afd6e0",
         "candidate_sha256": "4dc62f137cc8aec5cbecfdb02cc4baf78241c1616a95f9d632a4a57a30afd6e0",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/hooks/src/engine/discovery.rs",
         "baseline_sha256": "a9b1cdfd3953181b842322ab83c82a9e796f56c6fa67dddd931644f97b84ed3a",
-        "candidate_sha256": "a9b1cdfd3953181b842322ab83c82a9e796f56c6fa67dddd931644f97b84ed3a",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "ce15939894849b37a6e06bc9a4805931f9b96e714a4c9445680f130859eda34d",
+        "byte_identical": false,
+        "equivalence": "Observation-only request hooks and memory-consolidation filtering preserve existing native hook trust and invalidation boundaries; source model-hook and actual native trust fixtures cover the boundary."
       },
       {
         "source": "codex-rs/hooks/src/engine/mcp_runner.rs",
         "baseline_sha256": "41bfa87c68473efba77ab47c86f269fc667cc3a572927228d334b4b5176ab382",
         "candidate_sha256": "41bfa87c68473efba77ab47c86f269fc667cc3a572927228d334b4b5176ab382",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_fingerprint.rs",
         "baseline_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
         "candidate_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_trust.rs",
         "baseline_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
         "candidate_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/network-proxy/src/runtime.rs",
         "baseline_sha256": "a126021eb0601c5c80a64da5bce92b0408f4bdb5099556826e620e830eadb2b8",
         "candidate_sha256": "a126021eb0601c5c80a64da5bce92b0408f4bdb5099556826e620e830eadb2b8",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/protocol/src/mcp_approval_meta.rs",
         "baseline_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
         "candidate_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/responses-api-proxy/src/lib.rs",
         "baseline_sha256": "092e92662b9a564f98bd5ee157c09348465288a1656adcd5eb34d555dc551c1f",
-        "candidate_sha256": "092e92662b9a564f98bd5ee157c09348465288a1656adcd5eb34d555dc551c1f",
-        "byte_identical": true,
-        "equivalence": null
+        "candidate_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
+        "byte_identical": false,
+        "equivalence": "API-key Host/Authorization rewriting remains covered by the checked-in legacy proxy artifact probe. New cloud OIDC authentication is not a production app consumer and remains unqualified."
       },
       {
         "source": "codex-rs/rmcp-client/src/auth_status.rs",
         "baseline_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
         "candidate_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/rmcp-client/src/tool_list_changes.rs",
         "baseline_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
         "candidate_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/shell-command/src/shell_snapshot_restore.rs",
         "baseline_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
         "candidate_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/state/src/runtime/reclamation.rs",
         "baseline_sha256": "6e8250e4c77570f5c9a68e609795e7263b0de74af5254c4cda665d0917683fb9",
         "candidate_sha256": "6e8250e4c77570f5c9a68e609795e7263b0de74af5254c4cda665d0917683fb9",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/state/src/sqlite.rs",
         "baseline_sha256": "d196a8a09a72bed7119f52b24576e4e247ef30c4f183cbd22ffab52f101582ef",
         "candidate_sha256": "d196a8a09a72bed7119f52b24576e4e247ef30c4f183cbd22ffab52f101582ef",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/thread-store/src/error.rs",
         "baseline_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
         "candidate_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
         "byte_identical": true,
-        "equivalence": null
+        "equivalence": "Byte-identical source; native retained regressions are still required."
       },
       {
         "source": "codex-rs/thread-store/src/local/thread_history_materialization.rs",
         "baseline_sha256": "0d94127f7e582a3da1e0364d8ce023be08e2a09e368e388e5d678133ae90e9e3",
-        "candidate_sha256": "0d94127f7e582a3da1e0364d8ce023be08e2a09e368e388e5d678133ae90e9e3",
-        "byte_identical": true,
-        "equivalence": null
-      }
-    ],
-    "qualification_status": "Retained consumers, new native wake regression and affected source tests passed against the selected source and exact packaged runtime.",
-    "new_behavior_sources": [
-      {
-        "source": "codex-rs/core/src/session/handlers.rs",
-        "sha256": "8cbc158a1291689b4caff0be1b323f11513a0a3b1d68acd012542e9877b7d49d"
-      },
-      {
-        "source": "codex-rs/core/src/session/turn_input.rs",
-        "sha256": "b0dfa1c4f32bb37103608ef1eb0afdcfa4b2f00d5be1fa2595d9ed45fc24ff65"
-      },
-      {
-        "source": "codex-rs/core/src/tasks/mod.rs",
-        "sha256": "f60826f32040ac7f95a5cf351767d58fe3fb7cfc09c90c873bba484b175cfc44"
-      },
-      {
-        "source": "codex-rs/core/src/session/turn_input_tests.rs",
-        "sha256": "35425064b58366551b9dedcc69693b8ba5d032f8553fed1dc2d96b8d05bf3407"
-      },
-      {
-        "source": "codex-rs/core/tests/suite/agent_control_tests.rs",
-        "sha256": "416e985784c531ab29c18a8bf64d741a257ad71ff47c910984cf9b9168a3b406"
-      },
-      {
-        "source": "codex-rs/core/tests/suite/scenarios.rs",
-        "sha256": "654d79ec4c92d2559ac2943f1e1e022356aa5c4cf509fa2fca897cf3e0edcbdb"
+        "candidate_sha256": "0d02314222f699799ae12443ab558ac50480f435fa6f5ad79ce2c9841fec5efb",
+        "byte_identical": false,
+        "equivalence": "Bounded paginated SQLite history import preserves exact turn/item lookup and cold detail. Affected source history tests and exact-artifact history regressions qualify retained consumers."
       }
     ]
   },
   "source_validation": {
-    "role": "Affected source tests for this fixed macOS arm64 migration. The prior broad source qualification remains in Git history; these selectors are not universal permanent gates.",
-    "rust_passed_count": 406,
-    "rust_test_executions_across_attempts": 791,
-    "python_passed_count": 12,
-    "command": [
-      "cargo",
-      "+stable",
-      "nextest",
-      "run",
-      "--locked",
-      "--cargo-profile",
-      "dev-small",
-      "--lib",
-      "--test",
-      "all",
-      "-p",
-      "codex-core",
-      "-p",
-      "codex-features",
-      "-p",
-      "codex-model-provider",
-      "-p",
-      "codex-protocol",
-      "-p",
-      "codex-rollout",
-      "-E",
-      "(package(codex-features)) or (package(codex-model-provider) and test(cache_identity_)) or (package(codex-protocol) and test(response_item_id_getter_and_setter)) or (package(codex-rollout) and test(recorder_preserves_additional_tools_in_both_history_modes)) or (package(codex-core) and (test(context::) or test(context_manager::) or test(session_prefix::) or test(session::turn_input::) or test(initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing) or test(namespace_diff_contains_only_changed_and_added_tools) or test(mixed_output_preserves_order_and_restores_its_snapshot) or test(updates_preserve_item_boundaries_roles_and_standalone_fragments) or test(assign_missing_response_item_ids_assigns_additional_tools_ids) or test(initial_context_preserves_world_state_items_and_snapshot) or test(spawn_agent_can_fork_parent_thread_history_with_sanitized_items) or test(spawn_agent_fork_strips_parent_usage_hints_from_compacted_history) or test(spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once) or test(agent_mail_wakes_completed_root_when_enabled) or test(child_completion_wakes_parent_after_final_answer) or test(auth_rotation_refreshes_before_turn_with_best_effort) or test(auth_and_provider_switches_do_not_reuse_chatgpt_catalog)))",
-      "--test-threads",
-      "4",
-      "--status-level",
-      "pass",
-      "--success-output",
-      "final",
-      "--no-fail-fast",
-      "--retries",
-      "0"
+    "role": "Affected upstream source tests on this macOS arm64 host. Every unique identity has a passing execution; original preparation failures and recoveries remain explicit. Registration is not execution; overlapping selections count once in the unique total. This is source-test qualification, separate from the exact selected release runtime.",
+    "rust_passed_count": 400,
+    "rust_test_executions_across_attempts": 556,
+    "initial_results": [
+      {
+        "selection": "source-lib",
+        "executed_count": 277,
+        "initial_passed_count": 276,
+        "initial_failed_count": 1
+      },
+      {
+        "selection": "source-integration",
+        "executed_count": 94,
+        "initial_passed_count": 67,
+        "initial_failed_count": 27
+      },
+      {
+        "selection": "source-retained",
+        "executed_count": 127,
+        "initial_passed_count": 100,
+        "initial_failed_count": 27
+      },
+      {
+        "selection": "source-alias",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0
+      }
     ],
-    "working_directory": "target/codex-source/8c076942cb70fba8e5c4732c23f1faabc4aed484/source/codex-rs",
-    "environment": {
-      "RUST_MIN_STACK": "8388608",
-      "NEXTEST_PROFILE": "local",
-      "INSTA_UPDATE": "no",
-      "HOME": "A fresh system-temporary home; clean it after execution",
-      "CARGO_HOME": "Existing host-managed Cargo home",
-      "RUSTUP_HOME": "Existing host-managed Rustup home",
-      "CARGO_TARGET_DIR": "The task-owned upstream build output",
-      "CARGO_BUILD_JOBS": "4"
-    },
-    "command_authority": "Official justfile local Nextest profile, 8 MiB stack and no-fail-fast; Decodex stable/locked policy. Explicit zero retries preserve first failures.",
+    "unique_initial_failed_identities": 29,
+    "prepared_retry_executed_count": 29,
+    "prepared_retry_passed_count": 1,
+    "direct_prepared_retry_passed_count": 28,
+    "prepared_retry_groups": [
+      {
+        "package": "codex-app-server",
+        "binary_id": "codex-app-server::all",
+        "entrypoint": "integration:all",
+        "executed_count": 28,
+        "initial_passed_count": 0,
+        "initial_failed_count": 28,
+        "initial_failed_tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction",
+          "suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context"
+        ],
+        "tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction",
+          "suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context"
+        ]
+      },
+      {
+        "package": "codex-guardian-v2",
+        "binary_id": "codex-guardian-v2",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "async_scorer::extension::tests::cached_delivery::confirmed_root_delivery_invalidates_root_and_worker_cached_approvals"
+        ]
+      }
+    ],
+    "python_passed_count": 12,
     "groups": [
       {
         "package": "codex-core",
         "binary_id": "codex-core",
-        "executed_count": 287
+        "entrypoint": "lib",
+        "executed_count": 20,
+        "initial_passed_count": 20,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "environment_selection::tests::blocking_snapshot_waits_for_starting_environment",
+          "environment_selection::tests::default_thread_environment_requests_empty_when_default_disabled",
+          "environment_selection::tests::default_thread_environment_requests_use_manager_default_id",
+          "environment_selection::tests::failed_resolution_is_replaced_from_the_environment_manager",
+          "environment_selection::tests::inherited_environment_reuses_parent_handle_and_uses_child_config",
+          "environment_selection::tests::local_environment_cwd_uses_starting_local_selection",
+          "environment_selection::tests::local_environment_uses_configured_shell_and_login_policy",
+          "environment_selection::tests::owner_environment_config_is_inherited_and_reset_for_new_cwd",
+          "environment_selection::tests::replacement_environment_events_follow_selected_environment",
+          "environment_selection::tests::resolve_environment_selections_keeps_first_duplicate_id",
+          "environment_selection::tests::resolved_environment_selections_use_first_selection_as_primary",
+          "environment_selection::tests::single_local_environment_cwd_requires_exactly_one_local_environment",
+          "environment_selection::tests::snapshot_refreshes_readiness_in_selection_order::explicit_mxc",
+          "environment_selection::tests::snapshot_refreshes_readiness_in_selection_order::legacy",
+          "environment_selection::tests::snapshot_refreshes_readiness_in_selection_order::local_preference",
+          "environment_selection::tests::toml_default_thread_environment_requests_include_local_and_remote",
+          "environment_selection::tests::unresolved_environment_selections_are_skipped",
+          "guardian::request_budget::tests::request_histogram_counts_admitted_steps_without_counting_retry_preparation::admitted",
+          "guardian::request_budget::tests::request_histogram_counts_admitted_steps_without_counting_retry_preparation::rejected",
+          "session::mcp_refresh::tests::successful_manual_claim_consumes_only_preexisting_work"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       },
       {
-        "package": "codex-core",
-        "binary_id": "codex-core::all",
-        "executed_count": 69
+        "package": "codex-core-plugins",
+        "binary_id": "codex-core-plugins",
+        "entrypoint": "lib",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "catalog::tests::cloud_catalog_controls_remote_plugins_but_preserves_local_plugins",
+          "catalog::tests::merged_catalog_prefers_cloud_and_matches_executor_versions",
+          "catalog::tests::partial_cloud_merges_known_plugins_and_preserves_unmatched_enablement",
+          "executor_catalog::tests::discovered_mcp_contents_populate_catalog"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       },
       {
-        "package": "codex-features",
-        "binary_id": "codex-features",
-        "executed_count": 44
+        "package": "codex-file-search",
+        "binary_id": "codex-file-search",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "matcher_tests::query_update_does_not_relabel_pending_matches"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       },
       {
-        "package": "codex-model-provider",
-        "binary_id": "codex-model-provider",
-        "executed_count": 4
+        "package": "codex-guardian-context",
+        "binary_id": "codex-guardian-context",
+        "entrypoint": "lib",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "budget::tests::request_estimate_reserves_images_independently_of_encoded_size",
+          "budget::tests::request_token_ranges_keep_boundary_values_in_the_lower_bucket",
+          "budget::tests::section_costs_keep_multimodal_payloads_separate",
+          "budget::tests::section_estimate_bounds_the_delivered_message"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       },
       {
-        "package": "codex-protocol",
-        "binary_id": "codex-protocol",
-        "executed_count": 1
+        "package": "codex-guardian-v2",
+        "binary_id": "codex-guardian-v2",
+        "entrypoint": "lib",
+        "executed_count": 125,
+        "initial_passed_count": 124,
+        "initial_failed_count": 1,
+        "initial_failed_tests": [
+          "async_scorer::extension::tests::cached_delivery::confirmed_root_delivery_invalidates_root_and_worker_cached_approvals"
+        ],
+        "tests": [
+          "async_scorer::action::tests::guardian_action_preserves_complete_arguments_at_budget_boundary",
+          "async_scorer::config::tests::classifier_caps_preserve_complete_provenance_and_output_contract",
+          "async_scorer::config::tests::classifier_mode_uses_local_override_then_model_default",
+          "async_scorer::config::tests::evaluated_configuration_preserves_gate_and_caps_only_configured_prompt",
+          "async_scorer::config::tests::extra_policy_reaches_templated_and_legacy_classifier_instructions",
+          "async_scorer::config::tests::model_defaults_preserve_transcript_mode_and_matching_instructions",
+          "async_scorer::config::tests::model_prompt_and_explicit_threshold_precedence_are_preserved",
+          "async_scorer::config::tests::model_runtime_settings_preserve_local_overrides",
+          "async_scorer::config::tests::template_policy_is_substituted_before_the_single_truncation",
+          "async_scorer::decisions::tests::adapter_preserves_inline_images_and_bounds_image_bytes",
+          "async_scorer::decisions::tests::adapter_preserves_trusted_tool_authority_and_scope",
+          "async_scorer::decisions::tests::adapter_rejects_unsupported_evidence",
+          "async_scorer::decisions::tests::cancelling_a_decisions_request_releases_thread_capacity",
+          "async_scorer::decisions::tests::decisions_admits_newest_request_by_cancelling_oldest",
+          "async_scorer::decisions::tests::decisions_falls_back_to_openai_env_key",
+          "async_scorer::decisions::tests::decisions_key_lookup_honors_override_or_reloaded_login",
+          "async_scorer::decisions::tests::decisions_prefers_cached_api_key_over_openai_env",
+          "async_scorer::decisions::tests::http_contract_and_untrusted_response_validation",
+          "async_scorer::extension::tests::budget::contributor_accounts_for_parent_checkpoint",
+          "async_scorer::extension::tests::budget::contributor_preserves_complete_user_instructions_or_defers_to_sync",
+          "async_scorer::extension::tests::budget::contributor_preserves_optional_evidence_or_defers_to_sync",
+          "async_scorer::extension::tests::cached_approval_respects_action_order_and_wrapper_lag",
+          "async_scorer::extension::tests::cached_delivery::confirmed_root_delivery_invalidates_root_and_worker_cached_approvals",
+          "async_scorer::extension::tests::cached_score_publication_rejects_delayed_results_without_changing_coverage",
+          "async_scorer::extension::tests::cached_score_survives_compaction_and_internal_context_but_not_user_input",
+          "async_scorer::extension::tests::computer_use_only_classification_recognizes_direct_and_code_mode_tools",
+          "async_scorer::extension::tests::computer_use_only_scores_cannot_approve_other_actions",
+          "async_scorer::extension::tests::contributor_bounds_configured_policy_in_luna_developer_instructions",
+          "async_scorer::extension::tests::contributor_counts_failed_thread_lookups_toward_score_lag",
+          "async_scorer::extension::tests::contributor_fails_closed_when_luna_classification_fails",
+          "async_scorer::extension::tests::contributor_fails_closed_when_model_configuration_is_invalid",
+          "async_scorer::extension::tests::contributor_fails_closed_when_thread_lookup_fails",
+          "async_scorer::extension::tests::contributor_includes_transcript_images_by_default",
+          "async_scorer::extension::tests::contributor_persists_nested_code_mode_action_with_score",
+          "async_scorer::extension::tests::contributor_preserves_final_assistant_messages_after_tool_eviction",
+          "async_scorer::extension::tests::contributor_preserves_uncapped_classifier_instructions",
+          "async_scorer::extension::tests::contributor_renders_policy_inside_a_configured_prompt",
+          "async_scorer::extension::tests::contributor_reuses_the_latest_compatible_parent_compaction",
+          "async_scorer::extension::tests::contributor_samples_tool_calls_with_the_existing_luna_pool",
+          "async_scorer::extension::tests::contributor_sends_compacted_conversation_history_to_luna",
+          "async_scorer::extension::tests::contributor_skips_required_models_in_standard_scope",
+          "async_scorer::extension::tests::contributor_truncates_legacy_prompt_after_appending_policy",
+          "async_scorer::extension::tests::contributor_uses_catalog_policy_without_a_configured_override",
+          "async_scorer::extension::tests::contributor_uses_configured_prompt_and_expires_scores_at_default_lag",
+          "async_scorer::extension::tests::contributor_uses_model_defaults_and_preserves_local_overrides",
+          "async_scorer::extension::tests::conversation::concurrent_requests_retain_only_the_newest_completed_history",
+          "async_scorer::extension::tests::conversation::configured_reset_limit_rebuilds_history_without_rejecting_fresh_evidence",
+          "async_scorer::extension::tests::conversation::delayed_preparation_does_not_block_newer_requests_and_capacity_is_bounded",
+          "async_scorer::extension::tests::conversation::earlier_observation_keeps_the_last_available_slot",
+          "async_scorer::extension::tests::conversation::expiry_discards_a_queued_score_without_recording_success",
+          "async_scorer::extension::tests::conversation::expiry_preserves_the_completed_checkpoint_and_transcript_cursor",
+          "async_scorer::extension::tests::conversation::stale_authorization_expiry_and_stopped_generations_cannot_start",
+          "async_scorer::extension::tests::decisions_lifecycle_tests::decisions_disagreement_failures_and_disabled_flag_preserve_baseline",
+          "async_scorer::extension::tests::decisions_lifecycle_tests::guardian_budget_rejects_both_backends_before_sending",
+          "async_scorer::extension::tests::incompatible_compaction_blocks_cached_score_and_initial_cua_allowance",
+          "async_scorer::extension::tests::installed_extension_uses_http_after_warm_socket_auth_expires",
+          "async_scorer::extension::tests::installed_extension_warms_connections_without_blocking_thread_start",
+          "async_scorer::extension::tests::json_transcript_mode_reaches_classifier_instructions_and_evidence",
+          "async_scorer::extension::tests::legacy_contributor_reuses_the_latest_compatible_parent_compaction",
+          "async_scorer::extension::tests::pending_score::stale_classifications_close_the_transport_without_invalidating_scores",
+          "async_scorer::extension::tests::sandboxed_shell_classification_respects_review_scope",
+          "async_scorer::extension::tests::stale_review_context_blocks_cached_approval_without_changing_authorization",
+          "async_scorer::extension::tests::unscored_tools_invalidate_cached_scores",
+          "async_scorer::parent_compaction::tests::encrypted_parent_compaction_preserves_the_latest_valid_item",
+          "async_scorer::parent_compaction::tests::encrypted_parent_compaction_rejects_invalid_latest_item",
+          "async_scorer::parent_compaction::tests::encrypted_parent_compaction_rejects_oversized_latest_item",
+          "async_scorer::sampler::connection_pool::cancellation_tests::cancellation_preserves_unused_sockets_and_backpressured_completion",
+          "async_scorer::sampler::connection_pool::cancellation_tests::cancelled_classifiers_interrupt_and_reuse_only_completed_streams",
+          "async_scorer::sampler::connection_pool::tests::cold_pool_uses_http_during_open_timeout_then_recovers_after_cooldown",
+          "async_scorer::sampler::connection_pool::tests::cooldown_preserves_healthy_sockets_and_both_transports_share_capacity",
+          "async_scorer::sampler::connection_pool::tests::http_cache_preserves_no_constraint_redirect_policy_and_configured_headers",
+          "async_scorer::sampler::connection_pool::tests::replenishes_before_last_idle_socket_is_leased",
+          "async_scorer::sampler::connection_pool::tests::stalled_handshake_does_not_delay_other_warm_sockets",
+          "async_scorer::sampler::connection_pool::tests::stalled_http_headers_exhaust_the_sampling_retry_budget",
+          "async_scorer::sampler::connection_pool::tests::supersession_closes_http_before_headers_and_while_draining_the_body",
+          "async_scorer::sampler::tests::classifier_preserves_api_key_cyber_program_policy",
+          "async_scorer::sampler::tests::classifier_sends_guardian_header_only_with_codex_backend_auth",
+          "async_scorer::sampler::tests::oversized_classification_keeps_untagged_request_histograms",
+          "async_scorer::sampler::tests::parent_response_id_survives_classifier_transport_retry",
+          "async_scorer::sampler::tests::preconnected_sampler_reuses_authenticated_websocket_for_classifications",
+          "async_scorer::sampler::tests::request::complete_budget_counts_setup_checkpoint_images_and_trusted_evidence",
+          "async_scorer::sampler::tests::request::preparation_preserves_committed_prefix_and_selects_only_new_entries_and_images",
+          "async_scorer::sampler::tests::request::rejected_preparation_preserves_committed_history_and_cursor",
+          "async_scorer::sampler::tests::retained::retained_websocket_requests_preserve_model_output_and_ids",
+          "async_scorer::sampler::tests::retained::retention_overflow_or_incomplete_stream_keeps_early_score",
+          "async_scorer::sampler::tests::routing::account_switch_cancels_request_opening_and_first_token_waits",
+          "async_scorer::sampler::tests::routing::classification_retries_refreshes_but_never_switches_accounts",
+          "async_scorer::sampler::tests::routing::failed_routing_blocks_a_prewarmed_classifier_connection",
+          "async_scorer::sampler::tests::routing::idle_classifier_retains_the_owning_threads_workspace_binding",
+          "async_scorer::sampler::tests::sampler_keeps_first_classification_token_when_later_output_disagrees",
+          "async_scorer::sampler::tests::sampler_limits_transient_recovery_attempts",
+          "async_scorer::sampler::tests::sampler_reconnects_after_transient_service_failures",
+          "async_scorer::sampler::tests::sampler_records_401_recovery_separately_from_transport_retries",
+          "async_scorer::sampler::tests::sampler_records_token_usage_after_returning_an_early_classification",
+          "async_scorer::sampler::tests::sampler_remains_available_when_second_prewarm_fails",
+          "async_scorer::sampler::tests::sampler_replaces_scored_drains_before_unfinished_classifications",
+          "async_scorer::sampler::tests::sampler_retries_expired_websockets_on_another_warm_connection",
+          "async_scorer::sampler::tests::sampler_returns_classification_token_before_terminal_response_events",
+          "async_scorer::sampler::tests::sampler_reuses_parent_compaction_only_for_matching_model_hashes",
+          "async_scorer::sampler::tests::sampler_uses_http_with_a_fresh_identity_when_warm_connections_expire",
+          "async_scorer::score::tests::fail_closed_score_preserves_classification_order",
+          "async_scorer::transcript::tests::configured_reasoning_counts_against_message_budget",
+          "async_scorer::transcript::tests::rejected_commentary_does_not_evict_retained_message_evidence",
+          "async_scorer::transcript::tests::rejected_message_does_not_evict_retained_tool_entries",
+          "async_scorer::transcript::tests::transcript_does_not_protect_legacy_inter_agent_instructions",
+          "async_scorer::transcript::tests::transcript_evicts_non_user_entries_in_cacheable_chunks",
+          "async_scorer::transcript::tests::transcript_evicts_protected_messages_in_cacheable_chunks",
+          "async_scorer::transcript::tests::transcript_keeps_conversation_and_configured_sources",
+          "async_scorer::transcript::tests::transcript_omits_media_payloads_and_keeps_readable_content",
+          "async_scorer::transcript::tests::transcript_preserves_encrypted_agent_messages_and_omits_other_encrypted_fields",
+          "async_scorer::transcript::tests::transcript_preserves_latest_final_when_reserved_tools_fill_entry_window",
+          "async_scorer::transcript::tests::transcript_preserves_newest_manual_approval_when_message_budget_overflows",
+          "async_scorer::transcript::tests::transcript_preserves_recent_tool_evidence_when_protected_messages_fill_entry_limit",
+          "async_scorer::transcript::tests::transcript_preserves_user_restrictions_before_final_assistant_messages",
+          "async_scorer::transcript::tests::transcript_reserves_five_recent_tool_entries_from_protected_messages",
+          "async_scorer::transcript::tests::transcript_reserves_separate_budget_for_recent_tool_evidence",
+          "async_scorer::transcript::tests::transcript_truncates_oversized_assistant_entries_without_splitting_characters",
+          "async_scorer::transcript::tests::transcript_truncates_tool_results_using_standard_budget",
+          "async_scorer::trusted_skills::tests::invoked_skill_paths_are_deduplicated_and_bounded",
+          "async_scorer::trusted_skills::tests::rejects_skills_that_escape_user_roots_through_symlinks",
+          "async_scorer::trusted_skills::tests::trusts_only_user_owned_skill_roots",
+          "async_scorer::trusted_tools::tests::rejects_blank_orchestrator_connector_ids",
+          "async_scorer::trusted_tools::tests::rejects_paths_that_escape_codex_home_through_symlinks",
+          "async_scorer::trusted_tools::tests::trusts_connector_declared_by_home_owned_plugin",
+          "async_scorer::trusted_tools::tests::trusts_only_tools_configured_in_codex_home"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": "Exact same identity in prepared retry/direct source harness"
+      },
+      {
+        "package": "codex-mcp",
+        "binary_id": "codex-mcp",
+        "entrypoint": "lib",
+        "executed_count": 25,
+        "initial_passed_count": 25,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "plugin_config::tests::agent_plugin_mcp_enforces_closed_transport_and_path_semantics",
+          "plugin_config::tests::agent_plugin_mcp_expands_reserved_paths_and_maps_transports",
+          "plugin_config::tests::agent_plugin_mcp_handles_portable_path_and_http_edge_cases",
+          "plugin_config::tests::agent_plugin_mcp_preserves_arbitrary_server_names",
+          "plugin_config::tests::agent_plugin_mcp_preserves_server_named_mcp_servers",
+          "plugin_config::tests::agent_plugin_mcp_rejects_explicit_null_optional_fields",
+          "plugin_config::tests::agent_plugin_mcp_rejects_missing_descendant_below_escaping_symlink",
+          "plugin_config::tests::agent_plugin_mcp_rejects_unsupported_schema",
+          "plugin_config::tests::agent_plugin_mcp_resolves_root_before_collapsing_parent_components",
+          "plugin_config::tests::agent_plugin_mcp_skips_invalid_server_without_disabling_siblings",
+          "plugin_config::tests::agent_plugin_mcp_treats_args_and_env_as_opaque_after_expansion",
+          "plugin_config::tests::agent_plugin_placeholder_expansion_is_single_pass",
+          "plugin_config::tests::declared_placement_preserves_local_plugin_normalization",
+          "plugin_config::tests::environment_placement_forces_authority_and_defaults_null_cwd",
+          "plugin_config::tests::environment_placement_rejects_orchestrator_env_vars",
+          "plugin_config::tests::environment_placement_rejects_relative_cwd_that_escapes_package",
+          "plugin_config::tests::environment_placement_resolves_relative_cwd_beneath_plugin_root",
+          "plugin_config::tests::executor_environment_placement_resolves_foreign_uri_cwd",
+          "plugin_config::tests::local_environment_placement_preserves_http_env_references",
+          "plugin_config::tests::local_environment_placement_preserves_local_env_vars",
+          "plugin_config::tests::local_environment_placement_rejects_remote_env_vars",
+          "plugin_config::tests::native_plugin_mcp_cannot_self_declare_ema_auth",
+          "plugin_config::tests::remote_environment_placement_preserves_bearer_and_rejects_header_env_references",
+          "rmcp_client::provenance_tests::provenance_bounds_aggregate_names_and_retains_all_associations",
+          "rmcp_client::provenance_tests::provenance_preserves_short_descriptions_and_membership"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-mcp-extension",
+        "binary_id": "codex-mcp-extension",
+        "entrypoint": "lib",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "plugin::discovery::tests::merged_mcp_declarations_require_an_executor_location",
+          "plugin_contributor_state::tests::executor_refresh_preserves_order_and_removes_stale_entries",
+          "plugin_contributor_state::tests::partial_refresh_retains_entries_without_excluding_new_executor_plugins",
+          "plugin_contributor_state::tests::projection_respects_discovery_mode_and_preserves_enabled_plugins"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-memories-write",
+        "binary_id": "codex-memories-write",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "startup_tests::dual_write::dual_write_runs_both_versions_until_v2_is_selected"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-models-manager",
+        "binary_id": "codex-models-manager",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "manager::tests::api_key_discovery_tests::api_key_discovery_disabled_preserves_command_auth_discovery_and_merging",
+          "manager::tests::api_key_discovery_tests::api_key_discovery_flag_controls_fetches_and_cached_catalogs"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-otel",
+        "binary_id": "codex-otel",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "metrics::tags::tests::session_metric_tags_include_expected_tags_in_order",
+          "metrics::tags::tests::session_metric_tags_skip_missing_optional_tags"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-rmcp-client",
+        "binary_id": "codex-rmcp-client",
+        "entrypoint": "lib",
+        "executed_count": 14,
+        "initial_passed_count": 14,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "ema_http_client::tests::cached_bearer_does_not_read_credentials_until_renewal",
+          "ema_http_client::tests::initial_bearer_aged_during_validation_is_renewed_before_dispatch",
+          "ema_http_client::tests::regressions::authentication_time_is_removed_from_the_inner_timeout",
+          "ema_http_client::tests::regressions::authentication_waits_share_the_request_deadline",
+          "ema_http_client::tests::regressions::credential_failures_are_classified_before_dispatch",
+          "ema_http_client::tests::regressions::delayed_unauthorized_response_preserves_the_renewed_bearer",
+          "ema_http_client::tests::regressions::exact_endpoint_and_renewal_credentials_are_checked_before_network_use",
+          "ema_http_client::tests::regressions::outgoing_requests_replace_all_authorization_headers_and_stop_redirects",
+          "ema_http_client::tests::regressions::resource_bearers_never_follow_redirects",
+          "ema_http_client::tests::renewal_aged_during_validation_is_not_dispatched_or_cached",
+          "ema_http_client::tests::revocation_during_renewal_prevents_dispatch",
+          "ema_http_client::tests::revocation_ends_an_existing_response_stream",
+          "ema_http_client::tests::revocation_interrupts_an_active_multichunk_response",
+          "ema_http_client::tests::unauthorized_requests_are_not_replayed_and_later_requests_renew"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       },
       {
         "package": "codex-rollout",
         "binary_id": "codex-rollout",
-        "executed_count": 1
+        "entrypoint": "lib",
+        "executed_count": 32,
+        "initial_passed_count": 32,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "compression::tests::append_materialization_preserves_compressed_rollout_permissions",
+          "compression::tests::append_rollout_item_materializes_compressed_rollout",
+          "compression::tests::compressed_search_only_reports_stream_errors_before_a_match",
+          "compression::tests::compressed_search_preserves_first_visible_snippet_and_no_match",
+          "compression::tests::compressed_search_stops_between_lines_when_cancelled",
+          "compression::tests::compression_preserves_read_only_rollout_permissions",
+          "compression::tests::compression_preserves_rollout_permissions",
+          "compression::tests::find_thread_path_by_id_handles_compressed_rollout_filenames",
+          "compression::tests::find_thread_path_by_id_ignores_compression_temp_matches",
+          "compression::tests::full_history_load_preserves_records_and_errors_across_representations",
+          "compression::tests::load_rollout_items_reads_compressed_rollout",
+          "compression::tests::persist_temp_file_noclobber_does_not_replace_existing_destination",
+          "compression::tests::persist_temp_file_noclobber_installs_completed_temp",
+          "compression::tests::read_session_meta_line_preserves_pre_header_and_error_semantics",
+          "compression::tests::read_session_meta_line_stops_before_invalid_utf8_compressed_tail",
+          "compression::tests::read_session_meta_line_stops_before_invalid_utf8_tail",
+          "compression::tests::resume_materializes_compressed_rollout_path",
+          "compression::tests::rollout_file_from_path_hides_compressed_sibling_when_plain_exists",
+          "compression::tests::rollout_file_from_path_normalizes_compressed_file_names",
+          "compression::tests::run_marker_is_removed_unless_persisted",
+          "compression::tests::search_rollout_matches_uses_logical_path_for_compressed_rollout",
+          "compression::tests::worker_compresses_archived_fork_chain",
+          "compression::tests::worker_compresses_old_active_and_archived_rollouts",
+          "compression::tests::worker_compresses_parallel_cold_candidates_without_skipping_other_publications",
+          "compression::tests::worker_does_not_leak_temps_for_deletion_protected_rollouts",
+          "compression::tests::worker_preserves_alternate_group_through_materialization",
+          "compression::tests::worker_preserves_inherited_acl_through_append",
+          "compression::tests::worker_skips_existing_compressed_archived_rollouts",
+          "compression::tests::worker_skips_unreadable_metadata_without_blocking_other_compression",
+          "compression::tests::worker_skips_when_fresh_run_marker_exists",
+          "compression::tests::worker_waits_for_rollout_maintenance_before_compressing",
+          "recorder::tests::open_log_file_materializes_rollout_when_acl_denies_timestamp_changes"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-skills-extension",
+        "binary_id": "codex-skills-extension",
+        "entrypoint": "lib",
+        "executed_count": 38,
+        "initial_passed_count": 38,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "aliases::tests::alias_number_and_byte_budgets_are_shared_without_reassigning_existing_roots",
+          "aliases::tests::aliases_roots_used_by_only_one_skill",
+          "aliases::tests::appended_aliases_preserve_captured_steps_and_existing_locators",
+          "aliases::tests::assigns_aliases_in_first_seen_order",
+          "aliases::tests::locator_serde_recognizes_aliases_and_preserves_package_strings",
+          "aliases::tests::rejects_unknown_roots_and_locators_outside_the_root",
+          "aliases::tests::returns_none_when_no_roots_are_provided",
+          "aliases::tests::reuses_aliases_for_duplicate_roots",
+          "aliases::tests::shortens_filesystem_and_skill_resource_locators",
+          "catalog::tests::partial_cloud_merges_matches_without_disabling_unmatched_installations",
+          "invocation::tests::detects_executor_skill_document_reads",
+          "invocation::tests::detects_executor_skill_script_runs",
+          "invocation::tests::ignores_commands_without_skill_access",
+          "invocation::tests::ignores_matching_paths_from_other_environments",
+          "render::tests::catalog_budget_uses_context_percentage_or_character_fallback",
+          "render::tests::catalog_emits_omission_marker_when_every_minimum_skill_line_exceeds_budget",
+          "render::tests::catalog_preserves_report_when_no_fragment_fits_budget",
+          "render::tests::catalog_report_counts_partial_description_truncation",
+          "render::tests::character_fallback_counts_multibyte_metadata_by_characters",
+          "render::tests::description_selection_follows_render_policy",
+          "render::tests::executor_aliases_preserve_literal_backslashes_in_package_ids",
+          "render::tests::host_alias_roots_follow_core_discovery_order",
+          "render::tests::host_only_prompts_preserve_existing_behavior_with_and_without_aliases",
+          "render::tests::mixed_catalog_prefers_executor_inclusion_over_total_aliased_inclusion",
+          "render::tests::mixed_catalog_reserves_executor_omission_marker_by_omitting_host_first",
+          "render::tests::mixed_catalogs_alias_all_skill_sources_under_budget_pressure",
+          "render::tests::mixed_catalogs_keep_absolute_authority_aware_rendering_under_budget_pressure",
+          "render::tests::omission_notice_follows_render_policy_and_is_charged_to_catalog_budget",
+          "render::tests::ordering_follows_render_policy",
+          "render::tests::path_aliases_are_used_without_budget_pressure_when_they_reduce_prompt_size",
+          "render::tests::path_aliases_retain_every_skill_under_budget_pressure",
+          "render::tests::prebudget_dedup_can_choose_full_locators_over_preserved_aliases",
+          "render::tests::singleton_plugin_versions_share_the_marketplace_alias_root",
+          "render::tests::skill_prompt_contents_are_bounded_at_utf8_boundaries",
+          "state::cloud_cache_tests::cloud_refresh_preserves_complete_catalogs_only_within_the_same_auth_scope",
+          "state::cloud_cache_tests::late_discovery_cannot_publish_into_a_new_generation",
+          "state::cloud_cache_tests::late_read_cannot_return_or_populate_a_replaced_cache",
+          "state::cloud_cache_tests::partial_cloud_catalog_without_warnings_is_refreshed_next_turn"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-utils-pty",
+        "binary_id": "codex-utils-pty",
+        "entrypoint": "lib",
+        "executed_count": 5,
+        "initial_passed_count": 5,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "child_command::descriptor_tests::explicit_stdio_excludes_inheritable_descriptors_without_changing_parent",
+          "child_command::descriptor_tests::high_stdio_descriptors_use_compatible_fallback",
+          "child_command::descriptor_tests::inherited_descriptors_survive_native_and_executable_text_spawns",
+          "child_command::descriptor_tests::native_launch_can_reject_executable_text_without_shell_fallback",
+          "child_command::descriptor_tests::socket_stdin_preserves_bidirectional_io_and_custom_argv0"
+        ],
+        "selection": "source-lib",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-app-server",
+        "binary_id": "codex-app-server::all",
+        "entrypoint": "integration:all",
+        "executed_count": 27,
+        "initial_passed_count": 0,
+        "initial_failed_count": 27,
+        "initial_failed_tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction",
+          "suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context"
+        ],
+        "tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction",
+          "suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context"
+        ],
+        "selection": "source-integration",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": "Exact same identity in prepared retry/direct source harness"
+      },
+      {
+        "package": "codex-core",
+        "binary_id": "codex-core::all",
+        "entrypoint": "integration:all",
+        "executed_count": 45,
+        "initial_passed_count": 45,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "suite::catalog_permission_messages::catalog_permission_message_loaded_from_remote_models_is_sent::catalog_prefixes",
+          "suite::catalog_permission_messages::catalog_permission_message_loaded_from_remote_models_is_sent::empty_catalog_prefixes",
+          "suite::compact::remote_v2_compaction_refreshes_instructions_and_preserves_them_on_cold_resume",
+          "suite::executor_discovery_v2::v2_changed_inventory_refreshes_mcp_without_selection_changes",
+          "suite::executor_discovery_v2::v2_disabled_skips_inventory_discovery",
+          "suite::executor_discovery_v2::v2_discovery_cache_reuses_matching_requests_and_isolates_execution_contexts",
+          "suite::executor_discovery_v2::v2_discovery_failures_retry_or_remain_cached_by_error_kind",
+          "suite::executor_discovery_v2::v2_shares_inventory_with_mcp_and_skills_until_next_turn",
+          "suite::guardian_cached_score::delayed_score_only_covers_the_tool_call_it_classified",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::api_key_uses_luna_with_responses_lite",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::chatgpt_uses_codex_auto_review",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::chatgpt_without_free_guardian",
+          "suite::hooks::memory_consolidation_skips_user_model_request_hooks",
+          "suite::hooks::model_request_hooks_report_failures_and_retries_but_cannot_veto",
+          "suite::hooks::model_request_observer_reports_cancellation",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::async_dispatches_before_stream_ends",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::no_post_hook_dispatches_before_stream_ends",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::resume_after_interrupt_preserves_aborted_custom_call_and_usage",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::sync_finishes_before_dispatch",
+          "suite::hooks_mcp::mcp_tool_hook_starts_cached_model_hidden_tools::catalog",
+          "suite::hooks_mcp::mcp_tool_hook_starts_cached_model_hidden_tools::connection",
+          "suite::hooks_mcp::mcp_tool_hook_timeout_includes_cached_server_startup",
+          "suite::reasoning_effort_override::reasoning_effort_override_capacity_retry_keeps_latest_adjacent_update",
+          "suite::reasoning_effort_override::reasoning_effort_override_recovery_sends_latest_tail_update::changed_effort",
+          "suite::reasoning_effort_override::reasoning_effort_override_recovery_sends_latest_tail_update::same_effort",
+          "suite::reasoning_effort_override::reasoning_effort_override_unavailable_filters_websocket_history::feature_disabled",
+          "suite::reasoning_effort_override::reasoning_effort_override_unavailable_filters_websocket_history::unsupported_model",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::prewarm_reconnects_when_the_eager_socket_closes",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::responses",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::responses_lite",
+          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_api",
+          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_lite",
+          "suite::scenarios::skill_catalog_dedup::cloud_preference_preserves_executor_aliases_and_description_budget",
+          "suite::skills_extension::production_turn_aliases_executor_skill_roots",
+          "suite::skills_extension::production_turn_keeps_rebalanced_catalogs_stable_after_compaction_and_resume",
+          "suite::startup_cancellation::step_preparation_finishes_before_tools_and_world_state",
+          "suite::step_settings::captured_model_replans_tools_and_retains_the_issuing_request_router",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::encrypted",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::inherited_persistent_effort",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::legacy_encrypted_leaf",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::luna_encrypted_leaf",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::plaintext",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::unknown_model_without_effort_default",
+          "suite::token_budget::token_budget_context_injects_plain_thread_hint_text::cached_subagent",
+          "suite::token_budget::token_budget_context_injects_plain_thread_hint_text::root"
+        ],
+        "selection": "source-integration",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-skills-extension",
+        "binary_id": "codex-skills-extension::skills_extension",
+        "entrypoint": "integration:skills_extension",
+        "executed_count": 22,
+        "initial_passed_count": 22,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "cloud_discovery_is_gated_and_reports_failures",
+          "discovery_v2_tests::v2_empty_failed_and_partial_results_never_load_legacy_roots",
+          "discovery_v2_tests::v2_steps_refresh_metadata_and_preserve_separate_environments",
+          "merge_catalog_tests::cloud_rendering_and_reads_share_aliases_after_a_plugin_is_disabled",
+          "merge_catalog_tests::executor_aliases_survive_cloud_promotion_without_reassigning_remaining_roots",
+          "merge_catalog_tests::rejected_roots_do_not_starve_accepted_alternate_and_standalone_aliases",
+          "merge_catalog_tests::v1_reads_preserve_response_shape_without_installations_tool",
+          "merge_catalog_tests::v1_retains_legacy_plugin_disablement",
+          "merge_catalog_tests::v2_disabled_remote_plugin_blocks_both_read_routes",
+          "merge_catalog_tests::v2_implicit_and_explicit_invocations_retain_their_step_catalog",
+          "merge_catalog_tests::v2_installations_filter_all_matching_locations_and_paginate_within_budget",
+          "merge_catalog_tests::v2_merged_skills_preserve_cloud_metadata_and_accepted_plugin_routes",
+          "merge_catalog_tests::v2_only_complete_cloud_catalog_excludes_unmatched_remote_skills",
+          "merge_catalog_tests::v2_reads_preserve_content_routes_with_bounded_installations",
+          "merge_catalog_tests::v2_rendering_and_tools_retain_their_step_catalog",
+          "merge_catalog_tests::v2_shadow_observation_tracks_merged_skills_independently_of_read_route",
+          "preparation_tests::config_reload_during_preparation_applies_to_next_step_but_reads_still_check_live_policy",
+          "presentation_dedup_tests::cloud_preference_preserves_aliases_reads_and_executor_fallback",
+          "root_qualified_locator_selects_only_the_matching_executor_skill",
+          "selected_executor_catalog_caches_root_selections_per_turn_and_reuses_discovery_snapshots",
+          "shared_catalog_keeps_captured_executor_and_separates_bindings_in_one_turn",
+          "v2_root_aliases_and_read_cache_use_the_captured_environment"
+        ],
+        "selection": "source-integration",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-app-server",
+        "binary_id": "codex-app-server",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "mcp_refresh::tests::strict_refresh_installs_refreshed_thread_mcp_config"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-app-server",
+        "binary_id": "codex-app-server::all",
+        "entrypoint": "integration:all",
+        "executed_count": 27,
+        "initial_passed_count": 0,
+        "initial_failed_count": 27,
+        "initial_failed_tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction"
+        ],
+        "tests": [
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+          "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+          "suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread",
+          "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+          "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+          "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+          "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+          "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+          "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+          "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+          "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+          "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+          "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": "Exact same identity in prepared retry/direct source harness"
+      },
+      {
+        "package": "codex-cli",
+        "binary_id": "codex-cli::app_server",
+        "entrypoint": "integration:app_server",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "print_startup_config_is_independent_of_a_locked_history_database",
+          "print_startup_config_preserves_project_login_restrictions",
+          "print_startup_config_rejects_sign_out_with_environment_access_token",
+          "print_startup_config_validates_configuration"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-cli",
+        "binary_id": "codex-cli::cloud_config",
+        "entrypoint": "integration:cloud_config",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "startup_config_loads_managed_policy_or_reports_cloud_failure",
+          "startup_config_sign_out_reloads_policy_without_starting_runtime"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-core",
+        "binary_id": "codex-core",
+        "entrypoint": "lib",
+        "executed_count": 7,
+        "initial_passed_count": 7,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "git_info_tests::test_get_git_working_tree_state_branch_fallback",
+          "git_info_tests::test_get_git_working_tree_state_clean_repo",
+          "session::tests::set_rate_limits_retains_previous_credits",
+          "session::tests::set_rate_limits_updates_plan_type_when_present",
+          "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::inherited_child_flag",
+          "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::interrupted_root",
+          "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::plan_root"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-core-plugins",
+        "binary_id": "codex-core-plugins",
+        "entrypoint": "lib",
+        "executed_count": 3,
+        "initial_passed_count": 3,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "catalog::tests::cloud_catalog_controls_remote_plugins_but_preserves_local_plugins",
+          "catalog::tests::merged_catalog_prefers_cloud_and_matches_executor_versions",
+          "catalog::tests::partial_cloud_merges_known_plugins_and_preserves_unmatched_enablement"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-core",
+        "binary_id": "codex-core::all",
+        "entrypoint": "integration:all",
+        "executed_count": 39,
+        "initial_passed_count": 39,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "suite::agent_control::agent_mail_wakes_completed_root_when_enabled::direct_op",
+          "suite::agent_control::agent_mail_wakes_completed_root_when_enabled::host_mailbox",
+          "suite::catalog_permission_messages::catalog_permission_message_loaded_from_remote_models_is_sent::catalog_prefixes",
+          "suite::catalog_permission_messages::catalog_permission_message_loaded_from_remote_models_is_sent::empty_catalog_prefixes",
+          "suite::compact::manual_compact_uses_custom_prompt",
+          "suite::guardian_cached_score::delayed_score_only_covers_the_tool_call_it_classified",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::api_key_uses_luna_with_responses_lite",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::chatgpt_uses_codex_auto_review",
+          "suite::guardian_review::guardian_session_prewarms_and_is_reused_for_first_review::chatgpt_without_free_guardian",
+          "suite::hooks::memory_consolidation_skips_user_model_request_hooks",
+          "suite::hooks::model_request_hooks_report_failures_and_retries_but_cannot_veto",
+          "suite::hooks::model_request_observer_reports_cancellation",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::async_dispatches_before_stream_ends",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::no_post_hook_dispatches_before_stream_ends",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::resume_after_interrupt_preserves_aborted_custom_call_and_usage",
+          "suite::hooks::model_request_post_hook_orders_tool_dispatch::sync_finishes_before_dispatch",
+          "suite::hooks_mcp::mcp_tool_hook_starts_cached_model_hidden_tools::catalog",
+          "suite::hooks_mcp::mcp_tool_hook_starts_cached_model_hidden_tools::connection",
+          "suite::hooks_mcp::mcp_tool_hook_timeout_includes_cached_server_startup",
+          "suite::reasoning_effort_override::reasoning_effort_override_capacity_retry_keeps_latest_adjacent_update",
+          "suite::reasoning_effort_override::reasoning_effort_override_recovery_sends_latest_tail_update::changed_effort",
+          "suite::reasoning_effort_override::reasoning_effort_override_recovery_sends_latest_tail_update::same_effort",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::prewarm_reconnects_when_the_eager_socket_closes",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::responses",
+          "suite::rmcp_client::startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket::responses_lite",
+          "suite::scenarios::agent_eviction::idle_eviction_preserves_worker_context_for_followup",
+          "suite::scenarios::child_completion_wakes_parent_after_final_answer",
+          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_api",
+          "suite::scenarios::incremental_tools::incremental_tools_append_changed_catalog_without_rewriting_history::responses_lite",
+          "suite::startup_cancellation::step_preparation_finishes_before_tools_and_world_state",
+          "suite::step_settings::captured_model_replans_tools_and_retains_the_issuing_request_router",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::encrypted",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::inherited_persistent_effort",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::legacy_encrypted_leaf",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::luna_encrypted_leaf",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::plaintext",
+          "suite::subagent_notifications::multi_agent_v2_spawn_sends_agent_message_to_child::unknown_model_without_effort_default",
+          "suite::token_budget::token_budget_context_injects_plain_thread_hint_text::cached_subagent",
+          "suite::token_budget::token_budget_context_injects_plain_thread_hint_text::root"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-file-search",
+        "binary_id": "codex-file-search",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "matcher_tests::query_update_does_not_relabel_pending_matches"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-guardian-context",
+        "binary_id": "codex-guardian-context",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "budget::tests::request_token_ranges_keep_boundary_values_in_the_lower_bucket",
+          "budget::tests::section_costs_keep_multimodal_payloads_separate"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-guardian-reviewer",
+        "binary_id": "codex-guardian-reviewer",
+        "entrypoint": "lib",
+        "executed_count": 3,
+        "initial_passed_count": 3,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "metrics::tests::retry_telemetry_records_waits_and_only_counts_resubmissions::_cancelled_1_0_expects",
+          "metrics::tests::retry_telemetry_records_waits_and_only_counts_resubmissions::_deadline_1_1000_expects",
+          "metrics::tests::retry_telemetry_records_waits_and_only_counts_resubmissions::_retry_2_2000_expects"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-guardian-v2",
+        "binary_id": "codex-guardian-v2",
+        "entrypoint": "lib",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "async_scorer::extension::tests::conversation::expiry_discards_a_queued_score_without_recording_success",
+          "async_scorer::extension::tests::unscored_tools_invalidate_cached_scores",
+          "async_scorer::sampler::tests::oversized_classification_keeps_untagged_request_histograms",
+          "async_scorer::sampler::tests::sampler_records_401_recovery_separately_from_transport_retries"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-mcp",
+        "binary_id": "codex-mcp",
+        "entrypoint": "lib",
+        "executed_count": 3,
+        "initial_passed_count": 3,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "connection_manager::tests::reconciliation_replaces_connection_when_protocol_mode_changes",
+          "rmcp_client::provenance_tests::provenance_bounds_aggregate_names_and_retains_all_associations",
+          "rmcp_client::provenance_tests::provenance_preserves_short_descriptions_and_membership"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-memories-write",
+        "binary_id": "codex-memories-write",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "startup_tests::dual_write::dual_write_runs_both_versions_until_v2_is_selected"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-models-manager",
+        "binary_id": "codex-models-manager",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "manager::tests::api_key_discovery_tests::api_key_discovery_flag_controls_fetches_and_cached_catalogs",
+          "manager::tests::get_model_info_uses_custom_catalog"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-otel",
+        "binary_id": "codex-otel",
+        "entrypoint": "lib",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "metrics::tags::tests::session_metric_tags_include_expected_tags_in_order"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-rmcp-client",
+        "binary_id": "codex-rmcp-client",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "ema_http_client::tests::revocation_during_renewal_prevents_dispatch",
+          "ema_http_client::tests::revocation_ends_an_existing_response_stream"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-rollout",
+        "binary_id": "codex-rollout",
+        "entrypoint": "lib",
+        "executed_count": 4,
+        "initial_passed_count": 4,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "compression::tests::worker_does_not_leak_temps_for_deletion_protected_rollouts",
+          "compression::tests::worker_preserves_alternate_group_through_materialization",
+          "compression::tests::worker_preserves_inherited_acl_through_append",
+          "recorder::tests::open_log_file_materializes_rollout_when_acl_denies_timestamp_changes"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-skills-extension",
+        "binary_id": "codex-skills-extension",
+        "entrypoint": "lib",
+        "executed_count": 7,
+        "initial_passed_count": 7,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "aliases::tests::alias_number_and_byte_budgets_are_shared_without_reassigning_existing_roots",
+          "aliases::tests::appended_aliases_preserve_captured_steps_and_existing_locators",
+          "aliases::tests::locator_serde_recognizes_aliases_and_preserves_package_strings",
+          "aliases::tests::shortens_filesystem_and_skill_resource_locators",
+          "catalog::tests::partial_cloud_merges_matches_without_disabling_unmatched_installations",
+          "state::cloud_cache_tests::cloud_refresh_preserves_complete_catalogs_only_within_the_same_auth_scope",
+          "state::cloud_cache_tests::partial_cloud_catalog_without_warnings_is_refreshed_next_turn"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-skills-extension",
+        "binary_id": "codex-skills-extension::skills_extension",
+        "entrypoint": "integration:skills_extension",
+        "executed_count": 9,
+        "initial_passed_count": 9,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "discovery_v2_tests::v2_empty_failed_and_partial_results_never_load_legacy_roots",
+          "merge_catalog_tests::cloud_rendering_and_reads_share_aliases_after_a_plugin_is_disabled",
+          "merge_catalog_tests::executor_aliases_survive_cloud_promotion_without_reassigning_remaining_roots",
+          "merge_catalog_tests::v1_reads_preserve_response_shape_without_installations_tool",
+          "merge_catalog_tests::v2_installations_filter_all_matching_locations_and_paginate_within_budget",
+          "merge_catalog_tests::v2_reads_preserve_content_routes_with_bounded_installations",
+          "merge_catalog_tests::v2_rendering_and_tools_retain_their_step_catalog",
+          "preparation_tests::config_reload_during_preparation_applies_to_next_step_but_reads_still_check_live_policy",
+          "shared_catalog_keeps_captured_executor_and_separates_bindings_in_one_turn"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-thread-store",
+        "binary_id": "codex-thread-store",
+        "entrypoint": "lib",
+        "executed_count": 3,
+        "initial_passed_count": 3,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "local::thread_history_materialization::tests::blank_and_rejected_rollout_lines_advance_projection",
+          "local::thread_history_materialization::tests::catch_up_preserves_committed_batches_on_reader_or_writer_failure",
+          "local::thread_history_materialization::tests::paused_projection_releases_writer_and_retains_progress_when_stopped"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-utils-pty",
+        "binary_id": "codex-utils-pty",
+        "entrypoint": "lib",
+        "executed_count": 2,
+        "initial_passed_count": 2,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "child_command::descriptor_tests::high_stdio_descriptors_use_compatible_fallback",
+          "child_command::descriptor_tests::inherited_descriptors_survive_native_and_executable_text_spawns"
+        ],
+        "selection": "source-retained",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
+      },
+      {
+        "package": "codex-core",
+        "binary_id": "codex-core::all",
+        "entrypoint": "integration:all",
+        "executed_count": 1,
+        "initial_passed_count": 1,
+        "initial_failed_count": 0,
+        "initial_failed_tests": [],
+        "tests": [
+          "suite::skills_extension::cloud_skill_tests::production_turn_aliases_discovered_singleton_cloud_locator"
+        ],
+        "selection": "source-alias",
+        "all_test_identities_have_a_passing_receipt": true,
+        "recovery": null
       }
     ],
-    "required_test_suffixes": [
-      "agent_message_wake_reservation_preserves_existing_boundaries",
-      "agent_mail_wakes_completed_root_when_enabled",
-      "child_completion_wakes_parent_after_final_answer",
-      "auth_rotation_refreshes_before_turn_with_best_effort",
-      "auth_and_provider_switches_do_not_reuse_chatgpt_catalog",
-      "initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing",
-      "namespace_diff_contains_only_changed_and_added_tools",
-      "mixed_output_preserves_order_and_restores_its_snapshot",
-      "updates_preserve_item_boundaries_roles_and_standalone_fragments",
-      "assign_missing_response_item_ids_assigns_additional_tools_ids",
-      "initial_context_preserves_world_state_items_and_snapshot",
-      "recorder_preserves_additional_tools_in_both_history_modes",
-      "spawn_agent_can_fork_parent_thread_history_with_sanitized_items",
-      "spawn_agent_fork_strips_parent_usage_hints_from_compacted_history",
-      "spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once"
+    "commands": {
+      "source-lib": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--cargo-profile",
+        "release",
+        "--lib",
+        "-p",
+        "codex-core",
+        "-p",
+        "codex-rollout",
+        "-p",
+        "codex-utils-pty",
+        "-p",
+        "codex-models-manager",
+        "-p",
+        "codex-guardian-v2",
+        "-p",
+        "codex-skills-extension",
+        "-p",
+        "codex-mcp",
+        "-p",
+        "codex-mcp-extension",
+        "-p",
+        "codex-rmcp-client",
+        "-p",
+        "codex-core-plugins",
+        "-p",
+        "codex-memories-write",
+        "-p",
+        "codex-otel",
+        "-p",
+        "codex-thread-store",
+        "-p",
+        "codex-guardian-context",
+        "-p",
+        "codex-prompts",
+        "-p",
+        "codex-file-search",
+        "-E",
+        "package(=codex-core) & (test(guardian::request_budget::tests::) | test(session::mcp_refresh::tests::) | test(environment_selection::tests::) | test(agent::control_tests::)) | package(=codex-rollout) & (test(compression::tests::) | test(recorder::tests::open_log_file_materializes_rollout_when_acl_denies_timestamp_changes)) | package(=codex-utils-pty) & (test(child_command::descriptor_tests::)) | package(=codex-models-manager) & (test(manager_tests::) | test(api_key_discovery_tests::)) | package(=codex-guardian-v2) & (test(async_scorer::)) | package(=codex-skills-extension) & (test(aliases::tests::) | test(catalog::tests::) | test(invocation::tests::) | test(render::tests::) | test(cloud_cache_tests::)) | package(=codex-mcp) & (test(plugin_config::tests::) | test(rmcp_client::provenance_tests::) | test(ema_auth::tests::)) | package(=codex-mcp-extension) & (test(plugin_contributor_state::tests::) | test(plugin::discovery::tests::)) | package(=codex-rmcp-client) & (test(ema_http_client::tests::)) | package(=codex-core-plugins) & (test(catalog::tests::) | test(executor_catalog::tests::)) | package(=codex-memories-write) & (test(dual_write_runs_both_versions_until_v2_is_selected)) | package(=codex-otel) & (test(metrics::tags::tests::)) | package(=codex-thread-store) & (test(thread_history_materialization_tests::)) | package(=codex-guardian-context) & (test(budget::tests::)) | package(=codex-prompts) & (test(permissions_instructions_tests::)) | package(=codex-file-search) & (test(matcher_tests::))",
+        "--test-threads",
+        "4",
+        "--no-fail-fast",
+        "--retries",
+        "0",
+        "--success-output",
+        "final",
+        "--status-level",
+        "pass"
+      ],
+      "source-integration": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--cargo-profile",
+        "release",
+        "--tests",
+        "-p",
+        "codex-core",
+        "-p",
+        "codex-app-server",
+        "-p",
+        "codex-skills-extension",
+        "-E",
+        "package(=codex-core) & (test(model_request_hooks_report_failures_and_retries_but_cannot_veto) | test(model_request_observer_reports_cancellation) | test(model_request_post_hook_orders_tool_dispatch) | test(memory_consolidation_skips_user_model_request_hooks) | test(mcp_tool_hook_starts_cached_model_hidden_tools) | test(mcp_tool_hook_timeout_includes_cached_server_startup) | test(reasoning_effort_override_recovery_sends_latest_tail_update) | test(reasoning_effort_override_capacity_retry_keeps_latest_adjacent_update) | test(reasoning_effort_override_unavailable_filters_websocket_history) | test(token_budget_context_injects_plain_thread_hint_text) | test(step_preparation_finishes_before_tools_and_world_state) | test(suite::executor_discovery_v2::) | test(production_turn_aliases_executor_skill_roots) | test(production_turn_aliases_discovered_singleton_cloud_root) | test(cloud_preference_preserves_executor_aliases_and_description_budget) | test(production_turn_keeps_rebalanced_catalogs_stable_after_compaction_and_resume) | test(delayed_score_only_covers_the_tool_call_it_classified) | test(catalog_permission_message_loaded_from_remote_models_is_sent) | test(incremental_tools_append_changed_catalog_without_rewriting_history) | test(captured_model_replans_tools_and_retains_the_issuing_request_router) | test(remote_v2_compaction_refreshes_instructions_and_preserves_them_on_cold_resume) | test(startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket) | test(guardian_session_prewarms_and_is_reused_for_first_review) | test(multi_agent_v2_spawn_sends_agent_message_to_child)) | package(=codex-app-server) & (test(suite::v2::thread_unsubscribe::) | test(inheriting_fork_preserves_parent_config) | test(suite::v2::thread_sample::) | test(persistent_paginated_fork)) | package(=codex-skills-extension) & (test(merge_catalog_tests::) | test(preparation_tests::) | test(discovery_v2_tests::) | test(v2_root_aliases_and_read_cache_use_the_captured_environment) | test(selected_executor_catalog_caches_root_selections_per_turn_and_reuses_discovery_snapshots) | test(shared_catalog_keeps_captured_executor_and_separates_bindings_in_one_turn) | test(cloud_discovery_is_gated_and_reports_failures) | test(root_qualified_locator_selects_only_the_matching_executor_skill) | test(cloud_preference_preserves_aliases_reads_and_executor_fallback))",
+        "--test-threads",
+        "4",
+        "--no-fail-fast",
+        "--retries",
+        "0",
+        "--success-output",
+        "final",
+        "--status-level",
+        "pass"
+      ],
+      "source-retained": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--cargo-profile",
+        "release",
+        "--tests",
+        "-p",
+        "codex-app-server",
+        "-p",
+        "codex-cli",
+        "-p",
+        "codex-core",
+        "-p",
+        "codex-core-plugins",
+        "-p",
+        "codex-file-search",
+        "-p",
+        "codex-guardian-context",
+        "-p",
+        "codex-guardian-reviewer",
+        "-p",
+        "codex-guardian-v2",
+        "-p",
+        "codex-mcp",
+        "-p",
+        "codex-memories-write",
+        "-p",
+        "codex-models-manager",
+        "-p",
+        "codex-otel",
+        "-p",
+        "codex-rmcp-client",
+        "-p",
+        "codex-rollout",
+        "-p",
+        "codex-skills-extension",
+        "-p",
+        "codex-thread-store",
+        "-p",
+        "codex-utils-pty",
+        "-E",
+        "package(=codex-app-server) & (test(inheriting_fork_preserves_parent_config) | test(sample_blocks_mcp_execution_without_changing_parent_tools) | test(sample_does_not_hide_stream_errors_after_tool_calls) | test(sample_preserves_context_and_keeps_source_unchanged) | test(sample_preserves_effort_baseline) | test(sample_rejects_invalid_sources_and_prompts) | test(sample_returns_null_for_custom_tool_calls) | test(sample_skips_inherited_stop_hooks) | test(sample_wait_keeps_parent_responsive_and_timeout_reclaims_child) | test(strict_refresh_installs_refreshed_thread_mcp_config) | test(thread_fork_creates_reference_backed_paginated_thread) | test(thread_unsubscribe_during_turn_keeps_turn_running) | test(thread_unsubscribe_keeps_thread_loaded_until_idle_timeout) | test(thread_unsubscribe_preserves_cached_status_before_idle_unload) | test(thread_unsubscribe_reports_not_subscribed_before_idle_unload) | test(unsupported_effort_updates_keep_inherited_effort)) | package(=codex-cli) & (test(print_startup_config_is_independent_of_a_locked_history_database) | test(print_startup_config_preserves_project_login_restrictions) | test(print_startup_config_rejects_sign_out_with_environment_access_token) | test(print_startup_config_validates_configuration) | test(startup_config_loads_managed_policy_or_reports_cloud_failure) | test(startup_config_sign_out_reloads_policy_without_starting_runtime)) | package(=codex-core) & (test(agent_mail_wakes_completed_root_when_enabled) | test(agent_message_wake_reservation_preserves_existing_boundaries) | test(captured_model_replans_tools_and_retains_the_issuing_request_router) | test(catalog_permission_message_loaded_from_remote_models_is_sent) | test(child_completion_wakes_parent_after_final_answer) | test(delayed_score_only_covers_the_tool_call_it_classified) | test(guardian_session_prewarms_and_is_reused_for_first_review) | test(idle_eviction_preserves_worker_context_for_followup) | test(incremental_tools_append_changed_catalog_without_rewriting_history) | test(manual_compact_uses_custom_prompt) | test(mcp_tool_hook_starts_cached_model_hidden_tools) | test(mcp_tool_hook_timeout_includes_cached_server_startup) | test(memory_consolidation_skips_user_model_request_hooks) | test(model_request_hooks_report_failures_and_retries_but_cannot_veto) | test(model_request_observer_reports_cancellation) | test(model_request_post_hook_orders_tool_dispatch) | test(multi_agent_v2_spawn_sends_agent_message_to_child) | test(reasoning_effort_override_capacity_retry_keeps_latest_adjacent_update) | test(reasoning_effort_override_recovery_sends_latest_tail_update) | test(set_rate_limits_retains_previous_credits) | test(set_rate_limits_updates_plan_type_when_present) | test(startup_prewarm_connects_before_delayed_mcp_tools_then_reuses_socket) | test(step_preparation_finishes_before_tools_and_world_state) | test(test_get_git_working_tree_state_branch_fallback) | test(test_get_git_working_tree_state_clean_repo) | test(token_budget_context_injects_plain_thread_hint_text)) | package(=codex-core-plugins) & (test(cloud_catalog_controls_remote_plugins_but_preserves_local_plugins) | test(merged_catalog_prefers_cloud_and_matches_executor_versions) | test(partial_cloud_merges_known_plugins_and_preserves_unmatched_enablement)) | package(=codex-file-search) & (test(query_update_does_not_relabel_pending_matches)) | package(=codex-guardian-context) & (test(request_token_ranges_keep_boundary_values_in_the_lower_bucket) | test(section_costs_keep_multimodal_payloads_separate)) | package(=codex-guardian-reviewer) & (test(retry_telemetry_records_waits_and_only_counts_resubmissions)) | package(=codex-guardian-v2) & (test(expiry_discards_a_queued_score_without_recording_success) | test(oversized_classification_keeps_untagged_request_histograms) | test(sampler_records_401_recovery_separately_from_transport_retries) | test(unscored_tools_invalidate_cached_scores)) | package(=codex-mcp) & (test(provenance_bounds_aggregate_names_and_retains_all_associations) | test(provenance_preserves_short_descriptions_and_membership) | test(reconciliation_replaces_connection_when_protocol_mode_changes)) | package(=codex-memories-write) & (test(dual_write_runs_both_versions_until_v2_is_selected)) | package(=codex-models-manager) & (test(api_key_discovery_flag_controls_fetches_and_cached_catalogs) | test(get_model_info_uses_custom_catalog)) | package(=codex-otel) & (test(session_metric_tags_include_expected_tags_in_order)) | package(=codex-rmcp-client) & (test(revocation_during_renewal_prevents_dispatch) | test(revocation_ends_an_existing_response_stream)) | package(=codex-rollout) & (test(open_log_file_materializes_rollout_when_acl_denies_timestamp_changes) | test(worker_does_not_leak_temps_for_deletion_protected_rollouts) | test(worker_preserves_alternate_group_through_materialization) | test(worker_preserves_inherited_acl_through_append)) | package(=codex-skills-extension) & (test(alias_number_and_byte_budgets_are_shared_without_reassigning_existing_roots) | test(appended_aliases_preserve_captured_steps_and_existing_locators) | test(cloud_refresh_preserves_complete_catalogs_only_within_the_same_auth_scope) | test(cloud_rendering_and_reads_share_aliases_after_a_plugin_is_disabled) | test(config_reload_during_preparation_applies_to_next_step_but_reads_still_check_live_policy) | test(executor_aliases_survive_cloud_promotion_without_reassigning_remaining_roots) | test(locator_serde_recognizes_aliases_and_preserves_package_strings) | test(partial_cloud_catalog_without_warnings_is_refreshed_next_turn) | test(partial_cloud_merges_matches_without_disabling_unmatched_installations) | test(shared_catalog_keeps_captured_executor_and_separates_bindings_in_one_turn) | test(shortens_filesystem_and_skill_resource_locators) | test(v1_reads_preserve_response_shape_without_installations_tool) | test(v2_empty_failed_and_partial_results_never_load_legacy_roots) | test(v2_installations_filter_all_matching_locations_and_paginate_within_budget) | test(v2_reads_preserve_content_routes_with_bounded_installations) | test(v2_rendering_and_tools_retain_their_step_catalog)) | package(=codex-thread-store) & (test(blank_and_rejected_rollout_lines_advance_projection) | test(catch_up_preserves_committed_batches_on_reader_or_writer_failure) | test(paused_projection_releases_writer_and_retains_progress_when_stopped)) | package(=codex-utils-pty) & (test(high_stdio_descriptors_use_compatible_fallback) | test(inherited_descriptors_survive_native_and_executable_text_spawns))",
+        "--test-threads",
+        "4",
+        "--no-fail-fast",
+        "--retries",
+        "0",
+        "--status-level",
+        "pass",
+        "--success-output",
+        "final"
+      ],
+      "source-alias": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--cargo-profile",
+        "release",
+        "--tests",
+        "-p",
+        "codex-core",
+        "-p",
+        "codex-app-server",
+        "-p",
+        "codex-skills-extension",
+        "-E",
+        "package(=codex-core) & (test(production_turn_aliases_discovered_singleton_cloud_locator))",
+        "--test-threads",
+        "4",
+        "--no-fail-fast",
+        "--retries",
+        "0",
+        "--success-output",
+        "final",
+        "--status-level",
+        "pass"
+      ],
+      "source-prepared-retry": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--cargo-profile",
+        "release",
+        "--tests",
+        "-p",
+        "codex-app-server",
+        "-p",
+        "codex-cli",
+        "-p",
+        "codex-core",
+        "-p",
+        "codex-core-plugins",
+        "-p",
+        "codex-file-search",
+        "-p",
+        "codex-guardian-context",
+        "-p",
+        "codex-guardian-reviewer",
+        "-p",
+        "codex-guardian-v2",
+        "-p",
+        "codex-mcp",
+        "-p",
+        "codex-memories-write",
+        "-p",
+        "codex-models-manager",
+        "-p",
+        "codex-otel",
+        "-p",
+        "codex-rmcp-client",
+        "-p",
+        "codex-rollout",
+        "-p",
+        "codex-skills-extension",
+        "-p",
+        "codex-thread-store",
+        "-p",
+        "codex-utils-pty",
+        "-E",
+        "(package(=codex-app-server) & test(=suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy)) | (package(=codex-app-server) & test(=suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated)) | (package(=codex-app-server) & test(=suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_skips_inherited_stop_hooks)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model)) | (package(=codex-app-server) & test(=suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction)) | (package(=codex-app-server) & test(=suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context)) | (package(=codex-guardian-v2) & test(=async_scorer::extension::tests::cached_delivery::confirmed_root_delivery_invalidates_root_and_worker_cached_approvals))",
+        "--test-threads",
+        "4",
+        "--no-fail-fast",
+        "--retries",
+        "0",
+        "--status-level",
+        "pass",
+        "--success-output",
+        "final"
+      ]
+    },
+    "working_directory": "target/codex-source/c953dacb42d2773d0ca9cc25a01129bba2ca36a8/source/codex-rs",
+    "environment": {
+      "RUST_MIN_STACK": "8388608",
+      "NEXTEST_PROFILE": "local",
+      "CODEX_REPO_ROOT": "Absolute fixed upstream source root",
+      "HOME": "Fresh system-temporary directory; remove after execution",
+      "CARGO_HOME": "Existing host-managed Cargo home",
+      "RUSTUP_HOME": "Existing host-managed Rustup home",
+      "CARGO_BUILD_JOBS": "4",
+      "CARGO_TARGET_DIR": "Owned fixed-source build output"
+    },
+    "initial_unmatched_selectors": [
+      {
+        "package": "codex-core",
+        "selector": "agent::control_tests::"
+      },
+      {
+        "package": "codex-models-manager",
+        "selector": "manager_tests::"
+      },
+      {
+        "package": "codex-mcp",
+        "selector": "ema_auth::tests::"
+      },
+      {
+        "package": "codex-thread-store",
+        "selector": "thread_history_materialization_tests::"
+      },
+      {
+        "package": "codex-prompts",
+        "selector": "permissions_instructions_tests::"
+      },
+      {
+        "package": "codex-core",
+        "selector": "production_turn_aliases_discovered_singleton_cloud_root"
+      },
+      {
+        "package": "codex-app-server",
+        "selector": "persistent_paginated_fork"
+      }
     ],
-    "unmatched_selectors": [],
-    "selected_manifest_sha256": "3621b558f418aeb11a1098d5c6465b6daf0d5ef7334a7e89d25b77730c0431cf",
-    "selected_manifest_digest_algorithm": "SHA-256 of compact sorted-key UTF-8 JSON; sort package,binary_id,test; rows contain package,binary_id,test,ignored.",
-    "outside_selection_count": 5575,
+    "final_retained_unmatched_selectors": [],
+    "selection_correction": "Initial coarse selectors missed renamed modules, one paginated-fork name and the singleton cloud locator test. The exact supplemental cloud locator selector is registered and executed separately. The exact reviewed-symbol selection registers every intended selector before execution. Initial parsing errors read compiler diagnostics as JSON; original successful registration output was reparsed without treating it as execution.",
+    "helper_preparation": {
+      "command": [
+        "cargo",
+        "+stable",
+        "build",
+        "--locked",
+        "--profile",
+        "dev-small",
+        "-p",
+        "codex-app-server",
+        "--bin",
+        "codex-app-server"
+      ],
+      "source_inputs": {
+        "upstream_commit": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+        "source_test_app_server": {
+          "profile": "dev-small",
+          "sha256": "7e4cf0077306aa6a4d47c1e0e4e455f4eda0cc1255016beed9739d45c6fd5de5",
+          "source": "codex-rs/app-server/src/main.rs",
+          "scope": "Debug-only integration-test hooks; not the selected production runtime."
+        },
+        "code_mode_host": {
+          "sha256": "1595ccfdf41a20c162493f861712571989231c7f7edc26c5b051944948963d22",
+          "scope": "Exact signed helper from the candidate runtime."
+        },
+        "resolver": "codex-rs/utils/cargo-bin/src/lib.rs#cargo_bin honors CARGO_BIN_EXE_* absolute runtime paths."
+      },
+      "direct_harness": {
+        "command": "Use the original Nextest-registered test binary with --exact <full test identity> --nocapture --test-threads 1 and explicit CARGO_BIN_EXE helper paths. Execute each listed failed identity once.",
+        "executed_count": 28,
+        "passed_count": 28,
+        "tests": [
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::legacy",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_fork::inheriting_fork_preserves_parent_config::paginated",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_fork::thread_fork_creates_reference_backed_paginated_thread",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_blocks_mcp_execution_without_changing_parent_tools",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_does_not_hide_stream_errors_after_tool_calls",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::legacy",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_context_and_keeps_source_unchanged::paginated",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_effort_without_parent_overrides",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_effort_baseline::increasing_pinned_effort",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_effort_baseline::parent_overrides_disabled",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_preserves_effort_baseline::pinned_parent",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_rejects_invalid_sources_and_prompts",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_returns_null_for_custom_tool_calls",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_skips_inherited_stop_hooks",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::sample_wait_keeps_parent_responsive_and_timeout_reclaims_child",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_model",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_sample::unsupported_effort_updates_keep_inherited_effort::unsupported_provider",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_ephemeral",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::immediate_persistent",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::one_second_delay",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::per_thread_one_second_delay",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_during_turn_keeps_turn_running::zero_delay",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_keeps_thread_loaded_until_idle_timeout",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_preserves_cached_status_before_idle_unload",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::ephemeral",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::thread_unsubscribe_reports_not_subscribed_before_idle_unload::persistent_composer_prediction",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          },
+          {
+            "package": "codex-app-server",
+            "binary_id": "codex-app-server::all",
+            "test": "suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context",
+            "test_binary_sha256": "3c914cc779c7b0a14716f74130e04f20591cc279f4b8dac13dbd3b10b32524f0",
+            "actual_test_count": 1,
+            "status": "passed"
+          }
+        ]
+      },
+      "environment": {
+        "CARGO_BIN_EXE_codex-app-server": "Absolute source-test app-server helper built with dev-small and debug assertions",
+        "CARGO_BIN_EXE_codex-code-mode-host": "Absolute exact candidate bin/codex-code-mode-host"
+      },
+      "initial_gap": "Release helpers omit the debug-only plugin-startup test flag; another case had no Code Mode helper at the default target path. Preserve the original failures. NexTest resets the app-server CARGO_BIN_EXE path to its release binary, so 28 identities were executed directly through their registered Rust harness with the explicit debug helper. The original assertions and source remain unchanged. The 29 failed unique identities all have passing recovery receipts; 83 preparation-related failed executions remain in the attempt count. Initial feature-union variants are not separate all-configuration qualification claims. This source-test helper is separate from the exact selected release runtime."
+    },
     "python_command": [
       "python3",
       "-m",
@@ -653,10 +2283,11 @@
       "test_v8.py"
     ],
     "python_environment": {
-      "CODEX_REPO_ROOT": "The exact original source root",
-      "PYTHONPATH": "Its scripts directory"
+      "CODEX_REPO_ROOT": "Absolute fixed upstream repository root",
+      "PYTHONPATH": "scripts"
     },
-    "initial_attempts": "The first filter used a file stem instead of the registered turn_input module and omitted three boundary cases. The initial 385 passing executions remain separate. Corrected registration and the complete 406-test selection passed; no skip markers or unmatched required selectors remain."
+    "python_initial_attempt": "The first command omitted CODEX_REPO_ROOT and ran zero real tests. The configured command ran 12 tests successfully.",
+    "limits": "No standalone optimized d8 security regression, Linux/NFS ACL, Windows/remote executor, real enterprise EMA grant, OIDC credential refresh or installed-app acceptance. See executed test identities and any retained environment-specific limitations."
   },
   "fixture_sources": [
     {
@@ -782,11 +2413,27 @@
     {
       "source": "crates/decodex-runtime/tests/native_qualification/usage.py",
       "sha256": "e0eafb33d02116d3800c9912a09668795c36c56f711a94bdfc16398c94a0b9bf"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs",
+      "sha256": "ff0df22702edfa42a03c0eec1a1b563b116de52ff14204e5a557efed2be687cf"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs",
+      "sha256": "a84e6c028da9edd9ddb5620bc01fcf2c0923f176a01b674b2240c7db65594fcb"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs",
+      "sha256": "c2523dde9151f5a104b1dc572d138cdfab6f3758b84faf1bfe1f77e15776a549"
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs",
+      "sha256": "babf991fd3ccb68129da322952fb14bc2deb405bfdb0f0828a4a24bda7e798e5"
     }
   ],
   "retained_consumers": {
-    "count": 30,
-    "actual_candidate_cli": 28,
+    "count": 34,
+    "actual_candidate_cli": 32,
     "local_search_projections": 2,
     "requirements": "automations/upstream/retained-evidence.json#retained_native_consumers",
     "tests": [
@@ -969,6 +2616,30 @@
         "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
         "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
         "entrypoint": "lib"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs",
+        "entrypoint": "lib"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs",
+        "entrypoint": "lib"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs",
+        "entrypoint": "lib"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs",
+        "entrypoint": "lib"
       }
     ],
     "unmatched_selectors": []
@@ -980,10 +2651,11 @@
       "entrypoint": "crates/decodex-runtime/tests/native_qualification/config_policy.py",
       "candidate_cases_passed": 8,
       "scope": "Current exact candidate config/read, including normal and strict modes; no provider or real account request."
-    }
+    },
+    "legacy_proxy_scope": "Only the existing API-key loopback proxy probe; new OIDC paths have no current production app consumer."
   },
-  "consumer_count": 30,
-  "consumer_limits": "Thirty selected Decodex regressions passed: 28 use the exact CLI and packaged helpers; two native_search tests are local projections. The new wake test executes enabled and disabled fixtures. No live provider, real account or installed-app acceptance.",
+  "consumer_count": 34,
+  "consumer_limits": "Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance.",
   "component_cache_repair": {
     "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
     "entrypoint": "crates/decodex-components/tests/development.rs",
@@ -1023,19 +2695,24 @@
       "-p",
       "decodex-components",
       "-p",
-      "decodex-runtime"
+      "decodex-runtime",
+      "--test-threads",
+      "4",
+      "--status-level",
+      "fail",
+      "--no-fail-fast"
     ],
     "passed_count": 1052,
     "ignored_count": 113,
-    "strict_affected_clippy": "passed with --all-targets --all-features and -D warnings",
-    "nightly_format": "cargo +nightly fmt --all --check passed",
+    "main_baseline": "47085271fecc9987f275360fb3957437fe4a8036",
+    "main_baseline_passed_count": 1052,
+    "main_baseline_ignored_count": 113,
+    "native_consumer_passed_count": 34,
     "source_builder_tests_passed": 2,
     "automation_configuration_tests_passed": 7,
-    "main_baseline_passed_count": 1052,
-    "main_baseline_ignored_count": 112,
-    "main_baseline": "7bf354b26b0211636eab05287d38ed9a2e610eff",
-    "native_consumer_passed_count": 30,
-    "automation_and_architecture_tests_passed": 16
+    "strict_affected_clippy": "Repository strict deny flags passed with --all-targets --all-features; see scripts/lint_rust_workspace.py#DENY_FLAGS.",
+    "nightly_format": "cargo +nightly fmt --all --check passed",
+    "additional_consumer_comparison": "Four additional existing consumers use explicit old and candidate binaries. Both compiled test runs embed the current branch lock; this comparison is not another pristine-main run."
   },
   "development_preparation": {
     "command": [
@@ -1044,6 +2721,9 @@
       "make",
       "prepare-codex"
     ],
+    "import_environment": {
+      "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact signed package root with CLI, Code Mode and rg helpers"
+    },
     "source_files": [
       {
         "source": "scripts/macos/prepare_codex.mts",
@@ -1054,14 +2734,13 @@
         "sha256": "7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
       }
     ],
-    "source_integrity": "All 9290 official blobs match the actual build source; the upstream Cargo lock is unchanged.",
-    "toolchain": "Unversioned stable for build/test; unversioned nightly for Rust format.",
-    "limits": "An explicitly rebuilt package has its own identity and requires affected qualification. Startup and app packaging never compile Codex.",
-    "initial_attempt": "The initial exact release compilation passed. An isolated HOME hid the existing signing identity; complete the same package signatures in normal host context, then import through the explicit preparation command with a temporary component-store home. No source rebuild, identity/keychain change or global discovery change."
+    "source_integrity": "All 9327 official blobs match the fixed Git tree, actual package build source and review source; the official Cargo lock is unchanged by preparation.",
+    "toolchain": "Unversioned stable for build and tests; unversioned nightly for Rust formatting.",
+    "limits": "Preparation imports into a system-temporary component store for qualification. A rebuilt package has a new identity and needs fresh qualification. App packaging and startup never compile Codex; no installed app or host runtime discovery is changed."
   },
   "dependency_risk": {
-    "baseline_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-    "candidate_source": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "baseline_source": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "candidate_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
     "baseline_package_count": 1473,
     "candidate_package_count": 1473,
     "new_or_source_changed_packages": [],
@@ -1071,7 +2750,6 @@
     "decision": "proceed",
     "database": {
       "head": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
-      "remote_ref": "999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b",
       "advisory_count": 1338
     },
     "baseline_findings": [
@@ -1257,7 +2935,7 @@
     ],
     "source_policy": "Preserve exact official source and Cargo.lock under fixed-commit maintenance authority; no manifest normalization or third-party source edit."
   },
-  "installed_application": "Not installed, released, restarted or accepted by this qualification.",
+  "installed_application": "Not installed, restarted, released or evaluated by this run. Installed identity is separate from this selected development artifact.",
   "historical_scope": "The older exact 153-source-test selection remains an unrecovered historical limit. The prior ce0323f2 qualification and recovered identities remain in Git history. This migration rechecks source inclusion, the affected source selection, retained Decodex consumers and the exact new artifact/helpers; it does not rewrite older certification.",
   "conditional_remote_scope": {
     "prior_source_commit": "0e67502123b4c6952b9fa5d672d2907fe4059f56",
@@ -1270,25 +2948,27 @@
     "No live provider, real account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
     "Production V8 guard flags remain; no standalone optimized d8 security regression or memory/latency benchmark was executed.",
     "Six conditional remote-credential snapshot cases failed in the previous 0e675021 qualification under host DNS. They were not repeated here: retained consumers use private stdio and do not provision a remote executor. That conditional behavior remains outside qualification; source address policy is unchanged.",
-    "Cargo audit retains four inherited hickory-proto/quick-xml findings. No new advisory was introduced; registry hashes and provenance do not establish benign behavior."
+    "Cargo audit retains four inherited hickory-proto/quick-xml findings. No new advisory was introduced; registry hashes and provenance do not establish benign behavior.",
+    "Model-required apply_patch can remain registered in an isolated recap. This qualification verifies native environment denial, not absence of the tool from the model catalog."
   ],
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_historical_scope",
     "requested_pages": [
-      "openwiki/architecture/chief-coordination.md",
-      "openwiki/decisions/upstream-product-scope.md"
+      "openwiki/operations/codex-upstream-autopilot.md",
+      "openwiki/testing/upstream-acceptance-boundaries.md",
+      "openwiki/workflows/conversations-and-recovery.md"
     ],
-    "accepted_total_pages": 40,
+    "accepted_pages": 40,
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "completed_pages": 0,
     "existing_claims_on_first_page": 13,
     "claims_requiring_attention": 9,
-    "reason": "The supported lifecycle inserted unrelated stale-Claim jobs and requires historical coordination, archive, fork and retention reconciliation beyond this native wake adoption. The maintenance definition requires keeping that scope separate. No page prose, Claim sidecars or managed state were hand-edited.",
-    "next_action": "Use the supported lifecycle in a current assigned worktree to reconcile the first coordination page and the historical queue under the Wiki maintenance owner. Do not require restoration of an obsolete checkout.",
-    "merge_boundary": "Qualified native wake code and portable evidence can deliver independently; the Wiki lifecycle is explicitly incomplete.",
-    "owner": "Repository-wide OpenWiki maintenance remains unassigned."
+    "reason": "The supported lifecycle adds historical coordination, archive, fork, output-retention and visibility Claim reconciliation outside this fixed native-runtime qualification. No generated page or managed metadata was hand-edited.",
+    "owner": "Repository-wide OpenWiki maintenance remains unassigned.",
+    "next_action": "Begin the supported lifecycle again in a current assigned worktree after source/evidence delivery; reconcile current source before resuming the historical queue. Do not restore an obsolete worktree.",
+    "merge_boundary": "Qualified runtime and portable source/test evidence can deliver independently; the documentation lifecycle remains incomplete."
   },
-  "decodex_source_revision": "e15a7ce19c593b67242e684385442a2dfe470966",
+  "decodex_source_revision": "47085271fecc9987f275360fb3957437fe4a8036",
   "native_agent_message_wake": {
     "native_feature": "wake_on_agent_messages",
     "upstream_default_enabled": false,
@@ -1308,5 +2988,30 @@
       "source_child_completion_cases": 1
     },
     "limits": "Deterministic loopback provider and native source assertions. No installed desktop interaction, live provider, real account exhaustion/rotation race or latency/cost benchmark."
+  },
+  "schema_identity": {
+    "fingerprint": "12ed459d9774867a23126e6e7a9a145e093bbfaf2da8de495853e24ca6b974b5",
+    "canonical_digests": {
+      "ClientRequest.json": "d4c6fa132bafb9692767247e27dfe879254273b5d20793e4d6f3591e634fb4b8",
+      "ServerRequest.json": "6b13a0e1ad8ed419f6ac611c07adbcca6bede37ef2fe60d65b54c333b4d66ced",
+      "ServerNotification.json": "cbe213c430b15b864e64fa1b176270f0cf6727b26be184ed9567c33bad233aef",
+      "codex_app_server_protocol.v2.schemas.json": "413ca508f4e583a98175eb72a6de1075d6436450813d91e28bbf80bc94708545",
+      "v2/LoginAccountParams.json": "7b41b6881d98b4ec6872d73d7981f5ab61e5960e4296510728d08d4abbfaebf2",
+      "ChatgptAuthTokensRefreshParams.json": "74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
+      "ChatgptAuthTokensRefreshResponse.json": "ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
+      "v2/ThreadReadResponse.json": "f6f4d58290696fba8defd592806a90103f684d22d4b7d6128d977ebd11a84abe",
+      "v2/ThreadStartParams.json": "44a122637f6208314268b9d58c395b8fe7e9277f05af11f9d199b327db7d71e5",
+      "v2/TurnStartParams.json": "51e5a8b55f7fc2306c8cf2160bf36dfbf2780273eb4cb33913cd61ab6b62ce00"
+    },
+    "source": "Generated from exact signed candidate CLI before selection."
+  },
+  "qualification_fixture_revision": "7120deecc580bbd096b7d20c7ff7a50427334449",
+  "fixture_revision_limit": "Production consumer code is inherited from the recorded main baseline. The temporary recap assertion and its documentation were corrected in qualification_fixture_revision; the candidate runtime lock and exact artifact identity are recorded separately.",
+  "temporary_structured_boundary": {
+    "source": "crates/decodex-codex/src/app_server_client/temporary_structured.rs",
+    "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+    "behavior": "Empty environments prevent filesystem execution under both built-in read-only and explicit custom permissions. Model-required apply_patch and native resource helpers can remain registered in the Code Mode catalog. Two attempted patches return the native missing-environment error and create no file; configuration remains unchanged.",
+    "initial_result": "The old and candidate runtime both failed the stale catalog-absence assertion. Source shows model-required registration is independent of environment selection. The retained regression now checks the actual native execution denial and still asserts the exact bounded catalog; no test was skipped and no unsupported tool-disable flag was added.",
+    "production_change": "Documentation clarifies the existing native boundary; production request configuration and permission enforcement are unchanged."
   }
 }
