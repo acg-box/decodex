@@ -11,6 +11,7 @@
 #[path = "tests/large_approval.rs"] mod large_approval;
 #[path = "tests/live_file_approval.rs"] mod live_file_approval;
 #[path = "tests/misalignment_recovery.rs"] mod misalignment_recovery;
+#[path = "tests/native_agent_wake.rs"] mod native_agent_wake;
 #[path = "tests/native_checklist.rs"] mod native_checklist;
 #[path = "tests/native_goal_fixture.rs"] mod native_goal_fixture;
 #[path = "tests/native_goal_recovery.rs"] mod native_goal_recovery;

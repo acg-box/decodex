@@ -155,6 +155,7 @@ async fn qualify_defaults(selection: &str) {
 		.expect("native config");
 	assert_eq!(config["config"]["features"]["code_mode_tool_description_first"], true);
 	assert_eq!(config["config"]["features"]["subagent_default_context_limits"], true);
+	assert_eq!(config["config"]["features"]["wake_on_agent_messages"], true);
 	assert_eq!(config["config"]["features"]["multi_agent_v2"]["preserve_fork_prefix"], true);
 	assert_eq!(
 		config["config"]["features"]["multi_agent_v2"]["enabled"],
