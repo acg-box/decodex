@@ -34,7 +34,12 @@ async fn qualify() {
 		None,
 		Some(bodies.clone()),
 		None,
-		|_| serde_json::json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
+		|serial| match serial % 2 {
+			0 =>
+				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":format!("recap-patch-{serial}"),"input":"text(await tools.apply_patch('*** Begin Patch\\n*** Add File: recap-write-probe.txt\\n+must not write\\n*** End Patch'));"}),
+			_ =>
+				serde_json::json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
+		},
 	));
 	let config = format!(
 		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\napproval_policy=\"on-request\"\n[features]\nstable_environment_tools=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
@@ -116,11 +121,28 @@ async fn qualify() {
 		);
 	}
 
-	assert_eq!(calls.load(Ordering::Acquire), 2);
+	assert_eq!(calls.load(Ordering::Acquire), 4);
+	assert!(!home.path().join("recap-write-probe.txt").exists());
 
-	for body in bodies.lock().expect("native temporary fixture").iter() {
+	for (index, body) in bodies.lock().expect("native temporary fixture").iter().enumerate() {
 		assert_isolated_tool_catalog(body);
 		assert_eq!(body["text"]["format"]["type"], "json_schema");
+
+		if index % 2 == 1 {
+			let output = body["input"]
+				.as_array()
+				.expect("native temporary tool result")
+				.iter()
+				.find(|item| item["type"] == "custom_tool_call_output")
+				.expect("native patch rejection");
+
+			assert!(
+				output["output"]
+					.to_string()
+					.contains("No usable execution environment is available"),
+				"native environment isolation must reject the patch: {output}"
+			);
+		}
 	}
 
 	assert_eq!(
@@ -157,7 +179,11 @@ fn assert_isolated_tool_catalog(body: &Value) {
 		.lines()
 		.filter_map(|line| line.strip_prefix("### `").and_then(|name| name.strip_suffix('`')))
 		.collect();
-	// These native resource helpers remain registered with zero configured servers.
-	// No environment, app, dynamic, or MCP server tool may enter the catalog.
-	assert_eq!(nested, ["list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"]);
+	// The model-required patch tool and native resource helpers remain registered.
+	// Empty environments must reject the patch before filesystem access, as tested above.
+	// No shell, app, dynamic, or MCP server tool may enter the catalog.
+	assert_eq!(
+		nested,
+		["apply_patch", "list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"]
+	);
 }

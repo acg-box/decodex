@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "source_baseline": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
@@ -10,11 +10,12 @@
     "https://github.com/acg-box/decodex/pull/2455",
     "https://github.com/acg-box/decodex/pull/2456",
     "https://github.com/acg-box/decodex/pull/2460",
-    "https://github.com/acg-box/decodex/pull/2463"
+    "https://github.com/acg-box/decodex/pull/2463",
+    "https://github.com/acg-box/decodex/pull/2464"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
-    "limits": "Thirty selected Decodex regressions passed: 28 use the exact CLI and packaged helpers; two native_search tests are local projections. The new wake test executes enabled and disabled fixtures. No live provider, real account or installed-app acceptance.",
+    "limits": "Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance.",
     "tests": [
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
@@ -165,6 +166,26 @@
         "test": "native_child_completion_wakes_idle_root_once",
         "package": "decodex-runtime",
         "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_recap_uses_native_history_and_invalidates_after_new_input",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs"
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_native_patch_pages_survive_cold_restart_without_replay",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs"
       }
     ],
     "command": [
@@ -185,6 +206,10 @@
       "test(=account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs) or test(=account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) or test(=account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure) or test(=account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart) or test(=account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart) or test(=agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model) or test(=account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint) or test(=account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(=account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection) or test(=account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) or test(=account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume) or test(=account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart) or test(=account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action) or test(=account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds) or test(=account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process) or test(=account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority) or test(=account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent) or test(=account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access) or test(=account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart) or test(=account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting) or test(=account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks) or test(=agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) or test(=agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) or test(=account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart) or test(=account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge) or test(=account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags) or test(=account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(=agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once)",
       "--retries",
       "0",
+      "--status-level",
+      "pass",
+      "--success-output",
+      "final",
       "--no-fail-fast"
     ],
     "environment": {
@@ -203,20 +228,71 @@
       "prepare",
       "codex-runtime.lock.json"
     ],
-    "registration": "cargo +stable nextest list --locked --all-features --lib -p decodex-runtime --message-format json; require each suffix below to match exactly one registered test, then use test(=full::identity)."
+    "registration": "cargo +stable nextest list --locked --all-features --lib -p decodex-runtime --message-format json; require each suffix below to match exactly one registered test, then use test(=full::identity).",
+    "additional_commands": [
+      [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--all-features",
+        "--lib",
+        "-p",
+        "decodex-runtime",
+        "--run-ignored",
+        "all",
+        "--test-threads",
+        "2",
+        "-E",
+        "test(installed_skill_picker_inventory_and_exact_input_use_native_skill_owner) or test(installed_temporary_requests_isolate_environment_and_preserve_custom_permissions) or test(installed_recap_uses_native_history_and_invalidates_after_new_input)",
+        "--retries",
+        "0",
+        "--status-level",
+        "pass",
+        "--success-output",
+        "final",
+        "--no-fail-fast"
+      ],
+      [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "--all-features",
+        "--lib",
+        "-p",
+        "decodex-runtime",
+        "--run-ignored",
+        "all",
+        "--test-threads",
+        "1",
+        "-E",
+        "test(installed_native_patch_pages_survive_cold_restart_without_replay)",
+        "--retries",
+        "0",
+        "--status-level",
+        "pass",
+        "--success-output",
+        "final",
+        "--no-fail-fast"
+      ]
+    ]
   },
   "qualification": {
     "status": "qualified_for_retained_decodex_consumers",
     "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0",
-    "schema_sha256": "55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea",
+    "source_archive_sha256": "6166fa237fcf5ff377f219f4bedb76b0a3b0bdbc5cf829cfc7332bd76ae6c202",
+    "schema_sha256": "12ed459d9774867a23126e6e7a9a145e093bbfaf2da8de495853e24ca6b974b5",
     "limits": [
       "Source review, executed tests, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
       "The older exact 153-test manifest remains an unrecovered historical evidence limit. This qualification does not rewrite earlier certification or duplicate the manual historical audit.",
       "No live provider, real account, MDM, Linux NFS, Windows/remote-Windows, physical audio or installed-app acceptance.",
       "Production V8 guard flags remain; no standalone optimized d8 security regression or memory/latency benchmark was executed.",
       "Six conditional remote-credential snapshot cases failed in the previous 0e675021 qualification under host DNS. They were not repeated here: retained consumers use private stdio and do not provision a remote executor. That conditional behavior remains outside qualification; source address policy is unchanged.",
-      "Cargo audit retains four inherited hickory-proto/quick-xml findings. No new advisory was introduced; registry hashes and provenance do not establish benign behavior."
+      "Cargo audit retains four inherited hickory-proto/quick-xml findings. No new advisory was introduced; registry hashes and provenance do not establish benign behavior.",
+      "Model-required apply_patch can remain registered in an isolated recap. This qualification verifies native environment denial, not absence of the tool from the model catalog."
     ]
   },
   "retained_artifact_probes": {
@@ -278,6 +354,30 @@
       "upstream_default_enabled": false,
       "decodex_launch_enabled": true,
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2463"
+    },
+    {
+      "id": "native-thread-sample",
+      "upstream_commit": "8f8e7a6e095d36b9375b5202e05fc9d1bdb95584",
+      "status": "awaiting_user_decision",
+      "value": "A one-shot inherited, tool-free response can support a future explicit sampling workflow.",
+      "maintenance_cost": "Medium: define a user workflow and cover cancellation, token limits and experimental API drift.",
+      "recommendation": "Defer until a concrete product need. Existing explicit prediction forks remain."
+    },
+    {
+      "id": "native-startup-config-diagnostics",
+      "upstream_commit": "1277bcfddc69800c5e3538dccf3f26bedbd80290",
+      "status": "awaiting_user_decision",
+      "value": "Inspect effective startup configuration and auth policy without a full app-server session.",
+      "maintenance_cost": "Low to medium: define a diagnostic surface, redaction and support workflow.",
+      "recommendation": "Defer a new product surface; current startup behavior remains."
+    },
+    {
+      "id": "incremental-tool-catalog",
+      "upstream_commit": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+      "status": "superseded_by_upstream_stable_default",
+      "value": "Native incremental tool catalogs now use the upstream stable default.",
+      "maintenance_cost": "Native source and retained resume, compaction, model and Code Mode regression qualification.",
+      "recommendation": "Inherit the qualified native default; no Decodex setting or custom catalog implementation."
     }
   ],
   "retained_presentation": {
@@ -328,20 +428,22 @@
     "contract": "Reject damaged CLI, schema and both packaged helpers; repair from the verified local archive and preserve the previous selection and unrelated older cache."
   },
   "source_review_summary": {
-    "range_start_exclusive": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
-    "range_end_inclusive": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
-    "reviewed_count": 5,
+    "range_start_exclusive": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+    "range_end_inclusive": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+    "reviewed_count": 46,
     "classification_counts": {
-      "not applicable": 3,
-      "native-owned": 1,
-      "optional decision": 1
+      "native-owned": 18,
+      "not applicable": 13,
+      "necessary repair": 10,
+      "already covered": 3,
+      "optional decision": 2
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "selected_runtime_source": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
-    "runtime_disposition": "The explicitly approved native idle-root wake selected the reviewed target. Exact-artifact qualification now covers retained consumers and the new native event chain.",
-    "qualification_limits": "Thirty selected Decodex regressions passed: 28 use the exact CLI and packaged helpers; two native_search tests are local projections. The new wake test executes enabled and disabled fixtures. No live provider, real account or installed-app acceptance.",
-    "delivery_reference": "https://github.com/acg-box/decodex/pull/2462",
-    "runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2463"
+    "selected_runtime_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+    "runtime_disposition": "Necessary retained-capability repairs use the fixed official main artifact. New startup diagnostics and thread/sample product surfaces remain unselected.",
+    "qualification_limits": "Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance.",
+    "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
+    "runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2464"
   },
   "retained_native_coordination": {
     "idle_root_agent_message_wake": {
@@ -364,8 +466,129 @@
   },
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_historical_scope",
-    "evidence": "automations/upstream/qualification.json#documentation_lifecycle",
+    "requested_pages": [
+      "openwiki/operations/codex-upstream-autopilot.md",
+      "openwiki/testing/upstream-acceptance-boundaries.md",
+      "openwiki/workflows/conversations-and-recovery.md"
+    ],
+    "accepted_pages": 40,
+    "first_pending_page": "openwiki/architecture/chief-coordination.md",
+    "completed_pages": 0,
+    "existing_claims_on_first_page": 13,
+    "claims_requiring_attention": 9,
+    "reason": "The supported lifecycle adds historical coordination, archive, fork, output-retention and visibility Claim reconciliation outside this fixed native-runtime qualification. No generated page or managed metadata was hand-edited.",
     "owner": "Repository-wide OpenWiki maintenance remains unassigned.",
-    "next_action": "Use the supported lifecycle in a current assigned worktree to reconcile the first coordination page and the historical queue under the Wiki maintenance owner. Do not require restoration of an obsolete checkout."
-  }
+    "next_action": "Begin the supported lifecycle again in a current assigned worktree after source/evidence delivery; reconcile current source before resuming the historical queue. Do not restore an obsolete worktree.",
+    "merge_boundary": "Qualified runtime and portable source/test evidence can deliver independently; the documentation lifecycle remains incomplete."
+  },
+  "retained_behavior_contracts": [
+    {
+      "id": "exact-native-history",
+      "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn",
+        "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn_items",
+        "crates/decodex-runtime/src/agent_detail.rs#read_bound"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay",
+        "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
+        "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+        "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart"
+      ],
+      "qualification": "automations/upstream/qualification.json#retained_consumers"
+    },
+    {
+      "id": "native-skills",
+      "contract": "Read enabled skills for the exact current thread directory, retain exact skill paths for explicit input, preserve the captured native catalog and keep installation ownership in native Codex. No new V2 discovery or marketplace product surface is enabled.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent_skills.rs#read",
+        "crates/decodex-runtime/src/agent_skills.rs#project"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
+      ],
+      "source_review_records": [
+        26,
+        28,
+        31,
+        34,
+        42
+      ],
+      "qualification": "automations/upstream/qualification.json#retained_consumers"
+    },
+    {
+      "id": "native-mcp-boundary",
+      "contract": "Observe per-thread native MCP status and preserve discovery failure as failure rather than empty inventory. Preserve exact child request ownership and policy; reject a project downgrade of enterprise requirements. Native discovery, credentials, refresh and execution keep their upstream owners.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/integrations.rs#mcp_server_statuses"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure",
+        "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
+        "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request"
+      ],
+      "source_review_records": [
+        12,
+        18,
+        19,
+        26,
+        36
+      ],
+      "limits": "No live enterprise EMA grant, account revocation service or OIDC path is provisioned.",
+      "qualification": "automations/upstream/qualification.json#retained_consumers"
+    },
+    {
+      "id": "native-tool-history",
+      "contract": "Execute with the exact packaged Code Mode helper. Keep yielded cells and delayed tool results associated with their originating identities; parallel dynamic tools preserve call identities and result order. Native incremental catalogs and context remain native-owned.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs",
+        "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+        "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection",
+        "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
+      ],
+      "source_review_records": [
+        10,
+        17,
+        46
+      ],
+      "qualification": "automations/upstream/qualification.json#retained_consumers"
+    },
+    {
+      "id": "native-guardian-presentation",
+      "contract": "Project native review identity and complete action details. Metrics and async routing remain native-owned; local presentation does not turn an assessment into proof of execution or add a policy control.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent_guardian.rs#project",
+        "crates/decodex-codex/src/guardian.rs#decode_review"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action"
+      ],
+      "source_review_records": [
+        3,
+        4,
+        5,
+        6,
+        39
+      ],
+      "qualification": "automations/upstream/qualification.json#retained_consumers"
+    },
+    {
+      "id": "temporary-recap-isolation",
+      "contract": "Empty environments prevent filesystem execution under both built-in read-only and explicit custom permissions. Model-required apply_patch and native resource helpers can remain registered in the Code Mode catalog. Two attempted patches return the native missing-environment error and create no file; configuration remains unchanged.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/temporary_structured.rs#start_temporary_structured",
+        "crates/decodex-codex/src/app_server_client/temporary_structured.rs#isolation_config",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs#qualify"
+      ],
+      "tests": [
+        "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
+        "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input"
+      ],
+      "qualification": "automations/upstream/qualification.json#temporary_structured_boundary"
+    }
+  ]
 }
