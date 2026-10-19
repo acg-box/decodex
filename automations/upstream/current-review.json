@@ -6,9 +6,9 @@
   "count": 5,
   "implementation_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
   "decodex_consumer_baseline": "f6cfdd006d3cb88675e07596325805940a12ed27",
-  "selected_runtime_source": "ce0323f2f2d3b25e82806cd555237da3db4e1897",
+  "selected_runtime_source": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
   "selected_runtime_qualification": "automations/upstream/qualification.json",
-  "qualified_runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2460",
+  "qualified_runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2463",
   "classification_counts": {
     "not applicable": 3,
     "native-owned": 1,
@@ -19,18 +19,22 @@
     "completed_source_review_count": 5,
     "tests_read_unique_function_count": 30,
     "tests_read_count_unit": "Distinct Rust test functions; parameter expansions and loop cases are not execution counts.",
-    "upstream_tests_executed_count": 0,
-    "native_behavior_tests_executed_count": 0,
-    "runtime_migration": "Not selected: no required retained-capability repair was found.",
-    "artifact_readback": "The retained CLI, Code Mode host and rg match the certified SHA-256 values and pass strict signature checks. Fresh generated schema matches 55215bf73c35b4ff5ebe0187a1b5ac28a90e9a78f5373259eb3623098f6ca3ea. Identity checks do not qualify the five newer source changes.",
+    "upstream_tests_executed_count": 406,
+    "native_behavior_tests_executed_count": 28,
+    "runtime_migration": "Explicit user approval selected native idle-root wake. The exact runtime and packaged helpers passed affected qualification.",
+    "artifact_readback": "All selected component hashes, strict signatures, native commit markers and actual generated schema were verified. See qualification.json.",
     "source_integrity": "All 9290 official archive blobs match the exact fetched Git tree. Source integrity is not executed behavior evidence.",
-    "limits": "No new upstream binary, source/native regression execution, live provider/account, transport/compression/performance or installed-app acceptance. Prior qualification is reused only for the unchanged ce0323f2 CLI/helpers and its recorded behavior limits."
+    "limits": "Private-stdio macOS arm64 development artifact, controlled loopback fixtures and affected source tests. WebSocket compression, Linux transport dependencies, performance, live provider/account and installed-app acceptance remain outside this qualification.",
+    "upstream_test_executions_across_attempts": 791,
+    "local_projection_tests_executed_count": 2,
+    "initial_source_only_delivery": "https://github.com/acg-box/decodex/pull/2462",
+    "runtime_qualification": "automations/upstream/qualification.json"
   },
   "test_reconstruction": {
     "source": "Official archive at the fixed implementation_snapshot; compare retained source and test-body digests.",
     "registration": "cargo +stable nextest list --locked -p <package> --lib -E test(<test>) --message-format json; use --test all instead of --lib for integration:all entries.",
     "execution": "cargo +stable nextest run --locked -p <package> --lib -E test(<test>) --no-fail-fast; first inspect exact registration and require a nonzero match. Use --test all for integration:all.",
-    "authority": "Use the unversioned stable toolchain, official justfile local Nextest profile and 8 MiB stack; isolated system-temporary HOME with existing host CARGO_HOME/RUSTUP_HOME. These commands were not executed in this source-only review.",
+    "authority": "Use unversioned stable, the official local Nextest profile and 8 MiB stack with an isolated system-temporary HOME and existing host tool homes. The original source-only review executed none; qualification.json records the later executed adoption selection.",
     "selection_limit": "Recorded selectors identify reviewed test bodies. They are not a mandatory universal qualification gate or an assertion of expanded test counts."
   },
   "records": [
@@ -290,14 +294,80 @@
         }
       ],
       "decodex_consumer": "The retained native process owns Responses Lite tool declarations, history copies, native forks and Guardian input. crates/decodex-runtime/src/account_launch/agent_process.rs forwards typed app-server events; agent.rs supplies existing dynamic tools; agent_process_native_code_mode_tests.rs retains exact CLI/helper and tool-order contracts. Decodex does not link or clone the upstream internal ResponseItem Rust type.",
-      "validation_and_limits": "Read the full representation/constructor diff and affected serialization, world-state, history and fork test bodies. The selected CLI/helpers match the prior qualified ce0323f2 digests and generated schema; that source precedes this commit and does not contain the Arc optimization. No correctness regression or wire adaptation is established. No new artifact was built, no optimization was delivered, and no allocation, memory or latency benefit was measured.",
-      "runtime_delivery": "Optimization is absent from the retained ce0323f2 artifact and is not selected for a standalone migration. A future necessary migration must qualify the exact CLI and helpers against retained regressions before claiming this optimization.",
+      "validation_and_limits": "Read the complete Arc conversion, affected context/tool history and original regression bodies. The affected source tests and retained exact native consumers now pass on the selected runtime. No allocation, memory or latency benchmark.",
+      "runtime_delivery": "Included in the qualified selected runtime. Typed tool/history, fork and retained native consumers passed; no allocation or latency benchmark.",
       "selected_runtime_contains_change": false,
       "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
       "original_commit_diff_sha256": "a3b2afdd5127142c5d6ea9af5e60d93714e0a68793a5c94750b7498f8b079b02",
       "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
-      "tests_executed": [],
-      "tests_executed_count": 0,
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "agent::control::tests::spawn_agent_can_fork_parent_thread_history_with_sanitized_items"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "agent::control::tests::spawn_agent_fork_strips_parent_usage_hints_from_compacted_history::marked_catalog_hints"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "agent::control::tests::spawn_agent_fork_strips_parent_usage_hints_from_compacted_history::unmarked_bundled_hints"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "agent::control::tests::spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once::filtered_fork"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "agent::control::tests::spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once::preserve_prefix_fallback"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "context::world_state::tests::mixed_output_preserves_order_and_restores_its_snapshot"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "context::world_state::top_level_tools::tests::initial_catalog_preserves_order_and_unchanged_catalog_emits_nothing"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "context::world_state::top_level_tools::tests::namespace_diff_contains_only_changed_and_added_tools"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "context_manager::updates::tests::updates_preserve_item_boundaries_roles_and_standalone_fragments"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "session::tests::assign_missing_response_item_ids_assigns_additional_tools_ids"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "session::world_state_item_tests::initial_context_preserves_world_state_items_and_snapshot"
+        },
+        {
+          "package": "codex-protocol",
+          "binary_id": "codex-protocol",
+          "test": "models::tests::response_item_id_getter_and_setter"
+        },
+        {
+          "package": "codex-rollout",
+          "binary_id": "codex-rollout",
+          "test": "recorder::tests::recorder_preserves_additional_tools_in_both_history_modes"
+        }
+      ],
+      "tests_executed_count": 13,
       "source_digests": [
         {
           "path": "codex-rs/protocol/src/models.rs",
@@ -406,13 +476,64 @@
         }
       ],
       "decodex_consumer": "No current CodexAuth::Headers host-injection consumer. process.rs#ProcessScopedCredentialSink::authenticate_chatgpt uses account/login/start type chatgptAuthTokens. Upstream request_processors/account_processor.rs#login_chatgpt_auth_tokens_response and external_auth.rs#ExternalAuthBridge call CodexAuth::from_external_chatgpt_tokens, which constructs ChatgptAuthTokens. Imported PATs use the separate PersonalAccessToken variant. Existing account-scoped process/catalog ownership is retained; no in-process SDK ModelProvider implementation is installed by Decodex.",
-      "validation_and_limits": "Read identity implementation, caller isolation contract, manager identity checks, both affected cache-auth integration test bodies and four identity unit-test bodies. The selected runtime lacks this new Headers rule, while the current ChatgptAuthTokens/PAT paths do not enter its changed branch. Tests for stable-account Headers reuse are not newly added in this commit; no such behavior is claimed or executed here.",
+      "validation_and_limits": "Source identity and auth/provider cache regressions passed. Current Decodex authentication still has no header-auth catalog consumer. Retained exact native model metadata tests passed without qualifying that unused branch.",
       "runtime_delivery": "No runtime migration or host cache-isolation change required by the current retained auth variants.",
       "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
       "original_commit_diff_sha256": "503d2d718704224ef7b74d9a7c1c4c91b1f38026e7b4e0c9598f5f6284a7cfda",
       "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
-      "tests_executed": [],
-      "tests_executed_count": 0,
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_and_provider_switches_do_not_reuse_chatgpt_catalog"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_rotation_refreshes_before_turn_with_best_effort::auth_timeout"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_rotation_refreshes_before_turn_with_best_effort::mail_fallback"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_rotation_refreshes_before_turn_with_best_effort::mail_refresh"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_rotation_refreshes_before_turn_with_best_effort::user_fallback"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::models_cache_auth::auth_rotation_refreshes_before_turn_with_best_effort::user_refresh"
+        },
+        {
+          "package": "codex-model-provider",
+          "binary_id": "codex-model-provider",
+          "test": "models_identity::tests::cache_identity_distinguishes_auth_requirements_and_unknown_plans"
+        },
+        {
+          "package": "codex-model-provider",
+          "binary_id": "codex-model-provider",
+          "test": "models_identity::tests::cache_identity_tracks_account_email_user_plan_and_auth_mode_but_not_token_refresh"
+        },
+        {
+          "package": "codex-model-provider",
+          "binary_id": "codex-model-provider",
+          "test": "models_identity::tests::cache_identity_tracks_catalog_url"
+        },
+        {
+          "package": "codex-model-provider",
+          "binary_id": "codex-model-provider",
+          "test": "models_identity::tests::cache_identity_tracks_provider_routing_and_effective_api_credentials"
+        }
+      ],
+      "tests_executed_count": 10,
       "source_digests": [
         {
           "path": "codex-rs/model-provider/src/models_identity.rs",
@@ -513,7 +634,7 @@
         }
       ],
       "decodex_consumer": "Production launch remains process.rs#APP_SERVER_ARGS with app-server --stdio; no TCP/UDS app-server client or TUI daemon attachment exists. The local launch does not enable app_server_websocket_compression. The protocol bridge continues to own private stdio framing, not upstream daemon-startup override filtering.",
-      "validation_and_limits": "Read the flag/default, propagation and negotiation diffs; read enabled/disabled TCP/UDS roundtrip bodies, the public-listener initialization test and TUI override tests. No listener or TUI execution and no new transport capability. This commit qualifies the source meaning of the earlier compression commit; it does not qualify a selected artifact containing it.",
+      "validation_and_limits": "Read the feature/default, server propagation and negotiation diffs plus affected test bodies. The selected artifact contains the disabled flag and uses private stdio. No TCP/UDS listener, TUI daemon, compression performance or Linux transport qualification.",
       "runtime_delivery": "No runtime migration or compression flag added for private stdio.",
       "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
       "original_commit_diff_sha256": "ed730bbb55db158d9f2ea084d31c52f33a4e0d5d90448c4d0ffb401d31339762",
@@ -591,15 +712,46 @@
           "body_sha256": "f64d32ee792ada472dc85abd7e2f900a6a45a4578b967870287b697fe3810883"
         }
       ],
-      "decodex_consumer": "crates/decodex-runtime/src/agent.rs#ingest_automation_result,#wake_pending and #release_ready_workers own current durable external-evidence delivery. APP_SERVER_ARGS does not enable this feature. Native child execution is retained, but a second policy that automatically starts an idle root is a new product behavior; the current qualified source predates it.",
-      "validation_and_limits": "Read both delivery-path changes, the admission lock and prior-attribution implementation, all new regression bodies and the full child/parent request snapshot. Feature defaults off; no automatic wake was implemented, enabled, tested against a native artifact or represented as delivered. Interrupted/Plan/child assertions are source-review evidence only.",
-      "runtime_delivery": "Awaiting an explicit user decision; keep disabled. This optional decision does not block independent source review.",
+      "decodex_consumer": "Production APP_SERVER_ARGS now enables wake_on_agent_messages. AgentHost::serve keeps polling native events while idle; AgentCoordinator::handle_event and observe_native_turn adopt the exact native continuation and persist its terminal receipt. Existing durable Decodex external-evidence delivery keeps its own owner.",
+      "validation_and_limits": "Original source wake assertions passed in all six parameter/scenario cases. The exact-artifact Decodex regression passed with feature off and on, preserving settings, one continuation and exact store receipts. Stop/Plan/non-root boundaries use native source assertions. No installed-app or live-provider acceptance.",
+      "runtime_delivery": "Included in the qualified selected runtime and enabled by production launch arguments; see qualified_runtime_delivery_reference.",
       "optional_proposal": "native-idle-root-agent-message-wake",
       "source_snapshot": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
       "original_commit_diff_sha256": "a2846d6924f4d6863a7f24d51e633a64345503862053fd270e7af799f6fcde77",
       "diff_review": "Complete original commit diff plus relevant implementation and regression bodies; the fixed target is the final source snapshot.",
-      "tests_executed": [],
-      "tests_executed_count": 0,
+      "tests_executed": [
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::inherited_child_flag"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::interrupted_root"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core",
+          "test": "session::turn_input::tests::agent_message_wake_reservation_preserves_existing_boundaries::plan_root"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::agent_control::agent_mail_wakes_completed_root_when_enabled::direct_op"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::agent_control::agent_mail_wakes_completed_root_when_enabled::host_mailbox"
+        },
+        {
+          "package": "codex-core",
+          "binary_id": "codex-core::all",
+          "test": "suite::scenarios::child_completion_wakes_parent_after_final_answer"
+        }
+      ],
+      "tests_executed_count": 6,
       "source_digests": [
         {
           "path": "codex-rs/features/src/lib.rs",
@@ -627,12 +779,14 @@
         }
       ],
       "source_review_status": "complete",
-      "upstream_reference": "https://github.com/openai/codex/commit/8c076942cb70fba8e5c4732c23f1faabc4aed484"
+      "upstream_reference": "https://github.com/openai/codex/commit/8c076942cb70fba8e5c4732c23f1faabc4aed484",
+      "decision": "Explicit user approval selected native launch enablement; no additional product control or local wake scheduler."
     }
   ],
   "source_archive": {
     "url": "https://codeload.github.com/openai/codex/tar.gz/8c076942cb70fba8e5c4732c23f1faabc4aed484",
     "sha256": "b6aa520bfb2b08589679023a2594cf7758d3b916c56175c1d320d8aa077904d0"
   },
-  "source_review_delivery_reference": "https://github.com/acg-box/decodex/pull/2462"
+  "source_review_delivery_reference": "https://github.com/acg-box/decodex/pull/2462",
+  "runtime_adoption_decodex_revision": "e15a7ce19c593b67242e684385442a2dfe470966"
 }

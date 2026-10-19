@@ -1394,7 +1394,7 @@ pub(super) struct AppServerCommand {
 // Native defaults qualified against the locked runtime. Keep transport selection
 // native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
 // The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
-const APP_SERVER_ARGS: [&str; 10] = [
+const APP_SERVER_ARGS: [&str; 12] = [
 	"app-server",
 	"--stdio",
 	// The live Responses endpoint rejects this pin's content_item_metadata field.
@@ -1404,6 +1404,8 @@ const APP_SERVER_ARGS: [&str; 10] = [
 	"code_mode_tool_description_first",
 	"--enable",
 	"subagent_default_context_limits",
+	"--enable",
+	"wake_on_agent_messages",
 	"-c",
 	"features.multi_agent_v2.preserve_fork_prefix=true",
 ];
@@ -6425,6 +6427,8 @@ pub(crate) mod tests {
 				"code_mode_tool_description_first",
 				"--enable",
 				"subagent_default_context_limits",
+				"--enable",
+				"wake_on_agent_messages",
 				"-c",
 				"features.multi_agent_v2.preserve_fork_prefix=true"
 			]
