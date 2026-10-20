@@ -1,5 +1,10 @@
 //! Compact feedback for a first read. Refreshes with retained content stay quiet.
-use std::{f32::consts::TAU, time::Instant};
+use std::{
+	cell::RefCell,
+	f32::consts::TAU,
+	rc::Rc,
+	time::{Duration, Instant},
+};
 
 use gpui::{
 	self, AnyElement, App, IntoElement, RenderOnce, Role, SharedString, Window,
@@ -209,7 +214,20 @@ pub(crate) struct Content {
 	ready: bool,
 	child: AnyElement,
 	layout: Option<(bool, gpui::ScrollHandle)>,
+	arrival: Option<ContentArrival>,
 }
+
+/// Keep a conversation's reveal clock with its cached history across navigation.
+#[derive(Clone, Default)]
+pub(crate) struct ContentArrival(Rc<RefCell<Arrival>>);
+
+impl Content {
+	pub(crate) fn with_arrival(mut self, arrival: ContentArrival) -> Self {
+		self.arrival = Some(arrival);
+		self
+	}
+}
+
 #[derive(Default)]
 struct Arrival {
 	loaded: bool,
@@ -217,6 +235,19 @@ struct Arrival {
 	geometry:
 		Option<(gpui::Bounds<gpui::Pixels>, gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
 	stable_frames: u8,
+	pending_since: Option<Instant>,
+	loader_at_reveal: f32,
+}
+
+const HISTORY_FEEDBACK_DELAY: Duration = Duration::from_millis(250);
+const HISTORY_FEEDBACK_FADE: f32 = 0.12;
+const HISTORY_HANDOFF: f32 = 0.16;
+
+struct HistoryFrame {
+	content: f32,
+	feedback: f32,
+	elapsed: f32,
+	pending: bool,
 }
 impl Arrival {
 	fn observe_layout(
@@ -248,52 +279,152 @@ impl Arrival {
 		let t = (now.saturating_duration_since(started).as_secs_f32() / 0.32).clamp(0., 1.);
 		t * t * (3. - 2. * t)
 	}
+
+	fn feedback(&self, now: Instant, reduced: bool) -> f32 {
+		let Some(since) = self.pending_since else { return 0. };
+		let elapsed = now.saturating_duration_since(since);
+		if elapsed < HISTORY_FEEDBACK_DELAY {
+			return 0.;
+		}
+		if reduced {
+			return 1.;
+		}
+		let t = ((elapsed - HISTORY_FEEDBACK_DELAY).as_secs_f32() / HISTORY_FEEDBACK_FADE).min(1.);
+		t * t * (3. - 2. * t)
+	}
+
+	/// Fast reads reveal immediately once layout settles. A visible loader and
+	/// incoming content share one handoff; content never waits for a minimum dwell.
+	fn history_frame(
+		&mut self,
+		ready: bool,
+		settled: bool,
+		now: Instant,
+		reduced: bool,
+	) -> HistoryFrame {
+		if !ready && self.started.take().is_some() {
+			self.pending_since = None;
+			self.loader_at_reveal = 0.;
+		}
+		let pending = !ready
+			|| (self.started.is_none() && (!settled || (!reduced && self.stable_frames < 2)));
+		if pending {
+			let since = *self.pending_since.get_or_insert(now);
+			self.loader_at_reveal = self.feedback(now, reduced);
+			return HistoryFrame {
+				content: 0.,
+				feedback: self.loader_at_reveal,
+				elapsed: now.saturating_duration_since(since).as_secs_f32(),
+				pending: true,
+			};
+		}
+		// Use what was actually shown, not a delayed frame's theoretical opacity.
+		let started = *self.started.get_or_insert(now);
+		let t = if reduced || self.loader_at_reveal == 0. {
+			1.
+		} else {
+			(now.saturating_duration_since(started).as_secs_f32() / HISTORY_HANDOFF).min(1.)
+		};
+		let feedback = self.loader_at_reveal * (1. - t * t * (3. - 2. * t));
+		HistoryFrame {
+			content: 1. - feedback,
+			feedback,
+			elapsed: self
+				.pending_since
+				.map_or(0., |since| now.saturating_duration_since(since).as_secs_f32()),
+			pending: false,
+		}
+	}
 }
 impl RenderOnce for Content {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(
-			SharedString::from(format!("load-arrival-{}", self.key)),
-			cx,
-			|_, _| Arrival::default(),
-		);
+		let state = self.arrival.unwrap_or_else(|| {
+			window
+				.use_keyed_state(
+					SharedString::from(format!("load-arrival-{}", self.key)),
+					cx,
+					|_, _| ContentArrival::default(),
+				)
+				.read(cx)
+				.clone()
+		});
 		let settled = self.layout.as_ref().is_none_or(|(settled, _)| *settled);
+		let history = self.layout.is_some();
+		let feedback_top = self
+			.layout
+			.as_ref()
+			.map_or(gpui::px(0.), |(_, scroll)| -scroll.offset().y)
+			.max(gpui::px(0.));
 		let reduced = ui_motion::reduced();
-		let opacity = state.update(cx, |s, _| {
+		let (opacity, feedback) = {
+			let mut s = state.0.borrow_mut();
 			if self.ready && !s.loaded && s.started.is_none() {
 				s.geometry = None;
 				s.stable_frames = 0;
 			}
 			s.loaded = self.ready;
-			if self.ready
-				&& s.started.is_none()
-				&& self.layout.is_some()
-				&& (!settled || (!reduced && s.stable_frames < 2))
-			{
-				0.
+			if history {
+				let frame = s.history_frame(self.ready, settled, Instant::now(), reduced);
+				(frame.content, Some(frame))
 			} else {
-				s.progress(self.ready, Instant::now(), reduced)
+				(s.progress(self.ready, Instant::now(), reduced), None)
 			}
-		});
-		if opacity < 1. && settled {
+		};
+		if feedback.as_ref().is_some_and(|f| {
+			(f.pending && (!reduced || f.feedback == 0.)) || (!f.pending && f.content < 1.)
+		}) || (!history && opacity < 1. && settled)
+		{
 			ui_motion::request_frame(window, cx);
 		}
 		let mut body =
 			gpui::div().w_full().min_w_0().flex_none().opacity(opacity).child(self.child);
 		if let Some((_, scroll)) = self.layout {
-			body = body.on_children_prepainted(move |bounds, _, cx| {
-				if state.read(cx).started.is_some() {
+			body = body.on_children_prepainted(move |bounds, window, cx| {
+				let mut state = state.0.borrow_mut();
+				if state.started.is_some() {
 					return;
 				}
 				let Some(bounds) = bounds.first().copied() else {
 					return;
 				};
 				let geometry = (bounds, scroll.offset(), scroll.max_offset());
-				if state.read(cx).geometry != Some(geometry) || state.read(cx).stable_frames < 2 {
-					state.update(cx, |s, _| s.observe_layout(geometry));
+				if state.geometry != Some(geometry) || state.stable_frames < 2 {
+					state.observe_layout(geometry);
+					ui_motion::request_frame(window, cx);
 				}
 			});
 		}
-		body
+		if let Some(feedback) = feedback {
+			gpui::div()
+				.relative()
+				.w_full()
+				.min_w_0()
+				.flex_none()
+				.when(!self.ready, |d| d.min_h(gpui::px(260.)))
+				.child(body)
+				.when(feedback.feedback > 0., |d| {
+					d.child(
+						gpui::div()
+							.absolute()
+							.top(feedback_top)
+							.left_0()
+							.w_full()
+							.h(gpui::px(260.))
+							.flex()
+							.items_center()
+							.justify_center()
+							.opacity(feedback.feedback)
+							.child(indicator(
+								"Loading conversation",
+								false,
+								feedback.elapsed,
+								reduced,
+							)),
+					)
+				})
+		} else {
+			body
+		}
 	}
 }
 pub(crate) fn content(
@@ -301,7 +432,7 @@ pub(crate) fn content(
 	ready: bool,
 	child: impl IntoElement,
 ) -> Content {
-	Content { key: key.into(), ready, child: child.into_any_element(), layout: None }
+	Content { key: key.into(), ready, child: child.into_any_element(), layout: None, arrival: None }
 }
 
 /// Lay out the initial history and restore its scroll anchor before revealing it.
@@ -317,12 +448,79 @@ pub(crate) fn history(
 		ready,
 		child: child.into_any_element(),
 		layout: Some((settled, scroll)),
+		arrival: None,
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn fast_history_reads_never_flash_feedback_or_wait_for_an_arrival_animation() {
+		let start = Instant::now();
+		let mut state = Arrival::default();
+		let waiting = state.history_frame(false, false, start, false);
+		assert_eq!((waiting.content, waiting.feedback), (0., 0.));
+		state.stable_frames = 2;
+		let ready = state.history_frame(true, true, start + Duration::from_millis(180), false);
+		assert_eq!((ready.content, ready.feedback), (1., 0.));
+		let cached = state.history_frame(true, false, start + Duration::from_secs(1), false);
+		assert_eq!(
+			(cached.content, cached.feedback),
+			(1., 0.),
+			"cached history does not replay loading after navigation"
+		);
+		let mut delayed_frame = Arrival::default();
+		delayed_frame.history_frame(false, false, start, false);
+		delayed_frame.stable_frames = 2;
+		let ready = delayed_frame.history_frame(true, true, start + Duration::from_secs(1), false);
+		assert_eq!(
+			(ready.content, ready.feedback),
+			(1., 0.),
+			"a late frame must not introduce feedback that was never shown"
+		);
+	}
+
+	#[test]
+	fn slow_history_crossfades_without_holding_back_the_result() {
+		let start = Instant::now();
+		let at = |ms| start + Duration::from_millis(ms);
+		let mut state = Arrival::default();
+		state.history_frame(false, false, start, false);
+		assert_eq!(state.history_frame(false, false, at(249), false).feedback, 0.);
+		assert_eq!(state.history_frame(false, false, at(370), false).feedback, 1.);
+		state.stable_frames = 2;
+		let ready = state.history_frame(true, true, at(400), false);
+		assert_eq!((ready.content, ready.feedback), (0., 1.));
+		let during = state.history_frame(true, true, at(480), false);
+		assert!((during.content - 0.5).abs() < 0.001);
+		assert!((during.content + during.feedback - 1.).abs() < 0.001);
+		let done = state.history_frame(true, true, at(560), false);
+		assert_eq!((done.content, done.feedback), (1., 0.));
+		let next = state.history_frame(false, false, at(600), false);
+		assert_eq!((next.content, next.feedback), (0., 0.), "new reads get their own delay");
+	}
+
+	#[test]
+	fn feedback_cannot_flash_off_at_the_delay_boundary_and_reduced_motion_stays_delayed() {
+		let start = Instant::now();
+		let at = |ms| start + Duration::from_millis(ms);
+		let mut state = Arrival::default();
+		state.history_frame(false, false, start, false);
+		let opening = state.history_frame(false, false, at(280), false).feedback;
+		state.stable_frames = 2;
+		let ready = state.history_frame(true, true, at(280), false);
+		assert_eq!(ready.feedback, opening, "the handoff starts at the displayed opacity");
+		assert_eq!(ready.content, 1. - opening);
+		let during = state.history_frame(true, true, at(300), false);
+		assert!(during.feedback < opening && during.feedback > 0. && during.content > 0.);
+		let mut reduced = Arrival::default();
+		assert_eq!(reduced.history_frame(false, false, start, true).feedback, 0.);
+		assert_eq!(reduced.history_frame(false, false, at(249), true).feedback, 0.);
+		assert_eq!(reduced.history_frame(false, false, at(250), true).feedback, 1.);
+		assert_eq!(reduced.history_frame(true, true, at(251), true).content, 1.);
+	}
 
 	#[test]
 	fn pagination_feedback_ignores_fast_reads_and_stays_continuous_between_pages() {
@@ -399,5 +597,39 @@ mod tests {
 				< 0.001
 		);
 		assert_eq!(Arrival::default().progress(true, now, true), 1.);
+	}
+
+	#[test]
+	fn cached_history_keeps_its_reveal_clock_when_the_view_is_recreated() {
+		let arrival = ContentArrival::default();
+		let now = Instant::now();
+		arrival.0.borrow_mut().stable_frames = 2;
+		let first = history("thread", true, true, Default::default(), gpui::div())
+			.with_arrival(arrival.clone());
+		assert_eq!(
+			first
+				.arrival
+				.as_ref()
+				.unwrap()
+				.0
+				.borrow_mut()
+				.history_frame(true, true, now, false)
+				.content,
+			1.
+		);
+		drop(first);
+		let reopened =
+			history("thread", true, true, Default::default(), gpui::div()).with_arrival(arrival);
+		assert_eq!(
+			reopened
+				.arrival
+				.as_ref()
+				.unwrap()
+				.0
+				.borrow_mut()
+				.history_frame(true, true, now + std::time::Duration::from_secs(1), false,)
+				.content,
+			1.,
+		);
 	}
 }

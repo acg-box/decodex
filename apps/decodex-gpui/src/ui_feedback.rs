@@ -12,8 +12,13 @@ use gpui::{
 
 use crate::{
 	ui_motion::{self, Tween},
-	ui_theme::{AMBER, CONVERSATION_INSET, ERROR, GREEN, TEXT_MUTED},
+	ui_theme::{AMBER, CONVERSATION_INSET, ERROR, GREEN, METADATA_GAP, TEXT_MUTED},
 };
+
+const NOTICE_PADDING: f32 = 12.;
+const NOTICE_FRAME: f32 = 2. * (NOTICE_PADDING + 1.);
+const NOTICE_TEXT_SIZE: f32 = 12.;
+const NOTICE_LINE_HEIGHT: f32 = 18.;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum Tone {
@@ -56,22 +61,36 @@ impl Tone {
 		self.row_with_icon(id, message, self.icon())
 	}
 
-	pub(crate) fn surface(self) -> Div {
+	fn surface(self) -> Div {
 		gpui::div()
 			.rounded(gpui::px(12.))
 			.border_1()
 			.border_color(gpui::rgba((self.color() << 8) | 0x26))
 			.bg(gpui::rgba((self.color() << 8) | 0x07))
+			.px(gpui::px(NOTICE_PADDING))
+			.py(gpui::px(6.))
+			.text_size(gpui::px(NOTICE_TEXT_SIZE))
+			.line_height(gpui::px(NOTICE_LINE_HEIGHT))
 	}
 
 	pub(crate) fn banner(self, content: impl IntoElement) -> Div {
-		gpui::div()
-			.w_full()
-			.flex()
-			.justify_center()
-			.px(gpui::px(CONVERSATION_INSET))
-			.py(gpui::px(4.))
-			.child(self.surface().max_w_full().px_3().py(gpui::px(6.)).child(content))
+		notice_rail(self.surface().max_w_full().child(content)).py(gpui::px(METADATA_GAP))
+	}
+
+	pub(crate) fn disclosure(
+		self,
+		id: impl Into<SharedString>,
+		expanded: bool,
+		header: impl IntoElement,
+		detail: impl FnOnce(&mut App) -> AnyElement + 'static,
+	) -> ExpandableNotice {
+		ExpandableNotice {
+			id: id.into(),
+			tone: self,
+			expanded,
+			header: header.into_any_element(),
+			detail: Box::new(detail),
+		}
 	}
 
 	pub(crate) fn row_with_icon(
@@ -87,12 +106,192 @@ impl Tone {
 			.flex()
 			.items_start()
 			.gap(gpui::px(7.))
-			.text_size(gpui::px(12.))
-			.line_height(gpui::px(18.))
+			.text_size(gpui::px(NOTICE_TEXT_SIZE))
+			.line_height(gpui::px(NOTICE_LINE_HEIGHT))
 			.text_color(gpui::rgb(self.color()))
-			.child(gpui::div().mt(gpui::px(2.)).flex_none().child(icon))
+			.child(
+				gpui::div()
+					.h(gpui::px(NOTICE_LINE_HEIGHT))
+					.flex_none()
+					.flex()
+					.items_center()
+					.child(icon),
+			)
 			.child(gpui::div().min_w_0().child(message.to_owned()))
 	}
+
+	pub(crate) fn composer_row(
+		self,
+		id: impl Into<ElementId>,
+		message: &str,
+		icon: impl IntoElement,
+	) -> Stateful<Div> {
+		self.row_with_icon(id, message, icon)
+			.debug_selector(|| "conversation-unavailable".into())
+			.w_full()
+			.min_w_0()
+			.min_h(gpui::px(40.))
+			.items_center()
+			.justify_center()
+	}
+}
+
+fn notice_rail(content: impl IntoElement) -> Div {
+	gpui::div().w_full().flex().justify_center().px(gpui::px(CONVERSATION_INSET)).child(content)
+}
+
+#[derive(IntoElement)]
+/// Expand one centered surface without reflowing its text during the transition.
+pub(crate) struct ExpandableNotice {
+	id: SharedString,
+	tone: Tone,
+	expanded: bool,
+	header: AnyElement,
+	detail: Box<dyn FnOnce(&mut App) -> AnyElement>,
+}
+
+#[derive(Default)]
+struct NoticeGeometry {
+	available: f32,
+	header: f32,
+	detail: f32,
+}
+
+impl RenderOnce for ExpandableNotice {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let geometry = window.use_keyed_state(
+			SharedString::from(format!("notice-geometry-{}", self.id)),
+			cx,
+			|_, _| NoticeGeometry::default(),
+		);
+		let progress = ui_motion::value(
+			SharedString::from(format!("notice-disclosure-{}", self.id)),
+			if self.expanded { 1. } else { 0. },
+			window,
+			cx,
+		);
+		let measured = geometry.read(cx);
+		let available = measured.available;
+		let compact = (measured.header + NOTICE_FRAME).min(available);
+		let width = compact + (available - compact) * progress;
+		let height = measured.detail * progress;
+		let header_geometry = geometry.clone();
+		let detail_geometry = geometry.clone();
+		let card = self
+			.tone
+			.surface()
+			.max_w_full()
+			.min_w_0()
+			.overflow_hidden()
+			.debug_selector(|| "expandable-notice-card".into())
+			.when(available > 0., |d| d.w(gpui::px(width)))
+			.child(
+				gpui::div()
+					.w_full()
+					.flex()
+					.justify_center()
+					.on_children_prepainted(move |bounds, _, cx| {
+						if let Some(bounds) = bounds.first() {
+							let width = f32::from(bounds.size.width);
+							header_geometry.update(cx, |s, cx| {
+								if (s.header - width).abs() > 0.5 {
+									s.header = width;
+									cx.notify();
+								}
+							});
+						}
+					})
+					.child(
+						gpui::div()
+							.flex_none()
+							.h(gpui::px(NOTICE_LINE_HEIGHT))
+							.flex()
+							.items_center()
+							.child(self.header),
+					),
+			)
+			.child(
+				gpui::div()
+					.w_full()
+					.h(gpui::px(height))
+					.overflow_hidden()
+					.flex()
+					.justify_center()
+					.opacity(((progress - 0.25) / 0.75).clamp(0., 1.))
+					.when(self.expanded || progress > 0., |d| {
+						d.child(
+							gpui::div()
+								.flex_none()
+								// Measure at the final width; only the outer surface changes size.
+								.when(available > 0., |d| {
+									d.w(gpui::px((available - NOTICE_FRAME).max(0.)))
+								})
+								.debug_selector(|| "expandable-notice-detail".into())
+								.on_children_prepainted(move |bounds, _, cx| {
+									if let Some(bounds) = bounds.first() {
+										let height = f32::from(bounds.size.height);
+										detail_geometry.update(cx, |s, cx| {
+											if (s.detail - height).abs() > 0.5 {
+												s.detail = height;
+												cx.notify();
+											}
+										});
+									}
+								})
+								.child((self.detail)(cx)),
+						)
+					}),
+			);
+		notice_rail(gpui::div().w_full().flex().justify_center().child(card))
+			.on_children_prepainted(move |bounds, _, cx| {
+				if let Some(bounds) = bounds.first() {
+					let width = f32::from(bounds.size.width);
+					geometry.update(cx, |s, cx| {
+						if (s.available - width).abs() > 0.5 {
+							s.available = width;
+							cx.notify();
+						}
+					});
+				}
+			})
+	}
+}
+
+/// A compact execution state, shared by live history, saved history and Graph.
+/// Keep the state name available to assistive technology without repeating it visually.
+pub(crate) fn execution_icon(id: impl Into<SharedString>, status: &str) -> Stateful<Div> {
+	let (tone, label, running) = match status {
+		"running" | "inProgress" | "Running" => (Tone::Neutral, "Running", true),
+		"completed" => (Tone::Success, "Completed", false),
+		"failed" => (Tone::Error, "Failed", false),
+		"declined" => (Tone::Warning, "Declined", false),
+		"interrupted" => (Tone::Neutral, "Stopped", false),
+		"exited" => (Tone::Neutral, "Exited", false),
+		"waiting" => (Tone::Neutral, "Waiting", false),
+		"recorded" => (Tone::Neutral, "Recorded", false),
+		_ => (Tone::Neutral, "Unconfirmed", false),
+	};
+	gpui::div()
+		.id(id.into())
+		.role(Role::Status)
+		.aria_label(label)
+		.w(gpui::px(16.))
+		.h(gpui::px(18.))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.child(if matches!(status, "waiting" | "recorded") {
+			gpui::svg()
+				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></g></svg>"#)
+				.size(gpui::px(14.))
+				.text_color(gpui::rgb(TEXT_MUTED))
+				.into_any_element()
+		} else if running {
+			crate::ui_loading::loading("").into_any_element()
+		} else {
+			tone.icon().into_any_element()
+		})
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -413,6 +612,84 @@ mod tests {
 				self.0.clone(),
 			))
 		}
+	}
+
+	struct DisclosureView(bool);
+	impl Render for DisclosureView {
+		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+			gpui::div().w(gpui::px(500.)).child(Tone::Warning.disclosure(
+				"saved-input",
+				self.0,
+				gpui::div().flex_none().child(Tone::Warning.row("header", "Message not sent")),
+				|_| gpui::div().child("A saved message with enough text to wrap across several lines at the final reading width. ".repeat(8)).into_any_element(),
+			))
+		}
+	}
+
+	#[gpui::test]
+	fn disclosure_moves_as_one_surface_without_reflowing_its_detail(cx: &mut gpui::TestAppContext) {
+		let (view, visual) = cx.add_window_view(|_, _| DisclosureView(false));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+		let compact = visual.debug_bounds("expandable-notice-card").unwrap();
+		assert_eq!(compact.size.height, gpui::px(32.));
+		let first_frame_limit = (gpui::px(468.) - compact.size.width) * 0.25;
+		view.update(visual, |s, cx| {
+			s.0 = true;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let first_opening = visual.debug_bounds("expandable-notice-card").unwrap();
+		assert!(
+			(first_opening.size.width - compact.size.width).abs() < first_frame_limit,
+			"compact={compact:?}, first_opening={first_opening:?}"
+		);
+		std::thread::sleep(Duration::from_millis(70));
+		visual.update(crate::ui_frame::draw_frame);
+		let opening = visual.debug_bounds("expandable-notice-card").unwrap();
+		let detail = visual.debug_bounds("expandable-notice-detail").unwrap();
+		assert!(opening.size.width > compact.size.width && opening.size.width < gpui::px(468.));
+		std::thread::sleep(SETTLE);
+		visual.update(crate::ui_frame::draw_frame);
+		let open = visual.debug_bounds("expandable-notice-card").unwrap();
+		assert_eq!(open.size.width, gpui::px(468.));
+		assert_eq!(
+			detail.size.width,
+			visual.debug_bounds("expandable-notice-detail").unwrap().size.width
+		);
+		assert_eq!(compact.center().x, open.center().x);
+		view.update(visual, |s, cx| {
+			s.0 = false;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(
+			(visual.debug_bounds("expandable-notice-card").unwrap().size.width - open.size.width)
+				.abs()
+				< first_frame_limit
+		);
+		std::thread::sleep(Duration::from_millis(70));
+		visual.update(crate::ui_frame::draw_frame);
+		let closing = visual.debug_bounds("expandable-notice-card").unwrap();
+		assert!(closing.size.width > compact.size.width && closing.size.width < open.size.width);
+		view.update(visual, |s, cx| {
+			s.0 = true;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(
+			(visual.debug_bounds("expandable-notice-card").unwrap().size.width
+				- closing.size.width)
+				.abs()
+				< first_frame_limit
+		);
+		std::thread::sleep(SETTLE);
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(
+			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
+			open.size.width
+		);
 	}
 
 	#[gpui::test]

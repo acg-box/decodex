@@ -234,11 +234,16 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	pub(super) fn work_is_archived(&self, id: &str) -> bool {
+		self.snapshot.as_ref().is_some_and(|s| s.archived_work_ids.contains(id))
+	}
+
 	pub(super) fn selected_is_archived(&self) -> bool {
 		self.native_agents.selected.is_none()
-			&& self.archive.owner == self.selected
-			&& (matches!(self.archive.result, Some(AgentArchiveResult::Archived { .. }))
-				|| self.archive.mutation.is_some())
+			&& (self.selected.as_ref().is_some_and(|id| self.work_is_archived(id))
+				|| self.archive.owner == self.selected
+					&& (matches!(self.archive.result, Some(AgentArchiveResult::Archived { .. }))
+						|| self.archive.mutation.is_some()))
 	}
 
 	pub(super) fn archive_panel(
@@ -670,6 +675,33 @@ mod visibility_tests {
 			assert_eq!(s.composer_manager.as_deref(), Some("release"));
 			assert!(s.composer.read(cx).content().is_empty());
 			assert_eq!(s.draft_profiles.texts["agent"], "Root draft");
+		});
+	}
+
+	#[gpui::test]
+	fn a_new_conversation_after_archiving_all_owners_parks_the_original_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			fixture(s, cx);
+			s.open_page("agent", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep the archived draft", cx));
+			let original = s.snapshot.clone().unwrap();
+			let mut empty = original.clone();
+			empty.work_items.clear();
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(empty)), cx);
+			assert!(s.selected.is_none());
+			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
+			let mut fresh = original;
+			fresh.work_items.retain(|w| w.id == "release");
+			fresh.work_items[0].parent_goal_id = None;
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(fresh)), cx);
+			assert_eq!(s.selected.as_deref(), Some("release"));
+			assert_eq!(s.composer_manager.as_deref(), Some("release"));
+			assert!(s.composer.read(cx).content().is_empty());
+			assert_eq!(s.draft_profiles.texts["agent"], "Keep the archived draft");
+			assert!(s.composer_unavailable_reason().is_none());
 		});
 	}
 

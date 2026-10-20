@@ -16,13 +16,79 @@ use crate::{
 		},
 		workspace_symbols,
 	},
-	ui_loading,
 	ui_theme::{HOVER_FILL, TEXT_MUTED, USER_MESSAGE_ACTION_SIZE},
 };
-use decodex_protocol::{AgentLiveMessageDto, AgentLiveMessageKind, AgentTimelineAttachment};
+use decodex_protocol::{
+	AgentActivityDto, AgentCollaborationDto, AgentLiveMessageDto, AgentLiveMessageKind,
+	AgentTimelineAttachment, NativeAgentDto,
+};
 
 fn output_key(work: &AgentWorkItemDto, turn: &str, item: &str) -> String {
 	serde_json::json!(["output", work.id, work.codex_thread_id, turn, item]).to_string()
+}
+
+/// Use source identities for names; keep unknown tool names available verbatim.
+pub(in crate::shell::agent_surface) fn activity_label(
+	activity: &AgentActivityDto,
+	collaboration: Option<&AgentCollaborationDto>,
+	agents: &[NativeAgentDto],
+) -> String {
+	if let Some(call) = collaboration {
+		let target = match call.receiver_thread_ids.as_slice() {
+			[thread] => agents
+				.iter()
+				.find(|agent| &agent.thread_id == thread)
+				.map(|agent| agent.title.clone()),
+			threads if threads.len() > 1 => Some(format!("{} agents", threads.len())),
+			_ => None,
+		};
+		let target = target.unwrap_or_else(|| {
+			if activity.kind == "subAgentActivity" && !activity.detail.is_empty() {
+				activity.detail.rsplit('/').next().unwrap_or("Agent").replace('_', " ")
+			} else {
+				"agents".into()
+			}
+		});
+		let label = match call.tool.as_str() {
+			"wait" => Some(format!("Wait for {target}")),
+			"spawnAgent" => Some(format!("Start {target}")),
+			"subAgentActivity/started" => Some(format!("Started {target}")),
+			"sendInput" => Some(format!("Message {target}")),
+			"subAgentActivity/interacted" => Some(format!("Sent message to {target}")),
+			"resumeAgent" => Some(format!("Resume {target}")),
+			"closeAgent" => Some(format!("Stop {target}")),
+			"subAgentActivity/interrupted" => Some(format!("Stopped {target}")),
+			"subAgentActivity/completed" => Some(format!("{target} · Turn complete")),
+			_ => None,
+		};
+		if let Some(label) = label {
+			return label;
+		}
+	}
+	if matches!(activity.kind.as_str(), "dynamicToolCall" | "mcpToolCall")
+		&& !activity.detail.is_empty()
+	{
+		// Keep authentication errors and other actionable source labels visible.
+		if activity.label != "Using tool" {
+			return activity.label.clone();
+		}
+		let tool = activity.detail.rsplit(" · ").next().unwrap_or(&activity.detail);
+		return match tool {
+			"agent_list_work" => "Checking tasks",
+			"agent_read_work" => "Reading task history",
+			"agent_create_work" => "Creating task",
+			"agent_continue_worker" => "Continuing agent",
+			"agent_disposition" => "Recording task assessment",
+			"agent_resolve_goal" => "Recording goal completion",
+			"agent_resolve_decision" => "Recording decision",
+			"agent_add_dependency" => "Connecting tasks",
+			"agent_create_goal" => "Creating goal",
+			"agent_create_manager" => "Creating coordinator",
+			_ => return activity.detail.clone(),
+		}
+		.into();
+	}
+	activity.label.clone()
 }
 
 impl AgentSurface {
@@ -176,8 +242,21 @@ impl AgentSurface {
 		let identity =
 			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
 				.to_string();
-		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, false, cx);
+		self.native_timeline_row_with_content(work, entry, content, cx)
+	}
+
+	pub(super) fn native_timeline_row_with_content(
+		&self,
+		work: &AgentWorkItemDto,
+		entry: &AgentTimelineEntry,
+		content: AnyElement,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let identity =
+			serde_json::json!([work.id, work.codex_thread_id, native_timeline::key(entry)])
+				.to_string();
+		let selector = format!("native-history-{identity}");
 		let content = self.timeline.native.arrivals.wrap(entry, content);
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
@@ -364,12 +443,9 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				.when(
 					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
 					|row| {
-						row.child(agent_surface::muted(
-							if status.as_deref() == Some("interrupted") {
-								"Stopped"
-							} else {
-								"Failed"
-							},
+						row.child(crate::ui_feedback::execution_icon(
+							format!("execution-status-{identity}"),
+							status.as_deref().unwrap_or_default(),
 						))
 					},
 				)
@@ -577,10 +653,32 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			"agentMessage" => "Assistant",
 			"plan" => "Proposed plan",
 			"reasoning" => "Thinking",
+			"sleep" => "Wait",
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
-		let mut row = row.when(kind != "reasoning", |row| row.child(agent_surface::muted(label)));
+		let mut row = row.when(kind != "reasoning", |row| {
+			if kind == "sleep" {
+				// Older cached pages have no activity projection for this native item.
+				row.child(
+					gpui::div()
+						.flex()
+						.items_center()
+						.gap(gpui::px(8.))
+						.py(gpui::px(5.))
+						.text_size(gpui::px(12.))
+						.line_height(gpui::px(18.))
+						.text_color(gpui::rgb(TEXT_MUTED))
+						.child(crate::ui_feedback::execution_icon(
+							format!("wait-{identity}"),
+							"recorded",
+						))
+						.child(label.to_owned()),
+				)
+			} else {
+				row.child(agent_surface::muted(label))
+			}
+		});
 
 		for attachment in attachments {
 			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
@@ -608,7 +706,18 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			return self.detail_row(
 				work,
 				activity,
-				row.child(format!("{} · {}", activity.label, activity.status)),
+				None,
+				row.child(
+					gpui::div()
+						.flex()
+						.items_center()
+						.gap(gpui::px(8.))
+						.child(crate::ui_feedback::execution_icon(
+							format!("execution-status-{identity}"),
+							&activity.status,
+						))
+						.child(activity.label.clone()),
+				),
 				cx,
 			);
 		}
@@ -678,28 +787,28 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		identity: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let AgentTimelineContent::Item { activity: Some(activity), kind, turn_id, item_id, .. } =
-			content
+		let AgentTimelineContent::Item {
+			activity: Some(activity),
+			kind,
+			turn_id,
+			item_id,
+			collaboration,
+			..
+		} = content
 		else {
 			unreachable!("activity renderer")
 		};
-		let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
-			&& !activity.detail.is_empty()
-		{
-			activity.detail.clone()
-		} else {
-			activity.label.clone()
-		};
-		let expanded = self
-			.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone()))
-			.is_some_and(|key| {
-				self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == &key)
-			});
-		let symbol = match activity.status.as_str() {
-			"failed" | "declined" => "!",
-			"running" => "◌",
-			_ => "✓",
-		};
+		let label = activity_label(
+			activity,
+			collaboration.as_ref(),
+			self.native_agents.lists.get(&work.id).map(Vec::as_slice).unwrap_or_default(),
+		);
+		let detail_key = crate::shell::agent_surface::detail::supports_activity_detail(kind)
+			.then(|| self.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone())))
+			.flatten();
+		let expanded = detail_key.as_ref().is_some_and(|key| {
+			self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == key)
+		});
 		let row = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -711,22 +820,15 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
 			.text_color(gpui::rgb(TEXT_MUTED))
-			.child(
-				// Status glyph advances differ; reserve one stable column for every state.
-				gpui::div()
-					.w(gpui::px(16.))
-					.h(gpui::px(18.))
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.child(if activity.status == "running" {
-						ui_loading::loading("").into_any_element()
-					} else {
-						gpui::div().child(symbol).into_any_element()
-					}),
-			)
+			.child(crate::ui_feedback::execution_icon(
+				format!("execution-status-{identity}"),
+				&activity.status,
+			))
 			.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(label))
+			.when_some(
+				(kind == "sleep").then(|| super::waits::timing(activity)).flatten(),
+				|d, time| d.child(time),
+			)
 			.when_some(activity.plugin_id.clone(), |d, plugin| {
 				d.child(
 					gpui::div()
@@ -736,28 +838,27 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				)
 			})
 			.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
-			.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
-				d.child(activity.status.clone())
-			})
-			.when_some(activity.duration_ms.filter(|ms| *ms > 0), |d, ms| {
+			.when_some(activity.duration_ms.filter(|ms| *ms > 0 && kind != "sleep"), |d, ms| {
 				d.child(if ms < 1_000 {
 					format!("{ms}ms")
 				} else {
 					format!("{:.1}s", ms as f64 / 1_000.)
 				})
 			})
-			.child(
-				gpui::div()
-					.debug_selector(|| "tool-chevron-bounds".into())
-					.flex_none()
-					.size(gpui::px(12.))
-					.child(workspace_symbols::process_chevron(
-						SharedString::from(format!("tool-chevron-{identity}")),
-						expanded,
-					)),
-			);
+			.when(detail_key.is_some(), |row| {
+				row.child(
+					gpui::div()
+						.debug_selector(|| "tool-chevron-bounds".into())
+						.flex_none()
+						.size(gpui::px(12.))
+						.child(workspace_symbols::process_chevron(
+							SharedString::from(format!("tool-chevron-{identity}")),
+							expanded,
+						)),
+				)
+			});
 
-		self.detail_row(work, activity, row, cx)
+		self.detail_row(work, activity, collaboration.as_ref(), row, cx)
 	}
 
 	fn native_promotion(
@@ -843,7 +944,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				}
 
 				if let Some(activity) = activity {
-					return self.detail_row(work, activity, row.child(activity.label.clone()), cx);
+					return self.detail_row(
+						work,
+						activity,
+						None,
+						row.child(activity.label.clone()),
+						cx,
+					);
 				}
 			},
 			_ =>
@@ -913,6 +1020,42 @@ mod tests {
 		render::{AgentSurface, AgentTimelineContent, AgentTimelineEntry, Context},
 	};
 	use decodex_protocol::AgentTimelinePage;
+
+	#[test]
+	fn activity_labels_name_agents_and_actions_without_masking_errors_or_unknown_tools() {
+		let mut activity: decodex_protocol::AgentActivityDto =
+			serde_json::from_value(serde_json::json!({
+				"turn_id":"turn", "item_id":"item", "kind":"subAgentActivity", "status":"completed",
+				"label":"Subagent completed a turn", "detail":"/root/reviewer", "duration_ms":null
+			}))
+			.unwrap();
+		let mut call = decodex_protocol::AgentCollaborationDto {
+			results: vec![],
+			sender_thread_id: "parent".into(),
+			receiver_thread_ids: vec!["child".into()],
+			tool: "subAgentActivity/completed".into(),
+			status: "completed".into(),
+			prompt: String::new(),
+		};
+		let agents = vec![decodex_protocol::NativeAgentDto {
+			thread_id: "child".into(),
+			parent_thread_id: "parent".into(),
+			title: "Mia".into(),
+			task: String::new(),
+			status: "idle".into(),
+		}];
+		assert_eq!(super::activity_label(&activity, Some(&call), &agents), "Mia · Turn complete");
+		call.tool = "wait".into();
+		assert_eq!(super::activity_label(&activity, Some(&call), &agents), "Wait for Mia");
+		activity.kind = "dynamicToolCall".into();
+		activity.label = "Using tool".into();
+		activity.detail = "agent_list_work".into();
+		assert_eq!(super::activity_label(&activity, None, &[]), "Checking tasks");
+		activity.detail = "docs · search".into();
+		assert_eq!(super::activity_label(&activity, None, &[]), "docs · search");
+		activity.label = "Sign-in required".into();
+		assert_eq!(super::activity_label(&activity, None, &[]), "Sign-in required");
+	}
 
 	#[gpui::test]
 	fn native_weather_does_not_require_a_duplicate_local_message(cx: &mut gpui::TestAppContext) {

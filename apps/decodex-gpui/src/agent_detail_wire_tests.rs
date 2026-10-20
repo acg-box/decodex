@@ -49,6 +49,7 @@ impl Render for DetailView {
 					native_timestamp_ms: None,
 					duration_ms: None,
 				},
+				None,
 				gpui::div().child("Patch"),
 				cx,
 			)

@@ -277,6 +277,12 @@ impl AgentSurface {
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
 		let blocked = self.composer_unavailable_reason();
+		let parent_managed = self.native_agents.selected.is_some()
+			&& matches!(
+				self.native_agents.connection,
+				super::native_agents::NativeConnection::ParentManaged
+			);
+		let read_only = blocked.is_some() && !parent_managed;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
@@ -300,13 +306,27 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("native-composer-accessibility-entry")
-					.role(if blocked.is_some() { Role::Status } else { Role::Button })
-					.aria_label(blocked.unwrap_or("Focus message editor"))
-					.tab_index(if blocked.is_some() { -1 } else { 0 })
-					.on_click(cx.listener(|s, _, window, cx| s.focus_message(window, cx)))
-					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, window, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					.role(if read_only { Role::Status } else { Role::Button })
+					.aria_label(if parent_managed {
+						"Open parent conversation"
+					} else {
+						blocked.unwrap_or("Focus message editor")
+					})
+					.tab_index(if read_only { -1 } else { 0 })
+					.on_click(cx.listener(move |s, _, window, cx| {
+						if parent_managed {
+							s.open_native_parent(cx);
+						} else {
 							s.focus_message(window, cx);
+						}
+					}))
+					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							if parent_managed {
+								s.open_native_parent(cx);
+							} else {
+								s.focus_message(window, cx);
+							}
 							cx.stop_propagation();
 						}
 					}))

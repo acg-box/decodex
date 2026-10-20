@@ -1,7 +1,7 @@
 //! Native execution evidence inside a work graph node.
 use super::{
 	AgentSurface, AgentWorkItemDto, Context, InteractiveElement, ParentElement, Styled,
-	ui_theme::{AMBER, GREEN, TEXT_MUTED},
+	ui_theme::TEXT_MUTED,
 };
 use decodex_protocol::{AgentActivityDto, AgentTimelineContent, AgentTimelineResult};
 use gpui::{AnyElement, Div};
@@ -131,7 +131,10 @@ impl AgentSurface {
 				format!("{} · {}", step.label, step.detail)
 			});
 		} else {
-			body = body.child(status_label(&run.status));
+			body = body.child(crate::ui_feedback::execution_icon(
+				format!("execution-status-{}", run.id),
+				&run.status,
+			));
 		}
 		let key = format!("dock-operations-{}-{}", work.id, run.id);
 		let expanded = self.timeline.expanded_records.contains(&key);
@@ -149,8 +152,8 @@ impl AgentSurface {
 			));
 		}
 		if expanded {
-			for (index, step) in run.steps.iter().enumerate() {
-				body = body.child(self.execution_step(work, step, index, cx));
+			for step in &run.steps {
+				body = body.child(self.execution_step(work, step, cx));
 			}
 		}
 		body
@@ -160,14 +163,8 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		step: &AgentActivityDto,
-		index: usize,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let color = match step.status.as_str() {
-			"failed" | "declined" => AMBER,
-			"completed" => GREEN,
-			_ => TEXT_MUTED,
-		};
 		let row = gpui::div()
 			.debug_selector({
 				let id = format!("dock-step-{}-{}", step.turn_id, step.item_id);
@@ -182,12 +179,10 @@ impl AgentSurface {
 			.gap_2()
 			.border_b_1()
 			.border_color(gpui::rgba(0xffffff0c))
-			.child(
-				gpui::div()
-					.w(gpui::px(18.))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(format!("{}", index + 1)),
-			)
+			.child(crate::ui_feedback::execution_icon(
+				format!("execution-status-{}-{}", step.turn_id, step.item_id),
+				&step.status,
+			))
 			.child(
 				gpui::div()
 					.flex_1()
@@ -201,16 +196,10 @@ impl AgentSurface {
 						format!("{} · {}", step.label, step.detail)
 					}),
 			)
-			.child(
-				gpui::div()
-					.flex_none()
-					.text_color(gpui::rgb(color))
-					.child(status_label(&step.status)),
-			)
 			.child(gpui::div().w(gpui::px(44.)).text_color(gpui::rgb(TEXT_MUTED)).child(
 				step.duration_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.)).unwrap_or_default(),
 			));
-		self.detail_row(work, step, row, cx)
+		self.detail_row(work, step, None, row, cx)
 	}
 }
 
@@ -219,19 +208,6 @@ pub(super) fn preview(text: &str, limit: usize) -> String {
 	let mut chars = plain.chars();
 	let result: String = chars.by_ref().take(limit).collect();
 	if chars.next().is_some() { format!("{result}…") } else { result }
-}
-
-fn status_label(status: &str) -> String {
-	match status {
-		"completed" => "Completed",
-		"failed" => "Failed",
-		"interrupted" => "Stopped",
-		"inProgress" | "running" => "Running",
-		"declined" => "Declined",
-		"exited" => "Exited",
-		other => other,
-	}
-	.into()
 }
 
 #[cfg(any(test, feature = "visual-capture"))]

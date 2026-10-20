@@ -867,13 +867,14 @@ fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator(
 
 	let rebuilt = lifecycle(&corrupt_root);
 
-	assert_eq!(
-		rebuilt.view(),
-		ConnectionView::Quarantined {
+	assert_eq!(rebuilt.view(), ConnectionView::Connecting { attempt: 1 });
+	assert!(matches!(
+		rebuilt.quarantine,
+		Some(super::Quarantine {
 			reason: QuarantineReason::CacheCorrupt,
-			recovery: QuarantineRecovery::DisposedBeforeRebuild,
-		}
-	);
+			recovery: QuarantineRecovery::DisposedBeforeRebuild
+		})
+	));
 	assert_eq!(
 		rebuilt
 			.cache
@@ -2243,13 +2244,14 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 
 	let mut server_switched = lifecycle_for(&root, OTHER_SERVER, 1);
 
-	assert_eq!(
-		server_switched.view(),
-		ConnectionView::Quarantined {
+	assert_eq!(server_switched.view(), ConnectionView::Connecting { attempt: 1 });
+	assert!(matches!(
+		server_switched.quarantine,
+		Some(super::Quarantine {
 			reason: QuarantineReason::AuthorityChanged,
-			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
-		}
-	);
+			recovery: QuarantineRecovery::VerifiedSnapshotReplacement
+		})
+	));
 
 	let mut switch_io = FakeIo::new(
 		root.clone(),
@@ -2283,13 +2285,14 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 
 	let schema_switched = lifecycle_for(&root, OTHER_SERVER, 2);
 
-	assert_eq!(
-		schema_switched.view(),
-		ConnectionView::Quarantined {
+	assert_eq!(schema_switched.view(), ConnectionView::Connecting { attempt: 1 });
+	assert!(matches!(
+		schema_switched.quarantine,
+		Some(super::Quarantine {
 			reason: QuarantineReason::AuthorityChanged,
-			recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
-		}
-	);
+			recovery: QuarantineRecovery::VerifiedSnapshotReplacement
+		})
+	));
 }
 
 #[tokio::test]

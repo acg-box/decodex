@@ -109,7 +109,6 @@ impl AgentSurface {
 			&& self.snapshot.is_some()
 			&& !self.selected_is_archived()
 			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
-			&& !self.workspace.graph_expanded
 	}
 
 	/// Move keyboard and accessibility focus into the current message editor.
@@ -516,14 +515,7 @@ impl AgentSurface {
 							)
 						} else {
 							capsule
-								.when(
-									!(self.native_agents.selected.is_some()
-										&& matches!(
-											self.native_agents.connection,
-											super::native_agents::NativeConnection::ParentManaged
-										)),
-									|capsule| capsule.child(editor),
-								)
+								.child(editor)
 								.child(controls.child(self.composer_toolbar(window, cx)))
 						}
 					}),
@@ -797,23 +789,8 @@ impl AgentSurface {
 				.items_center()
 				.gap(gpui::px(8.));
 			match &self.native_agents.connection {
-				NativeConnection::ParentManaged => {
-					row = row
-						.child(
-							gpui::div()
-								.flex_1()
-								.min_w_0()
-								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child("Message this agent through its parent."),
-						)
-						.child(self.workspace_action(
-							"native-open-parent".into(),
-							"Open parent".into(),
-							|s, cx| s.open_native_parent(cx),
-							cx,
-						));
-				},
+				// Presented by the same blocked-composer surface as writer locks.
+				NativeConnection::ParentManaged => {},
 				NativeConnection::Failed(reason) => {
 					row = row
 						.child(
@@ -1333,7 +1310,8 @@ impl AgentSurface {
 				.id("composer-context-detail")
 				.debug_selector(|| "composer-context-detail".into())
 				.aria_label(format!("Context: {} of {} tokens", usage.context_tokens, capacity))
-				.flex_none()
+				.flex_shrink(1.)
+				.min_w_0()
 				.px(gpui::px(6.))
 				.flex()
 				.justify_end()
@@ -1343,11 +1321,11 @@ impl AgentSurface {
 				.line_height(gpui::px(16.))
 				.text_color(gpui::rgb(TEXT_MUTED))
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
-				.child(format!(
+				.child(gpui::div().min_w_0().text_ellipsis().child(format!(
 					"CTX {} / {}",
 					agent_surface::compact_tokens(usage.context_tokens),
 					agent_surface::compact_tokens(capacity),
-				))
+				)))
 				.into_any_element(),
 		)
 	}
@@ -1571,7 +1549,7 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn inspector_readback_does_not_remove_glass_or_change_the_draft(cx: &mut gpui::TestAppContext) {
+	fn graph_and_inspector_keep_native_glass_and_the_current_draft(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1584,6 +1562,12 @@ mod tests {
 			s.workspace.details_visible = true;
 			assert!(s.native_composer_requested(true, true));
 			s.workspace.details_visible = false;
+			assert!(s.native_composer_requested(true, true));
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = true;
+			assert!(s.graph_has_composer());
+			assert!(s.native_composer_requested(true, true));
+			s.workspace.details_visible = true;
 			assert!(s.native_composer_requested(true, true));
 			assert!(!s.native_composer_requested(false, true));
 			assert!(!s.native_composer_requested(true, false));

@@ -1,7 +1,5 @@
 //! Current unconfirmed input pages are independent of both transcript cursors.
-use gpui::{
-	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, StatefulInteractiveElement,
-};
+use gpui::{AnyElement, Div, KeyDownEvent, Role, SharedString, StatefulInteractiveElement};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::native_timeline::Binding;
@@ -9,16 +7,27 @@ use crate::{
 	shell::{
 		agent_surface,
 		agent_surface::native_timeline::{
-			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
-			InteractiveElement, IntoElement, ParentElement, Styled, Task, markdown,
+			AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, InteractiveElement,
+			IntoElement, ParentElement, Styled, Task, markdown,
 		},
 		workspace_symbols,
 	},
 	ui_feedback::Tone,
-	ui_loading, ui_motion,
-	ui_theme::{AMBER, TEXT_MUTED},
+	ui_loading,
 };
-use decodex_protocol::{AgentHistoryEntryDto, AgentInputReceiptsResult};
+use decodex_protocol::{AgentDispatchStateDto, AgentHistoryEntryDto, AgentInputReceiptsResult};
+
+pub(super) fn submission_pending(
+	state: &AgentDispatchStateDto,
+	entry: &AgentHistoryEntryDto,
+) -> bool {
+	entry.kind != "unsent_input"
+		&& matches!(state, AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running)
+		&& entry
+			.receipt
+			.as_ref()
+			.is_some_and(|receipt| !receipt.disposed && receipt.delivered_turn_id.is_none())
+}
 
 #[derive(Default)]
 pub(super) struct InputReceipts {
@@ -39,55 +48,40 @@ impl AgentSurface {
 		let title =
 			if entry.kind == "unsent_input" { "Message not sent" } else { "Delivery unconfirmed" };
 		let entry = entry.clone();
-		Tone::Warning
-			.surface()
+		gpui::div()
 			.w_full()
-			.min_w_0()
-			.px_3()
-			.py(gpui::px(6.))
+			.flex_none()
 			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(self.saved_input_toggle(key.clone(), title, expanded, cx))
-					.child(markdown::copy_button(
-						&format!("{key}-copy"),
-						"Copy saved message",
-						entry.text.clone(),
-					)),
-			)
-			.child(ui_motion::disclosure_lazy(
-				SharedString::from(format!("{key}-disclosure")),
-				expanded,
-				move |_| {
+				Tone::Warning.disclosure(
+					key.clone(),
+					expanded,
 					gpui::div()
-						.debug_selector(move || format!("saved-input-body-{}", entry.id))
-						.pt_2()
-						.pb_1()
 						.flex()
-						.flex_col()
-						.gap_2()
-						.text_size(gpui::px(12.5))
-						.line_height(gpui::px(19.))
-						.child(super::super::selectable_text::SelectableText::plain(
-							format!("{key}-text"),
-							entry.text,
-						))
-						.when_some(
-							entry.receipt.and_then(|receipt| receipt.unsent_reason),
-							|body, reason| {
-								body.child(
-									gpui::div()
-										.text_size(gpui::px(11.))
-										.text_color(gpui::rgb(TEXT_MUTED))
-										.child(reason),
-								)
-							},
-						)
-						.into_any_element()
-				},
-			))
+						.flex_none()
+						.items_center()
+						.gap(gpui::px(7.))
+						.child(self.saved_input_toggle(key.clone(), title, expanded, cx))
+						.child(markdown::copy_button(
+							&format!("{key}-copy"),
+							"Copy saved message",
+							entry.text.clone(),
+						)),
+					move |_| {
+						gpui::div()
+							.debug_selector(move || format!("saved-input-body-{}", entry.id))
+							.pt_2()
+							.flex()
+							.flex_col()
+							.gap_2()
+							.child(super::super::selectable_text::SelectableText::plain(
+								format!("{key}-text"),
+								entry.text,
+							))
+							.into_any_element()
+					},
+				),
+			)
+			.debug_selector(|| "saved-input-banner".into())
 	}
 
 	fn saved_input_toggle(
@@ -98,25 +92,16 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let keyboard = key.clone();
-		gpui::div()
-			.id(SharedString::from(format!("{key}-toggle")))
+		Tone::Warning
+			.row(SharedString::from(format!("{key}-toggle")), title)
 			.debug_selector(|| "saved-input-toggle".into())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(title)
 			.aria_expanded(expanded)
-			.flex_1()
 			.min_w_0()
-			.h(gpui::px(28.))
-			.flex()
 			.items_center()
-			.gap_2()
 			.cursor_pointer()
-			.text_size(gpui::px(12.))
-			.font_weight(FontWeight::MEDIUM)
-			.text_color(gpui::rgb(AMBER))
-			.child(Tone::Warning.icon())
-			.child(title)
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("{key}-chevron")),
 				expanded,
@@ -135,8 +120,8 @@ impl AgentSurface {
 	fn toggle_saved_input(&mut self, key: &str, cx: &mut Context<Self>) {
 		if !self.timeline.expanded_records.remove(key) {
 			self.timeline.expanded_records.insert(key.into());
-			// Saved inputs live at the transcript footer. Reuse its existing
-			// navigation so the opening card stays above the floating composer.
+			// The recovery accessory grows above the composer. Preserve bottom-follow
+			// as its measured height changes the transcript's reading space.
 			self.jump_to_latest(cx);
 		}
 		cx.notify();
@@ -240,7 +225,9 @@ impl AgentSurface {
 				shortened,
 			}) if work_id.as_str() == work.id => {
 				for entry in entries {
-					if self.preview_covers_receipt(&work.id, entry.id, &entry.text) {
+					if submission_pending(&work.dispatch_state, entry)
+						|| self.preview_covers_receipt(&work.id, entry.id, &entry.text)
+					{
 						continue;
 					}
 
@@ -302,6 +289,35 @@ mod tests {
 		AgentInputReceiptsResult, AgentSurface, EntityId,
 	};
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
+	#[test]
+	fn sending_is_not_reported_as_an_unknown_or_failed_delivery() {
+		let mut entry = AgentHistoryEntryDto {
+			id: 1,
+			kind: "user".into(),
+			text: "A novel".into(),
+			created_at_micros: 1,
+			native_source: None,
+			turn_id: None,
+			weather: vec![],
+			activity: None,
+			usage: None,
+			duration_ms: None,
+			receipt: Some(AgentHistoryReceiptDto {
+				unsent_reason: None,
+				voice_session_id: None,
+				event_kind: "async_question_answer".into(),
+				delivered_turn_id: None,
+				disposed: false,
+			}),
+		};
+		use decodex_protocol::AgentDispatchStateDto as State;
+		assert!(super::submission_pending(&State::Dispatching, &entry));
+		assert!(super::submission_pending(&State::Running, &entry));
+		assert!(!super::submission_pending(&State::Unknown, &entry));
+		assert!(!super::submission_pending(&State::Idle, &entry));
+		entry.kind = "unsent_input".into();
+		assert!(!super::submission_pending(&State::Running, &entry));
+	}
 
 	#[gpui::test]
 	fn completed_answer_stays_close_to_the_composer(cx: &mut gpui::TestAppContext) {
@@ -320,6 +336,100 @@ mod tests {
 			gap >= gpui::px(16.) && gap <= gpui::px(28.),
 			"completed response must retain only normal reading space, got {gap:?}"
 		);
+	}
+
+	#[gpui::test]
+	fn short_locked_conversation_keeps_recovery_beside_the_composer(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
+		surface.update(visual, |s, cx| {
+			long_response(s, cx);
+			let decodex_protocol::AgentTimelineContent::Item { text, .. } =
+				&mut s.timeline.native.entries[0].content
+			else {
+				panic!("fixture answer")
+			};
+			*text = "Enjoy a quiet walk along a familiar route.".into();
+			let mut inputs = page("agent", Some(7), None);
+			let AgentInputReceiptsResult::Available { entries, .. } = &mut inputs else {
+				panic!("fixture inputs")
+			};
+			let entry = &mut entries[0];
+			entry.kind = "unsent_input".into();
+			entry.text = "Keep **this** unsent message.".into();
+			entry.receipt.as_mut().unwrap().disposed = true;
+			let (_, decodex_protocol::AgentHistoryResult::Available { entries: history, .. }) =
+				s.history.as_mut().unwrap()
+			else {
+				panic!("fixture history")
+			};
+			history.push(entry.clone());
+			s.composer.update(cx, |input, cx| input.set_content("An independent draft", cx));
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "external-writer".into(),
+					work_item_id: "agent".into(),
+					event_kind: "thread_in_use_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		for _ in 0..4 {
+			visual.update(crate::ui_frame::draw_frame);
+		}
+		let card = visual.debug_bounds("expandable-notice-card").unwrap();
+		let recovery = visual.debug_bounds("composer-saved-inputs").unwrap();
+		let input = visual.debug_bounds("composer-input-region").unwrap();
+		assert!(card.top() >= recovery.top() && card.bottom() <= recovery.bottom());
+		assert!(visual.debug_bounds("composer-blocked").is_some());
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+		assert!(
+			(input.top() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP)
+				- card.bottom()
+				- gpui::px(crate::ui_theme::MESSAGE_GAP))
+			.abs()
+				< gpui::px(1.),
+			"a short transcript must not leave the saved message floating under the answer"
+		);
+		let copy = visual.debug_bounds("saved-input-agent-7-copy").unwrap();
+		visual.simulate_click(copy.center(), Default::default());
+		visual.update(|_, cx| {
+			assert_eq!(
+				cx.read_from_clipboard().and_then(|item| item.text()),
+				Some("Keep **this** unsent message.".into())
+			)
+		});
+		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		for _ in 0..20 {
+			visual.update(crate::ui_frame::draw_frame);
+			let current = visual.debug_bounds("composer-input-region").unwrap();
+			assert!((current.bottom() - input.bottom()).abs() < gpui::px(1.));
+			std::thread::sleep(std::time::Duration::from_millis(16));
+		}
+		assert!(visual.debug_bounds("saved-input-body-7").is_some());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "An independent draft");
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("composer-blocked").is_none());
+		assert!(visual.debug_bounds("composer-saved-inputs").is_some());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "An independent draft");
+			s.snapshot.as_mut().unwrap().archived_work_ids.insert("agent".into());
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("composer-saved-inputs").is_none());
+		assert!(visual.debug_bounds("local-receipt-7").is_some());
 	}
 
 	fn long_response(s: &mut AgentSurface, cx: &mut gpui::Context<AgentSurface>) {
@@ -342,21 +452,35 @@ mod tests {
 			},
 			AgentTimelinePage {
 				thread_id: "native-thread".into(),
-				entries: vec![decodex_protocol::AgentTimelineEntry {
-					position: 0,
-					content: decodex_protocol::AgentTimelineContent::Item {
-						turn_id: "turn".into(),
-						item_id: "answer".into(),
-						kind: "agentMessage".into(),
-						text: "A paragraph in the completed response.\n\n".repeat(40),
-						truncated: false,
-						phase: None,
-						collaboration: None,
-						app_ui: false,
-						activity: None,
-						attachments: vec![],
+				entries: vec![
+					decodex_protocol::AgentTimelineEntry {
+						position: 0,
+						content: decodex_protocol::AgentTimelineContent::Item {
+							turn_id: "turn".into(),
+							item_id: "answer".into(),
+							kind: "agentMessage".into(),
+							text: "A paragraph in the completed response.\n\n".repeat(40),
+							truncated: false,
+							phase: None,
+							collaboration: None,
+							app_ui: false,
+							activity: None,
+							attachments: vec![],
+						},
 					},
-				}],
+					decodex_protocol::AgentTimelineEntry {
+						position: 1,
+						content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+							turn_id: "turn".into(),
+							completed: true,
+							status: Some("completed".into()),
+							duration_ms: Some(1_200),
+							usage: None,
+							usage_summary: None,
+							error: None,
+						},
+					},
+				],
 				next_cursor: None,
 				weather: Default::default(),
 				thread_token_total: None,
@@ -394,27 +518,79 @@ mod tests {
 		for _ in 0..4 {
 			visual.update(crate::ui_frame::draw_frame);
 		}
+		let banner = visual.debug_bounds("saved-input-banner").unwrap();
+		let card = visual.debug_bounds("expandable-notice-card").unwrap();
+		assert_eq!(card.size.height, gpui::px(32.));
+		assert!((card.center().x - banner.center().x).abs() < gpui::px(1.));
+		assert!(
+			card.size.width < banner.size.width * 0.75,
+			"{card:?} must stay compact in {banner:?}"
+		);
+		let assert_spacing = |visual: &mut gpui::VisualTestContext| {
+			let metrics = visual.debug_bounds("turn-metrics-hover").unwrap();
+			let card = visual.debug_bounds("expandable-notice-card").unwrap();
+			let footer = visual.debug_bounds("composer-input-region").unwrap();
+			// The footer's 12px icons are centered inside 24px click targets.
+			// Compare their visible edge, rather than the invisible hit area.
+			let above = card.top() - (metrics.center().y + gpui::px(6.));
+			let below = footer.top() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP) - card.bottom();
+			for gap in [above, below] {
+				assert!(
+					(gap - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs() < gpui::px(1.),
+					"saved input must have balanced visible spacing above and below, got {gap:?}"
+				);
+			}
+		};
+		assert_spacing(visual);
 		let before = surface.update(visual, |s, _| {
 			s.timeline.latest_follow_work = None;
 			s.timeline.follow_paused.insert("agent".into());
-			s.timeline.scroll["agent"].offset().y
+			let scroll = &s.timeline.scroll["agent"];
+			scroll.set_offset(gpui::point(gpui::px(0.), scroll.offset().y + gpui::px(12.)));
+			scroll.offset().y
 		});
-		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
-		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		std::thread::sleep(std::time::Duration::from_millis(280));
-		for _ in 0..8 {
+		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
+		let visible_gap = |visual: &mut gpui::VisualTestContext| {
+			let card = visual.debug_bounds("expandable-notice-card").unwrap();
+			let footer = visual.debug_bounds("composer-input-region").unwrap();
+			footer.top() + gpui::px(crate::ui_theme::COMPOSER_TOP_GAP) - card.bottom()
+		};
+		let mut previous_gap = visible_gap(visual);
+		visual.simulate_click(toggle.center(), Default::default());
+		for _ in 0..20 {
 			visual.update(crate::ui_frame::draw_frame);
+			let gap = visible_gap(visual);
+			assert!(
+				gap + gpui::px(1.) >= previous_gap,
+				"opening must approach its resting gap without dipping toward the composer: {previous_gap:?} -> {gap:?}"
+			);
+			previous_gap = gap;
+			std::thread::sleep(std::time::Duration::from_millis(16));
 		}
 		let body = visual.debug_bounds("saved-input-body-7").unwrap();
-		let composer = visual.debug_bounds("floating-composer").unwrap();
+		let composer = visual.debug_bounds("composer-input-region").unwrap();
 		assert!(body.bottom() <= composer.top(), "{body:?} is covered by {composer:?}");
+		assert_spacing(visual);
 		surface.read_with(visual, |s, _| {
 			assert!(
 				s.timeline.scroll["agent"].offset().y < before,
 				"opening the footer must reveal its new content"
 			);
 		});
+		for _ in 0..4 {
+			let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
+			visual.simulate_click(toggle.center(), Default::default());
+			for _ in 0..3 {
+				visual.update(crate::ui_frame::draw_frame);
+				assert!(
+					(visible_gap(visual) - gpui::px(crate::ui_theme::MESSAGE_GAP)).abs()
+						< gpui::px(1.),
+					"reversing the disclosure must keep its bottom edge anchored"
+				);
+				std::thread::sleep(std::time::Duration::from_millis(16));
+			}
+		}
 	}
 
 	fn page(work: &str, id: Option<i64>, next_after: Option<i64>) -> AgentInputReceiptsResult {
