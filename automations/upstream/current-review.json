@@ -27,7 +27,7 @@
     "upstream_test_executions_across_attempts": 556,
     "native_behavior_tests_executed_count": 32,
     "local_projection_tests_executed_count": 2,
-    "runtime_migration": "Necessary retained-capability repairs retain the fixed qualified runtime. The user-approved native sample surface is implemented and qualified by retained_native_coordination.separate_answers; startup diagnostics has approval and a separate implementation batch.",
+    "runtime_migration": "Both user-approved surfaces are implemented and qualified at the unchanged fixed development runtime: retained_native_coordination.separate_answers and retained_native_diagnostics.startup_configuration. Native owns inference and startup policy; Decodex owns explicit presentation and coordination. No installed-app acceptance or runtime migration is claimed by this feature adoption.",
     "artifact_readback": "All selected component hashes, strict signatures, commit markers and actual generated schema were verified.",
     "source_integrity": "All official codeload archive blobs match the fixed fetched Git tree, actual package build source and review source. No toolchain source edits; builds explicitly use unversioned stable.",
     "limits": "Fixed official source; signed private-stdio development runtime on the qualifying macOS arm64 host, Code Mode and rg helpers, affected source tests and retained loopback native consumer regressions. No app installation or release. Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance."
@@ -2202,7 +2202,7 @@
         "codex-rs/cli/src/main.rs#LogoutCommand",
         "codex-rs/cli/src/main.rs#cli_main"
       ],
-      "decodex_consumer": "Current private-stdio startup uses crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS and existing config negotiation. Startup diagnostic/sign-out flags have no production consumer. Shared source config/startup tests and retained actual CLI launches qualify current behavior; no diagnostic product surface or real-account sign-out is adopted.",
+      "decodex_consumer": "crates/decodex-runtime/src/account_launch/process_startup_config.rs#inspect_native_startup_configuration; crates/decodex-protocol/src/client.rs#DoctorClient::startup_configuration; apps/decodex-gpui/src/shell_startup_config.rs#start,#content. User-approved explicit local-service diagnostic works without conversation capability. Shared native sign-in is checked; task account overrides and sign-out are outside this surface.",
       "source_references": [
         "codex-rs/app-server/src/config_manager.rs",
         "codex-rs/app-server/src/lib.rs",
@@ -2282,12 +2282,17 @@
         }
       ],
       "upstream_test_executed_count": 6,
-      "runtime_disposition": "not selected; user decision required for a new Decodex product surface",
+      "runtime_disposition": "User-approved startup configuration diagnostics are implemented and qualified against the existing fixed artifact; no artifact migration or sign-out surface.",
       "validation_limits": "Read evidence and execution evidence are separate. Only listed matching source tests and the retained exact-artifact selection were executed. No live provider/account or installed-app acceptance.",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
       "product_adoption": {
-        "status": "approved_pending_implementation",
-        "scope": "On-demand native startup configuration diagnostics through the existing failure/diagnostic UI. No signout control."
+        "status": "approved_implemented_qualified",
+        "scope": "On-demand native startup configuration checks in existing Diagnostics technical details. Shared sign-in and selected folder; no sign-out control.",
+        "evidence": "automations/upstream/retained-evidence.json#retained_native_diagnostics.startup_configuration",
+        "delivery_references": [
+          "https://github.com/acg-box/decodex/commit/3562acc80e75789c96b15011c51cc60dc75a3f0a",
+          "https://github.com/acg-box/decodex/commit/a5b7a450b599071b97d89c6e8bffd312c327d7e8"
+        ]
       }
     },
     {
@@ -4024,7 +4029,7 @@
         }
       ],
       "upstream_test_executed_count": 14,
-      "runtime_disposition": "not selected; user decision required for a new Decodex product surface",
+      "runtime_disposition": "User-approved separate answers are delivered in PR 2465 and qualified against the existing fixed artifact; retained prediction and recap remain independent.",
       "validation_limits": "Read evidence and execution evidence are separate. Only listed matching source tests and the retained exact-artifact selection were executed. No live provider/account or installed-app acceptance.",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
       "product_adoption": {
@@ -4032,7 +4037,8 @@
         "evidence": "automations/upstream/retained-evidence.json#retained_native_coordination.separate_answers",
         "delivery_references": [
           "https://github.com/acg-box/decodex/commit/74c5d5dba0b3339089beb20146e4912919255e14",
-          "https://github.com/acg-box/decodex/commit/5d4db2a2b686c205ceac020d93cb91e1e7b8c0cb"
+          "https://github.com/acg-box/decodex/commit/5d4db2a2b686c205ceac020d93cb91e1e7b8c0cb",
+          "https://github.com/acg-box/decodex/pull/2465"
         ]
       }
     },
