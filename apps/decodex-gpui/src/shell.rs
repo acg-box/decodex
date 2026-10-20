@@ -313,6 +313,8 @@ impl Shell {
 		});
 
 		cx.observe(&agent, |shell, _, cx| {
+			let statistics = shell.agent.read(cx).work_statistics();
+			shell.performance.update(cx, |island, cx| island.set_work(statistics, cx));
 			shell.record_navigation(cx);
 			shell.sync_ordinary_drafts(cx);
 			cx.notify();
@@ -2883,7 +2885,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle Dock · Command-J",
-		(2, _) => "Toggle agent structure · Command-B",
+		(2, _) => "Toggle work activity · Command-B",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -7908,7 +7910,13 @@ mod tests {
 			cx.refresh_windows();
 			window.draw(cx).clear(cx);
 		});
-		assert!(visual.debug_bounds("performance-island-toggle").is_none());
+		let pill = visual.debug_bounds("activity-island-toggle").expect("work activity");
+		assert!(visual.debug_bounds("activity-debug-control").is_none());
+		assert!(visual.debug_bounds("performance-fps").is_none());
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert!(controls.iter().any(|bounds| bounds.contains(&pill.center())));
+		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		assert!(!controls.iter().any(|bounds| bounds.contains(&blank)));
 	}
 
 	#[gpui::test]

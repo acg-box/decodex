@@ -1,7 +1,7 @@
-//! Fixed graph-header geometry, with the same overflow and work-indicator motion.
+//! Agent identities and current work, with stable text while native output grows.
 use crate::{
-	ui_motion::{self, OverflowLine},
-	ui_theme::TEXT_MUTED,
+	ui_motion,
+	ui_theme::{TEXT, TEXT_MUTED},
 };
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 use std::time::Instant;
@@ -9,121 +9,167 @@ use std::time::Instant;
 #[derive(IntoElement)]
 pub(super) struct Header {
 	pub key: String,
-	pub title: String,
-	pub label: Option<String>,
-	pub task: Option<String>,
-	pub scale: f32,
+	pub identity: String,
+	pub show_assignment: bool,
+	pub task: String,
+	pub preview: String,
+	pub layout: super::card::Layout,
 	pub color: u32,
-	pub running: bool,
-	pub clock: Instant,
 }
-impl RenderOnce for Header {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let mut style = window.text_style();
-		style.font_size = gpui::px(12. * self.scale).into();
-		let title = OverflowLine::new(
-			format!("relation-title-{}", self.key).into(),
-			self.title.into(),
-			style.clone(),
-			window,
+
+struct PreviewSwap {
+	task_source: String,
+	task: String,
+	source: String,
+	current: String,
+	previous: Option<String>,
+	started: Instant,
+}
+
+impl Header {
+	fn preview(&self, window: &mut Window, cx: &mut App) -> (String, String, Option<String>, f32) {
+		let now = Instant::now();
+		let state = window.use_keyed_state(
+			gpui::SharedString::from(format!("relation-preview-{}", self.key)),
 			cx,
-		);
-		style.font_size = gpui::px(10. * self.scale).into();
-		style.color = gpui::rgb(TEXT_MUTED).into();
-		let label_height = style.line_height_in_pixels(window.rem_size());
-		let label = self.label.map(|text| {
-			let run = gpui::TextRun {
-				len: text.len(),
-				font: style.font(),
-				color: style.color,
-				background_color: None,
-				underline: None,
-				strikethrough: None,
-			};
-			window.text_system().shape_line(text.into(), gpui::px(10. * self.scale), &[run], None)
-		});
-		style.font_size = gpui::px(11. * self.scale).into();
-		let task = self.task.map(|text| {
-			OverflowLine::new(
-				format!("relation-task-{}", self.key).into(),
-				text.into(),
-				style,
-				window,
-				cx,
-			)
-		});
-		let row_height = title.height.max(gpui::px(10. * self.scale));
-		let task_top = row_height + gpui::px(3. * self.scale);
-		let height = task.as_ref().map_or(row_height, |task| task_top + task.height);
-		gpui::canvas(
-			|_, _, _| (),
-			move |bounds, _, window, cx| {
-				let mut x = bounds.left();
-				if let Some(label) = &label {
-					window.paint_layer(bounds, |window| {
-						let _ = label.paint(
-							gpui::point(x, bounds.top() + (row_height - label_height) / 2.),
-							label_height,
-							gpui::TextAlign::Left,
-							None,
-							window,
-							cx,
-						);
-					});
-					x += label.width + gpui::px(8. * self.scale);
-				}
-				let lamp = gpui::Bounds::new(
-					gpui::point(x, bounds.top() + (row_height - gpui::px(10. * self.scale)) / 2.),
-					gpui::size(gpui::px(10. * self.scale), gpui::px(10. * self.scale)),
-				);
-				paint_lamp(lamp, self.color, self.running, self.scale, self.clock, window, cx);
-				x += gpui::px(18. * self.scale);
-				title.paint(
-					gpui::Bounds::new(
-						gpui::point(x, bounds.top()),
-						gpui::size((bounds.right() - x).max(gpui::px(0.)), row_height),
-					),
-					window,
-					cx,
-				);
-				if let Some(task) = &task {
-					task.paint(
-						gpui::Bounds::new(
-							bounds.origin + gpui::point(gpui::px(0.), task_top),
-							gpui::size(bounds.size.width, task.height),
-						),
-						window,
-						cx,
-					);
-				}
+			|_, _| PreviewSwap {
+				task_source: self.task.clone(),
+				task: super::super::activity::text(&self.task),
+				source: self.preview.clone(),
+				current: super::super::activity::text(&self.preview),
+				previous: None,
+				started: now,
 			},
-		)
-		.w_full()
-		.h(height)
-		.flex_none()
+		);
+		let (task, current, previous, progress) = state.update(cx, |state, _| {
+			if state.task_source != self.task {
+				state.task_source = self.task.clone();
+				state.task = super::super::activity::text(&self.task);
+			}
+			if state.source != self.preview {
+				let next = super::super::activity::text(&self.preview);
+				let growing = self.preview.starts_with(&state.source);
+				state.previous = (!ui_motion::reduced() && !growing && next != state.current)
+					.then(|| state.current.clone());
+				state.current = next;
+				state.source = self.preview.clone();
+				state.started = now;
+			}
+			let progress = if ui_motion::reduced() {
+				1.
+			} else {
+				(state.started.elapsed().as_secs_f32() / 0.22).min(1.)
+			};
+			if progress >= 1. {
+				state.previous = None;
+			}
+			let opacity = if state.previous.is_some() { progress } else { 1. };
+			(state.task.clone(), state.current.clone(), state.previous.clone(), opacity)
+		});
+		if previous.is_some() {
+			ui_motion::request_frame(window, cx);
+		}
+		let task = if task.is_empty() { "Assignment unavailable".into() } else { task };
+		(task, current, previous, progress)
+	}
+
+	fn status_light(&self) -> gpui::Div {
+		let selector = format!("relation-status-{}", self.key);
+		gpui::div()
+			.debug_selector(move || selector.clone())
+			.size(gpui::px(5. * self.layout.chrome_scale))
+			.flex_none()
+			.rounded_full()
+			.bg(gpui::rgb(self.color))
+	}
+
+	fn identity_row(&self) -> gpui::Div {
+		let identity_selector = format!("relation-identity-{}", self.key);
+		let task_selector = format!("relation-task-{}", self.key);
+		gpui::div()
+			.debug_selector(move || task_selector.clone())
+			.flex()
+			.items_start()
+			.gap(gpui::px(7. * self.layout.text_scale))
+			.h(gpui::px(if self.show_assignment { 13. } else { 26. } * self.layout.text_scale))
+			.child(self.status_light().mt(gpui::px(4. * self.layout.text_scale)))
+			.child(
+				gpui::div()
+					.debug_selector(move || identity_selector.clone())
+					.flex_1()
+					.min_w_0()
+					.whitespace_normal()
+					.line_clamp(if self.show_assignment { 1 } else { 2 })
+					.text_ellipsis()
+					.text_size(gpui::px(11. * self.layout.text_scale))
+					.line_height(gpui::px(13. * self.layout.text_scale))
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.text_color(gpui::rgb(TEXT))
+					.child(self.identity.clone()),
+			)
 	}
 }
 
-fn paint_lamp(
-	bounds: gpui::Bounds<gpui::Pixels>,
-	color: u32,
-	running: bool,
-	scale: f32,
-	clock: Instant,
-	window: &mut Window,
-	cx: &mut App,
-) {
-	if running && !ui_motion::reduced() {
-		let phase = (clock.elapsed().as_secs_f32() / 2.8).fract();
-		let alpha = (24. + 32. * (phase * std::f32::consts::TAU).sin().abs()) as u32;
-		window.paint_quad(
-			gpui::fill(bounds, gpui::rgba((color << 8) | alpha)).corner_radii(gpui::px(5. * scale)),
-		);
-		ui_motion::request_frame(window, cx);
+impl RenderOnce for Header {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let selector = format!("relation-activity-{}", self.key);
+		let (task, current, previous, progress) = self.preview(window, cx);
+		let task_selector = format!("relation-assignment-{}", self.key);
+		let preview_selector = format!("relation-preview-{}", self.key);
+		let opacity = progress * progress * (3. - 2. * progress);
+		let preview_line = |text: String| {
+			gpui::div()
+				.absolute()
+				.inset_0()
+				.whitespace_normal()
+				.line_clamp(self.layout.preview_lines)
+				.text_ellipsis()
+				.text_size(gpui::px(10. * self.layout.text_scale))
+				.line_height(gpui::px(11. * self.layout.text_scale))
+				.text_color(gpui::rgb(TEXT_MUTED))
+				.child(text)
+		};
+		gpui::div()
+			.debug_selector(move || selector.clone())
+			.w_full()
+			.flex_none()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(4. * self.layout.text_scale))
+			.child(self.identity_row())
+			.when(self.show_assignment && task != self.identity && !task.is_empty(), |view| {
+				view.child(
+					gpui::div()
+						.debug_selector(move || task_selector.clone())
+						.w_full()
+						.h(gpui::px(12. * self.layout.text_scale * self.layout.task_lines as f32))
+						.flex_none()
+						.text_size(gpui::px(10.5 * self.layout.text_scale))
+						.line_height(gpui::px(12. * self.layout.text_scale))
+						.font_weight(gpui::FontWeight::NORMAL)
+						.text_color(gpui::rgb(TEXT))
+						.whitespace_normal()
+						.line_clamp(self.layout.task_lines)
+						.text_ellipsis()
+						.overflow_hidden()
+						.child(task),
+				)
+			})
+			.when(!current.is_empty(), |view| {
+				view.child(
+					gpui::div()
+						.debug_selector(move || preview_selector.clone())
+						.relative()
+						.w_full()
+						.h(gpui::px(
+							11. * self.layout.text_scale * self.layout.preview_lines as f32,
+						))
+						.flex_none()
+						.overflow_hidden()
+						.children(previous.map(|text| preview_line(text).opacity(1. - opacity)))
+						.child(preview_line(current).opacity(opacity)),
+				)
+			})
 	}
-	let dot = gpui::Bounds::new(
-		bounds.origin + gpui::point(gpui::px(2. * scale), gpui::px(2. * scale)),
-		gpui::size(gpui::px(6. * scale), gpui::px(6. * scale)),
-	);
-	window.paint_quad(gpui::fill(dot, gpui::rgb(color)).corner_radii(gpui::px(3. * scale)));
 }

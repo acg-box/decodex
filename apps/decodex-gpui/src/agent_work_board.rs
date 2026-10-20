@@ -1,5 +1,7 @@
 //! Source-backed agent relationships and execution previews.
+#[path = "agent_relation_activity.rs"] mod activity;
 #[path = "agent_relation_canvas.rs"] mod relations;
+#[path = "agent_workbench.rs"] mod workbench;
 use super::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Styled,
 	ui_theme::{AMBER, GREEN, TEXT_MUTED},
@@ -10,10 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(super) struct Board {
 	pub(super) graph: bool,
+	pub(super) workbench_history_expanded: bool,
 	focus: Option<String>,
 	view: relations::View,
 	pub(super) briefs: BTreeMap<String, Brief>,
 	usage: Option<BTreeMap<String, (Option<String>, relations::metrics::Metrics)>>,
+	token_gaps: usize,
 	pub(super) brief_task: Option<gpui::Task<()>>,
 	reload_pending: BTreeSet<String>,
 }
@@ -50,6 +54,92 @@ pub(super) struct Row {
 }
 
 impl AgentSurface {
+	pub(crate) fn work_statistics(&self) -> Option<crate::ui_work_metrics::Summary> {
+		if self.workspace_connecting() {
+			return None;
+		}
+		let rows = self.factory_rows();
+		if rows.is_empty() {
+			return None;
+		}
+		let samples = rows
+			.iter()
+			.map(|row| {
+				self.work_board
+					.usage
+					.as_ref()
+					.and_then(|usage| usage.get(&row.key))
+					.filter(|(thread, _)| thread == &row.thread)
+					.map(|(_, sample)| *sample)
+					.unwrap_or_default()
+			})
+			.collect();
+		let mut live: Vec<_> = rows.iter().filter_map(|row| self.live_work_activity(row)).collect();
+		live.sort_by_key(|row| {
+			self.snapshot.as_ref().and_then(|s| s.agent_slots.get(&row.key)).copied()
+		});
+		Some(crate::ui_work_metrics::Summary {
+			working: rows.iter().filter(|row| row.group == 1).count(),
+			samples,
+			live,
+		})
+	}
+
+	fn live_work_activity(&self, row: &Row) -> Option<crate::ui_work_metrics::Live> {
+		if row.group != 1 || self.graph_question(row).is_some() {
+			return None;
+		}
+		let brief = self
+			.work_board
+			.briefs
+			.get(&row.key)
+			.filter(|brief| brief.source_thread == row.thread)?;
+		let sample = brief.metrics;
+		sample.active_time()?;
+		let turn = self
+			.snapshot
+			.as_ref()?
+			.work_items
+			.iter()
+			.find(|work| work.id == row.work && work.codex_thread_id == row.thread)
+			.and_then(|work| work.active_turn_id.as_deref());
+		if turn
+			.is_some_and(|turn| brief.preview.as_ref().is_none_or(|preview| preview.turn != turn))
+		{
+			return None;
+		}
+		let action = if sample.stats?.generating {
+			"Generating".into()
+		} else {
+			let current = self
+				.timeline
+				.native
+				.binding
+				.as_ref()
+				.filter(|binding| {
+					binding.work == row.work && row.thread.as_ref() == Some(&binding.thread)
+				})
+				.and_then(|_| activity::latest(&self.timeline.native.entries, turn));
+			current
+				.as_ref()
+				.or(brief.preview.as_ref())
+				.filter(|preview| turn.is_none_or(|turn| preview.turn == turn))
+				.and_then(|preview| preview.running.clone())
+				.unwrap_or_else(|| row.status.clone())
+		};
+		let slot = self.snapshot.as_ref()?.agent_slots.get(&row.key)?;
+		Some(crate::ui_work_metrics::Live {
+			key: row.key.clone(),
+			agent: format!("A{slot}"),
+			action,
+			sample,
+		})
+	}
+
+	pub(super) fn token_statistics_gap(&self) -> usize {
+		self.work_board.token_gaps
+	}
+
 	pub(super) fn debug_reload_graph(&mut self) {
 		self.work_board.brief_task = None;
 		// Keep visible values while forcing every brief to be read again.
@@ -79,6 +169,11 @@ impl AgentSurface {
 				.as_ref()
 				.and_then(|id| snapshot.work_items.iter().find(|w| &w.id == id));
 			let review = handoffs.iter().any(|h| h.work == work.id && h.result && h.attention);
+			let (status, group, color) = if self.work_is_archived(&work.id) {
+				("Archived", 2, TEXT_MUTED)
+			} else {
+				(state.label, state.group, state.color)
+			};
 			rows.push(Row {
 				key: work.id.clone(),
 				work: work.id.clone(),
@@ -88,10 +183,10 @@ impl AgentSurface {
 				owner: owner.map(|w| self.work_label(w)).unwrap_or_default(),
 
 				workspace: workspace_for(&work.id),
-				status: state.label.into(),
+				status: status.into(),
 				review,
-				group: state.group,
-				color: state.color,
+				group,
+				color,
 			});
 		}
 		for (owner, agents) in &self.native_agents.lists {
@@ -187,32 +282,17 @@ fn native_state(status: &str) -> (&'static str, u8, u32) {
 impl AgentSurface {
 	pub(super) fn render_work_board(&self, cx: &mut Context<Self>) -> AnyElement {
 		let graph = self.relation_graph();
-		let mut content =
-			gpui::div().flex_1().h_0().min_h_0().flex().child(self.relation_canvas(&graph, cx));
-		if let Some(edge) = self
-			.work_board
-			.view
-			.edge
-			.as_ref()
-			.and_then(|picked| graph.edges.iter().find(|e| e.id == picked.id))
-			.cloned()
-		{
-			content = content.child(self.relation_details(&edge, cx));
-		}
-
-		gpui::div()
-			.size_full()
-			.flex()
-			.flex_col()
-			.child(content)
-			.child(self.relation_metrics(&graph, cx))
-			.into_any_element()
+		self.relation_canvas(&graph, cx)
 	}
 }
 
 pub(super) struct Brief {
 	source_thread: Option<String>,
+	output: Option<activity::Output>,
+	assignments: BTreeMap<String, String>,
 	outcome: Option<(String, String)>,
+	preview: Option<activity::Preview>,
+	question: Option<String>,
 	resources: Option<Vec<decodex_protocol::AgentResourceDto>>,
 	relations: Vec<(String, decodex_protocol::AgentCollaborationDto)>,
 	metrics: relations::metrics::Metrics,
@@ -221,13 +301,179 @@ pub(super) struct Brief {
 }
 
 impl AgentSurface {
+	fn graph_question(&self, row: &Row) -> Option<&str> {
+		if self.work_is_archived(&row.key) {
+			return None;
+		}
+		if !row.native
+			&& self.conversation_matches(&row.work, row.thread.as_deref().unwrap_or_default())
+			&& let Some((owner, super::AgentHistoryResult::Available { questions, .. })) =
+				&self.history
+			&& owner == &row.work
+		{
+			return questions.last().map(|question| question.title.as_str());
+		}
+		self.work_board
+			.briefs
+			.get(&row.key)
+			.filter(|brief| {
+				brief.question.is_some()
+					&& brief.source_thread == row.thread
+					&& brief.stamp == self.brief_stamp(row)
+			})
+			.and_then(|brief| brief.question.as_deref())
+	}
+
+	fn work_output(&self, row: &Row) -> Option<activity::OutputRef<'_>> {
+		let brief =
+			self.work_board.briefs.get(&row.key).filter(|brief| brief.source_thread == row.thread);
+		let turn = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| {
+				snapshot
+					.work_items
+					.iter()
+					.find(|work| work.id == row.work && work.codex_thread_id == row.thread)
+			})
+			.and_then(|work| work.active_turn_id.as_deref());
+		let current = self
+			.timeline
+			.native
+			.binding
+			.as_ref()
+			.filter(|binding| {
+				binding.work == row.work && row.thread.as_ref() == Some(&binding.thread)
+			})
+			.and_then(|_| activity::latest_output(&self.timeline.native.entries));
+		current
+			.or_else(|| {
+				brief.and_then(|brief| brief.output.as_ref()).map(activity::Output::borrowed)
+			})
+			.filter(|output| turn.is_none_or(|turn| output.turn == turn))
+	}
+
+	fn work_activity_summary(&self, row: &Row) -> (String, String) {
+		if let Some(question) = self.graph_question(row) {
+			return ("Needs your answer".into(), question.into());
+		}
+		if row.group == 1
+			&& let Some(live) = self.live_work_activity(row)
+		{
+			return ("Now".into(), live.action);
+		}
+		if let Some(output) = self.work_output(row) {
+			let complete = self
+				.work_board
+				.briefs
+				.get(&row.key)
+				.filter(|brief| brief.source_thread == row.thread)
+				.and_then(|brief| brief.outcome.as_ref())
+				.is_some_and(|(turn, status)| {
+					turn.as_str() == output.turn && status == "completed"
+				});
+			if row.group != 1 || !complete {
+				return (
+					if complete { "Latest result" } else { "Latest update" }.into(),
+					activity::text(output.text),
+				);
+			}
+		}
+		let (_, operation) = self.graph_preview(row);
+		if !operation.is_empty()
+			&& operation != row.status
+			&& operation != "Exit status unavailable"
+		{
+			return (if row.group == 1 { "Now" } else { "Last activity" }.into(), operation);
+		}
+		(row.status.clone(), String::new())
+	}
+
+	fn graph_preview(&self, row: &Row) -> (String, String) {
+		if self.work_is_archived(&row.key) {
+			return (row.title.clone(), "Archived conversation".into());
+		}
+		let work =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == row.work));
+		let turn = work
+			.filter(|w| w.codex_thread_id == row.thread)
+			.and_then(|w| w.active_turn_id.as_deref());
+		let current = if self
+			.conversation_matches(&row.work, row.thread.as_deref().unwrap_or_default())
+			&& let Some(binding) = &self.timeline.native.binding
+			&& binding.work == row.work
+			&& row.thread.as_ref() == Some(&binding.thread)
+		{
+			activity::latest(&self.timeline.native.entries, turn)
+		} else {
+			None
+		};
+		let preview = current.as_ref().or_else(|| {
+			self.work_board
+				.briefs
+				.get(&row.key)
+				.filter(|brief| brief.source_thread == row.thread)
+				.and_then(|brief| brief.preview.as_ref())
+				.filter(|preview| turn.is_none_or(|turn| preview.turn == turn))
+		});
+		// Native nicknames are not responsibilities. Missing assignment metadata
+		// can use the exact native input; assistant replies never supply this label.
+		let task = if row.native && row.title == row.owner {
+			preview
+				.filter(|preview| !preview.task.is_empty())
+				.map(|preview| preview.task.clone())
+				.or_else(|| self.native_assignment(row))
+				.unwrap_or_default()
+		} else {
+			row.title.clone()
+		};
+		let operation = self
+			.graph_question(row)
+			.map(str::to_owned)
+			.or_else(|| preview.map(|preview| preview.text.clone()))
+			.unwrap_or_default();
+		(task, operation)
+	}
+
+	fn native_assignment(&self, row: &Row) -> Option<String> {
+		let thread = row.thread.as_ref()?;
+		let agent = self
+			.native_agents
+			.lists
+			.get(&row.work)?
+			.iter()
+			.find(|agent| &agent.thread_id == thread)?;
+		let brief = self
+			.work_board
+			.briefs
+			.values()
+			.find(|brief| brief.source_thread.as_ref() == Some(&agent.parent_thread_id))?;
+		brief.assignments.get(thread).cloned()
+	}
+
 	fn factory_rows(&self) -> Vec<Row> {
-		self.board_rows()
+		self.board_rows().into_iter().filter(|row| !self.work_is_archived(&row.key)).collect()
 	}
 
 	fn brief_stamp(&self, row: &Row) -> String {
 		let work =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == row.work));
+		if row.native {
+			// Parent progress and sibling events must not invalidate a child's preview.
+			return serde_json::json!([
+				work.map(|w| &w.codex_thread_id),
+				self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()),
+				row.thread,
+				self.native_agents
+					.lists
+					.get(&row.work)
+					.and_then(|agents| agents
+						.iter()
+						.find(|agent| Some(&agent.thread_id) == row.thread.as_ref()))
+					.map(|agent| &agent.status)
+			])
+			.to_string();
+		}
 		serde_json::json!([
 			work.map(|w| self.dock_evidence_key(w)),
 			row.thread,
@@ -243,15 +489,16 @@ impl AgentSurface {
 	}
 
 	// Publish a complete read together so partial batches cannot resize the usage strip.
-	fn publish_usage(&mut self) {
+	fn publish_usage(&mut self) -> bool {
 		if self.native_agent_discovery_pending() {
-			return;
+			return false;
 		}
 		let rows = self.factory_rows();
 		if rows.iter().any(|row| self.work_board.reload_pending.contains(&row.key)) {
-			return;
+			return false;
 		}
 		let mut usage = BTreeMap::new();
+		let mut token_gaps = 0;
 		for row in rows.iter().filter(|row| row.thread.is_some()) {
 			let Some(brief) = self
 				.work_board
@@ -259,51 +506,32 @@ impl AgentSurface {
 				.get(&row.key)
 				.filter(|brief| brief.source_thread == row.thread)
 			else {
-				return;
+				return false;
 			};
+			if brief.metrics.tokens.is_none()
+				&& brief
+					.metrics
+					.stats
+					.is_some_and(|stats| stats.active_ms.is_none() && !stats.generating)
+				&& brief.outcome.as_ref().is_some_and(|(_, status)| status == "completed")
+			{
+				token_gaps += 1;
+			}
 			usage.insert(row.key.clone(), (row.thread.clone(), brief.metrics));
 		}
+		let changed = self.work_board.usage.as_ref() != Some(&usage)
+			|| self.work_board.token_gaps != token_gaps;
 		self.work_board.usage = Some(usage);
+		self.work_board.token_gaps = token_gaps;
+		changed
 	}
 
-	pub(super) fn refresh_factory_briefs(&mut self, cx: &mut Context<Self>) {
-		if self.work_board.graph
-			|| !self.workspace.graph_visible
-			|| self.work_board.brief_task.is_some()
-			|| !self.command_connection_ready()
-		{
-			return;
-		}
-		let Some(profile) = self.profile.clone() else { return };
-		let mut rows = self.factory_rows();
-		rows.retain(|r| r.thread.is_some());
-		rows.sort_by_key(|r| self.work_board.briefs.get(&r.key).map(|b| b.read_at));
-		let requests: Vec<_> = rows
-			.into_iter()
-			.filter(|r| {
-				self.work_board.reload_pending.contains(&r.key)
-					|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
-						b.stamp != self.brief_stamp(r)
-							|| (r.group == 1 && b.read_at.elapsed().as_secs() >= 5)
-							|| b.read_at.elapsed().as_secs() >= 30
-					})
-			})
-			.take(4)
-			.map(|row| {
-				let stamp = self.brief_stamp(&row);
-				(row, stamp)
-			})
-			.collect();
-		if requests.is_empty() {
-			if self.work_board.usage.is_none() {
-				self.publish_usage();
-				if self.work_board.usage.is_some() {
-					cx.notify();
-				}
-			}
-			return;
-		}
-		let read = cx.background_executor().spawn(async move {
+	fn read_factory_briefs(
+		profile: super::ClientProfile,
+		requests: Vec<(Row, String)>,
+		cx: &Context<Self>,
+	) -> gpui::Task<Vec<(String, Brief)>> {
+		cx.background_executor().spawn(async move {
 			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
 			else {
 				return Vec::new();
@@ -320,7 +548,11 @@ impl AgentSurface {
 					};
 					let mut relations = Vec::new();
 					let mut outcome = None;
+					let mut preview = None;
+					let mut output = None;
+					let mut assignments = BTreeMap::new();
 					let mut metrics = relations::metrics::Metrics::default();
+					let mut available = false;
 					if let Ok(result) = client.timeline(owner.clone(), thread.clone(), None).await
 						&& let decodex_protocol::AgentTimelineResult::Available {
 							work_id,
@@ -330,8 +562,12 @@ impl AgentSurface {
 						&& work_id.as_str() == owner.as_str()
 						&& page.thread_id == thread.as_str()
 					{
-						metrics = relations::metrics::Metrics::from_entries(&page.entries);
+						available = true;
+						metrics = relations::metrics::Metrics::from_page(page);
 						outcome = latest_outcome(&page.entries);
+						preview = activity::latest(&page.entries, None);
+						output = activity::output(&page.entries);
+						assignments = activity::assignments(&page.entries, &page.thread_id);
 						relations = page
 							.entries
 							.iter()
@@ -345,7 +581,21 @@ impl AgentSurface {
 							})
 							.collect();
 					}
+					if !available {
+						// A transient read failure must not erase the last visible content or
+						// counters.
+						continue;
+					}
 
+					let question = if row.native {
+						None
+					} else {
+						match client.history(owner.clone()).await {
+							Ok(super::AgentHistoryResult::Available { questions, .. }) =>
+								questions.last().map(|question| question.title.clone()),
+							_ => None,
+						}
+					};
 					let resources = if row.native {
 						None
 					} else {
@@ -358,8 +608,12 @@ impl AgentSurface {
 					results.push((
 						row.key,
 						Brief {
+							output,
 							source_thread: row.thread.clone(),
+							assignments,
 							outcome,
+							preview,
+							question,
 							stamp,
 							relations,
 							resources,
@@ -370,22 +624,83 @@ impl AgentSurface {
 				}
 				results
 			})
-		});
+		})
+	}
+
+	pub(super) fn refresh_factory_briefs(&mut self, cx: &mut Context<Self>) {
+		if self.work_board.brief_task.is_some() || !self.command_connection_ready() {
+			return;
+		}
+		let Some(profile) = self.profile.clone() else { return };
+		let mut rows = self.factory_rows();
+		rows.retain(|r| r.thread.is_some());
+		rows.sort_by_key(|r| (r.group != 1, self.work_board.briefs.get(&r.key).map(|b| b.read_at)));
+		let requests: Vec<_> = rows
+			.into_iter()
+			.filter(|r| {
+				self.work_board.reload_pending.contains(&r.key)
+					|| self.work_board.briefs.get(&r.key).is_none_or(|b| {
+						b.stamp != self.brief_stamp(r)
+							|| ((r.group == 1 || b.question.is_some())
+								&& b.read_at.elapsed().as_secs() >= 1)
+							|| b.read_at.elapsed().as_secs() >= 30
+					})
+			})
+			.take(4)
+			.map(|row| {
+				let stamp = self.brief_stamp(&row);
+				(row, stamp)
+			})
+			.collect();
+		if requests.is_empty() {
+			if self.publish_usage() {
+				cx.notify();
+			}
+			return;
+		}
+		let read = Self::read_factory_briefs(profile, requests, cx);
 		self.work_board.brief_task = Some(cx.spawn(async move |surface, cx| {
 			let results = read.await;
-			let _ = surface.update(cx, |s, cx| {
-				let rows = s.board_rows();
-				s.work_board.briefs.retain(|key, _| rows.iter().any(|r| &r.key == key));
-				for (key, brief) in results {
-					if rows.iter().any(|r| r.key == key && s.brief_stamp(r) == brief.stamp) {
-						s.work_board.reload_pending.remove(&key);
-						s.work_board.briefs.insert(key, brief);
+			let _ =
+				surface.update(cx, |s, cx| {
+					let rows = s.board_rows();
+					s.work_board.briefs.retain(|key, _| rows.iter().any(|r| &r.key == key));
+					for (key, mut brief) in results {
+						if rows.iter().any(|r| r.key == key && s.brief_stamp(r) == brief.stamp) {
+							if let Some(previous) =
+								s.work_board.briefs.get(&key).filter(|previous| {
+									previous.source_thread == brief.source_thread
+								}) {
+								// Keep an observed role when its source scrolls out of the native
+								// page. Retain only threads still represented by visible agents.
+								for (thread, task) in &previous.assignments {
+									if rows.iter().any(|row| row.thread.as_ref() == Some(thread)) {
+										brief
+											.assignments
+											.entry(thread.clone())
+											.or_insert_with(|| task.clone());
+									}
+								}
+							}
+							if brief.preview.is_none() {
+								brief.preview = s
+									.work_board
+									.briefs
+									.get(&key)
+									.filter(|old| {
+										old.source_thread == brief.source_thread
+											&& old.stamp == brief.stamp
+									})
+									.and_then(|old| old.preview.clone());
+							}
+							s.work_board.reload_pending.remove(&key);
+							s.work_board.briefs.insert(key, brief);
+						}
 					}
-				}
-				s.work_board.brief_task = None;
-				s.publish_usage();
-				cx.notify();
-			});
+					s.work_board.brief_task = None;
+					s.publish_usage();
+					cx.notify();
+				});
 		}));
 	}
 }

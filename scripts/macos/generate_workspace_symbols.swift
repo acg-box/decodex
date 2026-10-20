@@ -5,6 +5,8 @@ import AppKit
 let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "assets/workspace-symbols", isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 let symbols = [
+    "document": "doc.text",
+    "link": "link",
     "account-route-active": "point.3.connected.trianglepath.dotted",
     "power-on": "power",
     "power-off": "power",

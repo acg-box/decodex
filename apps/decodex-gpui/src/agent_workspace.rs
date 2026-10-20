@@ -67,6 +67,7 @@ use decodex_protocol::{
 use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
+const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
 
 fn open_connection_settings(
 	destination: crate::shell::Destination,
@@ -94,10 +95,27 @@ fn connection_recovery_notice(
 	} else {
 		("connection-open-diagnostics", "Open Diagnostics")
 	};
-	Tone::Error
-		.row("conversation-unavailable", message)
+	gpui::div()
+		.id("conversation-unavailable")
 		.debug_selector(|| "conversation-unavailable".into())
-		.flex_wrap()
+		.role(Role::Status)
+		.aria_label(format!("Error: {message}"))
+		.w_full()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.items_center()
+		.gap(gpui::px(12.))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(18.))
+		.child(Tone::Error.icon())
+		.child(
+			gpui::div()
+				.w_full()
+				.text_center()
+				.text_color(gpui::rgb(Tone::Error.color()))
+				.child(message),
+		)
 		.child(
 			gpui::div()
 				.id(id)
@@ -190,7 +208,7 @@ impl AgentSurface {
 				self.workspace.graph_visible && self.reserve_workspace_panels(),
 				self.reserve_workspace_panels(),
 			),
-			(self.workspace.agent_tree_visible, self.has_work()),
+			(self.workspace.agent_tree_visible, self.reserve_workspace_panels()),
 		]
 	}
 
@@ -247,13 +265,6 @@ impl AgentSurface {
 		self.snapshot.as_ref().is_none_or(|snapshot| !snapshot.work_items.is_empty())
 	}
 
-	pub(super) fn has_work(&self) -> bool {
-		self.snapshot
-			.as_ref()
-			.is_some_and(|s| s.work_items.iter().any(|w| w.parent_goal_id.is_some()))
-			|| self.native_agents.lists.values().any(|agents| !agents.is_empty())
-	}
-
 	pub(super) fn root_id(&self) -> Option<String> {
 		self.snapshot
 			.as_ref()?
@@ -264,18 +275,44 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.keep_edited_preview(cx);
-		self.workspace.browsing = false;
-		self.workspace.closing_pages.remove(id);
 		if let Some((owner, thread)) = self.native_agents.pages.get(id).cloned() {
 			self.open_native_agent(&owner, &thread, cx);
 			return;
 		}
-		self.close_native_agent(cx);
+		self.open_work_conversation(id, None, cx);
+	}
 
-		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
+	pub(super) fn open_work_conversation(
+		&mut self,
+		id: &str,
+		thread: Option<&str>,
+		cx: &mut Context<Self>,
+	) {
+		let Some(work) =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == id))
+		else {
+			return;
+		};
+		let thread = thread.map(str::to_owned).or_else(|| {
+			(work.kind == AgentWorkKindDto::Task).then(|| work.codex_thread_id.clone()).flatten()
+		});
+		let editor_ready = thread.is_some()
+			|| work.parent_goal_id.is_some() && work.kind != AgentWorkKindDto::Manager
+			|| self.composer_manager.as_deref() == Some(id);
+		// Explicit conversation navigation releases a previous graph inspection.
+		// Keep the camera; the newly opened conversation supplies the card highlight.
+		self.clear_relation_selection();
+		self.keep_edited_preview(cx);
+		self.workspace.browsing = false;
+		self.workspace.closing_pages.remove(id);
+		if self.selected.as_deref() == Some(id)
+			&& self.native_agents.selected.as_ref().map(|(_, thread)| thread) == thread.as_ref()
+			&& editor_ready
+		{
+			cx.notify();
 			return;
 		}
+		self.close_native_agent(cx);
 		if self.selected.as_deref() != Some(id) {
 			// Cancel against the outgoing editor before parking or replacing its draft.
 			self.stop_voice(cx);
@@ -359,13 +396,7 @@ impl AgentSurface {
 		self.request = None;
 		self.request_task = None;
 
-		let task_thread = self
-			.snapshot
-			.as_ref()
-			.and_then(|s| s.work_items.iter().find(|w| w.id == id))
-			.filter(|w| w.kind == AgentWorkKindDto::Task)
-			.and_then(|w| w.codex_thread_id.clone());
-		if let Some(thread) = task_thread {
+		if let Some(thread) = thread {
 			self.enter_native_conversation(id, &thread, cx);
 		} else {
 			self.load_history(cx);
@@ -762,21 +793,12 @@ impl AgentSurface {
 	pub(crate) fn workspace_connecting(&self) -> bool {
 		// Before the first snapshot, there is no workspace state to present as empty
 		// or disconnected. Use the same loading surface throughout service startup.
-		if (self.snapshot.is_none()
+		(self.snapshot.is_none()
 			&& matches!(
 				self.displayed_load_state(),
 				LoadState::Idle | LoadState::Loading | LoadState::Unavailable
 			))
 			|| self.connection_initializing()
-		{
-			return true;
-		}
-		self.native_agents.selected.is_some()
-			&& matches!(
-				self.native_agents.connection,
-				super::native_agents::NativeConnection::Checking { .. }
-			)
-			&& self.conversation_work().is_none_or(|work| !self.native_history_active(&work))
 	}
 
 	pub(super) fn connection_initializing(&self) -> bool {
@@ -785,8 +807,11 @@ impl AgentSurface {
 
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
-			// Native connection feedback stays inside the same composer surface.
-			return None;
+			return matches!(
+				self.native_agents.connection,
+				super::native_agents::NativeConnection::ParentManaged
+			)
+			.then_some(PARENT_MANAGED_MESSAGE);
 		}
 
 		if self.uncertain {
@@ -870,17 +895,28 @@ impl AgentSurface {
 		reason: &'static str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		if reason == PARENT_MANAGED_MESSAGE {
+			return Tone::Neutral
+				.composer_row(
+					"conversation-unavailable",
+					PARENT_MANAGED_MESSAGE,
+					workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
+				)
+				.child(self.workspace_action(
+					"native-open-parent".into(),
+					"Open parent conversation".into(),
+					|s, cx| s.open_native_parent(cx),
+					cx,
+				))
+				.into_any_element();
+		}
 		if reason == THREAD_LOCKED_MESSAGE {
 			return Tone::Warning
-				.row_with_icon(
+				.composer_row(
 					"conversation-unavailable",
 					THREAD_LOCKED_MESSAGE,
 					workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
 				)
-				.debug_selector(|| "conversation-unavailable".into())
-				.min_h(gpui::px(40.))
-				.items_center()
-				.justify_center()
 				.into_any_element();
 		}
 
@@ -959,7 +995,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+	pub(super) fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		if self.native_agents.selected.is_some() {
 			let feedback = self.native_feedback();
 			return gpui::div()
@@ -974,6 +1010,12 @@ impl AgentSurface {
 				.child(self.render_composer(window, cx));
 		}
 
+		let saved_inputs = self
+			.conversation_work()
+			.filter(|work| self.saved_inputs_in_composer(work))
+			.map(|work| self.saved_input_rows(&work, cx))
+			.unwrap_or_default();
+		let has_saved_inputs = !saved_inputs.is_empty();
 		// The parent overlays this transparent footer above the scrolling conversation.
 		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
 			gpui::div()
@@ -982,7 +1024,34 @@ impl AgentSurface {
 				.flex_col()
 				.child(self.conversation_activity(cx))
 				.child(self.recovered_draft_panel(cx))
-				.child(self.render_composer(window, cx)),
+				.when(has_saved_inputs, |footer| {
+					footer.child(
+						gpui::div()
+							.debug_selector(|| "composer-saved-inputs".into())
+							.w_full()
+							.px(gpui::px(ui_theme::CONVERSATION_INSET))
+							.pb(gpui::px(ui_theme::MESSAGE_GAP - ui_theme::COMPOSER_TOP_GAP))
+							.flex()
+							.justify_center()
+							.child(
+								gpui::div()
+									.id("composer-saved-inputs-scroll")
+									.w_full()
+									.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+									.max_h(window.viewport_size().height * 0.35)
+									.overflow_y_scroll()
+									.flex()
+									.flex_col()
+									.gap_2()
+									.children(saved_inputs),
+							),
+					)
+				})
+				.child(
+					gpui::div()
+						.debug_selector(|| "composer-input-region".into())
+						.child(self.render_composer(window, cx)),
+				),
 		)
 	}
 
@@ -1007,6 +1076,18 @@ impl AgentSurface {
 		let selected = self.conversation_work();
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
 		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
+	}
+
+	fn conversation_owns_requests(&self, work: &AgentWorkItemDto) -> bool {
+		self.native_agents.selected.as_ref().is_none_or(|(owner, thread)| {
+			owner == &work.id
+				&& self.snapshot.as_ref().is_some_and(|snapshot| {
+					snapshot.work_items.iter().any(|canonical| {
+						canonical.id == work.id
+							&& canonical.codex_thread_id.as_ref() == Some(thread)
+					})
+				})
+		})
 	}
 
 	fn workspace_transcript(
@@ -1071,7 +1152,7 @@ impl AgentSurface {
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))
 						.child(self.history_panel(work, cx))
-						.when(self.native_agents.selected.is_none(), |content| {
+						.when(self.conversation_owns_requests(work), |content| {
 							content
 								.when(
 									snapshot.pending_events.iter().any(|e| {
@@ -1090,7 +1171,7 @@ impl AgentSurface {
 					self.details(snapshot, work, cx).into_any_element()
 				};
 
-				transcript = transcript.child(content);
+				transcript = transcript.child(self.anchored_native_content(content));
 			}
 		} else if self.snapshot.is_none() {
 			transcript = transcript.child(gpui::div().size_full().flex().items_center().child(
@@ -1160,13 +1241,15 @@ impl AgentSurface {
 			return gpui::div()
 				.debug_selector(|| "workspace-connecting".into())
 				.size_full()
-				.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+				.py(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 				.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
 				.flex()
 				.items_center()
 				.justify_center()
 				.child(if unavailable {
 					gpui::div()
+						.w_full()
+						.min_w_0()
 						.max_w(gpui::px(440.))
 						.px(gpui::px(ui_theme::CONVERSATION_INSET))
 						.child(connection_recovery_notice(
@@ -1265,6 +1348,9 @@ impl AgentSurface {
 			.left_0()
 			.right_0()
 			.bottom_0()
+			// Expanded maps place this footer outside the canvas. Continue the
+			// same surface to the window edge behind the floating glass editor.
+			.when(self.workspace.graph_expanded, |footer| footer.bg(gpui::rgba(AGENT_CHAT_OVERLAY)))
 			.child(self.composer_footer(window, cx))
 			.child(
 				gpui::canvas(
@@ -1295,6 +1381,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
+		let graph_height = if self.workspace.graph_expanded && self.graph_has_composer() {
+			(graph_height - self.workspace.composer_overlay_height).max(120.)
+		} else {
+			graph_height
+		};
 
 		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
 		let displayed_height = ui_motion::direct_value(
@@ -1323,7 +1414,10 @@ impl AgentSurface {
 					.opacity(self.workspace.arrival.progress(0.06))
 					.when(displayed_height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
 			)
-			.when(!self.workspace.graph_expanded, |center| center.child(chat));
+			.when(!self.workspace.graph_expanded, |center| center.child(chat))
+			.when(self.workspace.graph_expanded && self.graph_has_composer(), |center| {
+				center.child(self.floating_composer(window, cx))
+			});
 
 		let right_width = ui_motion::direct_value(
 			"agent-tree-panel",
@@ -1341,7 +1435,7 @@ impl AgentSurface {
 				.h_full()
 				.overflow_hidden()
 				.opacity(self.workspace.arrival.progress(0.08))
-				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(cx))),
+				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(right_width, cx))),
 		);
 		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
 		let main = gpui::div()
@@ -1937,6 +2031,10 @@ fn graph_edge_path(
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
+		if page == "deliveries" {
+			self.visual_delivery_fixture(cx);
+			return;
+		}
 		if matches!(page, "attachments" | "microphone") {
 			self.visual_workspace_page("markdown", cx);
 
@@ -1964,6 +2062,8 @@ impl AgentSurface {
 		}
 
 		match page {
+			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
+				self.visual_workbench_page(page, cx),
 			"factory" | "relations" | "relations-resource" => {
 				self.work_board.graph = false;
 				self.workspace.graph_expanded = true;
@@ -2521,7 +2621,8 @@ fn panel_icon(id: &str, expanded: Option<bool>) -> Option<AnyElement> {
 		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
 		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"board-show-list" => crate::shell::workspace_symbols::Symbol::AllWork,
-		"dock-open-source" => crate::shell::workspace_symbols::Symbol::Forward,
+		"dock-open-source" | "native-open-parent" =>
+			crate::shell::workspace_symbols::Symbol::Forward,
 		"dock-evidence-toggle" => crate::shell::workspace_symbols::Symbol::Eye,
 		"dock-subtasks" => crate::shell::workspace_symbols::Symbol::Agents,
 		"zoom-in" => crate::shell::workspace_symbols::Symbol::Plus,
@@ -2713,12 +2814,7 @@ mod tests {
 		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
 		let loading = visual.debug_bounds("loading-feedback-Opening workspace").unwrap();
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
-		assert!(
-			(workspace.center().y + gpui::px(crate::shell::WINDOW_CONTROLS_CLEARANCE / 2.)
-				- loading.center().y)
-				.abs()
-				< gpui::px(1.)
-		);
+		assert!((workspace.center().y - loading.center().y).abs() < gpui::px(1.));
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.workspace_panels(), [(false, false); 3]);
 			let panels = (

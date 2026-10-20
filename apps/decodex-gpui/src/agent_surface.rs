@@ -12,6 +12,7 @@ use crate::ui_feedback::Feedback;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_debug_reload.rs"] mod debug_reload;
+#[path = "agent_deliveries.rs"] mod deliveries;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
 #[path = "agent_dock.rs"] mod dock;
@@ -160,6 +161,7 @@ pub(crate) struct AgentSurface {
 	dock_evidence: dock::Evidence,
 	work_board: work_board::Board,
 	handoffs: handoffs::Handoffs,
+	deliveries: Entity<deliveries::Panel>,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
@@ -332,7 +334,13 @@ impl AgentSurface {
 		let transcript_presentation =
 			crate::ui_frame::Presentation::new(&owner, Self::render_transcript_view, cx);
 
+		let deliveries = cx.new(|_| deliveries::Panel::default());
+		cx.subscribe(&deliveries, |s, _, event: &deliveries::OpenDelivery, cx| {
+			s.open_page(&event.0, cx)
+		})
+		.detach();
 		Self {
+			deliveries,
 			voice: None,
 			retired_voice_captions: Vec::new(),
 			voice_task: None,
@@ -1526,6 +1534,7 @@ impl AgentSurface {
 				surface.refresh_read_state(cx);
 				surface.refresh_dock_evidence(cx);
 				surface.refresh_factory_briefs(cx);
+				surface.refresh_deliveries(cx);
 
 				if !surface.connection_initializing()
 					&& (surface.current_model_catalog(cx).is_none()
@@ -1744,6 +1753,13 @@ impl AgentSurface {
 				.map(|(title, detail)| (title, detail.clone()))
 				.collect();
 		let mut seen = std::collections::BTreeSet::new();
+		let missing = self.token_statistics_gap();
+		if missing > 0 {
+			let conversations = if missing == 1 { "conversation" } else { "conversations" };
+			notices.push(("Token statistics unavailable", format!(
+				"Token usage was not recorded for {missing} completed agent {conversations}. Chat history remains available; the token total is unavailable."
+			)));
+		}
 
 		for history in histories {
 			if let AgentHistoryResult::Available { entries, .. } = history {
@@ -2443,7 +2459,6 @@ struct WorkspaceView {
 	graph_fit_zoom: f32,
 	graph_drag: Option<Point<Pixels>>,
 	agent_tree_visible: bool,
-	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
 	sidebar_peek: bool,
 	sidebar_leave: Option<Task<()>>,
@@ -2488,7 +2503,6 @@ impl Default for WorkspaceView {
 			graph_fit_zoom: 1.,
 			graph_drag: None,
 			agent_tree_visible: true,
-			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
 			sidebar_peek: false,
 			sidebar_leave: None,

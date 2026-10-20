@@ -36,6 +36,7 @@ impl AgentSurface {
 						status: resource.attachment_type.clone(),
 						color: Kind::Resource.color(),
 						row: None,
+						size: (224., 48.),
 						x: 0.,
 						y: 0.,
 					});
@@ -49,7 +50,7 @@ impl AgentSurface {
 							&& url.password().is_none()
 					})
 					.map(|url| url.to_string());
-				graph.edges.push(Edge {
+				graph.edges.push(Edge { in_progress: false,
                     id: format!("attachment:{}:{}", row.key, resource.id), from: row.key.clone(), to: key, kind: Kind::Resource, excerpt: None, color: Kind::Resource.color(), label: "Attached".into(),
                     detail: format!("Native resource association\n\nType: {}\nIdentity: {}\nAssociation: {}\nRecorded at: {} (Unix seconds)\n\nAn attachment does not establish who created, read, or verified this resource.{}", resource.attachment_type, resource.identity_key, resource.id, resource.created_at, if resource.payload_omitted { "\nSome metadata is unavailable." } else { "" }),
                     source: row.thread.clone().map(|thread| (row.work.clone(), thread)), link,
@@ -64,9 +65,9 @@ pub(super) fn place_resources(graph: &mut Graph) {
 		.nodes
 		.iter()
 		.filter(|n| !n.key.starts_with("resource:"))
-		.map(|n| n.x)
+		.map(|n| n.x + n.width())
 		.fold(24., f32::max)
-		+ 480.;
+		+ 256.;
 	let mut cursor = 24_f32;
 	let keys: Vec<_> = graph
 		.nodes
@@ -91,6 +92,6 @@ pub(super) fn place_resources(graph: &mut Graph) {
 		if count > 1 {
 			node.status = format!("{} · {} agents", node.status, count);
 		}
-		cursor = y + 124.;
+		cursor = y + node.height() + 76.;
 	}
 }

@@ -88,14 +88,11 @@ impl AgentSurface {
 		body = self.relation_detail_actions(body, edge, &graph, cx);
 
 		gpui::div()
-			.w(gpui::px(300.))
-			.h_full()
-			.min_h_0()
+			.w_full()
+			.min_w_0()
 			.flex_none()
 			.flex()
 			.flex_col()
-			.border_l_1()
-			.border_color(gpui::rgba(0xffffff0c))
 			.child(
 				gpui::div()
 					.flex()
@@ -116,10 +113,9 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("relation-inspector-scroll")
-					.h_0()
-					.flex_1()
-					.min_h_0()
-					.overflow_y_scroll()
+					.w_full()
+					.min_w_0()
+					.flex_none()
 					.child(body),
 			)
 			.into_any_element()

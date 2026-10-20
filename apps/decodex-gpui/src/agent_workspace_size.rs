@@ -46,7 +46,9 @@ impl AgentSurface {
 		let width = f32::from(window.viewport_size().width);
 		let visible = [
 			self.workspace.sidebar_visible && width > 1_000.0,
-			self.workspace.agent_tree_visible && self.has_work() && !self.workspace.graph_expanded,
+			self.workspace.agent_tree_visible
+				&& self.reserve_workspace_panels()
+				&& !self.workspace.chat_expanded,
 			self.workspace.graph_visible
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
@@ -447,7 +449,7 @@ mod tests {
 
 	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
 	#[gpui::test]
-	fn content_fullscreen_hides_both_sidebars_and_restores_preferences(
+	fn graph_fullscreen_keeps_the_workbench_and_restores_preferences(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -469,7 +471,7 @@ mod tests {
 			visual.update(|window, cx| {
 				let s = surface.read(cx);
 				assert_eq!(s.sidebar_target_width(window), 0.);
-				assert_eq!(s.agent_tree_width(window), 0.);
+				assert_eq!(s.agent_tree_width(window), if target.is_some() { 270. } else { 0. });
 				assert_eq!(s.workspace.chat_expanded, target.is_none());
 				assert_eq!(s.workspace.graph_expanded, target.is_some());
 				if target.is_none() {
@@ -572,7 +574,10 @@ mod tests {
 			visual.update(|w, cx| w.draw(cx).clear(cx));
 			std::thread::sleep(std::time::Duration::from_millis(250));
 			visual.update(|w, cx| w.draw(cx).clear(cx));
-			assert_eq!(visual.debug_bounds("floating-composer").is_none(), expanded);
+			assert!(
+				visual.debug_bounds("floating-composer").is_some(),
+				"the central composer remains available while inspecting the map"
+			);
 			if !expanded {
 				assert_eq!(visual.debug_bounds("floating-composer").unwrap(), composer);
 				assert!(
