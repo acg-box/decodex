@@ -108,24 +108,33 @@ impl ArchiveVisibility {
 	}
 }
 
-/// Remove only positively archived bindings from the shared active view.
+/// Remove archived conversations, while retaining the personal coordinator entry.
+/// Its native archive state still controls whether its conversation can accept input.
 /// Keep live descendants visible under their nearest retained ancestor.
 pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<String>) {
-	let hidden: HashSet<_> = snapshot
+	snapshot.archived_work_ids.clear();
+	let inactive: HashSet<_> = snapshot
 		.work_items
 		.iter()
 		.filter(|work| work.codex_thread_id.as_ref().is_some_and(|id| archived.contains(id)))
 		.map(|work| work.id.clone())
 		.collect();
-	if hidden.is_empty() {
+	if inactive.is_empty() {
 		return;
 	}
+	let hidden: HashSet<_> = snapshot
+		.work_items
+		.iter()
+		.filter(|work| work.parent_goal_id.is_some() && inactive.contains(&work.id))
+		.map(|work| work.id.clone())
+		.collect();
 	let parents: HashMap<_, _> = snapshot
 		.work_items
 		.iter()
 		.map(|work| (work.id.clone(), work.parent_goal_id.clone()))
 		.collect();
 	snapshot.work_items.retain(|work| !hidden.contains(&work.id));
+	snapshot.archived_work_ids.extend(inactive.iter().filter(|id| !hidden.contains(*id)).cloned());
 	for work in &mut snapshot.work_items {
 		let mut seen = HashSet::new();
 		while let Some(parent) = work.parent_goal_id.clone().filter(|id| hidden.contains(id)) {
@@ -137,12 +146,12 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 		}
 	}
 	snapshot.dependencies.retain(|edge| {
-		!hidden.contains(&edge.work_item_id) && !hidden.contains(&edge.depends_on_id)
+		!inactive.contains(&edge.work_item_id) && !inactive.contains(&edge.depends_on_id)
 	});
-	snapshot.pending_events.retain(|event| !hidden.contains(&event.work_item_id));
+	snapshot.pending_events.retain(|event| !inactive.contains(&event.work_item_id));
 	snapshot.context_references.retain(|reference| {
-		!hidden.contains(&reference.recipient_work_id)
-			&& !hidden.contains(&reference.source_work_id)
+		!inactive.contains(&reference.recipient_work_id)
+			&& !inactive.contains(&reference.source_work_id)
 	});
 	for workspace in &mut snapshot.workspaces {
 		workspace.work_ids.retain(|id| !hidden.contains(id));
@@ -243,6 +252,7 @@ mod tests {
 	}
 	fn snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
@@ -301,6 +311,28 @@ mod tests {
 		let mut restored = original.clone();
 		retain_active(&mut restored, &HashSet::new());
 		assert_eq!(restored, original, "unarchive restores the original hierarchy");
+	}
+	#[test]
+	fn archiving_main_retains_its_entry_and_real_ownership_without_restoring_history() {
+		let original = snapshot();
+		let mut visible = original.clone();
+		retain_active(&mut visible, &HashSet::from(["thread-main".into(), "thread-old".into()]));
+		assert_eq!(
+			visible.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
+			["main", "live"]
+		);
+		assert_eq!(
+			visible.work_items[0], original.work_items[0],
+			"keep the exact archived binding"
+		);
+		assert_eq!(visible.archived_work_ids, ["main".to_owned()].into());
+		assert_eq!(visible.work_items[1].parent_goal_id.as_deref(), Some("main"));
+		assert!(visible.dependencies.is_empty());
+		assert!(visible.is_valid());
+
+		retain_active(&mut visible, &HashSet::from(["thread-main".into(), "thread-live".into()]));
+		assert_eq!(visible.work_items, vec![original.work_items[0].clone()]);
+		assert!(visible.is_valid(), "Main remains the entry after all conversations are archived");
 	}
 	#[test]
 	fn unknown_and_unbound_work_stays_visible() {

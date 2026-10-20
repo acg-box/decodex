@@ -261,3 +261,58 @@ async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_in
 	assert_eq!(resumed, 1);
 	assert_eq!(agent.store.list_agent_work_items().await.unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
+	let history = serde_json::json!({
+		"child":child("child","opaque thread/1"),
+		"foreign":child("foreign","unowned")
+	});
+	let (mut agent, _sent, _directory) = tests::fixture_with_history(history).await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	for (thread, turn, total) in
+		[("child", "first", 1234), ("child", "second", 2468), ("foreign", "other", 9999)]
+	{
+		let counts = serde_json::json!({"totalTokens":total,"inputTokens":total-34,"cachedInputTokens":0,"outputTokens":34,"reasoningOutputTokens":0});
+		agent.handle_event(ServerEvent::Notification {
+			method: "thread/tokenUsage/updated".into(),
+			params: serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}}),
+		}).await.unwrap();
+	}
+	let mut page: decodex_protocol::AgentTimelinePage = serde_json::from_value(serde_json::json!({
+		"thread_id":"child","entries":[],"next_cursor":null,"active_realtime_session_at_page_start":null
+	}))
+	.unwrap();
+	crate::agent::timeline::metrics::enrich(&agent.store, "agent", &mut page).await.unwrap();
+	assert_eq!(
+		page.thread_token_total,
+		Some(2468),
+		"the latest native total is not a sum of samples"
+	);
+	assert!(
+		agent
+			.store
+			.read_agent_thread_usage_observation("agent".into(), "foreign".into())
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert!(
+		agent
+			.store
+			.read_agent_thread_usage_observation("another-owner".into(), "child".into())
+			.await
+			.unwrap()
+			.is_none()
+	);
+	let restored =
+		AgentCoordinator::new(agent.store.clone(), agent.client.clone(), agent.config.clone())
+			.unwrap();
+	crate::agent::timeline::metrics::enrich(&restored.store, "agent", &mut page).await.unwrap();
+	assert_eq!(page.thread_token_total, Some(2468));
+	assert_eq!(
+		agent.store.get_agent_work_item("agent".into()).await.unwrap().active_turn_id.as_deref(),
+		Some("opaque turn/1")
+	);
+	assert!(agent.store.list_pending_agent_events(10).await.unwrap().is_empty());
+}

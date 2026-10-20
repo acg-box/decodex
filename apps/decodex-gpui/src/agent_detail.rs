@@ -436,6 +436,7 @@ mod tests {
 
 	fn activity_detail_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,

@@ -479,6 +479,7 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+                archived_work_ids: Default::default(),
                 agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,
@@ -581,6 +582,7 @@ connection_initializing: false,
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+                archived_work_ids: Default::default(),
                 agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,

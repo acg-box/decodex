@@ -2353,6 +2353,14 @@ impl AgentCoordinator {
 					.map_err(|e| resume_error(e, thread))
 				{
 					Ok(value) => value,
+					Err(AgentError::ThreadArchived) => {
+						// Archiving ends the external-writer condition. Keep this owner's
+						// input parked without blocking unrelated conversations.
+						self.loaded_threads.remove(thread);
+						self.store.resolve_agent_thread_in_use(item.id.clone()).await?;
+						blocked.insert(item.id.clone());
+						continue;
+					},
 					Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 						blocked.insert(item.id.clone());
 						if item.parent_goal_id.is_none() {
@@ -2436,6 +2444,9 @@ impl AgentCoordinator {
 				.await
 			{
 				Ok(_) => {},
+				// A queued archived owner waits for explicit restoration. Its retained
+				// input must not stop later owners in this wake batch.
+				Err(AgentError::ThreadArchived) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store

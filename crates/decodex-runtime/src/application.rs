@@ -6188,6 +6188,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	};
 
 	let snapshot = AgentSnapshotDto {
+		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: references
 			.into_iter()

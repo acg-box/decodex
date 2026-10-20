@@ -35,6 +35,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 
 	surface.update(visual, |s, _| {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,

@@ -1027,6 +1027,9 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// Confirmed native archives retained only as structural coordinator entries.
+	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+	pub archived_work_ids: std::collections::BTreeSet<String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
 	#[serde(default)]
 	pub agent_slots: std::collections::BTreeMap<String, u32>,
@@ -1056,6 +1059,7 @@ impl AgentSnapshotDto {
 		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
 		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
+			&& self.archived_work_ids.iter().all(|id| ids.contains(id.as_str()))
 			&& self.agent_slots.len() <= 1_024
 			&& self.agent_slots.keys().all(|key| text(key, 1_536))
 			&& self.agent_slots.values().collect::<HashSet<_>>().len() == self.agent_slots.len()
@@ -1341,6 +1345,7 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -1364,6 +1369,7 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
