@@ -6,10 +6,12 @@ _EOF = object()
 
 class Session:
 
-    def __init__(self, home, args=()):
+    def __init__(self, home, args=(), environment=None):
         self.stderr = tempfile.TemporaryFile(mode='w+t')
         self.home = home
-        self.p = subprocess.Popen([str(B), 'app-server', *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr, text=True, cwd=home, env={'HOME': home, 'CODEX_HOME': home, 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'})
+        env = {'HOME': home, 'CODEX_HOME': home, 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'}
+        env.update(environment or {})
+        self.p = subprocess.Popen([str(B), 'app-server', *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr, text=True, cwd=home, env=env)
         self.q = queue.Queue()
         self.events = []
         self.serial = 0
