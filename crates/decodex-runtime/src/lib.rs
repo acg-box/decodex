@@ -31,6 +31,7 @@ mod agent_plugins;
 mod agent_read_state;
 mod agent_recap;
 mod agent_resources;
+mod agent_sample;
 mod agent_search_settings;
 mod agent_skill_roots;
 mod agent_skills;

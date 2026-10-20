@@ -33,14 +33,14 @@ use crate::{
 	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
 	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
 	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
-	AgentRequestResult, AgentResourcesResult, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
-	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
-	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope, CorrelationId,
-	DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
+	AgentRequestResult, AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity,
+	AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult,
+	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus,
+	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
+	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope,
+	CorrelationId, DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision,
+	IdempotencyKey, InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
 	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
 	McpLoginStatus, NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult,
 	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
@@ -663,6 +663,27 @@ impl AgentClient {
 
 				Ok(result)
 			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read the latest explicit sample; polling never starts inference.
+	pub async fn sample(&self, work_id: EntityId) -> Result<AgentSampleStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"agent-sample",
+				QueryPayload::GetAgentSample { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentSample(status)
+				if status.work_id == work_id && status.is_valid() =>
+				Ok(status),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
@@ -3620,6 +3641,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::ConfirmPromptEdit { work_id, .. }
 		| AgentActionDto::RecoverPromptFork { work_id, .. }
 		| AgentActionDto::RecoverPromptEdit { work_id, .. }
+		| AgentActionDto::GenerateSample { work_id, .. }
 		| AgentActionDto::GenerateRecap { work_id, .. }
 		| AgentActionDto::CancelRecap { work_id, .. }
 		| AgentActionDto::SetThreadReadState { work_id, .. }
