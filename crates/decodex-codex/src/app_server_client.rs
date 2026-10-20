@@ -30,6 +30,7 @@ mod realtime_preferences;
 mod realtime_settings;
 mod recovery_auth;
 mod resume;
+mod sample;
 mod search_preferences;
 mod server_requests;
 mod settings_guard;
@@ -76,6 +77,9 @@ pub use self::{
 	read_state::{NativeReadState, NativeUnreadPosition, is_thread_read_state_update},
 	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},
 	recovery_auth::NativeRecoveryAuth,
+	sample::{
+		MAX_SAMPLE_OUTPUT_BYTES, MAX_SAMPLE_PROMPT_BYTES, NativeThreadSample, is_thread_sample,
+	},
 	search_preferences::{NativeSearchSettings, is_search_mode_write},
 	server_requests::{HistoryGuard, ServerRequestGuard, invalidates_question_state},
 	task_settings::NativeTaskModelSettings,

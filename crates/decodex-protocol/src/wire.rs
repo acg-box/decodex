@@ -26,10 +26,10 @@ use crate::{
 	AgentMediaRequest, AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult,
 	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState,
 	AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
-	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
-	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
-	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	AgentSampleStatus, AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult,
+	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
+	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
+	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
 	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
 	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
@@ -2168,6 +2168,11 @@ pub enum QueryPayload {
 		/// Original review identity.
 		review_token: WireText,
 	},
+	/// Read existing sample state without starting inference.
+	GetAgentSample {
+		/// Owning local task.
+		work_id: EntityId,
+	},
 	/// Read existing recap state without starting inference.
 	GetAgentRecap {
 		/// Owning task.
@@ -3113,6 +3118,8 @@ pub enum QueryResultPayload {
 		/// Absolute working directory of the retained native process.
 		directory: Option<WireText>,
 	},
+	/// Latest explicit native sample result.
+	AgentSample(AgentSampleStatus),
 	/// Service-owned task recap state.
 	AgentRecap(TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.

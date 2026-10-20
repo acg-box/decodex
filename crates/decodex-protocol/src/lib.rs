@@ -29,6 +29,7 @@ mod agent_questions;
 mod agent_read_state;
 mod agent_recap;
 mod agent_requested_decision;
+mod agent_sample;
 mod agent_search_settings;
 mod agent_skills;
 mod agent_steer;
@@ -143,6 +144,10 @@ pub use self::{
 	agent_read_state::{AgentReadStateResult, AgentUnreadPosition},
 	agent_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus},
 	agent_requested_decision::{AgentRequestedDecision, requested_decision_response},
+	agent_sample::{
+		AgentSampleAnswer, AgentSamplePhase, AgentSampleStatus, MAX_AGENT_SAMPLE_PROMPT_BYTES,
+		MAX_AGENT_SAMPLE_TEXT_BYTES,
+	},
 	agent_search_settings::AgentSearchSettingsResult,
 	agent_skills::{AgentSkillDto, AgentSkillsPage, AgentSkillsResult, AgentSkillsTarget},
 	agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult},
@@ -272,7 +277,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 119 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 120 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

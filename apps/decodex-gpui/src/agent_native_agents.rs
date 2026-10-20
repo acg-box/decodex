@@ -498,6 +498,7 @@ impl AgentSurface {
 		self.close_native_agent(cx);
 		self.stop_voice(cx);
 		self.reset_recap();
+		self.reset_sample();
 		self.composer_menu = None;
 		self.composer_menu_content = None;
 

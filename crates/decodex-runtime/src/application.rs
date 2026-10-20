@@ -569,6 +569,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_sample(&self, work: &decodex_protocol::EntityId) -> QueryResultPayload {
+		QueryResultPayload::AgentSample(match &self.agent {
+			Some(agent) => agent.sample_status(work.clone()).await,
+			None => decodex_protocol::AgentSampleStatus::idle(work.clone()),
+		})
+	}
+
 	async fn query_recap(&self, work: decodex_protocol::EntityId) -> QueryResultPayload {
 		QueryResultPayload::AgentRecap(match &self.agent {
 			Some(agent) => agent.recap_status(work).await,
@@ -2774,6 +2781,7 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentPromptInputSend { .. }
 			| QueryPayload::GetAgentPromptInputUpload { .. } =>
 				self.query_prompt_input(&query.payload).await,
+			QueryPayload::GetAgentSample { work_id } => self.query_sample(work_id).await,
 			QueryPayload::GetAgentRecap { work_id } => self.query_recap(work_id.clone()).await,
 			settings @ (QueryPayload::GetAgentVoiceSettings { .. }
 			| QueryPayload::GetAgentSearchSettings { .. }

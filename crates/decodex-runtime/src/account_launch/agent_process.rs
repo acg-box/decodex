@@ -304,9 +304,21 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 	Ok(())
 }
 
+fn validate_inherited_request(method: &Value, params: &Value) -> Option<Result<(), ClientError>> {
+	match method.as_str()? {
+		"thread/fork" => Some(validate_fork_request(params)),
+		"thread/sample" => Some(
+			app_server_client::is_thread_sample(params)
+				.then_some(())
+				.ok_or(ClientError::InvalidFrame),
+		),
+		_ => None,
+	}
+}
+
 fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
-	if method == "thread/fork" {
-		return validate_fork_request(params);
+	if let Some(result) = validate_inherited_request(method, params) {
+		return result;
 	}
 
 	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {

@@ -4,6 +4,7 @@
 #[path = "agent_process_native_fork_tests.rs"] mod fork;
 #[path = "agent_process_native_media_socket_tests.rs"] mod media;
 #[path = "agent_process_native_recap_reply_proxy.rs"] mod reply_proxy;
+#[path = "agent_process_native_sampling_socket_tests.rs"] mod sampling;
 
 use std::{
 	collections::BTreeSet,
@@ -314,6 +315,11 @@ async fn check(
 		return active_shutdown::prepare(client, home, account).await;
 	}
 
+	let sampling = env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some();
+	// Account/config fixtures stay temporary. Production cwd authority follows the OS account,
+	// not an overridden HOME, so sampling uses the test runner's owned checkout.
+	let directory =
+		if sampling { env::current_dir().expect("owned test checkout") } else { home.to_owned() };
 	let work = EntityId::new("recap-root").expect("work");
 
 	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, TaskRecapPhase::Idle);
@@ -326,7 +332,7 @@ async fn check(
 			prompt: HistoryText::new("Test the fix. Do not install it.").expect("prompt"),
 			model: ConversationModel::new("cold-native-model").expect("model"),
 			effort: Some(ConversationReasoningEffort::new("provider-effort").expect("effort")),
-			cwd: ConversationWorkingDirectory::new(home.to_str().expect("directory"))
+			cwd: ConversationWorkingDirectory::new(directory.to_str().expect("directory"))
 				.expect("directory"),
 			account_id: Some(EntityId::new(account.as_str()).expect("account")),
 			sandbox: AgentSandboxDto::ReadOnly,
@@ -335,11 +341,14 @@ async fn check(
 	)
 	.await;
 
-	let thread = settled(client).await;
+	let thread =
+		if sampling { sampling::parent(client, store).await } else { settled(client).await };
+	let native = runtime.agent_client().expect("active native client");
+	if sampling {
+		return sampling::check(client, &native, &work, &thread, requests).await;
+	}
 
 	qualify_completed_progress(client, &work, &thread, account, requests).await;
-
-	let native = runtime.agent_client().expect("active native client");
 
 	if env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
 		return fork::check(client, &native, store, &work, &thread, requests, home).await;

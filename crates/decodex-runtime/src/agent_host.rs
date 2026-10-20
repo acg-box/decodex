@@ -3,6 +3,7 @@
 #[path = "agent_prompt_edit_host.rs"] mod prompt_edit;
 #[path = "agent_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "agent_recap/host.rs"] mod recap;
+#[path = "agent_sample_host.rs"] mod sample;
 #[path = "agent_weather.rs"] mod weather;
 
 use std::{
@@ -93,6 +94,7 @@ pub(crate) struct AgentHost {
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: Reviews,
 	recaps: Recaps,
+	samples: crate::agent_sample::Samples,
 	transcripts: Transcripts,
 	weather_cache: Arc<Mutex<Option<CachedWeather>>>,
 	archive_visibility: Arc<Mutex<crate::agent_visibility::ArchiveVisibility>>,
@@ -115,6 +117,7 @@ impl AgentHost {
 			recovery_cursor: Default::default(),
 			voice: crate::agent_voice::VoiceGateway::new(),
 			recaps: Default::default(),
+			samples: Default::default(),
 			transcripts: Default::default(),
 			prompt_edits: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
@@ -943,7 +946,7 @@ impl AgentHost {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 
-						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::GenerateSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -1552,14 +1555,10 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			AgentActionDto::DiscardEmptyWork { work_id } => {
-				self.store
-					.discard_empty_agent_work(work_id.as_str().into())
-					.await
-					.map_err(|_| "The draft contains work and cannot be discarded")?;
-				Ok(work_id.as_str().into())
-			},
+			action @ AgentActionDto::GenerateSample { .. } =>
+				self.handle_sample(&key, action).await,
 			action @ (AgentActionDto::AddWorkspace { .. }
+			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>
 				self.handle_workspace_action(&key, action, active).await,
 			action @ AgentActionDto::SendPromptInput { .. } =>
@@ -1702,6 +1701,14 @@ impl AgentHost {
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) -> Result<String, AgentHostError> {
 		match action {
+			AgentActionDto::DiscardEmptyWork { work_id } => {
+				self.store
+					.discard_empty_agent_work(work_id.as_str().into())
+					.await
+					.map_err(|_| "The draft contains work and cannot be discarded")?;
+				Ok(work_id.as_str().into())
+			},
+
 			AgentActionDto::AddWorkspace { workspace_id, directory } =>
 				AgentCoordinator::register_workspace(
 					&self.store,

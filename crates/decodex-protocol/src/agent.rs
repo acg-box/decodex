@@ -498,6 +498,15 @@ pub enum AgentActionDto {
 		/// Exact review token saved with that draft.
 		review_token: WireText,
 	},
+	/// Request one native answer without tools or changes to the parent history.
+	GenerateSample {
+		/// Owning local root task.
+		work_id: EntityId,
+		/// Native parent reviewed by the caller.
+		thread_id: WireText,
+		/// Explicit question; at most 4000 UTF-8 bytes.
+		prompt: WireText,
+	},
 	/// Start an optional recap for the exact displayed native thread.
 	GenerateRecap {
 		/// Owning local task.
