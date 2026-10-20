@@ -132,7 +132,9 @@ fn workspace(plan: &str) -> Option<bool> {
 		| "enterprise"
 		| "edu"
 		| "edu_plus"
-		| "edu_pro" => Some(true),
+		| "edu_pro"
+		| "sci"
+		| "sci_plus" => Some(true),
 		"free" | "go" | "plus" | "pro" | "prolite" | "promax" => Some(false),
 		_ => None,
 	}
@@ -192,14 +194,17 @@ mod tests {
 			plan_type: Some("edu_plus".into()),
 		};
 		let banner = banner();
-		let target = url(&context, &banner, AccountRecoveryAction::AddCredits);
+		for plan in ["edu_plus", "sci", "sci_plus"] {
+			context.plan_type = Some(plan.into());
+			let target = url(&context, &banner, AccountRecoveryAction::AddCredits);
 
-		assert_eq!(target.path(), "/admin/billing");
-		assert_eq!(
-			target.query_pairs().find(|(k, _)| k == "account_id").unwrap().1,
-			context.provider_account_id
-		);
-		assert!(!target.query_pairs().any(|(k, _)| k == "other"));
+			assert_eq!(target.path(), "/admin/billing");
+			assert_eq!(
+				target.query_pairs().find(|(k, _)| k == "account_id").unwrap().1,
+				context.provider_account_id
+			);
+			assert!(!target.query_pairs().any(|(k, _)| k == "other"));
+		}
 
 		context.plan_type = Some("prolite".into());
 
