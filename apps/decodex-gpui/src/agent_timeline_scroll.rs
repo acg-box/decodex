@@ -703,6 +703,8 @@ mod tests {
 				entries: vec![row(10)],
 				next_cursor: None,
 				weather: Default::default(),
+				thread_token_total: None,
+				thread_metrics: None,
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			}
@@ -782,6 +784,8 @@ mod tests {
 							entries: (100..105).map(row).collect(),
 							next_cursor: None,
 							weather: Default::default(),
+							thread_token_total: None,
+							thread_metrics: None,
 							safety_buffering_turn_id: None,
 							active_realtime_session_at_page_start: None,
 						}
@@ -840,6 +844,8 @@ mod tests {
 					entries: (0..4).map(row).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
@@ -996,6 +1002,8 @@ mod tests {
 					entries: (10..1_010).map(short).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1037,6 +1045,8 @@ mod tests {
 					entries: (1..4).map(short).collect(),
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1115,6 +1125,8 @@ mod tests {
 					entries: (10..13).map(row).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1158,6 +1170,8 @@ mod tests {
 					entries: (1..4).map(row).collect(),
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}

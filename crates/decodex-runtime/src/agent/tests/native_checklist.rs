@@ -129,10 +129,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
 				reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap();
 			let projected = application::render_agent_history_for_test(saved);
 
-			assert_eq!(projected.len(), 1);
-			assert_eq!(projected[0].kind, "checklist");
-			assert!(projected[0].text.contains("First step verified"));
-			assert!(projected[0].text.contains("Completed"));
+			assert!(projected.is_empty(), "task progress must not become a chat message");
 			assert!(reopened.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 		}
 	}

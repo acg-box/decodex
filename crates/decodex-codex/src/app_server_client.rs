@@ -20,6 +20,7 @@ mod live_reviews;
 mod live_settings;
 mod model_defaults;
 mod model_recovery;
+mod output_rate;
 mod permission_observations;
 mod permissions;
 mod prediction;
@@ -68,6 +69,7 @@ pub use self::{
 	model_recovery::{
 		ThreadModelRecoveryQueued, ThreadModelRecoveryUpdate, is_thread_model_recovery_update,
 	},
+	output_rate::ObservedOutputRate,
 	permissions::{
 		NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
 		ThreadPermissionSelectionQueued, is_thread_permission_selection,

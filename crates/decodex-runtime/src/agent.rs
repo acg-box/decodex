@@ -579,6 +579,9 @@ impl AgentCoordinator {
 		}
 
 		if agent {
+			// Native task plans supply milestones without promoting chat or tool calls
+			// into work. Supported by the pinned upstream protocol and binary.
+			params["config"]["tools.update_plan.enabled"] = serde_json::json!(true);
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 			params["developerInstructions"] = serde_json::json!(INSTRUCTIONS);
 			params["dynamicTools"] = tools();
@@ -836,6 +839,7 @@ impl AgentCoordinator {
 			return Err(AgentError::Invalid("expected personal Agent root".into()));
 		}
 
+		let now = now_micros()?;
 		self.store
 			.create_agent_work_item(AgentWorkItem {
 				id: id.into(),
@@ -846,8 +850,8 @@ impl AgentCoordinator {
 				codex_thread_id: None,
 				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
-				created_at_micros: agent.updated_at_micros,
-				updated_at_micros: agent.updated_at_micros,
+				created_at_micros: now,
+				updated_at_micros: now,
 				active_turn_id: None,
 				dispatch_state: AgentDispatchState::Idle,
 			})
@@ -1715,6 +1719,7 @@ impl AgentCoordinator {
 						exact(params, "/threadId")?,
 						exact(params, "/turnId")?,
 						text,
+						checklist::progress(params),
 					)
 					.await?;
 			}

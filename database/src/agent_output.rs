@@ -528,6 +528,7 @@ impl SqliteStore {
 		thread: String,
 		turn: String,
 		text: String,
+		progress: Option<serde_json::Value>,
 	) -> Result<(), StoreError> {
 		if thread.is_empty()
 			|| thread.len() > 512
@@ -543,7 +544,7 @@ impl SqliteStore {
             let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1 AND active_turn_id=?2 AND dispatch_state='running'",rusqlite::params![thread,turn],|row|row.get(0)).optional().map_err(error::sqlite_error)?;
             let Some(work) = work else { return Ok(()); };
             let previous: Option<(i64,String)> = tx.query_row("SELECT id,payload FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='plan_updated' AND delivered_turn_id=?2 AND json_extract(payload,'$.threadId')=?3 ORDER BY id DESC LIMIT 1",rusqlite::params![work,turn,thread],|row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(error::sqlite_error)?;
-            let original_payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            let original_payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text,"progress":progress}).to_string();
 
             if previous.as_ref().is_some_and(|(_,prior)|prior == &original_payload) { return Ok(()); }
 
@@ -552,7 +553,7 @@ impl SqliteStore {
             if count > 128 { return Ok(()); }
 
             let text = if count == 128 { "Checklist update limit reached. Later step states are unavailable.".to_owned() } else { text };
-            let payload = serde_json::json!({"threadId":thread,"turnId":turn,"text":text}).to_string();
+            let payload = if count == 128 { serde_json::json!({"threadId":thread,"turnId":turn,"text":text}) } else { serde_json::json!({"threadId":thread,"turnId":turn,"text":text,"progress":progress}) }.to_string();
             let source = serde_json::json!(["plan_updated",thread,turn,previous.map(|(id,_)|id)]).to_string();
             let now = crate::unix_micros()?;
 

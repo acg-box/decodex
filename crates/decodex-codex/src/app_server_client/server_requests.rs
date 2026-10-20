@@ -13,6 +13,7 @@ use sha2::{Digest as _, Sha256};
 use crate::app_server_client::{
 	ClientError, RequestId, ServerEvent,
 	live_reviews::{LiveReviewGuard, LiveReviews},
+	output_rate::{ObservedOutputRate, OutputRates},
 	permission_observations::SettingsObservations,
 	provider_wait::ProviderWait,
 	settings_guard::SettingsRevisions,
@@ -29,8 +30,22 @@ pub(super) struct ServerRequests(
 	SettingsObservations<super::NativeTaskModelSettings>,
 	LiveReviews,
 	ProviderWait,
+	OutputRates,
 );
 impl ServerRequests {
+	pub(super) fn generating_output(&self, thread: &str) -> bool {
+		self.9.generating(thread)
+	}
+
+	pub(super) fn take_output_rate(
+		&self,
+		thread: &str,
+		turn: &str,
+		usage: &crate::ThreadTokenUsage,
+	) -> Option<ObservedOutputRate> {
+		self.9.take(thread, turn, usage)
+	}
+
 	pub(super) fn safety_buffering_turn(&self, thread: &str) -> Option<String> {
 		self.8.buffering_turn(thread)
 	}
@@ -214,6 +229,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.9.clear();
 		self.8.clear();
 		self.7.clear();
 		self.3.clear();
@@ -288,6 +304,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
+		self.9.observe(event);
 		self.7.observe(event)?;
 		self.8.observe(event);
 		self.observe_permission_event(event);

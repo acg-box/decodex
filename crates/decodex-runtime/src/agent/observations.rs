@@ -341,11 +341,22 @@ impl AgentCoordinator {
 
 		let thread = agent::exact(params, "/threadId")?;
 		let turn = agent::exact(params, "/turnId")?;
-		let Some(work) = self.store.list_agent_work_items().await?.into_iter().find(|work| {
+		let work = self.store.list_agent_work_items().await?.into_iter().find(|work| {
 			work.codex_thread_id.as_deref() == Some(&thread)
 				&& work.active_turn_id.as_deref() == Some(&turn)
-		}) else {
-			return Ok(());
+		});
+		let work = match work {
+			Some(work) => work,
+			None if method == "thread/tokenUsage/updated" => {
+				// Native children keep their own counters under the verified managed owner.
+				// Recording an observation never grants a child manager authority.
+				let Ok(owner) = self.request_owner(&thread).await else { return Ok(()) };
+				if owner.codex_thread_id.as_deref() == Some(&thread) {
+					return Ok(());
+				}
+				owner
+			},
+			None => return Ok(()),
 		};
 		let (kind, identity, payload) = match method {
 			"thread/tokenUsage/updated" => {
@@ -359,9 +370,15 @@ impl AgentCoordinator {
 					return Ok(());
 				}
 
-				let value = serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
+				let identity =
+					serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
+				let mut value = identity.clone();
+				if let Some(rate) = self.client.take_observed_output_rate(&thread, &turn, &usage) {
+					value["observedOutputRate"] = serde_json::to_value(rate)
+						.map_err(|_| AgentError::Invalid("invalid output rate".into()))?;
+				}
 
-				("token_usage", value.clone(), value)
+				("token_usage", identity, value)
 			},
 			"item/completed"
 				if params["item"]["type"] == "agentMessage"

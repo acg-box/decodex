@@ -78,11 +78,20 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
-	store.record_agent_checklist("other".into(), "turn".into(), "Wrong".into()).await.unwrap();
-	store.record_agent_checklist("thread".into(), "wrong".into(), "Wrong".into()).await.unwrap();
+	store
+		.record_agent_checklist("other".into(), "turn".into(), "Wrong".into(), None)
+		.await
+		.unwrap();
+	store
+		.record_agent_checklist("thread".into(), "wrong".into(), "Wrong".into(), None)
+		.await
+		.unwrap();
 
 	for text in ["A", "A", "B", "A"] {
-		store.record_agent_checklist("thread".into(), "turn".into(), text.into()).await.unwrap();
+		store
+			.record_agent_checklist("thread".into(), "turn".into(), text.into(), None)
+			.await
+			.unwrap();
 	}
 
 	let (entries, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
@@ -111,12 +120,12 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 
 	for index in 0..125 {
 		store
-			.record_agent_checklist("thread".into(), "turn".into(), index.to_string())
+			.record_agent_checklist("thread".into(), "turn".into(), index.to_string(), None)
 			.await
 			.unwrap();
 	}
 
-	store.record_agent_checklist("thread".into(), "turn".into(), "124".into()).await.unwrap();
+	store.record_agent_checklist("thread".into(), "turn".into(), "124".into(), None).await.unwrap();
 
 	let (unchanged, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
 
@@ -124,7 +133,7 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 
 	for index in 0..140 {
 		store
-			.record_agent_checklist("thread".into(), "turn".into(), index.to_string())
+			.record_agent_checklist("thread".into(), "turn".into(), index.to_string(), None)
 			.await
 			.unwrap();
 	}

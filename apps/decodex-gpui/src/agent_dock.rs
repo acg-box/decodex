@@ -793,6 +793,8 @@ mod tests {
 				work_id: EntityId::new("work").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
 				page: AgentTimelinePage {
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					thread_id: "thread".into(),
 					entries: items
