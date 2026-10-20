@@ -2,6 +2,133 @@
 use super::*;
 
 #[gpui::test]
+fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(
+	cx: &mut gpui::TestAppContext,
+) {
+	use decodex_protocol::{AgentOutputRate, AgentThreadMetrics};
+	preference(Some(true));
+	let idle = crate::ui_work_metrics::Summary {
+		samples: vec![Default::default(); 96],
+		..Default::default()
+	};
+	let (island, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+		island.work = Some(idle.clone());
+		island
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	let before = visual.debug_bounds("activity-work-island").unwrap();
+	let label = visual.debug_bounds("activity-live-rate").unwrap();
+	assert!((label.center().x - before.center().x).abs() < gpui::px(0.5));
+	island.update(visual, |s, cx| {
+		s.set_work(
+			Some(crate::ui_work_metrics::Summary {
+				working: 1,
+				live: vec![],
+				samples: vec![crate::ui_work_metrics::Sample {
+					stats: Some(AgentThreadMetrics {
+						generating: true,
+						rate: Some(AgentOutputRate {
+							estimated: true,
+							active: true,
+							output_tokens: 12345,
+							duration_ms: 1000,
+							started_at_ms: 0,
+							completed_at_ms: Some(1000),
+						}),
+						..Default::default()
+					}),
+					..Default::default()
+				}],
+			}),
+			cx,
+		);
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	std::thread::sleep(Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+	let busy = visual.debug_bounds("activity-work-island").unwrap();
+	assert_eq!(
+		busy.size.width,
+		visual.debug_bounds("performance-island").unwrap().size.width,
+		"resting capsules share one footprint even when a value grows"
+	);
+	let label = visual.debug_bounds("activity-live-rate").unwrap();
+	assert!(busy.size.width > before.size.width);
+	assert!(label.left() > busy.left() && label.right() < busy.right());
+	island.update(visual, |s, cx| s.set_work(Some(idle), cx));
+	visual.update(crate::ui_frame::draw_frame);
+	std::thread::sleep(Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+	assert_eq!(visual.debug_bounds("activity-work-island").unwrap().size.width, before.size.width);
+	preference(Some(false));
+}
+
+#[gpui::test]
+fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut gpui::TestAppContext) {
+	for debug in [false, true] {
+		preference(Some(debug));
+		let (island, visual) = cx.add_window_view(|_, cx| {
+			let mut island = PerformanceIsland::new(cx);
+			island.work = Some(crate::ui_work_metrics::Summary {
+				working: 92,
+				live: (1..=92)
+					.map(|index| crate::ui_work_metrics::Live {
+						key: format!("live-{index}"),
+						agent: format!("A{index}"),
+						action: "cargo test".into(),
+						sample: crate::ui_work_metrics::Sample {
+							stats: Some(decodex_protocol::AgentThreadMetrics {
+								active_ms: Some(8_000),
+								..Default::default()
+							}),
+							..Default::default()
+						},
+					})
+					.collect(),
+				..Default::default()
+			});
+			island.expansion = Expansion::Clicked;
+			island
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		let pill = visual.debug_bounds("activity-work-island").unwrap();
+		let work = visual.debug_bounds("activity-work-details").unwrap();
+		assert!(work.bottom() <= pill.bottom());
+		assert!(work.right() <= pill.right());
+		let first = visual.debug_bounds("activity-live-live-1").unwrap();
+		assert!(first.left() > pill.left() && first.right() < pill.right());
+		assert!(
+			visual.debug_bounds("activity-live-live-92").is_none(),
+			"offscreen work is not rendered"
+		);
+		assert_eq!(pill.size.height, gpui::px(154.));
+		assert!(visual.debug_bounds("activity-work-total").is_some());
+		assert!(visual.debug_bounds("performance-needs-you").is_none());
+		assert!(visual.debug_bounds("performance-agent-time").is_none());
+
+		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);
+		if debug {
+			assert!(visual.debug_bounds("performance-island-details").is_none());
+			let control = visual.debug_bounds("performance-island-toggle").unwrap();
+			visual.simulate_click(control.center(), Default::default());
+			visual.update(crate::ui_frame::draw_frame);
+			std::thread::sleep(std::time::Duration::from_millis(250));
+			visual.update(crate::ui_frame::draw_frame);
+			let details = visual.debug_bounds("performance-island-details").unwrap();
+			let debug_pill = visual.debug_bounds("performance-island").unwrap();
+			assert!(details.bottom() <= debug_pill.bottom(), "{details:?} outside {debug_pill:?}");
+			assert!(!island.read_with(visual, |s, _| s.expanded(Activity::Work)));
+			assert!(visual.debug_bounds("activity-work-details").is_none());
+		} else {
+			assert!(visual.debug_bounds("performance-island-details").is_none());
+			assert!(island.read_with(visual, |s, _| s.task.is_none()));
+		}
+	}
+	preference(Some(false));
+}
+
+#[gpui::test]
 fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut gpui::TestAppContext) {
 	preference(Some(true));
 	let (island, visual) = cx.add_window_view(|_, cx| {
@@ -14,12 +141,21 @@ fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut gpui::TestAppCont
 	visual.update(|window, cx| window.draw(cx).clear(cx));
 	let toggle = visual.debug_bounds("performance-island-toggle").expect("island control");
 	let fps = visual.debug_bounds("performance-fps").unwrap();
-	let gpu = visual.debug_bounds("performance-gpu-label").unwrap();
-	assert!(gpu.left() - fps.right() >= gpui::px(12.));
-	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < toggle.right());
+	assert!(fps.right() < toggle.right());
+	assert_eq!(
+		visual.debug_bounds("performance-island").unwrap().size.width,
+		gpui::px(crate::ui_live_activity::MIN_CAPSULE_WIDTH)
+	);
+	assert!(visual.debug_bounds("performance-gpu-label").is_none());
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
 	visual.update(|window, cx| window.draw(cx).clear(cx));
 	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));
+	std::thread::sleep(std::time::Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+	let expanded = visual.debug_bounds("performance-island-toggle").unwrap();
+	let gpu = visual.debug_bounds("performance-gpu-label").unwrap();
+	assert!(gpu.left() - visual.debug_bounds("performance-fps").unwrap().right() >= gpui::px(12.));
+	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < expanded.right());
 	visual.simulate_mouse_move(
 		gpui::point(gpui::px(600.), gpui::px(400.)),
 		None,
@@ -66,19 +202,21 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut gpui::Test
 	for pair in cells.windows(2) {
 		assert_eq!(pair[0].top(), pair[1].top());
 		assert_eq!(pair[1].left() - pair[0].right(), gpui::px(12.));
-		assert!((pair[0].size.width - pair[1].size.width).abs() <= gpui::px(1.));
 	}
 	assert_eq!(chart.top(), draw.top());
 	assert_eq!(chart.left() - draw.right(), gpui::px(8.));
 	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
 	assert_eq!(visual.debug_bounds("performance-gpu").unwrap().right(), chart.right());
-	assert_eq!(capsule.size, gpui::size(gpui::px(272.), gpui::px(96.)));
+	assert_eq!(capsule.size.height, gpui::px(96.));
+	assert!(capsule.size.width < gpui::px(240.), "content should not fill an arbitrary wide grid");
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 	preference(Some(false));
 }
 
 #[gpui::test]
-fn metric_slots_stay_put_across_missing_and_wider_values(cx: &mut gpui::TestAppContext) {
+fn metric_columns_fit_their_content_and_adapt_together_for_wider_values(
+	cx: &mut gpui::TestAppContext,
+) {
 	preference(Some(true));
 	let (island, visual) = cx.add_window_view(|_, cx| {
 		let mut island = PerformanceIsland::new(cx);
@@ -94,23 +232,31 @@ fn metric_slots_stay_put_across_missing_and_wider_values(cx: &mut gpui::TestAppC
 		"performance-latency",
 		"performance-draw",
 	];
-	let before = ids.map(|id| visual.debug_bounds(id).unwrap());
+	let before = visual.debug_bounds("performance-island").unwrap();
 	island.update(visual, |s, cx| {
 		s.metrics = Metrics {
 			fps: 165.,
 			draw_ms: 26.5,
-			submit_ms: 123.4,
+			submit_ms: 12345.4,
 			draw_frames: 82,
 			ready_samples: 82,
 		};
 		s.cpu_percent = Some(1234.);
 		s.host.gpu_percent = Some(100.);
-		s.host.peak_memory_bytes = Some(12_300_000_000.);
+		s.host.peak_memory_bytes = Some(12_300_000_000_000.);
 		cx.notify();
 	});
 	visual.update(|window, cx| window.draw(cx).clear(cx));
-	for (id, bounds) in ids.into_iter().zip(before) {
-		assert_eq!(visual.debug_bounds(id).unwrap(), bounds, "{id}");
+	std::thread::sleep(std::time::Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+	let after = visual.debug_bounds("performance-island").unwrap();
+	assert!(after.size.width > before.size.width, "wider data should grow its content footprint");
+	for id in ids {
+		let bounds = visual.debug_bounds(id).unwrap();
+		assert!(
+			bounds.left() >= after.left() && bounds.right() <= after.right(),
+			"{id}: {bounds:?} outside {after:?}"
+		);
 	}
 	for (id, label) in [
 		("performance-cpu", "performance-cpu-label"),
