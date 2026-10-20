@@ -3584,8 +3584,8 @@
     "next_action": "Resume the supported lifecycle on merged main and reconcile source drift before historical page generation. No managed page/control was hand-edited.",
     "merge_boundary": "Source review, necessary repair and exact development-artifact qualification deliver independently. The expanded historical documentation lifecycle is incomplete."
   },
-  "delivery_reference": "Pending the focused maintenance pull request; qualification is complete, merge is not yet claimed.",
-  "delivery_status": "pending",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2470",
+  "delivery_status": "public_pull_request",
   "qualification_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
   "qualification_source_binding": {
     "consumer_baseline": "96cb7b5c707461c23e0a9dda81d345d8005643a2",

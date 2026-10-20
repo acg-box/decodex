@@ -21,7 +21,7 @@
     "tests_read_source_revision_body_count": 307,
     "tests_read_unique_function_count": 296,
     "source_read_scope": "Relevant complete behavior functions/test bodies and complete non-generated source diffs. Giant unchanged constructors/dispatchers are wiring context, not claimed as separately fully reread. Linux test extraction includes all six complete modules; generated dependency metadata uses exact structured deltas.",
-    "certification": "Relevant diff, source/test bodies, concrete current-main consumers, exact-artifact qualification and final test identities are reconciled. Git delivery remains separately pending.",
+    "certification": "Relevant diff, source/test bodies, concrete current-main consumers, exact-artifact qualification and final test identities are reconciled. Public delivery is linked separately; installed-app acceptance is not claimed.",
     "upstream_tests_executed_count": 413,
     "upstream_test_executions_across_attempts": 413,
     "upstream_javascript_tests_executed_count": 4,
@@ -662,9 +662,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 26
+      "upstream_test_executed_count": 26,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 3,
@@ -775,7 +776,7 @@
       "tests_read": [],
       "decodex_consumer": "The selected native package retains bundled skill discovery used by agent_skills::read/project. Four source Node tests execute the download script behavior; no live documentation-provider request was made.",
       "tests_executed": [],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
       "script_sources_read": [
         "skills/src/assets/samples/openai-docs/scripts/fetch-codex-manual.mjs#fetchManual",
@@ -792,7 +793,8 @@
           "codex-rs/skills/tests/openai_docs_downloads.test.mjs"
         ]
       },
-      "upstream_test_executed_count": 0
+      "upstream_test_executed_count": 0,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 5,
@@ -1023,9 +1025,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 9
+      "upstream_test_executed_count": 9,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 6,
@@ -1621,9 +1624,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 16
+      "upstream_test_executed_count": 16,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 9,
@@ -1873,9 +1877,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 5
+      "upstream_test_executed_count": 5,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 11,
@@ -1978,9 +1983,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 2
+      "upstream_test_executed_count": 2,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 12,
@@ -2147,9 +2153,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 9
+      "upstream_test_executed_count": 9,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 13,
@@ -2266,9 +2273,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 1
+      "upstream_test_executed_count": 1,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 14,
@@ -2535,7 +2543,7 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
       "upstream_test_executed_count": 4,
       "equivalent_final_test": {
@@ -2546,7 +2554,8 @@
         "passed": 1,
         "renamed_at": "c6e4438a5d5befe6c8e59b01b6534eb8f0792230",
         "reason": "The final test retains grant lease, authority, token rotation, replacement login, metadata loss and logout assertions, and adds stale-refresh fencing."
-      }
+      },
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 15,
@@ -2900,9 +2909,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 11
+      "upstream_test_executed_count": 11,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 17,
@@ -3859,9 +3869,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 10
+      "upstream_test_executed_count": 10,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 22,
@@ -4869,9 +4880,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 13
+      "upstream_test_executed_count": 13,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 28,
@@ -5337,9 +5349,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 1
+      "upstream_test_executed_count": 1,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 30,
@@ -5628,9 +5641,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 9
+      "upstream_test_executed_count": 9,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 31,
@@ -5774,9 +5788,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 3
+      "upstream_test_executed_count": 3,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 32,
@@ -6044,7 +6059,7 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
       "upstream_test_executed_count": 5,
       "equivalent_final_test": {
@@ -6055,7 +6070,8 @@
         "passed": 1,
         "renamed_at": "c6e4438a5d5befe6c8e59b01b6534eb8f0792230",
         "reason": "The final test retains grant lease, authority, token rotation, replacement login, metadata loss and logout assertions, and adds stale-refresh fencing."
-      }
+      },
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 33,
@@ -6431,9 +6447,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 35
+      "upstream_test_executed_count": 35,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 35,
@@ -6526,9 +6543,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 11
+      "upstream_test_executed_count": 11,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 36,
@@ -6863,9 +6881,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 11
+      "upstream_test_executed_count": 11,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 37,
@@ -7190,9 +7209,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 5
+      "upstream_test_executed_count": 5,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 38,
@@ -8698,9 +8718,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 15
+      "upstream_test_executed_count": 15,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 42,
@@ -8716,10 +8737,11 @@
       "tests_read": [],
       "decodex_consumer": "The selected native package performs model/MCP/provider TLS. Source/registry provenance, exact lock digest, fresh baseline/candidate audit and target dependency graph qualify this dependency repair.",
       "tests_executed": [],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
       "test_limit": "No upstream test body changed in this commit. Policy/lock entries or the exact platform branch and available dependency validation were inspected; no missing test is invented.",
-      "upstream_test_executed_count": 0
+      "upstream_test_executed_count": 0,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 43,
@@ -9972,9 +9994,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 7
+      "upstream_test_executed_count": 7,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 45,
@@ -10038,9 +10061,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 1
+      "upstream_test_executed_count": 1,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 46,
@@ -10443,9 +10467,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 11
+      "upstream_test_executed_count": 11,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 47,
@@ -10499,9 +10524,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 1
+      "upstream_test_executed_count": 1,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 48,
@@ -10629,9 +10655,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 4
+      "upstream_test_executed_count": 4,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 49,
@@ -11053,9 +11080,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 7
+      "upstream_test_executed_count": 7,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 51,
@@ -11488,9 +11516,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 6
+      "upstream_test_executed_count": 6,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 53,
@@ -11545,9 +11574,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 1
+      "upstream_test_executed_count": 1,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 54,
@@ -12036,9 +12066,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 11
+      "upstream_test_executed_count": 11,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     },
     {
       "index": 55,
@@ -12578,9 +12609,10 @@
           ]
         }
       ],
-      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; delivery is pending this maintenance pull request.",
+      "runtime_disposition": "Exact signed candidate and retained native behavior qualified; the public delivery reference identifies the integration change.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 12
+      "upstream_test_executed_count": 12,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
     }
   ],
   "source_digests": [
@@ -13673,12 +13705,13 @@
     "url": "https://codeload.github.com/openai/codex/tar.gz/66d0de9983e82b266e89ee29523324c9d08a5472",
     "sha256": "ca670d8f6341fe14b911bd3053a3357a5e34946eecde5609a7852082e2b62136"
   },
-  "delivery_status": "pending",
+  "delivery_status": "public_pull_request",
   "qualification_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
   "qualification_source_binding": {
     "consumer_baseline": "96cb7b5c707461c23e0a9dda81d345d8005643a2",
     "code_and_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
     "runtime_lock_sha256": "a4c2634d185f39899f8ebcdede0a0b3888edec0f7c7d959212d937b3ba45e460",
     "limits": "The code/fixture commit and exact working lock content are bound separately; portable evidence is committed after qualification."
-  }
+  },
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
 }

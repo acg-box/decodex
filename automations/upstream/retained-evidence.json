@@ -13,7 +13,8 @@
     "https://github.com/acg-box/decodex/pull/2463",
     "https://github.com/acg-box/decodex/pull/2464",
     "https://github.com/acg-box/decodex/pull/2465",
-    "https://github.com/acg-box/decodex/pull/2466"
+    "https://github.com/acg-box/decodex/pull/2466",
+    "https://github.com/acg-box/decodex/pull/2470"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
@@ -890,11 +891,12 @@
     }
   },
   "current_delivery": {
-    "status": "pending",
+    "status": "public_pull_request",
     "code_commits": [
       "https://github.com/acg-box/decodex/commit/3d674e99b22c0f687c843ef7ebf583c983856dc2",
       "https://github.com/acg-box/decodex/commit/900947e457ecaa260211bb99b49bc7fca0da1a71"
     ],
-    "scope": "Qualified fixed development baseline and existing workspace recovery repair. Pull-request/merge readback remains pending."
+    "scope": "Qualified fixed development baseline and existing workspace recovery repair. The public pull request records CI and merge state; installed-app acceptance is not claimed.",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2470"
   }
 }
