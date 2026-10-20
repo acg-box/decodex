@@ -7,6 +7,8 @@ mod account_profiles;
 mod account_usage;
 mod accounts;
 mod agent;
+mod agent_deliveries;
+pub use agent_deliveries::{DeliveryPage, DeliveryRecord};
 mod workspaces;
 pub use workspaces::Workspace;
 mod agent_app_settings;

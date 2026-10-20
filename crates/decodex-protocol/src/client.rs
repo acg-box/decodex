@@ -1308,6 +1308,26 @@ impl AgentClient {
 		}
 	}
 
+	/// Read recent delivery milestones without starting or resuming any conversation.
+	pub async fn deliveries(
+		&self,
+		query: crate::AgentDeliveryQuery,
+	) -> Result<crate::AgentDeliveriesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport
+				.query_inner("agent-deliveries", QueryPayload::GetAgentDeliveries { query }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentDeliveries(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the latest bounded visible history for the selected work.
 	pub async fn history(&self, work_id: EntityId) -> Result<AgentHistoryResult, ClientFailure> {
 		self.history_page(work_id, None).await

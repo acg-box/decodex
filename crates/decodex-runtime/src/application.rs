@@ -1,5 +1,7 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
+#[path = "application_deliveries.rs"] mod deliveries;
+
 #[path = "application_account_nudge.rs"] mod account_nudge;
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;
@@ -2843,6 +2845,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
+			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings
 			| QueryPayload::ListPrograms
 			| QueryPayload::GetProgramCycle { .. }

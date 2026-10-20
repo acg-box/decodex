@@ -1,6 +1,12 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
+mod agent_deliveries;
+pub use agent_deliveries::{
+	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,
+	AgentDeliveryKind, AgentDeliveryQuery, AgentDeliveryUpdate, AgentDeliveryUpdateKind,
+};
+
 mod account_login;
 mod account_recovery;
 mod agent;
