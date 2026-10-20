@@ -358,18 +358,19 @@
     {
       "id": "native-thread-sample",
       "upstream_commit": "8f8e7a6e095d36b9375b5202e05fc9d1bdb95584",
-      "status": "awaiting_user_decision",
-      "value": "A one-shot inherited, tool-free response can support a future explicit sampling workflow.",
-      "maintenance_cost": "Medium: define a user workflow and cover cancellation, token limits and experimental API drift.",
-      "recommendation": "Defer until a concrete product need. Existing explicit prediction forks remain."
+      "status": "approved_implemented",
+      "value": "Ask an explicit separate question from an idle native root context without tools or parent conversation changes.",
+      "maintenance_cost": "Medium: source-bound state, separate editor, uncertain responses and experimental API drift.",
+      "recommendation": "Use the manual Ask separately action. Native owns inference and child cleanup; closing the panel does not cancel inference.",
+      "qualification": "retained_native_coordination.separate_answers"
     },
     {
       "id": "native-startup-config-diagnostics",
       "upstream_commit": "1277bcfddc69800c5e3538dccf3f26bedbd80290",
-      "status": "awaiting_user_decision",
+      "status": "approved_pending_implementation",
       "value": "Inspect effective startup configuration and auth policy without a full app-server session.",
       "maintenance_cost": "Low to medium: define a diagnostic surface, redaction and support workflow.",
-      "recommendation": "Defer a new product surface; current startup behavior remains."
+      "recommendation": "Implement the user-approved on-demand native startup configuration check through existing diagnostics."
     },
     {
       "id": "incremental-tool-catalog",
@@ -440,7 +441,7 @@
     },
     "source_review_evidence": "automations/upstream/current-review.json",
     "selected_runtime_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
-    "runtime_disposition": "Necessary retained-capability repairs use the fixed official main artifact. New startup diagnostics and thread/sample product surfaces remain unselected.",
+    "runtime_disposition": "Necessary retained-capability repairs retain the fixed qualified runtime. The user-approved native sample surface is implemented and qualified by retained_native_coordination.separate_answers; startup diagnostics has approval and a separate implementation batch.",
     "qualification_limits": "Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance.",
     "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
     "runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2464"
@@ -462,6 +463,126 @@
       "fixture_sha256": "9fcb7d44d6ab13134c67a108fdbaeb87548a16b63fabd8bbd27e33dd443bde01",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2463",
       "limits": "Deterministic loopback provider and native source assertions. No installed desktop interaction, live provider, real account exhaustion/rotation race or latency/cost benchmark."
+    },
+    "separate_answers": {
+      "upstream_commit": "8f8e7a6e095d36b9375b5202e05fc9d1bdb95584",
+      "qualified_runtime_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+      "contract": "An explicit root-only question sends one inherited native thread/sample request. Native owns tool suppression, the private child, deadline and cleanup. The parent transcript, model settings and ordinary composer draft stay unchanged. A lost acknowledgement only triggers readback; generation is never replayed. Close stops display polling and leaves native inference running. Results expire after account, revision, process, thread, history, settings or voice-source changes.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/sample.rs#AppServerClient::sample_thread,#is_thread_sample",
+        "crates/decodex-runtime/src/agent_sample_host.rs#AgentHost::start_sample,#run_sample,#sample_status",
+        "crates/decodex-runtime/src/agent_sample.rs#Samples::start,#finish,#status",
+        "crates/decodex-runtime/src/account_launch/agent_process.rs#validate_inherited_request",
+        "apps/decodex-gpui/src/agent_sample.rs#AgentSurface::open_sample,#request_sample,#sample_panel",
+        "apps/decodex-gpui/src/agent_sample_request.rs#run"
+      ],
+      "tests_read": {
+        "retained_upstream_record": "automations/upstream/current-review.json#records[index=37]",
+        "retained_upstream_function_count": 9,
+        "upstream_execution_this_feature_batch": 0,
+        "local_tests": [
+          "app_server_client::sample::tests::sampling_sends_one_native_request_and_preserves_null_tool_results",
+          "app_server_client::sample::tests::sampling_rejects_a_response_for_a_different_source_turn",
+          "agent_sample::tests::samples_hide_old_owners_and_do_not_allow_duplicate_pending_generation",
+          "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source",
+          "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
+          "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
+          "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
+        ]
+      },
+      "execution": [
+        {
+          "packages": [
+            "decodex-codex",
+            "decodex-protocol",
+            "decodex-runtime"
+          ],
+          "entrypoint": "lib",
+          "command": "cargo +stable nextest run --locked -p decodex-codex -p decodex-protocol -p decodex-runtime --lib",
+          "passed": 1217,
+          "skipped": 114
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui",
+          "passed": 833,
+          "skipped": 14,
+          "limit": "Broad pass precedes the final readback/notification adjustment; the three affected tests below requalify that final GUI code."
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "selectors": [
+            "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source",
+            "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
+            "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command"
+          ],
+          "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E \"test(separate_answer_preserves_the_composer_and_hides_a_replaced_source) | test(enter_in_a_separate_question_does_not_reach_the_main_send_action) | test(a_lost_sample_acknowledgement_is_read_back_without_another_model_command)\"",
+          "passed": 3,
+          "skipped": 844,
+          "unmatched_selectors": []
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib",
+          "command": "DECODEX_TEST_CODEX_BINARY=<qualified-cli> cargo +stable nextest run --locked -p decodex-runtime --lib --run-ignored only -E \"test(installed_native_sampling_preserves_parent_and_blocks_tools_without_replay) | test(installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay)\"",
+          "passed": 2,
+          "skipped": 915,
+          "unmatched_selectors": [],
+          "behavior": "Legacy and paginated parents: text, dynamic-function and apply_patch attempts, unchanged transcript/configuration, no durable private children or filesystem effect. Retained prediction fork still passes."
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib",
+          "command": "python3 crates/decodex-runtime/tests/native_qualification/sample_service.py --runtime <qualified-runtime-package>",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "mode": "DECODEX_TEST_NATIVE_SAMPLE=1",
+          "passed": 1,
+          "skipped": 916,
+          "unmatched_selectors": [],
+          "behavior": "Real same-UID client/service/admitted bridge and exact CLI: no inference on read, one inference after duplicate command identity, foreign-thread rejection, parent unchanged, old result hidden after new parent input. Temporary account/config home; execution cwd is the existing owned checkout, preserving OS-home directory authority."
+        }
+      ],
+      "checks": [
+        "cargo +stable make check-rust",
+        "cargo +stable make fmt-rust-check",
+        "Strict Clippy on decodex-codex, decodex-protocol, decodex-runtime and decodex-gpui; all targets/features and all repository deny flags.",
+        "git diff --check"
+      ],
+      "initial_unmatched_selectors": [
+        "test(agent_sample_tests::) matched zero tests and failed; corrected to the three exact identities above."
+      ],
+      "qualification_repairs": "The reusable fixture imports the verified package through cargo +stable make prepare-codex. It keeps the Unix socket short and native preparation home separate. Initial temporary execution cwd was refused by existing OS-user-home policy; the fixture now uses the owned checkout. No production directory gate, assertion or native runtime discovery was weakened.",
+      "source_sha256": {
+        "crates/decodex-codex/src/app_server_client/sample.rs": "d1a9ebbcfba06ae0b39b35b3657de11d8cefb4ca3829da185423ede10138ce98",
+        "crates/decodex-runtime/src/agent_sample.rs": "444cdc6df7843d78b3c12ce53541a0b03b25167c77d9361d1fdeff8bcac391dd",
+        "crates/decodex-runtime/src/agent_sample_host.rs": "55b8a825256e186d614b665ca4d23f31e78fddcea4ac6350d19cbdd9f9dc669d",
+        "crates/decodex-runtime/src/agent_sample_tests.rs": "2e2a3fe9845aa34beb68db8925933a62fededc3cb39e0b20ae4b7f361e887473",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs": "7143e9a2fe4776565317a4c2c25c94f1f4db9eae1d72e81ff3b7f6c7a6585e29",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_sampling_socket_tests.rs": "30daf644d82a7ddec71522dc2622ae7dd161a0c4661d7fb3b9eb91a832491a3d",
+        "crates/decodex-runtime/tests/native_qualification/sample_service.py": "2e93c9dcbd7bd007f72e31702c10013c7b1a8bf5b1cd1cb3cd0a8858252d9ff8",
+        "apps/decodex-gpui/src/agent_sample.rs": "c9e531d8923f7613360fadf8f87236873ac64dc808ad55e3fd84fd50658ea794",
+        "apps/decodex-gpui/src/agent_sample_request.rs": "60bfd953ccdb2d93aff16cd060d6389f0d4d497776a35686bbc8276aa0b716cd",
+        "apps/decodex-gpui/src/agent_sample_tests.rs": "c90c18e253602c52a6f22d32cdfc42a40fa7bf8845a736b3c5b39df25eaab224"
+      },
+      "artifact_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "136057ed125e2ecdc3adfeb139bc446278c7a0603165e48f9c63824edee0deb9",
+        "bin/codex-code-mode-host": "1595ccfdf41a20c162493f861712571989231c7f7edc26c5b051944948963d22",
+        "codex-path/rg": "bd512985b7c4d38eaa2c0decad03acf8d856ed8ac23a1c7f5955143512be5dfa"
+      },
+      "schema_fingerprint": "12ed459d9774867a23126e6e7a9a145e093bbfaf2da8de495853e24ca6b974b5",
+      "schema_files_sha256": {
+        "v2/ThreadSampleParams.json": "4cd147f7bc5a937f135183182972aed5b18da79da10d386db97af60afcd429d5",
+        "v2/ThreadSampleResponse.json": "573c194687d053ef70c599e73b86ff2255c3166d18728adf3b823b866dfe28a7"
+      },
+      "delivery_references": [
+        "https://github.com/acg-box/decodex/commit/74c5d5dba0b3339089beb20146e4912919255e14",
+        "https://github.com/acg-box/decodex/commit/5d4db2a2b686c205ceac020d93cb91e1e7b8c0cb"
+      ],
+      "limits": "Fixed signed private-stdio macOS arm64 development runtime and packaged helpers. Synthetic loopback provider/accounts and automated GPUI fixtures. Native timeout/Stop/MCP details retain their source-review limits; this feature batch does not rerun the upstream suite or claim live MCP/provider/account or installed-app acceptance. No installation, release or schedule change. The original certified review range remains unchanged."
     }
   },
   "documentation_lifecycle": {
