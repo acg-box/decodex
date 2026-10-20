@@ -53,12 +53,18 @@ mod mcp_install;
 mod mcp_login;
 mod model_catalog;
 mod native_agents;
+mod native_startup_config;
 mod program_cycle;
 mod reset_card_recovery;
 mod retained_session;
 mod voice;
 mod weather;
 mod wire;
+
+pub use native_startup_config::{
+	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
+	NativeStartupLoginMethod,
+};
 
 pub use self::{
 	account_login::{
@@ -277,7 +283,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 120 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 121 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

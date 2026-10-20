@@ -2328,6 +2328,35 @@ impl DoctorClient {
 		Ok(completed.value)
 	}
 
+	/// Inspect startup configuration through the local service without starting a conversation.
+	pub async fn startup_configuration(
+		&self,
+		directory: crate::ConversationWorkingDirectory,
+	) -> Result<crate::NativeStartupConfiguration, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let expected = directory.as_str().to_owned();
+		let completed = time::timeout(
+			transport.timeout,
+			transport.query_inner(
+				"decodex-native-startup-configuration",
+				QueryPayload::GetNativeStartupConfiguration { directory },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::NativeStartupConfiguration(result)
+				if result.is_valid() && result.directory.as_deref() == Some(expected.as_str()) =>
+				Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	async fn query_inner(&self) -> Result<CompletedOneShot<DoctorReport>, ClientFailure> {
 		let local_transport = self
 			.transport

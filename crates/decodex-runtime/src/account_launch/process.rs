@@ -21,6 +21,9 @@ mod managed_codex;
 #[path = "provisioned_cli.rs"]
 mod provisioned_cli;
 
+#[path = "process_startup_config.rs"] mod startup_config;
+pub(crate) use startup_config::inspect_native_startup_configuration;
+
 pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
 
 #[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
@@ -5637,7 +5640,7 @@ fn attest_executable_for_home(
 		&command.version_args,
 		Stdio::from(version_writer),
 		preflight_remaining(deadline)?,
-		MAX_VERSION_OUTPUT_BYTES,
+		Some(MAX_VERSION_OUTPUT_BYTES),
 		guard,
 	)?;
 
@@ -5667,7 +5670,7 @@ fn attest_executable_for_home(
 		&schema_args,
 		Stdio::null(),
 		preflight_remaining(deadline)?,
-		MAX_SCHEMA_FILE_BYTES,
+		Some(MAX_SCHEMA_FILE_BYTES),
 		guard,
 	)?;
 
@@ -5706,7 +5709,7 @@ fn run_preflight_command(
 	args: &[OsString],
 	stdout: Stdio,
 	timeout: Duration,
-	max_file_bytes: u64,
+	max_file_bytes: Option<u64>,
 	guard: ProcessGuard,
 ) -> Result<(ExitStatus, ProcessGuard), SupervisionError> {
 	run_before_spawn_test(command);
@@ -5724,7 +5727,7 @@ fn run_preflight_command(
 		.stderr(Stdio::null());
 
 	configure_home_environment(&mut process, expected_codex_home)?;
-	configure_process_session(&mut process, Some(max_file_bytes));
+	configure_process_session(&mut process, max_file_bytes);
 
 	let started = Instant::now();
 	let term_deadline = started + timeout / 2;

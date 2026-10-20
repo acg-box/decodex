@@ -38,9 +38,9 @@ use crate::{
 	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
 	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
 	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
-	ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
-	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
-	ProtocolVersion, TaskRecapStatus,
+	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration, PromptEditStatus,
+	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -2168,6 +2168,11 @@ pub enum QueryPayload {
 		/// Original review identity.
 		review_token: WireText,
 	},
+	/// Inspect native startup requirements with shared sign-in, without a conversation or sign-out.
+	GetNativeStartupConfiguration {
+		/// Exact directory whose native configuration layers must be checked.
+		directory: ConversationWorkingDirectory,
+	},
 	/// Read existing sample state without starting inference.
 	GetAgentSample {
 		/// Owning local task.
@@ -3118,7 +3123,9 @@ pub enum QueryResultPayload {
 		/// Absolute working directory of the retained native process.
 		directory: Option<WireText>,
 	},
-	/// Latest explicit native sample result.
+	/// Safe native startup configuration snapshot for one explicit check.
+	NativeStartupConfiguration(NativeStartupConfiguration),
+	/// Latest explicit native sample state.
 	AgentSample(AgentSampleStatus),
 	/// Service-owned task recap state.
 	AgentRecap(TaskRecapStatus),
