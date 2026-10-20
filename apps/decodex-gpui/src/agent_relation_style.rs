@@ -5,29 +5,44 @@ use super::{
 	StatefulInteractiveElement, Styled, TEXT_MUTED,
 };
 
+/// Annotations share the same world coordinates and zoom as cards and routes.
+pub(super) struct ConnectionLabel {
+	pub text: String,
+	pub width: f32,
+}
+impl ConnectionLabel {
+	pub const FONT_SIZE: f32 = 10.;
+	pub const HEIGHT: f32 = 18.;
+
+	pub fn new(text: String) -> Self {
+		Self { width: (text.chars().count() as f32 * 6. + 10.).max(22.), text }
+	}
+
+	/// World-space bounds used by both the rendered control and camera fitting.
+	pub fn bounds(&self, anchor: (f32, f32)) -> [f32; 4] {
+		let (x, y) = (self.width / 2., Self::HEIGHT / 2.);
+		[anchor.0 - x, anchor.1 - y, anchor.0 + x, anchor.1 + y]
+	}
+}
+
 /// Keep adjacent solid strokes together without changing their triangle order.
 /// Separate paths let unrelated node backgrounds split the edge rendering into
 /// repeated full-window intermediate passes.
 #[derive(Default)]
-pub(super) struct StrokeBatch(Option<(u32, gpui::Path<gpui::Pixels>)>);
+pub(super) struct StrokeBatch(Vec<(u32, gpui::Path<gpui::Pixels>)>);
 
 impl StrokeBatch {
-	pub(super) fn push(
-		&mut self,
-		path: gpui::Path<gpui::Pixels>,
-		color: u32,
-	) -> Option<(u32, gpui::Path<gpui::Pixels>)> {
-		if let Some((_, previous)) = self.0.as_mut().filter(|(previous, _)| *previous == color) {
+	pub(super) fn push(&mut self, path: gpui::Path<gpui::Pixels>, color: u32) {
+		if let Some((_, previous)) = self.0.last_mut().filter(|(previous, _)| *previous == color) {
 			previous.bounds = previous.bounds.union(&path.bounds);
 			previous.vertices.extend(path.vertices);
-			None
 		} else {
-			self.0.replace((color, path))
+			self.0.push((color, path));
 		}
 	}
 
 	pub(super) fn paint(&mut self, window: &mut gpui::Window) {
-		if let Some((color, path)) = self.0.take() {
+		for (color, path) in self.0.drain(..) {
 			window.paint_path(path, gpui::rgba(color));
 		}
 	}
@@ -35,7 +50,7 @@ impl StrokeBatch {
 
 impl AgentSurface {
 	pub(super) fn relation_legend_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
-		let hidden = self.work_board.view.legend_hidden;
+		let hidden = !self.work_board.view.legend_visible;
 		let label = if hidden { "Show legend" } else { "Hide legend" };
 		gpui::div()
 			.id("graph-legend-toggle")
@@ -63,12 +78,12 @@ impl AgentSurface {
 			))
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.on_click(cx.listener(|s, _, _, cx| {
-				s.work_board.view.legend_hidden = !s.work_board.view.legend_hidden;
+				s.work_board.view.legend_visible = !s.work_board.view.legend_visible;
 				cx.notify();
 			}))
 			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-					s.work_board.view.legend_hidden = !s.work_board.view.legend_hidden;
+					s.work_board.view.legend_visible = !s.work_board.view.legend_visible;
 					cx.stop_propagation();
 					cx.notify();
 				}
@@ -79,6 +94,7 @@ impl AgentSurface {
 	pub(in super::super) fn relation_legend(&self) -> AnyElement {
 		let mut links = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(14.));
 		for (kind, label) in [
+			(Kind::Assigned, "Ownership"),
 			(Kind::Message, "Collaboration"),
 			(Kind::Resource, "Reference"),
 			(Kind::Wait, "Dependency"),
@@ -94,15 +110,10 @@ impl AgentSurface {
 						gpui::canvas(
 							|_, _, _| (),
 							move |bounds, _, window, _| {
-								let route = Route {
-									start: (1., 5.),
-									end: (21., 5.),
-									first: (7., 5.),
-									second: (14., 5.),
-									label: (11., 5.),
-								};
-								if let Ok(path) =
-									route.stroke(kind, bounds.origin, 1., (0., 0.), 1.2).build()
+								let route = Route::curve((1., 5.), (7., 5.), (14., 5.), (21., 5.));
+								if let Ok(path) = route
+									.stroke(kind, bounds.origin, 1., (0., 0.), 1.2, false)
+									.build()
 								{
 									window.paint_path(path, gpui::rgb(kind.color()));
 								}
@@ -158,71 +169,56 @@ impl Kind {
 }
 
 impl Route {
-	pub(super) fn reversed(&self) -> Self {
-		Self {
-			start: self.end,
-			end: self.start,
-			first: self.second,
-			second: self.first,
-			label: self.label,
-		}
-	}
-
 	pub(super) fn paint_flow(
 		&self,
 		origin: gpui::Point<gpui::Pixels>,
 		scale: f32,
 		pan: (f32, f32),
 		phase: f32,
-		color: u32,
+		opacity: f32,
 		window: &mut gpui::Window,
 	) {
-		// Sample arc length so the pulse does not accelerate through curved sections.
-		let samples: Vec<_> = (0..=64).map(|i| self.at(i as f32 / 64.)).collect();
-		let mut lengths = vec![0.];
-		for pair in samples.windows(2) {
-			lengths.push(
-				lengths.last().copied().unwrap_or(0.)
-					+ (pair[1].0 - pair[0].0).hypot(pair[1].1 - pair[0].1),
-			);
-		}
-		let total = *lengths.last().unwrap_or(&0.);
-		let head = phase * (total + 48.);
+		// Geometry owns the arc-length samples, including every rounded corner.
+		// Moving the pulse does not resample paths or allocate a distance table.
+		let samples = &self.samples;
+		let total = samples.last().expect("curve end").1;
+		let Some((tail, head, visibility)) = flow_window(total, phase) else { return };
 		let point =
 			|(x, y)| origin + gpui::point(gpui::px(x * scale + pan.0), gpui::px(y * scale + pan.1));
 		let point_at_distance = |distance: f32| {
-			let index = lengths.partition_point(|value| *value < distance).clamp(1, 64);
-			let span = lengths[index] - lengths[index - 1];
-			let fraction = if span > 0. { (distance - lengths[index - 1]) / span } else { 0. };
-			let a = samples[index - 1];
-			let b = samples[index];
+			let index = samples
+				.partition_point(|(_, length)| *length < distance)
+				.clamp(1, samples.len() - 1);
+			let (a, before) = samples[index - 1];
+			let (b, after) = samples[index];
+			let span = after - before;
+			let fraction = if span > 0. { (distance - before) / span } else { 0. };
 			point((a.0 + (b.0 - a.0) * fraction, a.1 + (b.1 - a.1) * fraction))
 		};
-		let tail = (head - 48.).clamp(0., total);
-		let head = head.min(total);
-		for (width, alpha) in [(6., 0x20), (2.4, 0xc0)] {
-			let mut trail = PathBuilder::stroke(gpui::px(width * scale));
-			trail.move_to(point_at_distance(tail));
-			for (&sample, distance) in samples.iter().zip(&lengths) {
-				if *distance > tail && *distance < head {
-					trail.line_to(point(sample));
-				}
-			}
-			trail.line_to(point_at_distance(head));
-			if let Ok(path) = trail.build() {
-				window.paint_path(path, gpui::rgba((color << 8) | alpha));
+		let from = point_at_distance(tail);
+		let to = point_at_distance(head);
+		let angle = f32::from(to.x - from.x).atan2(-f32::from(to.y - from.y)).to_degrees();
+		let mut trail = PathBuilder::stroke(gpui::px(1.6 * scale));
+		trail.move_to(from);
+		for &(sample, distance) in samples {
+			if distance > tail && distance < head {
+				trail.line_to(point(sample));
 			}
 		}
-	}
-
-	pub(super) fn at(&self, t: f32) -> (f32, f32) {
-		let u = 1. - t;
-		let axis =
-			|a, b, c, d| u * u * u * a + 3. * u * u * t * b + 3. * u * t * t * c + t * t * t * d;
-		(
-			axis(self.start.0, self.first.0, self.second.0, self.end.0),
-			axis(self.start.1, self.first.1, self.second.1, self.end.1),
-		)
+		trail.line_to(to);
+		if let Ok(path) = trail.build() {
+			window.paint_path(
+				path,
+				gpui::linear_gradient(
+					angle.rem_euclid(360.),
+					gpui::linear_color_stop(gpui::rgba(0xdbe5ff00), 0.),
+					gpui::linear_color_stop(
+						gpui::rgb(0xdbe5ff).opacity(opacity * visibility * 0.95),
+						1.,
+					),
+				),
+			);
+		}
 	}
 
 	pub(super) fn stroke(
@@ -232,19 +228,21 @@ impl Route {
 		scale: f32,
 		pan: (f32, f32),
 		width: f32,
+		complete: bool,
 	) -> PathBuilder {
 		let point =
 			|(x, y)| origin + gpui::point(gpui::px(x * scale + pan.0), gpui::px(y * scale + pan.1));
 		let mut path = PathBuilder::stroke(gpui::px(width * scale));
-		path.move_to(point(self.start));
+		path.move_to(point(self.curves[0].start));
 		if let Some((dash, gap)) = kind.pattern() {
-			let mut last = point(self.start);
+			let (dash, gap) = (dash * scale, gap * scale);
+			let mut last = point(self.curves[0].start);
 			let mut distance = 0_f32;
 			for i in 1..=160 {
 				let next = point(self.at(i as f32 / 160.));
 				let dx = f32::from(next.x - last.x);
 				let dy = f32::from(next.y - last.y);
-				distance += dx.hypot(dy) / scale;
+				distance += dx.hypot(dy);
 				if distance % (dash + gap) < dash {
 					path.line_to(next);
 				} else {
@@ -253,28 +251,104 @@ impl Route {
 				last = next;
 			}
 		} else {
-			path.cubic_bezier_to(point(self.end), point(self.first), point(self.second));
+			for curve in if complete { &self.curves } else { &self.ink } {
+				if !complete {
+					path.move_to(point(curve.start));
+				}
+				path.cubic_bezier_to(point(curve.end), point(curve.first), point(curve.second));
+			}
 		}
-		if kind != Kind::Resource {
-			let end = point(self.end);
-			let dx = self.end.0 - self.second.0;
-			let dy = self.end.1 - self.second.1;
+		if kind != Kind::Resource && (complete || self.ink_arrow) {
+			let curve = self.curves.last().expect("connection curve");
+			let end = point(curve.end);
+			let dx = curve.end.0 - curve.second.0;
+			let dy = curve.end.1 - curve.second.1;
 			let norm = dx.hypot(dy).max(0.001);
 			let (ux, uy) = (dx / norm, dy / norm);
+			let (ux, uy) = (ux * scale, uy * scale);
 			path.move_to(
-				end + gpui::point(
-					gpui::px((-ux * 6. - uy * 3.) * scale),
-					gpui::px((-uy * 6. + ux * 3.) * scale),
-				),
+				end + gpui::point(gpui::px(-ux * 6. - uy * 3.), gpui::px(-uy * 6. + ux * 3.)),
 			);
 			path.line_to(end);
 			path.line_to(
-				end + gpui::point(
-					gpui::px((-ux * 6. + uy * 3.) * scale),
-					gpui::px((-uy * 6. - ux * 3.) * scale),
-				),
+				end + gpui::point(gpui::px(-ux * 6. + uy * 3.), gpui::px(-uy * 6. - ux * 3.)),
 			);
 		}
 		path
+	}
+}
+
+/// Fade at both ends of the cycle; a clipped pulse must not flash at its destination.
+fn flow_window(total: f32, phase: f32) -> Option<(f32, f32, f32)> {
+	const TRAIL: f32 = 56.;
+	let distance = phase * (total + TRAIL);
+	let tail = (distance - TRAIL).clamp(0., total);
+	let head = distance.min(total);
+	let visible = head - tail;
+	if visible <= 0. {
+		return None;
+	}
+	let t = (visible / (TRAIL / 2.)).min(1.);
+	Some((tail, head, t * t * (3. - 2. * t)))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{Kind, Route, flow_window};
+
+	#[test]
+	fn edges_scale_their_ink_and_direction_cues_with_the_camera() {
+		let route = Route::curve((0., 0.), (40., 0.), (80., 0.), (120., 0.));
+		for kind in [Kind::Assigned, Kind::Message, Kind::Resource] {
+			let path = |scale| {
+				route
+					.stroke(
+						kind,
+						gpui::point(gpui::px(0.), gpui::px(0.)),
+						scale,
+						(0., 0.),
+						1.,
+						false,
+					)
+					.build()
+					.unwrap()
+			};
+			let normal = path(1.).bounds.size;
+			if kind == Kind::Resource {
+				assert!(normal.height < gpui::px(2.), "references remain undirected");
+			} else {
+				assert!(
+					normal.height >= gpui::px(6.),
+					"direction must be visible before selection"
+				);
+			}
+			for scale in [0.5, 0.23, 0.15, 0.05] {
+				let distant = path(scale).bounds.size;
+				assert!(
+					(f32::from(distant.height) - f32::from(normal.height) * scale).abs() < 0.01,
+					"{kind:?} at {scale}: {distant:?} vs {normal:?}"
+				);
+				assert!((f32::from(distant.width) - f32::from(normal.width) * scale).abs() < 0.01);
+			}
+		}
+	}
+
+	#[test]
+	fn flow_enters_and_leaves_without_an_endpoint_flash() {
+		for length in [16., 240., 1600.] {
+			assert!(flow_window(length, 0.).is_none());
+			assert!(flow_window(length, 1.).is_none());
+			let enter = flow_window(length, 0.0001).unwrap();
+			let leave = flow_window(length, 0.9999).unwrap();
+			assert!(enter.2 < 0.01 && leave.2 < 0.01);
+			let mut previous = (0., 0.);
+			for step in 1..165 {
+				let (tail, head, alpha) = flow_window(length, step as f32 / 165.).unwrap();
+				assert!(tail >= previous.0 && head >= previous.1);
+				assert!(head <= length && tail <= head);
+				assert!((0. ..=1.).contains(&alpha));
+				previous = (tail, head);
+			}
+		}
 	}
 }

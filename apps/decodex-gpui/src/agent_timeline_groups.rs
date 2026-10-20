@@ -98,8 +98,8 @@ impl AgentSurface {
 	}
 }
 
-/// Empty terminal text has no row or process count. Preserve live and partial records.
-pub(super) fn empty_completed_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
+/// Empty finished messages have no content to render. Process records stay visible.
+pub(super) fn hidden_items(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
 	let completed: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
@@ -134,7 +134,7 @@ pub(super) fn empty_completed_items(entries: &[AgentTimelineEntry]) -> BTreeSet<
 /// A user response can span several native turns (worker wakes have no user input).
 /// Keep its last completed answer and fold the preceding execution records together.
 pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
-	let empty = empty_completed_items(entries);
+	let empty = hidden_items(entries);
 	let finished: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
@@ -189,7 +189,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			} = &entries[index].content
 				&& finished.contains(turn_id.as_str())
 				&& attachments.is_empty()
-				&& (matches!(kind.as_str(), "reasoning" | "plan" | "functionCallOutput")
+				&& (matches!(kind.as_str(), "reasoning" | "plan" | "functionCallOutput" | "sleep")
 					|| (kind == "agentMessage"
 						&& matches!(phase.as_deref(), Some("commentary" | "final_answer")))
 					|| (kind != "agentInput" && activity.is_some()))
@@ -270,26 +270,55 @@ mod tests {
 			*text = " \n\t".into();
 		}
 
-		assert!(groups::empty_completed_items(&entries).is_empty());
+		assert!(groups::hidden_items(&entries).is_empty());
 
 		entries.push(completed("completed"));
 
-		assert_eq!(groups::empty_completed_items(&entries), BTreeSet::from([0]));
+		assert_eq!(groups::hidden_items(&entries), BTreeSet::from([0]));
 		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 
 		if let AgentTimelineContent::Item { truncated, .. } = &mut entries[0].content {
 			*truncated = true;
 		}
 
-		assert!(groups::empty_completed_items(&entries).is_empty());
+		assert!(groups::hidden_items(&entries).is_empty());
 
 		if let AgentTimelineContent::Item { text, truncated, .. } = &mut entries[0].content {
 			*text = "Retained summary".into();
 			*truncated = false;
 		}
 
-		assert!(groups::empty_completed_items(&entries).is_empty());
+		assert!(groups::hidden_items(&entries).is_empty());
 		assert_eq!(groups::groups(&entries, &BTreeSet::new())[0].count, 1);
+	}
+
+	#[test]
+	fn waiting_for_a_question_retains_each_wait_in_the_completed_process() {
+		let mut entries = vec![
+			message(0, "userMessage", None),
+			message(1, "agentMessage", Some("final_answer")),
+			message(2, "sleep", None),
+			message(3, "sleep", None),
+			message(4, "sleep", None),
+			message(5, "userMessage", None),
+			message(6, "agentMessage", Some("final_answer")),
+		];
+		for entry in &mut entries[2..5] {
+			if let AgentTimelineContent::Item { text, .. } = &mut entry.content {
+				text.clear();
+			}
+		}
+		assert!(groups::hidden_items(&entries).is_empty());
+		entries.push(completed("completed"));
+		assert!(groups::hidden_items(&entries).is_empty());
+		let groups = groups::groups(&entries, &BTreeSet::new());
+		assert_eq!(groups.len(), 1);
+		assert_eq!(groups[0].indices, [2, 3, 4]);
+		assert_eq!(groups[0].final_index, 1);
+		if let AgentTimelineContent::Item { text, .. } = &mut entries[2].content {
+			*text = "Could not wait for input".into();
+		}
+		assert!(groups::hidden_items(&entries).is_empty());
 	}
 
 	#[test]
@@ -399,7 +428,7 @@ mod tests {
 		assert_eq!(groups[0].indices, vec![1, 2, 4, 7]);
 		assert_eq!(groups[0].first_index, 1);
 		assert_eq!(groups[0].count, 4);
-		assert_eq!(groups::empty_completed_items(&entries), BTreeSet::from([5]));
+		assert_eq!(groups::hidden_items(&entries), BTreeSet::from([5]));
 		assert!(groups::groups(&entries, &BTreeSet::from(["wake".into()]))[0].expanded);
 	}
 
@@ -500,6 +529,8 @@ mod tests {
 				entries,
 				next_cursor: None,
 				weather: Default::default(),
+				thread_token_total: None,
+				thread_metrics: None,
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
@@ -582,6 +613,8 @@ mod tests {
 					],
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}

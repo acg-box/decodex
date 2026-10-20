@@ -5,6 +5,7 @@ pub(crate) mod tool_output;
 
 mod attachments;
 mod promotions;
+mod statistics;
 mod summary;
 
 use std::{collections::BTreeSet, future::Future, time::Duration};
@@ -87,6 +88,17 @@ where
 							&& metrics::enrich(store, &before.key.work, &mut page).await.is_err()
 						{
 							return AgentTimelineResult::Unavailable;
+						}
+						if cursor.is_none()
+							&& let Some(store) = store
+						{
+							page.thread_metrics = statistics::read(
+								&before.client,
+								store,
+								&before.key.work,
+								&before.key.thread,
+							)
+							.await;
 						}
 
 						if source().await.is_none_or(|after| after.key != before.key) {
@@ -204,6 +216,8 @@ fn project_fields(
 			.collect::<Option<Vec<_>>>()?,
 		next_cursor: nullable_text(value.get("nextCursor")?, 4_096)?,
 		weather: Default::default(),
+		thread_token_total: None,
+		thread_metrics: None,
 		safety_buffering_turn_id: None,
 		active_realtime_session_at_page_start: nullable_text(
 			value.get("activeRealtimeSessionAtPageStart")?,

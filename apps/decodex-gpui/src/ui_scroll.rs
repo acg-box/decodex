@@ -4,7 +4,8 @@ use std::time::Instant;
 const SCROLL_RESPONSE: f32 = 40.;
 
 use gpui::{
-	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
+	App, Bounds, Div, ElementId, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role,
+	ScrollDelta, ScrollHandle, Stateful, Window,
 	prelude::{InteractiveElement as _, StatefulInteractiveElement as _, Styled as _},
 };
 
@@ -227,5 +228,137 @@ mod tests {
 		}
 
 		assert_eq!(motion.sample(now + Duration::from_secs(1)), (-100., false));
+	}
+}
+
+#[derive(gpui::IntoElement)]
+pub(crate) struct Scrollbar {
+	id: &'static str,
+	label: &'static str,
+	scroll: ScrollHandle,
+}
+impl Scrollbar {
+	pub(crate) fn new(id: &'static str, label: &'static str, scroll: ScrollHandle) -> Self {
+		Self { id, label, scroll }
+	}
+}
+
+impl gpui::RenderOnce for Scrollbar {
+	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
+		let drag = window.use_keyed_state(
+			gpui::SharedString::from(format!("{}-drag", self.id)),
+			cx,
+			|_, _| None::<Pixels>,
+		);
+		let owner = window.current_view();
+		let keys = self.scroll.clone();
+		let canvas = gpui::canvas(
+			move |bounds, window, _| {
+				let viewport = self.scroll.bounds().size.height;
+				let maximum = self.scroll.max_offset().y;
+				if maximum <= gpui::px(0.) || viewport <= gpui::px(0.) {
+					return None;
+				}
+				let height = (bounds.size.height * (viewport / (viewport + maximum)))
+					.max(gpui::px(28.))
+					.min(bounds.size.height);
+				let travel = bounds.size.height - height;
+				let y = travel * (-self.scroll.offset().y / maximum);
+				let thumb = Bounds::new(
+					gpui::point(bounds.left() + gpui::px(3.), bounds.top() + y),
+					gpui::size(gpui::px(5.), height),
+				);
+				Some((
+					self.scroll,
+					thumb,
+					travel,
+					window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal),
+				))
+			},
+			move |bounds, state, window, _| {
+				let Some((scroll, thumb, travel, hitbox)) = state else { return };
+				window.paint_quad(
+					gpui::fill(thumb, gpui::rgba(0xffffff55)).corner_radii(gpui::px(2.5)),
+				);
+				let down_scroll = scroll.clone();
+				let down_drag = drag.clone();
+				let down_thumb = thumb;
+				let hitbox = hitbox.clone();
+				window.on_mouse_event(move |event: &gpui::MouseDownEvent, phase, window, cx| {
+					if phase == gpui::DispatchPhase::Bubble
+						&& event.button == MouseButton::Left
+						&& hitbox.is_hovered(window)
+					{
+						window.prevent_default();
+						let grab = if down_thumb.contains(&event.position) {
+							event.position.y - down_thumb.top()
+						} else {
+							down_thumb.size.height / 2.
+						};
+						down_drag.update(cx, |value, _| *value = Some(grab));
+						set_scroll(&down_scroll, event.position.y - bounds.top() - grab, travel);
+						cx.notify(owner);
+						cx.stop_propagation();
+					}
+				});
+				let scroll = scroll.clone();
+				let up_drag = drag.clone();
+				window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
+					if phase == gpui::DispatchPhase::Capture {
+						up_drag.update(cx, |value, _| *value = None);
+					}
+				});
+				window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
+					if phase != gpui::DispatchPhase::Capture {
+						return;
+					}
+					let Some(grab) = *drag.read(cx) else { return };
+					if event.pressed_button == Some(MouseButton::Left) {
+						set_scroll(&scroll, event.position.y - bounds.top() - grab, travel);
+						cx.notify(owner);
+						cx.stop_propagation();
+					} else {
+						drag.update(cx, |value, _| *value = None);
+					}
+				});
+			},
+		)
+		.size_full();
+		gpui::div()
+			.id(self.id)
+			.debug_selector(move || self.id.into())
+			.role(Role::ScrollBar)
+			.aria_label(self.label)
+			.tab_index(0)
+			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+				let current = keys.offset().y;
+				let page = keys.bounds().size.height;
+				let maximum = keys.max_offset().y;
+				let next = match event.keystroke.key.as_str() {
+					"up" => current + gpui::px(40.),
+					"down" => current - gpui::px(40.),
+					"pageup" => current + page,
+					"pagedown" => current - page,
+					"home" => gpui::px(0.),
+					"end" => -maximum,
+					_ => return,
+				};
+				keys.set_offset(gpui::point(gpui::px(0.), next.clamp(-maximum, gpui::px(0.))));
+				cx.notify(owner);
+				cx.stop_propagation();
+			})
+			.absolute()
+			.top_1()
+			.bottom_1()
+			.right_1()
+			.w(gpui::px(11.))
+			.child(canvas)
+	}
+}
+
+fn set_scroll(scroll: &ScrollHandle, position: Pixels, travel: Pixels) {
+	if travel > gpui::px(0.) {
+		let fraction = (position / travel).clamp(0., 1.);
+		scroll.set_offset(gpui::point(gpui::px(0.), -scroll.max_offset().y * fraction));
 	}
 }

@@ -100,6 +100,7 @@ struct Geometry {
 	#[cfg(test)]
 	painted_rows: BTreeMap<RowKey, Vec<f32>>,
 	pending_layout: Option<gpui::LayoutId>,
+	content_layout: Option<gpui::LayoutId>,
 	rows: BTreeMap<RowKey, (f32, f32)>,
 	folded: BTreeSet<RowKey>,
 	layout: Option<Layout>,
@@ -161,12 +162,18 @@ struct Anchor {
 	scheduled: bool,
 }
 
-/// Resolve pagination against the new layout before GPUI paints or registers hitboxes.
+enum LayoutRole {
+	Viewport { bottom_gap: Option<f32> },
+	Content,
+	Row(RowKey),
+}
+
+/// Resolve scrolling against the new layout before GPUI paints or registers hitboxes.
 struct PaginationLayout {
 	child: AnyElement,
 	geometry: Rc<RefCell<Geometry>>,
 	scroll: gpui::ScrollHandle,
-	row: Option<RowKey>,
+	role: LayoutRole,
 }
 impl IntoElement for PaginationLayout {
 	type Element = Self;
@@ -194,17 +201,19 @@ impl gpui::Element for PaginationLayout {
 		window: &mut Window,
 		cx: &mut gpui::App,
 	) -> (gpui::LayoutId, ()) {
-		if self.row.is_none() {
-			self.geometry.borrow_mut().pending_layout = None;
+		if matches!(self.role, LayoutRole::Viewport { .. }) {
+			let mut geometry = self.geometry.borrow_mut();
+			geometry.pending_layout = None;
+			geometry.content_layout = None;
 		}
 		let layout = self.child.request_layout(window, cx);
 		let mut geometry = self.geometry.borrow_mut();
-		if self
-			.row
-			.as_ref()
-			.is_some_and(|key| geometry.pending.as_ref().is_some_and(|anchor| &anchor.key == key))
-		{
-			geometry.pending_layout = Some(layout);
+		match &self.role {
+			LayoutRole::Content => geometry.content_layout = Some(layout),
+			LayoutRole::Row(key)
+				if geometry.pending.as_ref().is_some_and(|anchor| &anchor.key == key) =>
+				geometry.pending_layout = Some(layout),
+			_ => {},
 		}
 		(layout, ())
 	}
@@ -218,7 +227,7 @@ impl gpui::Element for PaginationLayout {
 		window: &mut Window,
 		cx: &mut gpui::App,
 	) {
-		if self.row.is_none() {
+		if let LayoutRole::Viewport { bottom_gap } = self.role {
 			let mut geometry = self.geometry.borrow_mut();
 			if geometry.process_motion_until.is_none()
 				&& let Some(layout) = geometry.pending_layout.take()
@@ -231,9 +240,21 @@ impl gpui::Element for PaginationLayout {
 					gpui::px(anchor.viewport_top - top),
 				));
 			}
+			if let Some(gap) = bottom_gap
+				&& let Some(layout) = geometry.content_layout
+			{
+				let height = window.layout_bounds(layout).size.height;
+				let maximum = (height - bounds.size.height).max(gpui::px(0.));
+				// Ease only the reader's distance from the bottom. Content growth,
+				// including a disclosure, follows this frame's layout without lag.
+				self.scroll.set_offset(gpui::point(
+					self.scroll.offset().x,
+					-(maximum - gpui::px(gap)).max(gpui::px(0.)),
+				));
+			}
 		}
 		self.child.prepaint(window, cx);
-		if self.row.is_none() {
+		if matches!(self.role, LayoutRole::Viewport { .. }) {
 			crate::frame_trace::transcript_layout(
 				self.scroll.max_offset().y.into(),
 				self.scroll.offset().y.into(),
@@ -265,7 +286,17 @@ impl AgentSurface {
 			child,
 			geometry: self.timeline.native.viewport.0.clone(),
 			scroll,
-			row: None,
+			role: LayoutRole::Viewport { bottom_gap: self.history_navigation_bottom_gap() },
+		}
+		.into_any_element()
+	}
+
+	pub(in super::super) fn anchored_native_content(&self, child: AnyElement) -> AnyElement {
+		PaginationLayout {
+			child,
+			geometry: self.timeline.native.viewport.0.clone(),
+			scroll: self.timeline.scroll_for(self.selected.as_deref()),
+			role: LayoutRole::Content,
 		}
 		.into_any_element()
 	}
@@ -459,7 +490,7 @@ impl AgentSurface {
 			child: row,
 			geometry: geometry.clone(),
 			scroll: scroll.clone(),
-			row: Some(key.clone()),
+			role: LayoutRole::Row(key.clone()),
 		};
 
 		gpui::div()
@@ -703,6 +734,8 @@ mod tests {
 				entries: vec![row(10)],
 				next_cursor: None,
 				weather: Default::default(),
+				thread_token_total: None,
+				thread_metrics: None,
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			}
@@ -782,6 +815,8 @@ mod tests {
 							entries: (100..105).map(row).collect(),
 							next_cursor: None,
 							weather: Default::default(),
+							thread_token_total: None,
+							thread_metrics: None,
 							safety_buffering_turn_id: None,
 							active_realtime_session_at_page_start: None,
 						}
@@ -840,6 +875,8 @@ mod tests {
 					entries: (0..4).map(row).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
@@ -996,6 +1033,8 @@ mod tests {
 					entries: (10..1_010).map(short).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1037,6 +1076,8 @@ mod tests {
 					entries: (1..4).map(short).collect(),
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1115,6 +1156,8 @@ mod tests {
 					entries: (10..13).map(row).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1158,6 +1201,8 @@ mod tests {
 					entries: (1..4).map(row).collect(),
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}

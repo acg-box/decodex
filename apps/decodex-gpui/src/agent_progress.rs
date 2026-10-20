@@ -66,9 +66,7 @@ impl AgentSurface {
 				result.push(self.saved_voice_history_entry(entry, &work.id, text.clone(), cx));
 				continue;
 			}
-			if super::startup_feature_warning(entry)
-				|| checklist_superseded(entry, entries.iter().copied())
-			{
+			if super::startup_feature_warning(entry) || entry.kind == "checklist" {
 				continue;
 			}
 
@@ -144,10 +142,17 @@ impl AgentSurface {
 		let steps = format!("{} step{}", items.len(), if items.len() == 1 { "" } else { "s" });
 		let label = if let Some(item) = running.filter(|_| active) {
 			format!("{} · {steps}", activity_title(item))
-		} else if items.iter().any(|item| item.status == "failed") {
-			format!("Activity · {steps} · Failed")
 		} else {
 			format!("Activity · {steps}")
+		};
+		let status = if items.iter().any(|item| item.status == "failed") {
+			"failed"
+		} else if running.is_some() && active {
+			"running"
+		} else if items.iter().all(|item| item.status == "completed") {
+			"completed"
+		} else {
+			"unconfirmed"
 		};
 		let toggle_key = key.clone();
 		let keyboard_key = key.clone();
@@ -164,35 +169,39 @@ impl AgentSurface {
 			let status = if item.status == "running"
 				&& (!active || work.active_turn_id.as_deref() != Some(item.turn_id.as_str()))
 			{
-				"Unconfirmed"
+				"unconfirmed"
 			} else {
-				match item.status.as_str() {
-					"running" => "In progress",
-					"failed" => "Failed",
-					"exited" => "Exited",
-					"declined" => "Declined",
-					_ => "Done",
-				}
+				item.status.as_str()
 			};
 			let duration = item
 				.duration_ms
-				.map_or_else(String::new, |ms| format!(" · {:.1}s", ms as f64 / 1_000.));
+				.map_or_else(String::new, |ms| format!("{:.1}s", ms as f64 / 1_000.));
 
 			rows = rows.child(
 				self.detail_row(
 					work,
 					item,
+					None,
 					gpui::div()
 						.flex()
 						.items_center()
 						.gap(gpui::px(8.))
 						.min_h(gpui::px(22.))
-						.child(item.label.clone())
-						.when(!item.detail.is_empty(), |row| {
-							row.child(agent_surface::muted(item.detail.clone()))
-						})
+						.child(crate::ui_feedback::execution_icon(
+							format!(
+								"execution-status-{}",
+								progress_key(&work.id, &item.turn_id, &item.item_id)
+							),
+							status,
+						))
+						.child(activity_title(item))
+						.when(
+							!item.detail.is_empty()
+								&& !matches!(item.kind.as_str(), "mcpToolCall" | "dynamicToolCall"),
+							|row| row.child(agent_surface::muted(item.detail.clone())),
+						)
 						.child(gpui::div().flex_1())
-						.child(agent_surface::muted(format!("{status}{duration}"))),
+						.child(agent_surface::muted(duration)),
 					cx,
 				),
 			);
@@ -226,6 +235,7 @@ impl AgentSurface {
 						}
 					}))
 					.child(if expanded { "−" } else { "+" })
+					.child(crate::ui_feedback::execution_icon("progress-status", status))
 					.child(label)
 					.smooth(),
 			)
@@ -310,34 +320,8 @@ impl AgentSurface {
 	}
 }
 
-/// Collapse older cached pages as well as the latest service page.
-pub(super) fn checklist_superseded<'a>(
-	entry: &AgentHistoryEntryDto,
-	entries: impl IntoIterator<Item = &'a AgentHistoryEntryDto>,
-) -> bool {
-	if entry.kind != "checklist" {
-		return false;
-	}
-
-	let Some(turn) = entry.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
-	else {
-		return false;
-	};
-
-	entries.into_iter().any(|other| {
-		other.kind == "checklist"
-			&& other.id > entry.id
-			&& other.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
-				== Some(turn)
-	})
-}
-
 fn activity_title(item: &AgentActivityDto) -> String {
-	if ["mcpToolCall", "dynamicToolCall"].contains(&item.kind.as_str()) && !item.detail.is_empty() {
-		format!("{} · {}", item.label, item.detail)
-	} else {
-		item.label.clone()
-	}
+	super::native_timeline::activity_label(item, None, &[])
 }
 
 fn progress_key(work: &str, turn: &str, item: &str) -> String {

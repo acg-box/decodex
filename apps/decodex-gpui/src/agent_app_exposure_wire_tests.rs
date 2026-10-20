@@ -89,6 +89,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,

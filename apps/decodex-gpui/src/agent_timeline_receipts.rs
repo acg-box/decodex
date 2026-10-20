@@ -6,12 +6,9 @@ use gpui::{AnyElement, Div, InteractiveElement, StatefulInteractiveElement};
 use crate::{
 	shell::{
 		agent_surface,
-		agent_surface::{
-			native_timeline::{
-				self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
-				Context, FluentBuilder, IntoElement, ParentElement, Styled, markdown,
-			},
-			progress,
+		agent_surface::native_timeline::{
+			self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
+			Context, FluentBuilder, IntoElement, ParentElement, Styled, markdown,
 		},
 	},
 	ui_loading,
@@ -19,6 +16,51 @@ use crate::{
 use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
 
 impl AgentSurface {
+	pub(in super::super) fn saved_inputs_in_composer(&self, work: &AgentWorkItemDto) -> bool {
+		self.native_agents.selected.is_none()
+			&& self.native_history_active(work)
+			&& !self.selected_is_archived()
+			&& !self.workspace.browsing
+	}
+
+	fn saved_delivery_entries(&self, work: &str) -> BTreeMap<i64, &AgentHistoryEntryDto> {
+		let mut saved = BTreeMap::new();
+		if let Some((older, _)) = self.timeline.older_history.get(work) {
+			saved.extend(older.iter().map(|entry| (entry.id, entry)));
+		}
+		if let Some((_, AgentHistoryResult::Available { entries, .. })) =
+			self.history.as_ref().filter(|(id, _)| id == work)
+		{
+			saved.extend(entries.iter().map(|entry| (entry.id, entry)));
+		}
+		saved
+	}
+
+	pub(in super::super) fn saved_input_rows(
+		&self,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Vec<AnyElement> {
+		let mut rows = self.native_input_receipts_panel(work, cx);
+		for entry in self.saved_delivery_entries(&work.id).values() {
+			let Some(label) = receipt_label(entry) else { continue };
+			if entry.kind != "unsent_input" && label != "Local input · Delivery not confirmed" {
+				continue;
+			}
+			if super::inputs::submission_pending(&work.dispatch_state, entry) {
+				continue;
+			}
+			if label == "Local input · Delivery not confirmed"
+				&& (self.native_input_receipts_loaded(&work.id)
+					|| self.preview_covers_receipt(&work.id, entry.id, &entry.text))
+			{
+				continue;
+			}
+			rows.push(self.local_receipt_row(entry, label, work, cx).into_any_element());
+		}
+		rows
+	}
+
 	fn earlier_local_records(&self, available: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
 		available.then(|| {
 			if self.timeline.loading_older {
@@ -43,11 +85,11 @@ impl AgentSurface {
 	) -> AnyElement {
 		let mut rows = Vec::new();
 
-		if !diagnostics {
-			rows.extend(self.native_input_receipts_panel(work, cx));
+		if !diagnostics && !self.saved_inputs_in_composer(work) {
+			rows.extend(self.saved_input_rows(work, cx));
 		}
 
-		let Some((_, AgentHistoryResult::Available { entries, next_before, .. })) =
+		let Some((_, AgentHistoryResult::Available { next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return gpui::div()
@@ -62,15 +104,7 @@ impl AgentSurface {
 			self.timeline.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
 		let records_key = format!("local-records-{}", work.id);
 		let expanded = diagnostics && self.timeline.expanded_records.contains(&records_key);
-		let mut saved = BTreeMap::new();
-
-		if let Some((older, _)) = self.timeline.older_history.get(&work.id) {
-			for entry in older {
-				saved.insert(entry.id, entry);
-			}
-		}
-
-		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
+		let saved = self.saved_delivery_entries(&work.id);
 		let has_records = cursor.is_some()
 			|| saved.values().any(|entry| {
 				entry.kind == "auth_recovery"
@@ -85,12 +119,13 @@ impl AgentSurface {
 		}
 
 		for entry in saved.values() {
-			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
-				&& self.preview_covers_receipt(&work.id, entry.id, &entry.text)
+			// Saved inputs have one owner, beside the composer or in archived history.
+			if entry.kind == "unsent_input"
+				|| receipt_label(entry) == Some("Local input · Delivery not confirmed")
 			{
 				continue;
 			}
-			if progress::checklist_superseded(entry, saved.values().copied()) {
+			if super::inputs::submission_pending(&work.dispatch_state, entry) {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
@@ -120,12 +155,6 @@ impl AgentSurface {
 				}) {
 				continue;
 			}
-			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
-				&& self.native_input_receipts_loaded(&work.id)
-			{
-				continue;
-			}
-
 			let Some(label) = receipt_label(entry) else {
 				continue;
 			};
@@ -163,7 +192,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
-		if entry.kind == "unsent_input" {
+		if entry.kind == "unsent_input" || label == "Local input · Delivery not confirmed" {
 			let id = entry.id;
 			return gpui::div()
 				.debug_selector(move || format!("local-receipt-{id}"))
@@ -173,7 +202,6 @@ impl AgentSurface {
 			.debug_selector({
 				let id = entry.id;
 				let kind = match entry.kind.as_str() {
-					"checklist" => "checklist",
 					"partial_answer" | "partial_plan" => "partial",
 					_ => "local",
 				};
@@ -241,7 +269,7 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 		return None;
 	}
 	if entry.kind == "checklist" {
-		return Some("Recorded checklist");
+		return None;
 	}
 	if entry.kind == "partial_plan" {
 		return Some("Proposed plan · Unfinished");
@@ -492,7 +520,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn recorded_checklist_renders_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
+	fn recorded_checklist_stays_out_of_saved_and_native_chat_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
@@ -519,7 +547,7 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-92").is_none());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
 
 		surface.update(visual, |s, cx| {
@@ -546,7 +574,7 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-92").is_none());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
 	}
 

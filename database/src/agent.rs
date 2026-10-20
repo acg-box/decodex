@@ -1027,6 +1027,30 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Read the latest native cumulative counter for one exact owned thread.
+	pub async fn read_agent_thread_usage_observation(
+		&self,
+		work_id: String,
+		thread_id: String,
+	) -> Result<Option<AgentInboxEvent>, StoreError> {
+		self.run(move |connection| {
+			connection.query_row("SELECT * FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='token_usage' AND json_extract(payload,'$.threadId')=?2 ORDER BY id DESC LIMIT 1", rusqlite::params![work_id, thread_id], event_row)
+				.optional().map_err(|error| error::sqlite_error(error).into())
+		}).await
+	}
+
+	/// Read the last measured generation interval. An unmeasured response does not erase it.
+	pub async fn read_agent_output_rate_observation(
+		&self,
+		work_id: String,
+		thread_id: String,
+	) -> Result<Option<AgentInboxEvent>, StoreError> {
+		self.run(move |connection| {
+			connection.query_row("SELECT * FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='token_usage' AND json_extract(payload,'$.threadId')=?2 AND json_type(payload,'$.observedOutputRate')='object' ORDER BY id DESC LIMIT 1", rusqlite::params![work_id, thread_id], event_row)
+				.optional().map_err(|error| error::sqlite_error(error).into())
+		}).await
+	}
+
 	/// Read the latest retained context observation for the currently bound thread.
 	/// A later compaction hides the old sample until the provider reports usage again.
 	pub async fn read_agent_context_observation(

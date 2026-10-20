@@ -7,6 +7,7 @@
 #[path = "agent_timeline_receipts.rs"] mod receipts;
 #[path = "agent_timeline_render.rs"] mod render;
 #[path = "agent_timeline_scroll.rs"] mod scroll;
+#[path = "agent_timeline_waits.rs"] mod waits;
 
 use std::{collections::BTreeSet, mem, time::Duration};
 
@@ -28,6 +29,7 @@ use decodex_protocol::{
 };
 use inputs::InputReceipts;
 use media::Preview;
+pub(super) use render::activity_label;
 use scroll::{ROW_GAP, Viewport};
 
 impl AgentSurface {
@@ -321,11 +323,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP));
 
-		// Reserve the first-load state before the request starts, but retain
-		// existing history during background refreshes and fallback retries.
-		if self.native_history_loading(work) && !self.connection_initializing() {
-			panel = panel.child(ui_loading::conversation("Loading conversation"));
-		}
+		// The history surface owns loading feedback and its handoff to content.
 		if self.timeline.native.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) && let Some(message) = self.timeline.native.notice
@@ -372,6 +370,9 @@ impl AgentSurface {
 			panel = panel.children(self.native_live_rows(work));
 		}
 
+		if !self.native_history_active(work) && !self.native_history_loading(work) {
+			return panel.into_any_element();
+		}
 		ui_loading::history(
 			format!("native-history-{}", work.id),
 			self.native_history_active(work),
@@ -381,6 +382,7 @@ impl AgentSurface {
 			self.timeline.scroll.get(&work.id).cloned().unwrap_or_default(),
 			panel,
 		)
+		.with_arrival(self.timeline.native.arrival.clone())
 		.into_any_element()
 	}
 
@@ -430,7 +432,7 @@ impl AgentSurface {
 				.copied()
 				.filter(|i| motion.outgoing.contains(&self.timeline.native.entries[*i].position))
 				.collect();
-			let body = self.process_history_content(work, &indices, false, cx);
+			let body = self.process_history_content(work, &indices, entry, false, cx);
 			return gpui::div().w_full().child(completion::Closing {
 				motion,
 				position: entry.position,
@@ -440,6 +442,7 @@ impl AgentSurface {
 		}
 		let owner = cx.entity();
 		let indices = group.indices.clone();
+		let anchor = entry.clone();
 		let source_work = work.clone();
 		gpui::div().w_full().debug_selector(|| "turn-process-block".into()).child(header).child(
 			ui_motion::disclosure_lazy(
@@ -452,7 +455,7 @@ impl AgentSurface {
 				group.expanded,
 				move |cx| {
 					owner.update(cx, |s, cx| {
-						s.process_history_content(&source_work, &indices, true, cx)
+						s.process_history_content(&source_work, &indices, &anchor, true, cx)
 					})
 				},
 			),
@@ -463,17 +466,24 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		indices: &[usize],
+		anchor: &AgentTimelineEntry,
 		archived: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let waits = waits::groups(&self.timeline.native.entries, indices);
+		let hidden: BTreeSet<_> =
+			waits.values().flat_map(|group| group.indices.iter().skip(1)).collect();
 		let body = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap(gpui::px(scroll::ROW_GAP))
-			.children(indices.iter().filter_map(|i| self.timeline.native.entries.get(*i)).map(
-				|entry| {
+			.children(indices.iter().filter(|i| !hidden.contains(i)).map(|i| {
+				if let Some(group) = waits.get(i) {
+					self.native_wait_group(work, group, anchor, archived, cx)
+				} else {
+					let entry = &self.timeline.native.entries[*i];
 					self.native_timeline_content(
 						work,
 						entry,
@@ -481,9 +491,48 @@ impl AgentSurface {
 						archived,
 						cx,
 					)
-				},
-			));
+				}
+			}));
 		if archived { render::process_indent(body) } else { body.into_any_element() }
+	}
+
+	fn native_voice_history_content(
+		&self,
+		identity: String,
+		empty_key: String,
+		title: &str,
+		text: &str,
+		empty_status: &str,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		if text.trim().is_empty() {
+			gpui::div()
+				.id(SharedString::from(format!("voice-status-{empty_key}")))
+				.role(gpui::Role::Status)
+				.child(agent_surface::muted(empty_status.to_owned()))
+				.into_any_element()
+		} else {
+			super::voice::history::VoiceBlock {
+				viewport: Some(self.voice_history_viewport(cx)),
+				key: identity,
+				title: title.into(),
+				text: text.to_owned(),
+			}
+			.into_any_element()
+		}
+	}
+
+	fn replied_native_turns(&self) -> BTreeSet<&String> {
+		self.timeline
+			.native
+			.entries
+			.iter()
+			.filter_map(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, kind, .. } if kind == "agentMessage" =>
+					Some(turn_id),
+				_ => None,
+			})
+			.collect()
 	}
 
 	fn append_native_history_rows(
@@ -502,7 +551,19 @@ impl AgentSurface {
 			collapsed.extend(group.indices.iter().copied());
 		}
 
-		self.prepare_process_folds(&groups, &collapsed);
+		let waits = waits::groups(
+			&self.timeline.native.entries,
+			&(0..self.timeline.native.entries.len()).collect::<Vec<_>>(),
+		);
+		let wait_hidden: BTreeSet<_> =
+			waits.values().flat_map(|group| group.indices.iter().skip(1).copied()).collect();
+		let folds = collapsed
+			.iter()
+			.copied()
+			.chain(wait_hidden.iter().copied())
+			.chain(waits.keys().copied())
+			.collect();
+		self.prepare_process_folds(&groups, &folds);
 
 		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
 		let voice_headers: std::collections::BTreeMap<_, _> =
@@ -511,18 +572,8 @@ impl AgentSurface {
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let voice_tail_turns =
 			super::voice::history::tail_flush_turns(&self.timeline.native.entries);
-		let empty_reasoning = groups::empty_completed_items(&self.timeline.native.entries);
-		let replied_turns: BTreeSet<_> = self
-			.timeline
-			.native
-			.entries
-			.iter()
-			.filter_map(|entry| match &entry.content {
-				AgentTimelineContent::Item { turn_id, kind, .. } if kind == "agentMessage" =>
-					Some(turn_id),
-				_ => None,
-			})
-			.collect();
+		let hidden_items = groups::hidden_items(&self.timeline.native.entries);
+		let replied_turns = self.replied_native_turns();
 		let mut hidden = Vec::new();
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
@@ -540,35 +591,25 @@ impl AgentSurface {
 				} else {
 					"Voice conversation"
 				};
-				let body = if group.text.trim().is_empty() {
-					gpui::div()
-						.id(SharedString::from(format!(
-							"voice-status-{}",
-							serde_json::json!([work.id, key(entry)])
-						)))
-						.role(gpui::Role::Status)
-						.child(agent_surface::muted(group.empty_status()))
-						.into_any_element()
-				} else {
-					super::voice::history::VoiceBlock {
-						viewport: Some(self.voice_history_viewport(cx)),
-						key: serde_json::json!([
-							work.id,
-							work.codex_thread_id,
-							group.identity(&self.timeline.native.entries)
-						])
-						.to_string(),
-						title: title.into(),
-						text: group.text.clone(),
-					}
-					.into_any_element()
-				};
+				let body = self.native_voice_history_content(
+					serde_json::json!([
+						work.id,
+						work.codex_thread_id,
+						group.identity(&self.timeline.native.entries)
+					])
+					.to_string(),
+					serde_json::json!([work.id, key(entry)]).to_string(),
+					title,
+					&group.text,
+					group.empty_status(),
+					cx,
+				);
 				let body = self.anchored_native_history_entry(work, entry, body);
 				panel = panel.child(self.native_scroll_row(work, entry, body, cx));
 				continue;
 			}
 			if voice_hidden.contains(&index)
-				|| empty_reasoning.contains(&index)
+				|| hidden_items.contains(&index)
 				|| matches!(
 					&entry.content,
 					AgentTimelineContent::TurnBoundary { completed: false, .. }
@@ -605,7 +646,16 @@ impl AgentSurface {
 				continue;
 			}
 
-			if collapsed.contains(&index) {
+			if collapsed.contains(&index) || wait_hidden.contains(&index) {
+				continue;
+			}
+
+			if let Some(group) = waits.get(&index) {
+				if !hidden.is_empty() {
+					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
+				}
+				let body = self.native_wait_group(work, group, entry, false, cx);
+				panel = panel.child(self.native_timeline_row_with_content(work, entry, body, cx));
 				continue;
 			}
 
@@ -862,6 +912,7 @@ enum Pagination {
 
 #[derive(Default)]
 pub(super) struct Timeline {
+	arrival: ui_loading::ContentArrival,
 	preview: Preview,
 	input_receipts: InputReceipts,
 	pub task: Option<Task<()>>,
@@ -1229,6 +1280,12 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
+		assert!(
+			visual.debug_bounds("loading-feedback-Loading conversation").is_none(),
+			"brief reads do not flash a loader"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(390));
+		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
@@ -1541,6 +1598,8 @@ mod tests {
 				entries: vec![AgentTimelineEntry { position: 77, content: item }],
 				next_cursor: Some("real-cursor".into()),
 				weather: Default::default(),
+				thread_token_total: None,
+				thread_metrics: None,
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None
 			}
@@ -1732,6 +1791,8 @@ mod tests {
 			entries,
 			next_cursor: next.map(str::to_owned),
 			weather: Default::default(),
+			thread_token_total: None,
+			thread_metrics: None,
 			safety_buffering_turn_id: None,
 			active_realtime_session_at_page_start: session.map(str::to_owned),
 		}

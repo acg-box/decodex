@@ -12,6 +12,7 @@ use crate::ui_feedback::Feedback;
 #[path = "agent_creation_defaults.rs"] mod creation_defaults;
 #[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_debug_reload.rs"] mod debug_reload;
+#[path = "agent_deliveries.rs"] mod deliveries;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
 #[path = "agent_dock.rs"] mod dock;
@@ -160,6 +161,7 @@ pub(crate) struct AgentSurface {
 	dock_evidence: dock::Evidence,
 	work_board: work_board::Board,
 	handoffs: handoffs::Handoffs,
+	deliveries: Entity<deliveries::Panel>,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
@@ -332,7 +334,13 @@ impl AgentSurface {
 		let transcript_presentation =
 			crate::ui_frame::Presentation::new(&owner, Self::render_transcript_view, cx);
 
+		let deliveries = cx.new(|_| deliveries::Panel::default());
+		cx.subscribe(&deliveries, |s, _, event: &deliveries::OpenDelivery, cx| {
+			s.open_page(&event.0, cx)
+		})
+		.detach();
 		Self {
+			deliveries,
 			voice: None,
 			retired_voice_captions: Vec::new(),
 			voice_task: None,
@@ -1526,6 +1534,7 @@ impl AgentSurface {
 				surface.refresh_read_state(cx);
 				surface.refresh_dock_evidence(cx);
 				surface.refresh_factory_briefs(cx);
+				surface.refresh_deliveries(cx);
 
 				if !surface.connection_initializing()
 					&& (surface.current_model_catalog(cx).is_none()
@@ -1558,6 +1567,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
+		let previous_selection = self.selected.clone();
 		let removed = matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
 			if !self.is_new_conversation()
 				&& [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
@@ -1568,13 +1578,16 @@ impl AgentSurface {
 		if removed {
 			self.stop_voice(cx);
 			// Bind an initial root editor before replacing the snapshot that identifies it.
-			self.composer_manager = owner;
+			self.composer_manager = owner.clone();
 			self.remember_draft_document(cx);
 		}
 		self.remember_native_draft(cx);
 		self.apply_result(result);
 
-		if removed {
+		let recovered_selection = previous_selection.is_none()
+			&& self.selected.is_some()
+			&& owner.as_ref().is_some_and(|owner| self.selected.as_ref() != Some(owner));
+		if removed || recovered_selection {
 			if let Some(selected) = self.selected.clone() {
 				// Use normal navigation to park the outgoing draft and restore the target's.
 				self.open_page(&selected, cx);
@@ -1740,6 +1753,13 @@ impl AgentSurface {
 				.map(|(title, detail)| (title, detail.clone()))
 				.collect();
 		let mut seen = std::collections::BTreeSet::new();
+		let missing = self.token_statistics_gap();
+		if missing > 0 {
+			let conversations = if missing == 1 { "conversation" } else { "conversations" };
+			notices.push(("Token statistics unavailable", format!(
+				"Token usage was not recorded for {missing} completed agent {conversations}. Chat history remains available; the token total is unavailable."
+			)));
+		}
 
 		for history in histories {
 			if let AgentHistoryResult::Available { entries, .. } = history {
@@ -2020,8 +2040,10 @@ impl AgentSurface {
 			.child(self.native_timeline_panel(work, cx));
 
 		if self.native_history_active(work) {
+			// Receipts belong to the preceding response. Its footer already
+			// reserves space around the icons, so use the compact related-content gap.
 			return self.history_activity(
-				panel.child(self.native_receipts_panel(work, false, cx)),
+				panel.gap_3().child(self.native_receipts_panel(work, false, cx)),
 				work,
 				cx,
 			);
@@ -2094,8 +2116,6 @@ impl AgentSurface {
 			},
 			Some(AgentHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
-			None if !self.connection_initializing() =>
-				panel = panel.child(ui_loading::conversation("Loading conversation")),
 			None => {},
 		}
 
@@ -2122,10 +2142,15 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
-		// Message spacing belongs between messages. The work signal owns only
-		// its animated footprint, followed by a small shared reading gap.
-		panel =
-			gpui::div().w_full().flex().flex_col().pb(gpui::px(16.)).child(panel).child(Working {
+		// The composer supplies part of the shared reading gap. Keep the total
+		// spacing the same as between messages, including after a saved input.
+		panel = gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.pb(gpui::px(MESSAGE_GAP - ui_theme::COMPOSER_TOP_GAP))
+			.child(panel)
+			.child(Working {
 				key: format!(
 					"working-{}-{}",
 					work.id,
@@ -2434,7 +2459,6 @@ struct WorkspaceView {
 	graph_fit_zoom: f32,
 	graph_drag: Option<Point<Pixels>>,
 	agent_tree_visible: bool,
-	agent_tree_collapsed: std::collections::BTreeSet<String>,
 	sidebar_visible: bool,
 	sidebar_peek: bool,
 	sidebar_leave: Option<Task<()>>,
@@ -2479,7 +2503,6 @@ impl Default for WorkspaceView {
 			graph_fit_zoom: 1.,
 			graph_drag: None,
 			agent_tree_visible: true,
-			agent_tree_collapsed: Default::default(),
 			sidebar_visible: true,
 			sidebar_peek: false,
 			sidebar_leave: None,
@@ -2715,16 +2738,6 @@ fn history_entry_presented(
 	show_metadata: bool,
 	metadata_ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
 ) -> Div {
-	if entry.kind == "checklist" {
-		let id = entry.id;
-
-		return gpui::div()
-			.w_full()
-			.py_2()
-			.debug_selector(move || format!("checklist-receipt-{id}"))
-			.child(muted("Recorded checklist"))
-			.child(markdown::render(&entry.text, &format!("checklist-{id}")));
-	}
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
 		return gpui::div()
 			.w_full()
@@ -3009,7 +3022,10 @@ mod tests {
 			let composer = visual.debug_bounds("agent-composer").unwrap();
 			assert!(detail.top() >= composer.top());
 			assert!(detail.bottom() <= composer.bottom());
-			assert!(detail.right() <= composer.right());
+			assert!(
+				detail.right() <= composer.right(),
+				"width={width}, detail={detail:?}, composer={composer:?}"
+			);
 			assert!(detail.left() >= composer.left());
 			let send = visual.debug_bounds("composer-send").unwrap();
 			assert!(detail.right() <= send.left());
@@ -3083,6 +3099,7 @@ mod tests {
 			s.task = None;
 			s.apply_refreshed_snapshot(
 				Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					archived_work_ids: Default::default(),
 					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: true,
@@ -3132,6 +3149,18 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
+		for width in [360., 1248., 1800.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(840.)));
+			visual.update(crate::ui_frame::draw_frame);
+			let canvas = visual.debug_bounds("workspace-connecting").unwrap();
+			let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+			let action = visual.debug_bounds("connection-open-diagnostics").unwrap();
+			assert!((notice.center().x - canvas.center().x).abs() <= gpui::px(1.));
+			assert!((notice.center().y - canvas.center().y).abs() <= gpui::px(1.));
+			assert!((action.center().x - notice.center().x).abs() <= gpui::px(1.));
+			assert!(notice.left() >= canvas.left() && notice.right() <= canvas.right());
+			assert!(notice.size.width <= gpui::px(440.));
+		}
 	}
 
 	#[gpui::test]
@@ -3143,6 +3172,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -3349,6 +3379,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -3420,6 +3451,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -3558,6 +3590,7 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -3685,6 +3718,7 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -3777,6 +3811,7 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,

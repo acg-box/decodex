@@ -579,6 +579,9 @@ impl AgentCoordinator {
 		}
 
 		if agent {
+			// Native task plans supply milestones without promoting chat or tool calls
+			// into work. Supported by the pinned upstream protocol and binary.
+			params["config"]["tools.update_plan.enabled"] = serde_json::json!(true);
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 			params["developerInstructions"] = serde_json::json!(INSTRUCTIONS);
 			params["dynamicTools"] = tools();
@@ -836,6 +839,7 @@ impl AgentCoordinator {
 			return Err(AgentError::Invalid("expected personal Agent root".into()));
 		}
 
+		let now = now_micros()?;
 		self.store
 			.create_agent_work_item(AgentWorkItem {
 				id: id.into(),
@@ -846,8 +850,8 @@ impl AgentCoordinator {
 				codex_thread_id: None,
 				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
-				created_at_micros: agent.updated_at_micros,
-				updated_at_micros: agent.updated_at_micros,
+				created_at_micros: now,
+				updated_at_micros: now,
 				active_turn_id: None,
 				dispatch_state: AgentDispatchState::Idle,
 			})
@@ -1715,6 +1719,7 @@ impl AgentCoordinator {
 						exact(params, "/threadId")?,
 						exact(params, "/turnId")?,
 						text,
+						checklist::progress(params),
 					)
 					.await?;
 			}
@@ -2348,6 +2353,14 @@ impl AgentCoordinator {
 					.map_err(|e| resume_error(e, thread))
 				{
 					Ok(value) => value,
+					Err(AgentError::ThreadArchived) => {
+						// Archiving ends the external-writer condition. Keep this owner's
+						// input parked without blocking unrelated conversations.
+						self.loaded_threads.remove(thread);
+						self.store.resolve_agent_thread_in_use(item.id.clone()).await?;
+						blocked.insert(item.id.clone());
+						continue;
+					},
 					Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 						blocked.insert(item.id.clone());
 						if item.parent_goal_id.is_none() {
@@ -2431,6 +2444,9 @@ impl AgentCoordinator {
 				.await
 			{
 				Ok(_) => {},
+				// A queued archived owner waits for explicit restoration. Its retained
+				// input must not stop later owners in this wake batch.
+				Err(AgentError::ThreadArchived) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store

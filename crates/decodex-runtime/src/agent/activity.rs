@@ -14,6 +14,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 			.and_then(|a| a.first())
 			.and_then(|a| a["type"].as_str())
 		{
+			Some("read") if completed => "File read",
+			Some("listFiles") if completed => "File listing",
+			Some("search") if completed => "File search",
+			_ if completed => "Command",
 			Some("read") => "Reading files",
 			Some("listFiles") => "Listing files",
 			Some("search") => "Searching files",
@@ -35,8 +39,11 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 			"completed" => "Subagent completed a turn",
 			_ => return None,
 		},
+		"functionCallOutput" if item["namespace"] == "decodex" && item["name"] == "work_wake" =>
+			"Agent update",
 		"functionCallOutput" => "Tool result",
 		"contextCompaction" => "Compacting context",
+		"sleep" => "Wait",
 		"imageView" => "Viewing image",
 		"imageGeneration" if image_generation::is_quota_failure(item) =>
 			"Image generation limit reached",
@@ -44,6 +51,16 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		_ => return None,
 	};
 	let detail = match kind {
+		// Native 0e675021 records the requested duration, not elapsed time.
+		"sleep" => item["durationMs"].as_u64().map_or_else(String::new, |ms| {
+			if ms < 1_000 {
+				format!("Up to {ms}ms")
+			} else if ms.is_multiple_of(1_000) {
+				format!("Up to {}s", ms / 1_000)
+			} else {
+				format!("Up to {:.1}s", ms as f64 / 1_000.)
+			}
+		}),
 		"subAgentActivity" => {
 			let agent = item["agentThreadId"].as_str()?;
 			let path = item["agentPath"].as_str()?;
@@ -69,8 +86,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 
 			server.map_or_else(|| tool.to_owned(), |server| format!("{server} · {tool}"))
 		},
-		"commandExecution" =>
-			item["exitCode"].as_i64().map_or_else(String::new, |code| format!("Exit code {code}")),
+		"commandExecution" => item["exitCode"].as_i64().map_or_else(String::new, |code| {
+			// Native 0e675021 uses -1 when no process exit status is available.
+			if code == -1 { "Exit status unavailable".into() } else { format!("Exit code {code}") }
+		}),
 		"imageGeneration" => image_generation::quota_detail(item).unwrap_or_default(),
 		"fileChange" => item["changes"]
 			.as_array()
@@ -80,7 +99,10 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 	let failed = item["status"] == "failed"
 		|| item["success"] == false
 		|| item["exitCode"].as_i64().is_some_and(|code| code != 0);
-	let status = if !completed {
+	let status = if kind == "sleep" {
+		// A saved SleepItem has no outcome. Do not invent a success or failure.
+		if completed { "recorded" } else { "waiting" }
+	} else if !completed {
 		"running"
 	} else if search_exit_without_failure(item) {
 		"exited"
@@ -106,7 +128,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		read_only_hint: if kind == "mcpToolCall" { item["readOnlyHint"].as_bool() } else { None },
 		native_timestamp_ms: params[if completed { "completedAtMs" } else { "startedAtMs" }]
 			.as_u64(),
-		duration_ms: item["durationMs"].as_u64(),
+		duration_ms: (kind != "sleep").then(|| item["durationMs"].as_u64()).flatten(),
 	})
 }
 
@@ -138,6 +160,18 @@ fn search_exit_without_failure(item: &Value) -> bool {
 mod tests {
 
 	use crate::agent::activity;
+
+	#[test]
+	fn sleep_duration_is_a_request_and_not_a_success_or_elapsed_time() {
+		let params = serde_json::json!({"turnId":"turn","item":{"id":"wait","type":"sleep","durationMs":60000}});
+		for (completed, status) in [(false, "waiting"), (true, "recorded")] {
+			let activity = activity::project(&params, completed).unwrap();
+			assert_eq!(activity.label, "Wait");
+			assert_eq!(activity.detail, "Up to 60s");
+			assert_eq!(activity.status, status);
+			assert_eq!(activity.duration_ms, None);
+		}
+	}
 
 	#[test]
 	fn mcp_attribution_and_advisory_hint_preserve_missing_history() {
@@ -272,6 +306,14 @@ mod tests {
 			serde_json::json!({"id":"command", "type":"commandExecution", "exitCode":1});
 
 		assert_eq!(activity::project(&value, true).expect("failed").status, "failed");
+		assert_eq!(activity::project(&value, true).unwrap().label, "Command");
+		assert_eq!(activity::project(&value, false).unwrap().label, "Running command");
+
+		value["item"]["exitCode"] = serde_json::json!(-1);
+		let unavailable = activity::project(&value, true).unwrap();
+
+		assert_eq!(unavailable.status, "failed");
+		assert_eq!(unavailable.detail, "Exit status unavailable");
 
 		value["item"]["type"] = serde_json::json!("agentMessage");
 

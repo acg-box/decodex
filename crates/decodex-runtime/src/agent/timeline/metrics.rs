@@ -9,6 +9,16 @@ pub(crate) async fn enrich(
 	work: &str,
 	page: &mut AgentTimelinePage,
 ) -> Result<(), StoreError> {
+	page.thread_token_total = store
+		.read_agent_thread_usage_observation(work.into(), page.thread_id.clone())
+		.await?
+		.and_then(|event| serde_json::from_str::<serde_json::Value>(&event.payload).ok())
+		.and_then(|value| {
+			serde_json::from_value::<ThreadTokenUsage>(value["tokenUsage"].clone()).ok()
+		})
+		.filter(ThreadTokenUsage::is_valid)
+		.map(|usage| usage.total.total_tokens);
+
 	let items = page
 		.entries
 		.iter()

@@ -465,15 +465,14 @@ impl AgentSurface {
 			return;
 		}
 
-		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
+		let t = navigation.progress();
 
-		if let Some(scroll) = self.timeline.scroll.get(&navigation.work) {
-			let target = match navigation.id.as_ref() {
-				None => -f32::from(scroll.max_offset().y),
-				Some(id) => self.timeline.marks.get(id).map_or(navigation.to, |m| {
-					navigation_offset(m.position.get(), scroll.max_offset().y.into())
-				}),
-			};
+		if let Some(id) = navigation.id.as_ref()
+			&& let Some(scroll) = self.timeline.scroll.get(&navigation.work)
+		{
+			let target = self.timeline.marks.get(id).map_or(navigation.to, |m| {
+				navigation_offset(m.position.get(), scroll.max_offset().y.into())
+			});
 			let offset = navigation.from + (target - navigation.from) * (1.0 - (1.0 - t).powi(3));
 
 			scroll.set_offset(gpui::point(
@@ -522,6 +521,13 @@ impl AgentSurface {
 				});
 			});
 		}
+	}
+
+	pub(super) fn history_navigation_bottom_gap(&self) -> Option<f32> {
+		let navigation = self.timeline.navigation.as_ref()?;
+		(navigation.id.is_none() && self.selected.as_ref() == Some(&navigation.work)).then(|| {
+			(navigation.from - navigation.to).max(0.) * (1. - navigation.progress()).powi(3)
+		})
 	}
 
 	pub(super) fn toggle_connection_details(&mut self, cx: &mut Context<Self>) {
@@ -866,6 +872,12 @@ pub(super) struct HistoryNavigation {
 	started: std::time::Instant,
 }
 
+impl HistoryNavigation {
+	fn progress(&self) -> f32 {
+		(self.started.elapsed().as_secs_f32() / 0.28).min(1.)
+	}
+}
+
 pub(super) struct WheelScroll {
 	work: String,
 	motion: crate::ui_scroll::Motion,
@@ -1155,6 +1167,8 @@ mod tests {
 					entries: vec![row(10, true), row(11, false), row(20, true), row(21, false)],
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1194,6 +1208,8 @@ mod tests {
 					entries: vec![row(1, false)],
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
@@ -1294,6 +1310,8 @@ mod tests {
 					entries,
 					next_cursor: None,
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
@@ -1383,7 +1401,8 @@ phase: None,
 				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
 			}, decodex_protocol::AgentTimelinePage {
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
-				weather: Default::default(), safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
+				weather: Default::default(), thread_token_total: None,
+		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
 			}));
 
 			cx.notify();

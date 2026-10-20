@@ -1,8 +1,6 @@
 //! Interruptible motion shared by native controls and workspace panels.
-#[path = "ui_agent_label.rs"] mod agent_label;
-pub(crate) use agent_label::AgentSignal;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
-pub(crate) use overflow_label::{OverflowLabel, OverflowLine};
+pub(crate) use overflow_label::OverflowLabel;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 pub(crate) use text_reveal::TextReveal;
 
@@ -28,36 +26,6 @@ use objc2::{
 
 pub(crate) trait SmoothControl {
 	fn smooth(self) -> Control;
-}
-
-#[derive(IntoElement)]
-pub(crate) struct Reveal {
-	id: ElementId,
-	extent: f32,
-	horizontal: bool,
-	child: AnyElement,
-}
-impl RenderOnce for Reveal {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(self.extent));
-		let now = Instant::now();
-		let (extent, moving) = state.update(cx, |s, _| {
-			s.target(self.extent, now);
-
-			(s.sample(now), s.moving(now))
-		});
-
-		if moving {
-			request_frame(window, cx);
-		}
-
-		gpui::div()
-			.flex_none()
-			.overflow_hidden()
-			.when(self.horizontal, |slot| slot.w(gpui::px(extent)).h_full())
-			.when(!self.horizontal, |slot| slot.h(gpui::px(extent)).w_full())
-			.when(extent > 0.1, |slot| slot.child(self.child))
-	}
 }
 
 /// Collapse the whole tab footprint, including its gutter, without squeezing its label.
@@ -574,15 +542,6 @@ pub(crate) fn direct_value(
 	}
 
 	value
-}
-
-pub(crate) fn reveal(
-	id: impl Into<ElementId>,
-	extent: f32,
-	horizontal: bool,
-	child: impl IntoElement,
-) -> Reveal {
-	Reveal { id: id.into(), extent, horizontal, child: child.into_any_element() }
 }
 
 pub(crate) fn switch_knob(id: &'static str, enabled: bool, child: impl IntoElement) -> SwitchKnob {

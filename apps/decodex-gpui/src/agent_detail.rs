@@ -13,15 +13,33 @@ use crate::{
 	shell::agent_surface::{
 		AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, FluentBuilder,
 		InteractiveElement, IntoElement, ParentElement, Role, SharedString, SmoothControl,
-		StatefulInteractiveElement, Styled, Task, WireText, selectable_text::SelectableText,
-		ui_theme,
+		StatefulInteractiveElement, Styled, Task, WireText, markdown,
+		selectable_text::SelectableText, ui_theme,
 	},
 	ui_loading, ui_motion,
 	ui_theme::HOVER_FILL,
 };
 use decodex_protocol::{
-	AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentTimelineContent,
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentCollaborationDto,
+	AgentTimelineContent,
 };
+
+pub(super) fn supports_activity_detail(kind: &str) -> bool {
+	matches!(
+		kind,
+		"commandExecution"
+			| "sleep"
+			| "fileChange"
+			| "mcpToolCall"
+			| "dynamicToolCall"
+			| "webSearch"
+			| "functionCallOutput"
+			| "imageView"
+			| "imageGeneration"
+			| "subAgentActivity"
+			| "collabAgentToolCall"
+	)
+}
 
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
@@ -76,20 +94,11 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		item: &AgentActivityDto,
+		collaboration: Option<&AgentCollaborationDto>,
 		row: Div,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		if ![
-			"commandExecution",
-			"fileChange",
-			"mcpToolCall",
-			"dynamicToolCall",
-			"webSearch",
-			"functionCallOutput",
-			"imageView",
-		]
-		.contains(&item.kind.as_str())
-		{
+		if !supports_activity_detail(&item.kind) {
 			return row.into_any_element();
 		}
 
@@ -112,7 +121,10 @@ impl AgentSurface {
 					.filter(|(id, _)| id == &key)
 					.and_then(|(_, result)| result.as_ref())
 			});
-		let body = self.activity_detail_body(&ids, &key, result, cx);
+		let markdown_reply =
+			matches!(item.kind.as_str(), "subAgentActivity" | "collabAgentToolCall");
+		let body = self.activity_detail_body(&ids, &key, result, markdown_reply, cx);
+		let agents = self.collaboration_agent_links(work, collaboration, cx);
 		let metadata_key = format!("tool-reference-{key}");
 		let metadata_open = self.timeline.expanded_records.contains(&metadata_key);
 		let metadata_toggle = self.workspace_action(
@@ -166,11 +178,12 @@ impl AgentSurface {
 					.p(gpui::px(10.))
 					.rounded(gpui::px(7.))
 					.bg(gpui::rgba(0x10101445))
-					.font_family("Menlo")
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(16.))
+					.when(!markdown_reply, |d| d.font_family("Menlo"))
+					.text_size(gpui::px(if markdown_reply { 13. } else { 11.5 }))
+					.line_height(gpui::px(if markdown_reply { 19. } else { 16. }))
 					.text_color(gpui::rgb(TEXT))
 					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
+					.children(agents)
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
@@ -191,11 +204,43 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn collaboration_agent_links(
+		&self,
+		work: &AgentWorkItemDto,
+		collaboration: Option<&AgentCollaborationDto>,
+		cx: &mut Context<Self>,
+	) -> Vec<AnyElement> {
+		collaboration
+			.into_iter()
+			.flat_map(|call| &call.receiver_thread_ids)
+			.map(|thread| {
+				let owner = work.id.clone();
+				let target = thread.clone();
+				let label = self
+					.native_agents
+					.lists
+					.get(&owner)
+					.and_then(|agents| agents.iter().find(|agent| agent.thread_id == target))
+					.map_or_else(
+						|| "Open agent".to_owned(),
+						|agent| format!("Open {}", agent.title),
+					);
+				self.workspace_action(
+					format!("detail-agent-{thread}"),
+					label,
+					move |s, cx| s.open_native_agent(&owner, &target, cx),
+					cx,
+				)
+			})
+			.collect::<Vec<_>>()
+	}
+
 	fn activity_detail_body(
 		&self,
 		ids: &(String, String, String),
 		key: &str,
 		result: Option<&AgentActivityDetailResult>,
+		markdown_reply: bool,
 		cx: &mut Context<Self>,
 	) -> Div {
 		match result {
@@ -204,11 +249,17 @@ impl AgentSurface {
 				let next_ids = ids.clone();
 
 				gpui::div()
-					.child(SelectableText {
-						key: format!("detail-text-{key}-{offset}"),
-						text: text.clone(),
-						highlights: Vec::new(),
-						links: Vec::new(),
+					.child(if markdown_reply {
+						markdown::render(text, &format!("detail-text-{key}-{offset}"))
+							.into_any_element()
+					} else {
+						SelectableText {
+							key: format!("detail-text-{key}-{offset}"),
+							text: text.clone(),
+							highlights: Vec::new(),
+							links: Vec::new(),
+						}
+						.into_any_element()
 					})
 					.when(*offset > 0, |d| {
 						d.child(self.workspace_action(
@@ -436,6 +487,7 @@ mod tests {
 
 	fn activity_detail_snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
@@ -565,6 +617,75 @@ mod tests {
 			arrow.right() <= standalone_arrow.right(),
 			"grouped arrow {arrow:?} must align with standalone arrow {standalone_arrow:?}"
 		);
+	}
+
+	#[gpui::test]
+	fn native_subagent_rows_expand_and_unknown_rows_have_no_disclosure(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(1_000.)));
+		surface.update(visual, prepare_tool_history);
+		for kind in ["subAgentActivity", "collabAgentToolCall", "unknownActivity"] {
+			surface.update(visual, |s, cx| {
+				s.clear_activity_detail();
+				let decodex_protocol::AgentTimelineContent::Item {
+					kind: item_kind,
+					activity: Some(activity),
+					collaboration,
+					..
+				} = &mut s.timeline.native.entries[0].content
+				else {
+					panic!("fixture")
+				};
+				*item_kind = kind.into();
+				activity.kind = kind.into();
+				activity.label = "Subagent completed a turn".into();
+				*collaboration = Some(decodex_protocol::AgentCollaborationDto {
+					sender_thread_id: "thread".into(),
+					receiver_thread_ids: vec!["child".into()],
+					tool: "subAgentActivity/completed".into(),
+					status: "completed".into(),
+					prompt: String::new(),
+					results: vec![],
+				});
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			thread::sleep(std::time::Duration::from_millis(240));
+			visual.update(crate::ui_frame::draw_frame);
+			if kind == "unknownActivity" {
+				assert!(visual.debug_bounds("tool-chevron-bounds").is_none());
+				continue;
+			}
+			let row = visual.debug_bounds("tool-detail-row").unwrap();
+			visual.simulate_click(row.center(), Default::default());
+			surface.update(visual, |s, cx| {
+				let key = s
+					.activity_detail_key(&("agent".into(), "turn".into(), "search".into()))
+					.unwrap();
+				assert_eq!(
+					s.activity_detail.value.as_ref().map(|(id, _)| id),
+					Some(&key),
+					"{kind}"
+				);
+				s.activity_detail.task = None;
+				s.activity_detail.value = Some((
+					key,
+					Some(AgentActivityDetailResult::Available {
+						text: "Latest reply\n\nUse Markdown.".into(),
+						truncated: false,
+						offset: 0,
+						next: None,
+					}),
+				));
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			thread::sleep(std::time::Duration::from_millis(300));
+			visual.update(crate::ui_frame::draw_frame);
+			assert!(visual.debug_bounds("tool-detail-row").unwrap().size.height > row.size.height);
+		}
 	}
 
 	#[gpui::test]

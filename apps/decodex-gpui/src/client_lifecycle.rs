@@ -285,10 +285,16 @@ impl ClientLifecycle {
 			initialize_cache(&client_cache_root, cache_limits, cache_authority.clone());
 		let history_pager =
 			HistoryPager::production(&cache_parent, HISTORY_PAGE_CACHE_SCHEMA_GENERATION);
-		// Preparation belongs to the first connection. Stopped is a terminal state.
-		let view = quarantine.map_or(ConnectionView::Connecting { attempt: 1 }, |quarantine| {
-			ConnectionView::Quarantined { reason: quarantine.reason, recovery: quarantine.recovery }
-		});
+		// A disposable cache rebuild is preparation, not a connection failure.
+		// Keep its quarantine internally until a fresh snapshot is verified.
+		let view = quarantine
+			.filter(|q| q.recovery == QuarantineRecovery::OperatorRequired)
+			.map_or(ConnectionView::Connecting { attempt: 1 }, |quarantine| {
+				ConnectionView::Quarantined {
+					reason: quarantine.reason,
+					recovery: quarantine.recovery,
+				}
+			});
 
 		Ok(Self {
 			config,

@@ -8,6 +8,12 @@ use crate::{AgentActivityDto, AgentTurnUsageDto, EntityId, WeatherForecast};
 /// One exact native page, oldest entry first. The continuation reads older entries.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePage {
+	/// Latest observed native cumulative total for this exact thread, including live turns.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub thread_token_total: Option<u64>,
+	/// Complete native turn durations and the latest measured output rate for this thread.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub thread_metrics: Option<AgentThreadMetrics>,
 	/// Live turn whose provider explicitly requests a safety buffering indicator.
 	/// This is connection state, not saved history or an approval request.
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -23,6 +29,40 @@ pub struct AgentTimelinePage {
 	pub weather: BTreeMap<String, Vec<WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
+}
+
+/// Statistics from native turn headers and exact usage observations, independent of pagination.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentThreadMetrics {
+	/// Sum of all terminal turn durations. Unknown if a native duration is missing.
+	pub completed_ms: Option<u64>,
+	/// Elapsed duration of the current native turn at this read, if running.
+	pub active_ms: Option<u64>,
+	/// A native model item is streaming. Tool and user waits do not count as generation.
+	#[serde(default)]
+	pub generating: bool,
+	/// Latest locally observed generation rate, or a labelled historical turn average.
+	pub rate: Option<AgentOutputRate>,
+}
+
+/// Exact native output counters over a locally observed generation interval or whole turn.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentOutputRate {
+	/// True for local generation timing. False for a whole-turn average, including tools.
+	#[serde(default)]
+	pub estimated: bool,
+	/// The measurement belongs to the current turn while a model item is streaming.
+	/// Last measurements stay visible during tool and user waits.
+	#[serde(default)]
+	pub active: bool,
+	/// Native output tokens used for this measurement.
+	pub output_tokens: u64,
+	/// Interval in milliseconds; a historical turn average includes tool time.
+	pub duration_ms: u64,
+	/// Interval start as Unix time in milliseconds.
+	pub started_at_ms: u64,
+	/// Interval end as Unix time in milliseconds, when available.
+	pub completed_at_ms: Option<u64>,
 }
 
 /// A canonical position with its own typed identity; position alone is not unique.

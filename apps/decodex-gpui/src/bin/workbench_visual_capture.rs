@@ -50,6 +50,7 @@ mod shell;
 #[path = "../ui_feedback.rs"] mod ui_feedback;
 #[path = "../ui_frame.rs"] mod ui_frame;
 #[path = "../ui_layout.rs"] mod ui_layout;
+#[path = "../ui_live_activity.rs"] mod ui_live_activity;
 #[allow(dead_code)]
 #[path = "../ui_loading.rs"]
 mod ui_loading;
@@ -64,6 +65,7 @@ mod ui_scroll;
 #[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
+#[path = "../ui_work_metrics.rs"] mod ui_work_metrics;
 #[path = "../ui_working.rs"] mod ui_working;
 
 use std::{

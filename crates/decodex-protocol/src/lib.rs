@@ -1,6 +1,12 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
+mod agent_deliveries;
+pub use agent_deliveries::{
+	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,
+	AgentDeliveryKind, AgentDeliveryQuery, AgentDeliveryUpdate, AgentDeliveryUpdateKind,
+};
+
 mod account_login;
 mod account_recovery;
 mod agent;
@@ -158,9 +164,10 @@ pub use self::{
 	agent_skills::{AgentSkillDto, AgentSkillsPage, AgentSkillsResult, AgentSkillsTarget},
 	agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult},
 	agent_timeline::{
-		AgentCollaborationDto, AgentCollaborationResultDto, AgentTimelineAttachment,
-		AgentTimelineAttachmentSource, AgentTimelineContent, AgentTimelineEntry,
-		AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent, AgentTimelineResult,
+		AgentCollaborationDto, AgentCollaborationResultDto, AgentOutputRate, AgentThreadMetrics,
+		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelineContent,
+		AgentTimelineEntry, AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent,
+		AgentTimelineResult,
 	},
 	agent_transcript::{
 		AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,
@@ -283,7 +290,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 121 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 129 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

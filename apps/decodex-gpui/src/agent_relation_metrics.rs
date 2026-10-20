@@ -1,581 +1,168 @@
-//! Compare recorded native thread totals; duration describes the latest completed turn.
-use super::{
-	AMBER, AgentSurface, AnyElement, AppContext, Context, FluentBuilder, Graph, InteractiveElement,
-	IntoElement, Node, ParentElement, RelationTip, Role, SharedString, StatefulInteractiveElement,
-	Styled, TEXT, TEXT_MUTED, identity,
+//! Per-agent usage, time, rate and the share of recorded conversation tokens.
+use super::{AgentSurface, AnyElement, Context, Node, TEXT_MUTED};
+use gpui::prelude::{
+	FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+	Styled,
 };
+pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
 
 const TOKENS: u32 = 0xa99aef;
-const TIME: u32 = 0x91a5b9;
 
-#[derive(Clone, Copy, Default)]
-pub(in super::super) struct Metrics {
-	tokens: Option<u64>,
-	duration: Option<u64>,
+fn fraction(value: Option<u64>, total: u128) -> Option<f32> {
+	value.filter(|_| total > 0).map(|value| (value as f64 / total as f64).clamp(0., 1.) as f32)
 }
-impl Metrics {
-	pub(in super::super) fn from_entries(entries: &[decodex_protocol::AgentTimelineEntry]) -> Self {
-		let tokens = entries.iter().rev().find_map(|entry| match &entry.content {
-			decodex_protocol::AgentTimelineContent::TurnBoundary { usage: Some(usage), .. } =>
-				usage.details.as_ref().and_then(|details| details.thread_total),
-			_ => None,
-		});
-		let duration = entries
-			.iter()
-			.rev()
-			.find_map(|entry| match &entry.content {
-				decodex_protocol::AgentTimelineContent::TurnBoundary {
-					completed: true,
-					duration_ms,
-					..
-				} => Some(*duration_ms),
-				_ => None,
-			})
-			.flatten();
-		Self { tokens, duration }
-	}
 
-	fn label(self) -> String {
-		format!(
-			"Recorded total: {} tokens\nLatest completed turn: {}",
-			self.tokens.map(super::super::super::compact_tokens).unwrap_or_else(|| "—".into()),
-			time_label(self.duration)
-		)
-	}
-}
-fn time_label(ms: Option<u64>) -> String {
-	match ms {
-		Some(ms) if ms >= 60_000 => format!("{}m {}s", ms / 60_000, ms / 1000 % 60),
-		Some(ms) => format!("{:.1}s", ms as f64 / 1000.),
-		None => "—".into(),
-	}
-}
-fn fraction(value: Option<u64>, baseline: u128) -> Option<f32> {
-	value.filter(|_| baseline > 0).map(|v| (v as f64 / baseline as f64).clamp(0., 1.) as f32)
-}
 fn percentage(value: Option<f32>) -> String {
 	match value {
-		Some(v) if v > 0. && v < 0.01 => "<1%".into(),
-		Some(v) => format!("{:.0}%", v * 100.),
+		Some(value) if value > 0. && value < 0.01 => "<1%".into(),
+		Some(value) => format!("{:.0}%", value * 100.),
 		None => "—".into(),
 	}
-}
-fn metric_cell(label: String, value: Option<f32>, color: u32, scale: f32) -> AnyElement {
-	// Labels and decorative segments have fixed geometry. Paint one box instead
-	// of relaying out a nested flex tree for every node on every animation frame.
-	gpui::canvas(
-		move |_, window, _| {
-			let font = window.text_style().font();
-			let shape = |text: String, size: f32, color| {
-				let run = gpui::TextRun {
-					len: text.len(),
-					font: font.clone(),
-					color: gpui::rgb(color).into(),
-					background_color: None,
-					underline: None,
-					strikethrough: None,
-				};
-				window.text_system().shape_line(text.into(), gpui::px(size * scale), &[run], None)
-			};
-			(shape(label, 11., TEXT_MUTED), shape(percentage(value), 10., color))
-		},
-		move |bounds, (label, share), window, cx| {
-			// Each label occupies a separate range in this fixed-size cell.
-			window.paint_layer(bounds, |window| {
-				let line_height = gpui::px(14. * scale);
-				let _ = label.paint(
-					bounds.origin,
-					line_height,
-					gpui::TextAlign::Left,
-					None,
-					window,
-					cx,
-				);
-				let _ = share.paint(
-					gpui::point(bounds.right() - share.width, bounds.top()),
-					line_height,
-					gpui::TextAlign::Left,
-					None,
-					window,
-					cx,
-				);
-			});
-			let bounds = gpui::Bounds::new(
-				bounds.origin + gpui::point(gpui::px(0.), gpui::px(19. * scale)),
-				gpui::size(bounds.size.width, gpui::px(3. * scale)),
-			);
-			let gap = gpui::px(1.5 * scale);
-			let width = ((bounds.size.width - gap * 11.) / 12.).max(gpui::px(0.));
-			for i in 0..12 {
-				let segment = gpui::Bounds::new(
-					bounds.origin + gpui::point((width + gap) * i as f32, gpui::px(0.)),
-					gpui::size(width, bounds.size.height),
-				);
-				let mut track = gpui::fill(segment, gpui::rgba(0xffffff10));
-				track.corner_radii = gpui::Corners::all(gpui::px(scale));
-				window.paint_quad(track);
-				let filled = (value.unwrap_or(0.) * 12. - i as f32).clamp(0., 1.);
-				if filled > 0. {
-					let clip = gpui::ContentMask {
-						bounds: gpui::Bounds::new(
-							segment.origin,
-							gpui::size(width * filled, segment.size.height),
-						),
-					};
-					window.with_content_mask(Some(clip), |window| {
-						let mut fill = gpui::fill(segment, gpui::rgba((color << 8) | 0xc8));
-						fill.corner_radii = gpui::Corners::all(gpui::px(scale));
-						window.paint_quad(fill);
-					});
-				}
-			}
-		},
-	)
-	.w_full()
-	.h(gpui::px(22. * scale))
-	.into_any_element()
-}
-
-fn usage_label(id: String, title: String, share: String) -> AnyElement {
-	gpui::canvas(
-		move |_, window, _| {
-			let style = window.text_style();
-			let shape = |text: String, identifier_len: usize, strong: bool| {
-				let make_run = |len, color, weight| {
-					let mut font = style.font();
-					font.weight = weight;
-					gpui::TextRun {
-						len,
-						font,
-						color: gpui::rgb(color).into(),
-						background_color: None,
-						underline: None,
-						strikethrough: None,
-					}
-				};
-				let mut runs = Vec::new();
-				if identifier_len > 0 {
-					runs.push(make_run(identifier_len, 0xa59bb7, gpui::FontWeight::NORMAL));
-				}
-				if text.len() > identifier_len {
-					runs.push(make_run(
-						text.len() - identifier_len,
-						if strong { 0xf2eef8 } else { TEXT },
-						if strong { gpui::FontWeight::MEDIUM } else { gpui::FontWeight::NORMAL },
-					));
-				}
-				window.text_system().shape_line(text.into(), gpui::px(11.), &runs, None)
-			};
-			(
-				shape(format!("{id} {}", title.replace(['\n', '\r'], " ")), id.len(), false),
-				shape(id.clone(), id.len(), false),
-				shape(share, 0, true),
-			)
-		},
-		move |bounds, (full, id, share), window, cx| {
-			let available = bounds.size.width - gpui::px(12.);
-			let (name, show_share) = if full.width + share.width + gpui::px(10.) <= available {
-				(Some(full), true)
-			} else if id.width + share.width + gpui::px(10.) <= available {
-				(Some(id), true)
-			} else if id.width <= available {
-				(Some(id), false)
-			} else {
-				(None, false)
-			};
-			window.paint_layer(bounds, |window| {
-				let origin = bounds.origin + gpui::point(gpui::px(6.), gpui::px(4.));
-				if let Some(name) = name {
-					let _ =
-						name.paint(origin, gpui::px(16.), gpui::TextAlign::Left, None, window, cx);
-				}
-				if show_share {
-					let _ = share.paint(
-						gpui::point(bounds.right() - gpui::px(6.) - share.width, origin.y),
-						gpui::px(16.),
-						gpui::TextAlign::Left,
-						None,
-						window,
-						cx,
-					);
-				}
-			});
-		},
-	)
-	.w_full()
-	.h_full()
-	.into_any_element()
 }
 
 impl AgentSurface {
-	pub(in super::super) fn pick_metric_agent(&mut self, key: &str, cx: &mut Context<Self>) {
-		self.work_board.view.picked_agent =
-			if self.work_board.view.picked_agent.as_deref() == Some(key) {
-				None
-			} else {
-				Some(key.to_owned())
-			};
-		self.work_board.view.edge = None;
-		self.work_board.focus = None;
-		self.handoffs.focus = None;
-		cx.notify();
-	}
-
-	pub(super) fn picked_metric_card(
-		&self,
-		graph: &Graph,
-		cx: &mut Context<Self>,
-	) -> Option<AnyElement> {
-		let node = graph
-			.nodes
-			.iter()
-			.find(|n| Some(&n.key) == self.work_board.view.picked_agent.as_ref())?;
-		let row = node.row.as_ref()?;
-		let labels = identity::labels(self.snapshot.as_ref(), std::iter::once(node.key.clone()));
-		let tokens = self.published_metrics_for(node).tokens;
-		let total = graph
-			.nodes
-			.iter()
-			.filter_map(|node| self.published_metrics_for(node).tokens)
-			.map(u128::from)
-			.sum();
-		let share = percentage(fraction(tokens, total));
-		Some(
-			gpui::div()
-				.debug_selector(|| "agent-usage-popover".into())
-				.absolute()
-				.top(gpui::px(60.))
-				.left(gpui::px(12.))
-				.w(gpui::px(320.))
-				.max_w(gpui::relative(0.85))
-				.occlude()
-				.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-				.child(
-					crate::ui_motion::tooltip_surface(gpui::div())
-						.p_3()
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(
-							gpui::div()
-								.flex()
-								.items_center()
-								.justify_between()
-								.child(
-									gpui::div()
-										.text_color(gpui::rgb(TEXT_MUTED))
-										.children(labels.get(&node.key).cloned()),
-								)
-								.child(
-									gpui::div()
-										.id("close-agent-metric")
-										.role(Role::Button)
-										.aria_label("Close agent usage")
-										.tab_index(0)
-										.on_key_down(cx.listener(
-											|s, e: &gpui::KeyDownEvent, _, cx| {
-												if ["enter", "space", "escape"]
-													.contains(&e.keystroke.key.as_str())
-												{
-													s.work_board.view.picked_agent = None;
-													cx.notify();
-													cx.stop_propagation();
-												}
-											},
-										))
-										.size(gpui::px(24.))
-										.flex()
-										.items_center()
-										.justify_center()
-										.cursor_pointer()
-										.child("×")
-										.on_click(cx.listener(|s, _, _, cx| {
-											s.work_board.view.picked_agent = None;
-											cx.notify();
-										})),
-								),
-						)
-						.child(
-							gpui::div()
-								.id("agent-metric-full-name")
-								.max_h(gpui::px(100.))
-								.overflow_y_scroll()
-								.child(row.title.clone()),
-						)
-						.child(format!(
-							"{} tokens · {share}",
-							tokens
-								.map(super::super::super::compact_tokens)
-								.unwrap_or_else(|| "—".into())
-						))
-						.child(
-							gpui::div()
-								.text_size(gpui::px(10.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child("Recorded total · includes cached input"),
-						),
-				)
-				.into_any_element(),
-		)
-	}
-
-	fn published_metrics_for(&self, node: &Node) -> Metrics {
+	pub(super) fn metrics_for(&self, node: &Node) -> Metrics {
 		node.row
 			.as_ref()
 			.and_then(|row| {
 				self.work_board
-					.usage
-					.as_ref()?
+					.briefs
 					.get(&row.key)
-					.filter(|(thread, _)| thread == &row.thread)
-					.map(|(_, metrics)| *metrics)
+					.filter(|brief| brief.source_thread == row.thread)
 			})
+			.map(|brief| brief.metrics)
 			.unwrap_or_default()
 	}
 
-	fn metrics_for(&self, node: &Node) -> Metrics {
-		node.row
-			.as_ref()
-			.and_then(|r| {
-				self.work_board.briefs.get(&r.key).filter(|b| b.stamp == self.brief_stamp(r))
-			})
-			.map(|b| b.metrics)
-			.unwrap_or_default()
-	}
-
-	pub(super) fn metric_baselines(&self, graph: &Graph) -> (u128, u128) {
-		graph.nodes.iter().map(|n| self.metrics_for(n)).fold((0, 0), |(tokens, time), m| {
-			(
-				tokens + u128::from(m.tokens.unwrap_or(0)),
-				time.max(u128::from(m.duration.unwrap_or(0))),
-			)
-		})
-	}
-
-	pub(super) fn node_metrics(
-		&self,
-		node: &Node,
-		baselines: (u128, u128),
-		scale: f32,
-	) -> AnyElement {
+	pub(super) fn node_metrics(&self, node: &Node, layout: super::card::Layout) -> AnyElement {
 		let metrics = self.metrics_for(node);
-		let mut body = gpui::div().w_full().flex().gap(gpui::px(12. * scale));
-		for (value, baseline, color, label, meaning) in [
-			(
-				metrics.tokens,
-				baselines.0,
-				TOKENS,
-				metrics
-					.tokens
-					.map(super::super::super::compact_tokens)
-					.map(|n| format!("{n} tok"))
-					.unwrap_or_else(|| "— tok".into()),
-				"Share of recorded conversation tokens",
-			),
-			(
-				metrics.duration,
-				baselines.1,
-				TIME,
-				time_label(metrics.duration),
-				"Latest completed turn, relative to the longest reported turn",
-			),
-		] {
-			let part = fraction(value, baseline);
-			let tip = format!(
-				"{meaning}: {}\nToken counters are cumulative native conversation totals. Duration is the latest completed turn. Missing values are excluded.\nThese bars compare usage, not task completion or a budget.",
-				percentage(part)
-			);
-			body = body.child(
-				gpui::div()
-					.id(SharedString::from(format!("metric-{color}-{}", node.key)))
-					.role(Role::Group)
-					.aria_label(format!("{label} · {}", percentage(part)))
-					.flex_1()
-					.min_w_0()
-					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-					.child(metric_cell(label, part, color, scale)),
-			);
-		}
-		crate::ui_loading::content(
-			format!("node-metrics-{}", node.key),
-			metrics.tokens.is_some() || metrics.duration.is_some(),
-			body,
-		)
-		.into_any_element()
-	}
-
-	pub(in super::super) fn relation_metrics(
-		&self,
-		graph: &Graph,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let nodes: Vec<_> = graph.nodes.iter().filter(|n| n.row.is_some()).collect();
-		let mut ranked: Vec<_> = nodes
-			.iter()
-			.filter_map(|n| self.published_metrics_for(n).tokens.map(|v| (*n, v)))
-			.collect();
-		ranked.sort_by_key(|(_, value)| std::cmp::Reverse(*value));
-		let total: u128 = ranked.iter().map(|(_, v)| u128::from(*v)).sum();
-		let labels = identity::labels(self.snapshot.as_ref(), nodes.iter().map(|n| n.key.clone()));
-		let mut distribution =
-			gpui::div().flex().w_full().h(gpui::px(28.)).rounded(gpui::px(4.)).overflow_hidden();
-		for (node, value) in ranked.iter().filter(|(_, v)| *v > 0) {
-			let share = fraction(Some(*value), total).unwrap_or(0.);
-			let key = node.key.clone();
-			let keyrow = key.clone();
-			let hoverkey = key.clone();
-			let label = labels.get(&node.key).cloned().unwrap_or_else(|| {
-				node.row
-					.as_ref()
-					.expect("ranked nodes have rows")
-					.title
-					.chars()
-					.next()
-					.map(|initial| initial.to_string())
-					.unwrap_or_default()
-			});
-			let highlighted = self.work_board.view.hovered_agent.as_ref() == Some(&key)
-				|| self.work_board.view.picked_agent.as_ref() == Some(&key);
-			let tip = format!(
-				"{label} · {}\n{}\n{} of recorded conversation totals. Includes cached input. Missing totals are excluded.",
-				node.row.as_ref().expect("ranked nodes have rows").title,
-				self.published_metrics_for(node).label(),
-				percentage(Some(share))
-			);
-			distribution = distribution.child(
-				gpui::div()
-					.id(SharedString::from(format!("usage-share-{}", node.key)))
-					.role(Role::Button)
-					.aria_label(tip.clone())
-					.tab_index(0)
-					.w(gpui::relative(share))
-					.h_full()
-					.flex_none()
-					.min_w_0()
-					.overflow_hidden()
-					.flex()
-					.items_center()
-					.relative()
-					.cursor_pointer()
-					.when(highlighted, |d| d.bg(gpui::rgba(0xa99aef20)))
-					.hover(|d| d.bg(gpui::rgba(0xffffff08)))
-					.on_hover(cx.listener(move |s, hovered, _, cx| {
-						if *hovered {
-							s.work_board.view.hovered_agent = Some(hoverkey.clone());
-						} else if s.work_board.view.hovered_agent.as_ref() == Some(&hoverkey) {
-							s.work_board.view.hovered_agent = None;
-						}
-						cx.notify();
-					}))
-					.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
-					.child(usage_label(
-						label,
-						node.row.as_ref().expect("ranked nodes have rows").title.clone(),
-						percentage(Some(share)),
-					))
-					.child(
-						gpui::div()
-							.absolute()
-							.bottom_0()
-							.left(gpui::px(2.))
-							.right(gpui::px(2.))
-							.h(gpui::px(if highlighted { 3. } else { 2. }))
-							.rounded_full()
-							.bg(gpui::rgba((TOKENS << 8) | if highlighted { 0xff } else { 0x90 })),
-					)
-					.on_click(cx.listener(move |s, _, _, cx| s.pick_metric_agent(&key, cx)))
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							s.pick_metric_agent(&keyrow, cx);
-							cx.stop_propagation();
-						}
-					})),
-			);
-		}
-		crate::ui_loading::content(
-			format!("graph-metrics-{}", self.selected.as_deref().unwrap_or_default()),
-			self.work_board.usage.is_some(),
-			self.relation_metrics_footer(graph, ranked.is_empty(), total, distribution),
-		)
-		.into_any_element()
-	}
-
-	fn relation_metrics_footer(
-		&self,
-		graph: &Graph,
-		empty: bool,
-		total: u128,
-		distribution: gpui::Div,
-	) -> AnyElement {
-		let amount = if empty {
-			"—".into()
-		} else {
-			match u64::try_from(total) {
-				Ok(value) => super::super::super::compact_tokens(value),
-				Err(_) => format!("{:.1}B", total as f64 / 1_000_000_000.),
-			}
-		};
-		let tip = "Recorded cumulative conversation tokens, including cached input. Missing totals are excluded. The segments show each agent's share, not task progress.";
-		let summary = gpui::div()
-			.id("graph-usage-total")
+		let selector = format!("relation-metrics-{}", node.key);
+		let time_selector = format!("relation-time-{}", node.key);
+		let token_selector = format!("relation-tokens-{}", node.key);
+		let share = fraction(metrics.tokens, self.recorded_token_total());
+		let tokens =
+			metrics.tokens.map(super::super::super::compact_tokens).unwrap_or_else(|| "—".into());
+		gpui::div()
+			.id(gpui::SharedString::from(selector.clone()))
+			.debug_selector(move || selector.clone())
+			.role(gpui::Role::Group)
+			.aria_label(metrics.label())
+			.w_full()
+			.h(gpui::px(layout.metrics_height()))
 			.flex_none()
-			.w(gpui::px(138.))
 			.flex()
 			.flex_col()
-			.gap(gpui::px(3.))
-			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.into())).into())
+			.justify_between()
+			.text_size(gpui::px(9.5 * layout.text_scale))
+			.line_height(gpui::px(12. * layout.text_scale))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(
 				gpui::div()
+					.debug_selector(move || token_selector.clone())
+					.w_full()
 					.flex()
-					.items_baseline()
-					.gap(gpui::px(5.))
+					.items_center()
+					.gap(gpui::px(4. * layout.text_scale))
+					.text_color(gpui::rgb(TOKENS))
 					.child(
-						gpui::div()
-							.text_size(gpui::px(17.))
-							.line_height(gpui::px(20.))
-							.font_weight(gpui::FontWeight::MEDIUM)
-							.child(amount),
+						crate::ui_work_metrics::Icon::Tokens
+							.element(10. * layout.text_scale, TOKENS),
 					)
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.child("tokens"),
-					),
+					.child(format!("{tokens} tok"))
+					.child(gpui::div().flex_1())
+					.child(percentage(share)),
 			)
 			.child(
 				gpui::div()
-					.text_size(gpui::px(10.))
-					.line_height(gpui::px(14.))
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(format!("{} agents · {} links", graph.agent_count(), graph.edges.len())),
-			);
-		let mut body = gpui::div()
-			.flex_none()
-			.w_full()
-			.min_w_0()
-			.px(gpui::px(12.))
-			.py(gpui::px(8.))
-			.border_t_1()
-			.border_color(gpui::rgba(0xffffff0c))
+					.w_full()
+					.h(gpui::px(2. * layout.chrome_scale))
+					.rounded_full()
+					.bg(gpui::rgba(0xa99aef18))
+					.when_some(share, |bar, share| {
+						bar.child(
+							gpui::div()
+								.w(gpui::relative(share))
+								.h_full()
+								.rounded_full()
+								.bg(gpui::rgba(0xa99aef99)),
+						)
+					}),
+			)
 			.child(
 				gpui::div()
+					.w_full()
 					.flex()
 					.items_center()
-					.gap(gpui::px(16.))
-					.child(summary)
-					.child(gpui::div().flex_1().min_w_0().child(distribution)),
-			);
+					.justify_between()
+					.child(
+						gpui::div()
+							.debug_selector(move || time_selector.clone())
+							.flex()
+							.items_center()
+							.gap(gpui::px(3. * layout.text_scale))
+							.whitespace_nowrap()
+							.child(
+								crate::ui_work_metrics::Icon::Time
+									.element(9. * layout.text_scale, TEXT_MUTED),
+							)
+							.child(if self.work_is_archived(&node.key) {
+								"Archived".into()
+							} else {
+								crate::ui_work_metrics::time_label(metrics.time())
+							}),
+					)
+					.child(
+						gpui::div()
+							.flex_none()
+							.flex()
+							.items_center()
+							.gap(gpui::px(3. * layout.text_scale))
+							.child(
+								crate::ui_work_metrics::Icon::Rate
+									.element(9. * layout.text_scale, TEXT_MUTED),
+							)
+							.child(format!(
+								"{} {}",
+								metrics.rate_text(),
+								if metrics.stats.is_some() {
+									metrics.rate_caption()
+								} else {
+									"tok/s"
+								}
+							)),
+					),
+			)
+			.into_any_element()
+	}
 
-		if !self.command_connection_ready() {
-			body = body.child(
-				gpui::div()
-					.text_size(gpui::px(11.))
-					.text_color(gpui::rgb(AMBER))
-					.child("Disconnected · last known state"),
-			);
+	fn recorded_token_total(&self) -> u128 {
+		self.work_board
+			.usage
+			.iter()
+			.flat_map(|usage| usage.values())
+			.filter_map(|(_, sample)| sample.tokens)
+			.map(u128::from)
+			.sum()
+	}
+
+	pub(in super::super) fn open_graph_agent(&mut self, row: &super::Row, cx: &mut Context<Self>) {
+		self.work_board.view.edge = None;
+		self.work_board.focus = None;
+		self.handoffs.focus = None;
+		// Reveal this agent after the smaller canvas has its real bounds, keeping
+		// its zoom and tree geometry. Ordinary navigation keeps its camera.
+		self.work_board.view.reveal_after_resize |= self.workspace.graph_expanded;
+		self.work_board.view.hover = Default::default();
+		self.workspace.graph_expanded = false;
+		if row.native {
+			if let Some(thread) = &row.thread {
+				self.open_native_agent(&row.work, thread, cx);
+			}
+		} else {
+			self.open_page(&row.work, cx);
 		}
-		body.into_any_element()
+		self.work_board.view.picked_agent = Some(row.key.clone());
+		cx.notify();
 	}
 }
 
@@ -583,13 +170,12 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 	#[test]
-	fn percentages_preserve_missing_zero_and_small_reported_values() {
+	fn token_share_retains_unknown_zero_and_small_values() {
 		assert_eq!(fraction(None, 100), None);
 		assert_eq!(fraction(Some(0), 0), None);
-		assert_eq!(fraction(Some(0), 100), Some(0.));
+		assert_eq!(percentage(fraction(Some(0), 100)), "0%");
 		assert_eq!(percentage(fraction(Some(25), 100)), "25%");
 		assert_eq!(percentage(fraction(Some(1), 1000)), "<1%");
-		assert_eq!(fraction(Some(u64::MAX), u128::from(u64::MAX) * 2), Some(0.5));
 	}
 
 	fn turn(
@@ -615,16 +201,15 @@ mod tests {
 		}
 	}
 	#[test]
-	fn latest_turn_metrics_do_not_mix_older_usage_with_new_duration() {
+	fn page_durations_and_delta_tokens_are_not_cumulative_metrics() {
 		let result = Metrics::from_entries(&[
 			turn("old", Some(100), Some(500)),
 			turn("new", Some(200), None),
 		]);
-		assert_eq!(result.duration, Some(200));
+		assert_eq!(result.stats, None);
 		assert_eq!(result.tokens, None);
 		let result = Metrics::from_entries(&[turn("new", Some(200), Some(500))]);
 		assert_eq!(result.tokens, None);
-		assert_eq!(fraction(None, 510), None);
 	}
 	#[test]
 	fn cumulative_tokens_use_latest_native_counter_without_summing_snapshots() {
@@ -644,7 +229,7 @@ mod tests {
 		let latest = turn("third", None, Some(500));
 		let result = Metrics::from_entries(&[first, second, latest]);
 		assert_eq!(result.tokens, Some(1250));
-		assert_eq!(result.duration, None);
+		assert_eq!(result.stats, None);
 		assert_eq!(Metrics::from_entries(&[turn("only-delta", Some(200), Some(500))]).tokens, None);
 	}
 }

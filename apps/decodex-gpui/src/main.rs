@@ -30,12 +30,14 @@ mod shell;
 mod ui_feedback;
 mod ui_frame;
 mod ui_layout;
+mod ui_live_activity;
 mod ui_loading;
 mod ui_motion;
 mod ui_performance;
 mod ui_preferences;
 mod ui_scroll;
 mod ui_theme;
+mod ui_work_metrics;
 mod ui_working;
 
 use std::{cell::RefCell, rc::Rc, sync::Arc};

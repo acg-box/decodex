@@ -6,22 +6,16 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{AnyElement, AppContext as _, StatefulInteractiveElement as _};
+use gpui::AppContext as _;
 use tokio::runtime::Builder;
-use ui_theme::TREE_ROW_HEIGHT;
 
 #[cfg(test)] use crate::shell::agent_surface::{AgentSnapshotResult, ClientProfile};
-use crate::{
-	shell::{
-		agent_surface,
-		agent_surface::{
-			AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-			ComposerInput, Context, Entity, EntityId, HistoryText, IdempotencyKey, IntoElement,
-			ParentElement, SharedString, Styled, Task, WireText, agent_tree,
-			agent_tree::DISCLOSURE, ui_theme,
-		},
+use crate::shell::{
+	agent_surface,
+	agent_surface::{
+		AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+		ComposerInput, Context, Entity, EntityId, HistoryText, IdempotencyKey, Task, WireText,
 	},
-	ui_motion,
 };
 use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
@@ -36,7 +30,7 @@ pub(super) struct NativeAgents {
 	pub timelines: BTreeMap<(String, String), super::TimelineView>,
 	task: Option<Task<()>>,
 	detail_task: Option<Task<()>>,
-	next: Option<Instant>,
+	last_poll: Option<Instant>,
 	next_detail: Option<Instant>,
 	input: Option<Entity<ComposerInput>>,
 	editor: Option<NativeAgentTarget>,
@@ -72,7 +66,7 @@ struct NativeAgentTarget {
 
 impl AgentSurface {
 	pub(super) fn native_agent_discovery_pending(&self) -> bool {
-		self.native_agents.task.is_some() && self.native_agents.next.is_none()
+		self.native_agents.task.is_some() && self.native_agents.last_poll.is_none()
 	}
 
 	/// A conversation has one presentation regardless of which agent owns execution.
@@ -201,7 +195,7 @@ impl AgentSurface {
 
 		self.native_agents.detail = None;
 		self.native_agents.connection = NativeConnection::default();
-		self.native_agents.next = None;
+		self.native_agents.last_poll = None;
 		self.native_agents.next_detail = None;
 		self.native_agents.send_task = None;
 
@@ -256,7 +250,7 @@ impl AgentSurface {
 			self.native_agents.send_task = None;
 		}
 		self.native_agents.task = None;
-		self.native_agents.next = None;
+		self.native_agents.last_poll = None;
 		self.native_agents.lists.retain(|owner, _| !removed.contains(owner));
 		self.native_agents.timelines.retain(|(owner, _), _| !removed.contains(owner));
 		self.workspace.pages.retain(|page| {
@@ -337,6 +331,18 @@ impl AgentSurface {
 		self.native_agents.lists.insert(owner, list);
 	}
 
+	fn native_poll_interval(&self) -> Duration {
+		let working = self.snapshot.iter().flat_map(|s| &s.work_items).any(|work| {
+			matches!(
+				work.dispatch_state,
+				super::AgentDispatchStateDto::Running | super::AgentDispatchStateDto::Dispatching
+			)
+		}) || self.native_agents.lists.values().flatten().any(|agent| {
+			matches!(agent.status.as_str(), "active" | "waitingOnUserInput" | "waitingOnApproval")
+		});
+		Duration::from_secs(if working { 1 } else { 5 })
+	}
+
 	pub(super) fn poll_native_agents(&mut self, cx: &mut Context<Self>) {
 		if self.native_agents.selected.is_some() {
 			if !self.command_connection_ready()
@@ -366,7 +372,10 @@ impl AgentSurface {
 			|| self.workspace.browsing
 			|| self.workspace.graph_visible)
 			&& self.native_agents.task.is_none()
-			&& self.native_agents.next.is_none_or(|t| t <= Instant::now())
+			&& self
+				.native_agents
+				.last_poll
+				.is_none_or(|at| at.elapsed() >= self.native_poll_interval())
 		{
 			let owners: Vec<_> = self
 				.snapshot
@@ -449,7 +458,7 @@ impl AgentSurface {
 						}
 
 						s.native_agents.task = None;
-						s.native_agents.next = Some(Instant::now() + Duration::from_secs(5));
+						s.native_agents.last_poll = Some(Instant::now());
 
 						if changed {
 							cx.notify();
@@ -476,14 +485,7 @@ impl AgentSurface {
 			return;
 		}
 
-		if self.native_agents.selected.as_ref() == Some(&(owner.into(), thread.into())) {
-			return;
-		}
-		self.open_page(owner, cx);
-		if self.native_agents.selected.as_ref() == Some(&(owner.into(), thread.into())) {
-			return;
-		}
-		self.enter_native_conversation(owner, thread, cx);
+		self.open_work_conversation(owner, Some(thread), cx);
 	}
 
 	pub(super) fn enter_native_conversation(
@@ -715,88 +717,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn native_branches(
-		&self,
-		owner: &str,
-		parent: &str,
-		depth: usize,
-		cx: &mut Context<Self>,
-	) -> (AnyElement, usize) {
-		let mut rows = gpui::div().flex().flex_col();
-		let mut count = 0;
-
-		if depth > 24 {
-			return (rows.into_any_element(), 0);
-		}
-
-		for agent in self
-			.native_agents
-			.lists
-			.get(owner)
-			.into_iter()
-			.flatten()
-			.filter(|a| a.parent_thread_id == parent)
-		{
-			if self.snapshot.as_ref().is_some_and(|s| {
-				s.work_items.iter().any(|w| w.codex_thread_id.as_deref() == Some(&agent.thread_id))
-			}) {
-				continue;
-			}
-
-			let work = owner.to_owned();
-			let thread = agent.thread_id.clone();
-			let label = agent.title.clone();
-			let key = format!("native:{owner}:{}", agent.thread_id);
-			let expanded = !self.workspace.agent_tree_collapsed.contains(&key);
-			let has_children = self.native_agents.lists.get(owner).is_some_and(|list| {
-				list.iter().any(|child| child.parent_thread_id == agent.thread_id)
-			});
-			let selected = self
-				.native_agents
-				.selected
-				.as_ref()
-				.is_some_and(|(o, t)| o == owner && t == &agent.thread_id);
-			let row_work = work.clone();
-			let row_thread = thread.clone();
-			let row = agent_tree::tree_row(
-				format!("native-agent-row-{}", agent.thread_id),
-				depth,
-				selected,
-				has_children,
-				expanded,
-			)
-			.on_click(
-				cx.listener(move |s, _, _, cx| s.open_native_agent(&row_work, &row_thread, cx)),
-			)
-			.child(if has_children {
-				self.tree_toggle(key.clone(), &label, expanded, cx)
-			} else {
-				gpui::div().w(gpui::px(DISCLOSURE)).flex_none().into_any_element()
-			})
-			.child(agent_tree::tree_identity(
-				self.workspace_action(
-					format!("native-agent-open-{thread}"),
-					label,
-					move |s, cx| s.open_native_agent(&work, &thread, cx),
-					cx,
-				),
-				format!("native-agent-signal-{}", agent.thread_id),
-				&agent.status,
-			));
-			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
-
-			rows = rows.child(row).child(ui_motion::reveal(
-				SharedString::from(format!("tree-children-{key}")),
-				if expanded { n as f32 * TREE_ROW_HEIGHT } else { 0. },
-				false,
-				agent_tree::tree_children(depth).child(children),
-			));
-			count += 1 + if expanded { n } else { 0 };
-		}
-
-		(rows.into_any_element(), count)
-	}
-
 	pub(super) fn send_native_agent(&mut self, cx: &mut Context<Self>) {
 		if !self.native_input_available() {
 			return;
@@ -1014,7 +934,11 @@ mod tests {
 			s.composer.update(cx, |i, cx| i.set_content("Parent draft", cx));
 			s.timeline.follow_paused.insert("parent-marker".into());
 			s.enter_native_conversation("agent", "child-a", cx);
-			assert!(s.workspace_connecting());
+			assert!(
+				!s.workspace_connecting(),
+				"a cold conversation must not replace the workspace"
+			);
+			assert!(s.native_history_loading(&s.conversation_work().unwrap()));
 			s.timeline.native.binding =
 				Some(crate::shell::agent_surface::native_timeline::Binding {
 					work: "agent".into(),
@@ -1059,6 +983,57 @@ mod tests {
 			s.enter_native_conversation("agent", "child-b", cx);
 			assert_eq!(s.conversation_composer().read(cx).content(), "Child B draft");
 			s.close_native_agent(cx);
+		});
+	}
+
+	#[gpui::test]
+	fn conversation_navigation_is_direct_and_reselecting_preserves_the_open_view(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			bind_fixture(s, profile, cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap()
+				.kind = crate::shell::agent_surface::AgentWorkKindDto::Task;
+			s.open_native_agent("agent", "child", cx);
+			assert!(
+				s.native_agents.timelines.is_empty(),
+				"opening a child must not visit its parent"
+			);
+			assert!(!s.workspace_connecting());
+
+			for (thread, page) in [("child", "native:agent:child"), ("parent", "agent")] {
+				if thread == "parent" {
+					s.open_page(page, cx);
+				}
+				s.native_agents.detail = Some(conversation(thread));
+				s.native_agents.connection = super::NativeConnection::Ready;
+				s.conversation_composer()
+					.clone()
+					.update(cx, |input, cx| input.set_content("Unsent draft", cx));
+				let epoch = s.timeline.native.epoch;
+				let scroll = s.timeline.scroll.entry("agent".into()).or_default().clone();
+				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-240.)));
+				s.timeline.follow_paused.insert("agent".into());
+
+				s.open_page(page, cx);
+				s.open_native_agent("agent", thread, cx);
+				assert_eq!(s.native_agents.selected, Some(("agent".into(), thread.into())));
+				assert_eq!(s.native_agents.detail, Some(conversation(thread)));
+				assert_eq!(s.timeline.native.epoch, epoch, "reselection must not restart history");
+				assert_eq!(s.timeline.scroll["agent"].offset().y, gpui::px(-240.));
+				assert!(s.timeline.follow_paused.contains("agent"));
+				assert_eq!(s.conversation_composer().read(cx).content(), "Unsent draft");
+				assert!(s.native_input_available());
+			}
 		});
 	}
 
@@ -1138,6 +1113,67 @@ mod tests {
 			.codex_thread_id = Some("parent".into());
 		s.profile = Some(profile);
 		s.native_agents = Default::default();
+	}
+
+	#[gpui::test]
+	fn parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1100.), gpui::px(800.)));
+		surface.update(visual, |s, cx| {
+			bind_fixture(s, profile, cx);
+			s.composer.update(cx, |input, cx| input.set_content("", cx));
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "external-writer".into(),
+					work_item_id: "agent".into(),
+					event_kind: "thread_in_use_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let locked = visual.debug_bounds("composer-blocked").unwrap();
+		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+		surface.update(visual, |s, cx| {
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			s.composer.update(cx, |input, cx| input.set_content("Parent draft", cx));
+			s.enter_native_conversation("agent", "child", cx);
+			s.native_agents.connection = super::NativeConnection::ParentManaged;
+			assert_eq!(s.composer_unavailable_reason(), Some("Continue in parent chat"));
+			assert!(!s.native_input_available());
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		let managed = visual.debug_bounds("composer-blocked").unwrap();
+		let managed_notice = visual.debug_bounds("conversation-unavailable").unwrap();
+		assert_eq!(managed.size, locked.size);
+		assert_eq!(managed_notice.size, notice.size);
+		let action = visual.debug_bounds("native-open-parent").unwrap();
+		assert!((action.center().y - managed_notice.center().y).abs() < gpui::px(1.));
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
+		assert!(visual.debug_bounds("composer-send").is_none());
+		surface.update(visual, |s, cx| {
+			s.conversation_composer()
+				.clone()
+				.update(cx, |input, cx| input.set_content("Child draft", cx));
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("composer-retained-draft").is_some());
+		let action = visual.debug_bounds("native-open-parent").unwrap();
+		visual.simulate_click(action.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert!(s.native_agents.selected.is_none());
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+			assert_eq!(s.composer.read(cx).content(), "Parent draft");
+			s.enter_native_conversation("agent", "child", cx);
+			assert_eq!(s.conversation_composer().read(cx).content(), "Child draft");
+		});
 	}
 
 	#[gpui::test]

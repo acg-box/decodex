@@ -92,6 +92,7 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 
 	for change in ["thread", "turn", "idle", "removed", "source"] {
 		let original = AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
@@ -159,6 +160,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -276,6 +278,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
@@ -324,6 +327,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 
 fn running_snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,

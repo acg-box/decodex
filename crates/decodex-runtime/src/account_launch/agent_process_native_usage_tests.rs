@@ -12,6 +12,8 @@ use crate::{
 use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
 
+#[path = "agent_process_native_output_rate_tests.rs"] mod output_rate;
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native usage qualification"]
 async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {

@@ -1407,8 +1407,10 @@ const APP_SERVER_ARGS: [&str; 12] = [
 	"code_mode_tool_description_first",
 	"--enable",
 	"subagent_default_context_limits",
-	"--enable",
-	"wake_on_agent_messages",
+	// Native config ignores unknown optional features on an older preserved runtime.
+	// The --enable spelling rejects them before the app-server can initialize.
+	"-c",
+	"features.wake_on_agent_messages=true",
 	"-c",
 	"features.multi_agent_v2.preserve_fork_prefix=true",
 ];
@@ -6430,8 +6432,8 @@ pub(crate) mod tests {
 				"code_mode_tool_description_first",
 				"--enable",
 				"subagent_default_context_limits",
-				"--enable",
-				"wake_on_agent_messages",
+				"-c",
+				"features.wake_on_agent_messages=true",
 				"-c",
 				"features.multi_agent_v2.preserve_fork_prefix=true"
 			]

@@ -1726,6 +1726,7 @@ dependencies = [
  "decodex-protocol",
  "futures-util",
  "libc",
+ "pulldown-cmark",
  "reqwest 0.13.5",
  "rusqlite",
  "security-framework",

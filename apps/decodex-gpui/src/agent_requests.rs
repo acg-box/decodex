@@ -869,6 +869,7 @@ mod timing_tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
+                archived_work_ids: Default::default(),
                 agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,

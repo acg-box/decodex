@@ -1,6 +1,31 @@
 //! Render native checklist observations without assigning execution authority.
 use serde_json::Value;
 
+/// A bounded public milestone from the native plan, separate from its transcript rendering.
+pub(super) fn progress(params: &Value) -> Option<Value> {
+	let steps = params["plan"].as_array()?;
+	if steps.is_empty()
+		|| steps
+			.iter()
+			.any(|s| !matches!(s["status"].as_str(), Some("pending" | "inProgress" | "completed")))
+	{
+		return None;
+	}
+	let complete = steps.iter().all(|s| s["status"] == "completed");
+	let step = steps
+		.iter()
+		.find(|s| s["status"] == "inProgress")
+		.or_else(|| steps.iter().find(|s| s["status"] == "pending"))
+		.or_else(|| steps.last())?;
+	let summary = step["step"].as_str()?;
+	if decodex_core::contains_credential_material(summary) {
+		return None;
+	}
+	Some(
+		serde_json::json!({"summary": summary.chars().take(240).collect::<String>(), "complete":complete}),
+	)
+}
+
 pub(super) fn text(params: &Value) -> Option<String> {
 	let steps = params["plan"].as_array()?;
 	let explanation = match params.get("explanation") {
@@ -69,6 +94,15 @@ fn literal(text: &str) -> String {
 mod tests {
 
 	use crate::agent::checklist;
+	#[test]
+	fn delivery_milestone_uses_native_step_state_and_excludes_empty_plans() {
+		let plan = serde_json::json!({"plan":[{"step":"Inspect","status":"completed"},{"step":"Write the guide","status":"inProgress"}]});
+		assert_eq!(
+			checklist::progress(&plan),
+			Some(serde_json::json!({"summary":"Write the guide","complete":false}))
+		);
+		assert!(checklist::progress(&serde_json::json!({"plan":[]})).is_none());
+	}
 	#[test]
 	fn checklist_redaction_precedes_literal_escaping_and_is_bounded() {
 		let secret = "sk-proj-0123456789abcdef";

@@ -20,27 +20,27 @@ use crate::{
 	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult,
 	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
 	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
-	AgentCapabilitiesResult, AgentContextSettingsResult, AgentGuardianDetailResult,
-	AgentGuardianReviewsResult, AgentHistoryResult, AgentHookSettingsState,
-	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveReviewerState,
-	AgentMediaRequest, AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult,
-	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState,
-	AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
-	AgentSampleStatus, AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
-	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
-	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
-	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
-	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
-	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
-	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
-	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
-	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
-	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
-	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
-	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration, PromptEditStatus,
-	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
-	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
+	AgentCapabilitiesResult, AgentContextSettingsResult, AgentDeliveriesResult, AgentDeliveryQuery,
+	AgentGuardianDetailResult, AgentGuardianReviewsResult, AgentHistoryResult,
+	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
+	AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
+	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
+	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
+	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, CURRENT_VERSION, ConversationCreationReceiptRequest,
+	ConversationCreationReceiptResult, ConversationExecutionOverrides,
+	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
+	ConversationListSize, ConversationModelReviewResult, ConversationModelSettingsResult,
+	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
+	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationUnavailableReason,
+	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
+	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
+	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
+	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
+	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -2453,6 +2453,11 @@ pub enum QueryPayload {
 	},
 	/// Read the complete bounded Agent work graph and pending result metadata.
 	GetAgentSnapshot,
+	/// Read recent durable task deliveries with agent and time filters.
+	GetAgentDeliveries {
+		/// Local agent and time filters.
+		query: AgentDeliveryQuery,
+	},
 	/// Wait for native output to change, or return a bounded heartbeat. No execution effects.
 	WaitForAgentOutput {
 		/// Exact managed work item.
@@ -3175,6 +3180,8 @@ pub enum QueryResultPayload {
 	ConversationModelReview(ConversationModelReviewResult),
 	/// Source-bound Agent history, without raw provider frames.
 	AgentHistory(AgentHistoryResult),
+	/// Read-only delivery journal.
+	AgentDeliveries(AgentDeliveriesResult),
 	/// Transient current-turn output outside retained history publication.
 	AgentOutput(AgentOutputResult),
 	/// Native agent inspection result.

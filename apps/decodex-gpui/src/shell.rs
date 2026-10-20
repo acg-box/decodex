@@ -9,6 +9,7 @@
 #[path = "shell_native_status.rs"]
 mod native_status;
 #[path = "native_titlebar.rs"] mod native_titlebar;
+pub(crate) use native_titlebar::Titlebar;
 #[path = "shell_navigation.rs"] mod navigation;
 #[path = "ordinary_drafts.rs"] mod ordinary_drafts;
 #[path = "quota_meter.rs"] mod quota_meter;
@@ -306,9 +307,14 @@ impl Shell {
 		.detach();
 
 		let agent = cx.new(AgentSurface::new);
-		let performance = cx.new(crate::ui_performance::PerformanceIsland::new);
+		let titlebar = Titlebar::default();
+		let performance = cx.new(|cx| {
+			crate::ui_performance::PerformanceIsland::new(cx).with_titlebar(titlebar.clone())
+		});
 
 		cx.observe(&agent, |shell, _, cx| {
+			let statistics = shell.agent.read(cx).work_statistics();
+			shell.performance.update(cx, |island, cx| island.set_work(statistics, cx));
 			shell.record_navigation(cx);
 			shell.sync_ordinary_drafts(cx);
 			cx.notify();
@@ -389,7 +395,7 @@ impl Shell {
 			ordinary_owner: None,
 			ordinary_syncing: false,
 			input_status: None,
-			titlebar: Default::default(),
+			titlebar,
 			navigation: navigation::NavigationHistory::new(),
 			status_open: false,
 			dismissed_notifications: Default::default(),
@@ -2703,8 +2709,18 @@ fn floating_window_controls(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	shell.titlebar.begin_frame();
+	let performance = shell.performance.clone();
 
 	gpui::div()
+		.on_children_prepainted(move |bounds, window, cx| {
+			if let [leading, trailing, ..] = bounds.as_slice() {
+				let center = f32::from(window.viewport_size().width) / 2.;
+				let half = (center - f32::from(leading.right()) - 12.)
+					.min(f32::from(trailing.left()) - center - 12.)
+					.max(0.);
+				performance.update(cx, |island, cx| island.set_available_width(half * 2., cx));
+			}
+		})
 		.id("floating-window-controls")
 		.debug_selector(|| "window-drag-region".into())
 		.occlude()
@@ -2742,14 +2758,7 @@ fn floating_window_controls(
 				.right_0()
 				.flex()
 				.justify_center()
-				.child(
-					gpui::div()
-						.relative()
-						.child(shell.performance.clone())
-						.when(crate::ui_performance::preference(None), |island| {
-							island.child(shell.titlebar.control())
-						}),
-				),
+				.child(shell.performance.clone()),
 		)
 		.child(shell.titlebar.sync())
 		.into_any_element()
@@ -2876,7 +2885,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
 		(1, true) => "Toggle Dock · Command-J",
-		(2, _) => "Toggle agent structure · Command-B",
+		(2, _) => "Toggle work activity · Command-B",
 		(1, false) => "Dock unavailable",
 		_ => "Panel unavailable",
 	};
@@ -7883,9 +7892,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn performance_island_excludes_only_its_visible_control_from_native_dragging(
-		cx: &mut TestAppContext,
-	) {
+	fn activity_island_keeps_work_visible_when_debug_is_disabled(cx: &mut TestAppContext) {
 		crate::ui_performance::preference(Some(true));
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
@@ -7894,14 +7901,22 @@ mod tests {
 		let region = visual.debug_bounds("window-drag-region").unwrap();
 		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
 		assert!(controls.iter().any(|b| b.contains(&pill.center())));
-		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		let work = visual.debug_bounds("activity-work-control").unwrap();
+		let debug = visual.debug_bounds("activity-debug-control").unwrap();
+		let blank = gpui::point((work.right() + debug.left()) / 2., region.center().y);
 		assert!(!controls.iter().any(|b| b.contains(&blank)));
 		crate::ui_performance::preference(Some(false));
 		visual.update(|window, cx| {
 			cx.refresh_windows();
 			window.draw(cx).clear(cx);
 		});
-		assert!(visual.debug_bounds("performance-island-toggle").is_none());
+		let pill = visual.debug_bounds("activity-island-toggle").expect("work activity");
+		assert!(visual.debug_bounds("activity-debug-control").is_none());
+		assert!(visual.debug_bounds("performance-fps").is_none());
+		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
+		assert!(controls.iter().any(|bounds| bounds.contains(&pill.center())));
+		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		assert!(!controls.iter().any(|bounds| bounds.contains(&blank)));
 	}
 
 	#[gpui::test]
@@ -7925,6 +7940,7 @@ mod tests {
 			"agent-panel-control-2",
 			"status-toggle",
 			"open-settings",
+			"activity-work-control",
 		]
 		.map(|selector| visual.debug_bounds(selector).unwrap());
 		let controls = shell.read_with(visual, |s, _| s.titlebar.controls.borrow().clone());
@@ -7935,7 +7951,9 @@ mod tests {
 				"native control must match {bounds:?}: {controls:?}"
 			);
 		}
-		assert!(!controls.iter().any(|bounds| bounds.contains(&region.center())));
+		let pill = visual.debug_bounds("activity-island-toggle").unwrap();
+		let blank = gpui::point(pill.left() - gpui::px(20.), region.center().y);
+		assert!(!controls.iter().any(|bounds| bounds.contains(&blank)));
 		let sidebar = visual.debug_bounds("agent-panel-control-0").unwrap();
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels()[0].0);
 		visual.simulate_mouse_down(sidebar.center(), gpui::MouseButton::Left, Default::default());

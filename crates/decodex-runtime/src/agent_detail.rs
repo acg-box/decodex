@@ -1,4 +1,5 @@
 //! On-demand native evidence, without a second tool-output store.
+#[path = "agent_collaboration_detail.rs"] mod collaboration_detail;
 #[path = "agent_tool_detail.rs"] mod tool_detail;
 
 use std::{future::Future, time::Duration};
@@ -40,14 +41,11 @@ pub(crate) async fn read(
 	turn: &str,
 	item: &str,
 ) -> AgentActivityDetailResult {
-	let result =
-		tokio::time::timeout(Duration::from_secs(8), read_item_history(client, thread, turn, item))
-			.await;
-	let Ok(Ok(history)) = result else {
+	let result = time::timeout(Duration::from_secs(8), read_text(client, thread, turn, item)).await;
+	let Ok(Ok(Some(text))) = result else {
 		return AgentActivityDetailResult::Unavailable;
 	};
-
-	project(&history, thread, turn, item).unwrap_or(AgentActivityDetailResult::Unavailable)
+	page(&text, "test", None).unwrap_or(AgentActivityDetailResult::Unavailable)
 }
 
 pub(crate) async fn read_bound<F, Fut>(
@@ -63,12 +61,12 @@ where
 	let Some(before) = source().await else {
 		return AgentActivityDetailResult::Unavailable;
 	};
-	let history = time::timeout(
+	let text = time::timeout(
 		Duration::from_secs(8),
-		read_item_history(&before.client, &before.key.thread, turn, item),
+		read_text(&before.client, &before.key.thread, turn, item),
 	)
 	.await;
-	let Ok(Ok(history)) = history else {
+	let Ok(Ok(Some(text))) = text else {
 		return AgentActivityDetailResult::Unavailable;
 	};
 	let key = &before.key;
@@ -83,9 +81,7 @@ where
 		item
 	])
 	.to_string();
-	let result = project_text(&history, &key.thread, turn, item)
-		.and_then(|text| page(&text, &scope, cursor))
-		.unwrap_or(AgentActivityDetailResult::Unavailable);
+	let result = page(&text, &scope, cursor).unwrap_or(AgentActivityDetailResult::Unavailable);
 
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return AgentActivityDetailResult::Unavailable;
@@ -133,17 +129,46 @@ async fn read_item_history(
 	)
 }
 
-fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option<String> {
+async fn read_text(
+	client: &AppServerClient,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> Result<Option<String>, decodex_codex::app_server_client::ClientError> {
+	let history = read_item_history(client, thread, turn, item).await?;
+	let Some(mut text) = project_text(&history, thread, turn, item) else { return Ok(None) };
+	if let Some(item) = history_item(&history, thread, turn, item)
+		&& item["type"] == "subAgentActivity"
+		&& let Ok(Ok(Some(reply))) = time::timeout(
+			Duration::from_secs(4),
+			collaboration_detail::latest_reply(client, thread, item),
+		)
+		.await
+	{
+		text = format!("**Latest reply**\n\n{}", public_part(reply));
+	}
+	Ok(Some(text))
+}
+
+fn history_item<'a>(history: &'a Value, thread: &str, turn: &str, item: &str) -> Option<&'a Value> {
 	if history.pointer("/thread/id")?.as_str()? != thread {
 		return None;
 	}
 
 	let turn =
 		history.pointer("/thread/turns")?.as_array()?.iter().find(|entry| entry["id"] == turn)?;
-	let item = turn["items"].as_array()?.iter().find(|entry| entry["id"] == item)?;
+	turn["items"].as_array()?.iter().find(|entry| entry["id"] == item)
+}
+
+fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option<String> {
+	let item = history_item(history, thread, turn, item)?;
 	let mut parts = Vec::new();
 
 	match item["type"].as_str()? {
+		"sleep" => {
+			parts.push(format!("Requested wait: {} ms", item["durationMs"].as_u64()?));
+			parts.push("The wait can end early when new input arrives. Elapsed time and outcome are not included in this record.".into());
+		},
 		"commandExecution" => {
 			for field in ["command", "cwd", "aggregatedOutput"] {
 				if let Some(text) = item[field].as_str() {
@@ -152,7 +177,11 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 			}
 
 			if let Some(code) = item["exitCode"].as_i64() {
-				parts.push(format!("Exit code: {code}"));
+				parts.push(if code == -1 {
+					"Exit code: -1 (no process exit status)\nCodex did not report a process exit status. The recorded time includes waiting for that status.".into()
+				} else {
+					format!("Exit code: {code}")
+				});
 			}
 		},
 		"fileChange" =>
@@ -184,26 +213,26 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 			parts.push("The native record does not identify the executor. Image bytes are unavailable through this record.".into());
 		},
 		"webSearch" => parts.extend(web_details(item)),
+		"subAgentActivity" | "collabAgentToolCall" =>
+			parts.extend(collaboration_detail::parts(item)),
 		_ => return None,
 	}
 
-	let text = parts
-		.into_iter()
-		.map(|part| {
-			if decodex_core::contains_credential_material(&part) {
-				"[Sensitive content omitted]".into()
-			} else {
-				part
-			}
-		})
-		.collect::<Vec<String>>()
-		.join("\n\n");
+	let text = parts.into_iter().map(public_part).collect::<Vec<String>>().join("\n\n");
 
 	if text.is_empty() {
 		return None;
 	}
 
 	Some(text)
+}
+
+fn public_part(part: String) -> String {
+	if decodex_core::contains_credential_material(&part) {
+		"[Sensitive content omitted]".into()
+	} else {
+		part
+	}
 }
 
 fn project(
@@ -358,7 +387,7 @@ mod tests {
 
 	#[test]
 	fn exact_source_required_and_reasoning_not_projected() {
-		let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
+		let mut history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
 
 		assert!(
 			matches!(agent_detail::project(&history,"thread","turn","item"),Some(AgentActivityDetailResult::Available {text,..}) if text.contains("Passed"))
@@ -366,6 +395,22 @@ mod tests {
 		assert!(agent_detail::project(&history, "other", "turn", "item").is_none());
 		assert!(agent_detail::project(&history, "thread", "other", "item").is_none());
 		assert!(agent_detail::project(&history, "thread", "turn", "private").is_none());
+
+		history["thread"]["turns"][0]["items"][0]["exitCode"] = serde_json::json!(-1);
+		let text = agent_detail::project_text(&history, "thread", "turn", "item").unwrap();
+		assert!(text.contains("Passed"));
+		assert!(text.contains("no process exit status"));
+		assert!(text.contains("includes waiting"));
+	}
+
+	#[test]
+	fn sleep_detail_preserves_the_request_without_inventing_an_outcome() {
+		let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"wait","type":"sleep","durationMs":60000}]}]}});
+		let text = agent_detail::project_text(&history, "thread", "turn", "wait").unwrap();
+		assert!(text.contains("Requested wait: 60000 ms"));
+		assert!(text.contains("can end early"));
+		assert!(text.contains("outcome are not included"));
+		assert!(agent_detail::project_text(&history, "other", "turn", "wait").is_none());
 	}
 
 	#[test]
@@ -453,6 +498,60 @@ mod tests {
 			} else {
 				assert_eq!(detail, AgentActivityDetailResult::Unavailable);
 			}
+		}
+	}
+
+	#[tokio::test]
+	async fn compact_subagent_details_read_only_the_referenced_child_and_keep_result_provenance() {
+		for parent in ["thread", "other"] {
+			let (local, remote) = io::duplex(65_536);
+			let (reader, writer) = io::split(local);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
+			let server = tokio::spawn(async move {
+				let (reader, mut writer) = io::split(remote);
+				let mut lines = BufReader::new(reader).lines();
+				for (method, result) in [
+					(
+						"thread/items/read",
+						serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"subAgentActivity","kind":"completed","agentThreadId":"child","agentPath":"/root/reviewer"}}],"nextCursor":null}),
+					),
+					(
+						"thread/read",
+						serde_json::json!({"thread":{"id":"child","parentThreadId":parent,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":parent}}}}}),
+					),
+					(
+						"thread/turns/list",
+						serde_json::json!({"data":[{"id":"child-turn","items":[{"type":"agentMessage","phase":"final_answer","text":"Use Markdown."},{"type":"reasoning","text":"private"}]}],"nextCursor":null}),
+					),
+				] {
+					let request: Value =
+						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+					assert_eq!(request["method"], method);
+					assert_eq!(
+						request["params"]["threadId"],
+						if method == "thread/items/read" { "thread" } else { "child" }
+					);
+					writer
+						.write_all(
+							format!(
+								"{}\n",
+								serde_json::json!({"id":request["id"],"result":result})
+							)
+							.as_bytes(),
+						)
+						.await
+						.unwrap();
+				}
+			});
+			let AgentActivityDetailResult::Available { text, .. } =
+				agent_detail::read(&client, "thread", "turn", "item").await
+			else {
+				panic!("native event details")
+			};
+			server.await.unwrap();
+			assert_eq!(text.contains("/root/reviewer"), parent != "thread");
+			assert_eq!(text.contains("**Latest reply**\n\nUse Markdown."), parent == "thread");
+			assert!(!text.contains("private"));
 		}
 	}
 

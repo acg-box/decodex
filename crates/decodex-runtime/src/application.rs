@@ -1,5 +1,7 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
+#[path = "application_deliveries.rs"] mod deliveries;
+
 #[path = "application_account_nudge.rs"] mod account_nudge;
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;
@@ -647,6 +649,16 @@ impl ServiceApplication {
 		QueryResultPayload::AgentMedia(match &self.agent {
 			Some(agent) => agent.media(request).await,
 			None => AgentMediaResult::Unavailable,
+		})
+	}
+
+	async fn query_transcript(
+		&self,
+		request: &decodex_protocol::AgentTranscriptRequest,
+	) -> QueryResultPayload {
+		QueryResultPayload::AgentTranscript(match &self.agent {
+			Some(agent) => agent.transcript(request).await,
+			None => AgentTranscriptResult::Unavailable,
 		})
 	}
 
@@ -2810,11 +2822,7 @@ impl Application for ServiceApplication {
 			| QueryPayload::ReviewAgentAppUiCall { .. }
 			| QueryPayload::GetAgentAppUiSource { .. }
 			| QueryPayload::GetAgentAppUi { .. } => self.query_app_ui(&query.payload).await,
-			QueryPayload::GetAgentTranscript { request } =>
-				QueryResultPayload::AgentTranscript(match &self.agent {
-					Some(agent) => agent.transcript(request).await,
-					None => AgentTranscriptResult::Unavailable,
-				}),
+			QueryPayload::GetAgentTranscript { request } => self.query_transcript(request).await,
 			QueryPayload::GetAgentMedia { request } => self.query_media(request).await,
 			QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(
@@ -2843,6 +2851,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
+			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings
 			| QueryPayload::ListPrograms
 			| QueryPayload::GetProgramCycle { .. }
@@ -5130,10 +5139,9 @@ fn agent_history_event_display(
 	completed_message_ids: &mut Vec<(String, String)>,
 ) -> Option<(&'static str, String)> {
 	Some(match event.event_kind.as_str() {
-			"reasoning_voice_handoff" => return None,
+			"reasoning_voice_handoff" | "plan_updated" => return None,
 			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
 			"partial_output" => partial_history_text(event, value, rendered_sources)?,
-			"plan_updated" => ("checklist", value["text"].as_str().unwrap_or("Checklist unavailable.").to_owned()),
 			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
@@ -6184,22 +6192,14 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
-	let Ok(references) = store.agent_context_references().await else {
+	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
 
 	let snapshot = AgentSnapshotDto {
+		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
-		context_references: references
-			.into_iter()
-			.map(|r| decodex_protocol::AgentContextReferenceDto {
-				event_id: r.event_id,
-				recipient_work_id: r.recipient_work_id,
-				source_work_id: r.source_work_id,
-				source_thread_id: r.source_thread_id,
-				delivery_turn_id: r.delivery_turn_id,
-			})
-			.collect(),
+		context_references,
 		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces
@@ -6278,6 +6278,26 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	} else {
 		decodex_protocol::AgentSnapshotResult::Unavailable
 	}
+}
+
+async fn query_agent_context_references(
+	store: &SqliteStore,
+) -> Option<Vec<decodex_protocol::AgentContextReferenceDto>> {
+	Some(
+		store
+			.agent_context_references()
+			.await
+			.ok()?
+			.into_iter()
+			.map(|reference| decodex_protocol::AgentContextReferenceDto {
+				event_id: reference.event_id,
+				recipient_work_id: reference.recipient_work_id,
+				source_work_id: reference.source_work_id,
+				source_thread_id: reference.source_thread_id,
+				delivery_turn_id: reference.delivery_turn_id,
+			})
+			.collect(),
+	)
 }
 
 #[cfg(test)]
@@ -6390,7 +6410,7 @@ mod history_receipt_tests {
 	}
 
 	#[test]
-	fn checklist_history_keeps_the_observation_label_and_no_disposition_prose() {
+	fn native_plan_updates_do_not_create_chat_messages() {
 		let event = decodex_database::AgentInboxEvent {
 			id: 1,
 			source_event_id: "source".into(),
@@ -6405,13 +6425,7 @@ mod history_receipt_tests {
 		};
 		let result = super::render_agent_history(vec![event], 0, None);
 
-		assert_eq!(result.entries.len(), 1);
-		assert_eq!(result.entries[0].kind, "checklist");
-		assert_eq!(result.entries[0].text, "- **Pending**: Verify");
-		assert_eq!(
-			result.entries[0].receipt.as_ref().unwrap().delivered_turn_id.as_deref(),
-			Some("turn")
-		);
+		assert!(result.entries.is_empty());
 	}
 	#[test]
 	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {

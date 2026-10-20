@@ -131,6 +131,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 		s.state = LoadState::Ready;
 		s.selected = Some("work".into());
 		s.snapshot = Some(AgentSnapshotDto {
+			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
@@ -263,6 +264,8 @@ async fn serve(listener: &tokio::net::UnixListener, changed_account: bool) {
 					entries,
 					next_cursor: (page_index == 0).then(|| "older".into()),
 					weather: Default::default(),
+					thread_token_total: None,
+					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				},

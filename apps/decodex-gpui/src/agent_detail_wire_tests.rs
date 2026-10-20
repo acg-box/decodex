@@ -49,6 +49,7 @@ impl Render for DetailView {
 					native_timestamp_ms: None,
 					duration_ms: None,
 				},
+				None,
 				gpui::div().child("Patch"),
 				cx,
 			)
@@ -96,6 +97,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 
 			surface.update(cx, |s, cx| {
 				s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					archived_work_ids: Default::default(),
 					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: false,

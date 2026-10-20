@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 use gpui::{AnyElement, Bounds, IntoElement as _, Pixels, Styled as _};
 
 #[derive(Clone, Default)]
-pub(super) struct Titlebar {
+pub(crate) struct Titlebar {
 	pub(super) controls: Rc<RefCell<Vec<Bounds<Pixels>>>>,
 	#[cfg(all(target_os = "macos", not(test)))]
 	native: Rc<RefCell<Option<macos::Controls>>>,
@@ -16,7 +16,7 @@ impl Titlebar {
 	}
 
 	/// Measure the existing button; do not maintain a second set of button geometry.
-	pub(super) fn control(&self) -> AnyElement {
+	pub(crate) fn control(&self) -> AnyElement {
 		self.bordered_control(0.)
 	}
 

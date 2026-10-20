@@ -13,8 +13,8 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 37]> = LazyLock::new(|| {
-	let sources: [&[u8]; 37] = [
+static IMAGES: LazyLock<[Arc<Image>; 39]> = LazyLock::new(|| {
+	let sources: [&[u8]; 39] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/expand.png"),
@@ -52,6 +52,8 @@ static IMAGES: LazyLock<[Arc<Image>; 37]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/fit.png"),
 		include_bytes!("../../../assets/workspace-symbols/waveform.png"),
 		include_bytes!("../../../assets/workspace-symbols/restore.png"),
+		include_bytes!("../../../assets/workspace-symbols/document.png"),
+		include_bytes!("../../../assets/workspace-symbols/link.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });
@@ -95,6 +97,8 @@ pub(super) enum Symbol {
 	Fit,
 	Waveform,
 	Restore,
+	Document,
+	Link,
 }
 
 /// Both panel controls use their layout state and the same interruptible transition.
