@@ -349,6 +349,7 @@ impl AgentSurface {
 		self.reset_native_goal();
 		self.clear_activity_detail();
 		self.reset_recap();
+		self.reset_sample();
 		self.reset_prompt_edit();
 
 		self.selected = Some(id.to_owned());
@@ -1082,6 +1083,7 @@ impl AgentSurface {
 								.child(self.misalignment_panel(work, cx))
 								.child(self.guardian_panel(work, cx))
 								.child(self.request_panel(snapshot, work, cx))
+								.child(self.sample_panel(&work.id, cx))
 						})
 						.into_any_element()
 				} else {

@@ -707,6 +707,18 @@ impl AgentSurface {
 				|s, cx| s.open_skill_picker(cx),
 				cx,
 			))
+			.when(self.can_open_sample(), |options| {
+				options.child(self.composer_control(
+					"task-sample-item",
+					"Ask separately…".into(),
+					"Ask separately",
+					|s, cx| {
+						s.composer_menu = None;
+						s.open_sample(cx);
+					},
+					cx,
+				))
+			})
 			.child(self.composer_control(
 				"task-recap-item",
 				"Task recap".into(),
@@ -1033,6 +1045,7 @@ impl AgentSurface {
 					"attachment-item",
 					"audio-item",
 					"skill-item",
+					"task-sample-item",
 					"task-recap-item",
 					"task-reference-item",
 					"agent-settings",

@@ -52,6 +52,7 @@ mod native_model_menu;
 #[path = "agent_requests.rs"] mod requests;
 #[path = "agent_resources.rs"] mod resources;
 #[path = "agent_response_metrics.rs"] mod response_metrics;
+#[path = "agent_sample.rs"] mod sample;
 #[path = "agent_search_settings.rs"] mod search_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_send_preview.rs"] mod send_preview;
@@ -148,6 +149,7 @@ pub(crate) struct AgentSurface {
 	context_settings: context_settings::Panel,
 	skills: Picker,
 	recap: recap::Panel,
+	sample: sample::Panel,
 	prompt_edit: prompt_edit::Panel,
 	automatic_recap: Automatic,
 	audio_inputs: Vec<String>,
@@ -339,6 +341,7 @@ impl AgentSurface {
 			context_settings: Default::default(),
 			skills: Default::default(),
 			recap: Default::default(),
+			sample: Default::default(),
 			prompt_edit: Default::default(),
 			automatic_recap: Default::default(),
 			audio_inputs: Vec::new(),
@@ -1012,6 +1015,7 @@ impl AgentSurface {
 				| AgentActionDto::SkipQuestion { .. }
 		) {
 			self.reset_recap();
+			self.reset_sample();
 			self.reset_prompt_edit();
 		}
 		if self.draft_quit_in_progress() {
@@ -1299,6 +1303,7 @@ impl AgentSurface {
 		self.reset_context_settings();
 		self.reset_skill_picker();
 		self.reset_recap();
+		self.reset_sample();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
 		self.reset_read_state();
@@ -1435,6 +1440,7 @@ impl AgentSurface {
 		self.reset_context_settings();
 		self.reset_skill_picker();
 		self.reset_recap();
+		self.reset_sample();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
 		self.reset_read_state();
@@ -1594,6 +1600,7 @@ impl AgentSurface {
 				self.invalidate_search_settings(&snapshot);
 				self.invalidate_context_settings(&snapshot);
 				self.invalidate_recap(&snapshot);
+				self.invalidate_sample(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
 				self.invalidate_read_state(&snapshot);
@@ -1843,6 +1850,7 @@ impl AgentSurface {
 			.child(self.guardian_panel(work, cx))
 			.child(self.request_panel(snapshot, work, cx))
 			.child(self.history_panel(work, cx))
+			.child(self.sample_panel(&work.id, cx))
 	}
 
 	pub(super) fn prefetch_older_history(&mut self, cx: &mut Context<Self>) {
