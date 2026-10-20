@@ -1535,7 +1535,7 @@ mod tests {
 				"new wrapped lines must remain visible"
 			);
 			s.scroll_history(
-				&gpui::ScrollWheelEvent {
+				&gpui::ScrollEvent {
 					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(100.))),
 					..Default::default()
 				},

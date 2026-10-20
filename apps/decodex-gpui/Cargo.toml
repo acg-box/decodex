@@ -10,7 +10,7 @@ version.workspace    = true
 
 [features]
 native-glass-probe = []
-visual-capture     = ["gpui/test-support", "gpui_platform/test-support"]
+visual-capture     = ["gpui/leak-detection", "gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
 decodex-components   = { workspace = true }
@@ -43,7 +43,7 @@ rtrb                   = { workspace = true }
 
 [dev-dependencies]
 futures-util      = { workspace = true }
-gpui              = { workspace = true, features = ["test-support"] }
+gpui              = { workspace = true, features = ["leak-detection", "test-support"] }
 tempfile          = { workspace = true }
 tokio-tungstenite = { workspace = true }
 

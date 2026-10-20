@@ -1,5 +1,5 @@
 //! Product behavior tests for upstream math parsing and source-preserving copy.
-use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
+use gpui::{Modifiers, Render, ScrollDelta, ScrollEvent, TestAppContext};
 
 use crate::shell::agent_surface::markdown::{
 	self, Context, HighlightStyle, Inline, IntoElement, Window, clipboard,
@@ -110,7 +110,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 		previous_size = Some(text.size);
 
 		if width == 120. {
-			visual.simulate_event(ScrollWheelEvent {
+			visual.simulate_event(ScrollEvent {
 				position: bounds.center(),
 				delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 				..Default::default()
@@ -127,7 +127,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 				"long formula must remain horizontally accessible"
 			);
 
-			visual.simulate_event(ScrollWheelEvent {
+			visual.simulate_event(ScrollEvent {
 				position: bounds.center(),
 				delta: ScrollDelta::Pixels(gpui::point(gpui::px(60.), gpui::px(0.))),
 				..Default::default()

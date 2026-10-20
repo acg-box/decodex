@@ -203,7 +203,7 @@ impl Panel {
 		cx.notify();
 	}
 
-	fn wheel(&mut self, event: &gpui::ScrollWheelEvent, cx: &mut Context<Self>) {
+	fn wheel(&mut self, event: &gpui::ScrollEvent, cx: &mut Context<Self>) {
 		let delta = f32::from(event.delta.pixel_delta(gpui::px(ui_theme::BODY_LINE_HEIGHT)).y);
 		if delta == 0. {
 			return;
@@ -315,7 +315,7 @@ impl Panel {
 			.pb(gpui::px(8.))
 			.overflow_hidden()
 			.track_scroll(&self.scroll)
-			.on_scroll_wheel(cx.listener(|s, e, _, cx| s.wheel(e, cx)));
+			.on_scroll(cx.listener(|s, e, _, cx| s.wheel(e, cx)));
 		let mut previous = None;
 		let mut offset = 0.;
 		let top = -f32::from(self.scroll.offset().y);
@@ -507,7 +507,7 @@ fn text_height(
 			gpui::px(size),
 			&[run],
 			Some(gpui::px(width.max(1.))),
-			// GPUI c019950 omits line_clamp from its wrapping cache key. Keep one
+			// GPUI omits line_clamp from its wrapping cache key. Keep one
 			// full layout for both states and clip the measured presentation below.
 			None,
 		)
@@ -860,7 +860,7 @@ mod tests {
 			assert_eq!(marker.size, gpui::size(gpui::px(7.), gpui::px(7.)));
 		}
 		let viewport = visual.debug_bounds("delivery-scroll").unwrap();
-		visual.simulate_event(gpui::ScrollWheelEvent {
+		visual.simulate_event(gpui::ScrollEvent {
 			position: viewport.center(),
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-60.))),
 			..Default::default()

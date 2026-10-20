@@ -13,8 +13,8 @@ use gpui::{
 	ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
 	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, Role,
-	ScrollWheelEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window,
-	WrappedLine, actions, fill,
+	ScrollEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine,
+	actions, fill,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
@@ -739,7 +739,7 @@ impl ComposerInput {
 			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
-			.on_scroll_wheel(cx.listener(|s, e: &ScrollWheelEvent, _, cx| {
+			.on_scroll(cx.listener(|s, e: &ScrollEvent, _, cx| {
 				if s.appearance == ComposerAppearance::Workbench {
 					s.text_offset = (s.text_offset
 						- e.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y)

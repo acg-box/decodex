@@ -1044,7 +1044,7 @@ mod tests {
 
 		assert!(before.bottom() > viewport.bottom(), "before={before:?}, viewport={viewport:?}");
 
-		visual.simulate_event(gpui::ScrollWheelEvent {
+		visual.simulate_event(gpui::ScrollEvent {
 			position: viewport.center(),
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1_000.))),
 			..Default::default()

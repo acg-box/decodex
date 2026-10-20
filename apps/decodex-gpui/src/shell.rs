@@ -7452,7 +7452,7 @@ mod tests {
 		assert!(shell.read_with(settings, |s, _| s.diagnostics.expanded));
 		assert_eq!(scroll.bounds(), viewport, "details must not enlarge the viewport");
 		assert!(scroll.max_offset().y > viewport.size.height);
-		settings.simulate_event(gpui::ScrollWheelEvent {
+		settings.simulate_event(gpui::ScrollEvent {
 			position: viewport.center(),
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-180.))),
 			..Default::default()

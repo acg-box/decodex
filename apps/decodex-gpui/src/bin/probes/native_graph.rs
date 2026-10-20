@@ -205,7 +205,7 @@ impl Graph {
 			.flex_1()
 			.min_h_0()
 			.overflow_hidden()
-			.on_scroll_wheel(cx.listener(move |s, e: &gpui::ScrollWheelEvent, _, cx| {
+			.on_scroll(cx.listener(move |s, e: &gpui::ScrollEvent, _, cx| {
 				s.bench = None;
 				s.zoom = (zoom * (f32::from(e.delta.pixel_delta(px(20.)).y) * 0.002).exp())
 					.clamp(0.15, 2.);

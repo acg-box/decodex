@@ -97,7 +97,7 @@ impl RenderOnce for ScrollArea {
 		});
 
 		let wheel_state = state.clone();
-		let content = self.content.overflow_hidden().track_scroll(&scroll).on_scroll_wheel(
+		let content = self.content.overflow_hidden().track_scroll(&scroll).on_scroll(
 			move |event, _window, cx| {
 				let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y;
 

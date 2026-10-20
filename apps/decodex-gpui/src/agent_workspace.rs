@@ -3,7 +3,7 @@ use std::{mem, rc::Rc};
 
 use gpui::{
 	AnyElement, AppContext as _, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	PathBuilder, ScrollWheelEvent, Stateful,
+	PathBuilder, ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -1133,7 +1133,7 @@ impl AgentSurface {
 			.min_h_0()
 			.overflow_hidden()
 			.track_scroll(&scroll)
-			.on_scroll_wheel(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)));
+			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)));
 
 		if let Some(work) = selected {
 			if let Some(snapshot) = &self.snapshot {
@@ -1820,7 +1820,7 @@ impl AgentSurface {
 			.min_h_0()
 			.relative()
 			.overflow_hidden()
-			.on_scroll_wheel(cx.listener(|s, event: &ScrollWheelEvent, _, cx| {
+			.on_scroll(cx.listener(|s, event: &ScrollEvent, _, cx| {
 				let delta = event.delta.pixel_delta(gpui::px(20.0));
 
 				if event.modifiers.control || event.modifiers.platform {
