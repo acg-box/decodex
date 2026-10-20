@@ -1,0 +1,138 @@
+//! On-demand native configuration checks in the existing diagnostic details.
+use std::path::PathBuf;
+
+use gpui::{
+	AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
+	Styled as _, Task,
+};
+
+use super::{Shell, control};
+use decodex_protocol::{
+	ClientProfile, ConversationWorkingDirectory, DoctorClient, NativeStartupConfiguration,
+	ProfileKind,
+};
+
+#[derive(Clone, Eq, PartialEq)]
+struct Source {
+	directory: PathBuf,
+	profile: ClientProfile,
+}
+
+#[derive(Default)]
+pub(super) struct Panel {
+	source: Option<Source>,
+	result: Option<NativeStartupConfiguration>,
+	task: Option<Task<()>>,
+	epoch: u64,
+	feedback: String,
+}
+impl Panel {
+	pub(super) fn reset(&mut self) {
+		*self = Self { epoch: self.epoch.wrapping_add(1), ..Default::default() };
+	}
+}
+
+fn source(shell: &Shell, cx: &gpui::App) -> Option<Source> {
+	let profile = shell.reset_cards.profile.clone()?;
+	if profile.kind() != ProfileKind::Local {
+		return None;
+	}
+	let directory = shell
+		.agent
+		.read(cx)
+		.native_configuration_directory()
+		.or_else(|| std::env::var_os("HOME").map(PathBuf::from))?;
+	let valid = ConversationWorkingDirectory::new(directory.to_str()?).ok()?;
+	Some(Source { directory: PathBuf::from(valid.as_str()), profile })
+}
+
+fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
+	if shell.diagnostics.startup.task.is_some() {
+		return;
+	}
+	let Some(owner) = source(shell, cx) else {
+		return;
+	};
+	let panel = &mut shell.diagnostics.startup;
+	panel.epoch = panel.epoch.wrapping_add(1);
+	let epoch = panel.epoch;
+	panel.source = Some(owner.clone());
+	panel.result = None;
+	panel.feedback = "Checking the selected native component and configuration…".into();
+	let directory =
+		ConversationWorkingDirectory::new(owner.directory.to_string_lossy().into_owned())
+			.expect("source directory was validated");
+	let profile = owner.profile.clone();
+	let check = cx.background_executor().spawn(async move {
+		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+		runtime.block_on(DoctorClient::new(profile).startup_configuration(directory)).ok()
+	});
+	panel.task = Some(cx.spawn(async move |view, cx| {
+		let result = check.await;
+		let _ = view.update(cx, |shell, cx| {
+			if shell.diagnostics.startup.epoch != epoch {
+				return;
+			}
+			let current = source(shell, cx) == Some(owner);
+			let panel = &mut shell.diagnostics.startup;
+			panel.task = None;
+			if current {
+				panel.feedback.clear();
+				panel.result = result;
+					if panel.result.is_none() { panel.feedback = "The local service could not complete this check. Reconnect and check again.".into(); }
+			} else {
+				panel.result = None;
+				panel.feedback = "The selected folder or connection changed. Check again.".into();
+			}
+			cx.notify();
+		});
+	}));
+	cx.notify();
+}
+
+pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let current = source(shell, cx);
+	let panel = &shell.diagnostics.startup;
+	let result = panel.result.as_ref().filter(|_| panel.source == current);
+	let mut group=gpui::div().id("native-startup-config").debug_selector(||"native-startup-config".into())
+		.w_full().min_w_0().flex().flex_col().gap_2()
+		.child("Local Codex startup configuration")
+		.child("Check configuration with the shared Codex sign-in. Account overrides for a task are not checked.");
+	if let Some(current) = &current {
+		group = group.child(format!("Folder: {}", current.directory.display())).child(control(
+			"native-startup-check",
+			if panel.task.is_some() { "Checking…" } else { "Check Codex configuration" },
+			cx,
+			start,
+		));
+	} else {
+		group = group.child(
+			"Connect to the local service and select an available folder to check configuration.",
+		);
+	}
+	if !panel.feedback.is_empty() {
+		group = group.child(panel.feedback.clone());
+	}
+	if let Some(result) = result {
+		let text = result.report_text();
+		group = group
+			.child(
+				gpui::div()
+					.id("native-startup-result")
+					.debug_selector(|| "native-startup-result".into())
+					.text_size(gpui::px(11.))
+					.child(text.clone()),
+			)
+			.child(control(
+				"native-startup-copy",
+				"Copy configuration result",
+				cx,
+				move |_, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone())),
+			));
+	}
+	group.into_any_element()
+}
+
+#[cfg(test)]
+#[path = "shell_startup_config_tests.rs"]
+mod tests;

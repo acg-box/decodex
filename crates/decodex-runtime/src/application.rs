@@ -458,6 +458,17 @@ impl ServiceApplication {
 
 	async fn query_product_state(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
+			QueryPayload::GetNativeStartupConfiguration { directory } => {
+				let path = std::path::PathBuf::from(directory.as_str());
+				let fallback =
+					decodex_protocol::NativeStartupConfiguration::unavailable(directory.as_str());
+				let report = tokio::task::spawn_blocking(move || {
+					crate::account_launch::process::inspect_native_startup_configuration(&path)
+				})
+				.await
+				.unwrap_or(fallback);
+				QueryResultPayload::NativeStartupConfiguration(report)
+			},
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -2837,6 +2848,7 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetProgramCycle { .. }
 			| QueryPayload::ListConversations { .. }
 			| QueryPayload::GetConversation { .. }
+			| QueryPayload::GetNativeStartupConfiguration { .. }
 			| QueryPayload::GetDoctorStatus
 			| QueryPayload::GetConversationHistory { .. }
 			| QueryPayload::GetResetCards { .. }

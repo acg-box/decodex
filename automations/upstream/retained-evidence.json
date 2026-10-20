@@ -367,10 +367,11 @@
     {
       "id": "native-startup-config-diagnostics",
       "upstream_commit": "1277bcfddc69800c5e3538dccf3f26bedbd80290",
-      "status": "approved_pending_implementation",
+      "status": "approved_implemented",
       "value": "Inspect effective startup configuration and auth policy without a full app-server session.",
       "maintenance_cost": "Low to medium: define a diagnostic surface, redaction and support workflow.",
-      "recommendation": "Implement the user-approved on-demand native startup configuration check through existing diagnostics."
+      "recommendation": "Use the explicit Check Codex configuration action in existing Diagnostics technical details. The result checks shared native sign-in and the selected folder; task account overrides remain outside this diagnostic.",
+      "qualification": "retained_native_diagnostics.startup_configuration"
     },
     {
       "id": "incremental-tool-catalog",
@@ -441,7 +442,7 @@
     },
     "source_review_evidence": "automations/upstream/current-review.json",
     "selected_runtime_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
-    "runtime_disposition": "Necessary retained-capability repairs retain the fixed qualified runtime. The user-approved native sample surface is implemented and qualified by retained_native_coordination.separate_answers; startup diagnostics has approval and a separate implementation batch.",
+    "runtime_disposition": "Both user-approved surfaces are implemented and qualified at the unchanged fixed development runtime: retained_native_coordination.separate_answers and retained_native_diagnostics.startup_configuration. Native owns inference and startup policy; Decodex owns explicit presentation and coordination. No installed-app acceptance or runtime migration is claimed by this feature adoption.",
     "qualification_limits": "Thirty-four selected Decodex regressions passed: 32 execute the exact candidate CLI and its packaged helpers; two native_search tests are local projections. The separate explicit old-binary comparison passes the four added consumers with unchanged main-inherited code. No live provider, real account or installed-app acceptance.",
     "delivery_reference": "https://github.com/acg-box/decodex/pull/2464",
     "runtime_delivery_reference": "https://github.com/acg-box/decodex/pull/2464"
@@ -544,6 +545,26 @@
           "skipped": 916,
           "unmatched_selectors": [],
           "behavior": "Real same-UID client/service/admitted bridge and exact CLI: no inference on read, one inference after duplicate command identity, foreign-thread rejection, parent unchanged, old result hidden after new parent input. Temporary account/config home; execution cwd is the existing owned checkout, preserving OS-home directory authority."
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib",
+          "command": "python3 crates/decodex-runtime/tests/native_qualification/sample_service.py --runtime <qualified-runtime-package>",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "mode": "DECODEX_TEST_NATIVE_SAMPLE=1",
+          "passed": 1,
+          "skipped": 919,
+          "unmatched_selectors": [],
+          "behavior": "Final local protocol 2.121 and the shared preparation fixture preserve the delivered sampling contract. This re-executes the same-UID public service, exact CLI, unchanged parent and command idempotency cases."
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui",
+          "passed": 834,
+          "skipped": 14,
+          "unmatched_selectors": [],
+          "behavior": "The startup-diagnostics batch re-executes the complete GUI suite, including all three retained separate-answer cases."
         }
       ],
       "checks": [
@@ -563,10 +584,11 @@
         "crates/decodex-runtime/src/agent_sample_tests.rs": "2e2a3fe9845aa34beb68db8925933a62fededc3cb39e0b20ae4b7f361e887473",
         "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs": "7143e9a2fe4776565317a4c2c25c94f1f4db9eae1d72e81ff3b7f6c7a6585e29",
         "crates/decodex-runtime/src/account_launch/agent_process_native_sampling_socket_tests.rs": "30daf644d82a7ddec71522dc2622ae7dd161a0c4661d7fb3b9eb91a832491a3d",
-        "crates/decodex-runtime/tests/native_qualification/sample_service.py": "2e93c9dcbd7bd007f72e31702c10013c7b1a8bf5b1cd1cb3cd0a8858252d9ff8",
+        "crates/decodex-runtime/tests/native_qualification/sample_service.py": "54940adfdcb5ea73da614248e4eed2e3ed24a2a47a7cbd4ccc08d3935e50311d",
         "apps/decodex-gpui/src/agent_sample.rs": "c9e531d8923f7613360fadf8f87236873ac64dc808ad55e3fd84fd50658ea794",
         "apps/decodex-gpui/src/agent_sample_request.rs": "60bfd953ccdb2d93aff16cd060d6389f0d4d497776a35686bbc8276aa0b716cd",
-        "apps/decodex-gpui/src/agent_sample_tests.rs": "c90c18e253602c52a6f22d32cdfc42a40fa7bf8845a736b3c5b39df25eaab224"
+        "apps/decodex-gpui/src/agent_sample_tests.rs": "c90c18e253602c52a6f22d32cdfc42a40fa7bf8845a736b3c5b39df25eaab224",
+        "crates/decodex-runtime/tests/native_qualification/managed_runtime.py": "e95b1bdb43545fe744e1f4f71226178bcd7c16a4bb0b3ed936a8907848a9753d"
       },
       "artifact_sha256": {
         "CodexCLI.app/Contents/MacOS/codex": "136057ed125e2ecdc3adfeb139bc446278c7a0603165e48f9c63824edee0deb9",
@@ -580,7 +602,8 @@
       },
       "delivery_references": [
         "https://github.com/acg-box/decodex/commit/74c5d5dba0b3339089beb20146e4912919255e14",
-        "https://github.com/acg-box/decodex/commit/5d4db2a2b686c205ceac020d93cb91e1e7b8c0cb"
+        "https://github.com/acg-box/decodex/commit/5d4db2a2b686c205ceac020d93cb91e1e7b8c0cb",
+        "https://github.com/acg-box/decodex/pull/2465"
       ],
       "limits": "Fixed signed private-stdio macOS arm64 development runtime and packaged helpers. Synthetic loopback provider/accounts and automated GPUI fixtures. Native timeout/Stop/MCP details retain their source-review limits; this feature batch does not rerun the upstream suite or claim live MCP/provider/account or installed-app acceptance. No installation, release or schedule change. The original certified review range remains unchanged."
     }
@@ -588,19 +611,20 @@
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_historical_scope",
     "requested_pages": [
-      "openwiki/operations/codex-upstream-autopilot.md",
+      "openwiki/workflows/conversations-and-recovery.md",
+      "openwiki/decisions/upstream-product-scope.md",
       "openwiki/testing/upstream-acceptance-boundaries.md",
-      "openwiki/workflows/conversations-and-recovery.md"
+      "openwiki/operations/accounts-and-routing.md"
     ],
-    "accepted_pages": 40,
+    "accepted_pages": 41,
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "completed_pages": 0,
     "existing_claims_on_first_page": 13,
     "claims_requiring_attention": 9,
-    "reason": "The supported lifecycle adds historical coordination, archive, fork, output-retention and visibility Claim reconciliation outside this fixed native-runtime qualification. No generated page or managed metadata was hand-edited.",
+    "reason": "The supported lifecycle expanded four approved feature pages into 41 historical page jobs. Its first job requires historical coordination, archive, fork and retention reconciliation outside this feature adoption. No page was completed or managed state hand-edited.",
     "owner": "Repository-wide OpenWiki maintenance remains unassigned.",
-    "next_action": "Begin the supported lifecycle again in a current assigned worktree after source/evidence delivery; reconcile current source before resuming the historical queue. Do not restore an obsolete worktree.",
-    "merge_boundary": "Qualified runtime and portable source/test evidence can deliver independently; the documentation lifecycle remains incomplete."
+    "next_action": "Re-begin the supported page-job lifecycle on current merged main, reconcile source drift and correct obsolete GUI seed paths before historical work. Do not restore an obsolete checkout or hand-edit generated controls.",
+    "merge_boundary": "Approved features, fixed-artifact qualification and portable source/test evidence deliver independently; the historical documentation lifecycle remains incomplete."
   },
   "retained_behavior_contracts": [
     {
@@ -711,5 +735,169 @@
       ],
       "qualification": "automations/upstream/qualification.json#temporary_structured_boundary"
     }
-  ]
+  ],
+  "retained_native_diagnostics": {
+    "startup_configuration": {
+      "upstream_commit": "1277bcfddc69800c5e3538dccf3f26bedbd80290",
+      "qualified_runtime_source": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
+      "base_main": "71e770219ba8a381cbdda17aec00d776e309e494",
+      "contract": "An explicit local Diagnostics action runs app-server --print-startup-config through the verified pinned component and normal startup switches/client identity. Native resolves local/project/cloud policy without conversation or plugin startup. The existing same-UID local service returns only checked folder, CLI digest, version, allowed login methods, requirements presence or safe configuration location and cloud-policy classification. Shared native sign-in is checked, independently of conversation readiness. Task account overrides are not checked. No raw message, credential, policy body, sign-out command, automatic retry, component acquisition or health promotion is exposed. A changed folder/profile hides the result and copy action. Native may refresh its own auth/policy caches.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/process_startup_config.rs#inspect_native_startup_configuration,#read,#project",
+        "crates/decodex-runtime/src/account_launch/process.rs#AttestedAppServerProfile::attest,#run_preflight_command",
+        "crates/decodex-runtime/src/application.rs#query_product_state",
+        "crates/decodex-protocol/src/native_startup_config.rs#NativeStartupConfiguration::is_valid,#report_text",
+        "crates/decodex-protocol/src/client.rs#DoctorClient::startup_configuration",
+        "apps/decodex-gpui/src/shell_startup_config.rs#source,#start,#content",
+        "apps/decodex-gpui/src/agent_surface.rs#AgentSurface::native_configuration_directory"
+      ],
+      "tests_read": {
+        "retained_upstream_record": "automations/upstream/current-review.json#records[index=25]",
+        "retained_upstream_function_count": 6,
+        "prior_certified_upstream_executions": 6,
+        "upstream_execution_this_feature_batch": 0,
+        "local_test_function_count": 5,
+        "local_test_identities": [
+          {
+            "source": "crates/decodex-protocol/src/native_startup_config.rs",
+            "entrypoint": "lib",
+            "package": "decodex-protocol",
+            "test": "native_startup_config::tests::successful_startup_configuration_requires_exact_source_and_artifact_identity"
+          },
+          {
+            "source": "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
+            "entrypoint": "lib",
+            "package": "decodex-runtime",
+            "test": "account_launch::process::startup_config::tests::startup_projection_keeps_policy_and_location_without_raw_error_details"
+          },
+          {
+            "source": "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
+            "entrypoint": "lib",
+            "package": "decodex-runtime",
+            "test": "account_launch::process::startup_config::tests::startup_projection_rejects_malformed_or_conflicting_success_claims"
+          },
+          {
+            "source": "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
+            "helper": "crates/decodex-runtime/src/account_launch/process_startup_config_socket_tests.rs",
+            "entrypoint": "lib",
+            "package": "decodex-runtime",
+            "test": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history"
+          },
+          {
+            "source": "apps/decodex-gpui/src/shell_startup_config_tests.rs",
+            "entrypoint": "bin:decodex-gpui",
+            "package": "decodex-gpui",
+            "test": "shell::diagnostics::startup_config::tests::startup_diagnostics_open_without_running_copy_the_safe_result_and_hide_an_old_source"
+          }
+        ]
+      },
+      "execution": [
+        {
+          "packages": [
+            "decodex-codex",
+            "decodex-protocol",
+            "decodex-runtime"
+          ],
+          "entrypoint": "lib",
+          "command": "cargo +stable nextest run --locked -p decodex-codex -p decodex-protocol -p decodex-runtime --lib",
+          "passed": 1220,
+          "skipped": 115,
+          "unmatched_selectors": []
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui",
+          "passed": 834,
+          "skipped": 14,
+          "unmatched_selectors": [],
+          "limit": "All final GUI production source is covered. The subsequent safe-report fixture update is re-executed by the exact final GUI test below. The protocol identity-presence validator is covered by the final backend suite, exact native service fixture, workspace check and Clippy."
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib",
+          "command": "python3 crates/decodex-runtime/tests/native_qualification/startup_config.py --runtime <qualified-runtime-package>",
+          "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
+          "passed": 1,
+          "skipped": 919,
+          "unmatched_selectors": [],
+          "behavior": "Actual production component discovery, prepared exact signed CLI/helpers, API login restriction, trusted project ChatGPT restriction, malformed TOML one-based safe location, unchanged auth/config, no sessions, unchanged locked history DB. Real same-UID service query works while conversation capability is unavailable; Doctor health before/after is unchanged."
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib",
+          "command": "python3 crates/decodex-runtime/tests/native_qualification/sample_service.py --runtime <qualified-runtime-package>",
+          "selector": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "passed": 1,
+          "skipped": 919,
+          "unmatched_selectors": [],
+          "behavior": "The shared system-temporary preparation fixture preserves the previously delivered sampling public-service regression."
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E \"test(startup_diagnostics_open_without_running_copy_the_safe_result_and_hide_an_old_source)\"",
+          "selector": "shell::diagnostics::startup_config::tests::startup_diagnostics_open_without_running_copy_the_safe_result_and_hide_an_old_source",
+          "passed": 1,
+          "skipped": 847,
+          "unmatched_selectors": [],
+          "behavior": "Final safe-report fixture and protocol identity-presence validation at the exact committed implementation."
+        }
+      ],
+      "checks": [
+        {
+          "command": "cargo +stable make check-rust",
+          "result": "passed all workspace targets and features"
+        },
+        {
+          "command": "cargo +stable clippy --locked -p decodex-protocol -p decodex-runtime -p decodex-gpui --all-targets --all-features --keep-going -- --no-deps -D clippy::all -D clippy::too_many_lines -D clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D unused-crate-dependencies -D warnings",
+          "result": "passed"
+        },
+        {
+          "command": "cargo +stable make fmt-rust-check",
+          "result": "passed; repository task uses unversioned nightly formatter"
+        },
+        {
+          "entrypoint": "ast.parse",
+          "files": [
+            "crates/decodex-runtime/tests/native_qualification/managed_runtime.py",
+            "crates/decodex-runtime/tests/native_qualification/sample_service.py",
+            "crates/decodex-runtime/tests/native_qualification/startup_config.py"
+          ],
+          "result": "Three Python fixture files parsed successfully."
+        }
+      ],
+      "source_sha256": {
+        "apps/decodex-gpui/src/agent_surface.rs": "16e5ce7e33db5437e0754041a18fa2ebaa1ab7048e13b9d21772e515bafa01a9",
+        "apps/decodex-gpui/src/shell.rs": "d8b20de647f85de17836f2bda353de61032cb411abe30ba30f5ec90f47ac02ec",
+        "apps/decodex-gpui/src/shell_diagnostics.rs": "5ef489c0b0d55b04f87621b981c3717209e0d71611e731f61ef06776f8a1ace9",
+        "apps/decodex-gpui/src/shell_startup_config.rs": "d6428680802607eb95c1f841be9dd7d670c72e7654c1123ffe7ab830fc4ad102",
+        "apps/decodex-gpui/src/shell_startup_config_tests.rs": "25a2311501fb84b9c9f0a3c422a883e60188f52c3ecbddb2bc95c8ee41d8eeb6",
+        "crates/decodex-protocol/src/client.rs": "31e024ca5b52cb4d77395bcd82c6b6311611c1a67d50bb6baa3fc80107db45c0",
+        "crates/decodex-protocol/src/lib.rs": "e19efb99243de0244f1b7f810c539f88d141c8c99afa90c75e5e3accc44d225d",
+        "crates/decodex-protocol/src/native_startup_config.rs": "b604cc92bf081a3b96b41f7860b7149fa383a8944c4546e0ed1e2546064b6fde",
+        "crates/decodex-protocol/src/wire.rs": "e6c8fab9e7af6dc4b62355dc708476f8c3b910dd71d2a242e21fe9ed2be2ec1f",
+        "crates/decodex-runtime/src/account_launch/process.rs": "665836613d09266531867ec38a61cd43914f7cef67f90215598538ad900ba541",
+        "crates/decodex-runtime/src/account_launch/process_startup_config.rs": "d0626779a6cbe8425d5f7bc2e36e0bae27e1b5424445b8aa86d6922a93220adb",
+        "crates/decodex-runtime/src/account_launch/process_startup_config_socket_tests.rs": "9edebae3f3914801cd891f34bcfb393f80fc27feabf3ec4f37f9132b7a4d741f",
+        "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs": "ed4fe60ac02f889464d9faf19baaa462d74ece8fcd596eeb78d62540808112b0",
+        "crates/decodex-runtime/src/application.rs": "672b3bf071598cc153f499c33faeb593fcf717b83c230bc975984e80d008a8a5",
+        "crates/decodex-runtime/tests/native_qualification/managed_runtime.py": "e95b1bdb43545fe744e1f4f71226178bcd7c16a4bb0b3ed936a8907848a9753d",
+        "crates/decodex-runtime/tests/native_qualification/sample_service.py": "54940adfdcb5ea73da614248e4eed2e3ed24a2a47a7cbd4ccc08d3935e50311d",
+        "crates/decodex-runtime/tests/native_qualification/startup_config.py": "760e3495dd74f7c4d39aeff900bfa12287b457448b60cb2f87fab1b628935d01"
+      },
+      "artifact_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "136057ed125e2ecdc3adfeb139bc446278c7a0603165e48f9c63824edee0deb9",
+        "bin/codex-code-mode-host": "1595ccfdf41a20c162493f861712571989231c7f7edc26c5b051944948963d22",
+        "codex-path/rg": "bd512985b7c4d38eaa2c0decad03acf8d856ed8ac23a1c7f5955143512be5dfa"
+      },
+      "schema_fingerprint": "12ed459d9774867a23126e6e7a9a145e093bbfaf2da8de495853e24ca6b974b5",
+      "artifact_preparation": "python3 crates/decodex-runtime/tests/native_qualification/startup_config.py --runtime <qualified-runtime-package> imports through cargo +stable make prepare-codex. System-temporary account/config and preparation homes are removed automatically. Packaging and app startup never compile Codex. The CLI flag is qualified by its fixed implementation and actual exact CLI; a generated schema alone does not establish support.",
+      "delivery_references": [
+        "https://github.com/acg-box/decodex/commit/3562acc80e75789c96b15011c51cc60dc75a3f0a",
+        "https://github.com/acg-box/decodex/commit/a5b7a450b599071b97d89c6e8bffd312c327d7e8"
+      ],
+      "limits": "Fixed signed private-stdio macOS arm64 development artifact and packaged Code Mode/rg helpers. Synthetic auth/project fixtures, automated GPUI and actual local-service requests. Cloud-error projection has source/unit proof; no new live cloud/provider/real-account, installed-app or performance acceptance. The owned native command has a ten-second deadline after cached component attestation and a 256 KiB decoded-response limit. Anonymous output capture has no whole-process file-size limit, preserving native auth/cache writes. No installation, release, schedule change, source-review advance or installed binary change."
+    }
+  }
 }
