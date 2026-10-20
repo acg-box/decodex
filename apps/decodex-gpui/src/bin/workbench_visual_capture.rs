@@ -77,8 +77,8 @@ use std::{
 };
 
 use gpui::{
-	self, AnyWindowHandle, AppContext as _, Result, ScrollDelta, ScrollWheelEvent,
-	VisualTestAppContext, WindowHandle,
+	self, AnyWindowHandle, AppContext as _, Result, ScrollDelta, ScrollEvent, VisualTestAppContext,
+	WindowHandle,
 };
 #[allow(dead_code)]
 #[cfg(target_os = "macos")]
@@ -248,7 +248,7 @@ fn capture_integrations(
 	// The isolated 1180-pixel-wide fixture puts the status viewport below its controls.
 	cx.simulate_event(
 		window,
-		ScrollWheelEvent {
+		ScrollEvent {
 			position: gpui::point(gpui::px(450.), gpui::px(620.)),
 			delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-460.))),
 			..Default::default()

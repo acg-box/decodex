@@ -20,7 +20,7 @@ use routing::Route;
 #[path = "agent_relation_style.rs"] mod style;
 #[path = "agent_relation_visibility.rs"] mod visibility;
 use gpui::{
-	MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Role, ScrollWheelEvent, SharedString,
+	MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Role, ScrollEvent, SharedString,
 	StatefulInteractiveElement,
 };
 
@@ -479,7 +479,7 @@ impl AgentSurface {
 			.min_w_0()
 			.min_h_0()
 			.overflow_hidden()
-			.on_scroll_wheel(cx.listener(move |s, e: &ScrollWheelEvent, _, cx| {
+			.on_scroll(cx.listener(move |s, e: &ScrollEvent, _, cx| {
 				let d = e.delta.pixel_delta(gpui::px(20.));
 				let next = scale * (f32::from(d.y) * 0.003).exp();
 				let center = (

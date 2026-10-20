@@ -791,7 +791,7 @@ mod tests {
 			});
 
 			if cancel {
-				visual.simulate_event(gpui::ScrollWheelEvent {
+				visual.simulate_event(gpui::ScrollEvent {
 					position: scroll.bounds().center(),
 					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-40.))),
 					..Default::default()

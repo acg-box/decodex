@@ -1,5 +1,5 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
-use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
+use gpui::{Modifiers, Render, ScrollDelta, ScrollEvent, TestAppContext};
 
 use crate::shell::agent_surface::markdown::{
 	self, NodeContent,
@@ -110,7 +110,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppCon
 		previous_size = Some(text.size);
 
 		if width == 160. {
-			visual.simulate_event(ScrollWheelEvent {
+			visual.simulate_event(ScrollEvent {
 				position: bounds.center(),
 				delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 				..Default::default()

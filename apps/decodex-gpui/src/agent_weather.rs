@@ -250,7 +250,7 @@ mod tests {
 	use std::thread;
 
 	use gpui::{
-		self, Context, IntoElement, Modifiers, Render, ScrollDelta, ScrollWheelEvent, Window,
+		self, Context, IntoElement, Modifiers, Render, ScrollDelta, ScrollEvent, Window,
 		prelude::{InteractiveElement as _, ParentElement as _, Styled as _},
 	};
 
@@ -268,7 +268,7 @@ mod tests {
 			gpui::div()
 				.id("parent")
 				.size_full()
-				.on_scroll_wheel(move |_, _, _| count.set(count.get() + 1))
+				.on_scroll(move |_, _, _| count.set(count.get() + 1))
 				.child(super::render(&forecast, "test"))
 		}
 	}
@@ -302,7 +302,7 @@ mod tests {
 		let bounds = visual.debug_bounds("weather-card-test").unwrap();
 		let start = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
 
-		visual.simulate_event(ScrollWheelEvent {
+		visual.simulate_event(ScrollEvent {
 			position: bounds.center(),
 			delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-60.))),
 			..Default::default()
@@ -319,7 +319,7 @@ mod tests {
 			gpui::point(gpui::px(-1_000.), gpui::px(-30.)),
 			gpui::point(gpui::px(1_000.), gpui::px(0.)),
 		] {
-			visual.simulate_event(ScrollWheelEvent {
+			visual.simulate_event(ScrollEvent {
 				position: bounds.center(),
 				delta: ScrollDelta::Pixels(delta),
 				..Default::default()

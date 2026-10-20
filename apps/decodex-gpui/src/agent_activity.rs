@@ -6,9 +6,7 @@ use std::{
 	rc::Rc,
 };
 
-use gpui::{
-	AnyElement, AppContext as _, KeyDownEvent, Pixels, Role, ScrollHandle, ScrollWheelEvent,
-};
+use gpui::{AnyElement, AppContext as _, KeyDownEvent, Pixels, Role, ScrollEvent, ScrollHandle};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTED};
 
 use crate::{
@@ -357,7 +355,7 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+	pub(super) fn scroll_history(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
 		let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT));
 
 		// macOS also sends phase-only and horizontal gesture events. They do
@@ -989,7 +987,7 @@ mod tests {
 				assert_eq!(s.timeline.selected, selected);
 			}
 			s.scroll_history(
-				&gpui::ScrollWheelEvent {
+				&gpui::ScrollEvent {
 					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1.))),
 					..Default::default()
 				},
@@ -1659,7 +1657,7 @@ phase: None,
 
 			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-50.)));
 
-			let event = gpui::ScrollWheelEvent {
+			let event = gpui::ScrollEvent {
 				delta: gpui::ScrollDelta::Lines(gpui::point(0., -1.)),
 				..Default::default()
 			};
@@ -1683,7 +1681,7 @@ phase: None,
 
 			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(midpoint)));
 			s.scroll_history(
-				&gpui::ScrollWheelEvent {
+				&gpui::ScrollEvent {
 					delta: gpui::ScrollDelta::Lines(gpui::point(0., 1.)),
 					..Default::default()
 				},
@@ -1696,7 +1694,7 @@ phase: None,
 			);
 
 			s.scroll_history(
-				&gpui::ScrollWheelEvent {
+				&gpui::ScrollEvent {
 					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(0.25))),
 					..Default::default()
 				},
@@ -1753,7 +1751,7 @@ phase: None,
 
 			for phase in [gpui::TouchPhase::Started, gpui::TouchPhase::Ended] {
 				s.scroll_history(
-					&gpui::ScrollWheelEvent {
+					&gpui::ScrollEvent {
 						delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(3.), gpui::px(0.))),
 						touch_phase: phase,
 						..Default::default()
@@ -1767,7 +1765,7 @@ phase: None,
 			}
 			for _ in 0..8 {
 				s.scroll_history(
-					&gpui::ScrollWheelEvent {
+					&gpui::ScrollEvent {
 						delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(0.25))),
 						..Default::default()
 					},
@@ -1878,7 +1876,7 @@ phase: None,
 
 		let position = scroll.bounds().center();
 
-		visual.simulate_event(gpui::ScrollWheelEvent {
+		visual.simulate_event(gpui::ScrollEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
 			..Default::default()
@@ -1891,7 +1889,7 @@ phase: None,
 
 		let previous = scroll.offset().y;
 
-		visual.simulate_event(gpui::ScrollWheelEvent {
+		visual.simulate_event(gpui::ScrollEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(60.0))),
 			..Default::default()
@@ -1903,7 +1901,7 @@ phase: None,
 		assert!(scroll.offset().y > previous);
 
 		scroll.set_offset(gpui::point(gpui::px(0.), -scroll.max_offset().y));
-		visual.simulate_event(gpui::ScrollWheelEvent {
+		visual.simulate_event(gpui::ScrollEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(5.))),
 			..Default::default()

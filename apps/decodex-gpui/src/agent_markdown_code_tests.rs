@@ -1,5 +1,5 @@
 //! Wide code must not resize the message, wrap lines, or move its copy control.
-use gpui::{IntoElement, ParentElement as _, Render, ScrollDelta, ScrollWheelEvent, Styled as _};
+use gpui::{IntoElement, ParentElement as _, Render, ScrollDelta, ScrollEvent, Styled as _};
 
 use super::super::{self as markdown, Kind, NodeContent};
 
@@ -49,7 +49,7 @@ fn wide_code_scrolls_without_wrapping_and_keeps_copy_reachable(cx: &mut gpui::Te
 		previous_size = Some(text.size);
 		let button = visual.debug_bounds("copy-code-code-preview-1").expect("code copy");
 		assert!(button.right() <= viewport.right());
-		visual.simulate_event(ScrollWheelEvent {
+		visual.simulate_event(ScrollEvent {
 			position: viewport.center(),
 			delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 			..Default::default()

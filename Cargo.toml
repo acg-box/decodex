@@ -44,8 +44,8 @@ core-foundation        = { version = "~0.10" }
 futures-util           = { version = "~0.3" }
 getrandom              = { version = "~0.4" }
 globset                = { version = "~0.4" }
-gpui                   = { git = "https://github.com/zed-industries/zed.git", rev = "c0199504b9cce79bc27524950022ed701bc3ebd5", default-features = false, features = ["profiler"] }
-gpui_platform          = { git = "https://github.com/zed-industries/zed.git", rev = "c0199504b9cce79bc27524950022ed701bc3ebd5", default-features = false, features = ["font-kit"] }
+gpui                   = { git = "https://github.com/zed-industries/zed.git", rev = "294169aeedbbe6aaa50fa3d00b5e865ed2aa9aa0", default-features = false, features = ["profiler"] }
+gpui_platform          = { git = "https://github.com/zed-industries/zed.git", rev = "294169aeedbbe6aaa50fa3d00b5e865ed2aa9aa0", default-features = false, features = ["font-kit"] }
 httparse               = { version = "~1.10" }
 libc                   = { version = "~0.2" }
 libwebrtc              = { version = "~0.3" }
