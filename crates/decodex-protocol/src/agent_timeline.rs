@@ -55,9 +55,13 @@ pub struct AgentOutputRate {
 	/// Last measurements stay visible during tool and user waits.
 	#[serde(default)]
 	pub active: bool,
+	/// Native output tokens used for this measurement.
 	pub output_tokens: u64,
+	/// Interval in milliseconds; a historical turn average includes tool time.
 	pub duration_ms: u64,
+	/// Interval start as Unix time in milliseconds.
 	pub started_at_ms: u64,
+	/// Interval end as Unix time in milliseconds, when available.
 	pub completed_at_ms: Option<u64>,
 }
 

@@ -652,6 +652,16 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_transcript(
+		&self,
+		request: &decodex_protocol::AgentTranscriptRequest,
+	) -> QueryResultPayload {
+		QueryResultPayload::AgentTranscript(match &self.agent {
+			Some(agent) => agent.transcript(request).await,
+			None => AgentTranscriptResult::Unavailable,
+		})
+	}
+
 	async fn query_timeline(
 		&self,
 		work: &str,
@@ -2812,11 +2822,7 @@ impl Application for ServiceApplication {
 			| QueryPayload::ReviewAgentAppUiCall { .. }
 			| QueryPayload::GetAgentAppUiSource { .. }
 			| QueryPayload::GetAgentAppUi { .. } => self.query_app_ui(&query.payload).await,
-			QueryPayload::GetAgentTranscript { request } =>
-				QueryResultPayload::AgentTranscript(match &self.agent {
-					Some(agent) => agent.transcript(request).await,
-					None => AgentTranscriptResult::Unavailable,
-				}),
+			QueryPayload::GetAgentTranscript { request } => self.query_transcript(request).await,
 			QueryPayload::GetAgentMedia { request } => self.query_media(request).await,
 			QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(
@@ -6186,23 +6192,14 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
-	let Ok(references) = store.agent_context_references().await else {
+	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
 
 	let snapshot = AgentSnapshotDto {
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
-		context_references: references
-			.into_iter()
-			.map(|r| decodex_protocol::AgentContextReferenceDto {
-				event_id: r.event_id,
-				recipient_work_id: r.recipient_work_id,
-				source_work_id: r.source_work_id,
-				source_thread_id: r.source_thread_id,
-				delivery_turn_id: r.delivery_turn_id,
-			})
-			.collect(),
+		context_references,
 		connection_initializing: false,
 		runtime_source: None,
 		workspaces: workspaces
@@ -6281,6 +6278,26 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	} else {
 		decodex_protocol::AgentSnapshotResult::Unavailable
 	}
+}
+
+async fn query_agent_context_references(
+	store: &SqliteStore,
+) -> Option<Vec<decodex_protocol::AgentContextReferenceDto>> {
+	Some(
+		store
+			.agent_context_references()
+			.await
+			.ok()?
+			.into_iter()
+			.map(|reference| decodex_protocol::AgentContextReferenceDto {
+				event_id: reference.event_id,
+				recipient_work_id: reference.recipient_work_id,
+				source_work_id: reference.source_work_id,
+				source_thread_id: reference.source_thread_id,
+				delivery_turn_id: reference.delivery_turn_id,
+			})
+			.collect(),
+	)
 }
 
 #[cfg(test)]
