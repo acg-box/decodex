@@ -690,16 +690,16 @@
       "source_sha256": {
         "crates/decodex-runtime/src/agent/coordination.md": "b2a0ac34f607374303d0e0f31bdab68798d42789e48d51a1d59de0268e38eccc",
         "crates/decodex-runtime/src/agent/instructions.md": "5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b",
-        "crates/decodex-runtime/src/agent.rs": "f41a03134fef20afeec32aafa615095d69b1f6c0a49fe4c1d87bb6f5246d629c",
+        "crates/decodex-runtime/src/agent.rs": "c702c8d0bc851cd161aac41e312dc3f0932f9de3c3cf9b598a4d4e8f7b24d56b",
         "crates/decodex-runtime/src/agent/tests.rs": "b51fcd53fef366e8dbb83a9ae1f6dfea567dce19d36b0daf08fb7e8eec603898",
         "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76",
         "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "353e1dda82138e941fd3ed51bc6a23ae2db8c718a4d6d59d8c7288834b9b01a2",
         "crates/decodex-codex/src/app_server_client.rs": "62df90d0c8602e5d936bff80dc2aed099c23e59d09bf6f8ddbaa9b5911d8109c",
-        "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "7145d2bfa93e15ac2c975acd27809e07a207b068367bc2c0066d056022aa6e41",
+        "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "f900b360495332fc7ee93b155eccb393e5f7961ed15a0e40b442c191523e0594",
         "crates/decodex-runtime/src/agent/async_projection.rs": "2c9333ab8719073325fa6cf393ff1325cb0a095378f3d61da8077ee306f3c213",
         "crates/decodex-runtime/src/agent/tests/async_recovery.rs": "154dc51377c6374b60910ea81fc6abe8b931905c2babbd697ebe924f9aafbc44",
         "database/src/agent_questions.rs": "cef75c7453256b270600b08dca030f48bcaae5e9838897425b312ac0550a64d9",
-        "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "277a22de078a21f5caf0918cfe521cfc3c93b12e50896f71a6ad47f18ce9bef5",
+        "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "444a4fcdd9f0b756944c95bb81b1e58876db432e48c9661406b660f4ae93883a",
         "crates/decodex-runtime/src/agent/observations.rs": "5756bbbcc7daf60b037faacfc8b8f867d33f606cdb06d306fbc9cc228123453e",
         "database/src/agent.rs": "92b89d02067bde0a0f70c24b6333c64149c7449a3101aba76a4de613c062c221",
         "crates/decodex-codex/src/app_server_client/server_requests.rs": "cd3e965b9c08b58282433c50fbab43886c90aa04d49a2dac280ff080212b3b95"
@@ -1162,7 +1162,7 @@
         ],
         "qualification_source_reference": "https://github.com/acg-box/decodex/commit/ce697f356ca5e27a8ccfcfb36c59aeabaa1b11b4"
       },
-      "completion_contract": "Model-facing work kinds distinguish a persistent Agent conversation (agent), a separate child outcome (goal), and worker work (task). Accept each work result with current pending receipts for its exact work_item_id. A receipt cannot be acknowledged twice. A separate child goal can cite a related worker result already assessed in the same turn. A personal Agent stays open; own user input is acknowledged by completed-turn handling without changing its work judgment. A committed decodex/work_instruction continuation retires older question cards through the existing native-history projection and invalidates stale question-answer guards. Later questions remain pending; work_wake, capacity_retry and output from other namespaces do not retire questions. An accepted blocker report can complete reporting work while the blocked operation remains unexecuted.",
+      "completion_contract": "Model-facing work kinds distinguish a persistent Agent conversation (agent), a separate child outcome (goal), and worker work (task). Accept each work result with current pending receipts for its exact work_item_id. A receipt cannot be acknowledged twice. A separate child goal can cite a related worker result already assessed in the same turn. A personal Agent stays open; own user input is acknowledged by completed-turn handling without changing its work judgment. A committed decodex/work_instruction continuation retires older question cards through the existing native-history projection and invalidates stale question-answer guards. Later questions remain pending; work_wake, capacity_retry and output from other namespaces do not retire questions. An accepted blocker report can complete reporting work while the blocked operation remains unexecuted. Busy refuses a continuation before sending or queueing its instruction. A question can precede turn completion. The manager finishes its turn, waits for the worker result, checks dispatch_state=idle and continues the original worker.",
       "completion_regressions": {
         "entrypoints": {
           "decodex-runtime": "lib",
@@ -1205,6 +1205,194 @@
           "included_in": "local_tests_executed"
         },
         "live_defect": "A strengthened pre-repair live sample returned Maple and resolved the worker, but one worker question remained. Final qualification requires empty question lists and no recovery marker for every managed work item."
+      },
+      "busy_recovery": {
+        "status": "qualified_for_bounded_busy_refusal_recovery",
+        "decodex_source_commit": "6d8ee502bb85b644b8f1728288a8e9d8bcda64ad",
+        "delivery_source_reference": "https://github.com/acg-box/decodex/commit/6d8ee502bb85b644b8f1728288a8e9d8bcda64ad",
+        "contract": "Explain that the worker is still running and this instruction was not sent or queued. Wait for the current turn to finish, inspect agent_list_work for idle state, then retry the same worker. The tool description tells the manager to finish its turn and wait for the completion receipt. No dispatch or queue behavior changes.",
+        "source_symbols": [
+          "crates/decodex-runtime/src/agent.rs#AgentError::fmt,#tools,#continue_worker,#validate_dispatch_prerequisites",
+          "crates/decodex-runtime/src/agent/tests/completion_contract.rs#busy_worker_refuses_unsent_input_then_continues_once_idle",
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs#SCENARIOS::busy_worker_recovery,#real_model_question_resolution,#evaluate,#observe"
+        ],
+        "source_sha256": {
+          "crates/decodex-runtime/src/agent.rs": "c702c8d0bc851cd161aac41e312dc3f0932f9de3c3cf9b598a4d4e8f7b24d56b",
+          "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "444a4fcdd9f0b756944c95bb81b1e58876db432e48c9661406b660f4ae93883a",
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "f900b360495332fc7ee93b155eccb393e5f7961ed15a0e40b442c191523e0594"
+        },
+        "runtime_identity": "retained_native_coordination.parent_questions.existing_runtime_artifact_sha256",
+        "selected_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
+        "component_verification": {
+          "matched_retained_digests": 3,
+          "fresh_schema_generation": true,
+          "schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+          "runtime_changed": false
+        },
+        "native_source_bindings": [
+          {
+            "source": "codex-rs/app-server/src/request_processors/turn_processor.rs",
+            "sha256": "829219be3231b5a4f8bfae26b95dba1d58fae2a93a9d32b0de2d2b22fb01931d",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+          },
+          {
+            "source": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+            "sha256": "f002e06cb8c505d737dd208ad3deab6fb837bc963d8462d24e98c010c242e9e0",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+          },
+          {
+            "source": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
+            "sha256": "28bf2e1eba007be6192ffca290c5eaafb0615e1db9346a3cd4aff2f508487b06",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+          },
+          {
+            "source": "codex-rs/app-server/tests/suite/v2/turn_steer.rs",
+            "sha256": "d8ef09afa952135cd4c2b00782deef5e1b36d8197bc47f6d94d01cd91156a2f7",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+          }
+        ],
+        "native_boundary": "Native turn/start can steer an active turn. The retained Decodex continuation boundary starts a distinct worker turn only from local Idle. Busy is a local pre-dispatch refusal; this change does not add steering or queueing.",
+        "native_tests_read": [
+          "turn_start_steers_active_turn_and_returns_active_turn_id",
+          "turn_steer_requires_active_turn"
+        ],
+        "native_tests_executed": 0,
+        "local_tests_read": [
+          "agent::tests::completion_contract::busy_worker_refuses_unsent_input_then_continues_once_idle",
+          "agent::tests::completion_contract::work_tools_distinguish_agent_conversations_from_child_goals",
+          "agent::tests::completion_contract::completion_errors_preserve_evidence_and_allow_the_correct_closure",
+          "agent::tests::completion_contract::personal_agent_closure_explains_the_target_without_changing_it",
+          "agent::tests::completion_contract::user_input_finishes_without_resolving_the_agent_conversation",
+          "agent::tests::live_question_resolution::real_model_question_resolution"
+        ],
+        "regular_validation": {
+          "entrypoint": "decodex-runtime lib",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--all-features",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "-E",
+            "test(agent::tests::)",
+            "--no-fail-fast"
+          ],
+          "executed": 182,
+          "passed": 182,
+          "skipped": 767,
+          "unmatched_selectors": 0,
+          "before_repair": {
+            "main_baseline": "5b1212e617a35adf961a7a9a63be2119ca6677d6",
+            "new_test_scaffold": "agent::tests::completion_contract::busy_worker_refuses_unsent_input_then_continues_once_idle",
+            "executed": 1,
+            "failed": 1,
+            "skipped": 948,
+            "reason": "The error was only Agent: Busy."
+          }
+        },
+        "live_validation": {
+          "entrypoint": "decodex-runtime lib: agent::tests::live_question_resolution::real_model_question_resolution",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--all-features",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "-E",
+            "test(agent::tests::live_question_resolution::real_model_question_resolution)",
+            "--no-fail-fast"
+          ],
+          "environment": {
+            "DECODEX_LIVE_EVALUATION": "1",
+            "DECODEX_NATIVE_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
+            "DECODEX_LIVE_MODEL": "gpt-6-astra",
+            "DECODEX_LIVE_RECEIPTS": "<new-native-receipt-directory>",
+            "DECODEX_LIVE_CASES": "busy_worker_recovery,missing_user_decision",
+            "DECODEX_LIVE_REPEATS": "2"
+          },
+          "model": "gpt-6-astra",
+          "reasoning_effort": "medium",
+          "driver_tests_executed": 1,
+          "driver_tests_passed": 1,
+          "driver_tests_skipped": 948,
+          "behavior_samples": 4,
+          "passed": 4,
+          "unmatched_selectors": 0,
+          "case_results": [
+            {
+              "case": "busy_worker_recovery-0",
+              "closed": true,
+              "busy_refusals": 1,
+              "accepted_continuations": 1,
+              "committed_worker_instructions": 2,
+              "unanswered_questions": 0,
+              "pending_receipts": 0,
+              "cover_title": "Maple",
+              "cover_subtitle": "Final Report",
+              "injected_idle_continuation": false
+            },
+            {
+              "case": "busy_worker_recovery-1",
+              "closed": true,
+              "busy_refusals": 1,
+              "accepted_continuations": 1,
+              "committed_worker_instructions": 2,
+              "unanswered_questions": 0,
+              "pending_receipts": 0,
+              "cover_title": "Maple",
+              "cover_subtitle": "Final Report",
+              "injected_idle_continuation": false
+            },
+            {
+              "case": "missing_user_decision-0",
+              "closed": true,
+              "busy_refusals": 0,
+              "accepted_continuations": 1,
+              "committed_worker_instructions": 2,
+              "unanswered_questions": 0,
+              "pending_receipts": 0,
+              "cover_title": "Maple",
+              "cover_subtitle": "Final Report",
+              "injected_idle_continuation": false
+            },
+            {
+              "case": "missing_user_decision-1",
+              "closed": true,
+              "busy_refusals": 0,
+              "accepted_continuations": 1,
+              "committed_worker_instructions": 2,
+              "unanswered_questions": 0,
+              "pending_receipts": 0,
+              "cover_title": "Maple",
+              "cover_subtitle": "Final Report",
+              "injected_idle_continuation": false
+            }
+          ],
+          "other_tool_refusals": 0,
+          "required_observations": "Read the tool results and final covers. Each busy_worker_recovery sample must actually observe the Busy refusal before its one accepted continuation. A passing lifecycle driver alone does not prove the refusal path was exercised."
+        },
+        "additional_checks_executed": [
+          "cargo +stable check --locked --all-features --all-targets -p decodex-runtime",
+          "The repository clippy_command(\"decodex-runtime\") with stable Rust and all repository deny flags.",
+          "cargo +stable make fmt-rust-check",
+          "git diff --check"
+        ],
+        "limits": [
+          "Four controlled samples on gpt-6-astra at medium effort with one existing native login. The concurrency case explicitly requests one early attempt. No statistical reliability, other-model, account-plan, production-load, latency or cost claim.",
+          "The two ordinary question samples used registered forms and predefined fixture user answers. No injected idle answer was needed. Both concurrency samples recovered one real Busy refusal, continued the same worker once, returned Maple / Final Report, and left no unresolved questions or processable receipts.",
+          "New native conversations receive the tool description. Existing conversations retain their native tool definitions; the updated Busy error still applies to this source build. No rewrite of saved conversation instructions.",
+          "The existing CLI, both helpers and generated schema matched retained identities. No runtime migration, installed-app interaction, installation, packaging, release or publication. Source review stays at the existing fixed cursor."
+        ]
       }
     }
   },
