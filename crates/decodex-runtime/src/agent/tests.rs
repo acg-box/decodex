@@ -10,6 +10,7 @@
 #[path = "tests/inbox_carryover.rs"] mod inbox_carryover;
 #[path = "tests/large_approval.rs"] mod large_approval;
 #[path = "tests/live_file_approval.rs"] mod live_file_approval;
+#[path = "tests/live_question_resolution.rs"] mod live_question_resolution;
 #[path = "tests/misalignment_recovery.rs"] mod misalignment_recovery;
 #[path = "tests/native_agent_wake.rs"] mod native_agent_wake;
 #[path = "tests/native_checklist.rs"] mod native_checklist;
