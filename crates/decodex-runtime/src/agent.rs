@@ -2553,6 +2553,9 @@ impl Display for AgentError {
 		if matches!(self, Self::ThreadOwnedElsewhere { .. }) {
 			return f.write_str("This conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.");
 		}
+		if matches!(self, Self::Busy) {
+			return f.write_str("This work is still running. The instruction was not sent or queued. Wait for its current turn to finish, then check agent_list_work and retry the same work item when dispatch_state is idle.");
+		}
 		write!(f, "Agent: {self:?}")
 	}
 }
@@ -2784,7 +2787,7 @@ fn tools() -> Value {
 	let mut specs = serde_json::json!([
 		{"name":"agent_create_work","description":"Create independent work for a concrete outcome; unresolved dependsOn work delays dispatch. Include a stable, concise title (usually 2-5 words) describing its purpose, without status or a repeated project prefix.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":120},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
 		{"name":"agent_list_work","description":"Inspect work and the current inbox. kind=agent is a persistent Agent conversation; kind=goal is a separate child outcome; kind=task is worker work. Inbox receipts belong to work_item_id and can be acknowledged once with agent_disposition.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-		{"name":"agent_continue_worker","description":"Continue the original worker with follow-up or repair instructions.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
+		{"name":"agent_continue_worker","description":"Start a new turn on the original worker with follow-up or repair instructions, only when dispatch_state is idle. A question can arrive before its turn ends. Busy means the instruction was not sent or queued: finish your turn and wait for the worker's completion receipt, then check agent_list_work and retry the same worker when idle.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
 		{"name":"agent_disposition","description":"Assess current pending inbox receipts for one work item. Set id to their work_item_id, not your Agent ID for a worker result. Use resolved when the assigned outcome is met, follow_up for more work, wait for a later check, and user_decision only while a user answer is still missing. User input is acknowledged automatically when your turn ends. Acknowledge each work-result receipt once; if no pending receipt remains, finish without another disposition.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["resolved","follow_up","wait","user_decision"]},"summary":{"type":"string"}},"required":["id","status","summary"],"additionalProperties":false}}
 	]);
 

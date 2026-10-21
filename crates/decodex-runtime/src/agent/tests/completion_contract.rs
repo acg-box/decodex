@@ -1,6 +1,47 @@
 use crate::agent::tests::{self, AgentDisposition, AgentWorkStatus};
 
 #[tokio::test]
+async fn busy_worker_refuses_unsent_input_then_continues_once_idle() {
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
+	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+	coordinator.create_worker("agent", "worker", "Prepare the cover").await.unwrap();
+	let before = coordinator.store.get_agent_work_item("worker".into()).await.unwrap();
+	let events_before =
+		coordinator.store.read_agent_work_events("worker".into(), 100).await.unwrap();
+	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
+	let command = serde_json::json!({"tool":"agent_continue_worker","arguments":{"id":"worker","prompt":"Use Maple"}});
+	while sent.try_recv().is_ok() {}
+
+	let error = coordinator.tool(&agent, &command).await.unwrap_err().to_string();
+	assert!(
+		error.contains("not sent or queued")
+			&& error.contains("agent_list_work")
+			&& error.contains("idle"),
+		"{error}"
+	);
+	assert!(sent.try_recv().is_err(), "Busy must not send native input");
+	let busy = coordinator.store.get_agent_work_item("worker".into()).await.unwrap();
+	assert_eq!(busy.active_turn_id, before.active_turn_id);
+	assert_eq!(busy.dispatch_state, before.dispatch_state);
+	assert_eq!(
+		coordinator.store.read_agent_work_events("worker".into(), 100).await.unwrap().len(),
+		events_before.len(),
+		"Busy must not queue an instruction"
+	);
+
+	tests::complete(&mut coordinator, "worker").await;
+	coordinator.tool(&agent, &command).await.unwrap();
+	let continued = coordinator.store.get_agent_work_item("worker".into()).await.unwrap();
+	assert_eq!(continued.codex_thread_id, before.codex_thread_id);
+	assert_ne!(continued.active_turn_id, before.active_turn_id);
+	let starts: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok())
+		.filter(|request| request["method"] == "turn/start")
+		.collect();
+	assert_eq!(starts.len(), 1);
+	assert_eq!(starts[0]["params"]["toolOutput"]["output"], "Use Maple");
+}
+
+#[tokio::test]
 async fn work_tools_distinguish_agent_conversations_from_child_goals() {
 	let (mut coordinator, _sent, _directory) = tests::fixture().await;
 
