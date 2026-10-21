@@ -229,7 +229,12 @@ async fn observe(
 	}
 	let work = agent.store.list_agent_work_items().await.unwrap();
 	let pending = agent.store.list_agent_wake_events("agent".into(), 1_000).await.unwrap();
-	let questions = agent.store.read_agent_async_questions("agent".into()).await.unwrap();
+	let mut question_counts = Vec::new();
+	for item in &work {
+		let questions = agent.store.read_agent_async_questions(item.id.clone()).await.unwrap();
+		question_counts.push((&item.id, questions.len()));
+	}
+	let unanswered_questions: usize = question_counts.iter().map(|(_, count)| count).sum();
 	let closed = work.iter().all(|item| {
 		item.dispatch_state == AgentDispatchState::Idle
 			&& item.status
@@ -239,8 +244,8 @@ async fn observe(
 					AgentWorkStatus::Resolved
 				}
 	}) && pending.is_empty()
-		&& questions.is_empty();
-	writeln!(log, "{}", serde_json::json!({"lifecycleEnd":{"closed":closed,"work":work,"pendingReceipts":pending,"unansweredQuestions":questions.len()}})).unwrap();
+		&& unanswered_questions == 0;
+	writeln!(log, "{}", serde_json::json!({"lifecycleEnd":{"closed":closed,"work":work,"pendingReceipts":pending,"unansweredQuestions":unanswered_questions,"questionCountsByWork":question_counts}})).unwrap();
 	for work in work {
 		let events = agent.store.read_agent_work_events(work.id.clone(), 1_000).await.unwrap();
 		writeln!(log, "{}", serde_json::json!({"workEvents":{"id":work.id,"events":events}}))
