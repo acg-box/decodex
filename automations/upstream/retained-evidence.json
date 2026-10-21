@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "66d0de9983e82b266e89ee29523324c9d08a5472",
+  "source_baseline": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
@@ -19,194 +19,399 @@
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
-    "limits": "Thirty-seven selected Decodex regressions passed. Thirty-five run the exact candidate CLI and packaged helpers; two native_search tests are local projections. Six separate Python probes and cache repair also passed.",
+    "limits": "39 unique Rust selections passed: 37 execute the actual signed CLI with packaged helpers; 2 are local native-search projections. Ten separate Python probes and one exact-artifact cache-repair regression passed.",
     "tests": [
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_mcp_capabilities_survive_tool_discovery_failure",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure"
+        },
+        "passed": true
       },
       {
         "test": "installed_named_permission_selection_during_active_turn_survives_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart"
+        },
+        "passed": true
       },
       {
         "test": "installed_permission_selection_publishes_and_survives_native_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart"
+        },
+        "passed": true
       },
       {
         "test": "native_child_mcp_input_preserves_policy_and_exact_request",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_child_inherits_updated_step_model",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_spawn_description_follows_updated_step_model",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_preserves_prompt_before_compaction_error_and_after_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_qualified_defaults_preserve_multi_agent_selection",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection"
+        },
+        "passed": true
       },
       {
         "test": "installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_usage_restores_agent_baseline_after_cold_resume",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_model_access_metadata_refreshes_after_cold_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_model_access_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_guardian_preserves_large_action",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_context_preferences_share_config_and_preserve_thresholds",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs"
+        "source": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_archive_roundtrip_refreshes_without_restarting_either_process",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_continuation_uses_live_details_and_rejects_restart_authority",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_misalignment_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority"
+        },
+        "passed": true
       },
       {
         "test": "installed_hook_trust_enablement_and_modified_content_are_independent",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_daybreak_preference_is_staged_without_selecting_access",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_goal_reads_preserve_native_state_after_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart"
+        },
+        "passed": true
       },
       {
         "test": "installed_active_goal_preserves_native_budget_and_elapsed_accounting",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_read_state_preserves_new_results_and_cold_marks",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks"
+        },
+        "passed": true
       },
       {
         "test": "native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources"
+        },
+        "passed": true
       },
       {
         "test": "native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/task_history.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_discards_partial_compaction_output_after_restart",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_realtime_history_survives_agent_and_cold_bridge",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_voice_policy_read_does_not_use_user_feature_flags",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_voice_settings_start_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags"
+        },
+        "passed": true
       },
       {
         "test": "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+        },
+        "passed": true
       },
       {
         "test": "native_child_completion_wakes_idle_root_once",
         "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs"
+        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_skills_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_structured_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_recap_uses_native_history_and_invalidates_after_new_input",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_service_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_native_patch_pages_survive_cold_restart_without_replay",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
-        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs"
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_recap_public_socket_preserves_parent_and_exact_request_identity",
         "source": "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-        "preparation_entrypoint": "crates/decodex-runtime/tests/native_qualification/sample_service.py"
+        "preparation_entrypoint": "crates/decodex-runtime/tests/native_qualification/sample_service.py",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
+        },
+        "passed": true
       },
       {
         "package": "decodex-runtime",
         "test": "installed_native_startup_configuration_preserves_auth_config_and_locked_history",
         "source": "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
-        "preparation_entrypoint": "crates/decodex-runtime/tests/native_qualification/startup_config.py"
+        "preparation_entrypoint": "crates/decodex-runtime/tests/native_qualification/startup_config.py",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history"
+        },
+        "passed": true
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_native_flex_survives_settings_and_cold_resume",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_flex_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::flex::installed_native_flex_survives_settings_and_cold_resume"
+        },
+        "passed": true
+      },
+      {
+        "package": "decodex-runtime",
+        "test": "installed_native_configured_flex_survives_cold_resume",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_flex_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::flex::installed_native_configured_flex_survives_cold_resume"
+        },
+        "passed": true
       }
     ],
     "command": [
@@ -224,7 +429,7 @@
       "--test-threads",
       "2",
       "-E",
-      "test(=account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs) or test(=account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) or test(=account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure) or test(=account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart) or test(=account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart) or test(=agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model) or test(=account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint) or test(=account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(=account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection) or test(=account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) or test(=account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume) or test(=account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart) or test(=account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action) or test(=account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds) or test(=account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process) or test(=account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority) or test(=account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent) or test(=account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access) or test(=account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart) or test(=account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting) or test(=account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks) or test(=agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) or test(=agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) or test(=account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart) or test(=account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge) or test(=account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags) or test(=account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(=agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once)",
+      "test(=account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs) or test(=account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade) or test(=account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure) or test(=account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart) or test(=account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart) or test(=agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model) or test(=account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model) or test(=account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint) or test(=account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(=account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection) or test(=account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay) or test(=account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume) or test(=account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart) or test(=account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action) or test(=account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds) or test(=account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process) or test(=account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority) or test(=account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent) or test(=account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access) or test(=account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart) or test(=account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting) or test(=account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks) or test(=agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources) or test(=agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors) or test(=account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart) or test(=account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge) or test(=account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags) or test(=account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(=agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once) or test(installed_native_flex_survives_settings_and_cold_resume) or test(installed_native_configured_flex_survives_cold_resume)",
       "--retries",
       "0",
       "--status-level",
@@ -329,21 +534,25 @@
         "<exact-qualified-package>"
       ]
     ],
-    "evidence": "automations/upstream/qualification.json#retained_consumers"
+    "evidence": "automations/upstream/qualification.json#retained_consumers",
+    "required_environment": {
+      "DECODEX_TEST_CODEX_BINARY": "Exact qualified CLI",
+      "DECODEX_NATIVE_BINARY": "Same exact qualified CLI for agent tests",
+      "DECODEX_TEST_ACCOUNT_HOME": "System temporary fixture home"
+    }
   },
   "qualification": {
-    "status": "qualified_for_retained_decodex_consumers",
+    "status": "qualified_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "ca670d8f6341fe14b911bd3053a3357a5e34946eecde5609a7852082e2b62136",
-    "schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+    "source_archive_sha256": "e2ae2c374ffa178c6bf99eed855727393eb9e4ed80605dc6b37b7c9b6e00bfa9",
+    "schema_sha256": "7a10e34d9d40fb25192e491f5a3db46140dab706ae741f7b65d28995627c0781",
     "limits": [
-      "Source review, source tests, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
-      "The older exact 153-test manifest remains an unrecovered historical evidence limit. Existing certified ranges are not rewritten; no manual historical review is duplicated.",
-      "The broad retained-consumer qualification uses synthetic providers and account fixtures. The bounded live-provider question-routing evaluation is recorded separately in retained_native_coordination.parent_questions.live_evaluation. Windows MDM, Linux sandbox/NFS, remote-Windows or remote executors, physical audio and installed-app acceptance remain unmeasured.",
-      "Production V8 guards remain. No standalone optimized d8 security regression, throughput, memory, latency or cost benchmark.",
-      "Inherited hickory-proto and quick-xml advisories remain. The webpki-root-certs lock-level advisory remains but has no selected macOS codex-cli reverse dependency. Two root/TLS advisories were removed; no new advisory was introduced.",
-      "Optional runtime-agent identities, frozen cloud skills, Guardian Decisions comparison, TUI controls are not adopted.",
-      "Model-required apply_patch can remain registered in an isolated recap; this qualification verifies native environment denial, not removal from the model catalog."
+      "Source review, source tests, exact-artifact qualification, Git delivery and installed-app acceptance remain separate.",
+      "No live account/provider, physical audio, Windows MDM, Linux/NFS, remote executor or installed-app acceptance. WebSocket mailbox drain permutations are exact-source tests; candidate native regressions cover the existing private-stdio coordination boundary.",
+      "Four inherited hickory-proto/quick-xml advisories and thirteen warning identities remain. The candidate removes webpki-root-certs RUSTSEC-2026-0383 and introduces no audit finding at the same database.",
+      "Earlier certified ranges are preserved. The older exact 153-test manifest remains unknown; no historical coverage is inferred or duplicated.",
+      "No latency, throughput, memory or cost benchmark. Native optional feedback export and application storage controls are not adopted.",
+      "Model-required apply_patch can remain registered in isolated recap; the retained contract verifies environment denial and parent preservation, not absence from the model catalog."
     ]
   },
   "retained_artifact_probes": {
@@ -382,6 +591,18 @@
         "test": "sample_cancel.py",
         "behavior": "Four exact-artifact cases: legacy/paginated request cancellation and completion-before-cancel, matching ownership, repeat/foreign no-op, child cleanup, parent preservation and no replay.",
         "qualification": "automations/upstream/qualification.json#approved_sampling_cancellation"
+      },
+      {
+        "test": "incomplete_response.py",
+        "behavior": "Incomplete response records retain usage and completed assistant items without treating interruption as a successful final answer or replaying inference."
+      },
+      {
+        "test": "thread_settings.py",
+        "behavior": "Cold legacy/paginated resume preserves explicitly selected tier and reasoning summary after global defaults change; original prior CLI fails and candidate passes."
+      },
+      {
+        "test": "log_storage.py",
+        "behavior": "Explicit diagnostic directory and environment-selected state storage remain separate; defaults stay compatible and unavailable diagnostics do not block login status. Original prior CLI fails configured routing and candidate passes."
       }
     ],
     "command": [
@@ -389,7 +610,10 @@
       "crates/decodex-runtime/tests/native_qualification/<fixture>"
     ],
     "limits": "Loopback synthetic providers/account fixtures and isolated config/read. System-temporary homes and owned child/server cleanup. Immediate EOF is an error; a closed child cannot be counted as an unanswered deadline. No live account/provider or installed-app acceptance.",
-    "before_after_evidence": "automations/upstream/qualification.json#artifact_probes.async_compaction_before_after"
+    "before_after_evidence": [
+      "automations/upstream/qualification.json#artifact_probes.thread_settings_before_after",
+      "automations/upstream/qualification.json#artifact_probes.log_storage_before_after"
+    ]
   },
   "source_review_evidence": "automations/upstream/current-review.json",
   "optional_decisions": [
@@ -473,6 +697,26 @@
       "decision": "User explicitly selected only native Plus, Pro, ProLite, ProMax and Team.",
       "qualification": "retained_account_scope",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2473"
+    },
+    {
+      "id": "native-feedback-local-export",
+      "upstream_commit": "a3b685331fc700bec554b2fe2a929a65f4fe1548",
+      "status": "awaiting_user_decision",
+      "value": "Save a bounded local diagnostic ZIP for an explicit support handoff without network upload.",
+      "maintenance_cost": "Low to medium: destination picker, disclosure/attachment controls, no-clobber/error handling and support guidance.",
+      "recommendation": "Defer the new control until the user requests local support export.",
+      "evidence": "codex-rs/app-server/src/request_processors/feedback_processor.rs#feedback_save; codex-rs/feedback/src/archive.rs",
+      "qualification_limit": "Native implementation/source tests read and tested; no Decodex export UI or real-user diagnostic bundle is created."
+    },
+    {
+      "id": "managed-application-storage-defaults",
+      "upstream_commit": "57232f111c50e59d748d010048c9e10832ed79d7",
+      "status": "awaiting_user_decision",
+      "value": "Let administrators choose default project parents and projectless workspace roots.",
+      "maintenance_cost": "Medium: coordinate managed precedence, folder selection and existing workspace ownership without moving data or changing permissions.",
+      "recommendation": "Defer until a managed deployment requires these defaults.",
+      "evidence": "codex-rs/config/src/application_storage_requirements.rs; codex-rs/app-server/src/request_processors/config_processor.rs#map_requirements_to_api",
+      "qualification_limit": "Native config/source tests passed; Decodex does not consume application.storage or migrate directories."
     }
   ],
   "retained_presentation": {
@@ -523,25 +767,26 @@
     "contract": "Reject damaged CLI, schema and both packaged helpers; repair from the verified local archive and preserve the previous selection and unrelated older cache."
   },
   "source_review_summary": {
-    "range_start_exclusive": "c953dacb42d2773d0ca9cc25a01129bba2ca36a8",
-    "range_end_inclusive": "66d0de9983e82b266e89ee29523324c9d08a5472",
-    "reviewed_count": 55,
-    "screened_count": 55,
+    "range_start_exclusive": "66d0de9983e82b266e89ee29523324c9d08a5472",
+    "range_end_inclusive": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
+    "reviewed_count": 43,
+    "screened_count": 43,
     "classification_counts": {
-      "not applicable": 22,
-      "native-owned": 25,
-      "necessary repair": 6,
-      "optional decision": 1,
-      "already covered": 1
+      "native-owned": 31,
+      "not applicable": 6,
+      "already covered": 2,
+      "necessary repair": 2,
+      "optional decision": 2
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "selected_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
-    "runtime_disposition": "Qualified fixed development artifact. Explicit sampling cancellation is separately user-approved and qualified; public delivery references do not claim installed-app acceptance.",
-    "qualified_source_limits": "65 retained source requirements compared against current main receipts: unchanged source or reviewed equivalent changes plus exact native regressions. Earlier certified ranges and unknown historical 153-test manifest are unchanged.",
-    "tests_read_unique_function_count": 296,
-    "tests_read_source_revision_body_count": 307,
-    "source_tests_executed_count": 413,
-    "source_javascript_tests_executed_count": 4
+    "selected_runtime_source": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
+    "runtime_disposition": "Qualified fixed development artifact; Git delivery is recorded separately. New feedback/storage product controls are not implemented.",
+    "qualified_source_limits": "65 retained source contracts compared with current main evidence: 49 byte-identical and 16 changed with read source plus actual candidate regressions. Earlier certified ranges and unknown historical 153-test manifest remain unchanged.",
+    "tests_read_unique_function_count": 157,
+    "tests_read_source_revision_body_count": 171,
+    "supplemental_tests_read": 2,
+    "source_tests_executed_count": 185,
+    "source_javascript_tests_executed_count": 0
   },
   "retained_native_coordination": {
     "idle_root_agent_message_wake": {
@@ -563,7 +808,7 @@
     },
     "separate_answers": {
       "upstream_commit": "8f8e7a6e095d36b9375b5202e05fc9d1bdb95584",
-      "qualified_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
+      "qualified_runtime_source": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
       "contract": "An explicit root-only question sends one inherited native thread/sample request. Native owns tool suppression, the private child, deadline and cleanup. The parent transcript, model settings and ordinary composer draft stay unchanged. A lost acknowledgement only triggers readback; generation is never replayed. Close stops display polling and leaves native inference running. Results expire after account, revision, process, thread, history, settings or voice-source changes. The explicit Cancel answer action signals only the displayed generation on its original native connection. Cancelling retains ownership until the original reply confirms cleanup; completed answers survive a cancellation race. Parent agents do not receive a new sampling tool.",
       "source_symbols": [
         "crates/decodex-codex/src/app_server_client/sample.rs#AppServerClient::sample_thread,#is_thread_sample",
@@ -593,12 +838,7 @@
           "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
           "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay"
         ],
-        "historical_upstream_evidence": "https://github.com/acg-box/decodex/blob/96cb7b5c707461c23e0a9dda81d345d8005643a2/automations/upstream/current-review.json",
-        "current_source_review_records": [
-          24,
-          27,
-          36
-        ]
+        "historical_upstream_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/current-review.json"
       },
       "execution": {
         "current_qualification": "automations/upstream/qualification.json#approved_sampling_cancellation",
@@ -667,7 +907,8 @@
         "https://github.com/acg-box/decodex/commit/161cdd2fca1594f85a58cee175b85f9300403391",
         "https://github.com/acg-box/decodex/pull/2471"
       ],
-      "limits": "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor. Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance. Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added. Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins. The current documentation lifecycle status is recorded in documentation_lifecycle; historical run receipts retain the earlier delivery boundary."
+      "limits": "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor. Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance. Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added. Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins. The current documentation lifecycle status is recorded in documentation_lifecycle; historical run receipts retain the earlier delivery boundary.",
+      "current_native_qualification": "automations/upstream/qualification.json#retained_consumers"
     },
     "parent_questions": {
       "status": "qualified_for_bounded_question_routing_and_completion",
@@ -1533,13 +1774,10 @@
       ],
       "qualification": "automations/upstream/qualification.json#retained_consumers",
       "source_review_records": [
-        5,
-        13,
-        31,
-        35,
-        45,
-        53,
-        55
+        21,
+        30,
+        38,
+        43
       ]
     },
     {
@@ -1553,8 +1791,9 @@
         "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
       ],
       "source_review_records": [
-        4,
-        46
+        15,
+        34,
+        37
       ],
       "qualification": "automations/upstream/qualification.json#retained_consumers"
     },
@@ -1571,11 +1810,17 @@
       ],
       "source_review_records": [
         2,
-        11,
-        16,
+        4,
+        6,
+        9,
+        12,
+        13,
+        14,
+        19,
         27,
         32,
-        41
+        34,
+        37
       ],
       "limits": "No live enterprise EMA grant, account revocation service or OIDC path is provisioned.",
       "qualification": "automations/upstream/qualification.json#retained_consumers"
@@ -1593,11 +1838,11 @@
         "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
       ],
       "source_review_records": [
-        27,
-        36,
-        47,
-        54,
-        55
+        18,
+        19,
+        21,
+        30,
+        38
       ],
       "qualification": "automations/upstream/qualification.json#retained_consumers"
     },
@@ -1612,12 +1857,12 @@
         "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action"
       ],
       "source_review_records": [
-        10,
-        12,
-        30,
-        37,
-        44,
-        48
+        1,
+        17,
+        23,
+        24,
+        29,
+        33
       ],
       "qualification": "automations/upstream/qualification.json#retained_consumers"
     },
@@ -1635,9 +1880,9 @@
       ],
       "qualification": "automations/upstream/qualification.json#temporary_structured_boundary",
       "source_review_records": [
-        24,
-        27,
-        36
+        21,
+        30,
+        38
       ]
     },
     {
@@ -1652,13 +1897,46 @@
         "account_service::tests::plan_scope::only_selected_plans_can_be_installed_with_oauth_or_pat",
         "account_service::tests::plan_scope::old_excluded_accounts_remain_readable_but_cannot_supply_work"
       ],
-      "qualification": "retained_account_scope"
+      "qualification": "retained_account_scope",
+      "source_review_records": []
+    },
+    {
+      "id": "persisted-native-thread-settings",
+      "contract": "Native thread settings remain authoritative across cold resume. Later global preferences do not replace selected tier or reasoning summary; explicit overrides retain their native meaning.",
+      "source_symbols": [
+        "crates/decodex-codex/src/conversation.rs#ConversationThreadResumeRequest::inherit_native_settings",
+        "crates/decodex-codex/src/app_server_client/thread_model_selection.rs#queue_thread_model_selection",
+        "crates/decodex-codex/src/app_server_client/model_recovery.rs#queue_thread_model_recovery"
+      ],
+      "tests": [
+        "crates/decodex-runtime/tests/native_qualification/thread_settings.py"
+      ],
+      "source_review_records": [
+        30
+      ],
+      "qualification": "automations/upstream/qualification.json#artifact_probes.thread_settings_before_after"
+    },
+    {
+      "id": "native-diagnostic-storage",
+      "contract": "Native configured log_dir selects SQLite diagnostic storage without replacing state storage. Default paths stay compatible; unavailable diagnostics must not prevent unauthenticated login status. Managed sqlite_home precedence remains native-owned.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/process.rs#AppServerCommand",
+        "codex-rs/core/src/config/mod.rs#load_config_with_layer_stack",
+        "codex-rs/state/src/sqlite.rs#SqliteConfig"
+      ],
+      "tests": [
+        "crates/decodex-runtime/tests/native_qualification/log_storage.py"
+      ],
+      "source_review_records": [
+        43
+      ],
+      "qualification": "automations/upstream/qualification.json#artifact_probes.log_storage_before_after"
     }
   ],
   "retained_native_diagnostics": {
     "startup_configuration": {
       "upstream_commit": "1277bcfddc69800c5e3538dccf3f26bedbd80290",
-      "qualified_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
+      "qualified_runtime_source": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
       "base_main": "71e770219ba8a381cbdda17aec00d776e309e494",
       "contract": "An explicit local Diagnostics action runs app-server --print-startup-config through the verified pinned component and normal startup switches/client identity. Native resolves local/project/cloud policy without conversation or plugin startup. The existing same-UID local service returns only checked folder, CLI digest, version, allowed login methods, requirements presence or safe configuration location and cloud-policy classification. Shared native sign-in is checked, independently of conversation readiness. Task account overrides are not checked. No raw message, credential, policy body, sign-out command, automatic retry, component acquisition or health promotion is exposed. A changed folder/profile hides the result and copy action. Native may refresh its own auth/policy caches.",
       "source_symbols": [
@@ -1705,10 +1983,7 @@
             "test": "shell::diagnostics::startup_config::tests::startup_diagnostics_open_without_running_copy_the_safe_result_and_hide_an_old_source"
           }
         ],
-        "historical_upstream_evidence": "https://github.com/acg-box/decodex/blob/96cb7b5c707461c23e0a9dda81d345d8005643a2/automations/upstream/current-review.json",
-        "current_source_review_records": [
-          46
-        ]
+        "historical_upstream_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/current-review.json"
       },
       "execution": {
         "current_qualification": "automations/upstream/qualification.json#retained_consumers",
@@ -1771,17 +2046,14 @@
         "https://github.com/acg-box/decodex/commit/3562acc80e75789c96b15011c51cc60dc75a3f0a",
         "https://github.com/acg-box/decodex/commit/a5b7a450b599071b97d89c6e8bffd312c327d7e8"
       ],
-      "limits": "Fixed signed private-stdio macOS arm64 development artifact and packaged Code Mode/rg helpers. Synthetic auth/project fixtures, automated GPUI and actual local-service requests. Cloud-error projection has source/unit proof; no new live cloud/provider/real-account, installed-app or performance acceptance. The owned native command has a ten-second deadline after cached component attestation and a 256 KiB decoded-response limit. Anonymous output capture has no whole-process file-size limit, preserving native auth/cache writes. No installation, release, schedule change, source-review advance or installed binary change."
+      "limits": "Fixed signed private-stdio macOS arm64 development artifact and packaged Code Mode/rg helpers. Synthetic auth/project fixtures, automated GPUI and actual local-service requests. Cloud-error projection has source/unit proof; no new live cloud/provider/real-account, installed-app or performance acceptance. The owned native command has a ten-second deadline after cached component attestation and a 256 KiB decoded-response limit. Anonymous output capture has no whole-process file-size limit, preserving native auth/cache writes. No installation, release, schedule change, source-review advance or installed binary change.",
+      "current_native_qualification": "automations/upstream/qualification.json#retained_consumers"
     }
   },
   "current_delivery": {
-    "status": "public_implementation_commits",
-    "code_commits": [
-      "https://github.com/acg-box/decodex/commit/4c5aea9e77d8e62cf76a59118bcfce3c78c0c4ee",
-      "https://github.com/acg-box/decodex/commit/f55de37a625394ac02f852a954df21b2d3568d14"
-    ],
-    "followup_issue": "https://github.com/acg-box/decodex/issues/2476",
-    "scope": "Add an opt-in real-model evaluation of existing child/peer/parent/user question routing. Reuse the exact production native launch defaults and retain scenario results, refused tool calls and qualification limits. Product guidance, runtime selection, native enforcement and the source-review cursor are unchanged."
+    "status": "pending",
+    "code_commit": "cd8f9f4c9ba9b3733eec0276e82bbf60928d93de",
+    "scope": "Qualify the fixed official runtime, preserve resumed settings and native diagnostic storage, and retain exact reusable regression/evidence. No new optional product controls, installation or release."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
