@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4e927df49cf329cf0ea98a629fed46b486f01ae277689800ee4849729920970f",
+  "pageVersion": "sha256:f36aa9b906672b711ad11a1229bac4d34e5c25e574e528637167d03a03fa6268",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -63,10 +63,28 @@
           "version": "repo-file-v1:sha256:0cee214b3a0c949a43d6823350ebde61a2d8d60335df4cc06ad5cd60c5513e71"
         }
       ]
+    },
+    {
+      "id": "claim_8c580886dcb44687a794ca95d8536963",
+      "statement": "Decodex cold resume can inherit saved native thread settings without creation overrides, and its model-only update omits tier, provider and collaboration settings. The reusable thread-settings probe qualifies saved tier and summary across changed global defaults in legacy and paginated history against the selected artifact, without installed-app acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs#L10-L70",
+          "version": "repo-lines-v1:sha256:44ca4c877153e2439dd01df294d3f62878d75ce2fea905bc1d72e8e2cc57f6f7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NjdkMWU4M2ZjNTA2ZDY2YjVjYjFkNzFiZDQ3NmU5ZTcyMTgxNzkzYmE0NWQ0MzFmYmY3MDc4Y2ZlMWUxZDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhZGNiODk0YjE0MDUyZTQ2NjY5MTBiZTVmMTlkNmZiYjJkZjQ1MjhlMjE1YTUxY2QzOTIwOTA1NzgyOThiM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3NmRkMDkzN2Q5MTc5NWI3YTg5ZTYxNzc1ZTE1YmI2NTkwZGE0MzgyNDg2ZTA0MGEzMThhMjNkNmIxOGQ0MzQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/conversation.rs#L957-L1080",
+          "version": "repo-lines-v1:sha256:7a36da609f8063526342e776e5875e5e8b9ceb8f2b4341c63a9aac7d66b9fec7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjZTlhMDk4NjFkNmE4N2FjY2JkZjQ4NGYzZTQ5NmFkNWFjMDQ2ZGU5NWIyNmE1M2NkOTllNDkzYzI1NDIyMmU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ZDE4NGExNmVhYWNkY2VhNjEyYjRlMWI4YWM0YmEzNDVjNWVhNjE1ZGEwZjQyMGE3NzU4MGI3OTNlOTQwZDE4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjBhNmE5NTdiNzhmN2YwODgwMTMwOThkNzU3Mzg3ZWJhNjMyZjJmZGZmMTQxN2IzODk3YWJiNWVjZjRiYzU5In0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
+          "version": "repo-file-v1:sha256:8f05cbba8cf955a99d87e237b23e7cb35f19bb3503b3fe7819b4a21e763f2abf"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-21T21:02:44.368Z"
   }
 }

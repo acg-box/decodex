@@ -52,6 +52,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
+  - id: openwiki-source-c772fc057f500f765d09a3c7
+    resource: repo://crates/decodex-runtime/tests/native_qualification/log_storage.py
+  - id: openwiki-source-b30d382781a313611ecd221f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
@@ -60,10 +64,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T15:14:53.276Z
+    at: 2026-10-21T21:02:44.368Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -117,7 +121,7 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 An original upstream source fixture can require private startup arguments that the production CLI does not expose. Qualify that fixture through the original standalone launcher and registered test harness. Record its identity and required build options separately. Passing that source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
-The current conditional remote-credential snapshot cases ran and failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
+Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
 
 ## Terminal errors and external context
 
@@ -142,6 +146,21 @@ DECODEX_TEST_CODEX_BINARY="$QUALIFIED_CODEX_BINARY" cargo +stable nextest run \
 ```
 
 The fixture is ignored by default. It checks the named CLI with synthetic input and a system-temporary home. The separate compaction fixtures check successful checkpoint continuation and preservation of the incoming prompt after a failure. These checks do not establish all provider paths, installed-app acceptance or a release. Keep dated execution and artifact receipts in the native automation directory.
+
+## Saved settings and diagnostic storage
+
+The reusable `thread_settings.py` probe selects a service tier and reasoning summary through native `thread/settings/update`. It completes one turn, closes the native process, changes the global defaults and resumes the same task without overrides. It checks the resumed tier and the next provider request in both legacy and paginated history. Each case permits exactly two inference requests, so recovery cannot hide the result by replaying a turn.
+
+The `log_storage.py` probe checks the default diagnostic database, an explicit `log_dir`, and an environment-selected state directory with a separate diagnostic directory. A fourth case verifies that an unavailable diagnostic directory does not prevent unauthenticated `login status`. These cases use system-temporary homes. Managed storage precedence is covered by the recorded source tests; this probe does not qualify NFS or migrate existing databases.
+
+Set `QUALIFIED_CODEX_BINARY`, `QUALIFIED_CODEX_SOURCE_COMMIT` and `DECODEX_QUALIFICATION_OUTPUT` as described in [Commands and validation](../operations/commands-and-validation.md#qualify-retained-native-behavior), then run:
+
+```sh
+python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py
+python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
+```
+
+The [qualification record](../../automations/upstream/qualification.json) binds each probe to the exact CLI and packaged helpers. It records the prior-artifact failure and candidate success separately. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
 
 ## Context defaults and selected retention
 

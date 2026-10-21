@@ -54,10 +54,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
+generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T15:14:53.276Z
+    at: 2026-10-21T21:02:44.368Z
 ---
 
 
@@ -142,6 +142,8 @@ python3 crates/decodex-runtime/tests/native_qualification/usage.py
 python3 crates/decodex-runtime/tests/native_qualification/terminal_controls.py
 python3 crates/decodex-runtime/tests/native_qualification/apps_recovery.py
 python3 crates/decodex-runtime/tests/native_qualification/proxy_headers.py
+python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py
+python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
