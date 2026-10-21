@@ -4422,7 +4422,7 @@
           "entrypoint": "integration:all"
         }
       ],
-      "decodex_consumer": "AppServerClient::sample_thread keeps the existing exact three-parameter request and timeout. A new Ask separately Cancel control would be a product capability; record it for a user decision and leave existing behavior intact.",
+      "decodex_consumer": "AppServerClient::sample_thread_cancellable binds the actual written request identity on the original connection; Samples::cancel_request and the manual Ask separately Cancel answer control signal that request. Native owns child cleanup; the original reply determines completion. Parent collaboration receives no new sampling tool.",
       "tests_executed": [
         {
           "package": "codex-app-server",
@@ -4451,9 +4451,11 @@
           ]
         }
       ],
-      "runtime_disposition": "Retained native sampling is qualified; adding a Cancel control still requires a user decision.",
+      "runtime_disposition": "The optional control was subsequently approved by the user and qualified against the unchanged selected artifact. Source-review classification and contiguous cursor remain unchanged; delivery is tracked separately.",
       "validation_limits": "Tests read and tests executed are separate. Only the selected macOS arm64 retained boundary is eligible; no live provider, real account, Windows/Linux/remote executor or installed-app acceptance.",
-      "upstream_test_executed_count": 3
+      "upstream_test_executed_count": 3,
+      "adoption_qualification": "automations/upstream/qualification.json#approved_sampling_cancellation",
+      "adoption_delivery_reference": "https://github.com/acg-box/decodex/pull/2471"
     },
     {
       "index": 25,
@@ -13705,7 +13707,7 @@
     "url": "https://codeload.github.com/openai/codex/tar.gz/66d0de9983e82b266e89ee29523324c9d08a5472",
     "sha256": "ca670d8f6341fe14b911bd3053a3357a5e34946eecde5609a7852082e2b62136"
   },
-  "delivery_status": "public_pull_request",
+  "delivery_status": "merged",
   "qualification_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
   "qualification_source_binding": {
     "consumer_baseline": "96cb7b5c707461c23e0a9dda81d345d8005643a2",
@@ -13713,5 +13715,6 @@
     "runtime_lock_sha256": "a4c2634d185f39899f8ebcdede0a0b3888edec0f7c7d959212d937b3ba45e460",
     "limits": "The code/fixture commit and exact working lock content are bound separately; portable evidence is committed after qualification."
   },
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2470"
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2470",
+  "delivery_merge_commit": "dea88679dbc66e322ec48f9e895eef5d5a7b9c5f"
 }

@@ -2,7 +2,7 @@
 use gpui::{Focusable as _, Render, TestAppContext, Window};
 
 use super::*;
-use decodex_protocol::AgentSampleAnswer;
+use decodex_protocol::{AgentActionDto, AgentSampleAnswer};
 
 struct SamplePanel(Entity<AgentSurface>);
 impl Render for SamplePanel {
@@ -185,7 +185,7 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			profile,
 			EntityId::new("root").unwrap(),
 			WireText::new("parent").unwrap(),
-			Some(WireText::new("Another approach?").unwrap()),
+			request::Operation::Generate(WireText::new("Another approach?").unwrap()),
 			closure,
 			updates,
 		)
@@ -198,6 +198,131 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			"read back source changes after displaying the answer"
 		);
 		assert!(status.answer.is_none());
+	});
+	server.join().unwrap();
+}
+
+#[gpui::test]
+fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
+	cx: &mut TestAppContext,
+) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s.selected.clone().unwrap();
+			s.sample.work = Some(work.clone());
+			s.sample.thread = Some("parent".into());
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft.", cx));
+			s.sample.state = Some(AgentSampleStatus {
+				work_id: EntityId::new(work).unwrap(),
+				thread_id: Some(WireText::new("parent").unwrap()),
+				request_id: Some(WireText::new("generation").unwrap()),
+				prompt: Some(WireText::new("Question").unwrap()),
+				phase: AgentSamplePhase::Pending,
+				answer: None,
+			});
+		});
+		SamplePanel(surface)
+	});
+	let surface = view.read_with(visual, |view, _| view.0.clone());
+	for phase in
+		[AgentSamplePhase::Pending, AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled]
+	{
+		surface.update(visual, |s, _| s.sample.state.as_mut().unwrap().phase = phase);
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
+			window.draw(cx).clear(cx);
+		});
+		assert_eq!(
+			visual.debug_bounds("sample-cancel").is_some(),
+			phase == AgentSamplePhase::Pending
+		);
+		assert!(visual.debug_bounds("sample-close").is_some());
+		assert_eq!(
+			surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
+			"Keep this draft."
+		);
+	}
+	surface.update(visual, |s, _| s.reset_sample());
+	assert_eq!(
+		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
+		"Keep this draft."
+	);
+}
+
+#[test]
+fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay() {
+	use crate::shell::agent_surface::wire_test_support;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
+		QueryResultPayload, ServerId, ServerMessage,
+	};
+	use futures_util::{SinkExt as _, StreamExt as _};
+	use tokio_tungstenite::tungstenite::Message;
+	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+			panic!("command frame")
+		};
+		let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+		else {
+			panic!("cancel command")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("agent command") };
+		let AgentActionDto::CancelSample { work_id, request_id } = *action else {
+			panic!("cancellation only")
+		};
+		assert_eq!(request_id.as_str(), "original-generation");
+		socket.close(None).await.unwrap();
+		for phase in [AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled] {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+			else {
+				panic!("never repeat a sample command")
+			};
+			assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
+			let state = AgentSampleStatus {
+				work_id: work_id.clone(),
+				thread_id: Some(WireText::new("parent").unwrap()),
+				request_id: Some(request_id.clone()),
+				prompt: Some(WireText::new("Question").unwrap()),
+				phase,
+				answer: None,
+			};
+			let result = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AgentSample(state),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+				.await
+				.unwrap();
+			socket.close(None).await.unwrap();
+		}
+	});
+	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	runtime.block_on(async {
+		let (_closed, closure) = watch::channel(false);
+		let (updates, results) = watch::channel(None);
+		request::run(
+			profile,
+			EntityId::new("root").unwrap(),
+			WireText::new("parent").unwrap(),
+			request::Operation::Cancel(WireText::new("original-generation").unwrap()),
+			closure,
+			updates,
+		)
+		.await;
+		assert_eq!(
+			results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase,
+			AgentSamplePhase::Cancelled
+		);
 	});
 	server.join().unwrap();
 }

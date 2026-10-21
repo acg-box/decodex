@@ -51,6 +51,10 @@ pub enum AgentSamplePhase {
 	Idle,
 	/// Native sampling is in progress; closing the panel does not cancel inference.
 	Pending,
+	/// Cancellation was requested; native child cleanup is not yet confirmed.
+	Cancelling,
+	/// Native confirmed that the exact request was cancelled and cleaned up.
+	Cancelled,
 	/// A current response with assistant text is available.
 	Ready,
 	/// Native returned no text, including an attempted tool call that was not executed.

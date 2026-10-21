@@ -25,7 +25,9 @@ pub(super) struct Panel {
 impl Panel {
 	fn busy(&self) -> bool {
 		self.task.is_some()
-			&& self.state.as_ref().is_none_or(|s| s.phase == AgentSamplePhase::Pending)
+			&& self.state.as_ref().is_none_or(|s| {
+				matches!(s.phase, AgentSamplePhase::Pending | AgentSamplePhase::Cancelling)
+			})
 	}
 }
 
@@ -94,13 +96,7 @@ impl AgentSurface {
 		if self.sample.busy() || !self.command_connection_ready() {
 			return;
 		}
-		let Some(profile) = self.profile.clone() else { return };
-		let (Some(work), Some(thread)) = (&self.sample.work, &self.sample.thread) else { return };
-		if self.selected.as_ref() != Some(work) {
-			return;
-		}
-		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
-		let prompt = if generate {
+		let operation = if generate {
 			let text = self
 				.sample
 				.input
@@ -113,14 +109,41 @@ impl AgentSurface {
 				cx.notify();
 				return;
 			}
-			Some(WireText::new(text).expect("question is within the native prompt bound"))
+			request::Operation::Generate(WireText::new(text).expect("bounded separate question"))
 		} else {
-			None
+			request::Operation::Read
+		};
+		self.run_sample_request(operation, cx);
+	}
+
+	fn cancel_sample(&mut self, cx: &mut Context<Self>) {
+		let Some(state) =
+			self.sample.state.as_ref().filter(|s| s.phase == AgentSamplePhase::Pending)
+		else {
+			return;
+		};
+		let Some(id) = state.request_id.clone() else { return };
+		self.run_sample_request(request::Operation::Cancel(id), cx);
+	}
+
+	fn run_sample_request(&mut self, operation: request::Operation, cx: &mut Context<Self>) {
+		if !self.command_connection_ready() {
+			return;
+		}
+		let Some(profile) = self.profile.clone() else { return };
+		let (Some(work), Some(thread)) = (&self.sample.work, &self.sample.thread) else { return };
+		if self.selected.as_ref() != Some(work) {
+			return;
+		}
+		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
+		let feedback = match &operation {
+			request::Operation::Read => "Reading sample status…",
+			request::Operation::Generate(_) => "Asking separately…",
+			request::Operation::Cancel(_) => "Requesting cancellation…",
 		};
 		self.sample.epoch = self.sample.epoch.wrapping_add(1);
 		self.sample.state = None;
-		self.sample.feedback =
-			if generate { "Asking separately…" } else { "Reading sample status…" }.into();
+		self.sample.feedback = feedback.into();
 		let epoch = self.sample.epoch;
 		let (closed, closure) = watch::channel(false);
 		let (updates, mut results) = watch::channel(None);
@@ -131,7 +154,8 @@ impl AgentSurface {
 				if let Ok(runtime) =
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				{
-					runtime.block_on(request::run(profile, work, thread, prompt, closure, updates));
+					runtime
+						.block_on(request::run(profile, work, thread, operation, closure, updates));
 				}
 			})
 			.is_err()
@@ -232,6 +256,21 @@ impl AgentSurface {
 						|s, cx| s.request_sample(false, cx),
 					));
 			}
+		}
+		if self.command_connection_ready()
+			&& self
+				.sample
+				.state
+				.as_ref()
+				.is_some_and(|s| s.phase == AgentSamplePhase::Pending && s.request_id.is_some())
+		{
+			panel = panel.child(mcp_forms::mcp_button(
+				"sample-cancel".into(),
+				"Cancel answer".into(),
+				false,
+				cx,
+				|s, cx| s.cancel_sample(cx),
+			));
 		}
 		panel
 			.child(mcp_forms::mcp_button(

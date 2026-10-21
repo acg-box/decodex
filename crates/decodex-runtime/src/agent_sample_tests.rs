@@ -33,14 +33,14 @@ async fn samples_hide_old_owners_and_do_not_allow_duplicate_pending_generation()
 	let samples = Samples::default();
 	samples.start(make(), "first", "Question", Default::default()).unwrap();
 	assert!(samples.start(make(), "duplicate", "Question", Default::default()).is_err());
-	samples.finish(&make(), "other", Ok(answer()));
+	samples.finish(&make(), "other", Ok(Some(answer())));
 	assert_eq!(
 		samples
 			.status(EntityId::new("work").unwrap(), Some(&make()), Some(&Default::default()))
 			.phase,
 		AgentSamplePhase::Pending
 	);
-	samples.finish(&make(), "first", Ok(answer()));
+	samples.finish(&make(), "first", Ok(Some(answer())));
 	let current =
 		samples.status(EntityId::new("work").unwrap(), Some(&make()), Some(&Default::default()));
 	assert_eq!(current.phase, AgentSamplePhase::Ready);
@@ -82,7 +82,7 @@ async fn samples_hide_old_owners_and_do_not_allow_duplicate_pending_generation()
 	);
 
 	samples.start(make(), "next", "New question", Default::default()).unwrap();
-	samples.finish(&make(), "first", Ok(answer()));
+	samples.finish(&make(), "first", Ok(Some(answer())));
 	assert_eq!(
 		samples
 			.status(EntityId::new("work").unwrap(), Some(&make()), Some(&Default::default()))
@@ -96,4 +96,49 @@ async fn samples_hide_old_owners_and_do_not_allow_duplicate_pending_generation()
 		samples.status(EntityId::new("work").unwrap(), Some(&make()), Some(&Default::default()));
 	assert_eq!(status.phase, AgentSamplePhase::Obsolete);
 	assert!(status.answer.is_none());
+}
+
+#[tokio::test]
+async fn sample_cancellation_keeps_exact_request_ownership_until_cleanup() {
+	let (local, _remote) = tokio::io::duplex(4096);
+	let (read, write) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(read, write);
+	let source = Source {
+		client,
+		key: SourceKey {
+			generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			account: AccountId::new("20000000-0000-4000-8000-000000000002").unwrap(),
+			revision: 1,
+			history_revision: 0,
+			work: "work".into(),
+			thread: "parent".into(),
+		},
+	};
+	let make = || Source { client: source.client.clone(), key: source.key.clone() };
+	let samples = Samples::default();
+	let cancellation = samples.start(make(), "first", "Question", Default::default()).unwrap();
+	assert!(samples.cancel_request("work", "foreign").is_err());
+	assert!(samples.cancel_request("foreign", "first").is_err());
+	samples.cancel_request("work", "first").unwrap();
+	cancellation.await.unwrap();
+	samples.cancel_request("work", "first").unwrap();
+	assert!(samples.start(make(), "second", "Question", Default::default()).is_err());
+	let status =
+		samples.status(EntityId::new("work").unwrap(), Some(&source), Some(&Default::default()));
+	assert_eq!(status.phase, AgentSamplePhase::Cancelling);
+	assert!(status.is_valid());
+	samples.finish(&source, "first", Ok(None));
+	let status =
+		samples.status(EntityId::new("work").unwrap(), Some(&source), Some(&Default::default()));
+	assert_eq!(status.phase, AgentSamplePhase::Cancelled);
+	assert!(status.is_valid());
+	let _next = samples.start(make(), "second", "Question", Default::default()).unwrap();
+	assert!(samples.cancel_request("work", "first").is_err());
+	samples.finish(&source, "first", Ok(None));
+	samples.finish(&source, "second", Ok(Some(answer())));
+	samples.cancel_request("work", "second").unwrap();
+	let status =
+		samples.status(EntityId::new("work").unwrap(), Some(&source), Some(&Default::default()));
+	assert_eq!(status.phase, AgentSamplePhase::Ready, "a late cancel must preserve the answer");
+	assert!(status.answer.is_some());
 }
