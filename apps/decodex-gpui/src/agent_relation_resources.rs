@@ -1,6 +1,8 @@
 //! Native associations establish shared references, not authorship or verification.
 use super::{AgentSurface, BTreeSet, Edge, Graph, Kind, Node, Row};
 
+pub(super) const WIDTH: f32 = 184.;
+
 impl AgentSurface {
 	pub(super) fn add_relation_resources(
 		&self,
@@ -36,7 +38,10 @@ impl AgentSurface {
 						status: resource.attachment_type.clone(),
 						color: Kind::Resource.color(),
 						row: None,
-						size: (224., 48.),
+						activity: Default::default(),
+						size: (WIDTH, 48.),
+						port_offset: 24.,
+						base_height: 48.,
 						x: 0.,
 						y: 0.,
 					});

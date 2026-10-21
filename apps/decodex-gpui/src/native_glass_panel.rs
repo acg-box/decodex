@@ -9,6 +9,7 @@ use objc2::{
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
 use objc2_app_kit::{NSView, NSWindow, NSWindowCollectionBehavior};
+use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -25,6 +26,84 @@ pub(crate) fn observed_style(window: &Window) -> Option<isize> {
 		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
 		glass.then(|| objc2::msg_send![&*view, style])
 	})
+}
+
+/// Inspect this window's render backing only while the user enables frame diagnostics.
+pub(crate) fn observed_rendering(window: &Window) -> Option<serde_json::Value> {
+	let gpu = view(window)?;
+	let native = gpu.window()?;
+	let viewport = window.viewport_size();
+	let bounds = gpu.bounds();
+	let backing = gpu.convertRectToBacking(bounds);
+	unsafe {
+		let layer: Option<Retained<AnyObject>> = objc2::msg_send![&*gpu, layer];
+		let layer = layer?;
+		let contents_scale: f64 = objc2::msg_send![&*layer, contentsScale];
+		let rasterization_scale: f64 = objc2::msg_send![&*layer, rasterizationScale];
+		let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
+		let mut ancestry = Vec::new();
+		let mut ancestor = Some(gpu.clone());
+		while let Some(view) = ancestor {
+			let view_layer: Option<Retained<AnyObject>> = objc2::msg_send![&*view, layer];
+			let composition = view_layer.map(|layer| {
+				let frame: NSRect = objc2::msg_send![&*layer, frame];
+				let bounds: NSRect = objc2::msg_send![&*layer, bounds];
+				let affine: CGAffineTransform = objc2::msg_send![&*layer, affineTransform];
+				let opacity: f32 = objc2::msg_send![&*layer, opacity];
+				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
+				let filters: Option<Retained<objc2_foundation::NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
+				serde_json::json!({
+					"class": layer.class().name().to_string_lossy(),
+					"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
+					"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
+					"affine": [affine.a, affine.b, affine.c, affine.d, affine.tx, affine.ty],
+					"opacity": opacity,
+					"rasterized": rasterized,
+					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
+				})
+			});
+			let frame = view.frame();
+			let bounds = view.bounds();
+			ancestry.push(serde_json::json!({
+				"class": view.class().name().to_string_lossy(),
+				"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
+				"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
+				"alpha": view.alphaValue(),
+				"layer": composition,
+			}));
+			ancestor = view.superview();
+		}
+		let siblings = gpu
+			.superview()
+			.map(|parent| {
+				parent
+					.subviews()
+					.iter()
+					.map(|view| view.class().name().to_string_lossy().into_owned())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+		let drawable = AnyClass::get(c"CAMetalLayer").and_then(|class| {
+			let metal: bool = objc2::msg_send![&*layer, isKindOfClass: class];
+			metal.then(|| {
+				let size: NSSize = objc2::msg_send![&*layer, drawableSize];
+				[size.width, size.height]
+			})
+		});
+		Some(serde_json::json!({
+			"gpui_scale": window.scale_factor(),
+			"gpui_viewport": [f32::from(viewport.width), f32::from(viewport.height)],
+			"window_backing_scale": native.backingScaleFactor(),
+			"view_bounds": [bounds.size.width, bounds.size.height],
+			"view_backing_size": [backing.size.width, backing.size.height],
+			"layer_contents_scale": contents_scale,
+			"layer_rasterization_scale": rasterization_scale,
+			"layer_rasterized": rasterized,
+			"metal_drawable_size": drawable,
+			"foreground_ancestry": ancestry,
+			"sibling_paint_order": siblings,
+		}))
+	}
 }
 
 /// Retains the installed glass so style updates cannot mistake it for a window backdrop.

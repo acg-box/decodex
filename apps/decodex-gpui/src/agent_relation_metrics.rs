@@ -1,12 +1,49 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
-use super::{AgentSurface, AnyElement, Context, Node, TEXT_MUTED};
-use gpui::prelude::{
-	FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-	Styled,
-};
+use super::{AgentSurface, AnyElement, Context, Node};
+use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
 
-const TOKENS: u32 = 0xa99aef;
+// Graph labels have bounded magnitudes. Full native counters and time remain in
+// the accessible description; the graph never grows when a counter gains a digit.
+fn compact(mut value: f64) -> String {
+	let units = ["", "K", "M", "B", "T", "P", "E", "Z"];
+	let mut unit = 0;
+	while value >= 999.95 && unit + 1 < units.len() {
+		value /= 1000.;
+		unit += 1;
+	}
+	format!("{value:.1}{}", units[unit])
+}
+
+fn time_label(ms: Option<u64>) -> String {
+	match ms {
+		Some(ms) if ms / 3_600_000 >= 1000 => {
+			let days = ms / 86_400_000;
+			if days < 1000 {
+				format!("{days}d {}h", ms / 3_600_000 % 24)
+			} else {
+				format!("{}y", compact(days as f64 / 365.25))
+			}
+		},
+		_ => crate::ui_work_metrics::time_label(ms),
+	}
+}
+
+fn labels(metrics: Metrics) -> [String; 3] {
+	let tokens = metrics.tokens.map_or_else(
+		|| "—".into(),
+		|value| if value < 1000 { value.to_string() } else { compact(value as f64) },
+	);
+	let rate = metrics.rate().map_or_else(|| "—".into(), |(value, _)| compact(value));
+	[
+		format!("{tokens} tok"),
+		time_label(metrics.time()),
+		format!(
+			"{rate} {}",
+			if metrics.stats.is_some() { metrics.rate_caption() } else { "tok/s" }
+		),
+	]
+}
 
 fn fraction(value: Option<u64>, total: u128) -> Option<f32> {
 	value.filter(|_| total > 0).map(|value| (value as f64 / total as f64).clamp(0., 1.) as f32)
@@ -17,6 +54,107 @@ fn percentage(value: Option<f32>) -> String {
 		Some(value) if value > 0. && value < 0.01 => "<1%".into(),
 		Some(value) => format!("{:.0}%", value * 100.),
 		None => "—".into(),
+	}
+}
+
+#[derive(IntoElement)]
+struct Readout {
+	key: String,
+	metrics: Metrics,
+	share: Option<f32>,
+	layout: super::card::Layout,
+}
+
+impl RenderOnce for Readout {
+	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+		let layout = self.layout.on_display(window.scale_factor());
+		let [tokens, time, rate] = labels(self.metrics);
+		let share = self.share.map(|value| format!("· {} of tokens", percentage(Some(value))));
+		let mut font = window.text_style().font();
+		font.weight = gpui::FontWeight::NORMAL;
+		let measure = |text: &str| {
+			f32::from(
+				window
+					.text_system()
+					.shape_line(
+						text.to_owned().into(),
+						gpui::px(layout.detail_size()),
+						&[gpui::TextRun {
+							len: text.len(),
+							font: font.clone(),
+							..Default::default()
+						}],
+						None,
+					)
+					.width,
+			)
+			.ceil()
+		};
+		let available = layout.width - 2. * layout.spacing(super::card::INSET_X);
+		let gap = layout.spacing(8.);
+		let values = [measure(&tokens), measure(&time), measure(&rate)];
+		// Keep real values until their shaped glyphs no longer fit. Allocation is
+		// supplementary: it yields before duration or throughput at smaller sizes.
+		let show_time = values[0] + gap + values[1] <= available;
+		let all_values = values.iter().sum::<f32>() + 2. * gap;
+		let show_rate = all_values <= available;
+		let show_share = show_rate
+			&& share.as_ref().is_some_and(|share| all_values + gap + measure(share) <= available);
+		let token_selector = format!("relation-tokens-{}", self.key);
+		let time_selector = format!("relation-time-{}", self.key);
+		let rate_selector = format!("relation-rate-{}", self.key);
+		let share_selector = format!("relation-token-share-{}", self.key);
+		gpui::div()
+			.w_full()
+			.h(gpui::px(layout.detail_line()))
+			.flex_none()
+			.flex()
+			.items_center()
+			.whitespace_nowrap()
+			.gap(gpui::px(gap))
+			.text_size(gpui::px(layout.detail_size()))
+			.line_height(gpui::px(layout.detail_line()))
+			.font_weight(gpui::FontWeight::NORMAL)
+			.text_color(gpui::rgb(crate::ui_theme::TEXT))
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.flex()
+					.items_center()
+					.gap(gpui::px(gap))
+					.child(
+						gpui::div()
+							.debug_selector(move || token_selector.clone())
+							.flex_none()
+							.child(tokens),
+					)
+					.when(show_share, |group| {
+						group.child(
+							gpui::div()
+								.debug_selector(move || share_selector.clone())
+								.flex_none()
+								.text_color(gpui::rgb(super::card::ALLOCATION_TEXT))
+								.child(share.unwrap_or_default()),
+						)
+					}),
+			)
+			.when(show_time, |row| {
+				row.child(
+					gpui::div()
+						.debug_selector(move || time_selector.clone())
+						.flex_none()
+						.child(time),
+				)
+			})
+			.when(show_rate, |row| {
+				row.child(
+					gpui::div()
+						.debug_selector(move || rate_selector.clone())
+						.flex_none()
+						.child(rate),
+				)
+			})
 	}
 }
 
@@ -36,102 +174,24 @@ impl AgentSurface {
 
 	pub(super) fn node_metrics(&self, node: &Node, layout: super::card::Layout) -> AnyElement {
 		let metrics = self.metrics_for(node);
-		let selector = format!("relation-metrics-{}", node.key);
-		let time_selector = format!("relation-time-{}", node.key);
-		let token_selector = format!("relation-tokens-{}", node.key);
 		let share = fraction(metrics.tokens, self.recorded_token_total());
-		let tokens =
-			metrics.tokens.map(super::super::super::compact_tokens).unwrap_or_else(|| "—".into());
+		let selector = format!("relation-metrics-{}", node.key);
+		let description = match share {
+			Some(share) => format!(
+				"{} {} of all recorded tokens; usage allocation.",
+				metrics.label(),
+				percentage(Some(share))
+			),
+			None => metrics.label(),
+		};
 		gpui::div()
 			.id(gpui::SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
 			.role(gpui::Role::Group)
-			.aria_label(metrics.label())
+			.aria_label(description)
 			.w_full()
-			.h(gpui::px(layout.metrics_height()))
 			.flex_none()
-			.flex()
-			.flex_col()
-			.justify_between()
-			.text_size(gpui::px(9.5 * layout.text_scale))
-			.line_height(gpui::px(12. * layout.text_scale))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.child(
-				gpui::div()
-					.debug_selector(move || token_selector.clone())
-					.w_full()
-					.flex()
-					.items_center()
-					.gap(gpui::px(4. * layout.text_scale))
-					.text_color(gpui::rgb(TOKENS))
-					.child(
-						crate::ui_work_metrics::Icon::Tokens
-							.element(10. * layout.text_scale, TOKENS),
-					)
-					.child(format!("{tokens} tok"))
-					.child(gpui::div().flex_1())
-					.child(percentage(share)),
-			)
-			.child(
-				gpui::div()
-					.w_full()
-					.h(gpui::px(2. * layout.chrome_scale))
-					.rounded_full()
-					.bg(gpui::rgba(0xa99aef18))
-					.when_some(share, |bar, share| {
-						bar.child(
-							gpui::div()
-								.w(gpui::relative(share))
-								.h_full()
-								.rounded_full()
-								.bg(gpui::rgba(0xa99aef99)),
-						)
-					}),
-			)
-			.child(
-				gpui::div()
-					.w_full()
-					.flex()
-					.items_center()
-					.justify_between()
-					.child(
-						gpui::div()
-							.debug_selector(move || time_selector.clone())
-							.flex()
-							.items_center()
-							.gap(gpui::px(3. * layout.text_scale))
-							.whitespace_nowrap()
-							.child(
-								crate::ui_work_metrics::Icon::Time
-									.element(9. * layout.text_scale, TEXT_MUTED),
-							)
-							.child(if self.work_is_archived(&node.key) {
-								"Archived".into()
-							} else {
-								crate::ui_work_metrics::time_label(metrics.time())
-							}),
-					)
-					.child(
-						gpui::div()
-							.flex_none()
-							.flex()
-							.items_center()
-							.gap(gpui::px(3. * layout.text_scale))
-							.child(
-								crate::ui_work_metrics::Icon::Rate
-									.element(9. * layout.text_scale, TEXT_MUTED),
-							)
-							.child(format!(
-								"{} {}",
-								metrics.rate_text(),
-								if metrics.stats.is_some() {
-									metrics.rate_caption()
-								} else {
-									"tok/s"
-								}
-							)),
-					),
-			)
+			.child(Readout { key: node.key.clone(), metrics, share, layout })
 			.into_any_element()
 	}
 
@@ -152,6 +212,7 @@ impl AgentSurface {
 		// Reveal this agent after the smaller canvas has its real bounds, keeping
 		// its zoom and tree geometry. Ordinary navigation keeps its camera.
 		self.work_board.view.reveal_after_resize |= self.workspace.graph_expanded;
+		self.work_board.view.resize_anchor = None;
 		self.work_board.view.hover = Default::default();
 		self.workspace.graph_expanded = false;
 		if row.native {
@@ -169,6 +230,92 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	struct Fixture {
+		zoom: f32,
+		metrics: Metrics,
+	}
+	impl gpui::Render for Fixture {
+		fn render(&mut self, window: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+			let layout =
+				super::super::card::Layout::new(self.zoom).on_display(window.scale_factor());
+			gpui::div()
+				.w(gpui::px(layout.width))
+				.px(gpui::px(layout.spacing(super::super::card::INSET_X)))
+				.font_family(crate::ui_theme::FONT_FAMILY)
+				.child(Readout {
+					key: "fixture".into(),
+					metrics: self.metrics,
+					share: Some(0.3),
+					layout,
+				})
+		}
+	}
+
+	#[gpui::test]
+	fn metric_values_keep_one_baseline_and_use_available_space_below_seventy_percent(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (view, visual) = cx.add_window_view(|_, _| Fixture {
+			zoom: 1.,
+			metrics: Metrics {
+				tokens: Some(514_759),
+				stats: Some(decodex_protocol::AgentThreadMetrics {
+					completed_ms: Some(76_000),
+					rate: Some(decodex_protocol::AgentOutputRate {
+						estimated: true,
+						active: false,
+						output_tokens: 731,
+						duration_ms: 10_000,
+						started_at_ms: 0,
+						completed_at_ms: Some(10_000),
+					}),
+					..Default::default()
+				}),
+				..Default::default()
+			},
+		});
+		let handle = visual.update(|window, _| window.window_handle());
+		for density in [1., 2.] {
+			visual.simulate_window_scale_factor_change(handle, density);
+			for zoom in [1., 0.7, 0.69, 0.6, 0.55, 0.5, 0.45] {
+				view.update(visual, |s, cx| {
+					s.zoom = zoom;
+					cx.notify();
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				let tokens = visual.debug_bounds("relation-tokens-fixture").unwrap();
+				let time = visual.debug_bounds("relation-time-fixture").unwrap();
+				assert!(time.left() > tokens.right());
+				assert_eq!(tokens.top(), time.top());
+				if zoom >= 0.6 {
+					let rate = visual
+						.debug_bounds("relation-rate-fixture")
+						.expect("normal token, time and rate values still fit at 60%");
+					assert!(rate.left() > time.right());
+					assert_eq!(rate.top(), tokens.top());
+				}
+				let layout = super::super::card::Layout::new(zoom).on_display(density);
+				for name in [
+					"relation-tokens-fixture",
+					"relation-time-fixture",
+					"relation-rate-fixture",
+					"relation-token-share-fixture",
+				] {
+					if let Some(bounds) = visual.debug_bounds(name) {
+						assert!(
+							f32::from(bounds.right())
+								<= layout.width - layout.spacing(super::super::card::INSET_X) + 0.5,
+							"{name} overflows at {zoom} on {density}x: {bounds:?}"
+						);
+					}
+				}
+				if zoom == 1. {
+					assert!(visual.debug_bounds("relation-token-share-fixture").is_some());
+				}
+			}
+		}
+	}
 	#[test]
 	fn token_share_retains_unknown_zero_and_small_values() {
 		assert_eq!(fraction(None, 100), None);

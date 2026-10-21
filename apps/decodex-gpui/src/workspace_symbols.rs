@@ -139,7 +139,7 @@ impl RenderOnce for PanelExpansion {
 
 #[derive(gpui::IntoElement)]
 pub(super) struct DisclosureChevron {
-	id: &'static str,
+	id: ElementId,
 	expanded: bool,
 }
 impl RenderOnce for DisclosureChevron {
@@ -218,8 +218,8 @@ pub(super) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
 	gpui::img(IMAGES[symbol as usize].clone()).size(gpui::px(size)).flex_none().into_any_element()
 }
 
-pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> DisclosureChevron {
-	DisclosureChevron { id, expanded }
+pub(super) fn disclosure_chevron(id: impl Into<ElementId>, expanded: bool) -> DisclosureChevron {
+	DisclosureChevron { id: id.into(), expanded }
 }
 
 pub(super) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> ProcessChevron {

@@ -28,6 +28,7 @@ fn live_activity_uses_only_the_current_thread_turn_and_running_action(
 					task: String::new(),
 					text: "cargo test".into(),
 					running: Some("cargo test".into()),
+					recent: vec![],
 				}),
 				question: None,
 				resources: None,
@@ -82,7 +83,7 @@ fn global_activity_waits_for_archive_visibility_before_showing_cached_agents(
 }
 
 #[gpui::test]
-fn graph_preview_rejects_old_turns_and_threads_without_repositioning_nodes(
+fn graph_preview_rejects_old_turns_and_threads_without_repositioning_other_nodes(
 	cx: &mut gpui::TestAppContext,
 ) {
 	let surface = cx.new(fixture);
@@ -92,6 +93,7 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_nodes(
 			s.relation_graph()
 				.nodes
 				.iter()
+				.filter(|node| node.key != "release")
 				.map(|node| (node.key.clone(), node.x, node.y))
 				.collect::<Vec<_>>()
 		};
@@ -105,6 +107,7 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_nodes(
 				outcome: None,
 				preview: Some(activity::Preview {
 					running: None,
+					recent: vec![],
 					turn: "latest".into(),
 					task: "Check sign-in".into(),
 					text: "cargo test sign_in".into(),
@@ -117,12 +120,12 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_nodes(
 				read_at: std::time::Instant::now(),
 			},
 		);
-		assert_eq!(s.graph_preview(&row), (row.title.clone(), "cargo test sign_in".into()));
+		assert_eq!(s.graph_preview(&row), ("Check sign-in".into(), "cargo test sign_in".into()));
 		s.work_board.briefs.get_mut(&row.key).unwrap().question =
 			Some("Which format do you prefer?".into());
 		assert_eq!(
 			s.graph_preview(&row),
-			(row.title.clone(), "Which format do you prefer?".into())
+			("Check sign-in".into(), "Which format do you prefer?".into())
 		);
 		s.work_board.briefs.get_mut(&row.key).unwrap().question = None;
 		assert_eq!(
@@ -130,6 +133,8 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_nodes(
 			s.relation_graph()
 				.nodes
 				.iter()
+				// The updated card can grow for its first real activity row.
+				.filter(|node| node.key != "release")
 				.map(|node| (node.key.clone(), node.x, node.y))
 				.collect::<Vec<_>>()
 		);
@@ -221,7 +226,7 @@ fn selecting_usage_opens_the_workbench_without_a_popover(cx: &mut gpui::TestAppC
 }
 
 #[gpui::test]
-fn graph_leaves_recorded_totals_to_the_activity_island(cx: &mut gpui::TestAppContext) {
+fn graph_distribution_keeps_recorded_totals_in_the_activity_island(cx: &mut gpui::TestAppContext) {
 	let (_, visual) = cx.add_window_view(|_, cx| {
 		let mut s = fixture(cx);
 		s.workspace.graph_expanded = true;
@@ -229,7 +234,10 @@ fn graph_leaves_recorded_totals_to_the_activity_island(cx: &mut gpui::TestAppCon
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(800.)));
 	visual.update(crate::ui_frame::draw_frame);
-	assert!(visual.debug_bounds("graph-usage-footer").is_none());
+	assert!(visual.debug_bounds("graph-usage-footer").is_some());
+	assert!(visual.debug_bounds("relations-usage").is_some());
+	assert!(visual.debug_bounds("graph-usage-tokens").is_none());
+	assert!(visual.debug_bounds("graph-usage-time").is_none());
 	assert!(visual.debug_bounds("graph-usage-total").is_none());
 	assert!(visual.debug_bounds("relations-canvas").is_some());
 }
@@ -920,6 +928,7 @@ fn parent_progress_keeps_child_preview_and_geometry(cx: &mut gpui::TestAppContex
 				outcome: None,
 				preview: Some(activity::Preview {
 					running: None,
+					recent: vec![],
 					turn: "child-turn".into(),
 					task: "Review the route".into(),
 					text: "route.rs".into(),
@@ -1018,6 +1027,7 @@ fn native_completion_requests_fresh_metrics_without_blank_preview(cx: &mut gpui:
 				outcome: None,
 				preview: Some(activity::Preview {
 					running: None,
+					recent: vec![],
 					turn: "child-turn".into(),
 					task: "Review the route".into(),
 					text: "route.rs".into(),
@@ -1082,4 +1092,61 @@ fn moving_across_card_children_keeps_one_hover_target(cx: &mut gpui::TestAppCont
 			}
 		});
 	}
+}
+
+#[gpui::test]
+fn observed_collaboration_survives_page_rollover_but_not_another_thread(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
+		let make = |id: usize, status: &str| {
+			(
+				format!("item-{id}"),
+				AgentCollaborationDto {
+					sender_thread_id: row.thread.clone().unwrap(),
+					receiver_thread_ids: vec!["target".into()],
+					tool: "sendInput".into(),
+					status: status.into(),
+					prompt: format!("Request {id}"),
+					results: vec![],
+				},
+			)
+		};
+		let mut previous = Brief {
+			source_thread: row.thread.clone(),
+			output: None,
+			assignments: Default::default(),
+			outcome: None,
+			preview: None,
+			question: None,
+			resources: None,
+			relations: (0..64).map(|id| make(id, "inProgress")).collect(),
+			metrics: Default::default(),
+			stamp: s.brief_stamp(&row),
+			read_at: std::time::Instant::now(),
+		};
+		let mut next = Brief {
+			source_thread: row.thread.clone(),
+			output: None,
+			assignments: Default::default(),
+			outcome: None,
+			preview: None,
+			question: None,
+			resources: None,
+			relations: vec![make(63, "completed"), make(64, "completed")],
+			metrics: Default::default(),
+			stamp: s.brief_stamp(&row),
+			read_at: std::time::Instant::now(),
+		};
+		next.retain_relations(&previous);
+		assert_eq!(next.relations.len(), 64);
+		assert_eq!(next.relations[0].0, "item-1");
+		assert_eq!(next.relations[62].1.status, "completed");
+		previous.source_thread = Some("another-thread".into());
+		next.relations = vec![make(65, "completed")];
+		next.retain_relations(&previous);
+		assert_eq!(next.relations.len(), 1);
+	});
 }

@@ -22,6 +22,8 @@ use gpui::{
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
+pub(crate) const CAPTION_LINE_HEIGHT: f32 = 14.;
+pub(crate) const LABEL_LINE_HEIGHT: f32 = 16.;
 pub(crate) const HEADING_SIZE: f32 = 15.0;
 pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
@@ -58,7 +60,6 @@ pub(crate) const TOPBAR_MATERIAL: u32 = 0x15151b68;
 // Agent sidebar is a direct child of the shell, never a child of content tint.
 pub(crate) const AGENT_SIDEBAR_MATERIAL: u32 = 0x17171c58;
 pub(crate) const AGENT_CHAT_OVERLAY: u32 = 0x17171c0e;
-pub(crate) const COLLABORATION_SURFACE: u32 = AGENT_CHAT_OVERLAY;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
 pub(crate) const COMPOSER_MATERIAL: u32 = 0x22222888;
@@ -95,9 +96,14 @@ pub(crate) fn floating_group() -> Div {
 		.items_center()
 		.gap_1()
 		.rounded(gpui::px(CONTROL_RADIUS))
-		.bg(gpui::rgba(TOPBAR_MATERIAL))
+		.bg(gpui::rgb(TOPBAR_MATERIAL >> 8))
 		.border_1()
 		.border_color(gpui::rgba(0xffffff12))
+}
+
+/// Graph controls share shell geometry, with a clear surface of their own.
+pub(crate) fn canvas_control_group() -> Div {
+	floating_group().bg(gpui::transparent_black())
 }
 
 pub(crate) fn settings_header_inset() -> Div {

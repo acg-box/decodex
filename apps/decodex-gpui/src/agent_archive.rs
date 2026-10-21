@@ -9,10 +9,13 @@ use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotDto;
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
 #[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto,
-	Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
-	ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto,
+		Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
+		ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
+	},
+	ui_motion::SmoothControl as _,
 };
 use decodex_protocol::AgentArchiveResult;
 
@@ -92,14 +95,13 @@ impl AgentSurface {
 		let Ok(work_id) = EntityId::new(work.clone()) else {
 			return;
 		};
-		// Ordinary snapshot refreshes do not invalidate an archive request.
-		// The archive epoch changes only with its owner or service connection.
+		// Snapshot refreshes do not invalidate this read. Selection, reconnection
+		// and an explicit restore each supersede its archive epoch.
 		let epoch = self.archive.epoch;
 
 		self.archive.last_read = Some(std::time::Instant::now());
 
-		// Keep the archived reading view stable while checking. The request guard
-		// disables Unarchive until this read completes.
+		// Keep the confirmed banner and action stable during background checks.
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
@@ -143,7 +145,6 @@ impl AgentSurface {
 		if self.selected.as_deref() != Some(work)
 			|| self.archive.owner.as_deref() != Some(work)
 			|| self.archive.mutation.is_some()
-			|| self.archive.request.is_some()
 			|| !matches!(&self.archive.result,Some(AgentArchiveResult::Archived {thread_id}) if thread_id==thread)
 		{
 			return;
@@ -163,8 +164,10 @@ impl AgentSurface {
 		) else {
 			return;
 		};
-		// Ordinary snapshot refreshes do not invalidate an archive request.
-		// The archive epoch changes only with its owner or service connection.
+		// An explicit restore supersedes a background check. Cancel its UI task
+		// and reject any late reply before starting the desired-state readback.
+		self.archive.epoch = self.archive.epoch.wrapping_add(1);
+		self.archive.request = None;
 		let epoch = self.archive.epoch;
 		let work = work.to_owned();
 		let key = agent_surface::unique_command();
@@ -264,9 +267,12 @@ impl AgentSurface {
 		let work = work.id.clone();
 
 		gpui::div()
+			.debug_selector(|| "archive-banner".into())
 			.w_full()
 			.flex_none()
 			.px(gpui::px(20.))
+			// Leave a separate hit target for the conversation fullscreen control.
+			.pr(gpui::px(48.))
 			.py(gpui::px(10.))
 			.flex()
 			.items_center()
@@ -286,7 +292,7 @@ impl AgentSurface {
 							.child("History is available. Unarchive to continue."),
 					),
 			)
-			.when_some(thread.filter(|_| self.archive.request.is_none()), |panel, thread| {
+			.when_some(thread, |panel, thread| {
 				panel.child(button("archive-restore", "Unarchive", cx, move |s, cx| {
 					s.restore_archive(&work, &thread, cx)
 				}))
@@ -321,7 +327,14 @@ fn button(
 		.aria_label(label)
 		.cursor_pointer()
 		.text_color(gpui::rgb(BLUE))
-		.py_1()
+		.h(gpui::px(ui_theme::CONTROL_SIZE))
+		.px_2()
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(5.))
+		.hover(|button| button.bg(gpui::rgba(ui_theme::HOVER_FILL)))
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -331,11 +344,13 @@ fn button(
 			}
 		}))
 		.child(label)
+		.smooth()
 		.into_any_element()
 }
 
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
 	use std::{future, thread, time::Duration};
 
 	use crate::shell::agent_surface::archive::{
@@ -345,6 +360,76 @@ mod tests {
 	use crate::shell::agent_surface::archive::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
 	};
+
+	#[gpui::test]
+	fn background_archive_check_keeps_restore_control_in_place(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.selected = Some("agent".into());
+			s.archive = Panel {
+				owner: s.selected.clone(),
+				result: Some(AgentArchiveResult::Archived { thread_id: "thread".into() }),
+				..Default::default()
+			};
+			cx.notify();
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1180.), gpui::px(1200.)));
+		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_frame);
+		let bounds = visual.debug_bounds("archive-restore").expect("restore action");
+		let epoch = surface.update(visual, |s, cx| {
+			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+			cx.notify();
+			s.archive.epoch
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
+		visual.simulate_click(bounds.center(), Default::default());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.archive.feedback, "No service profile is configured.");
+			assert!(s.complete_archive_read(
+				"agent",
+				epoch,
+				AgentArchiveResult::Archived { thread_id: "thread".into() },
+				false
+			));
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
+	}
+
+	#[gpui::test]
+	fn explicit_restore_supersedes_an_old_background_read(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, _) = super::super::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.profile = Some(profile);
+			s.selected = Some("agent".into());
+			s.archive = Panel {
+				owner: s.selected.clone(),
+				result: Some(AgentArchiveResult::Archived { thread_id: "thread".into() }),
+				..Default::default()
+			};
+			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+			let old_epoch = s.archive.epoch;
+			s.restore_archive("agent", "thread", cx);
+			assert!(s.archive.request.is_none());
+			assert!(s.archive.mutation.is_some());
+			let key = s.archive.mutation_key.clone();
+			assert!(key.is_some());
+			assert!(!s.complete_archive_read(
+				"agent",
+				old_epoch,
+				AgentArchiveResult::Archived { thread_id: "thread".into() },
+				false
+			));
+			assert!(s.archive.result.is_none());
+			s.restore_archive("agent", "thread", cx);
+			assert_eq!(s.archive.mutation_key, key, "one explicit restoration at a time");
+		});
+	}
 
 	#[gpui::test]
 	fn snapshot_refresh_does_not_strand_archive_read(cx: &mut gpui::TestAppContext) {
@@ -482,6 +567,11 @@ mod tests {
 		visual.update(|window, cx| window.draw(cx).clear(cx));
 
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
+		let fullscreen = visual.debug_bounds("chat-expand").expect("conversation fullscreen");
+		assert!(
+			bounds.right() + gpui::px(8.) <= fullscreen.left(),
+			"archive actions have separate hit targets"
+		);
 
 		visual.simulate_mouse_down(
 			bounds.center(),

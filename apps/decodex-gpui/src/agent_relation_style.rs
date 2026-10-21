@@ -4,6 +4,7 @@ use super::{
 	Kind, MouseButton, ParentElement, PathBuilder, RelationTip, Role, Route,
 	StatefulInteractiveElement, Styled, TEXT_MUTED,
 };
+use crate::ui_motion::SmoothControl;
 
 /// Annotations share the same world coordinates and zoom as cards and routes.
 pub(super) struct ConnectionLabel {
@@ -88,6 +89,7 @@ impl AgentSurface {
 					cx.notify();
 				}
 			}))
+			.smooth()
 			.into_any_element()
 	}
 
@@ -232,7 +234,11 @@ impl Route {
 	) -> PathBuilder {
 		let point =
 			|(x, y)| origin + gpui::point(gpui::px(x * scale + pan.0), gpui::px(y * scale + pan.1));
-		let mut path = PathBuilder::stroke(gpui::px(width * scale));
+		let mut path = PathBuilder::default().with_style(gpui::PathStyle::Stroke(
+			gpui::StrokeOptions::default()
+				.with_line_width((width * scale).max(1.))
+				.with_tolerance(0.05),
+		));
 		path.move_to(point(self.curves[0].start));
 		if let Some((dash, gap)) = kind.pattern() {
 			let (dash, gap) = (dash * scale, gap * scale);
@@ -297,7 +303,7 @@ mod tests {
 	use super::{Kind, Route, flow_window};
 
 	#[test]
-	fn edges_scale_their_ink_and_direction_cues_with_the_camera() {
+	fn edges_keep_screen_weight_while_direction_cues_follow_the_camera() {
 		let route = Route::curve((0., 0.), (40., 0.), (80., 0.), (120., 0.));
 		for kind in [Kind::Assigned, Kind::Message, Kind::Resource] {
 			let path = |scale| {
@@ -322,13 +328,15 @@ mod tests {
 					"direction must be visible before selection"
 				);
 			}
-			for scale in [0.5, 0.23, 0.15, 0.05] {
+			for scale in [0.7, 0.8, 0.9] {
 				let distant = path(scale).bounds.size;
 				assert!(
-					(f32::from(distant.height) - f32::from(normal.height) * scale).abs() < 0.01,
+					distant.height >= normal.height * scale
+						&& distant.height <= normal.height * scale + gpui::px(1.),
 					"{kind:?} at {scale}: {distant:?} vs {normal:?}"
 				);
-				assert!((f32::from(distant.width) - f32::from(normal.width) * scale).abs() < 0.01);
+				assert!((f32::from(distant.width) - f32::from(normal.width) * scale).abs() <= 1.);
+				assert!(distant.height >= gpui::px(1.), "one-point screen stroke survives zoom");
 			}
 		}
 	}

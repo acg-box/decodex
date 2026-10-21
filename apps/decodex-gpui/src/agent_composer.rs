@@ -217,6 +217,10 @@ impl AgentSurface {
 		if self.composer.read(cx).is_composing() {
 			return;
 		}
+		if self.dismiss_relation_usage_options(cx) {
+			self.escape_stop = None;
+			return;
+		}
 		if self.composer_menu.take().is_some() || self.dictation.is_some() {
 			self.cancel_dictation(cx);
 

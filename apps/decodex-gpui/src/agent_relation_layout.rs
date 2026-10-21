@@ -2,35 +2,56 @@
 use super::{BTreeMap, FRAME_INSET, Graph};
 
 const WIDTH: f32 = super::card::WIDTH;
-const SIBLING_GAP: f32 = 24.;
-const COLUMN_GAP: f32 = 40.;
+const SIBLING_GAP: f32 = 32.;
+const COLUMN_GAP: f32 = 76.;
 const ROW_GAP: f32 = 36.;
-const WORKSPACE_GAP: f32 = 40.;
+// Keep project boundaries clear without adding a full empty hierarchy rank.
+const WORKSPACE_GAP: f32 = 88.;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Mode {
+	#[default]
+	Tree,
+	Radial,
+	Grouped,
+}
+impl Mode {
+	pub(super) const ALL: [Self; 3] = [Self::Tree, Self::Radial, Self::Grouped];
+
+	pub(super) fn label(self) -> &'static str {
+		match self {
+			Self::Tree => "Tree",
+			Self::Radial => "Radial",
+			Self::Grouped => "Grouped",
+		}
+	}
+}
 
 #[derive(Default)]
 pub(super) struct Cache {
 	input: Input,
 	positions: Vec<(usize, f32, f32)>,
-	horizontal: Option<bool>,
 }
 
 #[derive(PartialEq)]
 struct Input {
+	mode: Mode,
+	base_heights: Vec<u32>,
 	nodes: Vec<(String, Option<String>, u32)>,
 	edges: Vec<(usize, usize)>,
 	viewport: (f32, f32),
 	width: f32,
-	spacing: f32,
 	column_gap: f32,
 }
 impl Default for Input {
 	fn default() -> Self {
 		Self {
+			mode: Mode::default(),
+			base_heights: vec![],
 			nodes: vec![],
 			edges: vec![],
 			viewport: (0., 0.),
 			width: WIDTH,
-			spacing: 1.,
 			column_gap: COLUMN_GAP,
 		}
 	}
@@ -39,7 +60,6 @@ impl Default for Input {
 struct Tree {
 	index: usize,
 	children: Vec<Self>,
-	leaves: usize,
 }
 
 #[derive(Clone, Default)]
@@ -50,7 +70,7 @@ struct Block {
 }
 
 impl Cache {
-	pub(super) fn place(&mut self, graph: &mut Graph, viewport: (f32, f32)) {
+	pub(super) fn place(&mut self, graph: &mut Graph, viewport: (f32, f32), mode: Mode) {
 		let indices: BTreeMap<_, _> =
 			graph.nodes.iter().enumerate().map(|(i, n)| (n.key.as_str(), i)).collect();
 		let label_gap = graph
@@ -60,6 +80,8 @@ impl Cache {
 			.map(|edge| graph.connection_label(edge).width + 16.)
 			.fold(0., f32::max);
 		let input = Input {
+			mode,
+			base_heights: graph.nodes.iter().map(|node| node.base_height.to_bits()).collect(),
 			nodes: graph
 				.nodes
 				.iter()
@@ -81,22 +103,13 @@ impl Cache {
 				.collect(),
 			viewport,
 			width: graph.nodes.iter().map(|node| node.width()).fold(WIDTH, f32::max),
-			// Labels and cards share world space, so zoom never changes the layout.
-			spacing: 1.,
 			column_gap: COLUMN_GAP.max(label_gap),
 		};
 		if self.input != input {
-			// Keep the reading direction when only activity or measurements change.
-			let stable = self.input.viewport == input.viewport
-				&& self.input.edges == input.edges
-				&& self.input.nodes.len() == input.nodes.len()
-				&& self.input.nodes.iter().zip(&input.nodes).all(|(a, b)| a.0 == b.0 && a.1 == b.1);
-			let (positions, horizontal) =
-				input.arrange_oriented(self.horizontal.filter(|_| stable));
-			self.positions = positions;
-			self.horizontal = Some(horizontal);
+			self.positions = input.arrange();
 			self.input = input;
 		}
+
 		for &(index, x, y) in &self.positions {
 			graph.nodes[index].x = x + 32.;
 			graph.nodes[index].y = y + 48.;
@@ -160,154 +173,148 @@ impl Input {
 		})
 	}
 
-	#[cfg(test)]
 	fn arrange(&self) -> Vec<(usize, f32, f32)> {
-		self.arrange_oriented(None).0
+		let mut forest = self.forest();
+		let trees = if let Some(group) = self.coordinator(&forest) {
+			let mut root = forest[group].remove(0);
+			root.children.extend(forest.into_iter().flatten());
+			vec![root]
+		} else {
+			forest.into_iter().flatten().collect()
+		};
+		let available = (
+			(self.viewport.0 - 2. * FRAME_INSET).max(WIDTH),
+			(self.viewport.1 - 2. * FRAME_INSET).max(320.),
+		);
+		let block = match self.mode {
+			Mode::Tree | Mode::Grouped => Block::pack(
+				trees.iter().map(|tree| tree.layout(self, self.mode == Mode::Grouped)).collect(),
+				WORKSPACE_GAP,
+				available,
+			),
+			Mode::Radial => self.radial(&trees),
+		};
+		block.positions
 	}
 
-	fn arrange_oriented(&self, direction: Option<bool>) -> (Vec<(usize, f32, f32)>, bool) {
-		let mut forest = self.forest();
-		let coordinator = self.coordinator(&forest).map(|group| {
-			let tree = forest[group].remove(0);
-			forest[group] = tree.children;
-			tree.index
-		});
-		let mut heights =
-			coordinator.map(|root| vec![f32::from_bits(self.nodes[root].2)]).unwrap_or_default();
-		for trees in &forest {
-			let depth = usize::from(coordinator.is_some());
-			for tree in trees {
-				tree.rank_heights(self, depth, &mut heights);
+	fn radial(&self, trees: &[Tree]) -> Block {
+		let (root, branches) = if trees.len() == 1 && !trees[0].children.is_empty() {
+			(Some(trees[0].index), trees[0].children.as_slice())
+		} else {
+			(None, trees)
+		};
+		if branches.is_empty() {
+			return Block::default();
+		}
+		let mut blocks = Vec::new();
+		let mut directions = Vec::new();
+		for (index, tree) in branches.iter().enumerate() {
+			let angle = -std::f32::consts::FRAC_PI_2
+				+ index as f32 * std::f32::consts::TAU / branches.len() as f32;
+			let (x, y) = (angle.cos(), angle.sin());
+			let horizontal = x.abs() > y.abs();
+			let mut block = tree.layout(self, horizontal);
+			if horizontal && x < 0. {
+				for &mut (_, ref mut px, _) in &mut block.positions {
+					*px = block.width - *px - self.width;
+				}
+			} else if !horizontal && y < 0. {
+				for &mut (node, _, ref mut py) in &mut block.positions {
+					*py = block.height - *py - f32::from_bits(self.nodes[node].2);
+				}
+			}
+			blocks.push(block);
+			directions.push((x, y));
+		}
+		let root_height = root.map_or(0., |index| f32::from_bits(self.nodes[index].2));
+		let rx = blocks.iter().map(|b| b.width).fold(self.width, f32::max) / 2.
+			+ self.width / 2.
+			+ WORKSPACE_GAP;
+		let ry = blocks.iter().map(|b| b.height).fold(root_height, f32::max) / 2.
+			+ root_height / 2.
+			+ WORKSPACE_GAP;
+		let mut factor = 1_f32;
+		let separation = |dx: f32, dy: f32, width: f32, height: f32| {
+			let along = |extent: f32, delta: f32| {
+				if delta.abs() < 0.001 { f32::INFINITY } else { extent / delta.abs() }
+			};
+			along(width, dx).min(along(height, dy))
+		};
+		for (i, block) in blocks.iter().enumerate() {
+			let (x, y) = directions[i];
+			if root.is_some() {
+				factor = factor.max(separation(
+					x * rx,
+					y * ry,
+					(block.width + self.width) / 2. + WORKSPACE_GAP,
+					(block.height + root_height) / 2. + WORKSPACE_GAP,
+				));
+			}
+			for (j, other) in blocks.iter().enumerate().take(i) {
+				factor = factor.max(separation(
+					(x - directions[j].0) * rx,
+					(y - directions[j].1) * ry,
+					(block.width + other.width) / 2. + WORKSPACE_GAP,
+					(block.height + other.height) / 2. + WORKSPACE_GAP,
+				));
 			}
 		}
-		let (width, height) = self.viewport;
-		let tallest = heights.iter().copied().fold(1_f32, f32::max);
-		let available = if width > 2. * FRAME_INSET && height > 2. * FRAME_INSET {
-			(width - 2. * FRAME_INSET, height - 2. * FRAME_INSET)
-		} else {
-			(1152., 448.)
-		};
-		// Choose one reading direction for the entire graph. Never wrap siblings
-		// into a different rank just to improve the fitted scale.
-		[false, true]
-			.into_iter()
-			.filter(|horizontal| direction.is_none_or(|direction| direction == *horizontal))
-			.map(|horizontal| {
-				let mut rank = 0.;
-				let ranks: Vec<_> = heights
-					.iter()
-					.map(|height| {
-						let current = rank;
-						rank += if horizontal {
-							self.width + self.column_gap
-						} else {
-							height + ROW_GAP * self.spacing
-						};
-						current
-					})
-					.collect();
-				let scopes = forest
-					.iter()
-					.filter(|trees| !trees.is_empty())
-					.map(|trees| {
-						let depth = usize::from(coordinator.is_some());
-						let blocks: Vec<_> = trees
-							.iter()
-							.map(|tree| tree.layout(self, depth, &ranks, horizontal))
-							.collect();
-						Block::pack(blocks, SIBLING_GAP * self.spacing, available)
-					})
-					.collect();
-				let mut block = Block::siblings(scopes, horizontal, WORKSPACE_GAP * self.spacing);
-				if let Some(root) = coordinator {
-					let height = f32::from_bits(self.nodes[root].2);
-					let step =
-						if horizontal { self.width + self.column_gap } else { height + ROW_GAP };
-					block.offset(
-						if horizontal { step } else { 0. },
-						if horizontal { 0. } else { step },
-					);
-					if horizontal {
-						block.width += step;
-					} else {
-						block.height += step;
-					}
-					block.positions.push((
-						root,
-						if horizontal { 0. } else { (block.width - self.width).max(0.) / 2. },
-						if horizontal { (block.height - height).max(0.) / 2. } else { 0. },
-					));
-					block.width = block.width.max(self.width);
-					block.height = block.height.max(height);
-				}
-				// Choose the direction that gives the largest fitted overview.
-				let summary_width = block.width * super::card::WIDTH / self.width;
-				let summary_height = block.height * super::card::HEIGHT / tallest;
-				let scale = (available.0 / summary_width.max(1.))
-					.min(available.1 / summary_height.max(1.))
-					.min(1.);
-				(block, scale, horizontal)
-			})
-			.max_by(|(a, sa, _), (b, sb, _)| {
-				sa.total_cmp(sb).then_with(|| (b.width * b.height).total_cmp(&(a.width * a.height)))
-			})
-			.map_or_else(
-				|| (Vec::new(), false),
-				|(block, _, horizontal)| (block.positions, horizontal),
-			)
+		let mut result = Block::default();
+		if let Some(index) = root {
+			result.positions.push((index, -self.width / 2., -root_height / 2.));
+		}
+		for (mut block, (x, y)) in blocks.into_iter().zip(directions) {
+			block.offset(x * rx * factor - block.width / 2., y * ry * factor - block.height / 2.);
+			result.positions.extend(block.positions);
+		}
+		let left = result.positions.iter().map(|p| p.1).fold(0., f32::min);
+		let top = result.positions.iter().map(|p| p.2).fold(0., f32::min);
+		result.offset(-left, -top);
+		result.width = result.positions.iter().map(|p| p.1 + self.width).fold(0., f32::max);
+		result.height = result
+			.positions
+			.iter()
+			.map(|p| p.2 + f32::from_bits(self.nodes[p.0].2))
+			.fold(0., f32::max);
+		result
 	}
 }
 
 impl Tree {
 	fn visit(index: usize, children: &[Vec<usize>], visited: &mut [bool]) -> Self {
 		visited[index] = true;
-		let mut tree = Self { index, children: Vec::new(), leaves: 1 };
+		let mut tree = Self { index, children: Vec::new() };
 		for &child in &children[index] {
 			if !visited[child] {
 				tree.children.push(Self::visit(child, children, visited));
 			}
 		}
-		tree.leaves = tree.children.iter().map(|child| child.leaves).sum::<usize>().max(1);
 		tree
 	}
 
-	fn rank_heights(&self, input: &Input, depth: usize, heights: &mut Vec<f32>) {
-		heights.resize(heights.len().max(depth + 1), 0.);
-		heights[depth] = heights[depth].max(f32::from_bits(input.nodes[self.index].2));
-		for child in &self.children {
-			child.rank_heights(input, depth + 1, heights);
-		}
-	}
-
-	fn layout(&self, input: &Input, depth: usize, ranks: &[f32], horizontal: bool) -> Block {
+	fn layout(&self, input: &Input, horizontal: bool) -> Block {
 		let height = f32::from_bits(input.nodes[self.index].2);
-		let step = if horizontal {
-			input.width + input.column_gap
+		let children: Vec<_> =
+			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
+		let leaves = self.children.iter().all(|child| child.children.is_empty());
+		let mut block = if leaves && children.len() >= 4 {
+			let columns = children.len().div_ceil(4).clamp(2, 4);
+			Block::grid(children, columns)
+		} else if children.len() >= 4 {
+			Block::pack(children, WORKSPACE_GAP, input.viewport)
 		} else {
-			ranks.get(depth + 1).map_or(height + ROW_GAP, |next| next - ranks[depth])
-		};
-		let children: Vec<_> = self
-			.children
-			.iter()
-			.map(|child| child.layout(input, depth + 1, ranks, horizontal))
-			.collect();
-		let mut block = if children.len() >= 4 {
-			// A wide fan-out is a group of complete branches, not one enormous
-			// rank. Packing those branches preserves identity and exact edges.
-			Block::pack(
-				children,
-				SIBLING_GAP * input.spacing,
-				(
-					(input.viewport.0 - if horizontal { step } else { 0. } - 2. * FRAME_INSET)
-						.max(input.width),
-					(input.viewport.1 - if horizontal { 0. } else { step } - 2. * FRAME_INSET)
-						.max(height),
-				),
-			)
-		} else {
-			Block::siblings(children, horizontal, SIBLING_GAP * input.spacing)
+			Block::siblings(children, horizontal, SIBLING_GAP)
 		};
 		if !block.positions.is_empty() {
+			// New activity first uses the existing connector clearance. It must
+			// not move every sibling when the first operation appears.
+			let base =
+				input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
+			let step = if horizontal {
+				input.width + input.column_gap
+			} else {
+				(base + 84.).max(height + 24.)
+			};
 			block.offset(if horizontal { step } else { 0. }, if horizontal { 0. } else { step });
 			if horizontal {
 				block.width += step;
@@ -329,16 +336,32 @@ impl Tree {
 }
 
 impl Block {
+	fn grid(blocks: Vec<Self>, columns: usize) -> Self {
+		let mut result = Self::default();
+		let mut y = 0.;
+		for row in blocks.chunks(columns) {
+			let mut x = 0.;
+			let height = row.iter().map(|b| b.height).fold(0., f32::max);
+			for block in row {
+				let mut block = block.clone();
+				let width = block.width;
+				block.offset(x, y);
+				result.positions.extend(block.positions);
+				result.width = result.width.max(x + width);
+				x += width + SIBLING_GAP;
+			}
+			result.height = y + height;
+			y += height + ROW_GAP;
+		}
+		result
+	}
+
 	// Compare shelf counts in both axes. This extends the existing shelf packer;
 	// no graph or bin-packing runtime is needed for these small cached forests.
 	fn pack(blocks: Vec<Self>, gap: f32, available: (f32, f32)) -> Self {
 		let mut best: Option<(f32, f32, Self)> = None;
 		for horizontal in [false, true] {
-			let mut ordered = blocks.clone();
-			ordered.sort_by(|a, b| {
-				let extent = |block: &Self| if horizontal { block.width } else { block.height };
-				extent(b).total_cmp(&extent(a))
-			});
+			let ordered = blocks.clone();
 			let lengths: Vec<_> = ordered
 				.iter()
 				.map(|block| if horizontal { block.height } else { block.width })
@@ -441,7 +464,7 @@ mod tests {
 	}
 
 	#[test]
-	fn wide_and_tall_canvases_use_their_available_space_without_overlapping_cards() {
+	fn explicit_tree_layout_retains_its_direction_in_wide_and_tall_canvases() {
 		let mut extents = Vec::new();
 		for viewport in [(1400., 420.), (520., 1100.)] {
 			let input = input(viewport);
@@ -464,8 +487,10 @@ mod tests {
 			assert_eq!(positions, input.arrange());
 		}
 		assert!(extents[0].0 > extents[0].1 * 2.);
-		assert!(extents[1].1 > extents[1].0);
-		assert!(extents[0].1 < extents[1].1);
+		assert_eq!(
+			extents[0], extents[1],
+			"an explicit layout must not change direction on resize"
+		);
 	}
 
 	#[test]
@@ -556,7 +581,13 @@ mod tests {
 	fn seven_parallel_branches_fit_at_readable_size_in_the_workspace() {
 		let input = Input {
 			nodes: (0..8)
-				.map(|i| (i.to_string(), None, super::super::card::HEIGHT.to_bits()))
+				.map(|i| {
+					(
+						i.to_string(),
+						None,
+						super::super::card::Layout::new(1.).world_height(2, 2, 1.).to_bits(),
+					)
+				})
 				.collect(),
 			edges: (1..8).map(|child| (0, child)).collect(),
 			viewport: (920., 680.),
@@ -573,11 +604,56 @@ mod tests {
 					assert!(
 						x + WIDTH <= bx
 							|| bx + WIDTH <= x
-							|| y + super::super::card::HEIGHT <= by
-							|| by + super::super::card::HEIGHT <= y
+							|| y + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= by
+							|| by + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= y
 					);
 				}
 			}
+		}
+	}
+	#[test]
+	fn all_layouts_retain_a_hundred_agents_with_variable_footprints_without_overlap() {
+		for zoom in [0.05, 0.1, 0.19, 0.2, 0.25, 0.45, 0.7, 1.] {
+			let nodes = (0..103)
+				.map(|i| {
+					(
+						format!("agent-{i}"),
+						(i > 0).then(|| {
+							format!("project-{}", if i <= 6 { i } else { 1 + (i - 7) / 16 })
+						}),
+						super::super::card::Layout::new(zoom)
+							.world_height(2, 2, if i % 3 == 0 { 3. } else { 0. })
+							.to_bits(),
+					)
+				})
+				.collect();
+			let edges = (1..103).map(|i| (if i <= 6 { 0 } else { 1 + (i - 7) / 16 }, i)).collect();
+			let mut input = Input { nodes, edges, viewport: (1030., 1000.), ..Default::default() };
+			let mut shapes = Vec::new();
+			for mode in Mode::ALL {
+				input.mode = mode;
+				let positions = input.arrange();
+				let ids: std::collections::BTreeSet<_> = positions.iter().map(|p| p.0).collect();
+				assert_eq!(ids.len(), 103, "{mode:?} at {zoom}");
+				assert_eq!(positions.len(), ids.len());
+				assert_eq!(positions, input.arrange());
+				for &(a, x, y) in &positions {
+					assert!(x.is_finite() && y.is_finite());
+					for &(b, bx, by) in &positions {
+						if a != b {
+							assert!(
+								x + WIDTH <= bx + 0.01
+									|| bx + WIDTH <= x + 0.01
+									|| y + f32::from_bits(input.nodes[a].2) <= by + 0.01
+									|| by + f32::from_bits(input.nodes[b].2) <= y + 0.01,
+								"{mode:?} at {zoom}: {a} overlaps {b}"
+							);
+						}
+					}
+				}
+				shapes.push(positions);
+			}
+			assert!(shapes.windows(2).all(|pair| pair[0] != pair[1]));
 		}
 	}
 }

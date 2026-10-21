@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(super) struct Board {
 	pub(super) graph: bool,
-	pub(super) workbench_history_expanded: bool,
+	collaboration_expanded: Option<String>,
 	focus: Option<String>,
 	view: relations::View,
 	pub(super) briefs: BTreeMap<String, Brief>,
@@ -300,6 +300,26 @@ pub(super) struct Brief {
 	read_at: std::time::Instant,
 }
 
+impl Brief {
+	fn retain_relations(&mut self, previous: &Self) {
+		if self.source_thread != previous.source_thread {
+			return;
+		}
+		let mut records = previous.relations.clone();
+		for (item, call) in &self.relations {
+			if let Some((_, observed)) = records.iter_mut().find(|(id, _)| id == item) {
+				*observed = call.clone();
+			} else {
+				records.push((item.clone(), call.clone()));
+			}
+		}
+		if records.len() > 64 {
+			records.drain(..records.len() - 64);
+		}
+		self.relations = records;
+	}
+}
+
 impl AgentSurface {
 	fn graph_question(&self, row: &Row) -> Option<&str> {
 		if self.work_is_archived(&row.key) {
@@ -424,6 +444,11 @@ impl AgentSurface {
 				.map(|preview| preview.task.clone())
 				.or_else(|| self.native_assignment(row))
 				.unwrap_or_default()
+		} else if !row.native {
+			preview
+				.filter(|preview| !preview.task.is_empty())
+				.map(|preview| preview.task.clone())
+				.unwrap_or_else(|| row.title.clone())
 		} else {
 			row.title.clone()
 		};
@@ -449,6 +474,61 @@ impl AgentSurface {
 			.values()
 			.find(|brief| brief.source_thread.as_ref() == Some(&agent.parent_thread_id))?;
 		brief.assignments.get(thread).cloned()
+	}
+
+	fn graph_operations(&self, row: &Row) -> (String, Vec<activity::Operation>) {
+		let turn = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| {
+				snapshot
+					.work_items
+					.iter()
+					.find(|work| work.id == row.work && work.codex_thread_id == row.thread)
+			})
+			.and_then(|work| work.active_turn_id.as_deref());
+		let current = self
+			.timeline
+			.native
+			.binding
+			.as_ref()
+			.filter(|binding| {
+				binding.work == row.work && row.thread.as_ref() == Some(&binding.thread)
+			})
+			.and_then(|_| activity::latest(&self.timeline.native.entries, turn));
+		let preview = current
+			.as_ref()
+			.or_else(|| {
+				self.work_board
+					.briefs
+					.get(&row.key)
+					.filter(|brief| brief.source_thread == row.thread)
+					.and_then(|brief| brief.preview.as_ref())
+			})
+			.filter(|preview| turn.is_none_or(|turn| preview.turn == turn));
+		let scope = format!(
+			"{}:{}",
+			row.thread.as_deref().unwrap_or(&row.key),
+			turn.or_else(|| preview.map(|preview| preview.turn.as_str())).unwrap_or_default()
+		);
+		let question = self.graph_question(row);
+		if let Some(question) = question {
+			return (
+				scope,
+				vec![activity::Operation {
+					id: format!("question:{question}"),
+					text: activity::text(question),
+				}],
+			);
+		}
+		let mut operations = preview.map(|preview| preview.recent.clone()).unwrap_or_default();
+		if operations.is_empty() {
+			let text = self.work_activity_summary(row).1;
+			if !text.is_empty() {
+				operations.push(activity::Operation { id: "latest".into(), text });
+			}
+		}
+		(scope, operations)
 	}
 
 	fn factory_rows(&self) -> Vec<Row> {
@@ -671,6 +751,7 @@ impl AgentSurface {
 								s.work_board.briefs.get(&key).filter(|previous| {
 									previous.source_thread == brief.source_thread
 								}) {
+								brief.retain_relations(previous);
 								// Keep an observed role when its source scrolls out of the native
 								// page. Retain only threads still represented by visible agents.
 								for (thread, task) in &previous.assignments {
