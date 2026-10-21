@@ -1873,6 +1873,8 @@ impl AgentCoordinator {
 			let success = result.is_ok();
 			let text = match result {
 				Ok(value) => value.to_string(),
+				Err(AgentError::Busy) if params["tool"] == "agent_continue_worker" =>
+					"This work is still running. The instruction was not sent or queued. Wait for its current turn to finish, then check agent_list_work and retry the same work item when dispatch_state is idle.".into(),
 				Err(error) => error.to_string(),
 			};
 
@@ -2552,9 +2554,6 @@ impl Display for AgentError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		if matches!(self, Self::ThreadOwnedElsewhere { .. }) {
 			return f.write_str("This conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.");
-		}
-		if matches!(self, Self::Busy) {
-			return f.write_str("This work is still running. The instruction was not sent or queued. Wait for its current turn to finish, then check agent_list_work and retry the same work item when dispatch_state is idle.");
 		}
 		write!(f, "Agent: {self:?}")
 	}

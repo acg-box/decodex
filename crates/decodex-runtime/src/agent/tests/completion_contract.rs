@@ -12,7 +12,24 @@ async fn busy_worker_refuses_unsent_input_then_continues_once_idle() {
 	let command = serde_json::json!({"tool":"agent_continue_worker","arguments":{"id":"worker","prompt":"Use Maple"}});
 	while sent.try_recv().is_ok() {}
 
-	let error = coordinator.tool(&agent, &command).await.unwrap_err().to_string();
+	let error = coordinator.tool(&agent, &command).await.unwrap_err();
+	assert!(matches!(error, tests::AgentError::Busy));
+	assert!(sent.try_recv().is_err(), "Busy must not send native input");
+	let mut params = command.clone();
+	params["threadId"] = serde_json::json!(agent.codex_thread_id);
+	params["turnId"] = serde_json::json!(agent.active_turn_id);
+	coordinator
+		.handle_event(tests::ServerEvent::Request {
+			id: tests::RequestId::Number(71),
+			method: "item/tool/call".into(),
+			params,
+		})
+		.await
+		.unwrap();
+	let reply = sent.recv().await.unwrap();
+	assert_eq!(reply["id"], 71);
+	assert_eq!(reply["result"]["success"], false);
+	let error = reply["result"]["contentItems"][0]["text"].as_str().unwrap();
 	assert!(
 		error.contains("not sent or queued")
 			&& error.contains("agent_list_work")
