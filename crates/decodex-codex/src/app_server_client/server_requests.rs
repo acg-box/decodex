@@ -450,7 +450,10 @@ pub fn invalidates_question_state(method: &str, params: &Value) -> bool {
 	params["threadId"].as_str().is_some_and(|id| !id.is_empty())
 		&& (method == "thread/reverted"
 			|| (method == "item/completed"
-				&& params["item"]["type"] == "userMessage"
+				&& (params["item"]["type"] == "userMessage"
+					|| (params["item"]["type"] == "functionCallOutput"
+						&& params["item"]["namespace"] == "decodex"
+						&& params["item"]["name"] == "work_instruction"))
 				&& params["turnId"].as_str().is_some_and(|id| !id.is_empty())
 				&& params["item"]["id"].as_str().is_some_and(|id| !id.is_empty())))
 }

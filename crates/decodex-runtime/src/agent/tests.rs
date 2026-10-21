@@ -4,6 +4,7 @@
 #[path = "tests/background_terminals.rs"] mod background_terminals;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/closing_resume.rs"] mod closing_resume;
+#[path = "tests/completion_contract.rs"] mod completion_contract;
 #[path = "tests/drain_rejection.rs"] mod drain_rejection;
 #[path = "tests/external_context.rs"] mod external_context;
 #[path = "tests/guardian.rs"] mod guardian;

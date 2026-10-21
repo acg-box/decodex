@@ -41,7 +41,7 @@ impl Projection {
 					question_json: serde_json::to_string(&question).expect("serializable question"),
 				});
 			}
-		} else if observations::is_plain_user_prompt(item) {
+		} else if observations::retires_async_questions(item) {
 			self.answers.extend(self.seen.iter().cloned());
 		} else if item["type"] == "userMessage" {
 			let mut content = item["content"]

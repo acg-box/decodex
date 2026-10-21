@@ -258,7 +258,7 @@ impl AgentCoordinator {
 		self.observe_steer_receipt(thread, turn, item).await?;
 		self.record_async_question_item(thread, turn, item, true).await?;
 
-		if is_plain_user_prompt(item)
+		if retires_async_questions(item)
 			&& let Some(id) = item["id"].as_str()
 		{
 			self.store.request_agent_async_recovery(thread.into(), id.into()).await?;
@@ -535,7 +535,10 @@ pub(crate) fn usage_text(value: &Value) -> Option<String> {
 	Some(text)
 }
 
-pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
+pub(super) fn retires_async_questions(item: &Value) -> bool {
+	if item["type"] == "functionCallOutput" {
+		return item["namespace"] == "decodex" && item["name"] == "work_instruction";
+	}
 	if item["type"] != "userMessage" {
 		return false;
 	}
