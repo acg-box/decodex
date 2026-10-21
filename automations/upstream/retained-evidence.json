@@ -670,21 +670,24 @@
       "limits": "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor. Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance. Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added. Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins. The expanded historical OpenWiki lifecycle remains incomplete and unassigned. Source, tests and portable evidence deliver separately; no generated page or lifecycle control was hand-edited."
     },
     "parent_questions": {
-      "status": "user_approved_instruction_clarification",
-      "contract": "Agents investigate and resolve questions within their assigned scope and existing authority, including useful direct coordination through existing authorized channels. Resolvable questions and interface disagreements do not require a parent decision. The responsible parent handles remaining blockers, unresolved ownership/priorities or decisions outside a child delegation. It checks existing instructions/evidence and escalates only missing user decisions, missing authority or answers that investigation cannot establish. Return confirmed answers to the exact asking child. Native approvals keep their owner and enforcement.",
+      "status": "user_approved_guidance_delivered_to_all_new_managed_threads",
+      "contract": "Agents investigate and resolve questions within their assigned scope and existing authority, including useful direct coordination through existing authorized channels. Resolvable questions and interface disagreements do not require a parent decision. The responsible parent handles remaining blockers, unresolved ownership/priorities or decisions outside a child delegation. It checks existing instructions/evidence and escalates only missing user decisions, missing authority or answers that investigation cannot establish. Return confirmed answers to the exact asking child. Native approvals keep their owner and enforcement. A managed worker without a parent messaging tool returns its unresolved question and evidence in the existing work result; its parent uses the existing continuation path.",
       "native_boundary": "At the fixed source, synchronous request_user_input rejects non-root sessions; async question registration excludes non-root sessions. Children use native messaging to their responsible parent. Decodex compatibility code that can receive a child server request does not prove native user-question tools are exposed to children. A Decodex-managed work thread can be an independent native root rather than a native subagent. Use the existing managed-work result/inbox path for those children; do not assume every UI parent relation is a native messaging target.",
-      "delivery_scope": "AgentCoordinator::thread_params embeds shared coordination guidance in new managed coordinator instructions. Work wake messages reuse the same guidance. Native resume keeps an existing thread and its original instructions; no automatic rewrite of every running conversation is claimed.",
+      "delivery_scope": "AgentCoordinator::thread_params sends shared COORDINATION developer instructions to every new managed worker and full INSTRUCTIONS to new managers. Manager tools remain manager-only. Work wake messages reuse the guidance. The default native child inherits the policy in the tested fork-without-history path. Native role/subagent instruction overrides can change inheritance. Resume preserves existing native thread identity and instructions; no rewrite of every running conversation is claimed.",
       "source_symbols": [
         "crates/decodex-runtime/src/agent/coordination.md",
-        "crates/decodex-runtime/src/agent.rs#INSTRUCTIONS,#COORDINATION,#thread_params,#wake_message",
-        "crates/decodex-runtime/src/agent/instructions.md#L11"
+        "crates/decodex-runtime/src/agent.rs#INSTRUCTIONS,#COORDINATION,#thread_params,#work_thread_params,#wake_message",
+        "crates/decodex-runtime/src/agent/instructions.md#L11",
+        "crates/decodex-runtime/src/agent/tests.rs#nested_managers_own_their_inbox_tools_and_workspace_directory",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs#native_child_approval_round_trip"
       ],
       "source_sha256": {
-        "crates/decodex-runtime/src/agent/coordination.md": "140a25aafa6271da511c642c77c23b84d64931cb1f4909659d6cc5bd615a5374",
+        "crates/decodex-runtime/src/agent/coordination.md": "b2a0ac34f607374303d0e0f31bdab68798d42789e48d51a1d59de0268e38eccc",
         "crates/decodex-runtime/src/agent/instructions.md": "86fc9e749965484d6fdad8e93e806a4c8eb5941acc7438fe2007aae50590802b",
-        "crates/decodex-runtime/src/agent.rs": "84a5596bc5bbc50908fa485ba77b66f5f0fb0c955db83a3dbb2278bcc661d94d",
-        "crates/decodex-runtime/src/agent/tests.rs": "4f1f82f31687c266e953c10056031894e48d1a1e5ceeda023c41ef697bcebfb3",
-        "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76"
+        "crates/decodex-runtime/src/agent.rs": "82493e76893bb2c5b95b044d27223b6df7a58a047d4f5d53b61bb440a906c383",
+        "crates/decodex-runtime/src/agent/tests.rs": "006de475253be5f5118cb50b4d0ce855f8abc67cede634c35b6b1f8bfb806a6b",
+        "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "353e1dda82138e941fd3ed51bc6a23ae2db8c718a4d6d59d8c7288834b9b01a2"
       },
       "selected_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
       "existing_runtime_qualification": "automations/upstream/qualification.json",
@@ -729,6 +732,21 @@
           "source": "codex-rs/core/src/agent/control_tests.rs",
           "sha256": "73d8fe83663f18fe55d92e7acbcb35a17571c575b079eea774cf406ee74b6eba",
           "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+          "sha256": "8fe95c7e0d8d6d26ac9e8f5af3256a755c57c5c6c4a217310b0dd51fc7de05fc",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/src/thread_spawn.rs",
+          "sha256": "05af9b27acef71577a3c9a26765a37123d84d8346884b6fcb16dbbad7054e321",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/src/agent/child_config.rs",
+          "sha256": "ca8257ec568bc97f85c84f3ed54b38d9e3b43a96f252492ebba38cddb0aec232",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
         }
       ],
       "upstream_tests_read": [
@@ -741,7 +759,8 @@
         "agent::tests::unloaded_thread_resumes_exact_identity_without_new_thread",
         "agent::tests::nested_managers_own_their_inbox_tools_and_workspace_directory",
         "agent::tests::independent_workers_queue_then_wake_and_continue_same_identity",
-        "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade"
+        "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade",
+        "agent::tests::native_subagent_live::native_child_approval_round_trip"
       ],
       "local_tests_executed": {
         "package": "decodex-runtime",
@@ -774,11 +793,11 @@
             "cargo",
             "+stable",
             "clippy",
-            "--locked",
             "--package",
             "decodex-runtime",
             "--all-features",
             "--all-targets",
+            "--keep-going",
             "--",
             "--no-deps",
             "-D",
@@ -835,36 +854,84 @@
       "delivery_references": [
         "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d",
         "https://github.com/acg-box/decodex/pull/2472",
-        "https://github.com/acg-box/decodex/commit/0140ac84ce494a0807f17447de82073c15304611"
+        "https://github.com/acg-box/decodex/commit/0140ac84ce494a0807f17447de82073c15304611",
+        "https://github.com/acg-box/decodex/commit/32ba998ba5ec5f0c62d1da0038fb2e881c422c71"
       ],
       "limits": [
-        "Shared instructions guide local investigation, optional useful peer coordination and escalation through existing owners/channels. They do not implement a deterministic classifier, global request interceptor, new peer messaging adapter or permission grant. No live model judgment or every-channel peer delivery is newly qualified.",
-        "No new live model judgment, real account/provider, every-plan compatibility, native tool-guard execution or installed-app acceptance is claimed. The source guards and their relevant tests were read, not newly executed.",
-        "The selected runtime, its original artifact identity, previous qualification limits and source-review cursor remain unchanged. The expanded OpenWiki lifecycle is incomplete and retains its separate owner/continuation."
+        "The rule guides local investigation, useful authorized peer coordination and bounded escalation. It does not add a classifier, global question interceptor, peer messaging adapter or permission grant. Live model judgment and every peer channel remain unqualified.",
+        "The exact-artifact fixture executes default child instruction inheritance and the existing command approval refusal path. Root-only synchronous/async user-question source guards were read; their upstream tests were not newly executed. Native role or subagent-developer-instruction overrides retain their own authority.",
+        "Existing conversations keep original developer instructions. No installation, release, restart, source cursor advance or selected runtime migration is claimed. The expanded historical OpenWiki lifecycle remains incomplete under its separate owner."
       ],
       "existing_runtime_artifact_sha256": {
         "CodexCLI.app/Contents/MacOS/codex": "ec53aeb93a258965aa40e0e614c641cfbdd0e791ca683c9980b0b6ab196f1c4a",
         "bin/codex-code-mode-host": "f9d69748d7e77f4c3154b8bb498d7cf71334f4776e0e8ce419f3d64491f8f3a6",
         "codex-path/rg": "dc59496f8fabd70ca66c84603e26ff4c265ff6b0ee60ef975e916aed42754ee3"
+      },
+      "baseline_regression": {
+        "source": "83ff739bb775b14a06815c34d616940d232fb793",
+        "package": "decodex-runtime",
+        "entrypoint": "lib",
+        "selector": "test(agent::tests::nested_managers_own_their_inbox_tools_and_workspace_directory)",
+        "executed": 1,
+        "failed": 1,
+        "unmatched_selectors": [],
+        "failure": "The ordinary worker thread/start omitted developerInstructions; manager instructions and worker tool boundaries already passed."
+      },
+      "exact_artifact_regressions": {
+        "package": "decodex-runtime",
+        "entrypoint": "lib",
+        "selector": "test(agent::tests::native_subagent_live::native_child_approval_round_trip)",
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--all-features",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "--run-ignored",
+          "only",
+          "-E",
+          "test(agent::tests::native_subagent_live::native_child_approval_round_trip)",
+          "--no-fail-fast"
+        ],
+        "environment": {
+          "DECODEX_NATIVE_BINARY": "<qualified-artifact>/CodexCLI.app/Contents/MacOS/codex"
+        },
+        "executed": 1,
+        "passed": 1,
+        "skipped": 941,
+        "final_leaky_count": 0,
+        "unmatched_selectors": [],
+        "fixture": "Reusable repository test with a loopback scripted Responses provider and system-temporary home. It sends no real account credentials and makes no provider calls.",
+        "fixture_helper_sha256": {
+          "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "353e1dda82138e941fd3ed51bc6a23ae2db8c718a4d6d59d8c7288834b9b01a2",
+          "crates/decodex-runtime/src/agent/tests/native_task_references.rs": "8cd2338c8b2a8a1a3168d4b5d82d76fe8f2767e14f797326cf86b5742bfae5ce"
+        },
+        "measured": "Shared developer instruction exposure on initial and continued default native child requests, exact child approval refusal and inherited model/effort/tier. The original qualified artifact and all three component digests were checked again before execution.",
+        "limit": "Scripted model outputs verify native transport and enforcement boundaries, not live model escalation judgment, all native role overrides or installed-app acceptance."
       }
     }
   },
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_historical_scope",
     "requested_pages": [
-      "openwiki/operations/accounts-and-routing.md",
-      "openwiki/decisions/upstream-product-scope.md"
+      "openwiki/architecture/chief-coordination.md",
+      "openwiki/decisions/upstream-product-scope.md",
+      "openwiki/operations/accounts-and-routing.md"
     ],
     "accepted_pages": 41,
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "completed_pages": 0,
     "existing_claims_on_first_page": 13,
     "claims_requiring_attention": 10,
-    "reason": "The supported lifecycle expanded the two requested account pages into 41 historical jobs and assigned unrelated fork/archive/visibility/retention reconciliation first. The maintenance definition permits retaining that expanded scope and owner separately.",
+    "reason": "The supported lifecycle expands the current coordination page and earlier account requests into 41 historical jobs. The first page requires ten historical fork/archive/visibility/retention claim decisions beyond this repair. Preserve that existing scope and owner separately.",
     "owner": "Repository-wide OpenWiki maintenance remains unassigned; current Graph presentation work belongs to its separate active developer.",
     "next_action": "Resume the supported lifecycle on merged main and reconcile source drift before historical page generation. No managed page/control was hand-edited.",
     "merge_boundary": "Source review, necessary repair and exact development-artifact qualification deliver independently. The expanded historical documentation lifecycle is incomplete.",
-    "additional_affected_behavior": "Pending supported lifecycle generation must cover the five admitted account variants and credential-preserving refusals, Ask separately cancellation, and local investigation/useful peer coordination before bounded parent/user escalation. Keep root-only native question ownership and the existing-thread instruction boundary. Reconcile source drift on current main before resuming the incomplete 41-page historical queue."
+    "additional_affected_behavior": "Pending supported lifecycle generation must cover the five admitted account variants and credential-preserving refusals, Ask separately cancellation, and local investigation/useful peer coordination before bounded parent/user escalation. Keep root-only native question ownership and the existing-thread instruction boundary. Reconcile source drift on current main before resuming the incomplete 41-page historical queue. Include shared policy delivery to ordinary managed workers, work-result fallback without a parent messaging tool, and the measured default native child inheritance boundary."
   },
   "retained_behavior_contracts": [
     {
@@ -1127,9 +1194,9 @@
   "current_delivery": {
     "status": "public_implementation_commit",
     "code_commits": [
-      "https://github.com/acg-box/decodex/commit/0140ac84ce494a0807f17447de82073c15304611"
+      "https://github.com/acg-box/decodex/commit/32ba998ba5ec5f0c62d1da0038fb2e881c422c71"
     ],
-    "scope": "User-approved correction of shared coordination guidance: independent investigation and useful authorized peer resolution precede bounded escalation. Account plan scope is delivered separately in PR2473. No global request interception or installed-app acceptance."
+    "scope": "Repair missing shared coordination instructions on ordinary managed worker starts and clarify blocked-result continuation. Preserve manager-only tools and native approval enforcement. Qualify default native child instruction inheritance with the exact existing artifact; live model judgment and installed-app adoption remain separate."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
@@ -1146,7 +1213,7 @@
     },
     "decision": "The user explicitly limited account-pool admission to these five native variants. Do not restore another recognized upstream plan without a new user decision.",
     "admission_contract": "Check the same five-plan classification for enrollment/import, replacement sign-in, exact execution/API credentials, initial and Agent selection, and shared-auth route targets. Missing and unrecognized plans are unsupported. Preserve native ASCII case-insensitive plan identity.",
-    "retained_records": "Unsupported existing accounts and credentials remain readable. Do not delete them, rewrite enablement, or terminate an existing native process as a scope migration. They cannot supply new admitted work or direct account API credentials.",
+    "retained_records": "The plan gate uses the existing registry and vault lifecycle. It does not delete records, rewrite enablement, revoke tokens, or terminate native work. Common read and cleanup operations do not create an excluded-plan execution path; no separate legacy-plan compatibility implementation is required.",
     "refresh_contract": "Save a valid rotated successor and settle its credential operation before refusing execution under an unsupported plan. Complete an explicit manual refresh refusal receipt so it can replay without another provider refresh. Replacement sign-in with an excluded plan leaves the prior credential unchanged.",
     "recovery_contract": "Team retains workspace billing with encoded account identity. The four admitted personal variants retain personal usage/billing paths. Other plans do not acquire a plan-dependent recovery destination.",
     "plan_differences": "Quota, native model/access metadata, workspace policy and billing/recovery destinations can differ. Read native/service capabilities and account/workspace observations instead of inferring authorization from a plan label.",
