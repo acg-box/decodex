@@ -8,6 +8,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
     resource: repo://crates/decodex-codex/src/app_server_client/search_preferences.rs
+  - id: openwiki-source-5186d5aa506036d23eae1396
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
+  - id: openwiki-source-7a438b090d3a7042aebaf269
+    resource: repo://crates/decodex-codex/src/conversation.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -20,10 +24,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+  - id: openwiki-source-b30d382781a313611ecd221f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
+generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T09:01:22.045Z
+    at: 2026-10-21T21:02:44.368Z
 ---
 
 # Model selection and settings ownership
@@ -47,6 +53,8 @@ Codex owns the effective model catalog, task configuration, provider admission a
 A review binds the displayed source and current settings to an explicit action. Save once, record the outcome and read back. An acknowledgment can mean queued configuration rather than effective execution state. Another native publication can invalidate a review even if displayed values match.
 
 Shared native configuration writes retain file/version identity and arbitration. Historical model journals remain readable; old unresolved records are not converted into successful modern operations or replayed through a second writer. Queued user execution choices must not be overwritten by an unrelated settings edit.
+
+Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
 
 Plugin installation and selection are configured in Codex. Maintenance of the current model controls does not authorize a new editor for every upstream setting.
 
