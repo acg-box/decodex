@@ -454,6 +454,16 @@
       "decision": "The user approved an explicit manual Cancel answer action. No parent-callable sampling or automatic policy is approved.",
       "qualification": "automations/upstream/qualification.json#approved_sampling_cancellation",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2471"
+    },
+    {
+      "id": "parent-owned-question-triage",
+      "status": "approved_implemented",
+      "value": "Resolve routine child questions in the responsible parent and ask the user only for a genuinely missing decision, authority or reliable answer.",
+      "maintenance_cost": "Low: one shared coordination prompt and existing native message/question ownership. Model instruction-following remains a validation limit.",
+      "decision": "The user explicitly requested parent-first triage. Native approvals and permissions keep their existing owner.",
+      "recommendation": "Reuse native child-parent messaging and root user-question tools; keep escalation in the existing coordinator prompt.",
+      "qualification": "retained_native_coordination.parent_questions",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
     }
   ],
   "retained_presentation": {
@@ -649,6 +659,181 @@
         "https://github.com/acg-box/decodex/pull/2471"
       ],
       "limits": "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor. Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance. Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added. Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins. The expanded historical OpenWiki lifecycle remains incomplete and unassigned. Source, tests and portable evidence deliver separately; no generated page or lifecycle control was hand-edited."
+    },
+    "parent_questions": {
+      "status": "user_approved_instruction_clarification",
+      "contract": "The coordinating parent checks existing user decisions and evidence before asking the user. It answers the exact asking child within existing authority, and escalates missing user decisions or authority, or questions that investigation cannot reliably answer. Independent work continues while dependent work waits. Suggested defaults, agent messages and silence do not grant authority. Native permission and approval enforcement retains its owner.",
+      "native_boundary": "At the fixed source, synchronous request_user_input rejects non-root sessions; async question registration excludes non-root sessions. Children use native messaging to their responsible parent. Decodex compatibility code that can receive a child server request does not prove native user-question tools are exposed to children.",
+      "delivery_scope": "AgentCoordinator::thread_params embeds shared coordination guidance in new managed coordinator instructions. Work wake messages reuse the same guidance. Native resume keeps an existing thread and its original instructions; no automatic rewrite of every running conversation is claimed.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent/coordination.md",
+        "crates/decodex-runtime/src/agent.rs#INSTRUCTIONS,#COORDINATION,#thread_params,#wake_message"
+      ],
+      "source_sha256": {
+        "crates/decodex-runtime/src/agent/coordination.md": "f9ca93f3f6ec3a3d327b5b9d0fe0c2f068926c845fab11f287aa6ea6a3b35dfc",
+        "crates/decodex-runtime/src/agent/instructions.md": "a5d113113214a72e7e164ef7fcce88415103db6705591e969becc71c5fd778ef",
+        "crates/decodex-runtime/src/agent.rs": "84a5596bc5bbc50908fa485ba77b66f5f0fb0c955db83a3dbb2278bcc661d94d",
+        "crates/decodex-runtime/src/agent/tests.rs": "4f1f82f31687c266e953c10056031894e48d1a1e5ceeda023c41ef697bcebfb3",
+        "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76"
+      },
+      "selected_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
+      "existing_runtime_qualification": "automations/upstream/qualification.json",
+      "schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+      "native_source_bindings": [
+        {
+          "source": "codex-rs/core/src/tools/handlers/request_user_input.rs",
+          "sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/src/tools/spec_plan.rs",
+          "sha256": "919bf85acf44810892f6d1adc6701253c92a71678cbf74c877d718d0aaf9db9f",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/src/tools/handlers/request_user_input_tests.rs",
+          "sha256": "aa33b8091d65cccf7059ead3337dbe266f971ed5bebd2585fa882f3c78a4d19c",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/request_user_input_async.rs",
+          "sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        },
+        {
+          "source": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
+          "sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
+          "revision": "66d0de9983e82b266e89ee29523324c9d08a5472"
+        }
+      ],
+      "upstream_tests_read": [
+        "codex-core lib: tools::handlers::request_user_input::tests::multi_agent_v2_request_user_input_rejects_subagent_threads",
+        "codex-core integration all: suite::request_user_input_async::async_question_registration_respects_user_input_setting::subagent"
+      ],
+      "upstream_tests_executed_this_adoption": 0,
+      "local_tests_read": [
+        "agent::tests::unloaded_thread_resumes_exact_identity_without_new_thread",
+        "agent::tests::nested_managers_own_their_inbox_tools_and_workspace_directory",
+        "agent::tests::independent_workers_queue_then_wake_and_continue_same_identity",
+        "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade"
+      ],
+      "local_tests_executed": {
+        "package": "decodex-runtime",
+        "entrypoint": "lib",
+        "selector": "test(agent::tests::)",
+        "executed": 176,
+        "passed": 176,
+        "skipped": 762,
+        "initial_leaky_marker": {
+          "test": "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade",
+          "count": 1,
+          "isolated_rerun_executed": 1,
+          "isolated_rerun_passed": 1,
+          "isolated_rerun_leaky": false,
+          "limit": "The broad suite retained one nextest leak marker. A single isolated rerun passed without it. No fixture or nextest policy was changed; no production regression or leak root cause is claimed."
+        },
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--all-features",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "-E",
+          "test(agent::tests::)",
+          "--no-fail-fast"
+        ],
+        "rerun_command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--all-features",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "-E",
+          "test(=agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade)"
+        ],
+        "unmatched_selectors": []
+      },
+      "checks": [
+        {
+          "name": "strict-clippy",
+          "command": [
+            "cargo",
+            "+stable",
+            "clippy",
+            "--locked",
+            "--package",
+            "decodex-runtime",
+            "--all-features",
+            "--all-targets",
+            "--",
+            "--no-deps",
+            "-D",
+            "clippy::all",
+            "-D",
+            "clippy::too_many_lines",
+            "-D",
+            "clippy::unwrap_used",
+            "-D",
+            "clippy::use_self",
+            "-D",
+            "clippy::wildcard_imports",
+            "-D",
+            "missing-docs",
+            "-D",
+            "unused-crate-dependencies",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "workspace-check",
+          "command": [
+            "cargo",
+            "+stable",
+            "make",
+            "check-rust"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "nightly-format",
+          "command": [
+            "cargo",
+            "+nightly",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "diff-check",
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "delivery_references": [
+        "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
+      ],
+      "limits": [
+        "This is shared coordination guidance, not a deterministic question classifier or permission grant. No new native API, model-callable tool, UI control, account adapter or runtime feature is introduced.",
+        "No new live model judgment, real account/provider, every-plan compatibility, native tool-guard execution or installed-app acceptance is claimed. The source guards and their relevant tests were read, not newly executed.",
+        "The selected runtime, its original artifact identity, previous qualification limits and source-review cursor remain unchanged. The expanded OpenWiki lifecycle is incomplete and retains its separate owner/continuation."
+      ]
     }
   },
   "documentation_lifecycle": {
@@ -667,7 +852,7 @@
     "owner": "Repository-wide OpenWiki maintenance remains unassigned; current Graph presentation work belongs to its separate active developer.",
     "next_action": "Resume the supported lifecycle on merged main and reconcile source drift before historical page generation. No managed page/control was hand-edited.",
     "merge_boundary": "Source review, necessary repair and exact development-artifact qualification deliver independently. The expanded historical documentation lifecycle is incomplete.",
-    "additional_affected_behavior": "The approved manual Ask separately cancellation requires the same supported lifecycle to update its user flow, native ownership and acceptance limits. The existing 41-page historical queue remains incomplete; current lifecycle tools expose retrieval only."
+    "additional_affected_behavior": "Pending supported lifecycle generation must cover retained Ask separately cancellation and parent-first question guidance, including root-only native question tools and the existing-thread instruction boundary. The 41-page historical queue remains incomplete; current lifecycle tools expose retrieval only."
   },
   "retained_behavior_contracts": [
     {
@@ -928,11 +1113,41 @@
     }
   },
   "current_delivery": {
-    "status": "public_pull_request",
+    "status": "implementation_commit",
     "code_commits": [
-      "https://github.com/acg-box/decodex/commit/161cdd2fca1594f85a58cee175b85f9300403391"
+      "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
     ],
-    "scope": "Explicit user-invoked Ask separately cancellation with original-request ownership and native cleanup confirmation. CI and merge state remain in the public pull request and native receipt; no installation or release.",
-    "pull_request": "https://github.com/acg-box/decodex/pull/2471"
+    "scope": "User-approved parent-first question guidance in the existing shared coordinator prompt. Public delivery state is available through the implementation commit and its linked pull request; no installed-app acceptance."
+  },
+  "retained_account_scope": {
+    "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
+    "authentication": [
+      "Browser/device OAuth and verified OAuth credential import",
+      "Verified imported ChatGPT personal access token (PAT)"
+    ],
+    "plan_differences": "Quota, native model/access metadata, workspace policy and billing/recovery destinations can differ. Read native/service capabilities and account/workspace observations instead of inferring authorization from a plan label.",
+    "maintenance_scope": "Shared credential lifecycle, exact account binding, native catalog reads and recovery flows. New plan labels can reuse these owners with small classification/display changes; a new authentication/provider mode has a separate compatibility cost.",
+    "exclusions_and_limits": [
+      "Pure API keys, Bedrock credentials and runtime-agent identities are outside this account pool.",
+      "The PAT import path rejects FedRAMP metadata. No claim covers every special enterprise/region setup or per-plan real-account validation.",
+      "Known free/go/plus/pro variants, Team/Business, Enterprise, Education and sci/sci_plus labels are recognized by current source. Recognition does not guarantee availability, models or quotas."
+    ],
+    "source_symbols": [
+      "crates/decodex-core/src/account.rs#AccountProvider",
+      "crates/decodex-runtime/src/account_import.rs#parse_shared_codex,#parse_pat_source",
+      "crates/decodex-runtime/src/account_service/personal_access_token.rs#resolve_import,#hydrate",
+      "crates/decodex-runtime/src/host_credentials.rs#CredentialSecretBundle",
+      "crates/decodex-runtime/src/account_observation/recovery_actions.rs#workspace,#destination",
+      "crates/decodex-runtime/src/agent_capabilities.rs#read_scoped,#project_model"
+    ],
+    "source_sha256": {
+      "crates/decodex-core/src/account.rs": "0db858b577223621df884345b3c6f173f61e01975039fb676d733bfc3d701d8b",
+      "crates/decodex-runtime/src/account_import.rs": "77afd075026f94083385df2bc26cbaebb5cac76292c59fec7e3db6f56439dc02",
+      "crates/decodex-runtime/src/account_service/personal_access_token.rs": "cf9cfdcde0170aad84accd713b2b4b5728c7b8a16ccbf25828c9be908df73e8d",
+      "crates/decodex-runtime/src/host_credentials.rs": "a872493e30134fd270bc6424040cb1cff9215b693a136c9573c429045bc073a3",
+      "crates/decodex-runtime/src/account_observation/recovery_actions.rs": "fdb5536176ff29aa5c6a2acd8f24e096eca6cddf8068582e5b1c7167a944f69a",
+      "crates/decodex-runtime/src/agent_capabilities.rs": "59d9475c7f0ee4990270907db8368f4b6105866687d9b8ef83be7281c216f9ff"
+    },
+    "tests_executed_for_this_explanation": 0
   }
 }
