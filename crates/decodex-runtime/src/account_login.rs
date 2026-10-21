@@ -691,6 +691,7 @@ fn map_install_error(error: &CommandError) -> AccountLoginFailure {
 	match error {
 		CommandError::ExpectedRevisionMismatch { .. } => AccountLoginFailure::AccountChanged,
 		CommandError::AccountCommandRejected { rejection, .. } => match rejection {
+			AccountCommandRejectionDto::UnsupportedPlan => AccountLoginFailure::UnsupportedPlan,
 			AccountCommandRejectionDto::ProviderMismatch => AccountLoginFailure::AccountMismatch,
 			AccountCommandRejectionDto::ProviderAlreadyEnrolled =>
 				AccountLoginFailure::ProviderAlreadyEnrolled,

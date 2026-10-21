@@ -464,6 +464,15 @@
       "recommendation": "Reuse native child-parent messaging and root user-question tools; keep escalation in the existing coordinator prompt.",
       "qualification": "retained_native_coordination.parent_questions",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2472"
+    },
+    {
+      "id": "selected-account-plan-scope",
+      "status": "approved_implemented",
+      "value": "Constrain account admission and maintenance to Plus, Pro (More), Pro, Pro (Max) and Team.",
+      "maintenance_cost": "Low: one five-plan classification and the existing credential, route and typed refusal owners. Preserve rotated credential and history boundaries.",
+      "decision": "User explicitly selected only native Plus, Pro, ProLite, ProMax and Team.",
+      "qualification": "retained_account_scope",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/10d1181ec3652a429dc69d15525088c97a73fc40"
     }
   ],
   "retained_presentation": {
@@ -848,19 +857,18 @@
     "status": "incomplete_unrelated_historical_scope",
     "requested_pages": [
       "openwiki/operations/accounts-and-routing.md",
-      "openwiki/operations/codex-upstream-autopilot.md",
-      "openwiki/testing/upstream-acceptance-boundaries.md"
+      "openwiki/decisions/upstream-product-scope.md"
     ],
     "accepted_pages": 41,
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "completed_pages": 0,
     "existing_claims_on_first_page": 13,
     "claims_requiring_attention": 10,
-    "reason": "The supported lifecycle expanded three maintenance pages into 41 historical jobs. The first chief-coordination page requires unrelated archive, fork, visibility and retention reconciliation. The maintenance prompt authorizes recording this expanded historical lifecycle and its owner instead of silently treating it as complete.",
+    "reason": "The supported lifecycle expanded the two requested account pages into 41 historical jobs and assigned unrelated fork/archive/visibility/retention reconciliation first. The maintenance definition permits retaining that expanded scope and owner separately.",
     "owner": "Repository-wide OpenWiki maintenance remains unassigned; current Graph presentation work belongs to its separate active developer.",
     "next_action": "Resume the supported lifecycle on merged main and reconcile source drift before historical page generation. No managed page/control was hand-edited.",
     "merge_boundary": "Source review, necessary repair and exact development-artifact qualification deliver independently. The expanded historical documentation lifecycle is incomplete.",
-    "additional_affected_behavior": "Pending supported lifecycle generation must cover retained Ask separately cancellation and parent-first question guidance, including root-only native question tools and the existing-thread instruction boundary. The 41-page historical queue remains incomplete; current lifecycle tools expose retrieval only."
+    "additional_affected_behavior": "Pending supported generation must cover the five admitted account variants, refusal paths, retained unsupported records, and credential-preserving plan changes. Earlier cancellation and question-ownership updates remain pending. Source drift must be reconciled against delivered main before resuming. The historical queue remains incomplete; no generated page or control was hand-edited."
   },
   "retained_behavior_contracts": [
     {
@@ -987,18 +995,18 @@
       ]
     },
     {
-      "id": "workspace-plan-recovery",
-      "contract": "sci and sci_plus use the existing workspace billing recovery destination. Provider account identity stays encoded; personal plans and unknown-plan refusal retain their existing routes.",
+      "id": "selected-account-plan-scope",
+      "contract": "Check the same five-plan classification for enrollment/import, replacement sign-in, exact execution/API credentials, initial and Agent selection, and shared-auth route targets. Missing and unrecognized plans are unsupported. Preserve native ASCII case-insensitive plan identity. Save a valid rotated successor and settle its credential operation before refusing execution under an unsupported plan. Complete an explicit manual refresh refusal receipt so it can replay without another provider refresh. Replacement sign-in with an excluded plan leaves the prior credential unchanged.",
       "source_symbols": [
-        "crates/decodex-runtime/src/account_observation/recovery_actions.rs#workspace,#destination"
+        "crates/decodex-runtime/src/account_service.rs#account_plan_is_workspace,#read_supported_credential"
       ],
       "tests": [
-        "account_observation::recovery_actions::tests::workspace_routes_encode_provider_identity_and_unknown_plans_do_not_guess"
+        "account_service::tests::plan_scope::excluded_reauthentication_keeps_the_prior_supported_credential",
+        "account_service::tests::plan_scope::changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt",
+        "account_service::tests::plan_scope::only_selected_plans_can_be_installed_with_oauth_or_pat",
+        "account_service::tests::plan_scope::old_excluded_accounts_remain_readable_but_cannot_supply_work"
       ],
-      "source_review_records": [
-        8
-      ],
-      "qualification": "automations/upstream/qualification.json#decodex_validation.research_plan_regression"
+      "qualification": "retained_account_scope"
     }
   ],
   "retained_native_diagnostics": {
@@ -1121,12 +1129,11 @@
     }
   },
   "current_delivery": {
-    "status": "public_pull_request",
+    "status": "public_implementation_commit",
     "code_commits": [
-      "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
+      "https://github.com/acg-box/decodex/commit/10d1181ec3652a429dc69d15525088c97a73fc40"
     ],
-    "scope": "User-approved parent-first question guidance in the existing shared coordinator prompt. Public delivery state is available through the implementation commit and its linked pull request; no installed-app acceptance.",
-    "pull_request": "https://github.com/acg-box/decodex/pull/2472"
+    "scope": "User-approved five-plan account admission and retained credential boundaries. Public commit/PR state establishes merged delivery separately from local checks and installed-app acceptance."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
@@ -1134,19 +1141,40 @@
       "Browser/device OAuth and verified OAuth credential import",
       "Verified imported ChatGPT personal access token (PAT)"
     ],
+    "admitted_plans": {
+      "plus": "Plus",
+      "pro": "Pro (More)",
+      "prolite": "Pro",
+      "promax": "Pro (Max)",
+      "team": "Team"
+    },
+    "decision": "The user explicitly limited account-pool admission to these five native variants. Do not restore another recognized upstream plan without a new user decision.",
+    "admission_contract": "Check the same five-plan classification for enrollment/import, replacement sign-in, exact execution/API credentials, initial and Agent selection, and shared-auth route targets. Missing and unrecognized plans are unsupported. Preserve native ASCII case-insensitive plan identity.",
+    "retained_records": "Unsupported existing accounts and credentials remain readable. Do not delete them, rewrite enablement, or terminate an existing native process as a scope migration. They cannot supply new admitted work or direct account API credentials.",
+    "refresh_contract": "Save a valid rotated successor and settle its credential operation before refusing execution under an unsupported plan. Complete an explicit manual refresh refusal receipt so it can replay without another provider refresh. Replacement sign-in with an excluded plan leaves the prior credential unchanged.",
+    "recovery_contract": "Team retains workspace billing with encoded account identity. The four admitted personal variants retain personal usage/billing paths. Other plans do not acquire a plan-dependent recovery destination.",
     "plan_differences": "Quota, native model/access metadata, workspace policy and billing/recovery destinations can differ. Read native/service capabilities and account/workspace observations instead of inferring authorization from a plan label.",
-    "maintenance_scope": "Shared credential lifecycle, exact account binding, native catalog reads and recovery flows. New plan labels can reuse these owners with small classification/display changes; a new authentication/provider mode has a separate compatibility cost.",
+    "maintenance_scope": "One service-owned allowlist reuses the existing OAuth/PAT lifecycle and native capability paths. This adds no provider implementation or per-plan backend. Typed unsupported-plan refusals use local application protocol 2.130; the native app-server schema and runtime remain unchanged.",
     "exclusions_and_limits": [
-      "Pure API keys, Bedrock credentials and runtime-agent identities are outside this account pool.",
-      "The PAT import path rejects FedRAMP metadata. No claim covers every special enterprise/region setup or per-plan real-account validation.",
-      "Known free/go/plus/pro variants, Team/Business, Enterprise, Education and sci/sci_plus labels are recognized by current source. Recognition does not guarantee availability, models or quotas."
+      "Free, Go, Business and its self-serve variants, Enterprise variants, Education variants, Academic Researchers variants, unknown and absent plans are outside the current account-pool scope.",
+      "Pure API keys, Bedrock credentials and runtime-agent identities remain outside this account pool. PAT import still rejects FedRAMP metadata.",
+      "Local metadata classification does not grant provider entitlement or replace native execution, model, workspace or quota enforcement.",
+      "The tests use reusable synthetic repository fixtures. No real account/provider, every-plan acceptance, installed-app acceptance or already-running-process migration is claimed."
     ],
     "source_symbols": [
       "crates/decodex-core/src/account.rs#AccountProvider",
       "crates/decodex-runtime/src/account_import.rs#parse_shared_codex,#parse_pat_source",
       "crates/decodex-runtime/src/account_service/personal_access_token.rs#resolve_import,#hydrate",
       "crates/decodex-runtime/src/host_credentials.rs#CredentialSecretBundle",
-      "crates/decodex-runtime/src/account_observation/recovery_actions.rs#workspace,#destination",
+      "crates/decodex-runtime/src/account_service.rs#account_plan_is_workspace,#require_supported_plan,#install_credentials_command,#reauthentication_material,#selection_candidate,#read_supported_credential,#read_and_observe_exact_credential,#commit_refresh_command",
+      "crates/decodex-runtime/src/account_observation/recovery_actions.rs#destination",
+      "crates/decodex-runtime/src/application.rs#account_lifecycle_command_error",
+      "crates/decodex-runtime/src/account_login.rs#map_install_error",
+      "crates/decodex-protocol/src/wire.rs#AccountCommandRejectionDto",
+      "crates/decodex-protocol/src/account_login.rs#AccountLoginFailure",
+      "crates/decodex-protocol/src/lib.rs#CURRENT_VERSION",
+      "apps/decodex-gpui/src/shell.rs#account_rejection_label",
+      "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlCLIClient.swift#AccountControlRejection,#AccountReauthenticationFailure",
       "crates/decodex-runtime/src/agent_capabilities.rs#read_scoped,#project_model"
     ],
     "source_sha256": {
@@ -1154,9 +1182,202 @@
       "crates/decodex-runtime/src/account_import.rs": "77afd075026f94083385df2bc26cbaebb5cac76292c59fec7e3db6f56439dc02",
       "crates/decodex-runtime/src/account_service/personal_access_token.rs": "cf9cfdcde0170aad84accd713b2b4b5728c7b8a16ccbf25828c9be908df73e8d",
       "crates/decodex-runtime/src/host_credentials.rs": "a872493e30134fd270bc6424040cb1cff9215b693a136c9573c429045bc073a3",
-      "crates/decodex-runtime/src/account_observation/recovery_actions.rs": "fdb5536176ff29aa5c6a2acd8f24e096eca6cddf8068582e5b1c7167a944f69a",
-      "crates/decodex-runtime/src/agent_capabilities.rs": "59d9475c7f0ee4990270907db8368f4b6105866687d9b8ef83be7281c216f9ff"
+      "crates/decodex-runtime/src/account_observation/recovery_actions.rs": "b5ddeca3437b026fba87ddfe850920369207a9322a976401d4f2d990589f926c",
+      "crates/decodex-runtime/src/agent_capabilities.rs": "59d9475c7f0ee4990270907db8368f4b6105866687d9b8ef83be7281c216f9ff",
+      "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlCLIClient.swift": "5b9cc7262162215b419a5cb0e9cbf2d3d0cc8aa557e6c56cc2ac748b3c7270c0",
+      "apps/decodex-gpui/menubar/Tests/DecodexAppTests/AccountControlCLIClientTests.swift": "2df2a1eeeea25538c6d313fe91346d1b3c5f7283e27bcd27352b049eea86d6a7",
+      "apps/decodex-gpui/src/shell.rs": "91beb78147ebff869ea104a5eb1b3069ff3876d9970eef21e11a25e0ae2f7e49",
+      "crates/decodex-protocol/src/account_login.rs": "53a23181d054eef5631d9406f4b0705eb6ced9e93b9e8dc1d52f7ad2412eee3e",
+      "crates/decodex-protocol/src/lib.rs": "1e7177409f13169f2e596aecb5686b1984cb0524dbce6ba16aeeeef0c670acb5",
+      "crates/decodex-protocol/src/wire.rs": "7c1a8991a16530983c23c99d40efe62c1a3ce507983dd388cb2f7b1a67081fe2",
+      "crates/decodex-runtime/src/account_api.rs": "18bead4400f575026206f3357f7db31a143ebebcb96cb8c55748d4eb1ac0139f",
+      "crates/decodex-runtime/src/account_login.rs": "18697f264e4e15faa664d3c43cb376bdc28eb9d56377876c9f2c971d0ad53adf",
+      "crates/decodex-runtime/src/account_service.rs": "7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d",
+      "crates/decodex-runtime/src/account_service/tests/plan_scope.rs": "df87cab1b7d420e4626ee4db794ce79060f08bf96a2078c5ea3122c2db346641",
+      "crates/decodex-runtime/src/application.rs": "d7a3e06aa26ac88d27881891289aaf8a02f539427984eb8cb8f80b4086a7da3b",
+      "crates/decodex-runtime/src/conversation.rs": "df619d803eb648724895657a8d48f8538d2e1872fe9ee4e8e2fb149ce0438e91"
     },
-    "tests_executed_for_this_explanation": 0
+    "native_source_read": {
+      "commit": "66d0de9983e82b266e89ee29523324c9d08a5472",
+      "source": "codex-rs/protocol/src/auth.rs",
+      "sha256": "dcae6a282263f505572575703849ce71ae8ab3faef4f909ac57d5aee113ca6ea",
+      "symbols_read": [
+        "PlanType::from_raw_value",
+        "KnownPlan",
+        "KnownPlan::raw_value",
+        "KnownPlan::display_name",
+        "KnownPlan::is_workspace_account"
+      ],
+      "test_bodies_read": [
+        "codex-protocol lib: auth::tests::plan_type_deserializes_raw_aliases"
+      ],
+      "upstream_tests_executed_this_followup": 0,
+      "schema_identity_reused": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+      "runtime_changed": false,
+      "boundary": "Decodex deliberately admits only the five selected native raw plan variants. Broader upstream parsing and model/usage enforcement remain native-owned. Local plan metadata does not grant provider entitlement."
+    },
+    "tests_read": [
+      "account_service::tests::plan_scope::excluded_reauthentication_keeps_the_prior_supported_credential",
+      "account_service::tests::plan_scope::changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt",
+      "account_service::tests::plan_scope::only_selected_plans_can_be_installed_with_oauth_or_pat",
+      "account_service::tests::plan_scope::old_excluded_accounts_remain_readable_but_cannot_supply_work",
+      "account_observation::recovery_actions::tests::workspace_routes_encode_provider_identity_and_unknown_plans_do_not_guess",
+      "account_observation::recovery_actions::tests::pro_max_credit_recovery_uses_personal_usage_without_account_identity",
+      "DecodexAppTests.AccountControlNativeClientTests.testUnsupportedPlanRefusesRoutingAndNamesSupportedAccounts",
+      "DecodexAppTests.AccountControlNativeClientTests.testUnsupportedPlanLoginFailureKeepsItsTypedReason"
+    ],
+    "tests_executed": {
+      "rust": {
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--workspace",
+          "--all-targets",
+          "--all-features",
+          "--exclude",
+          "decodex-gpui",
+          "--no-fail-fast"
+        ],
+        "entrypoints": "Headless workspace, all targets and features; decodex-runtime tests are in its lib target.",
+        "executed": 1875,
+        "passed": 1875,
+        "skipped": 120,
+        "leak_markers": 0,
+        "new_regression_identities": [
+          "account_service::tests::plan_scope::excluded_reauthentication_keeps_the_prior_supported_credential",
+          "account_service::tests::plan_scope::changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt",
+          "account_service::tests::plan_scope::only_selected_plans_can_be_installed_with_oauth_or_pat",
+          "account_service::tests::plan_scope::old_excluded_accounts_remain_readable_but_cannot_supply_work"
+        ],
+        "unmatched_selectors": []
+      },
+      "before_repair": {
+        "base": "bea6bc736f1a8924be447f7bd38b9d5e9abb4b44",
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--all-features",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "-E",
+          "test(account_service::tests::plan_scope::)",
+          "--no-fail-fast"
+        ],
+        "executed": 2,
+        "failed": 2,
+        "symptoms": [
+          "Missing-plan OAuth credentials were admitted.",
+          "A legacy Free account could supply API credentials."
+        ]
+      },
+      "scope_matrix": {
+        "completed_install_cases": 50,
+        "supported_raw_variants": 5,
+        "case_variant_inputs": 1,
+        "excluded_inputs": 19,
+        "credential_modes": [
+          "OAuth",
+          "PAT"
+        ],
+        "limit": "Matrix cases are inputs within a Rust test, not additional Rust test identities."
+      },
+      "swift": {
+        "command": [
+          "swift",
+          "test",
+          "--package-path",
+          "apps/decodex-gpui/menubar",
+          "--disable-automatic-resolution",
+          "--filter",
+          "AccountControlNativeClientTests"
+        ],
+        "entrypoint": "DecodexAppTests.AccountControlNativeClientTests",
+        "executed": 20,
+        "passed": 20,
+        "unmatched_selectors": [],
+        "initial_unmatched_selector": {
+          "selector": "AccountControlCLIClientTests",
+          "executed": 0,
+          "disposition": "Corrected to the source-declared test class; no test pass credited to the empty filter."
+        }
+      },
+      "architecture": {
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "tests/scripts/test_account_login_architecture.py",
+          "tests/scripts/test_vnext_architecture.py"
+        ],
+        "exit_code": 0,
+        "executed": 9,
+        "passed": 9,
+        "unmatched_selectors": []
+      }
+    },
+    "checks": [
+      {
+        "name": "strict-workspace-clippy",
+        "command": [
+          "cargo",
+          "+stable",
+          "make",
+          "lint-rust"
+        ],
+        "exit_code": 0
+      },
+      {
+        "name": "full-workspace-check",
+        "command": [
+          "cargo",
+          "+stable",
+          "make",
+          "check-rust"
+        ],
+        "exit_code": 0
+      },
+      {
+        "name": "nightly-format",
+        "command": [
+          "cargo",
+          "+nightly",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "name": "diff-check",
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit_code": 0
+      }
+    ],
+    "selected_runtime_qualification": {
+      "source": "66d0de9983e82b266e89ee29523324c9d08a5472",
+      "reference": "automations/upstream/qualification.json",
+      "native_schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+      "components_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "ec53aeb93a258965aa40e0e614c641cfbdd0e791ca683c9980b0b6ab196f1c4a",
+        "bin/codex-code-mode-host": "f9d69748d7e77f4c3154b8bb498d7cf71334f4776e0e8ce419f3d64491f8f3a6",
+        "codex-path/rg": "dc59496f8fabd70ca66c84603e26ff4c265ff6b0ee60ef975e916aed42754ee3"
+      },
+      "limit": "Reuse the original artifact within its existing recorded limits. This local admission change does not constitute new native account or provider qualification."
+    },
+    "delivery_references": [
+      "https://github.com/acg-box/decodex/commit/10d1181ec3652a429dc69d15525088c97a73fc40"
+    ]
   }
 }

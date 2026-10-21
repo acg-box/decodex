@@ -598,6 +598,16 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
+		let supported = target_account
+			.credential
+			.as_ref()
+			.ok_or(AccountLifecycleError::CredentialAbsent)
+			.and_then(|binding| self.read_supported_credential(command.account_id, binding));
+
+		if let Err(error) = supported {
+			return self.finish_route_error(command.lease, error, command.build_response).await;
+		}
+
 		let initial_auth = self.shared_auth.read_current_exact();
 		let projected_current = if let Ok(snapshot) = initial_auth.as_ref() {
 			self.confirm_shared_auth_target_locked(
@@ -1068,7 +1078,7 @@ impl AccountService {
 	) -> Result<Option<(i64, String)>, AccountLifecycleError> {
 		let account = self.load_account(account_id).await?;
 		let binding = projection_binding(&account, expected_revision)?;
-		let stored = self.credentials.read_exact(account_id, binding)?;
+		let stored = self.read_supported_credential(account_id, binding)?;
 		let matches = match snapshot {
 			SharedCodexAuthSnapshot::Managed { credential, .. } =>
 				binding.provider == credential.provider
@@ -1098,9 +1108,7 @@ impl AccountService {
 			.map_err(SharedAuthProjectionError::Rejected)?
 			.clone();
 		let stored = self
-			.credentials
-			.read_exact(account_id, &binding)
-			.map_err(AccountLifecycleError::from)
+			.read_supported_credential(account_id, &binding)
 			.map_err(SharedAuthProjectionError::Rejected)?;
 
 		if !stored.bundle().is_personal_access_token() {
@@ -1297,6 +1305,10 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
+		if let Err(error) = require_supported_plan(&bundle) {
+			return self.complete_account_command_error(lease, error, build_response).await;
+		}
+
 		let resolution = self.store.resolve_account_enrollment(&account_id, &provider).await?;
 		let (resolved_account_id, expected_account_revision, previous_credential) =
 			match &resolution {
@@ -2317,6 +2329,7 @@ impl AccountService {
 			account_import::read_explicit_shared_codex_credential_file(source_descriptor),
 		)
 		.await?;
+		require_supported_plan(&imported.bundle)?;
 		let target = reauthentication_target(&current, account_id, operation_id, &imported)?;
 
 		self.credentials.read_exact(account_id, &current)?;
@@ -2780,8 +2793,18 @@ impl AccountService {
 				.await?,
 		)?;
 
-		self.commit_and_project_refresh_result(operation_id, account_id, None, projected_source)
-			.await?;
+		match self
+			.commit_and_project_refresh_result(operation_id, account_id, None, projected_source)
+			.await
+		{
+			Ok(_) => {},
+			Err(error @ AccountLifecycleError::UnsupportedPlan) => {
+				// The provider can rotate credentials while changing the plan. Keep the
+				// committed successor, then finish the command with a definite refusal.
+				return self.complete_account_command_error(lease, error, build_response).await;
+			},
+			Err(error) => return Err(error),
+		}
 
 		self.complete_account_operation_success(
 			lease,
@@ -2799,7 +2822,7 @@ impl AccountService {
 		binding: &CredentialBinding,
 		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
-		let stored = self.credentials.read_exact(account_id, binding)?;
+		let stored = self.read_supported_credential(account_id, binding)?;
 
 		// The refresh state machine mirrors a successor only when it proved that this exact
 		// account bundle was the shared source. This projection helper itself stays file-agnostic.
@@ -2869,7 +2892,7 @@ impl AccountService {
 			return Err(AccountLifecycleError::StaleAccount);
 		}
 
-		let stored = self.credentials.read_exact(account_id, binding)?;
+		let stored = self.read_supported_credential(account_id, binding)?;
 
 		if let Some(source) = projected_source {
 			let _ = self.shared_auth.project_exact_source(
@@ -4589,7 +4612,31 @@ impl AccountService {
 			_ => return Err(AccountSelectionRecovery::RepairCredentialStore),
 		}
 
-		quota_selection_score(account, now_unix_micros)
+		let score = quota_selection_score(account, now_unix_micros)?;
+		let binding =
+			account.credential.as_ref().ok_or(AccountSelectionRecovery::EnrollCredentials)?;
+
+		self.read_supported_credential(&account.account_id, binding).map_err(
+			|error| match error {
+				AccountLifecycleError::UnsupportedPlan =>
+					AccountSelectionRecovery::EnrollCredentials,
+				_ => AccountSelectionRecovery::RepairCredentialStore,
+			},
+		)?;
+
+		Ok(score)
+	}
+
+	fn read_supported_credential(
+		&self,
+		account_id: &AccountId,
+		binding: &CredentialBinding,
+	) -> Result<StoredCredential, AccountLifecycleError> {
+		let stored = self.credentials.read_exact(account_id, binding)?;
+
+		require_supported_plan(stored.bundle())?;
+
+		Ok(stored)
 	}
 
 	async fn read_exact_for_admission(
@@ -4677,6 +4724,8 @@ impl AccountService {
 	) -> Result<StoredCredential, AccountLifecycleError> {
 		match self.credentials.read_exact(&account.account_id, binding) {
 			Ok(stored) => {
+				require_supported_plan(stored.bundle())?;
+
 				self.store
 					.observe_account_store(
 						&account.account_id,
@@ -5301,6 +5350,8 @@ pub enum AccountLifecycleError {
 	CoordinatorUnavailable,
 	/// Credential import input is unsafe or malformed.
 	CredentialImport,
+	/// The observed plan is outside the current product scope or is absent.
+	UnsupportedPlan,
 	/// Official Codex or ChatGPT is running.
 	CodexIsRunning,
 	/// The shared auth file cannot be read safely.
@@ -5334,6 +5385,8 @@ impl Display for AccountLifecycleError {
 			Self::InvalidOperation => "account lifecycle operation invalid",
 			Self::CoordinatorUnavailable => "account lifecycle coordinator unavailable",
 			Self::CredentialImport => "account credential source unavailable",
+			Self::UnsupportedPlan =>
+				"only Plus, Pro, Pro (More), Pro (Max), and Team accounts are supported",
 			Self::CodexIsRunning => "Codex or ChatGPT is running",
 			Self::AuthFileUnreadable => "shared auth file is unreadable",
 			Self::AuthSourceAccountUnknown => "shared login account is not enrolled",
@@ -5531,6 +5584,22 @@ pub(crate) fn rejected_refresh_recovery(account: &AccountRecord) -> Option<&Acco
 				)
 		})
 		.map(|operation| &operation.operation_id)
+}
+
+/// Classify only the native plans admitted by the current Decodex product scope.
+/// Native plan names are case-insensitive; absent and unknown names stay unsupported.
+pub(crate) fn account_plan_is_workspace(plan: Option<&str>) -> Option<bool> {
+	match plan?.to_ascii_lowercase().as_str() {
+		"team" => Some(true),
+		"plus" | "pro" | "prolite" | "promax" => Some(false),
+		_ => None,
+	}
+}
+
+fn require_supported_plan(bundle: &CredentialSecretBundle) -> Result<(), AccountLifecycleError> {
+	account_plan_is_workspace(bundle.plan_type())
+		.map(|_| ())
+		.ok_or(AccountLifecycleError::UnsupportedPlan)
 }
 
 fn quota_selection_score(
@@ -5956,6 +6025,8 @@ const fn store_error_observation(
 
 #[cfg(test)]
 mod tests {
+	mod plan_scope;
+
 	use std::{
 		collections::HashMap,
 		fs,
@@ -10093,17 +10164,18 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_routes_stick_until_exhausted_then_choose_available_capacity() {
-		let (_, _, service, _, _) =
+		let (_directory, store, service, _, _shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let mut accounts = Vec::new();
 
 		for (number, usage) in [(1, 80), (2, 20), (3, 0)] {
-			let mut account = projection_account(Some(binding("fixture", 1)));
-
-			account.account_id =
-				AccountId::new(format!("20000000-0000-4000-8000-{number:012}")).unwrap();
+			let (account_id, _) =
+				plan_scope::legacy_account(&store, &service, number, Some("pro"), false).await;
+			let mut account = service.inspect(&account_id).await.unwrap().account;
 			account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 			account.five_hour_quota.observed_at_unix_micros = Some(900);
+			account.lifecycle_readiness = AccountLifecycleReadiness::Ready;
+			account.usage_observation = None;
 			account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
 				AccountQuotaWindow::new(10_080, usage, 2_000_000).unwrap(),
 			);

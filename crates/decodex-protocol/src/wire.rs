@@ -3432,6 +3432,8 @@ pub enum CommandError {
 pub enum AccountCommandRejectionDto {
 	/// The command shape or bounded input is invalid.
 	InvalidRequest,
+	/// The observed plan is outside the current account-pool scope or is absent.
+	UnsupportedPlan,
 	/// The requested account does not exist.
 	AccountNotFound,
 	/// The expected account revision does not match current state.

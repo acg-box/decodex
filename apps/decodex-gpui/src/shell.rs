@@ -4302,6 +4302,8 @@ fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 
 fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static str {
 	match rejection {
+		AccountCommandRejectionDto::UnsupportedPlan =>
+			"Use a Plus, Pro, Pro (More), Pro (Max), or Team account.",
 		AccountCommandRejectionDto::CodexIsRunning =>
 			"Quit ChatGPT or Codex, then try switching again.",
 		AccountCommandRejectionDto::AccountDisabled =>

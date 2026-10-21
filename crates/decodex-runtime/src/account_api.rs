@@ -556,6 +556,7 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous) =>
 			AccountApiRuntimeError::RefreshAmbiguous,
 		AccountLifecycleError::AccountDisabled
+		| AccountLifecycleError::UnsupportedPlan
 		| AccountLifecycleError::NotReady(_)
 		| AccountLifecycleError::OperationRejected(_)
 		| AccountLifecycleError::CredentialImport

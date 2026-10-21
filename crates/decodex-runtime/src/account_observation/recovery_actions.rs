@@ -1,7 +1,10 @@
 //! Revalidate backend recovery destinations without sending a purchase, reset, or nudge.
 use reqwest::Url;
 
-use crate::account_observation::{AccountId, AccountObservationService};
+use crate::{
+	account_observation::{AccountId, AccountObservationService},
+	account_service::account_plan_is_workspace,
+};
 use decodex_codex::AccountApiRecoveryContext;
 use decodex_protocol::{
 	AccountRecoveryAction, AccountRecoveryBanner, AccountRecoveryDestination,
@@ -68,7 +71,7 @@ fn destination(
 			None => return Some(AccountRecoveryDestination::RequestUsageIncrease),
 		},
 		AccountRecoveryAction::AddCredits =>
-			if workspace(context.plan_type.as_deref()?)? {
+			if account_plan_is_workspace(context.plan_type.as_deref())? {
 				"https://chatgpt.com/admin/billing?codex_credit_action=add_credits".into()
 			} else {
 				format!("{usage}?credits_modal=true")
@@ -80,11 +83,11 @@ fn destination(
 		AccountRecoveryAction::PlusPricing => "https://chatgpt.com/explore/plus".into(),
 		AccountRecoveryAction::ProPricing => "https://chatgpt.com/explore/pro".into(),
 		AccountRecoveryAction::Pricing => {
-			let plan = context.plan_type.as_deref()?;
+			let plan = context.plan_type.as_deref()?.to_ascii_lowercase();
 
-			workspace(plan)?;
+			account_plan_is_workspace(Some(&plan))?;
 
-			let target = if matches!(plan, "plus" | "prolite") { "pro" } else { "plus" };
+			let target = if matches!(plan.as_str(), "plus" | "prolite") { "pro" } else { "plus" };
 			let mut url = Url::parse("https://chatgpt.com/").ok()?;
 
 			url.query_pairs_mut()
@@ -118,26 +121,6 @@ fn destination(
 	}
 
 	Some(AccountRecoveryDestination::OpenUrl(WireText::new(url.as_str()).ok()?))
-}
-
-fn workspace(plan: &str) -> Option<bool> {
-	match plan {
-		"team"
-		| "self_serve_business_prolite"
-		| "self_serve_business_usage_based"
-		| "business"
-		| "ent26"
-		| "enterprise_cbp_automation"
-		| "enterprise_cbp_usage_based"
-		| "enterprise"
-		| "edu"
-		| "edu_plus"
-		| "edu_pro"
-		| "sci"
-		| "sci_plus" => Some(true),
-		"free" | "go" | "plus" | "pro" | "prolite" | "promax" => Some(false),
-		_ => None,
-	}
 }
 
 fn validated_url(raw: &str) -> Option<AccountRecoveryDestination> {
@@ -191,10 +174,10 @@ mod tests {
 	fn workspace_routes_encode_provider_identity_and_unknown_plans_do_not_guess() {
 		let mut context = AccountApiRecoveryContext {
 			provider_account_id: "workspace &other=x".into(),
-			plan_type: Some("edu_plus".into()),
+			plan_type: Some("team".into()),
 		};
 		let banner = banner();
-		for plan in ["edu_plus", "sci", "sci_plus"] {
+		for plan in ["team", "TEAM"] {
 			context.plan_type = Some(plan.into());
 			let target = url(&context, &banner, AccountRecoveryAction::AddCredits);
 
@@ -219,16 +202,20 @@ mod tests {
 		assert!(target.query_pairs().any(|(k, v)| k == "pro_variant" && v == "2x"));
 		assert_eq!(target.fragment(), Some("pricing"));
 
-		context.plan_type = Some("future-plan".into());
+		for plan in
+			["free", "go", "business", "enterprise", "edu_plus", "sci", "sci_plus", "future-plan"]
+		{
+			context.plan_type = Some(plan.into());
 
-		assert!(
-			recovery_actions::destination(&context, &banner, AccountRecoveryAction::AddCredits)
-				.is_none()
-		);
-		assert!(
-			recovery_actions::destination(&context, &banner, AccountRecoveryAction::Pricing)
-				.is_none()
-		);
+			assert!(
+				recovery_actions::destination(&context, &banner, AccountRecoveryAction::AddCredits)
+					.is_none()
+			);
+			assert!(
+				recovery_actions::destination(&context, &banner, AccountRecoveryAction::Pricing)
+					.is_none()
+			);
+		}
 	}
 	#[test]
 	fn pro_max_credit_recovery_uses_personal_usage_without_account_identity() {

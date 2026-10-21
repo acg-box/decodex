@@ -7284,6 +7284,7 @@ fn account_recovery(error: AccountLifecycleError) -> ConversationManualRecovery 
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned) =>
 			ConversationManualRecovery::MissingLocalProcess,
 		AccountLifecycleError::Persistence(_)
+		| AccountLifecycleError::UnsupportedPlan
 		| AccountLifecycleError::CoordinatorUnavailable
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::CredentialImport

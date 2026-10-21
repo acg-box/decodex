@@ -292,6 +292,51 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
+	func testUnsupportedPlanRefusesRoutingAndNamesSupportedAccounts() async throws {
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "route_account",
+				authority: authority,
+				data: """
+				{"outcome":"rejected","data":{"error":{
+				  "reason":"account_command_rejected","rejection":"unsupported_plan"
+				}}}
+				"""
+			)
+		}
+		do {
+			_ = try await client.routeAccount(
+				authority: authority,
+				accountID: accountID,
+				idempotencyKey: idempotencyKey
+			)
+			XCTFail("An unsupported plan must not be routed")
+		} catch let error as AccountControlError {
+			XCTAssertEqual(error, .rejected(.unsupportedPlan, actualRevision: nil))
+			XCTAssertEqual(error.localizedDescription, "Use a Plus, Pro, Pro (More), Pro (Max), or Team account.")
+		}
+	}
+
+	func testUnsupportedPlanLoginFailureKeepsItsTypedReason() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+				{"session_id":"\(sessionID)","state":"failed","failure":"unsupported_plan"}
+				"""
+			)
+		}
+		let status = try await client.pollAccountReauthentication(authority: authority, sessionID: sessionID)
+
+		XCTAssertEqual(status.state, .failed)
+		XCTAssertEqual(status.failure, .unsupportedPlan)
+		XCTAssertEqual(status.failure?.presentation, "Use a Plus, Pro, Pro (More), Pro (Max), or Team account.")
+	}
+
 	func testSharedImportDuplicateUsesTypedEnrollmentRejectionAndExactRequest() async throws {
 		let authority = authority
 		let recorder = NativeRequestRecorder()
