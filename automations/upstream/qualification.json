@@ -3564,7 +3564,7 @@
     "No live provider, real account, Windows MDM, Linux sandbox/NFS, remote-Windows or remote executor, physical audio or installed-app acceptance.",
     "Production V8 guards remain. No standalone optimized d8 security regression, throughput, memory, latency or cost benchmark.",
     "Inherited hickory-proto and quick-xml advisories remain. The webpki-root-certs lock-level advisory remains but has no selected macOS codex-cli reverse dependency. Two root/TLS advisories were removed; no new advisory was introduced.",
-    "Optional runtime-agent identities, frozen cloud skills, Guardian Decisions comparison, new sample controls and TUI controls are not adopted.",
+    "Optional runtime-agent identities, frozen cloud skills, Guardian Decisions comparison, TUI controls are not adopted.",
     "Model-required apply_patch can remain registered in an isolated recap; this qualification verifies native environment denial, not removal from the model catalog."
   ],
   "documentation_lifecycle": {
@@ -3585,12 +3585,299 @@
     "merge_boundary": "Source review, necessary repair and exact development-artifact qualification deliver independently. The expanded historical documentation lifecycle is incomplete."
   },
   "delivery_reference": "https://github.com/acg-box/decodex/pull/2470",
-  "delivery_status": "public_pull_request",
+  "delivery_status": "merged",
   "qualification_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
   "qualification_source_binding": {
     "consumer_baseline": "96cb7b5c707461c23e0a9dda81d345d8005643a2",
     "code_and_fixture_revision": "900947e457ecaa260211bb99b49bc7fca0da1a71",
     "runtime_lock_sha256": "a4c2634d185f39899f8ebcdede0a0b3888edec0f7c7d959212d937b3ba45e460",
     "limits": "The code/fixture commit and exact working lock content are bound separately; portable evidence is committed after qualification."
-  }
+  },
+  "approved_sampling_cancellation": {
+    "status": "qualified_approved_implementation",
+    "authority": "The user approved explicit cancellation of Ask separately. Parent-agent scheduling was discussed separately and remains outside this adoption.",
+    "consumer_baseline": "dea88679dbc66e322ec48f9e895eef5d5a7b9c5f",
+    "code_and_fixture_revision": "161cdd2fca1594f85a58cee175b85f9300403391",
+    "delivery_reference": "https://github.com/acg-box/decodex/pull/2471",
+    "source_commit": "66d0de9983e82b266e89ee29523324c9d08a5472",
+    "runtime_lock_sha256": "a4c2634d185f39899f8ebcdede0a0b3888edec0f7c7d959212d937b3ba45e460",
+    "artifact_sha256": {
+      "CodexCLI.app/Contents/MacOS/codex": "ec53aeb93a258965aa40e0e614c641cfbdd0e791ca683c9980b0b6ab196f1c4a",
+      "bin/codex-code-mode-host": "f9d69748d7e77f4c3154b8bb498d7cf71334f4776e0e8ce419f3d64491f8f3a6",
+      "codex-path/rg": "dc59496f8fabd70ca66c84603e26ff4c265ff6b0ee60ef975e916aed42754ee3"
+    },
+    "schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+    "schema_files_sha256": {
+      "v2/ThreadSampleCancelParams.json": "199d639a7aef0983f740e59d384c1e51949f03d768eb581c753feca58c619d1f",
+      "v2/ThreadSampleCancelResponse.json": "3de53c3b5e7120bdeda31b49058ceb75b90065b7ca4e530f6dc13ef10105760f",
+      "v2/ThreadSampleParams.json": "41bf05c86ea1f2db91f8f06eaafcda05c27c878c747c523f34de1b835c507efd",
+      "v2/ThreadSampleResponse.json": "573c194687d053ef70c599e73b86ff2255c3166d18728adf3b823b866dfe28a7"
+    },
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_sample.rs": "c15c42b7d0adbb1d764a30d82051991a40282056348700834e335b874ea89c12",
+      "apps/decodex-gpui/src/agent_sample_request.rs": "0a85b2725f3b5c9b5664397d078f94c17ecebfd969dcc3d22ee9ce6672f4fae0",
+      "apps/decodex-gpui/src/agent_sample_tests.rs": "af5d4e54467a8d87db196d972db764ee387ab1c73ef8b3447cb3e669479b40f5",
+      "crates/decodex-codex/src/app_server_client.rs": "90ff04c4634a64e024a570bc9ea0be11f49c04ca8e7e47c82010d969afed119c",
+      "crates/decodex-codex/src/app_server_client/sample.rs": "5128b33b79e0d0bd85e75213964957f14dd480eac33f0d92c5359d92fe2ab49d",
+      "crates/decodex-protocol/src/agent.rs": "035580d34dcdc46d8e8f1a2fb83dbe04c3af120bfc541d33251614c46c07f099",
+      "crates/decodex-protocol/src/agent_sample.rs": "b24e0fa89342656f24e13c865b4030082836baccb75e7b849a1f6cc774d7f00a",
+      "crates/decodex-protocol/src/client.rs": "c1e86365a739b2bd7b2214189e0c85322bf39810764b019bb903d4b0b75cfa3c",
+      "crates/decodex-runtime/src/account_launch/agent_process.rs": "027b17fa9a1a6f86e9d7ba36079b5eb447385a72ecf17eb4f86acd2e4b7f1088",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs": "5567dffd751254aa0e0bc6cbe783bec71d2f5c84cfd3dab3450655846793e4e5",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_sampling_socket_tests.rs": "d9720a63b968dd2ea01d172d36a287f43790966132e94c1b9d28956f52228464",
+      "crates/decodex-runtime/src/agent_host.rs": "89a860995f1e35abd8be01fff174c66c77bde446d261254180ed2a5b051a3fd7",
+      "crates/decodex-runtime/src/agent_sample.rs": "1afa44f18b36095f9c709b52df0e533f167edee272a833c647082fc2ac1e41e9",
+      "crates/decodex-runtime/src/agent_sample_host.rs": "64a2bebc7eb6f341ae85c5427a809746bfcc8f00812a13c5eae5d1fc555fe8ab",
+      "crates/decodex-runtime/src/agent_sample_tests.rs": "3cdd1de81720ec21e5664db9e632ca53b2020aa317e480b4be17cae7f504a047",
+      "crates/decodex-runtime/tests/native_qualification/sample_cancel.py": "a5bf24ea824bc504ad49fb28917e9f6469d285e9be5b46f10b2c25102fa87898",
+      "crates/decodex-runtime/tests/native_qualification/native_session.py": "ae24e58b6ed7404fce007e174fce23aa5ff49038b8b1e77818f59313fdc4aa1f",
+      "crates/decodex-runtime/tests/native_qualification/sample_service.py": "54940adfdcb5ea73da614248e4eed2e3ed24a2a47a7cbd4ccc08d3935e50311d",
+      "crates/decodex-runtime/tests/native_qualification/managed_runtime.py": "e95b1bdb43545fe744e1f4f71226178bcd7c16a4bb0b3ed936a8907848a9753d",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_sample_tests.rs": "7143e9a2fe4776565317a4c2c25c94f1f4db9eae1d72e81ff3b7f6c7a6585e29"
+    },
+    "validation": {
+      "main_baseline": {
+        "revision": "dea88679dbc66e322ec48f9e895eef5d5a7b9c5f",
+        "delivery": "https://github.com/acg-box/decodex/pull/2470",
+        "evidence": "Existing exact-head successful CI and 1250-library-test daily qualification; merge source blobs were verified against that qualified head. This feature does not relabel that earlier execution as a new baseline run."
+      },
+      "tests_read": {
+        "new_local_test_bodies": [
+          "app_server_client::sample::tests::sampling_cancel_waits_for_the_original_cleanup_response",
+          "app_server_client::sample::tests::sampling_cancel_races_and_refusal_preserve_completed_answers",
+          "agent_sample::tests::sample_cancellation_keeps_exact_request_ownership_until_cleanup",
+          "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
+          "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay"
+        ],
+        "retained_native_test_bodies": [
+          "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
+          "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
+        ],
+        "native_fixture": "crates/decodex-runtime/tests/native_qualification/sample_cancel.py#case",
+        "upstream": "Retain source-review record 24 and its three prior executed upstream cases. No new upstream test execution is claimed."
+      },
+      "tests_executed": [
+        {
+          "packages": [
+            "decodex-codex",
+            "decodex-protocol",
+            "decodex-runtime"
+          ],
+          "entrypoint": "lib",
+          "passed": 1242,
+          "skipped": 116,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--all-features",
+            "-p",
+            "decodex-codex",
+            "-p",
+            "decodex-protocol",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--no-fail-fast"
+          ]
+        },
+        {
+          "package": "decodex-gpui",
+          "entrypoint": "bin:decodex-gpui",
+          "selector": "test(sample::tests::)",
+          "passed": 5,
+          "skipped": 939,
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--all-features",
+            "-p",
+            "decodex-gpui",
+            "--bin",
+            "decodex-gpui",
+            "-E",
+            "test(sample::tests::)",
+            "--no-fail-fast"
+          ]
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib; ignored only",
+          "test": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
+          "passed": 1,
+          "skipped": 937,
+          "environment": {
+            "DECODEX_TEST_CODEX_BINARY": "Absolute exact verified packaged CLI"
+          },
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "--all-features",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "-E",
+            "test(installed_native_sampling_preserves_parent_and_blocks_tools_without_replay)"
+          ]
+        },
+        {
+          "package": "decodex-runtime",
+          "entrypoint": "lib; ignored only through reusable preparation helper",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity",
+          "passed": 1,
+          "skipped": 937,
+          "command": [
+            "python3",
+            "crates/decodex-runtime/tests/native_qualification/sample_service.py",
+            "--runtime",
+            "<verified-runtime-package>"
+          ],
+          "behavior": "Normal answer and idempotent generation; late and foreign cancellation; pending inference cancellation through the public service and admitted bridge; provider observes closed connection; exact request and parent history survive. A repeated cancellation command never infers."
+        },
+        {
+          "entrypoint": "python fixture",
+          "source": "crates/decodex-runtime/tests/native_qualification/sample_cancel.py",
+          "executed_cases": 4,
+          "passed": 4,
+          "command": [
+            "python3",
+            "crates/decodex-runtime/tests/native_qualification/sample_cancel.py"
+          ],
+          "environment": {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "QUALIFIED_CODEX_BINARY": "Absolute exact verified packaged CLI",
+            "DECODEX_QUALIFICATION_OUTPUT": "Existing native automation run directory"
+          },
+          "cases": [
+            "legacy:cancel",
+            "legacy:completion_before_cancel",
+            "paginated:cancel",
+            "paginated:completion_before_cancel"
+          ],
+          "behavior": "Matching cancellation cleans the temporary child; foreign and repeated cancellation are safe; completed answer wins; one parent request plus one sample with no replay; parent history stays responsive and identical."
+        }
+      ],
+      "unmatched_selectors": [],
+      "preparation_failures": [
+        {
+          "stage": "GUI target selection",
+          "executed": 0,
+          "reason": "--lib is invalid for the binary-only GUI package; corrected to --bin decodex-gpui."
+        },
+        {
+          "stage": "GUI tool path",
+          "executed": 0,
+          "reason": "An absent Xcode path stopped linking; rerun used the existing selected Xcode."
+        },
+        {
+          "stage": "test compilation",
+          "executed": 0,
+          "reason": "Two core test helper type errors and a missing GUI test import were corrected before tests ran."
+        }
+      ],
+      "checks": [
+        {
+          "name": "strict-clippy",
+          "command": [
+            "cargo",
+            "+stable",
+            "clippy",
+            "--locked",
+            "--all-features",
+            "--all-targets",
+            "-p",
+            "decodex-codex",
+            "-p",
+            "decodex-protocol",
+            "-p",
+            "decodex-runtime",
+            "-p",
+            "decodex-gpui",
+            "--",
+            "--no-deps",
+            "-D",
+            "clippy::all",
+            "-D",
+            "clippy::too_many_lines",
+            "-D",
+            "clippy::unwrap_used",
+            "-D",
+            "clippy::use_self",
+            "-D",
+            "clippy::wildcard_imports",
+            "-D",
+            "missing-docs",
+            "-D",
+            "unused-crate-dependencies",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "workspace-check",
+          "command": [
+            "cargo",
+            "+stable",
+            "make",
+            "check-rust"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "nightly-format",
+          "command": [
+            "cargo",
+            "+nightly",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0
+        },
+        {
+          "name": "diff-check",
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exit_code": 0
+        }
+      ]
+    },
+    "limits": [
+      "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor.",
+      "Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance.",
+      "Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added.",
+      "Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins.",
+      "The expanded historical OpenWiki lifecycle remains incomplete and unassigned. Source, tests and portable evidence deliver separately; no generated page or lifecycle control was hand-edited."
+    ],
+    "preparation": {
+      "command": [
+        "cargo",
+        "+stable",
+        "make",
+        "prepare-codex"
+      ],
+      "lock": "codex-runtime.lock.json",
+      "import_environment": {
+        "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact verified package root, when importing instead of building"
+      },
+      "provenance_and_scripts": "automations/upstream/qualification.json#development_preparation",
+      "limit": "A rebuild has its own artifact identity. Verify its components and schema, then rerun affected native cases; do not identify it as the deleted original package."
+    }
+  },
+  "delivery_merge_commit": "dea88679dbc66e322ec48f9e895eef5d5a7b9c5f"
 }
