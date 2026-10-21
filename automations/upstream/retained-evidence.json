@@ -463,7 +463,7 @@
       "decision": "The user explicitly requested parent-first triage. Native approvals and permissions keep their existing owner.",
       "recommendation": "Reuse native child-parent messaging and root user-question tools; keep escalation in the existing coordinator prompt.",
       "qualification": "retained_native_coordination.parent_questions",
-      "delivery_reference": "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2472"
     }
   ],
   "retained_presentation": {
@@ -663,14 +663,14 @@
     "parent_questions": {
       "status": "user_approved_instruction_clarification",
       "contract": "The coordinating parent checks existing user decisions and evidence before asking the user. It answers the exact asking child within existing authority, and escalates missing user decisions or authority, or questions that investigation cannot reliably answer. Independent work continues while dependent work waits. Suggested defaults, agent messages and silence do not grant authority. Native permission and approval enforcement retains its owner.",
-      "native_boundary": "At the fixed source, synchronous request_user_input rejects non-root sessions; async question registration excludes non-root sessions. Children use native messaging to their responsible parent. Decodex compatibility code that can receive a child server request does not prove native user-question tools are exposed to children.",
+      "native_boundary": "At the fixed source, synchronous request_user_input rejects non-root sessions; async question registration excludes non-root sessions. Children use native messaging to their responsible parent. Decodex compatibility code that can receive a child server request does not prove native user-question tools are exposed to children. A Decodex-managed work thread can be an independent native root rather than a native subagent. Use the existing managed-work result/inbox path for those children; do not assume every UI parent relation is a native messaging target.",
       "delivery_scope": "AgentCoordinator::thread_params embeds shared coordination guidance in new managed coordinator instructions. Work wake messages reuse the same guidance. Native resume keeps an existing thread and its original instructions; no automatic rewrite of every running conversation is claimed.",
       "source_symbols": [
         "crates/decodex-runtime/src/agent/coordination.md",
         "crates/decodex-runtime/src/agent.rs#INSTRUCTIONS,#COORDINATION,#thread_params,#wake_message"
       ],
       "source_sha256": {
-        "crates/decodex-runtime/src/agent/coordination.md": "f9ca93f3f6ec3a3d327b5b9d0fe0c2f068926c845fab11f287aa6ea6a3b35dfc",
+        "crates/decodex-runtime/src/agent/coordination.md": "1ed4fbd9fa1a9e3d31ee39fc557d934239d93c36461143e3b413f30266effe2c",
         "crates/decodex-runtime/src/agent/instructions.md": "a5d113113214a72e7e164ef7fcce88415103db6705591e969becc71c5fd778ef",
         "crates/decodex-runtime/src/agent.rs": "84a5596bc5bbc50908fa485ba77b66f5f0fb0c955db83a3dbb2278bcc661d94d",
         "crates/decodex-runtime/src/agent/tests.rs": "4f1f82f31687c266e953c10056031894e48d1a1e5ceeda023c41ef697bcebfb3",
@@ -730,7 +730,7 @@
           "isolated_rerun_executed": 1,
           "isolated_rerun_passed": 1,
           "isolated_rerun_leaky": false,
-          "limit": "The broad suite retained one nextest leak marker. A single isolated rerun passed without it. No fixture or nextest policy was changed; no production regression or leak root cause is claimed."
+          "limit": "An earlier broad suite reported one nextest leak marker. Its isolated rerun and the final 176-test suite passed without it. No fixture or nextest policy was changed; no production regression or leak root cause is claimed."
         },
         "command": [
           "cargo",
@@ -759,7 +759,9 @@
           "-E",
           "test(=agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade)"
         ],
-        "unmatched_selectors": []
+        "unmatched_selectors": [],
+        "final_leaky_count": 0,
+        "successful_test_attempt_executions": 353
       },
       "checks": [
         {
@@ -827,13 +829,19 @@
         }
       ],
       "delivery_references": [
-        "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
+        "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d",
+        "https://github.com/acg-box/decodex/pull/2472"
       ],
       "limits": [
-        "This is shared coordination guidance, not a deterministic question classifier or permission grant. No new native API, model-callable tool, UI control, account adapter or runtime feature is introduced.",
+        "This is shared coordination guidance, not a deterministic question classifier or permission grant. No new native API, model-callable tool, UI control, account adapter or runtime feature is introduced. Bring questions back through the channel that already owns that child. The prompt does not intercept every possible direct request from an independent managed thread.",
         "No new live model judgment, real account/provider, every-plan compatibility, native tool-guard execution or installed-app acceptance is claimed. The source guards and their relevant tests were read, not newly executed.",
         "The selected runtime, its original artifact identity, previous qualification limits and source-review cursor remain unchanged. The expanded OpenWiki lifecycle is incomplete and retains its separate owner/continuation."
-      ]
+      ],
+      "existing_runtime_artifact_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "ec53aeb93a258965aa40e0e614c641cfbdd0e791ca683c9980b0b6ab196f1c4a",
+        "bin/codex-code-mode-host": "f9d69748d7e77f4c3154b8bb498d7cf71334f4776e0e8ce419f3d64491f8f3a6",
+        "codex-path/rg": "dc59496f8fabd70ca66c84603e26ff4c265ff6b0ee60ef975e916aed42754ee3"
+      }
     }
   },
   "documentation_lifecycle": {
@@ -1113,11 +1121,12 @@
     }
   },
   "current_delivery": {
-    "status": "implementation_commit",
+    "status": "public_pull_request",
     "code_commits": [
       "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d"
     ],
-    "scope": "User-approved parent-first question guidance in the existing shared coordinator prompt. Public delivery state is available through the implementation commit and its linked pull request; no installed-app acceptance."
+    "scope": "User-approved parent-first question guidance in the existing shared coordinator prompt. Public delivery state is available through the implementation commit and its linked pull request; no installed-app acceptance.",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2472"
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
